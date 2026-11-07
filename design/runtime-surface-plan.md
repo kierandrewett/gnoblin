@@ -114,7 +114,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Schema:** reuse each object's signals from `gnoblin-schema/schema/*.toml`.
 - **Tests first:** a throwing handler does not disable later handlers; `once` fires once; unsubscribe and reload clear
   handlers; a handler's return value reaches the caller's Operation.
-- **Docs:** `docs/shell-api/` event pages, `docs/cli/lua.md`.
+- **Docs:** `docs/shell-api/` event pages.
 
 ### S3. Object collections and `find`
 
@@ -135,7 +135,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Schema:** new methods on `window`, using only names `docs/` already defines.
 - **Tests first:** a stale window refuses with a named code; `move` and `resize` clamp or refuse outside the output
   (decision 3); `present` reports "focused", not "accepted".
-- **Docs:** `docs/shell-api/focus-activation.md`, `docs/cli/windows.md`.
+- **Docs:** `docs/shell-api/focus-activation.md`.
 
 ### S5. Process object and attribution
 
@@ -145,7 +145,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Schema:** new `process` object in the `gnoblin` namespace; `window.toml` gains `pid` and `process`.
 - **Tests first:** a long-lived child does not hold a reload back; `kill` is idempotent; a window's `process` is
   attributed from the compositor, never from an app ID.
-- **Docs:** `docs/shell-api/launch-feedback.md`, `docs/cli/lua.md`.
+- **Docs:** `docs/shell-api/launch-feedback.md`.
 
 ### S6. Request lifecycle in Lua
 

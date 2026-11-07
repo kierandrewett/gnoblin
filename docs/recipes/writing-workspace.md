@@ -132,5 +132,4 @@ gnoblinctl window workspace 42 --number 1
 Replace `42` with the ID shown on your system. Workspace numbers can change
 when workspaces are removed or reordered; use configured IDs in saved rules
 and scripts. See [workspace settings](/config/configure/window_management),
-the [window rules guide](/guides/window_rules#workspaces), [Lua events](/events/), and the
-[`gnoblinctl` reference](/cli/#workspaces-and-monitors).
+the [window rules guide](/guides/window_rules#workspaces), and [Lua events](/events/).

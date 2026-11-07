@@ -1,96 +1,55 @@
 # gnoblinctl Reference
 
-Use `gnoblinctl` to inspect a running session, control Gnoblin, manage its
-configuration, and run local Lua scripts.
+`gnoblinctl` is the command-line client for a running Gnoblin session. It talks
+to the compositor over the IPC socket at `$GNOBLIN_IPC_SOCKET`, or
+`$XDG_RUNTIME_DIR/gnoblin/ipc.sock` when that is unset. It speaks one IPC
+version and refuses a compositor at another version, naming both versions.
 
-Session commands require a running Gnoblin compositor. `gnoblinctl --version` can run without a session.
+Add `--json` to any command for machine-readable output.
 
-## Build identity
+## Session commands
 
-Run `gnoblinctl --version` to read the installed build identity without a
-running session. It reports:
+| Command                   | Use it to                                                  |
+| ------------------------- | ---------------------------------------------------------- |
+| `gnoblinctl ping`         | Exit 0 when the compositor answers the handshake           |
+| `gnoblinctl status`       | Read the session state, its revision and the lock          |
+| `gnoblinctl version`      | Read the Gnoblin version and the IPC version in use        |
+| `gnoblinctl capabilities` | List every capability and whether this connection holds it |
 
-- The Gnoblin version.
-- The UTC time of the build.
-- The Git commit, marked `(modified)` when the source tree had changes.
-- The Git remote.
-- The Lua and native API versions.
+## Configuration
 
-`gnoblin --version` prints the same identity. Add `--json` to either command to
-save the complete build identity as JSON, which also has the build ID and the
-GNOME and component versions.
+| Command                           | Use it to                                                                   |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| `gnoblinctl config get`           | Print the configuration the compositor last accepted                        |
+| `gnoblinctl config validate FILE` | Check a configuration document with the runtime's parser, without a session |
 
-In a Git checkout, the command reads the source manifests, current commit and
-tracking remote (or `origin`). In a release tarball, it reads the embedded
-source provenance. The installed command reads the identity recorded at build
-time. A modified source tree is marked beside its commit; the commit alone does
-not identify those local edits.
+`config validate` does not connect to a session, so it works before Gnoblin is
+running.
 
-`gnoblinctl version` reads the build identity through the running compositor
-API. It requires an active Gnoblin session.
+## Objects
 
-[Configuration reference](/config/configure)
+Each object the compositor exposes has its own command, generated from the
+schema. Every object takes the same verbs:
 
-Control Gnoblin from a terminal or Lua configuration. Configure shell panels
-with the external shell's own tools.
+- `gnoblinctl OBJECT list` lists the live objects of that type.
+- `gnoblinctl OBJECT get` reads their properties.
+- `gnoblinctl OBJECT watch` prints changes as they happen.
+- `gnoblinctl OBJECT call METHOD` calls a method.
 
-## Start here
+Run `gnoblinctl --help` for the objects this build knows, and
+`gnoblinctl OBJECT --help` for the properties, methods and signals of one.
 
-Run commands from a terminal inside Gnoblin:
+## Logs and IPC
 
-| Command                                        | Use it to                                                    |
-| ---------------------------------------------- | ------------------------------------------------------------ |
-| `gnoblinctl status`                            | Check the running session and lock-state availability        |
-| `gnoblinctl logout`                            | End the session and return to the login manager              |
-| `gnoblinctl session suspend`                   | Suspend the machine                                          |
-| `gnoblinctl session hibernate`                 | Hibernate the machine                                        |
-| `gnoblinctl session reboot`                    | Restart the machine                                          |
-| `gnoblinctl session poweroff`                  | Shut the machine down                                        |
-| `gnoblinctl session activity`                  | Read the idle-monitor sample                                 |
-| `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session   |
-| `gnoblinctl window list`                       | Find open windows and their IDs                              |
-| `gnoblinctl window match`                      | Show the values a window rule can match                      |
-| `gnoblinctl window thumbnail ID --output PATH` | Save a window thumbnail as a PNG                             |
-| `gnoblinctl layer list`                        | Find layer-surface namespaces                                |
-| `gnoblinctl input devices`                     | List detected input devices and capabilities                 |
-| `gnoblinctl input orientation-lock [VALUE]`    | Read or set the orientation lock                             |
-| `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows             |
-| `gnoblinctl config path`                       | Find the config file your session uses                       |
-| `gnoblinctl config default`                    | Print the bundled default `init.lua`                         |
-| `gnoblinctl init`                              | Create an editable default config tree from the binary       |
-| `gnoblinctl config restore-default`            | Back up and replace the config folder with embedded defaults |
-| `gnoblinctl config reload`                     | Validate and apply the complete configuration live           |
-| `gnoblinctl shortcut list`                     | List shortcuts registered by the native compositor           |
-| `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group          |
-| `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding              |
-| `gnoblinctl capabilities`                      | List compositor and protocol capabilities                    |
-| `gnoblinctl focus history`                     | List windows in focus order                                  |
-| `gnoblinctl focus policy`                      | Show the committed focus policy                              |
-| `gnoblinctl config show`                       | Show the committed settings snapshot                         |
-| `gnoblinctl lua`                               | Open a local Lua console for the session API                 |
-| `gnoblinctl ping`                              | Check whether the compositor control socket responds         |
+- `gnoblinctl log` prints stored log records, oldest first. Filter them with
+  `--level`, `--role` and `--store`. The [logging guide](/guides/logging) covers
+  following a live store.
+- `gnoblinctl ipc dump [FILE]` decodes recorded IPC frames into readable lines.
+  Secret payloads are dropped. Without a file it reads standard input.
+- `gnoblinctl completions SHELL` writes a shell completion script. Use
+  `--output PATH` to write it to a file.
 
-Run `gnoblinctl --help` for the commands and options, `gnoblinctl help window`
-for the actions of a command, and `gnoblinctl help window thumbnail` for the
-arguments of one action. Each command and action has a one-line description. A
-bare group lists its actions. A mistyped command or action names the closest
-match, as in `unknown command: windw (did you mean 'window'?)`.
+## Help
 
-`man gnoblinctl` has the same commands and actions, generated from the same
-table as the help. `man gnoblin` covers the login command.
-
-If a Lua configuration reload is already in progress, API commands retry that
-temporary response until their `--timeout` expires. Other compositor errors are
-reported immediately, and uncertain actions are not retried.
-
-## Command groups
-
-- [Windows](/cli/windows)
-- [Input and animations](/cli/input-and-animations)
-- [Workspaces, monitors, and shortcuts](/cli/workspaces-monitors-shortcuts)
-- [Session and policy](/cli/session-and-policy)
-- [Lua console](/cli/lua)
-- [Graphical console](/cli/graphical-console)
-- [Shell completion](/cli/completion)
-
-Use `gnoblinctl --help` to list commands, `gnoblinctl help GROUP` to list actions, and `gnoblinctl help GROUP ACTION` to see an action synopsis. The help table in `src/cli/gnoblinctl-cli.c` defines command names and one-line descriptions.
+`gnoblinctl --help` lists the commands. A mistyped command names the closest
+match. `man gnoblinctl` has the same reference.

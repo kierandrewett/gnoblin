@@ -318,5 +318,4 @@ the original visual state. The CLI lists which animations are previewable
 against window or layer targets.
 
 Workspace and shadow transitions animate internal actors or effects and
-cannot be previewed against those targets. See
-[gnoblinctl animation commands](/cli/#animations).
+cannot be previewed against those targets.

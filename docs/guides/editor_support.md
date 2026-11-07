@@ -28,6 +28,6 @@ The file matches the Gnoblin release it was published with. Download it again af
 
 ## The same hints in the console
 
-The [graphical console](/cli/graphical-console) reads the same definitions. Completion lists show
+The graphical console reads the same definitions. Completion lists show
 each function's signature, and typing a call such as `gnoblin.workspaces.create(` shows its
 parameters, with the keys of a table argument listed and completed as you type them.

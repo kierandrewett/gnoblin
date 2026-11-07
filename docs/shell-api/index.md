@@ -29,7 +29,6 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Keyring and GPG prompts](/shell-api/passphrase-prompts): secret prompts.
 - [Appearance and animations](/shell-api/appearance-animations): color scheme and animation controls.
 - [Shared types](/shell-api/types) and [errors and results](/shell-api/errors).
-- [Console](/cli/lua): inspect the session with `gnoblinctl lua`.
 
 ## Shared conventions
 

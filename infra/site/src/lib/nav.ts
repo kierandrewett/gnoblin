@@ -218,15 +218,7 @@ export const NAV: NavSection[] = [
             {
                 label: "gnoblinctl",
                 slug: "cli",
-                items: [
-                    { label: "Lua console", slug: "cli/lua" },
-                    { label: "Graphical console", slug: "cli/graphical-console" },
-                    { label: "Shell completion", slug: "cli/completion" },
-                    { label: "Windows", slug: "cli/windows" },
-                    { label: "Input and animations", slug: "cli/input-and-animations" },
-                    { label: "Workspaces, monitors, shortcuts", slug: "cli/workspaces-monitors-shortcuts" },
-                    { label: "Session and policy", slug: "cli/session-and-policy" },
-                ],
+                items: [{ label: "Reference", slug: "cli" }],
             },
             {
                 label: "D-Bus interfaces",
