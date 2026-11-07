@@ -36,6 +36,15 @@ pub mod console;
 #[cfg(feature = "store")]
 pub mod store;
 
+/// The record a logged event becomes, and the sink that stores batches of them. Always built: it
+/// has no dependencies, so a storage crate can implement [`record::RecordSink`].
+pub mod record;
+
+/// The queue between the logging call and a sink, and the layer that feeds it. Needs the
+/// `pipeline` feature.
+#[cfg(feature = "pipeline")]
+pub mod pipeline;
+
 /// The journald sink: one structured entry per event in the systemd journal. Needs the `journal`
 /// feature.
 #[cfg(feature = "journal")]

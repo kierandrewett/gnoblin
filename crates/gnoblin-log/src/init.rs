@@ -18,6 +18,8 @@ use std::panic;
 use crate::ProcessRole;
 use crate::console::{ConsoleFormat, JsonFormat, StreamFormat};
 use crate::journal::{JournalLayer, SOCKET_PATH};
+#[cfg(feature = "pipeline")]
+use crate::pipeline::{Pipeline, PipelineLayer};
 use crate::store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;
@@ -41,10 +43,14 @@ pub use options::{
 #[must_use = "dropping the guard flushes the log database immediately"]
 pub struct LogGuard {
     sink: Option<Sink>,
+    pipeline: Option<Pipeline>,
 }
 
 impl Drop for LogGuard {
     fn drop(&mut self) {
+        if let Some(pipeline) = &self.pipeline {
+            pipeline.flush();
+        }
         if let Some(sink) = &self.sink {
             sink.flush();
         }
@@ -96,6 +102,17 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
         ConsoleOutput::Plain => layers.push(console_layer(ConsoleFormat { role, colour: false }, filter.clone())),
     }
 
+    let mut pipeline = None;
+    if let Some(handle) = &options.sink {
+        match Pipeline::start(handle.shared(), role) {
+            Ok(started) => {
+                layers.push(PipelineLayer::new(started.clone()).with_filter(filter.clone()).boxed());
+                pipeline = Some(started);
+            }
+            Err(error) => problems.push(format!("no log sink thread: {error}")),
+        }
+    }
+
     let mut sink = None;
     if let Some(path) = &options.database {
         match crate::store::open(path, role, options.retention) {
@@ -114,7 +131,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
             log::warn!("{problem}");
         }
     }
-    LogGuard { sink }
+    LogGuard { sink, pipeline }
 }
 
 /// A console layer that writes each event on stderr in `format`, filtered by `filter`.

@@ -5,6 +5,7 @@ use std::io::IsTerminal as _;
 use std::path::{Path, PathBuf};
 
 use crate::journal::SOCKET_PATH;
+use crate::record::SinkHandle;
 use crate::store::{Retention, default_database_path};
 
 /// The environment variable that holds the `tracing` filter, in `EnvFilter` syntax.
@@ -143,6 +144,9 @@ pub struct LogOptions {
     pub database: Option<PathBuf>,
     /// The limits on what the database keeps.
     pub retention: Retention,
+    /// The sink that receives every event as a batch, or `None`. No environment variable names a
+    /// sink: a binary that stores its log sets it in code.
+    pub sink: Option<SinkHandle>,
     /// Environment values that were ignored, for the process to report once it can log.
     pub problems: Vec<String>,
 }
@@ -193,6 +197,7 @@ impl LogOptions {
             output: output(console, probe),
             database,
             retention: settings.retention,
+            sink: None,
             problems,
         }
     }
@@ -252,6 +257,7 @@ mod tests {
                 output: ConsoleOutput::Plain,
                 database: Some(PathBuf::from("/home/kieran/.local/state/gnoblin/logs.sqlite3")),
                 retention: Retention::default(),
+                sink: None,
                 problems: Vec::new(),
             }
         );
@@ -318,6 +324,7 @@ mod tests {
                 output: ConsoleOutput::Off,
                 database: Some(PathBuf::from("/srv/logs.sqlite3")),
                 retention: settings.retention,
+                sink: None,
                 problems: Vec::new(),
             }
         );
