@@ -607,4 +607,79 @@ mod tests {
         frame.set_colour_matrix(Some(bad));
         assert_eq!(frame.colour_matrix(), None, "a NaN offset drops the matrix");
     }
+
+    /// A one-pixel overlay, enough to occupy an entry in the list.
+    fn overlay_at(x: i32) -> Overlay {
+        let image = Image::new(gnoblin_types::Size { width: 1, height: 1 }, 4, vec![0, 0, 0, 255])
+            .expect("a one-pixel image is valid");
+        Overlay::new(Rect::new(x, 0, 1, 1), &image).expect("a non-empty overlay is valid")
+    }
+
+    /// The left edge of every solid layer, bottom first, so the test reads paint order.
+    fn solid_order(frame: &OutputFrame) -> Vec<i32> {
+        frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Solid(solid) => Some(solid.dst.x),
+                Layer::Surface(_) | Layer::Overlay(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn layers_are_painted_in_the_order_they_are_pushed() {
+        let mut frame = OutputFrame::new();
+        for x in [3, 1, 2] {
+            frame.push_layer(Layer::Solid(Solid::new(Rect::new(x, 0, 1, 1), Color::WHITE)));
+        }
+        assert_eq!(
+            solid_order(&frame),
+            vec![3, 1, 2],
+            "the list is bottom first, never sorted"
+        );
+    }
+
+    #[test]
+    fn the_overlay_is_placed_last_above_every_layer() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 1, 1), Color::WHITE)));
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(1, 0, 1, 1), Color::WHITE)));
+        frame.set_overlay(Some(overlay_at(5)));
+        assert!(
+            matches!(frame.layers().last(), Some(Layer::Overlay(_))),
+            "the overlay is the top entry of the one list"
+        );
+        assert_eq!(frame.overlay().map(Overlay::dst), Some(Rect::new(5, 0, 1, 1)));
+    }
+
+    #[test]
+    fn setting_the_overlay_again_replaces_it_and_none_removes_it() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 1, 1), Color::WHITE)));
+        frame.set_overlay(Some(overlay_at(5)));
+        frame.set_overlay(Some(overlay_at(7)));
+        let overlays = frame
+            .layers()
+            .iter()
+            .filter(|layer| matches!(layer, Layer::Overlay(_)))
+            .count();
+        assert_eq!(overlays, 1, "one overlay entry, however often it is set");
+        assert_eq!(frame.overlay().map(Overlay::dst), Some(Rect::new(7, 0, 1, 1)));
+        frame.set_overlay(None);
+        assert!(frame.overlay().is_none());
+        assert_eq!(
+            frame.layers().len(),
+            1,
+            "removing the overlay leaves the layers as they were"
+        );
+    }
+
+    #[test]
+    fn the_overlay_accessor_skips_layers_that_are_not_the_overlay() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 1, 1), Color::WHITE)));
+        assert!(frame.overlay().is_none(), "a frame with no overlay entry has none");
+        assert_eq!(solid_order(&frame), vec![0]);
+    }
 }
