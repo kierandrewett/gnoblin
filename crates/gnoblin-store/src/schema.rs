@@ -31,11 +31,6 @@ pub(crate) const STEPS: &[&str] = &[
     INSERT INTO meta (name, value) VALUES ('revision', 0), ('bytes', 0);",
 ];
 
-/// The version a file reaches when every step has run.
-pub(crate) fn latest() -> u32 {
-    STEPS.len() as u32
-}
-
 /// Brings `conn` up to the latest version of `steps`, one transaction per step.
 ///
 /// A file already past the last step was written by a newer store and is refused rather than

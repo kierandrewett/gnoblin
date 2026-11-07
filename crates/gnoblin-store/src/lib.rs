@@ -11,11 +11,13 @@
 //! logged through the `gnoblin-log` facade.
 //!
 //! Modules: `name` checks namespace names and keys, `encode` is the value encoding, `schema` owns
-//! the migrations, `query` compiles the typed [`Query`] to bound SQL, and `kv` is the in-process
-//! provider that does the work.
+//! the migrations, `query` compiles the typed [`Query`] to bound SQL, `kv` is the in-process
+//! provider that does the work, and `logs` is the `log` kind: an append-only table of records
+//! that a [`gnoblin_log::record::RecordSink`] writes into.
 
 mod encode;
 mod kv;
+mod logs;
 mod name;
 mod query;
 mod schema;
@@ -32,6 +34,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use gnoblin_model::Value;
 
 pub use kv::{Change, Entry, Op, Outcome};
+pub use logs::{GroupBy, LogQuery, Logs, Retention, StoredRecord};
 pub use query::{Order, Query};
 
 use kv::Kv;
@@ -260,6 +263,9 @@ impl Store {
     /// a read-only store with no file. `migration-failed` when a migration step fails.
     pub fn namespace(&self, name: &str) -> Result<Namespace, StoreError> {
         name::validate_name(name)?;
+        if name == logs::RESERVED_NAME {
+            return Err(StoreError::InvalidName(format!("{name} belongs to the log kind")));
+        }
         let mut namespaces = lock(&self.namespaces);
         let kv = match namespaces.get(name) {
             Some(kv) => Arc::clone(kv),
@@ -274,6 +280,21 @@ impl Store {
             name: name.to_owned(),
             kv,
         })
+    }
+
+    /// Opens the `log` kind: the append-only record table at `log.sqlite3` in this store's
+    /// directory. Hand the result to the logging layer as its record sink, and keep it for the
+    /// search verbs.
+    ///
+    /// `retention` says how much history to keep. A writable open applies it at once.
+    ///
+    /// # Errors
+    ///
+    /// `store-unavailable` when the file is missing and the store is read-only. `migration-failed`
+    /// when a migration step fails or the file came from a newer store. A damaged file is moved
+    /// aside and a fresh one is opened, as for namespaces.
+    pub fn logs(&self, retention: Retention) -> Result<Logs, StoreError> {
+        Logs::open(&self.root.join(logs::FILE_NAME), self.options.writable, retention)
     }
 
     /// Moves every open namespace to `closing`. Their verbs are refused from then on, and their

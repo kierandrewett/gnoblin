@@ -176,7 +176,7 @@ impl Kv {
                 path.display()
             )));
         }
-        match open_file(&path, options.writable) {
+        match open_file(&path, options.writable, STEPS) {
             Ok(conn) => Ok(Kv::new(path, options, State::Ready, options.writable.then_some(conn))),
             Err(StoreError::Corrupt(reason)) => {
                 quarantine(&path, &reason);
@@ -658,7 +658,7 @@ fn decode_entry(raw: RawEntry) -> Result<Entry, StoreError> {
 
 /// Opens the file, sets it up for use, and checks it. Returns [`StoreError::Corrupt`] for a file
 /// that is not a database or fails `quick_check`, which is what triggers quarantine.
-fn open_file(path: &Path, writable: bool) -> Result<Connection, StoreError> {
+pub(crate) fn open_file(path: &Path, writable: bool, steps: &[&str]) -> Result<Connection, StoreError> {
     let flags = if writable {
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
     } else {
@@ -680,12 +680,12 @@ fn open_file(path: &Path, writable: bool) -> Result<Connection, StoreError> {
         conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))
             .map_err(map_sqlite)?;
         conn.pragma_update(None, "synchronous", "NORMAL").map_err(map_sqlite)?;
-        schema::migrate(&mut conn, STEPS)?;
+        schema::migrate(&mut conn, steps)?;
     } else {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .map_err(map_sqlite)?;
-        if version != schema::latest() {
+        if version != steps.len() as u32 {
             return Err(StoreError::Migration {
                 version,
                 message: "a read-only store needs the file at the latest version".to_owned(),
@@ -696,7 +696,7 @@ fn open_file(path: &Path, writable: bool) -> Result<Connection, StoreError> {
 }
 
 /// Opens a read connection: `query_only` so it cannot write even by mistake.
-fn open_reader(path: &Path) -> Result<Connection, StoreError> {
+pub(crate) fn open_reader(path: &Path) -> Result<Connection, StoreError> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE).map_err(map_sqlite)?;
     conn.busy_timeout(BUSY_TIMEOUT).map_err(map_sqlite)?;
     conn.pragma_update(None, "query_only", true).map_err(map_sqlite)?;
@@ -705,7 +705,7 @@ fn open_reader(path: &Path) -> Result<Connection, StoreError> {
 
 /// Moves a damaged file and its WAL sidecars aside as `<name>.corrupt-<UTC time>`, and logs it.
 /// Never blocks: a rename that fails is logged and the namespace is still quarantined.
-fn quarantine(path: &Path, reason: &str) {
+pub(crate) fn quarantine(path: &Path, reason: &str) {
     let stamp = utc_stamp(now_ms() / 1000);
     let stem = path
         .file_stem()
@@ -726,7 +726,7 @@ fn quarantine(path: &Path, reason: &str) {
 }
 
 /// The milliseconds since the Unix epoch, or 0 when the clock is before it.
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as i64)

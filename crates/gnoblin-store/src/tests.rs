@@ -10,7 +10,7 @@ use gnoblin_model::Value;
 use crate::{Change, Op, Options, Order, Outcome, Query, State, Store};
 
 /// A fresh directory under the system temp dir, unique to this process and call.
-fn scratch(label: &str) -> PathBuf {
+pub(crate) fn scratch(label: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
