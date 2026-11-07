@@ -27,6 +27,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.window_management.clone().unwrap_or_default();
             apply(config, &section);
+            crate::window_rules::configure(&mut config.wayland, &stored.config.window_rules);
             log::debug!(
                 area = "window-management",
                 "loaded from the last accepted configuration"

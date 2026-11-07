@@ -116,7 +116,9 @@ pub use event::{Event, Rejection, WindowProtocol, WindowSpec};
 pub use output::Output;
 pub use placement::PlacementMode;
 pub use pointer_focus::{FocusMode, POINTER_REST, PointerAction, PointerFocus};
-pub use rules::{MAX_RULES, Match, Pattern, PatternSyntaxError, Rule, RuleError, RuleFields, WorkspaceSelector};
+pub use rules::{
+    MAX_RULES, Match, Pattern, PatternSyntaxError, Rule, RuleError, RuleFields, WorkspaceSelector, validate_list,
+};
 pub use snapping::SnapZone;
 pub use tiled::{TiledEdges, tiled_edges};
 pub use window::{Window, WindowKind, WindowState};

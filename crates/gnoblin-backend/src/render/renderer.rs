@@ -203,22 +203,40 @@ impl AnyRenderer {
     }
 }
 
-/// Reads a renderer back for a capture, with the secure layers of the frame it last drew replaced by `treatment`.
+/// What a redacted capture reads: the frame last drawn, where the capture covers, and how
+/// its secure layers are treated.
+pub(crate) struct CaptureRequest<'a> {
+    /// The frame last drawn, or `None` when it has no secure layer, in which case the read
+    /// is the plain one.
+    pub display: Option<&'a OutputFrame>,
+    /// The rectangle the capture covers.
+    pub bounds: Rect,
+    /// The scale the frame is drawn at.
+    pub scale: Scale,
+    /// Whether the cursor is drawn into the read.
+    pub with_cursor: bool,
+    /// How each secure layer is drawn in the read.
+    pub treatment: SecureTreatment,
+}
+
+/// Reads a renderer back for a capture, with the secure layers of the frame it last drew
+/// replaced by the request's treatment.
 ///
-/// `display` is that frame, or `None` when it has no secure layer, in which case the read is
-/// the plain one. Otherwise the replaced frame is drawn and read, and the display is drawn
-/// again with full damage so the next present shows the real layers. The display is restored
-/// even when the read fails.
+/// The display is drawn again with full damage so the next present shows the real layers.
+/// It is restored even when the read fails.
 pub(crate) fn capture_redacted<R>(
     renderer: &mut R,
-    display: Option<&OutputFrame>,
-    bounds: Rect,
-    scale: Scale,
-    with_cursor: bool,
-    treatment: SecureTreatment,
+    request: CaptureRequest<'_>,
     draw: fn(&mut R, &OutputFrame, Scale) -> Result<(), RenderError>,
     read: fn(&mut R, bool) -> Result<Image, RenderError>,
 ) -> Result<Image, RenderError> {
+    let CaptureRequest {
+        display,
+        bounds,
+        scale,
+        with_cursor,
+        treatment,
+    } = request;
     let Some(display) = display else {
         return read(renderer, with_cursor);
     };

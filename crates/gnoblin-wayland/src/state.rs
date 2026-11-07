@@ -2030,6 +2030,14 @@ impl State {
         self.composer.set_reduced_motion(reduced);
     }
 
+    /// Hands the window manager the rules the configuration accepted. The compositor
+    /// validates the list before it gets here, so a refusal by the window manager is not
+    /// expected; if one comes, the rules already in force stay.
+    pub(crate) fn apply_window_rules(&mut self, rules: Vec<gnoblin_wm::Rule>) {
+        let effects = self.wm.apply(Event::RulesChanged { rules });
+        self.apply(effects);
+    }
+
     /// Advances the window animations by the real time one loop turn took.
     pub(crate) fn advance_motion(&mut self, elapsed_ms: u32) {
         self.composer.advance_motion(elapsed_ms);

@@ -1548,3 +1548,88 @@ fn a_capture_of_a_tiled_window_is_its_placed_rectangle() {
         );
     });
 }
+
+/// A rule that marks the window with `app_id` secure, so its capture is masked.
+fn secure_rule(app_id: &str) -> gnoblin_wm::Rule {
+    gnoblin_wm::Rule {
+        matcher: gnoblin_wm::Match {
+            app_id: Some(gnoblin_wm::Pattern::new(app_id).expect("a valid pattern")),
+            ..gnoblin_wm::Match::default()
+        },
+        fields: gnoblin_wm::RuleFields {
+            secure: Some(true),
+            ..gnoblin_wm::RuleFields::default()
+        },
+    }
+}
+
+#[test]
+fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
+    let session = Session::start_tiled();
+    session.run(|session| {
+        // The rule is set before either window maps, so it applies at the first manage.
+        let secret = secure_rule("org.gnoblin.Secret");
+        session.control.set_window_rules(vec![secret]);
+
+        let mut secret_app = Client::app(session.socket());
+        let mut plain_app = Client::app(session.socket());
+        let _secret = secret_app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);
+        let _plain = plain_app.map_window("org.gnoblin.Plain", "Plain", 512, 768, GREEN);
+        session.wait_for(|observation| observation.titled("Secret").is_some() && observation.titled("Plain").is_some());
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        let secret = capture_window(&mut capture, "Secret");
+        assert_ne!(
+            secret.pixel(5, 5),
+            RED,
+            "the secure window's capture does not hold its colour"
+        );
+        assert_ne!(
+            secret.pixel(506, 762),
+            RED,
+            "the whole secure window is masked, not only its corner"
+        );
+
+        // The unrestricted window beside it still captures its colour, so the masking is the rule's doing.
+        let plain = capture_window(&mut capture, "Plain");
+        assert_eq!(
+            plain.pixel(5, 5),
+            GREEN,
+            "the window the rule does not match keeps its colour"
+        );
+    });
+}
+
+#[test]
+fn a_reload_that_drops_the_secure_rule_unmasks_the_window() {
+    let session = Session::start_tiled();
+    session.run(|session| {
+        session
+            .control
+            .set_window_rules(vec![secure_rule("org.gnoblin.Secret")]);
+
+        let mut secret_app = Client::app(session.socket());
+        let _secret = secret_app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);
+        session.wait_for(|observation| observation.titled("Secret").is_some());
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        assert_ne!(
+            capture_window(&mut capture, "Secret").pixel(5, 5),
+            RED,
+            "the secure rule masks the window before the reload"
+        );
+
+        // The reload is applied by the compositor loop, which the capture also waits on, so the
+        // window is captured again until the withdrawn rule shows, under a deadline rather than a
+        // fixed sleep.
+        session.control.set_window_rules(Vec::new());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while capture_window(&mut capture, "Secret").pixel(5, 5) != RED {
+            assert!(
+                Instant::now() < deadline,
+                "the reload did not unmask the window within 5 seconds"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+    });
+}

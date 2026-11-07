@@ -649,7 +649,7 @@ mod tests {
             .expect("the claimant takes it");
         let _ = requests.departed(HOST);
         assert!(
-            requests.offers.get(&request).is_none(),
+            !requests.offers.contains_key(&request),
             "the departed relay's request is no longer offered"
         );
         let refusal = requests

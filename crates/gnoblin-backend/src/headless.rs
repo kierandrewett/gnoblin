@@ -58,7 +58,7 @@ use gnoblin_output::DisplayMode;
 
 use gnoblin_config::RendererChoice;
 
-use crate::render::renderer::{AnyRenderer, RendererKind, capture_redacted};
+use crate::render::renderer::{AnyRenderer, CaptureRequest, RendererKind, capture_redacted};
 use crate::{
     Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
     Target,
@@ -256,11 +256,13 @@ impl HeadlessTarget {
         let bounds = self.bounds();
         capture_redacted(
             &mut self.renderer,
-            self.display.as_ref(),
-            bounds,
-            self.scale,
-            with_cursor,
-            treatment,
+            CaptureRequest {
+                display: self.display.as_ref(),
+                bounds,
+                scale: self.scale,
+                with_cursor,
+                treatment,
+            },
             AnyRenderer::draw,
             AnyRenderer::capture,
         )

@@ -225,6 +225,10 @@ pub struct Config {
     /// with no redirect, which is a working session: no global is advertised and no
     /// adapter's code is linked in.
     pub extensions: Vec<Arc<dyn Extension>>,
+    /// The window rules the document declares, in declaration order. They apply to a
+    /// window when it is first taken into management, so a rule set here places every
+    /// window opened after the session starts.
+    pub window_rules: Vec<gnoblin_wm::Rule>,
 }
 
 impl Default for Config {
@@ -241,6 +245,7 @@ impl Default for Config {
             protocols: Protocols::default(),
             input_sources: None,
             keyboard: None,
+            window_rules: Vec::new(),
             shortcuts: None,
             titlebar_actions: TitlebarActions::default(),
             cursor: CursorSettings::default(),
@@ -339,6 +344,7 @@ impl Server {
         let poll_fd = display.as_fd().try_clone_to_owned().map_err(StartupError::Io)?;
 
         let window_process_override = config.window_process_override;
+        let window_rules = config.window_rules;
         let outputs = apply_global_scale(backend.as_mut(), config.monitors.global_scale);
         let mut state = State::new(
             display,
@@ -373,6 +379,7 @@ impl Server {
         if let Some(shortcuts) = &config.shortcuts {
             state.apply_shortcuts(shortcuts);
         }
+        state.apply_window_rules(window_rules);
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
 
@@ -456,6 +463,7 @@ impl Server {
                                 let _ = reply.send(state.layout_failure(workspace));
                             }
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
+                            Command::WindowRules(rules) => state.apply_window_rules(rules),
                             Command::Focus { window, reply } => {
                                 // The answer is sent after the publish, so a caller that
                                 // reads the observation on the strength of it sees what
@@ -928,6 +936,12 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Replaces the window rules in force. Existing windows keep what they were given;
+    /// the rules apply to windows taken into management from now on.
+    pub fn set_window_rules(&self, rules: Vec<gnoblin_wm::Rule>) {
+        self.control.push(Command::WindowRules(rules));
+    }
+
     /// Sets whether window property changes land at once instead of animating.
     pub fn set_reduced_motion(&self, reduced: bool) {
         self.control.push(Command::ReducedMotion(reduced));
@@ -1162,6 +1176,8 @@ enum Command {
     },
     /// Whether window property changes land at once instead of animating.
     ReducedMotion(bool),
+    /// The window rules the configuration accepted, replacing the rules in force.
+    WindowRules(Vec<gnoblin_wm::Rule>),
     /// A tick of the session clock, in milliseconds.
     Advance(u64),
     /// A chosen keyboard layout.

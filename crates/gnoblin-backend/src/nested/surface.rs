@@ -59,7 +59,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use super::NestedError;
 use super::handler::{Handler, OutputKey, SlotKey};
 use crate::Present;
-use crate::render::renderer::capture_redacted;
+use crate::render::renderer::{CaptureRequest, capture_redacted};
 use crate::{Output, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
@@ -465,11 +465,13 @@ impl NestedTarget {
         let bounds = Rect::new(0, 0, self.size().width, self.size().height);
         capture_redacted(
             &mut self.software,
-            self.display.as_ref(),
-            bounds,
-            self.output.scale,
-            with_cursor,
-            treatment,
+            CaptureRequest {
+                display: self.display.as_ref(),
+                bounds,
+                scale: self.output.scale,
+                with_cursor,
+                treatment,
+            },
             Software::draw,
             Software::capture,
         )

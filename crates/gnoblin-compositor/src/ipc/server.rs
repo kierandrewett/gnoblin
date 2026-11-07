@@ -399,10 +399,12 @@ fn accept_loop(
                     client,
                     version,
                     served,
-                    Capabilities::NONE,
-                    grants,
-                    ConnectionEnd::Closed,
-                    None,
+                    ConnectionPolicy {
+                        capabilities: Capabilities::NONE,
+                        extension_grants: grants,
+                        ending: ConnectionEnd::Closed,
+                        owner: None,
+                    },
                 )
             }) {
             Ok(handle) => {
@@ -423,16 +425,13 @@ fn accept_loop(
 /// which extension namespaces it may use.
 /// `ending` says what the stream's end means to the dispatcher: a client is closed, and a
 /// privileged stream is lost.
-fn serve(
-    stream: UnixStream,
-    client: ClientId,
-    version: Version,
-    events: Sender<IpcEvent>,
-    capabilities: Capabilities,
-    extension_grants: Arc<[u8]>,
-    ending: ConnectionEnd,
-    owner: Option<String>,
-) {
+fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<IpcEvent>, policy: ConnectionPolicy) {
+    let ConnectionPolicy {
+        capabilities,
+        extension_grants,
+        ending,
+        owner,
+    } = policy;
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
         Err(error) => {
@@ -522,6 +521,19 @@ impl ConnectionEnd {
     }
 }
 
+/// The policy one served connection runs under: what it may do, the grants frame it is told,
+/// how its end is reported, and the role it answers for, if it is privileged.
+struct ConnectionPolicy {
+    /// The capabilities the connection is granted.
+    capabilities: Capabilities,
+    /// The extension grants frame sent on every accept.
+    extension_grants: Arc<[u8]>,
+    /// What the stream's end means to the dispatcher.
+    ending: ConnectionEnd,
+    /// The privileged role the connection serves, or `None` for an ordinary client.
+    owner: Option<String>,
+}
+
 /// What the control thread knows about one privileged role, fixed before serving starts.
 struct PrivilegedRole {
     /// The identity every handover of the role is served as.
@@ -590,10 +602,12 @@ fn serve_control(
                     client,
                     version,
                     served,
-                    capabilities,
-                    frame,
-                    ConnectionEnd::Lost,
-                    Some(owner),
+                    ConnectionPolicy {
+                        capabilities,
+                        extension_grants: frame,
+                        ending: ConnectionEnd::Lost,
+                        owner: Some(owner),
+                    },
                 )
             }) {
             Ok(handle) => {
@@ -1139,10 +1153,27 @@ impl Dispatcher {
                 return;
             }
         };
+        // A document whose window rules this session cannot carry out is refused before it is
+        // recorded, so the last accepted document stays in force and the caller sees the field.
+        let config = gnoblin_config::Config::from_json_bytes(&document);
+        let rules = match config
+            .as_ref()
+            .map(|config| crate::window_rules::convert(&config.window_rules))
+        {
+            Ok(Ok(rules)) => Some(rules),
+            Ok(Err(message)) => {
+                log::warn!(area = "ipc", %message, "the committed window rules were refused; the last accepted document stays in force");
+                self.refuse(client, envelope, wire::code::CONFIG_REJECTED, &message);
+                let answers = self.reload.finish(&ReloadVerdict::Rejected { message });
+                self.deliver_replies(answers);
+                return;
+            }
+            // A document that did not decode keeps the rules already in force.
+            Err(_) => None,
+        };
         // The request layer records the document before it is parsed, so the revision counts
         // every commit the runtime made, including one this process cannot decode. The
         // settings object then keeps its last good values.
-        let config = gnoblin_config::Config::from_json_bytes(&document);
         let revision = self.requests.commit(document);
         match config {
             Ok(config) => {
@@ -1156,6 +1187,9 @@ impl Dispatcher {
                     .and_then(|appearance| appearance.reduced_motion)
                     .unwrap_or(false);
                 self.control.set_reduced_motion(reduced_motion);
+                if let Some(rules) = rules {
+                    self.control.set_window_rules(rules);
+                }
             }
             Err(reason) => {
                 log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")
