@@ -703,7 +703,7 @@ mod tests {
             &VerifiedCaller::new(caller_pid, "org.example.Requester"),
             parent,
             |handle| (handle == "live").then_some(Some(7u32)),
-            |window| (window == 7).then_some(owner.clone()),
+            |window| (window == 7).then_some(owner),
         )
     }
 
