@@ -107,7 +107,7 @@ pub struct Appearance {
 /// magnifier model exists to guarantee. It is a projected area of the output's
 /// surface, so it stays two-dimensional whatever depth the scene behind it has.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct View {
+pub struct MagnifierArea {
     /// The output the view belongs to.
     pub output: OutputId,
     /// The area of that output that is magnified.
@@ -133,7 +133,7 @@ pub struct Published {
     /// Whether mouse keys is on.
     pub mouse_keys: bool,
     /// The magnifier's view, or `None` when it is off.
-    pub magnifier: Option<View>,
+    pub magnifier: Option<MagnifierArea>,
     /// Whether the session is covered.
     pub locked: bool,
 }
@@ -169,7 +169,7 @@ pub enum Effect {
         reason: BeepReason,
     },
     /// The magnifier's view when it changed, or `None` when it was turned off.
-    Magnifier(Option<View>),
+    Magnifier(Option<MagnifierArea>),
     /// Publish the state to observers.
     Publish(Published),
 }

@@ -9,8 +9,8 @@ use crate::geometry::{Point, Rect, Scale};
 use crate::ids::{KeyCode, Keysym, OutputId, OwnerId};
 use crate::{
     A11y, Appearance, BounceKeysConfig, ButtonState, Config, Effect, Event, Follow, Key, KeyDecision, KeyRouting,
-    KeyState, Keystroke, MagnifierConfig, Mode, Modifiers, MouseKeysConfig, Output, PointerButton, Published,
-    SlowKeysConfig, StickyKeysConfig, View,
+    KeyState, Keystroke, MagnifierArea, MagnifierConfig, Mode, Modifiers, MouseKeysConfig, Output, PointerButton,
+    Published, SlowKeysConfig, StickyKeysConfig,
 };
 
 const SHIFT_L: u32 = 0xffe1;
@@ -167,7 +167,7 @@ fn motions(effects: &[Effect]) -> Vec<(i64, i64)> {
 }
 
 /// The magnifier's view from this step's effects.
-fn view_of(effects: &[Effect]) -> View {
+fn view_of(effects: &[Effect]) -> MagnifierArea {
     effects
         .iter()
         .find_map(|effect| match effect {

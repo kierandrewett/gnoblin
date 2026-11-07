@@ -7,7 +7,7 @@
 //! neighbour would show that neighbour's area instead of the lock screen.
 
 use crate::geometry::{Point, Scale, magnified};
-use crate::{Follow, MagnifierConfig, Output, View};
+use crate::{Follow, MagnifierArea, MagnifierConfig, Output};
 
 /// The smallest zoom the magnifier accepts: the whole output.
 const MIN_ZOOM: Scale = Scale::integral(1);
@@ -19,7 +19,7 @@ const MAX_ZOOM: Scale = Scale::integral(32);
 pub struct Magnifier {
     config: MagnifierConfig,
     layout: Vec<Output>,
-    view: Option<View>,
+    view: Option<MagnifierArea>,
     /// Where the configured follow source last put the view.
     anchor: Option<Point>,
     /// Whether the session is covered. While it is, the output is pinned and
@@ -80,7 +80,7 @@ impl Magnifier {
     /// The magnifier's view, or `None` when it is off or nothing is known about
     /// the layout.
     #[must_use]
-    pub const fn view(&self) -> Option<View> {
+    pub const fn view(&self) -> Option<MagnifierArea> {
         self.view
     }
 
@@ -91,12 +91,12 @@ impl Magnifier {
         changed
     }
 
-    fn compute(&self) -> Option<View> {
+    fn compute(&self) -> Option<MagnifierArea> {
         if !self.config.enabled {
             return None;
         }
         let output = self.output()?;
-        Some(View {
+        Some(MagnifierArea {
             output: output.id,
             source: magnified(output.bounds, self.anchor_point(output), self.config.zoom),
             zoom: self.config.zoom,

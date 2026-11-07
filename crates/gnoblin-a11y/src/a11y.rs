@@ -17,7 +17,7 @@
 //! `Control`-masked keystroke match a chord typed with a latched Control.
 
 use crate::geometry::Point;
-use crate::{Appearance, Config, Effect, Event, Follow, Key, KeyRouting, KeyState, Published, View};
+use crate::{Appearance, Config, Effect, Event, Follow, Key, KeyRouting, KeyState, MagnifierArea, Published};
 
 use crate::keyboard::{BounceKeys, SlowKeys, Sticky, StickyKeys};
 use crate::magnifier::Magnifier;
@@ -123,7 +123,7 @@ impl A11y {
 
     /// The magnifier's view, or `None` when it is off or the layout is unknown.
     #[must_use]
-    pub const fn view(&self) -> Option<View> {
+    pub const fn view(&self) -> Option<MagnifierArea> {
         self.magnifier.view()
     }
 

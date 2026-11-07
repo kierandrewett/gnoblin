@@ -38,7 +38,7 @@ pub(crate) enum Invocation {
     /// An object's subcommand.
     Object {
         object: &'static CliObject,
-        action: Action,
+        action: ObjectAction,
         json: bool,
     },
     /// Decode frames from a recorded stream.
@@ -51,7 +51,7 @@ pub(crate) enum Invocation {
 
 /// The action taken on an object.
 #[derive(Debug)]
-pub(crate) enum Action {
+pub(crate) enum ObjectAction {
     /// Every live object of the type, from the subscription snapshot.
     List,
     /// One object, or one of its properties.
@@ -449,16 +449,16 @@ fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage>
 fn object_invocation(object: &'static CliObject, matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
     let (name, sub) = matches.subcommand().expect("a subcommand is required");
     let action = match name {
-        "list" => Action::List,
+        "list" => ObjectAction::List,
         "get" => {
             let id = *sub.get_one::<u64>("id").expect("clap requires the id");
             let property = sub.get_one::<String>("property").cloned();
-            Action::Get { id, property }
+            ObjectAction::Get { id, property }
         }
         "watch" => {
             let id = sub.get_one::<u64>("id").copied();
             let count = sub.get_one::<u64>("count").copied();
-            Action::Watch { id, count }
+            ObjectAction::Watch { id, count }
         }
         "call" => {
             let id = *sub.get_one::<u64>("id").expect("clap requires the id");
@@ -469,7 +469,7 @@ fn object_invocation(object: &'static CliObject, matches: &ArgMatches, json: boo
                 .map(|values| values.cloned().collect())
                 .unwrap_or_default();
             let arguments = args::parse(method, &tokens).map_err(|text| Usage { text, help: false })?;
-            Action::Call { id, method, arguments }
+            ObjectAction::Call { id, method, arguments }
         }
         other => unreachable!("`{other}` is not a generated action"),
     };

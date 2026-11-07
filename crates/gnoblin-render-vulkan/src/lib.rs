@@ -79,7 +79,7 @@ use std::rc::Rc;
 
 use gnoblin_types::{Scale, Size};
 
-pub use context::{DeviceChoice, DeviceInfo, DeviceKind, Loader, Validation, VulkanOptions};
+pub use context::{DeviceChoice, DeviceInfo, GpuKind, Loader, Validation, VulkanOptions};
 pub use error::VulkanError;
 
 use context::VkContext;

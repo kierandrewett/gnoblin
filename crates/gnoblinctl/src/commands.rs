@@ -16,7 +16,7 @@ use std::io::{self, Write};
 use gnoblin_client::{Client, ClientError, Event, Transport};
 use gnoblin_model::{Filter, ObjectId, ObjectView, Observation, TypeKey};
 
-use crate::cli::Action;
+use crate::cli::ObjectAction;
 use crate::output;
 use crate::tree::CliObject;
 
@@ -30,16 +30,16 @@ const UNKNOWN_MEMBER: &str = gnoblin_client::code::UNKNOWN_MEMBER;
 pub(crate) fn execute<T: Transport>(
     client: &mut Client<T>,
     object: &'static CliObject,
-    action: &Action,
+    action: &ObjectAction,
     json: bool,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
     let outcome = match action {
-        Action::List => list(client, object, json, out),
-        Action::Get { id, property } => get(client, object, *id, property.as_deref(), json, out),
-        Action::Watch { id, count } => watch(client, object, *id, *count, json, out),
-        Action::Call { id, method, arguments } => call(client, *id, method.name, arguments, json, out),
+        ObjectAction::List => list(client, object, json, out),
+        ObjectAction::Get { id, property } => get(client, object, *id, property.as_deref(), json, out),
+        ObjectAction::Watch { id, count } => watch(client, object, *id, *count, json, out),
+        ObjectAction::Call { id, method, arguments } => call(client, *id, method.name, arguments, json, out),
     };
     match outcome {
         Ok(code) => code,

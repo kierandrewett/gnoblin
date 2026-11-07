@@ -101,7 +101,7 @@ pub struct VulkanOptions {
 
 /// What kind of device the renderer is drawing on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DeviceKind {
+pub enum GpuKind {
     /// A discrete GPU.
     Discrete,
     /// An integrated GPU.
@@ -114,7 +114,7 @@ pub enum DeviceKind {
     Other,
 }
 
-impl DeviceKind {
+impl GpuKind {
     fn from_vulkan(kind: vk::PhysicalDeviceType) -> Self {
         match kind {
             vk::PhysicalDeviceType::DISCRETE_GPU => Self::Discrete,
@@ -143,7 +143,7 @@ pub struct DeviceInfo {
     /// The driver's name for the device.
     pub name: String,
     /// What kind of device it is.
-    pub kind: DeviceKind,
+    pub kind: GpuKind,
 }
 
 /// Failures a test injects into the driver calls the renderer makes.
@@ -527,7 +527,7 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
             family: family as u32,
             info: DeviceInfo {
                 name,
-                kind: DeviceKind::from_vulkan(properties.device_type),
+                kind: GpuKind::from_vulkan(properties.device_type),
             },
         });
     }

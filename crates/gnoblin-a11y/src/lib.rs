@@ -139,7 +139,7 @@ pub use config::{
     BounceKeysConfig, Config, Follow, MagnifierConfig, Mode, MouseKeysConfig, SlowKeysConfig, StickyKeysConfig,
 };
 /// What the machines emit: the decisions, views and published flags the compositor acts on.
-pub use effect::{Appearance, BeepReason, Effect, KeyDecision, KeyRouting, PointerButton, Published, View};
+pub use effect::{Appearance, BeepReason, Effect, KeyDecision, KeyRouting, MagnifierArea, PointerButton, Published};
 /// Inputs to the machines (key, pointer and output events) and the keystroke type they use.
 pub use event::{Event, Key, Keystroke, Output};
 /// Shared input enums (button and key state, modifiers), re-exported from `gnoblin-types`.
