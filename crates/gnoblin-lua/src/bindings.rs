@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gnoblin_client::Transport;
-use gnoblin_model::{Fields, ObjectId, OperationId, Value as ModelValue};
+use gnoblin_model::{Fields, ObjectId, OperationId, OperationOutcome, Value as ModelValue};
 use mlua::{AnyUserData, Error, Function, Lua, Table, UserData, UserDataFields, UserDataMethods, Value, Variadic};
 
 use crate::host::{Shared, Status, Watching};
@@ -657,6 +657,7 @@ type LayoutReferenceFields = (String, String, String, Vec<u8>);
 /// the value is not one. The hash is spelled the way the reference's own `hash` field
 /// spells it. The options are refused here when they are too large to encode, so an
 /// oversize value fails in the configuration that made it, not on the wire.
+type LayoutReferenceFields = (String, String, String, Vec<u8>);
 fn layout_reference_fields(value: &Value) -> mlua::Result<Option<LayoutReferenceFields>> {
     let Value::UserData(data) = value else {
         return Ok(None);
@@ -868,6 +869,45 @@ pub(super) fn to_lua<T: Transport + 'static>(
     })
 }
 
+/// The two arguments delivered to an operation completion handler.
+pub(super) fn completion_args<T: Transport + 'static>(
+    lua: &Lua,
+    shared: &Rc<RefCell<Shared<T>>>,
+    operation: OperationId,
+) -> mlua::Result<(Value, Value)> {
+    let (outcome, local_error) = {
+        let shared = shared.borrow();
+        shared
+            .operations
+            .get(&operation)
+            .map(|pending| (pending.outcome.clone(), pending.local_error.clone()))
+            .unwrap_or((None, None))
+    };
+    if let Some((code, message)) = local_error {
+        let error = lua.create_table()?;
+        error.set("code", code)?;
+        error.set("message", message)?;
+        return Ok((Value::Nil, Value::Table(error)));
+    }
+    let value = match outcome.as_ref() {
+        Some(OperationOutcome::Value(value)) => to_lua(lua, shared, value)?,
+        _ => {
+            let key = format!("operation-value:{}", operation.get());
+            callbacks(lua)?.raw_get(key)?
+        }
+    };
+    let error_value = match outcome {
+        Some(OperationOutcome::Failed(code)) => {
+            let error = lua.create_table()?;
+            error.set("code", code.as_str())?;
+            error.set("message", code.as_str())?;
+            Value::Table(error)
+        }
+        _ => Value::Nil,
+    };
+    Ok((value, error_value))
+}
+
 /// One namespace of the generated bindings.
 fn find_namespace(name: &str) -> Option<&'static NamespaceSpec> {
     NAMESPACES.iter().find(|namespace| namespace.name == name)
@@ -924,6 +964,122 @@ impl<T: Transport + 'static> UserData for Operation<T> {
                 shared: Rc::clone(&this.shared),
                 handler,
             })
+        });
+        methods.add_method("map", |lua, this, callback: Function| {
+            let target = {
+                let mut shared = this.shared.borrow_mut();
+                let target = shared.allocate_operation();
+                shared.operations.insert(
+                    target,
+                    crate::host::Pending {
+                        outcome: None,
+                        local_error: None,
+                        completions: Vec::new(),
+                    },
+                );
+                target
+            };
+            let handler = this.shared.borrow_mut().allocate();
+            callbacks(lua)?.raw_set(handler, callback)?;
+            this.shared.borrow_mut().watch(
+                handler,
+                Watching::Map {
+                    source: this.operation,
+                    target,
+                },
+            );
+            lua.create_userdata(Operation {
+                shared: Rc::clone(&this.shared),
+                operation: target,
+                method: "map",
+            })
+        });
+        methods.add_method("timeout", |lua, this, seconds: f64| {
+            if !seconds.is_finite() || !(0.0..=MAX_TIMER_SECONDS).contains(&seconds) {
+                return Err(Error::runtime(format!(
+                    "Operation:timeout takes 0 to {MAX_TIMER_SECONDS} seconds, found {seconds}"
+                )));
+            }
+            let mut shared = this.shared.borrow_mut();
+            if shared.timers.len() >= MAX_PENDING_TIMERS {
+                return Err(Error::runtime(format!(
+                    "Operation:timeout has {MAX_PENDING_TIMERS} timers pending; cancel some first"
+                )));
+            }
+            let target = shared.allocate_operation();
+            shared.operations.insert(
+                target,
+                crate::host::Pending {
+                    outcome: None,
+                    local_error: None,
+                    completions: Vec::new(),
+                },
+            );
+            let milliseconds = (seconds * 1000.0).round() as u64;
+            let due = shared.clock.saturating_add(milliseconds);
+            let timer = shared.allocate();
+            let handler = shared.allocate();
+            drop(shared);
+            callbacks(lua)?.raw_set(handler, lua.create_function(|_, ()| Ok(()))?)?;
+            {
+                let mut shared = this.shared.borrow_mut();
+                shared.timers.insert(handler, due);
+                shared.watch(
+                    timer,
+                    Watching::Forward {
+                        source: this.operation,
+                        target,
+                        timer: handler,
+                    },
+                );
+                shared.handlers.insert(handler, Watching::Timeout { target });
+                callbacks(lua)?.raw_set(timer, lua.create_function(|_, ()| Ok(()))?)?;
+            }
+            lua.create_userdata(Operation {
+                shared: Rc::clone(&this.shared),
+                operation: target,
+                method: "timeout",
+            })
+        });
+        methods.add_method("cancel", |lua, this, ()| {
+            let waiters = {
+                let mut shared = this.shared.borrow_mut();
+                if shared.status(this.operation) != Status::Pending {
+                    return Ok(false);
+                }
+                let waiters: Vec<u64> = shared
+                    .handlers
+                    .iter()
+                    .filter_map(|(id, watching)| {
+                        matches!(
+                            watching,
+                            Watching::Map { target, .. }
+                                | Watching::Forward { target, .. }
+                                | Watching::Timeout { target }
+                                if *target == this.operation
+                        )
+                        .then_some(*id)
+                    })
+                    .collect();
+                for id in &waiters {
+                    shared.handlers.remove(id);
+                    shared.timers.remove(id);
+                }
+                for pending in shared.operations.values_mut() {
+                    pending.completions.retain(|handler| !waiters.contains(handler));
+                }
+                let ready = shared.finish_local(
+                    this.operation,
+                    OperationOutcome::Done,
+                    Some(("cancelled".to_owned(), "operation was cancelled".to_owned())),
+                );
+                shared.deferred.extend(ready);
+                waiters
+            };
+            for id in waiters {
+                forget(lua, id);
+            }
+            Ok(true)
         });
     }
 }

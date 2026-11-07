@@ -30,18 +30,18 @@ returns = ["boolean"]
 [[member]]
 name = "timers"
 kind = "table"
-doc = "Timers run on the caller's tick, never on a clock of their own."
+doc = "Timers run on the caller's monotonic clock, measured in seconds."
 
 [[member.members]]
 name = "after"
 kind = "function"
-doc = "Run `callback` after `ticks` ticks; the returned timer can be cancelled."
-params = [{ name = "ticks", type = "integer" }, { name = "callback", type = "fun()" }]
+doc = "Run `callback` after `seconds` seconds; the returned timer can be cancelled."
+params = [{ name = "seconds", type = "number" }, { name = "callback", type = "fun()" }]
 returns = ["gnoblin.Timer"]
 
 [[member.members]]
 name = "now"
 kind = "function"
-doc = "The caller's current tick."
-returns = ["integer"]
+doc = "The caller's monotonic clock in seconds."
+returns = ["number"]
 

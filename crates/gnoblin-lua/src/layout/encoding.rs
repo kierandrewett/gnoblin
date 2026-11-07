@@ -66,7 +66,7 @@ impl Data {
                 "layout options use encoding version {version}, not {ENCODING_VERSION}"
             )));
         }
-        let mut reader = Reader {
+        let mut reader = ModuleReader {
             bytes: rest,
             entries: MAX_ENTRIES,
         };
@@ -130,12 +130,12 @@ fn write_text(text: &str, out: &mut Vec<u8>) {
 
 /// A cursor over encoded bytes. `entries` counts down the table entries still allowed,
 /// across the whole value, so a shared or wide table cannot exceed the budget.
-struct Reader<'a> {
+struct ModuleReader<'a> {
     bytes: &'a [u8],
     entries: usize,
 }
 
-impl Reader<'_> {
+impl ModuleReader<'_> {
     fn take(&mut self, count: usize) -> Result<&[u8], DataError> {
         if self.bytes.len() < count {
             return Err(DataError("layout options are truncated".into()));

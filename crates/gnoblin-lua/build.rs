@@ -427,7 +427,23 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text.push_str("---@field id integer\n");
     text.push_str("---@field method string\n");
     text.push_str("---@field status \"pending\"|\"succeeded\"|\"failed\"\n");
-    text.push_str("---@field code string|nil the schema error code after a failure\n\n");
+    text.push_str("---@field code string|nil the schema error code after a failure\n");
+    text.push_str(
+        "--- Callbacks receive `(value, error)`; `error` is nil on success and has `code` and `message` on failure.\n",
+    );
+    text.push_str("local Operation = {}\n");
+    text.push_str("---@param fn fun(value: any, error: table|nil)\n");
+    text.push_str("---@return gnoblin.Subscription\n");
+    text.push_str("function Operation:on_complete(fn) end\n");
+    text.push_str("---@param fn fun(value: any, error: table|nil): any\n");
+    text.push_str("---@return gnoblin.Operation\n");
+    text.push_str("function Operation:map(fn) end\n");
+    text.push_str("---@param seconds number\n");
+    text.push_str("---@return gnoblin.Operation\n");
+    text.push_str("function Operation:timeout(seconds) end\n");
+    text.push_str("--- Stop waiting; false means the operation already finished.\n");
+    text.push_str("---@return boolean\n");
+    text.push_str("function Operation:cancel() end\n\n");
     text.push_str("--- One signal handler registration.\n");
     text.push_str("---@class gnoblin.Subscription\n");
     text.push_str("local Subscription = {}\n");

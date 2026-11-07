@@ -67,16 +67,31 @@ pub(super) enum Watching {
     Extension { namespace: String, member: String },
     /// The single completion of one operation, delivered at the end of the pump.
     Completion { operation: OperationId },
+    /// A derived operation runs its mapping function when its source completes.
+    Map { source: OperationId, target: OperationId },
+    /// A timeout forwards the source result and clears its deadline.
+    Forward {
+        source: OperationId,
+        target: OperationId,
+        timer: u64,
+    },
+    /// A deadline fails its target unless the target has already finished.
+    Timeout { target: OperationId },
 }
 
-/// What the host knows about one operation it called.
+/// One tracked operation, remote or locally derived.
 #[derive(Debug)]
 pub(super) struct Pending {
     /// How it ended, once the single completion arrived.
     pub(super) outcome: Option<OperationOutcome>,
-    /// The handlers waiting for that completion, in registration order.
+    /// A local failure has a stable code and a useful message.
+    pub(super) local_error: Option<(String, String)>,
+    /// The handlers waiting for that finish, in registration order.
     pub(super) completions: Vec<u64>,
 }
+
+/// Local operations take ids from this base, so they never meet an id the graph allocated.
+const LOCAL_OPERATION_BASE: u64 = 1 << 62;
 
 /// The host's state, shared with the Lua closures the bindings install.
 ///
@@ -107,6 +122,8 @@ pub(super) struct Shared<T: Transport> {
     pub(super) timers: BTreeMap<u64, Tick>,
     /// Handlers that run at the end of the current pump.
     pub(super) deferred: Vec<u64>,
+    /// The next local operation identity; local ids do not overlap graph ids.
+    pub(super) next_local_operation: u64,
     pub(super) next_id: u64,
     /// Whether a configuration is loading, which is when `gnoblin.configure` may
     /// change the document.
@@ -137,6 +154,13 @@ impl<T: Transport> Shared<T> {
         id
     }
 
+    /// Reserve an identity for an operation derived entirely in this runtime.
+    pub(super) fn allocate_operation(&mut self) -> OperationId {
+        let id = self.next_local_operation;
+        self.next_local_operation += 1;
+        OperationId::new(id)
+    }
+
     /// Schedule a handler to run at the end of the current pump.
     pub(super) fn defer(&mut self, id: u64) {
         self.deferred.push(id);
@@ -144,14 +168,16 @@ impl<T: Transport> Shared<T> {
 
     /// Remember what `handler` waits for, and schedule it if it is already due.
     pub(super) fn watch(&mut self, handler: u64, watching: Watching) {
-        if let Watching::Completion { operation } = &watching {
-            match self.operations.get_mut(operation) {
-                Some(pending) if pending.outcome.is_none() => pending.completions.push(handler),
-                // Already finished, or never called here. Either way the answer
-                // exists now, so the callback runs at the end of this pump rather
-                // than never.
+        match &watching {
+            Watching::Completion { operation }
+            | Watching::Map { source: operation, .. }
+            | Watching::Forward { source: operation, .. } => match self.operations.get_mut(operation) {
+                Some(pending) if pending.outcome.is_none() && pending.local_error.is_none() => {
+                    pending.completions.push(handler)
+                }
                 _ => self.deferred.push(handler),
-            }
+            },
+            _ => {}
         }
         self.handlers.insert(handler, watching);
     }
@@ -197,6 +223,7 @@ impl<T: Transport> Shared<T> {
             operation.id(),
             Pending {
                 outcome: None,
+                local_error: None,
                 completions: Vec::new(),
             },
         );
@@ -205,23 +232,48 @@ impl<T: Transport> Shared<T> {
 
     /// How one operation stands.
     pub(super) fn status(&self, operation: OperationId) -> Status {
-        match self
-            .operations
-            .get(&operation)
-            .and_then(|pending| pending.outcome.as_ref())
-        {
+        match self.operations.get(&operation) {
+            Some(pending) if pending.local_error.is_some() => {
+                Status::Failed(pending.local_error.as_ref().expect("checked").0.clone())
+            }
+            Some(pending) => match pending.outcome.as_ref() {
+                None => Status::Pending,
+                Some(OperationOutcome::Done | OperationOutcome::Value(_)) => Status::Succeeded,
+                Some(OperationOutcome::Failed(code)) => Status::Failed(code.as_str().to_owned()),
+            },
             None => Status::Pending,
-            Some(OperationOutcome::Done | OperationOutcome::Value(_)) => Status::Succeeded,
-            Some(OperationOutcome::Failed(code)) => Status::Failed(code.as_str().to_owned()),
         }
     }
 
     /// The error code of a failed operation.
     pub(super) fn code(&self, operation: OperationId) -> Option<String> {
-        match self.status(operation) {
-            Status::Failed(code) => Some(code),
-            _ => None,
+        let pending = self.operations.get(&operation)?;
+        pending
+            .local_error
+            .as_ref()
+            .map(|(code, _)| code.clone())
+            .or_else(|| match pending.outcome.as_ref() {
+                Some(OperationOutcome::Failed(code)) => Some(code.as_str().to_owned()),
+                _ => None,
+            })
+    }
+
+    /// Complete a local operation once and return handlers ready to run.
+    pub(super) fn finish_local(
+        &mut self,
+        operation: OperationId,
+        outcome: OperationOutcome,
+        error: Option<(String, String)>,
+    ) -> Vec<u64> {
+        let Some(pending) = self.operations.get_mut(&operation) else {
+            return Vec::new();
+        };
+        if pending.outcome.is_some() || pending.local_error.is_some() {
+            return Vec::new();
         }
+        pending.outcome = Some(outcome);
+        pending.local_error = error;
+        std::mem::take(&mut pending.completions)
     }
 }
 
@@ -342,6 +394,7 @@ impl<T: Transport + 'static> Host<T> {
             handlers: BTreeMap::new(),
             timers: BTreeMap::new(),
             deferred: Vec::new(),
+            next_local_operation: LOCAL_OPERATION_BASE,
             next_id: 1,
             configuring: false,
             reported: BTreeSet::new(),
@@ -808,6 +861,7 @@ impl<T: Transport + 'static> Host<T> {
 
     /// Call one handler, reporting a failure instead of propagating it.
     fn run_handler(&mut self, id: u64, argument: Option<LuaValue>, handlers: &mut usize) {
+        let watching = self.shared.borrow().handlers.get(&id).cloned();
         let callback: Result<Option<mlua::Function>, Error> = {
             let key = crate::bindings::CALLBACKS;
             match self.lua.named_registry_value::<mlua::Table>(key) {
@@ -824,13 +878,103 @@ impl<T: Transport + 'static> Host<T> {
             }
         };
         self.guard.begin(&self.limits);
-        let result = match argument {
-            Some(argument) => callback.call::<()>(argument),
-            None => callback.call::<()>(()),
-        };
-        *handlers += 1;
-        if let Err(error) = result {
-            self.report(ScriptError::from_lua(&error));
+        match watching {
+            Some(Watching::Map { source, target }) => {
+                let (outcome, local_error) = self
+                    .shared
+                    .borrow()
+                    .operations
+                    .get(&source)
+                    .map(|pending| (pending.outcome.clone(), pending.local_error.clone()))
+                    .unwrap_or((None, None));
+                *handlers += 1;
+                if local_error.is_some() || matches!(outcome, Some(OperationOutcome::Failed(_))) {
+                    let ready = self.shared.borrow_mut().finish_local(
+                        target,
+                        outcome.unwrap_or(OperationOutcome::Done),
+                        local_error,
+                    );
+                    self.shared.borrow_mut().deferred.extend(ready);
+                    return;
+                }
+                let args = crate::bindings::completion_args(&self.lua, &self.shared, source);
+                let mapped = args.and_then(|(value, error)| callback.call::<LuaValue>((value, error)));
+                match mapped {
+                    Ok(value) => {
+                        let key = format!("operation-value:{}", target.get());
+                        let stored = self
+                            .lua
+                            .named_registry_value::<mlua::Table>(crate::bindings::CALLBACKS)
+                            .and_then(|table| table.raw_set(key, value));
+                        if let Err(error) = stored {
+                            self.report(ScriptError::from_lua(&error));
+                            return;
+                        }
+                        let ready = self
+                            .shared
+                            .borrow_mut()
+                            .finish_local(target, OperationOutcome::Done, None);
+                        self.shared.borrow_mut().deferred.extend(ready);
+                    }
+                    Err(error) => {
+                        let ready = self.shared.borrow_mut().finish_local(
+                            target,
+                            OperationOutcome::Done,
+                            Some(("internal".to_owned(), error.to_string())),
+                        );
+                        self.shared.borrow_mut().deferred.extend(ready);
+                    }
+                }
+            }
+            Some(Watching::Forward { source, target, timer }) => {
+                let (outcome, local_error) = self
+                    .shared
+                    .borrow()
+                    .operations
+                    .get(&source)
+                    .map(|pending| (pending.outcome.clone(), pending.local_error.clone()))
+                    .unwrap_or((None, None));
+                self.shared.borrow_mut().timers.remove(&timer);
+                if let Ok(table) = self.lua.named_registry_value::<mlua::Table>(crate::bindings::CALLBACKS)
+                    && let Ok(value) = table.raw_get::<LuaValue>(format!("operation-value:{}", source.get()))
+                {
+                    let _ = table.raw_set(format!("operation-value:{}", target.get()), value);
+                }
+                let ready = self.shared.borrow_mut().finish_local(
+                    target,
+                    outcome.unwrap_or(OperationOutcome::Done),
+                    local_error,
+                );
+                self.shared.borrow_mut().deferred.extend(ready);
+                *handlers += 1;
+            }
+            Some(Watching::Timeout { target }) => {
+                let ready = self.shared.borrow_mut().finish_local(
+                    target,
+                    OperationOutcome::Done,
+                    Some(("timed_out".to_owned(), "operation timed out".to_owned())),
+                );
+                self.shared.borrow_mut().deferred.extend(ready);
+                *handlers += 1;
+            }
+            Some(Watching::Completion { operation }) => {
+                let result = crate::bindings::completion_args(&self.lua, &self.shared, operation)
+                    .and_then(|args| callback.call::<()>(args));
+                *handlers += 1;
+                if let Err(error) = result {
+                    self.report(ScriptError::from_lua(&error));
+                }
+            }
+            _ => {
+                let result = match argument {
+                    Some(argument) => callback.call::<()>(argument),
+                    None => callback.call::<()>(()),
+                };
+                *handlers += 1;
+                if let Err(error) = result {
+                    self.report(ScriptError::from_lua(&error));
+                }
+            }
         }
     }
 }

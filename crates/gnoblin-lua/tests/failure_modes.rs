@@ -372,6 +372,307 @@ end)
         "the callback's call is on the same window"
     );
 }
+#[test]
+fn an_operation_map_transforms_its_completion_value() {
+    let config = Config::new("operation-map");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    local operation = gnoblin.window.by_id(1):focus()
+    operation:map(function(value, err)
+        assert(err == nil, "a successful source has no error")
+        return value .. " mapped"
+    end):on_complete(function(value, err)
+        assert(err == nil, "a successful map has no error")
+        assert(value == "source mapped", "mapped value was " .. tostring(value))
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    assert!(
+        host.run_config(&config.paths())
+            .expect("the run starts")
+            .errors
+            .is_empty()
+    );
+    assert!(
+        host.pump(Tick::new(0))
+            .expect("the timer calls focus")
+            .errors
+            .is_empty()
+    );
+    let operation = server.graph().pending().next().expect("one call").id();
+    server
+        .complete(
+            operation,
+            OperationOutcome::Value(ModelValue::Text("source".to_owned())),
+        )
+        .expect("the completion is accepted");
+    let pumped = host.pump(Tick::new(1)).expect("the map runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert_eq!(host.pump(Tick::new(2)).expect("the derived callback runs").handlers, 1);
+}
+
+#[test]
+fn an_operation_map_error_fails_the_derived_operation() {
+    let config = Config::new("operation-map-error");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    local operation = gnoblin.window.by_id(1):focus()
+    operation:map(function() error("map exploded") end):on_complete(function(value, err)
+        assert(value == nil)
+        assert(err.code == "internal", "map error code was " .. tostring(err.code))
+        assert(string.find(err.message, "map exploded", 1, true), "missing map error: " .. tostring(err.message))
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    assert!(
+        host.run_config(&config.paths())
+            .expect("the run starts")
+            .errors
+            .is_empty()
+    );
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    let operation = server.graph().pending().next().expect("one call").id();
+    server
+        .complete(operation, OperationOutcome::Done)
+        .expect("completion accepted");
+    let pumped = host.pump(Tick::new(1)).expect("the map error is isolated");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    let callback = host.pump(Tick::new(2)).expect("the failure callback runs");
+    assert_eq!(callback.handlers, 1);
+    assert!(callback.errors.is_empty(), "{:#?}", callback.errors);
+}
+
+#[test]
+fn an_operation_map_propagates_a_source_failure_without_calling_the_mapper() {
+    let config = Config::new("operation-map-source-failure");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    gnoblin.window.by_id(1):focus()
+        :map(function() error("mapper must not run") end)
+        :on_complete(function(value, err)
+            assert(value == nil)
+            assert(err.code == "denied", "source failure became " .. tostring(err.code))
+        end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    host.run_config(&config.paths()).expect("the run starts");
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    let operation = server.graph().pending().next().expect("one call").id();
+    server
+        .complete(
+            operation,
+            OperationOutcome::Failed("denied".parse().expect("valid error code")),
+        )
+        .expect("failure completion accepted");
+    host.pump(Tick::new(1)).expect("the failure propagates");
+    let callback = host.pump(Tick::new(2)).expect("the chained callback runs");
+    assert_eq!(callback.handlers, 1);
+    assert!(callback.errors.is_empty(), "{:#?}", callback.errors);
+}
+
+#[test]
+fn an_operation_timeout_fails_after_its_deadline() {
+    let config = Config::new("operation-timeout");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    local operation = gnoblin.window.by_id(1):focus():timeout(0.5)
+    operation:on_complete(function(value, err)
+        assert(value == nil)
+        assert(err.code == "timed_out", "timeout code was " .. tostring(err.code))
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    assert!(
+        host.run_config(&config.paths())
+            .expect("the run starts")
+            .errors
+            .is_empty()
+    );
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    assert_eq!(host.pump(Tick::new(499)).expect("before timeout").handlers, 0);
+    let pumped = host.pump(Tick::new(500)).expect("timeout fires");
+    assert_eq!(pumped.handlers, 2);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert_eq!(
+        server.graph().pending().count(),
+        1,
+        "timeout does not cancel the source"
+    );
+}
+
+#[test]
+fn an_operation_timeout_is_cleared_when_its_source_finishes() {
+    let config = Config::new("operation-timeout-cleared");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    local operation = gnoblin.window.by_id(1):focus():timeout(1)
+    operation:on_complete(function(_, err)
+        assert(err == nil, "the source completed before its timeout")
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    host.run_config(&config.paths()).expect("the run starts");
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    let operation = server.graph().pending().next().expect("one call").id();
+    server
+        .complete(operation, OperationOutcome::Done)
+        .expect("completion accepted");
+    assert_eq!(host.pump(Tick::new(1)).expect("source completion forwards").handlers, 1);
+    assert_eq!(host.pump(Tick::new(2)).expect("the target callback runs").handlers, 1);
+    let later = host.pump(Tick::new(1000)).expect("no timeout remains");
+    assert_eq!(later.handlers, 0);
+    assert!(later.errors.is_empty(), "{:#?}", later.errors);
+}
+
+#[test]
+fn cancelling_an_operation_ignores_its_late_completion() {
+    let config = Config::new("operation-cancel");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    local operation = gnoblin.window.by_id(1):focus()
+    assert(operation:cancel(), "pending operation cancels")
+    assert(operation.status == "failed")
+    assert(operation.code == "cancelled")
+    operation:on_complete(function(value, err)
+        assert(value == nil)
+        assert(err.code == "cancelled")
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    host.run_config(&config.paths()).expect("the run starts");
+    let cancelled = host.pump(Tick::new(0)).expect("the operation cancels");
+    assert!(cancelled.errors.is_empty(), "{:#?}", cancelled.errors);
+    let operation = server
+        .graph()
+        .pending()
+        .next()
+        .expect("the remote operation remains queued")
+        .id();
+    server
+        .complete(operation, OperationOutcome::Done)
+        .expect("late completion is accepted remotely");
+    let pumped = host.pump(Tick::new(1)).expect("late completion is ignored");
+    assert_eq!(pumped.handlers, 0);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn cancelling_a_completed_operation_is_a_noop() {
+    let config = Config::new("operation-cancel-completed");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    local operation = gnoblin.window.by_id(1):focus()
+    operation:on_complete(function()
+        assert(not operation:cancel(), "completed operation cannot be cancelled")
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    host.run_config(&config.paths()).expect("the run starts");
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    let operation = server.graph().pending().next().expect("one call").id();
+    server
+        .complete(operation, OperationOutcome::Done)
+        .expect("completion accepted");
+    let pumped = host.pump(Tick::new(1)).expect("completion callback runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn an_operation_timeout_does_not_fire_after_reload() {
+    let config = Config::new("operation-timeout-reload");
+    let path = config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    gnoblin.window.by_id(1):focus():timeout(1):on_complete(function()
+        error("timeout survived reload")
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    host.run_config(&config.paths()).expect("the run starts");
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    fs::write(&path, "-- new runtime\n").expect("the config changes");
+    assert!(matches!(
+        host.reload_config(&config.paths()).expect("reload succeeds"),
+        ReloadOutcome::Accepted(_)
+    ));
+    let pumped = host.pump(Tick::new(1000)).expect("old timeout was cleared");
+    assert_eq!(pumped.handlers, 0);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn operation_combinators_chain_maps_and_timeout() {
+    let config = Config::new("operation-chain");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    gnoblin.window.by_id(1):focus()
+        :map(function(value) return value * 2 end)
+        :timeout(1)
+        :map(function(value) return value + 1 end)
+        :on_complete(function(value, err)
+            assert(err == nil, "chained operation failed")
+            assert(value == 7, "chained value was " .. tostring(value))
+        end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    host.run_config(&config.paths()).expect("the run starts");
+    host.pump(Tick::new(0)).expect("the timer calls focus");
+    let operation = server.graph().pending().next().expect("one call").id();
+    server
+        .complete(operation, OperationOutcome::Value(ModelValue::Int(3)))
+        .expect("completion accepted");
+    for tick in 1..=3 {
+        let report = host.pump(Tick::new(tick)).expect("the chain progresses");
+        assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    }
+    let callback = host.pump(Tick::new(4)).expect("the chained callback runs");
+    assert_eq!(callback.handlers, 1);
+    assert!(callback.errors.is_empty(), "{:#?}", callback.errors);
+}
 
 #[test]
 fn a_repeated_error_is_reported_once_per_site() {
