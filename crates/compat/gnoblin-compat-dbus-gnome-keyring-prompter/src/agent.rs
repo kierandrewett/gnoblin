@@ -10,11 +10,9 @@
 
 use futures_lite::future::block_on;
 use gnoblin_compat_core::Gate;
-use gnoblin_compat_gnome_keyring_prompter::{
-    Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run,
-};
+use crate::{Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run};
 
-use gnoblin_services::link::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
+use gnoblin_service_core::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
 use zbus::Connection;
 
 use crate::log;

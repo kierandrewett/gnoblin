@@ -55,6 +55,9 @@ use gnoblin_compat_core::{DesktopSettings, Switch};
 
 gnoblin_log::logger!(log = "compat-dconf");
 
+/// The services role's agent for this layer: writes it when the role starts.
+pub mod agent;
+
 /// The checked-in declaration, compiled in so the file a reviewer approved is the one
 /// `cargo xtask compat-report` prints and this build honours.
 pub const MATRIX: &str = include_str!("../support-matrix.json");

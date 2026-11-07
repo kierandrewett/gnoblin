@@ -10,11 +10,11 @@
 
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
-use gnoblin_compat_mutter_idlemonitor::{IdleLink, IdleMonitorService, export, watch_callers};
+use crate::{IdleLink, IdleMonitorService, export, watch_callers};
 
-use gnoblin_services::link::{
-    Client, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
-};
+use gnoblin_client::{Client, UnixTransport, socket_path};
+use gnoblin_proto::Version;
+use gnoblin_service_core::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use zbus::Connection;
 
 use crate::log;

@@ -389,10 +389,14 @@ fn is_client_side(name: &str) -> bool {
     CLIENT_SIDE.contains(&name) || name.starts_with("gnoblin-service-")
 }
 
-/// A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client` and
-/// its own transport, and never on another compat crate.
+/// A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client`, the services-role
+/// library `gnoblin-service-core` (for the `LinkedAgent` an adapter's `service` module implements)
+/// and its own transport, and never on another compat crate.
 fn compat_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if !is_adapter(&package.name) {
+        return None;
+    }
+    if dep.name == "gnoblin-service-core" {
         return None;
     }
     if is_compat(&dep.name) && dep.name != COMPAT_CORE {
@@ -940,6 +944,17 @@ mod tests {
             "unexpected violation: {}",
             reported[0]
         );
+    }
+
+    #[test]
+    fn a_compat_adapter_may_link_the_services_library_but_not_the_engine() {
+        // The `service` module of an adapter implements `LinkedAgent`, which lives in
+        // `gnoblin-service-core`. That edge is allowed; the engine is still not, and
+        // `gnoblin-service-core` itself stays under the client-side rule, which bans the engine.
+        let allowed = violations(&[("gnoblin-compat-gtk-dconf-settings", &["gnoblin-service-core"])]);
+        assert!(allowed.is_empty(), "expected no violation, got {allowed:#?}");
+        let banned = violations(&[("gnoblin-compat-gtk-dconf-settings", &["gnoblin-compositor"])]);
+        assert_eq!(banned.len(), 1, "expected one violation, got {banned:#?}");
     }
 
     #[test]

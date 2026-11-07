@@ -14,6 +14,7 @@ gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 # offered to the compositor, and the answer comes back through the same client.
 gnoblin-client = { path = "../../gnoblin-client" }
 gnoblin-model = { path = "../../gnoblin-model" }
+gnoblin-service-core = { path = "../../gnoblin-service-core" }
 gnoblin-types = { path = "../../gnoblin-types" }
 # The two gcr names are D-Bus services, so this crate speaks the bus and nothing
 # else: no libgcr, no GObject.

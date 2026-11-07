@@ -9,7 +9,7 @@ use std::path::Path;
 
 use gnoblin_compat_core::{Mode, Switch};
 
-use crate::services::dconf;
+use gnoblin_compat_gtk_dconf_settings::agent as dconf;
 
 /// Exports `DCONF_PROFILE` into `environment` when the dconf target is on.
 ///

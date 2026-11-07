@@ -1,9 +1,8 @@
-//! The dconf layer GTK reads its settings from, written by the services role.
+//! The dconf layer as a linked agent of the services role.
 //!
-//! `gnoblin-compat-gtk-dconf-settings` renders the desktop's settings as a dconf keyfile and
-//! compiles it. This module is the composition the `gnoblin` binary makes: it writes that layer
-//! into the session's runtime directory when the mode is on, and the guardian points dconf at it
-//! with `DCONF_PROFILE`. A switched-off mode writes nothing and exports nothing.
+//! This module is the composition the `gnoblin` binary makes: it writes this adapter's layer into
+//! the session's runtime directory when the mode is on, and the guardian points dconf at it with
+//! `DCONF_PROFILE`. A switched-off mode writes nothing and exports nothing.
 //!
 //! The runtime directory is per login and is not persisted, so the layer is rewritten from the
 //! configuration on every session start and nothing a toolkit wrote is read back.
@@ -11,11 +10,9 @@
 use std::path::{Path, PathBuf};
 
 use gnoblin_compat_core::{DesktopSettings, Mode, Switch, settings_from_environment};
-use gnoblin_compat_gtk_dconf_settings::{Written, apply, publish};
+use gnoblin_service_core::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 
-use gnoblin_services::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
-
-use crate::log;
+use crate::{Written, apply, publish};
 
 /// The profile file name dconf reads `DCONF_PROFILE` from, beside the compiled database.
 pub const PROFILE: &str = "profile";
@@ -74,22 +71,22 @@ impl DconfLayer {
 impl LinkedAgent for DconfLayer {
     fn start(&mut self, _host: &Host, _deadline: Tick) -> bool {
         let Some(directory) = profile_directory() else {
-            log::warn!("[services] XDG_RUNTIME_DIR is not set, so no dconf layer is written");
+            crate::log::warn!("[services] XDG_RUNTIME_DIR is not set, so no dconf layer is written");
             return false;
         };
         let settings = settings_from_environment();
         match write_layer(&settings, self.mode, &directory) {
             Ok(Written::Skipped) => true,
             Ok(written @ Written::Keyfile { compiled: true, .. }) => {
-                log::info!(written = ?written, "[services] the dconf layer is compiled");
+                crate::log::info!(written = ?written, "[services] the dconf layer is compiled");
                 true
             }
             Ok(written) => {
-                log::warn!(written = ?written, "[services] the dconf layer is written but not compiled");
+                crate::log::warn!(written = ?written, "[services] the dconf layer is written but not compiled");
                 true
             }
             Err(error) => {
-                log::warn!(%error, "[services] the dconf layer cannot be written");
+                crate::log::warn!(%error, "[services] the dconf layer cannot be written");
                 false
             }
         }

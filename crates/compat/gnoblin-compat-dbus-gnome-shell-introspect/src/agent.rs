@@ -12,9 +12,9 @@ use std::thread::JoinHandle;
 
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{Gate, Mode};
-use gnoblin_compat_gnome_shell_introspect::{IntrospectService, export, link_from_environment};
+use crate::{IntrospectService, export, link_from_environment};
 
-use gnoblin_services::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
+use gnoblin_service_core::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use zbus::Connection;
 
 use crate::log;

@@ -87,3 +87,4 @@ These add a graph node and no feature. They are flagged in the opposite directio
 - Lua naming: `gnoblin-lua-layout` next to the existing `gnoblin-lua-sandbox`, or one crate?
 - Are the three one-line compat stubs placeholders to fill, or dead crates to delete?
 - Backend split: do you want `drm` and `vulkan` out now, or only `vulkan`, since `drm` has the weaker blast-radius gain?
+- Compat `Extension` seam: `gnoblin-compat-host` keeps the compositor-side `Extension` registry (`compat`, Redirect and Interop adapters) for now. Should that registration move behind a seam trait implemented by `gnoblin-wayland`, or should the adapters link `gnoblin-wayland` as the two protocol adapters already do? Services-role adapters now own their glue in an `agent` module and depend on `gnoblin-service-core`.

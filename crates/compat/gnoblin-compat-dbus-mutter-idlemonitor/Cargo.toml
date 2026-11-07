@@ -13,10 +13,12 @@ workspace = true
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-client = { path = "../../gnoblin-client" }
 gnoblin-model = { path = "../../gnoblin-model" }
+gnoblin-proto = { path = "../../gnoblin-proto" }
+gnoblin-service-core = { path = "../../gnoblin-service-core" }
+futures-lite.workspace = true
 zbus.workspace = true
 gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
-futures-lite.workspace = true
 gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-schema = { path = "../../gnoblin-schema" }

@@ -82,6 +82,8 @@
 
 #![forbid(unsafe_code)]
 
+/// The services role's agent for this adapter: writes its state when the role starts.
+pub mod agent;
 /// The admission gate: the support matrix and the mode check for each call.
 pub mod compat;
 /// The `DisplayConfig` error type, returned when a call cannot be answered.

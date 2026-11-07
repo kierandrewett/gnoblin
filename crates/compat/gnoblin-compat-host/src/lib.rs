@@ -11,6 +11,8 @@
 //!   adapters' support matrices, registers them on the session configuration, builds the XSETTINGS
 //!   owner, and exports the Qt and dconf settings into the guardian's environment, which every child
 //!   inherits.
+//!   The `Extension` registry (`compat`, the Redirect and Interop adapters) is compositor-side and
+//!   stays in this crate until the `Extension` seam is decided; it is split out later.
 //! - [`services`] is the services role's side. It holds the D-Bus agents that serve the compat
 //!   interfaces (dconf layer, DisplayConfig, IdleMonitor, introspection, the gcr prompter), and the
 //!   list of linked agents the role starts.

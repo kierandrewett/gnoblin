@@ -12,11 +12,12 @@
 
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
-use gnoblin_compat_mutter_displayconfig::{DisplayConfigService, DisplayLink, OutputApplier, export};
+use crate::{DisplayConfigService, DisplayLink, OutputApplier, export};
 
-use gnoblin_services::link::{
-    Client, Fields, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
-};
+use gnoblin_client::{Client, UnixTransport, socket_path};
+use gnoblin_model::Fields;
+use gnoblin_proto::Version;
+use gnoblin_service_core::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use zbus::Connection;
 
 use crate::log;

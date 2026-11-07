@@ -10,6 +10,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# The agent this adapter serves in the services role: `LinkedAgent` and the request
+# vocabulary it answers with. Services-role library, no engine crate (checked by xtask).
+gnoblin-service-core = { path = "../../gnoblin-service-core" }
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-log = { path = "../../gnoblin-log" }
 

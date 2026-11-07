@@ -64,6 +64,8 @@
 
 #![forbid(unsafe_code)]
 
+/// The services role's agent for this adapter: the prompter the role starts.
+pub mod agent;
 /// The `Prompter.Callback` object that carries each prompt's answer back to the caller.
 pub mod callback;
 /// Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.

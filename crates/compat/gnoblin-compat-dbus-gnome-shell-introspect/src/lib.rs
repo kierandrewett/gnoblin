@@ -65,6 +65,8 @@
 
 #![forbid(unsafe_code)]
 
+/// The services role's agent for this adapter: serves the window list when the role starts.
+pub mod agent;
 /// Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.
 pub mod compat;
 /// What the adapter needs from its process: the compositor socket and the `compat` gate.

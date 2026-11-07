@@ -12,15 +12,16 @@ workspace = true
 [dependencies]
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-client = { path = "../../gnoblin-client" }
+gnoblin-service-core = { path = "../../gnoblin-service-core" }
 # The environment reads the `compat` gate from the configuration, as the gtk-shell1 adapter does.
 gnoblin-config = { path = "../../gnoblin-config" }
 gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-model = { path = "../../gnoblin-model" }
+futures-lite.workspace = true
 zbus.workspace = true
 gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
-futures-lite.workspace = true
 gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-schema = { path = "../../gnoblin-schema" }
 # The window fixture builds a window's full property set from the schema.
