@@ -4,7 +4,7 @@ use std::fmt;
 
 /// Where a shader's source came from, for a report that names it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum ShaderOrigin {
+pub enum ShaderOrigin {
     /// A pass the compositor ships.
     Effect(&'static str),
     /// A shader a caller registered.
@@ -22,7 +22,7 @@ impl fmt::Display for ShaderOrigin {
 
 /// The stage of a shader that failed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Stage {
+pub enum Stage {
     /// Parsing or validating the WGSL module.
     Module,
     /// Compiling the vertex shader.
@@ -60,7 +60,7 @@ pub struct ShaderError {
 
 impl ShaderError {
     /// Builds an error for `detail` at `line` and `column` of the source named by `context`.
-    pub(crate) fn new(context: ShaderOrigin, stage: Stage, line: usize, column: usize, detail: String) -> Self {
+    pub fn new(context: ShaderOrigin, stage: Stage, line: usize, column: usize, detail: String) -> Self {
         Self {
             context,
             stage,
@@ -91,7 +91,7 @@ impl ShaderError {
 
     /// A refusal that has no line to point at: a value or a schema that disagrees with the
     /// shader the caller registered.
-    pub(crate) fn refusal(detail: String) -> Self {
+    pub fn refusal(detail: String) -> Self {
         Self::new(ShaderOrigin::User, Stage::Module, 0, 0, detail)
     }
 }

@@ -102,7 +102,7 @@ pub mod egl;
 pub(crate) mod gl;
 pub(crate) mod program;
 
-use crate::render::shader::sources as shaders;
+use gnoblin_render_frame::shader::sources as shaders;
 
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::backend::renderer::glow::GlowRenderer;
@@ -112,14 +112,14 @@ use smithay::utils::{Physical, Rectangle};
 use gnoblin_render::{Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
-use crate::render::RenderError;
-use crate::render::frame::{Layer, Model, OutputFrame, Overlay, Surface};
-use crate::render::geometry::physical_rect;
-use crate::render::image::Image;
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Overlay, Surface};
+use gnoblin_render_frame::geometry::physical_rect;
+use gnoblin_render_frame::image::Image;
 use crate::render::software::READBACK_FORMAT;
 
-use crate::render::shader::ShaderError;
-use crate::render::shader::uniforms::Uniforms;
+use gnoblin_render_frame::shader::ShaderError;
+use gnoblin_render_frame::shader::uniforms::Uniforms;
 use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.

@@ -33,9 +33,9 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use gnoblin_render::ResolvedUniform;
 use gnoblin_types::{Color, Rect, Size};
 
-use crate::render::RenderError;
-use crate::render::shader::uniforms::{UniformLayout, Uniforms};
-use crate::render::shader::{ShaderError, Stage};
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::shader::uniforms::{UniformLayout, Uniforms};
+use gnoblin_render_frame::shader::{ShaderError, Stage};
 
 use crate::log;
 

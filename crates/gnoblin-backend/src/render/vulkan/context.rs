@@ -48,7 +48,7 @@ const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
 /// The format of the target a frame is drawn into and read back from.
 ///
-/// Its bytes are red, green, blue, alpha in memory, which is the order [`Image`](crate::render::Image) promises.
+/// Its bytes are red, green, blue, alpha in memory, which is the order [`Image`](gnoblin_render_frame::image::Image) promises.
 pub(super) const TARGET_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 /// The format of a client's `argb8888` or `xrgb8888` buffer on a little-endian machine.

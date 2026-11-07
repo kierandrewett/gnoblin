@@ -105,7 +105,9 @@ use gnoblin_types::{OutputId, Scale, Size};
 pub use input::AXIS_STEP;
 pub use surface::NestedTarget;
 
-use crate::render::{Image, OutputFrame, RenderError};
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::image::Image;
 use crate::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
 
 use handler::Handler;

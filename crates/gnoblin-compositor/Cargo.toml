@@ -19,6 +19,8 @@ gnoblin-lua = { path = "../gnoblin-lua" }
 # The backend trait and the backends this build selects between: headless, nested in
 # a parent compositor, and the DRM refusal until the DRM backend lands.
 gnoblin-backend = { path = "../gnoblin-backend" }
+gnoblin-render = { path = "../gnoblin-render" }
+gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The cursor providers and theme lookup the compositor reads its cursor settings from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The X11 supervisor and window policy. A session with X11 starts Xwayland under it;

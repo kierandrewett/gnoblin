@@ -13,7 +13,7 @@
 //! - **Order** is the frame's: for every damage rectangle, the layers bottom first. The
 //!   overlay and the cursor follow, each as its own range of the draw list, because the
 //!   renderer saves the pixels under each before it draws it (see `Vulkan::capture`).
-//! - **What is skipped**: a layer with a [`Model`](crate::render::frame::Model) belongs to
+//! - **What is skipped**: a layer with a [`Model`](gnoblin_render_frame::frame::Model) belongs to
 //!   the depth pass, which this renderer does not have, so it is counted and left out; a
 //!   surface whose texture could not be made is left out; a layer that misses the rectangle
 //!   is not drawn into it.
@@ -31,9 +31,9 @@ use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
-use crate::render::frame::{Layer, OutputFrame, Surface};
-use crate::render::geometry::physical_rect;
-use crate::render::shader::uniforms::{UniformLayout, Uniforms};
+use gnoblin_render_frame::frame::{Layer, OutputFrame, Surface};
+use gnoblin_render_frame::geometry::physical_rect;
+use gnoblin_render_frame::shader::uniforms::{UniformLayout, Uniforms};
 
 /// The distance between two draws' uniform blocks, in bytes.
 pub(super) const UNIFORM_STRIDE: usize = 256;
@@ -347,7 +347,7 @@ fn subtract(from: Rect, taken: Rect, out: &mut Vec<Rect>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::Solid;
+    use gnoblin_render_frame::frame::Solid;
 
     fn area(rects: &[Rect]) -> u64 {
         rects.iter().map(|rect| rect.area()).sum()
@@ -415,7 +415,7 @@ mod tests {
     fn a_layer_with_a_model_is_counted_and_left_out() {
         let mut frame = solid_frame(&[Rect::new(0, 0, 8, 8)], &[]);
         let mut solid = Solid::new(Rect::new(0, 0, 4, 4), Color::from_rgba8(0, 255, 0, 255));
-        solid.model = Some(crate::render::frame::Model {
+        solid.model = Some(gnoblin_render_frame::frame::Model {
             matrix: gnoblin_render::Mat4::IDENTITY,
             opaque: true,
         });

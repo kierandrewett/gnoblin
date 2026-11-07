@@ -21,8 +21,8 @@ use smithay::utils::{Physical, Size as PhysicalSize};
 use crate::drm::frame::Scanout;
 use crate::drm::gpu::Gpu;
 use crate::drm::present::SLOTS;
-use crate::render::RenderError;
-use crate::render::frame::OutputFrame;
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::OutputFrame;
 use crate::render::gles::egl;
 use crate::render::gles::{Gles, ScanBuffer};
 

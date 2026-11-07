@@ -12,7 +12,7 @@ use std::fmt;
 
 use ash::vk;
 
-use crate::render::RenderError;
+use gnoblin_render_frame::error::RenderError;
 
 use crate::log;
 

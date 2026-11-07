@@ -11,7 +11,7 @@ use gnoblin_types::{Rect, Scale};
 /// extent on its own would leave a one-pixel gap that nothing ever repaints. Every
 /// renderer uses it, so a frame's damage lands on the same pixels whichever one is
 /// installed.
-pub(crate) fn physical_rect(rect: Rect, scale: Scale) -> Rectangle<i32, Physical> {
+pub fn physical_rect(rect: Rect, scale: Scale) -> Rectangle<i32, Physical> {
     if scale.is_identity() {
         return Rectangle::new((rect.x, rect.y).into(), (rect.width as i32, rect.height as i32).into());
     }

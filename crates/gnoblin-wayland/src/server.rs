@@ -43,7 +43,7 @@ use smithay::reexports::wayland_server::backend::InitError;
 
 use crate::clock::{Clock, SystemClock};
 use crate::modal::{Modal, ModalEvent};
-use gnoblin_backend::render::Image;
+use gnoblin_render_frame::image::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 
@@ -837,7 +837,7 @@ impl ControlHandle {
     /// The matrix and projected bounds a window's node is drawn with, or `None` when it is
     /// not drawn.
     #[must_use]
-    pub fn drawn_node(&self, window: WindowId) -> Option<Option<(gnoblin_backend::render::Mat4, Rect)>> {
+    pub fn drawn_node(&self, window: WindowId) -> Option<Option<(gnoblin_render::Mat4, Rect)>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::DrawnNode { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1062,7 +1062,7 @@ enum Command {
     /// The matrix and projected bounds a window's node is drawn with, read from the scene.
     DrawnNode {
         window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<(gnoblin_backend::render::Mat4, Rect)>>,
+        reply: std::sync::mpsc::SyncSender<Option<(gnoblin_render::Mat4, Rect)>>,
     },
     /// The reason a workspace's last layout run failed.
     LayoutFailure {

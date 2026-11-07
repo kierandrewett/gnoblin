@@ -41,7 +41,7 @@
 //!   udev events turn into [`BackendEvent`]s;
 //! - drawing is `frame(host, output)`: the host *describes* what the output shows,
 //!   the backend's target draws it and presents it. The description is a
-//!   [`render::OutputFrame`], so the host never learns which renderer is installed and a
+//!   [`gnoblin_render_frame::frame::OutputFrame`], so the host never learns which renderer is installed and a
 //!   GLES target can replace a Pixman one without touching the compositor.
 //! - the host is told when an iteration starts (`begin_frame`) because damage is
 //!   accumulated once and consumed per output: taking it per output would clear the
@@ -78,7 +78,7 @@
 //! 3. **Begin.** The caller calls [`Host::begin_frame`] once, before any output is
 //!    rendered. Damage is snapshotted here and not per output (see the trait docs).
 //! 4. **Describe, per output.** [`Backend::render`] checks the output is known, then calls
-//!    [`Host::frame`] with a cleared [`render::OutputFrame`]. A `false` answer ends the
+//!    [`Host::frame`] with a cleared [`gnoblin_render_frame::frame::OutputFrame`]. A `false` answer ends the
 //!    call with nothing drawn and nothing presented.
 //! 5. **Draw and present.** Otherwise the output's [`Target`] draws the frame and presents
 //!    the damage it reports, and [`Backend::render`] returns that as a [`Present`]. A
@@ -248,7 +248,7 @@ pub enum Present {
 /// A surface a backend can present to, and the renderer that draws into it.
 ///
 /// The trait is about presenting and drawing, not about *what* is drawn: the host
-/// describes a [`render::OutputFrame`] and the target draws it with whatever renderer the
+/// describes a [`gnoblin_render_frame::frame::OutputFrame`] and the target draws it with whatever renderer the
 /// backend installed. That is what lets one compositor serve a GLES surface, a
 /// Pixman buffer and the headless target that presents nothing.
 pub trait Target {
@@ -262,10 +262,10 @@ pub trait Target {
     ///
     /// # Errors
     ///
-    /// [`render::RenderError`] when the renderer refuses an operation. A layer whose
+    /// [`gnoblin_render_frame::error::RenderError`] when the renderer refuses an operation. A layer whose
     /// client buffer cannot be read is not an error: a client may destroy its buffer
     /// at any time, and the rest of the frame still has to appear.
-    fn draw(&mut self, frame: &render::OutputFrame) -> Result<(), render::RenderError>;
+    fn draw(&mut self, frame: &gnoblin_render_frame::frame::OutputFrame) -> Result<(), gnoblin_render_frame::error::RenderError>;
 
     /// Present the frame the host drew, with the damage that changed.
     ///
@@ -437,10 +437,10 @@ pub trait Host {
 
     /// Describe what `output` shows now, and answer whether anything changed.
     ///
-    /// The frame is cleared by [`render::OutputFrame::clear`] at the start of every call, so
+    /// The frame is cleared by [`gnoblin_render_frame::frame::OutputFrame::clear`] at the start of every call, so
     /// a host fills it from scratch. A `false` answer means the backend draws nothing
     /// for this output: an idle iteration must not repaint the screen.
-    fn frame(&mut self, output: OutputId, frame: &mut render::OutputFrame) -> bool;
+    fn frame(&mut self, output: OutputId, frame: &mut gnoblin_render_frame::frame::OutputFrame) -> bool;
 
     /// Handle one input event the backend delivered.
     fn input(&mut self, event: InputEvent);
@@ -490,13 +490,13 @@ pub trait Backend<S: Host + 'static> {
     ///
     /// [`None`] when this backend does not drive the output or has no renderer for
     /// it. The image is in physical pixels, top-left first, RGBA8: see
-    /// [`render::Image`]. Capture and the tests read through this, which is why it is
+    /// [`gnoblin_render_frame::image::Image`]. Capture and the tests read through this, which is why it is
     /// on the contract and not on one backend.
-    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<render::Image>;
+    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<gnoblin_render_frame::image::Image>;
 
     /// The last frame drawn on `output` without the cursor: [`Backend::capture`] with
     /// `with_cursor` off.
-    fn screenshot(&mut self, output: OutputId) -> Option<render::Image> {
+    fn screenshot(&mut self, output: OutputId) -> Option<gnoblin_render_frame::image::Image> {
         self.capture(output, false)
     }
 
@@ -578,7 +578,7 @@ pub enum BackendError {
         height: u32,
     },
     /// The output's renderer refused to draw.
-    Render(render::RenderError),
+    Render(gnoblin_render_frame::error::RenderError),
     /// The output exists but this backend has no scan-out path for it yet, so no frame can be
     /// presented to it. Distinct from [`BackendError::UnknownOutput`]: the output is real.
     Unpresentable(OutputId),

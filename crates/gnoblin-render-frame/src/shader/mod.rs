@@ -15,11 +15,11 @@
 //! into SPIR-V. Both enter a module through [`ENTRY`].
 
 mod error;
-pub(crate) mod sources;
-pub(crate) mod uniforms;
+pub mod sources;
+pub mod uniforms;
 
 pub use error::ShaderError;
-pub(crate) use error::{ShaderOrigin, Stage};
+pub use error::{ShaderOrigin, Stage};
 
 /// The entry point name every generated module uses, in both stages.
-pub(crate) const ENTRY: &str = "gnoblin_entry";
+pub const ENTRY: &str = "gnoblin_entry";

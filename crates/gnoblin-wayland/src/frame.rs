@@ -36,7 +36,7 @@ use std::time::{Duration, Instant};
 
 use smithay::reexports::calloop::ping::Ping;
 
-use gnoblin_backend::render::Image;
+use gnoblin_render_frame::image::Image;
 use gnoblin_backend::{Backend, Host};
 use gnoblin_types::{OutputId, Rect};
 
@@ -249,7 +249,8 @@ pub fn render(
 #[cfg(test)]
 mod tests {
     use gnoblin_backend::headless::Headless;
-    use gnoblin_backend::render::{OutputFrame, RenderError};
+    use gnoblin_render_frame::error::RenderError;
+    use gnoblin_render_frame::frame::OutputFrame;
     use gnoblin_backend::{BackendError, InputSource, Present};
     use smithay::reexports::calloop::LoopHandle;
     use smithay::reexports::wayland_server::Display;

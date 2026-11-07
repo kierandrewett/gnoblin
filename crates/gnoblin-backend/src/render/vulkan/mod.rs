@@ -17,7 +17,7 @@
 //! - **The portal overlay and the cursor**, nearest-sampled, with the pixels under each saved
 //!   so a capture can leave the overlay (always) and the cursor (when asked) out.
 //! - **Output scale**: a frame's rectangles are logical and the target is physical, converted
-//!   with the one rounding rule all renderers share ([`physical_rect`](crate::render::geometry)).
+//!   with the one rounding rule all renderers share ([`physical_rect`](gnoblin_render_frame::geometry)).
 //! - **Damage**: only the damage is repainted. Each rectangle is a scissor, and overlapping
 //!   rectangles are made disjoint first so a translucent layer is never blended twice.
 //!
@@ -84,9 +84,9 @@ use context::VkContext;
 use frame::{FrameRecorder, RenderTarget, Saved};
 use pipeline::{Compiled, Pipelines, ShaderSources};
 
-use crate::render::RenderError;
-use crate::render::frame::OutputFrame;
-use crate::render::image::Image;
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::image::Image;
 
 /// A Vulkan renderer and the offscreen image it draws into.
 pub struct Vulkan {

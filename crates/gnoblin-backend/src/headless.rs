@@ -58,7 +58,11 @@ use gnoblin_output::DisplayMode;
 
 use gnoblin_config::RendererChoice;
 
-use crate::render::{AnyRenderer, Gles, Image, OutputFrame, RenderError, RendererKind};
+use crate::render::gles::Gles;
+use crate::render::renderer::{AnyRenderer, RendererKind};
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::image::Image;
 use crate::{
     Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
     Target,
@@ -756,7 +760,7 @@ mod tests {
     use gnoblin_types::Point;
 
     use super::*;
-    use crate::render::{Layer, Solid};
+    use gnoblin_render_frame::frame::{Layer, Solid};
 
     /// A host that describes one red rectangle and records what it was asked.
     #[derive(Default)]

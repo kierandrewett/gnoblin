@@ -60,7 +60,9 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::{Composer, Content, Mat4, OutputFrame};
+use gnoblin_backend::render::compose::{Composer, Content};
+use gnoblin_render::Mat4;
+use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_backend::{Host, InputEvent};
 use gnoblin_config::Protocols;
 use gnoblin_input::Activity;
@@ -1843,7 +1845,7 @@ impl State {
                 _ => 1,
             })
             .sum();
-        let budget = gnoblin_backend::render::MAX_PASSES;
+        let budget = gnoblin_render::MAX_PASSES;
         if used + cost > budget {
             return Err(format!(
                 "too-many-passes: {used} of {budget} passes are in use and this effect needs {cost}"

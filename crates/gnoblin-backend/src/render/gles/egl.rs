@@ -29,7 +29,7 @@ use smithay::backend::egl::native::EGLSurfacelessDisplay;
 use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::renderer::glow::GlowRenderer;
 
-use crate::render::RenderError;
+use gnoblin_render_frame::error::RenderError;
 
 use crate::log;
 

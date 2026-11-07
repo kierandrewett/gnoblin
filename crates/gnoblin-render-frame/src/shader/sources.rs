@@ -17,44 +17,44 @@ const PREAMBLE: &str = include_str!("wgsl/preamble.wgsl");
 const USER_FIELDS: &str = "    // gnoblin:user-fields";
 
 /// The vertex stage every pass shares.
-pub(crate) const VERTEX: &str = include_str!("wgsl/quad.wgsl");
+pub const VERTEX: &str = include_str!("wgsl/quad.wgsl");
 
 /// A rectangle of one colour, with the layer's corner radius and opacity.
-pub(crate) const SOLID: &str = concat!(
+pub const SOLID: &str = concat!(
     include_str!("wgsl/preamble.wgsl"),
     include_str!("wgsl/solid.wgsl"),
     include_str!("wgsl/effect.wgsl"),
 );
 
 /// A layer's own pixels: cropped, scaled, tinted and clipped to its corner radius.
-pub(crate) const SURFACE: &str = concat!(
+pub const SURFACE: &str = concat!(
     include_str!("wgsl/preamble.wgsl"),
     include_str!("wgsl/surface.wgsl"),
     include_str!("wgsl/effect.wgsl"),
 );
 
 /// A drop shadow behind a layer.
-pub(crate) const SHADOW: &str = concat!(
+pub const SHADOW: &str = concat!(
     include_str!("wgsl/preamble.wgsl"),
     include_str!("wgsl/shadow.wgsl"),
     include_str!("wgsl/effect.wgsl"),
 );
 
 /// One axis of the Gaussian blur of the backdrop behind a layer.
-pub(crate) const BLUR: &str = concat!(
+pub const BLUR: &str = concat!(
     include_str!("wgsl/preamble.wgsl"),
     include_str!("wgsl/blur.wgsl"),
     include_str!("wgsl/effect.wgsl"),
 );
 
 /// The entry point a user shader is compiled with.
-pub(crate) const USER_ENTRY: &str = include_str!("wgsl/user.wgsl");
+pub const USER_ENTRY: &str = include_str!("wgsl/user.wgsl");
 
 /// The preamble with a schema's uniforms declared in the uniform block.
 ///
 /// The fields are appended after the framework's, in declaration order, which is the order
 /// [`super::uniforms::UniformLayout`] packs them in.
-pub(crate) fn preamble(schema: &gnoblin_render::UniformSchema) -> String {
+pub fn preamble(schema: &gnoblin_render::UniformSchema) -> String {
     let mut fields = String::new();
     for (name, kind) in schema.entries() {
         fields.push_str("    ");

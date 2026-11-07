@@ -76,7 +76,7 @@ pub(crate) const CURSOR_CACHE_BYTES: usize = 8 * 1024 * 1024;
 impl State {
     /// The cursor to draw on `output` this frame. A named shape is drawn when the pointer
     /// is on that output; a client's own surface cursor is not drawn here.
-    pub(crate) fn pointer_cursor(&self, output: gnoblin_types::OutputId) -> Option<gnoblin_backend::render::Overlay> {
+    pub(crate) fn pointer_cursor(&self, output: gnoblin_types::OutputId) -> Option<gnoblin_render_frame::frame::Overlay> {
         let smithay::input::pointer::CursorImageStatus::Named(icon) = &self.cursor_image else {
             return None;
         };
@@ -99,13 +99,13 @@ impl State {
 
 /// Builds the overlay that draws the first frame of `images` with its hotspot at `at`,
 /// a point in the output's logical space. The frame is straight-alpha `0xAARRGGBB`, which
-/// [`gnoblin_backend::render::Image`] takes as RGBA bytes; the overlay premultiplies it.
+/// [`gnoblin_render_frame::image::Image`] takes as RGBA bytes; the overlay premultiplies it.
 /// Animated cursors show their first frame only for now.
 pub(crate) fn cursor_overlay(
     images: &gnoblin_cursor::CursorImages,
     at: (f64, f64),
     scale: f64,
-) -> Option<gnoblin_backend::render::Overlay> {
+) -> Option<gnoblin_render_frame::frame::Overlay> {
     let frame = images.frames().first()?;
     let (width, height) = (frame.width(), frame.height());
     let mut data = Vec::with_capacity(frame.pixels().len() * 4);
@@ -117,7 +117,7 @@ pub(crate) fn cursor_overlay(
             (pixel >> 24) as u8,
         ]);
     }
-    let image = gnoblin_backend::render::Image::new(gnoblin_types::Size { width, height }, width as usize * 4, data)?;
+    let image = gnoblin_render_frame::image::Image::new(gnoblin_types::Size { width, height }, width as usize * 4, data)?;
     let (hotspot_x, hotspot_y) = images.hotspot();
     let dst = gnoblin_types::Rect {
         x: (at.0 - f64::from(hotspot_x) / scale).round() as i32,
@@ -125,7 +125,7 @@ pub(crate) fn cursor_overlay(
         width: (f64::from(width) / scale).round() as u32,
         height: (f64::from(height) / scale).round() as u32,
     };
-    gnoblin_backend::render::Overlay::new(dst, &image)
+    gnoblin_render_frame::frame::Overlay::new(dst, &image)
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ use naga::front::wgsl::Frontend;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 use super::error::VulkanError;
-use crate::render::shader::ENTRY;
+use gnoblin_render_frame::shader::ENTRY;
 
 /// Which stage of a module to emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,7 +78,7 @@ pub(super) fn compile(pass: &'static str, source: &str, stage: StageKind) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::shader::sources::{SOLID, SURFACE, VERTEX};
+    use gnoblin_render_frame::shader::sources::{SOLID, SURFACE, VERTEX};
 
     /// The SPIR-V magic number every module starts with.
     const MAGIC: u32 = 0x0723_0203;

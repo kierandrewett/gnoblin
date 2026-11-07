@@ -27,7 +27,8 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
-use gnoblin_backend::render::{Image, Overlay};
+use gnoblin_render_frame::frame::Overlay;
+use gnoblin_render_frame::image::Image;
 use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
 use gnoblin_wayland::{
     Clock, Config, ControlHandle, LayoutControl, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot,
@@ -1301,7 +1302,7 @@ fn window_id(session: &Handle, title: &str) -> WindowId {
 }
 
 /// The bounds a window is drawn at, once it is drawn.
-fn drawn(session: &Handle, window: WindowId) -> (gnoblin_backend::render::Mat4, Rect) {
+fn drawn(session: &Handle, window: WindowId) -> (gnoblin_render::Mat4, Rect) {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         if let Some(Some(node)) = session.control.drawn_node(window) {
@@ -1380,7 +1381,7 @@ fn a_tiled_master_receives_tiled_states_and_work_area_bounds_on_the_wire() {
 }
 
 /// Maps one window under `shape` and returns the matrix and projected bounds it is drawn with.
-fn draw_single(shape: Shape) -> (gnoblin_backend::render::Mat4, Rect) {
+fn draw_single(shape: Shape) -> (gnoblin_render::Mat4, Rect) {
     let mut session = Session::start(Headless::new());
     let shared: SharedShape = Arc::new(Mutex::new(shape));
     let _made = install_scripted(&mut session, shared);
@@ -1409,7 +1410,7 @@ fn a_rotated_z_offset_placement_reaches_the_renderer_as_a_3d_matrix() {
         "the flat placement is drawn where it was placed"
     );
     // A rotation about Y puts a non-zero entry in the x/z cross terms; the flat matrix has none.
-    let rotated = |m: &gnoblin_backend::render::Mat4| m.m[0][2].abs() > 1e-6 || m.m[2][0].abs() > 1e-6;
+    let rotated = |m: &gnoblin_render::Mat4| m.m[0][2].abs() > 1e-6 || m.m[2][0].abs() > 1e-6;
     assert!(
         !rotated(&flat_matrix),
         "the flat placement has no rotation: {:?}",

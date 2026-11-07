@@ -10,7 +10,8 @@ use gnoblin_types::{Scale, Size};
 
 #[cfg(feature = "vulkan")]
 use super::Vulkan;
-use super::{Gles, Image, OutputFrame, RenderError, Software};
+use super::{Gles, Software};
+use gnoblin_render_frame::{error::RenderError, frame::OutputFrame, image::Image};
 
 #[cfg(not(feature = "vulkan"))]
 use crate::log;

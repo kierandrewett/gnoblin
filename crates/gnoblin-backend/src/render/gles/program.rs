@@ -9,7 +9,7 @@
 //! the frame.
 //!
 //! The sources, the uniform block's layout and [`ShaderError`] are renderer-neutral and live
-//! in [`crate::render::shader`]; what stays here is what needs a GL driver.
+//! in [`gnoblin_render_frame::shader`]; what stays here is what needs a GL driver.
 //!
 //! # Failure modes
 //!
@@ -25,11 +25,11 @@ use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
-use crate::render::RenderError;
 use crate::render::gles::gl::{CompileFailure, Device, Program};
-use crate::render::shader::sources as shaders;
-use crate::render::shader::uniforms::UniformLayout;
-use crate::render::shader::{ENTRY, ShaderError, ShaderOrigin, Stage};
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::shader::sources as shaders;
+use gnoblin_render_frame::shader::uniforms::UniformLayout;
+use gnoblin_render_frame::shader::{ENTRY, ShaderError, ShaderOrigin, Stage};
 
 use crate::log;
 

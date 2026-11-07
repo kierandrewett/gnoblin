@@ -1,0 +1,29 @@
+[package]
+name = "gnoblin-render-frame"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The renderer-neutral frame: what an output draws, the shared shader sources and the shm writer."
+
+# This crate is the seam every renderer draws through. It holds no renderer API, but its
+# client-buffer writer (`shm`) names Smithay's `wl_shm` types and carries the one `unsafe`
+# block that maps a shared-memory pool, so it opts out of the workspace's `forbid` the same
+# way the other FFI crates do. The exemption is confined to `shm.rs`, which opens with
+# `#[allow(unsafe_code)]`.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+# The `wl_shm` pool and buffer types the frame writes into, and the Wayland resource
+# trait the buffers are identified by. The same pin every Wayland crate in the workspace uses.
+smithay.workspace = true
+# Points, rectangles and sizes are stated in the shared primitives.
+gnoblin-types.workspace = true
+# The scene's colour, matrix and effect vocabulary that a frame's layers carry.
+gnoblin-render = { path = "../gnoblin-render" }
+# `[tag]` log lines for a refused frame or a client buffer that went away.
+gnoblin-log = { path = "../gnoblin-log" }

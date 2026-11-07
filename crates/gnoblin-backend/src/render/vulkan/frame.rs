@@ -36,10 +36,10 @@ use super::context::{SHM_FORMAT, TARGET_FORMAT, VkBuffer, VkContext, VkImage, co
 use super::error::classify;
 use super::pipeline::{BLOCK_RANGE, DescriptorArena};
 use super::plan::{FramePlan, PassKind, TextureSizes, TextureSlot, damage_of, plan};
-use crate::render::RenderError;
-use crate::render::frame::{Layer, OutputFrame};
-use crate::render::image::Image;
-use crate::render::shm;
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::{Layer, OutputFrame};
+use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::shm;
 
 use crate::log;
 

@@ -42,6 +42,8 @@ gnoblin-lock = { path = "../gnoblin-lock" }
 # so the window manager sees the same monitor rectangles the display configuration
 # and the portal will.
 gnoblin-output = { path = "../gnoblin-output" }
+gnoblin-render = { path = "../gnoblin-render" }
+gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The backend trait and the headless backend this server drives. It is the only
 # engine crate this crate is allowed to name (design/rust-compositor.md,
 # "Dependency rules").

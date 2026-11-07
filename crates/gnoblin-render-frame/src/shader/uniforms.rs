@@ -36,7 +36,7 @@ const FIXED_BYTES: usize = 96;
 
 /// The uniform values one pass uploads.
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct Uniforms {
+pub struct Uniforms {
     /// The destination rectangle in physical pixels.
     pub rect: [f32; 4],
     /// The texture coordinate mapping: origin and scale.
@@ -58,7 +58,7 @@ impl Uniforms {
     ///
     /// A solid has a tint like every other layer, so the frame description does not have to
     /// grow a second notion of "a layer whose colour is multiplied".
-    pub(crate) fn solid(rect: Rect, colour: Color, tint: Color, opacity: f32) -> Self {
+    pub fn solid(rect: Rect, colour: Color, tint: Color, opacity: f32) -> Self {
         Self {
             rect: [rect.x as f32, rect.y as f32, rect.width as f32, rect.height as f32],
             src: [0.0, 0.0, 1.0, 1.0],
@@ -71,7 +71,7 @@ impl Uniforms {
     }
 
     /// The values of a textured pass: a layer's pixels, mapped, tinted and clipped.
-    pub(crate) fn surface(rect: Rect, src: [f32; 4], tint: Color, opacity: f32, corner: f32) -> Self {
+    pub fn surface(rect: Rect, src: [f32; 4], tint: Color, opacity: f32, corner: f32) -> Self {
         Self {
             rect: [rect.x as f32, rect.y as f32, rect.width as f32, rect.height as f32],
             src,
@@ -97,7 +97,7 @@ fn components(colour: Color) -> [f32; 4] {
 
 /// Where each uniform sits in the block, and which type the shader declared for it.
 #[derive(Clone, Debug)]
-pub(crate) struct UniformLayout {
+pub struct UniformLayout {
     fields: Vec<UniformField>,
     bytes: usize,
 }
@@ -112,7 +112,7 @@ struct UniformField {
 
 impl UniformLayout {
     /// The layout of a program with no user uniforms: the fixed part only.
-    pub(crate) fn fixed() -> Self {
+    pub fn fixed() -> Self {
         Self {
             fields: Vec::new(),
             bytes: FIXED_BYTES,
@@ -120,7 +120,7 @@ impl UniformLayout {
     }
 
     /// The block's size in bytes.
-    pub(crate) fn bytes(&self) -> usize {
+    pub fn bytes(&self) -> usize {
         self.bytes
     }
 
@@ -128,7 +128,7 @@ impl UniformLayout {
     ///
     /// The fields are appended in declaration order to the fixed part, so the shader's own
     /// struct is the preamble's struct plus these.
-    pub(crate) fn with_schema(schema: &gnoblin_render::UniformSchema) -> Self {
+    pub fn with_schema(schema: &gnoblin_render::UniformSchema) -> Self {
         let mut fields = Vec::new();
         let mut offset = FIXED_BYTES;
         for (name, kind) in schema.entries() {
@@ -154,12 +154,7 @@ impl UniformLayout {
     /// [`ShaderError`] when a value's type is not the one the compiled shader declares for
     /// that name, or the name is not declared at all: the block would otherwise hold four
     /// bytes where a vector belongs, which the driver reads back as a value nobody wrote.
-    pub(crate) fn pack(
-        &self,
-        uniforms: &Uniforms,
-        values: &[ResolvedUniform],
-        out: &mut Vec<u8>,
-    ) -> Result<(), ShaderError> {
+    pub fn pack(&self, uniforms: &Uniforms, values: &[ResolvedUniform], out: &mut Vec<u8>) -> Result<(), ShaderError> {
         out.clear();
         out.resize(self.bytes, 0);
         for (index, part) in [

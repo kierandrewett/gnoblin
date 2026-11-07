@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::nested::{Nested, NestedConfig};
-use gnoblin_backend::render::OutputFrame;
+use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent, Output, Present};
 use gnoblin_types::{Color, OutputId, Point, Rect, Size};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
@@ -231,7 +231,7 @@ fn session_outputs(nested: &Nested) -> &[Output] {
 }
 
 /// The session's last frame, read back through the contract.
-fn session_screenshot(nested: &mut Nested, output: OutputId) -> Option<gnoblin_backend::render::Image> {
+fn session_screenshot(nested: &mut Nested, output: OutputId) -> Option<gnoblin_render_frame::image::Image> {
     <Nested as Backend<Probe>>::screenshot(nested, output)
 }
 

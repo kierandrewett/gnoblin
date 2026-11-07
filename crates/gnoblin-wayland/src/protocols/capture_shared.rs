@@ -73,8 +73,8 @@ use smithay::wayland::image_capture_source::{
 };
 use smithay::wayland::image_copy_capture::{ImageCopyCaptureState, Session as CaptureSession};
 
-use gnoblin_backend::render::Image;
-use gnoblin_backend::render::copy_into_shm;
+use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::shm::copy_into;
 use gnoblin_capture::{
     BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, SessionId, Stop, Table, Target,
 };
@@ -401,7 +401,7 @@ impl PixelSource for Pixels<'_> {
             (true, Some(cursored)) => cursored,
             _ => &cached.image,
         };
-        match copy_into_shm(image, region, from, &self.buffer) {
+        match copy_into(image, region, from, &self.buffer) {
             Ok(_) => Copied::Copied,
             Err(error) => {
                 log::warn!(area = "capture", %error, %target, "the frame could not be written into the client's buffer");

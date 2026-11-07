@@ -64,8 +64,8 @@ use crate::drm::present::{OutputPresenter, Presenter, complete_flips};
 use crate::drm::scanout::{Buffers, Device as ScanoutDevice, Flip};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
-use crate::render::Image;
-use crate::render::OutputFrame;
+use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::frame::OutputFrame;
 use crate::session::{SeatEvent, SeatState, Transition};
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 use std::collections::HashMap;
@@ -91,7 +91,7 @@ pub enum DrmError {
     /// The GPU could not be opened or initialised.
     Device(String),
     /// The GLES context on the GPU could not be created.
-    Renderer(crate::render::RenderError),
+    Renderer(gnoblin_render_frame::error::RenderError),
 }
 
 impl fmt::Display for DrmError {

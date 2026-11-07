@@ -1248,6 +1248,7 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-output",
  "gnoblin-render",
+ "gnoblin-render-frame",
  "gnoblin-types",
  "gnoblin-wm",
  "naga",
@@ -1526,6 +1527,7 @@ dependencies = [
  "gnoblin-portal-core",
  "gnoblin-portal-ui",
  "gnoblin-proto",
+ "gnoblin-render-frame",
  "gnoblin-schema",
  "gnoblin-types",
  "gnoblin-wayland",
@@ -1773,6 +1775,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-render-frame"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-render",
+ "gnoblin-types",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-schema"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1924,6 +1936,7 @@ dependencies = [
  "gnoblin-output",
  "gnoblin-pipewire-export",
  "gnoblin-render",
+ "gnoblin-render-frame",
  "gnoblin-types",
  "gnoblin-wm",
  "smithay",

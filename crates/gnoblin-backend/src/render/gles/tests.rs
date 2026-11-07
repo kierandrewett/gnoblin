@@ -6,12 +6,12 @@
 //! surfaceless EGL display, llvmpipe in CI and a real GPU on a developer's machine); a
 //! machine without EGL prints the reason once per test and skips, which is the only case a
 //! skip is allowed: the code is still built, and [`super::Gles::new`] reports
-//! [`crate::render::RenderError::Unavailable`] rather than failing the run.
+//! [`gnoblin_render_frame::error::RenderError::Unavailable`] rather than failing the run.
 
 use super::*;
 use crate::render::Software;
-use crate::render::frame::{Model, Solid};
 use gnoblin_render::{BlurParams, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
+use gnoblin_render_frame::frame::{Model, Solid};
 
 /// A blur with the given radius and one pass, which is one horizontal and one vertical sweep.
 /// The reference formulas in these tests describe that single sweep, so the schema's default

@@ -28,7 +28,8 @@
 //! - Admission refused by the queue or the lock: settles `error(busy|locked)` to the
 //!   submitter, not a refusal, so the requester learns the verdict it waits for.
 
-use gnoblin_backend::render::{Image, Overlay};
+use gnoblin_render_frame::frame::Overlay;
+use gnoblin_render_frame::image::Image;
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_portal_ui::ui::DialogScheme;

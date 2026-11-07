@@ -6,7 +6,7 @@
 //! means. Screen captures leave the overlay out, so a capture shows what the modal
 //! covers.
 
-use gnoblin_backend::render::Overlay;
+use gnoblin_render_frame::frame::Overlay;
 use gnoblin_types::{KeyState, OutputId};
 
 /// A modal overlay on one output.

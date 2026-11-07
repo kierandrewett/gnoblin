@@ -112,7 +112,7 @@ impl Handle {
     }
 
     /// The pixels the output currently shows.
-    fn screenshot(&self) -> gnoblin_backend::render::Image {
+    fn screenshot(&self) -> gnoblin_render_frame::image::Image {
         self.control
             .screenshot(self.output())
             .expect("the loop answers a screenshot request")

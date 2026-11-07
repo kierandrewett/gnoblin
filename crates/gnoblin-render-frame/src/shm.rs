@@ -37,7 +37,7 @@ use smithay::wayland::shm::{BufferAccessError, BufferData, with_buffer_contents,
 
 use gnoblin_types::{Point, Rect};
 
-use crate::render::Image;
+use crate::image::Image;
 
 /// Why a frame could not be written into a client's buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,7 +71,7 @@ impl std::error::Error for ShmError {}
 /// A GPU renderer sizes its texture and its staging space from this before it reads a
 /// single pixel, so a buffer it cannot use is refused without touching the pool.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ShmShape {
+pub struct ShmShape {
     /// Width in pixels.
     pub width: u32,
     /// Height in pixels.
@@ -93,7 +93,7 @@ impl ShmShape {
 ///
 /// [`ShmError`] when the buffer is not shared memory, its format is not one of the packed
 /// 32-bit layouts, its rows do not fit its stride or it reaches past its pool.
-pub(crate) fn shape(buffer: &WlBuffer) -> Result<ShmShape, ShmError> {
+pub fn shape(buffer: &WlBuffer) -> Result<ShmShape, ShmError> {
     if !buffer.is_alive() {
         return Err(ShmError::NotShared);
     }
@@ -109,7 +109,7 @@ pub(crate) fn shape(buffer: &WlBuffer) -> Result<ShmShape, ShmError> {
 /// # Errors
 ///
 /// The same as [`shape`], and [`ShmError::Outside`] when `out` is the wrong length.
-pub(crate) fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmError> {
+pub fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmError> {
     if !buffer.is_alive() {
         return Err(ShmError::NotShared);
     }

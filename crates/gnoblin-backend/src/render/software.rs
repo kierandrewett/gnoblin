@@ -65,10 +65,10 @@ use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as Physic
 
 use gnoblin_types::{Color, Scale, Size};
 
-use crate::render::RenderError;
-use crate::render::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, View};
-use crate::render::geometry::physical_rect;
-use crate::render::image::Image;
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, View};
+use gnoblin_render_frame::geometry::physical_rect;
+use gnoblin_render_frame::image::Image;
 
 use crate::log;
 
@@ -789,7 +789,7 @@ fn failed(error: impl std::fmt::Debug) -> RenderError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::Solid;
+    use gnoblin_render_frame::frame::Solid;
     use gnoblin_types::Rect;
 
     fn frame_with(background: Color, rect: Rect, colour: Color) -> OutputFrame {

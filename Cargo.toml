@@ -61,6 +61,7 @@ members = [
     "crates/gnoblin-parity",
     "crates/gnoblin-proto",
     "crates/gnoblin-render",
+    "crates/gnoblin-render-frame",
     "crates/gnoblin-schema",
     "crates/gnoblin-service-core",
     "crates/gnoblin-service-location",

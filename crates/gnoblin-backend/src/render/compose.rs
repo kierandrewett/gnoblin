@@ -66,7 +66,7 @@ use gnoblin_render::{
 };
 use gnoblin_types::{Color, NodeId, OutputId, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
-use crate::render::frame::{Layer, Model, OutputFrame, Solid, Surface};
+use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface};
 
 use crate::log;
 
