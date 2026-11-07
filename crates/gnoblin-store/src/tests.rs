@@ -420,3 +420,25 @@ fn concurrent_readers_see_committed_rows_while_a_writer_runs() {
     });
     assert_eq!(ns.count(&Query::new()).unwrap(), 60);
 }
+
+/// A namespace file written by plain SQLite 3.50 with the version-1 schema opens unchanged under
+/// the SQLCipher build with no key. The bundled-sqlcipher feature must not change the on-disk
+/// format of an unkeyed file: a database without `PRAGMA key` is read and written as before.
+#[test]
+fn a_file_written_by_plain_sqlite_opens_unchanged_under_sqlcipher() {
+    let dir = scratch("plain-fixture");
+    let fixture = include_bytes!("fixtures/plain-sqlite-3.50.2.sqlite3");
+    std::fs::write(dir.join("fixture.sqlite3"), fixture).expect("fixture copied");
+    let store = Store::open(&dir).expect("store opens");
+    let ns = store.namespace("fixture").expect("namespace opens");
+    assert_eq!(ns.state(), State::Ready);
+    let entry = ns.get("greeting").unwrap().expect("the fixture row is present");
+    assert_eq!(entry.value, Value::Text("hello".into()));
+    assert_eq!(entry.revision, 1);
+    let rev = ns.put("greeting-again", Value::Text("hi".into())).unwrap();
+    assert_eq!(rev, 2, "the revision continues from the fixture's meta row");
+    assert_eq!(
+        ns.list("", None, 10).unwrap(),
+        vec!["greeting".to_owned(), "greeting-again".to_owned()]
+    );
+}
