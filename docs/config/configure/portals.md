@@ -96,22 +96,28 @@ The `org.freedesktop.impl.portal.Settings` interface answers `ReadAll` and
 through the portal, and each change is announced with `SettingChanged`. The
 backend publishes these keys:
 
-| Namespace                     | Key                                                      | Source         |
-| ----------------------------- | -------------------------------------------------------- | -------------- |
-| `org.freedesktop.appearance`  | `color-scheme`                                           | colour scheme  |
-| `org.freedesktop.appearance`  | `contrast`                                               | contrast       |
-| `org.freedesktop.appearance`  | `reduced-motion`                                         | reduced motion |
-| `org.freedesktop.appearance`  | `accent-color`                                           | accent colour  |
-| `org.gnome.desktop.interface` | `gtk-theme`, `icon-theme`                                | theme names    |
-| `org.gnome.desktop.interface` | `cursor-theme`, `cursor-size`                            | cursor         |
-| `org.gnome.desktop.interface` | `font-name`, `document-font-name`, `monospace-font-name` | fonts          |
-| `org.gnome.desktop.interface` | `text-scaling-factor`                                    | text scale     |
-| `org.gnome.desktop.interface` | `button-layout`                                          | window buttons |
-| `org.gnome.desktop.interface` | `enable-animations`                                      | animations     |
+| Namespace                          | Key                                                      | Source                          |
+| ---------------------------------- | -------------------------------------------------------- | ------------------------------- |
+| `org.freedesktop.appearance`       | `color-scheme`                                           | colour scheme                   |
+| `org.freedesktop.appearance`       | `contrast`                                               | `high-contrast`: 1 on, 0 off    |
+| `org.freedesktop.appearance`       | `reduced-motion`                                         | `reduced-motion`: 1 on, 0 off   |
+| `org.freedesktop.appearance`       | `accent-color`                                           | accent colour                   |
+| `org.gnome.desktop.interface`      | `gtk-theme`, `icon-theme`                                | theme names                     |
+| `org.gnome.desktop.interface`      | `cursor-theme`, `cursor-size`                            | cursor                          |
+| `org.gnome.desktop.interface`      | `font-name`, `document-font-name`, `monospace-font-name` | fonts                           |
+| `org.gnome.desktop.interface`      | `text-scaling-factor`                                    | text scale                      |
+| `org.gnome.desktop.interface`      | `button-layout`                                          | window buttons                  |
+| `org.gnome.desktop.interface`      | `enable-animations`                                      | the inverse of `reduced-motion` |
+| `org.gnome.desktop.a11y.interface` | `high-contrast`                                          | `high-contrast`                 |
 
 An accent colour that is not set is published as the sentinel the Settings
 portal defines: all three components out of range. A key Gnoblin does not
 publish is absent, not guessed.
+
+The contrast preference reaches GTK through the dconf layer as well, under
+`org.gnome.desktop.a11y.interface` `high-contrast`. `enable-animations` is the
+inverse of `reduced-motion` and is written by the same layer, so GTK stops
+animating when reduced motion is on.
 
 Gnoblin does not publish Qt or KDE settings through this interface. A Qt or
 KDE toolkit needs its own bridge to read these values.
