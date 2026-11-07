@@ -102,7 +102,7 @@ impl State {
 /// [`gnoblin_backend::render::Image`] takes as RGBA bytes; the overlay premultiplies it.
 /// Animated cursors show their first frame only for now.
 pub(crate) fn cursor_overlay(
-    images: &gnoblin_backend::render::cursor::CursorImages,
+    images: &gnoblin_cursor::CursorImages,
     at: (f64, f64),
     scale: f64,
 ) -> Option<gnoblin_backend::render::Overlay> {
@@ -131,7 +131,7 @@ pub(crate) fn cursor_overlay(
 #[cfg(test)]
 mod tests {
     use super::cursor_overlay;
-    use gnoblin_backend::render::cursor::{CursorFrame, CursorImages};
+    use gnoblin_cursor::{CursorFrame, CursorImages};
 
     #[test]
     fn cursor_overlay_draws_the_first_frame_at_its_hotspot() {

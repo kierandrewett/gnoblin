@@ -117,8 +117,6 @@ pub use error::RenderError;
 pub use frame::{Layer, OutputFrame, Overlay, Solid, Surface};
 /// The GLES renderer.
 pub use gles::Gles;
-/// Cursor types from the scene crate.
-pub use gnoblin_render::cursor;
 /// Colour and matrix types shared with the scene crate.
 pub use gnoblin_render::{BlurParams, Color, Effects, MAX_PASSES, Mat4, Pass, Shadow};
 /// The readback pixels of a frame.

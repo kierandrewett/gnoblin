@@ -445,7 +445,7 @@ pub struct State {
     /// The logical cursor size in pixels, from the configuration.
     pub(crate) cursor_size: u16,
     /// The cursor chain that resolves a named shape to the image drawn for it.
-    pub(crate) cursor_chain: gnoblin_backend::render::cursor::CursorChain,
+    pub(crate) cursor_chain: gnoblin_cursor::CursorChain,
     /// The tearing hints clients set, keyed by surface.
     pub(crate) tearing: Vec<(WlSurface, WpTearingControlV1Hint)>,
     /// The session clock, in milliseconds, which idle and the router read.
@@ -757,14 +757,14 @@ impl State {
             announced_text_inputs: HashSet::new(),
             cursor_image: CursorImageStatus::default_named(),
             cursor_shape_changed: false,
-            cursor_chain: gnoblin_backend::render::cursor::CursorChain::new(
-                std::sync::Arc::new(gnoblin_backend::render::cursor::FsFiles::from_environment()),
+            cursor_chain: gnoblin_cursor::CursorChain::new(
+                std::sync::Arc::new(gnoblin_cursor::FsFiles::from_environment()),
                 &cursor.theme,
                 cursor
                     .providers
                     .iter()
                     .copied()
-                    .map(gnoblin_backend::render::cursor::ProviderKind::provider)
+                    .map(gnoblin_cursor::ProviderKind::provider)
                     .collect(),
                 crate::protocols::wp_cursor_shape_v1::CURSOR_CACHE_BYTES,
             ),

@@ -44,8 +44,8 @@ use smithay::reexports::wayland_server::backend::InitError;
 use crate::clock::{Clock, SystemClock};
 use crate::modal::{Modal, ModalEvent};
 use gnoblin_backend::render::Image;
-use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
+use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 
 use crate::output_config::OutputConfigHost;
 use gnoblin_config::Protocols;

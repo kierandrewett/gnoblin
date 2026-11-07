@@ -46,6 +46,8 @@ gnoblin-output = { path = "../gnoblin-output" }
 # engine crate this crate is allowed to name (design/rust-compositor.md,
 # "Dependency rules").
 gnoblin-backend = { path = "../gnoblin-backend" }
+# The cursor providers and theme lookup the seat draws the pointer from.
+gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The input policy: the delivery order (grab, binding, client), the idle counter and
 # the key ownership that makes a release follow its press. Delivery order is a rule,
 # not a device, so the seat reads it here instead of restating it

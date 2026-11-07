@@ -19,8 +19,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
-use gnoblin_backend::render::cursor::ProviderKind;
 use gnoblin_config::Protocols;
+use gnoblin_cursor::ProviderKind;
 use gnoblin_types::{Point, Rect};
 use gnoblin_wayland::{Config, ControlHandle, CursorSettings, LoopError, Server, SessionSnapshot};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
