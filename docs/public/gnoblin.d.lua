@@ -377,10 +377,18 @@ function gnoblin.find(kind, filter) end
 ---@return Operation<nil>|nil
 function gnoblin.window_rule(rule) end
 
----Load and merge Lua configuration files matching a path or glob.
----@param pattern string Path or glob resolved relative to the current config file and configured search directories.
+---Load configuration fragments matching a path or glob, relative to the calling file.
+---Use `require` for a module that returns a value.
+---@param pattern string Path or glob relative to the calling file; no match is not an error.
 ---@return boolean success
 function gnoblin.load(pattern) end
+
+---Load a Lua module by dotted name, cached for the current reload.
+---`a.b` is `a/b.lua` under the top-level `init.lua` directory, then the shipped modules.
+---A `gnoblin.` name loads from the shipped modules only.
+---@param name string
+---@return any
+function require(name) end
 
 ---Mark a table as an array so configuration conversion preserves it as a list.
 ---@param values table Array values; numeric keys must form a dense sequence starting at 1 when converted.

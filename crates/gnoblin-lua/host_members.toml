@@ -17,7 +17,7 @@ params = [{ name = "settings", type = "table" }]
 [[member]]
 name = "load"
 kind = "function"
-doc = "Evaluate another configuration file, relative to the calling file."
+doc = "Load configuration fragments matching a path or glob, relative to the calling file. Use `require` for a module that returns a value."
 params = [{ name = "path_or_glob", type = "string" }]
 returns = ["boolean"]
 

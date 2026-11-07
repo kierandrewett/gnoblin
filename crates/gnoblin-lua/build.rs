@@ -479,6 +479,7 @@ fn stub_modules(text: &mut String, catalog: &Catalog) {
         }
     }
     text.push_str(&overloads);
+    text.push_str("---Load a Lua module by dotted name. `a.b` is `a/b.lua` under the configuration directory, then under the shipped modules. A `gnoblin.` name loads from the shipped modules only.\n");
     text.push_str("---@param name string\n");
     text.push_str("---@return any\n");
     text.push_str("function require(name) end\n");

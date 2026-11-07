@@ -817,7 +817,7 @@ static const ApiMember api_params_56[] = {
     {"t", "number", FALSE, "", FALSE},
 };
 static const ApiMember api_params_57[] = {
-    {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories.", FALSE},
+    {"pattern", "string", FALSE, "Path or glob relative to the calling file; no match is not an error.", FALSE},
 };
 static const ApiMember api_params_58[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event.", FALSE},
@@ -930,7 +930,7 @@ static const ApiFunction api_functions[] = {
     {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_54, 1, "LayerAnimationPolicy"},
     {"layers.list", "Return the current layer surface snapshot. Select layer surfaces with `gnoblin.find(\"LayerSurface\", filter)`.", NULL, 0, "LayerSurface[]"},
     {"lerp", "Return a + (b - a) * t.", api_params_56, 3, "number"},
-    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_57, 1, "boolean"},
+    {"load", "Load configuration fragments matching a path or glob, relative to the calling file. Use `require` for a module that returns a value.", api_params_57, 1, "boolean"},
     {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_58, 2, "Subscription"},
     {"once", "Register a callback that is removed after its first event.", api_params_59, 2, "Subscription"},
     {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_60, 1, "Output|nil"},
