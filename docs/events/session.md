@@ -1,5 +1,7 @@
 # Session Events
 
+> **Rust status:** These state, privacy, and capability event names have no matching schema signals and are unbuilt. Rust delivers only the object-model signals listed on the [events index](index).
+
 Observe lock state, session activity, and privacy changes.
 
 Session events are available in a running Gnoblin session when their source service is available.

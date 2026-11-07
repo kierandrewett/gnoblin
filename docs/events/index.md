@@ -1,10 +1,22 @@
 # Lua Events
 
-Subscribe to Mutter and Gnoblin events from the supervised Lua runtime or a
-`gnoblinctl lua` script.
+> **Rust status:** The pages below describe a broader legacy event contract than Rust implements.
+> Rust delivers only these object-model signals:
+>
+> - `gnoblin.effect.closed`
+> - `gnoblin.output.closed`
+> - `gnoblin.request.offered`
+> - `gnoblin.request.finished`
+> - `gnoblin.session.ready`
+> - `gnoblin.session.bell`
+> - `gnoblin.session.reload_requested`
+> - `gnoblin.window.closed` (schema payload, not the legacy record)
+> - `gnoblin.window.menu_requested`
+> - `gnoblin.workspace.layout_changed`
+> - `gnoblin.workspace.layout_failed`
 
-Mutter event availability follows the running Mutter build. Gnoblin event names
-and payloads are defined by the running Gnoblin API.
+This event reference describes callback registration and legacy event payloads.
+Names and payloads outside the list above are not delivered in Rust.
 
 Use the [shell runtime API overview](/shell-api/) to find methods by task.
 This page describes callback registration and event payloads.
@@ -15,37 +27,13 @@ Register repeating callbacks with `gnoblin.on`; use
 Remove a repeating callback with `subscription:unsubscribe()`. A `once`
 subscription removes itself before invocation.
 
-Subscribe to compositor signals with the same two functions. Pass a full
-`mutter.*` event name. Available signals depend on the running Mutter build and
-are not stable across versions.
-
-Event names identify their source: `mutter.*` comes from Mutter and
-`gnoblin.*` comes from Gnoblin. The supervised Lua runtime stays alive for the
-session; reloading the config replaces its callbacks.
-
-`gnoblinctl lua` can also subscribe while a script runs. It stays open until
-every subscription has ended. A one-time subscription ends after its first
-event; keep a repeating subscription in a variable so the callback can call
-`subscription:unsubscribe()`. Press Ctrl+C to stop listeners manually.
-
-For desktop color-scheme change notifications, subscribe to
-`gnoblin.appearance.color-scheme-changed`. The [appearance guide](/guides/theming)
-explains how applications use the preference. Use
-`gnoblin.appearance.color_scheme()` to read the current value.
+The callback receives `event.name`, the live schema object in `event.object`, and any fields declared by that signal.
 
 ```lua
-gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
-    local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
-    gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
+gnoblin.on("gnoblin.session.ready", function(event)
+    print(event.name, event.object.version)
 end)
 ```
-
-The Mutter pointer-window event changes when the pointer enters a different
-Wayland surface, before later scroll events reach that surface. It does not
-depend on keyboard focus or clicking the window. The event also fires when the
-pointer leaves a client surface; then the window fields are empty strings.
-
-## Event sources
 
 ## Event domains
 

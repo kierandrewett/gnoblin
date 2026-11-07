@@ -19,11 +19,15 @@ Counts are the item rows in the tables below (78 rows), counted by status column
 | MISSING | 48   |
 | CHANGED | 8    |
 
-The Rust tree has a schema-generated object model (window, output, workspace, session, settings, idle, lock, request, capture, eis, effect, portal_ui). Lua binds each as a class (`gnoblin.window.all()`, `gnoblin.window.by_id(id)`, instance `:on`) at `bindings.rs:366`, `:380`, `:536`. Beside those classes, `gnoblin` exposes only `configure`, `load` and `timers` (`host_members.toml`). Most other documented API is absent.
+The Rust tree has a schema-generated object model (window, output, workspace, session, settings, idle, lock, request, capture, eis, effect, portal_ui). Lua binds each as a class at `bindings.rs:366`, `:380` and `:536`.
+
+The host table declares `configure`, `load`, `window_rule`, `timers`, `on` and `once` in `host_members.toml`.
+
+Global event subscriptions accept only schema-declared signals. Most other documented API is absent.
 
 ## Top ten gaps
 
-1. **Lua runtime surface** (`gnoblin.on`, `once`, `find`, `windows`, `outputs`, `workspaces`, `input`, `shortcuts`, `process`, `tweens`, `settings`, `config`). Owner: Phase 3 runtime role (`design/rust-compositor.md:815-826`). Effort L.
+1. **Lua runtime surface** (`gnoblin.find`, `windows`, `outputs`, `workspaces`, `input`, `shortcuts`, `process`, `tweens`, `settings`, `config`, and the broader event set). Owner: Phase 3 runtime role (`design/rust-compositor.md:815-826`). Effort L.
 2. **`gnoblin.window_rule`** (`docs/shell-api/windows.md:156`). Owner: WindowRules lane [INFERENCE, from peer roster]. Effort M.
 3. **Window methods** `close`, `set_minimized`, `set_maximized`, `set_fullscreen`, `move`, `resize`, `move_to_workspace`, `move_to_monitor`, `thumbnail`, `present` (`windows.md:83-104`). Crates: only `focus`, `kill`, `add_effect`, `request_menu` exist in `window.toml`. Live C runtime (`src/config/lua/gnoblin-lua.c:87-131`) implements them, so the Rust candidate is behind. Owner: unowned; Phase 4 names close and minimise (`rust-compositor.md:836`). Effort M.
 4. **Top-level gnoblinctl verbs** `status`, `logout`, `ping`, `version`, `config *`, `session *`, `focus`, `shortcut`, `input`, `privacy`, `launch`, `capabilities`, `reload`. Crates `cli.rs` has none. Live C CLI (`src/cli/gnoblinctl-cli.c:10-35`) implements all of them, including `lua`. Owner: unowned for the Rust port. Effort M.
@@ -38,52 +42,142 @@ The Rust tree has a schema-generated object model (window, output, workspace, se
 
 Headings and member lines are from `docs/shell-api/*.md`. Status is for the documented surface on that page.
 
-| Page                  | Doc line                                    | Status  | Rust evidence or gap                                                                                                                                                                        | Design ref                                      | Effort |
-| --------------------- | ------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------ |
-| index                 | `index.md:7` API domains                    | PARTIAL | Only `configure`, `load`, `timers` in `host_members.toml`. Object classes are bound at `bindings.rs:366`, `:380`, `:536`. No global event bus or windows, find, settings or config globals. | `shell-api-redesign.md:28`                      | L      |
-| index                 | `index.md:42` runtime identity and settings | MISSING | No `gnoblin.version` or `settings` entry                                                                                                                                                    | `rust-compositor.md:1052-1080`                  | M      |
-| appearance-animations | `:22` animation controls                    | MISSING | No `gnoblin.animations`                                                                                                                                                                     | `rust-compositor.md:836`                        | L      |
-| authentication        | `:19` answer a prompt from Lua              | MISSING | `request.toml` has claim/answer/decline, no Lua                                                                                                                                             | `rust-compositor.md:177`                        | M      |
-| authentication        | `:48` the request                           | PARTIAL | Request object schema only                                                                                                                                                                  | `rust-compositor.md:177`                        | M      |
-| errors                | `:5` operation results                      | MISSING | No Operation type in bindings                                                                                                                                                               | `shell-api-redesign.md:76`                      | M      |
-| errors                | `:54` timers                                | PARTIAL | `timers.after`, `timers.now` BUILT in `host_members.toml`                                                                                                                                   | n/a                                             | S      |
-| find                  | `:16` kinds                                 | MISSING | No `gnoblin.find`                                                                                                                                                                           | `rust-compositor.md:1050` [INFERENCE]           | M      |
-| focus-activation      | `:66` focus a program the shell started     | MISSING | `window.toml` focus method only                                                                                                                                                             | `rust-compositor.md:1039`                       | M      |
-| grants                | `:25` where a grant comes from              | MISSING | No grants object                                                                                                                                                                            | `rust-compositor.md:1049`                       | M      |
-| idle                  | `:24` IdleWatch object                      | PARTIAL | `idle.toml`: props idle_ms, inhibitors; inhibit, uninhibit; no IdleWatch Lua                                                                                                                | `rust-compositor.md:1151`                       | M      |
-| input-grab            | `:32` the lease                             | MISSING | No grab object                                                                                                                                                                              | `rust-compositor.md:1143`                       | L      |
-| input-handlers        | `:7` input handlers                         | MISSING | No handler registration                                                                                                                                                                     | `rust-compositor.md:1070`                       | L      |
-| input                 | `:120` input handlers                       | MISSING | No input API                                                                                                                                                                                | `rust-compositor.md:1137`                       | L      |
-| keyboard-shortcuts    | `:195` capture a shortcut                   | MISSING | Only `gnoblinctl shortcut` docs; no CLI                                                                                                                                                     | `rust-compositor.md:1137` [INFERENCE]           | M      |
-| launch-feedback       | `:1` launch feedback                        | MISSING | No launch object                                                                                                                                                                            | `rust-compositor.md:1039`                       | M      |
-| layer-surfaces        | `:1` layer surfaces                         | MISSING | No layer object in schema                                                                                                                                                                   | `rust-compositor.md:177` [INFERENCE]            | M      |
-| outputs               | `:10` read outputs                          | PARTIAL | `output.toml` props and apply, set_layout; no `outputs.list`                                                                                                                                | `rust-compositor.md:1137`                       | M      |
-| outputs               | `:104` privacy screens                      | MISSING | No privacy-screen member                                                                                                                                                                    | unowned                                         | M      |
-| overrides             | `:24` settings                              | MISSING | No `settings.override`                                                                                                                                                                      | unowned                                         | M      |
-| overrides             | `:61` window effects                        | PARTIAL | `window.toml` add_effect; `effect.toml` kinds                                                                                                                                               | `rust-compositor.md:836`                        | M      |
-| passphrase-prompts    | `:19` answer a prompt from Lua              | MISSING | Services role prompt exists; no Lua                                                                                                                                                         | `rust-compositor.md:178`                        | M      |
-| privacy               | `:9` privacy state                          | MISSING | No privacy object                                                                                                                                                                           | `rust-compositor.md:847`                        | M      |
-| processes             | `:22` options                               | MISSING | No `gnoblin.process` in bindings                                                                                                                                                            | `shell-api-redesign.md:80` (legacy branch only) | M      |
-| requests              | `:21` fields                                | PARTIAL | `request.toml`: claim, answer, decline; signals offered, finished                                                                                                                           | `rust-compositor.md:177`                        | M      |
-| session-runtime       | `:69` runtime health and reload             | MISSING | `session.toml` has version and signals only                                                                                                                                                 | `rust-compositor.md:1281`                       | M      |
-| session-runtime       | `:172` locking                              | PARTIAL | `lock.toml`: prop locked, lock_session                                                                                                                                                      | `rust-compositor.md:847`                        | S      |
-| tablet-pad-help       | `:7` tablet-pad help                        | MISSING | No member                                                                                                                                                                                   | unowned                                         | M      |
-| text-insertion        | `:7` request a text target                  | MISSING | No `text_target`                                                                                                                                                                            | `rust-compositor.md:1137` [INFERENCE]           | M      |
-| tweens                | `:20` timeline                              | MISSING | No `gnoblin.tween`                                                                                                                                                                          | `rust-compositor.md:442`, `:1070`               | L      |
-| types                 | `:7` shared records                         | PARTIAL | Schema objects exist; no Lua record types                                                                                                                                                   | `rust-compositor.md:1052-1080`                  | M      |
-| window-snapping       | `:7` pointer and keyboard snapping          | MISSING | No snapping member                                                                                                                                                                          | unowned                                         | M      |
-| windows               | `:3` read windows                           | MISSING | No `gnoblin.windows`; `window` object generated                                                                                                                                             | `rust-compositor.md:1052-1080`                  | M      |
-| windows               | `:83` window methods                        | PARTIAL | Only focus, kill, add_effect, request_menu in `window.toml`                                                                                                                                 | `rust-compositor.md:836`                        | M      |
-| windows               | `:126` change how a window is drawn         | PARTIAL | `add_effect` BUILT; `too-many-passes` error                                                                                                                                                 | `rust-compositor.md:836`                        | S      |
-| windows               | `:156` window rules                         | MISSING | No `gnoblin.window_rule`                                                                                                                                                                    | `rust-compositor.md:3004`                       | M      |
-| windows               | `:177` compositor requests                  | PARTIAL | `window.toml` signal `menu_requested`                                                                                                                                                       | `rust-compositor.md:833`                        | S      |
-| workspaces            | `:23` read workspaces                       | MISSING | No `gnoblin.workspaces`                                                                                                                                                                     | `rust-compositor.md:1052-1080`                  | M      |
-| workspaces            | `:56` create and change                     | PARTIAL | `workspace.toml` set_layout, layout_command                                                                                                                                                 | `rust-compositor.md:1605`                       | M      |
+| Page                  | Doc line                                    | Status  | Rust evidence or gap                                                                                                                                                                                                                   | Design ref                                      | Effort |
+| --------------------- | ------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------ |
+| index                 | `index.md:7` API domains                    | PARTIAL | `configure`, `load`, `window_rule`, `timers`, `on`, `once` in `host_members.toml`; global handlers only accept schema signals. Object classes bind at `bindings.rs:366`, `:380`, `:536`. No windows, find, settings or config globals. | `shell-api-redesign.md:28`                      | L      |
+| index                 | `index.md:42` runtime identity and settings | MISSING | No `gnoblin.version` or `settings` entry                                                                                                                                                                                               | `rust-compositor.md:1052-1080`                  | M      |
+| appearance-animations | `:22` animation controls                    | MISSING | No `gnoblin.animations`                                                                                                                                                                                                                | `rust-compositor.md:836`                        | L      |
+| authentication        | `:19` answer a prompt from Lua              | MISSING | `request.toml` has claim/answer/decline, no Lua                                                                                                                                                                                        | `rust-compositor.md:177`                        | M      |
+| authentication        | `:48` the request                           | PARTIAL | Request object schema only                                                                                                                                                                                                             | `rust-compositor.md:177`                        | M      |
+| errors                | `:5` operation results                      | MISSING | No Operation type in bindings                                                                                                                                                                                                          | `shell-api-redesign.md:76`                      | M      |
+| errors                | `:54` timers                                | PARTIAL | `timers.after`, `timers.now` BUILT in `host_members.toml`                                                                                                                                                                              | n/a                                             | S      |
+| find                  | `:16` kinds                                 | MISSING | No `gnoblin.find`                                                                                                                                                                                                                      | `rust-compositor.md:1050` [INFERENCE]           | M      |
+| focus-activation      | `:66` focus a program the shell started     | MISSING | `window.toml` focus method only                                                                                                                                                                                                        | `rust-compositor.md:1039`                       | M      |
+| grants                | `:25` where a grant comes from              | MISSING | No grants object                                                                                                                                                                                                                       | `rust-compositor.md:1049`                       | M      |
+| idle                  | `:24` IdleWatch object                      | PARTIAL | `idle.toml`: props idle_ms, inhibitors; inhibit, uninhibit; no IdleWatch Lua                                                                                                                                                           | `rust-compositor.md:1151`                       | M      |
+| input-grab            | `:32` the lease                             | MISSING | No grab object                                                                                                                                                                                                                         | `rust-compositor.md:1143`                       | L      |
+| input-handlers        | `:7` input handlers                         | MISSING | No handler registration                                                                                                                                                                                                                | `rust-compositor.md:1070`                       | L      |
+| input                 | `:120` input handlers                       | MISSING | No input API                                                                                                                                                                                                                           | `rust-compositor.md:1137`                       | L      |
+| keyboard-shortcuts    | `:195` capture a shortcut                   | MISSING | Only `gnoblinctl shortcut` docs; no CLI                                                                                                                                                                                                | `rust-compositor.md:1137` [INFERENCE]           | M      |
+| launch-feedback       | `:1` launch feedback                        | MISSING | No launch object                                                                                                                                                                                                                       | `rust-compositor.md:1039`                       | M      |
+| layer-surfaces        | `:1` layer surfaces                         | MISSING | No layer object in schema                                                                                                                                                                                                              | `rust-compositor.md:177` [INFERENCE]            | M      |
+| outputs               | `:10` read outputs                          | PARTIAL | `output.toml` props and apply, set_layout; no `outputs.list`                                                                                                                                                                           | `rust-compositor.md:1137`                       | M      |
+| outputs               | `:104` privacy screens                      | MISSING | No privacy-screen member                                                                                                                                                                                                               | unowned                                         | M      |
+| overrides             | `:24` settings                              | MISSING | No `settings.override`                                                                                                                                                                                                                 | unowned                                         | M      |
+| overrides             | `:61` window effects                        | PARTIAL | `window.toml` add_effect; `effect.toml` kinds                                                                                                                                                                                          | `rust-compositor.md:836`                        | M      |
+| passphrase-prompts    | `:19` answer a prompt from Lua              | MISSING | Services role prompt exists; no Lua                                                                                                                                                                                                    | `rust-compositor.md:178`                        | M      |
+| privacy               | `:9` privacy state                          | MISSING | No privacy object                                                                                                                                                                                                                      | `rust-compositor.md:847`                        | M      |
+| processes             | `:22` options                               | MISSING | No `gnoblin.process` in bindings                                                                                                                                                                                                       | `shell-api-redesign.md:80` (legacy branch only) | M      |
+| requests              | `:21` fields                                | PARTIAL | `request.toml`: claim, answer, decline; signals offered, finished                                                                                                                                                                      | `rust-compositor.md:177`                        | M      |
+| session-runtime       | `:69` runtime health and reload             | MISSING | `session.toml` has version and signals only                                                                                                                                                                                            | `rust-compositor.md:1281`                       | M      |
+| session-runtime       | `:172` locking                              | PARTIAL | `lock.toml`: prop locked, lock_session                                                                                                                                                                                                 | `rust-compositor.md:847`                        | S      |
+| tablet-pad-help       | `:7` tablet-pad help                        | MISSING | No member                                                                                                                                                                                                                              | unowned                                         | M      |
+| text-insertion        | `:7` request a text target                  | MISSING | No `text_target`                                                                                                                                                                                                                       | `rust-compositor.md:1137` [INFERENCE]           | M      |
+| tweens                | `:20` timeline                              | MISSING | No `gnoblin.tween`                                                                                                                                                                                                                     | `rust-compositor.md:442`, `:1070`               | L      |
+| types                 | `:7` shared records                         | PARTIAL | Schema objects exist; no Lua record types                                                                                                                                                                                              | `rust-compositor.md:1052-1080`                  | M      |
+| window-snapping       | `:7` pointer and keyboard snapping          | MISSING | No snapping member                                                                                                                                                                                                                     | unowned                                         | M      |
+| windows               | `:3` read windows                           | MISSING | No `gnoblin.windows`; `window` object generated                                                                                                                                                                                        | `rust-compositor.md:1052-1080`                  | M      |
+| windows               | `:83` window methods                        | PARTIAL | Only focus, kill, add_effect, request_menu in `window.toml`                                                                                                                                                                            | `rust-compositor.md:836`                        | M      |
+| windows               | `:126` change how a window is drawn         | PARTIAL | `add_effect` BUILT; `too-many-passes` error                                                                                                                                                                                            | `rust-compositor.md:836`                        | S      |
+| windows               | `:156` window rules                         | MISSING | No `gnoblin.window_rule`                                                                                                                                                                                                               | `rust-compositor.md:3004`                       | M      |
+| windows               | `:177` compositor requests                  | PARTIAL | `window.toml` signal `menu_requested`                                                                                                                                                                                                  | `rust-compositor.md:833`                        | S      |
+| workspaces            | `:23` read workspaces                       | MISSING | No `gnoblin.workspaces`                                                                                                                                                                                                                | `rust-compositor.md:1052-1080`                  | M      |
+| workspaces            | `:56` create and change                     | PARTIAL | `workspace.toml` set_layout, layout_command                                                                                                                                                                                            | `rust-compositor.md:1605`                       | M      |
 
 Notes on shell-api:
 
 - `shell-api-redesign.md:80` says `process.spawn` is Done. That is the legacy branch, not the Rust tree. Treat as design-only.
 - The `object model` is in the Rust tree. The Lua surface that exposes it is not.
+
+## Lua event bus
+
+Rust `gnoblin.on` and `gnoblin.once` accept only schema-declared object-model signals.
+
+**BUILT**
+
+- `gnoblin.effect.closed`
+- `gnoblin.output.closed`
+- `gnoblin.request.offered`
+- `gnoblin.request.finished`
+- `gnoblin.session.ready`
+- `gnoblin.session.bell`
+- `gnoblin.session.reload_requested`
+- `gnoblin.window.menu_requested`
+- `gnoblin.workspace.layout_changed`
+- `gnoblin.workspace.layout_failed`
+
+**PARTIAL**
+
+- `gnoblin.window.closed` is delivered as a schema event (`name`, `object`), not the legacy `window_id` and `last` record documented in `events/desktop-state.md`.
+
+**MISSING** — names documented in `docs/events/` that have no matching schema signal:
+
+```text
+gnoblin.session.state-changed
+gnoblin.session.lock-state-changed
+gnoblin.runtime.status-changed
+gnoblin.appearance.color-scheme-changed
+gnoblin.shortcut.activated
+gnoblin.shortcut.session.ended
+gnoblin.input.gesture
+gnoblin.prompt.requested
+gnoblin.window.activation-denied
+gnoblin.privacy.changed
+gnoblin.capability.changed
+gnoblin.focus.policy-changed
+gnoblin.operation.completed
+gnoblin.config.reloaded
+gnoblin.config.reload-failed
+gnoblin.workspace.created
+gnoblin.workspace.renamed
+gnoblin.workspace.changed
+gnoblin.workspace.removed
+gnoblin.workspace.activated
+gnoblin.workspace.window-moved
+gnoblin.output.added
+gnoblin.output.changed
+gnoblin.output.removed
+gnoblin.layer.created
+gnoblin.layer.changed
+gnoblin.layer.removed
+gnoblin.window.created
+gnoblin.window.changed
+gnoblin.window.focused
+gnoblin.window.unfocused
+gnoblin.window.attention-changed
+gnoblin.input.device-added
+gnoblin.input.device-removed
+gnoblin.input.sources-changed
+gnoblin.input.source-changed
+gnoblin.input.orientation-lock-changed
+gnoblin.launch.changed
+gnoblin.shortcut.binding-activated
+gnoblin.shortcut.binding-deactivated
+gnoblin.shortcut.session.activated
+gnoblin.shortcut.session.key
+gnoblin.osd.requested
+gnoblin.pointer.locate-requested
+gnoblin.location.authorization-requested
+gnoblin.location.authorization-finished
+gnoblin.auth.requested
+gnoblin.auth.prompt
+gnoblin.auth.message
+gnoblin.auth.finished
+gnoblin.prompt.finished
+gnoblin.session.lock-requested
+gnoblin.animation.started
+gnoblin.animation.finished
+gnoblin.input.pad-help-requested
+mutter.display.restacked
+mutter.window.position-changed
+mutter.wayland.pointer-window-changed
+mutter.touchpad.gesture
+mutter.display.window-created
+mutter.* (all forwarded Mutter signal names)
+* (wildcard subscription)
+```
+
+The event pages describe a broader legacy contract. Counts in the summary above cover only the original API, bridge, CLI, and D-Bus rows.
 
 ## bridge pages
 

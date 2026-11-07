@@ -1,5 +1,7 @@
 # Input and Shortcut Events
 
+> **Rust status:** These gesture, shortcut, and operation events have no matching schema signals and are unbuilt. Rust delivers only the object-model signals listed on the [events index](index).
+
 Subscribe to input gestures, tablet-pad help, shortcut activations, and
 operation completion in a Lua configuration.
 

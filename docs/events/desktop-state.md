@@ -1,5 +1,7 @@
 # Window, Workspace, and Monitor Events
 
+> **Rust status:** This page's snapshot records and lifecycle events are unbuilt. `gnoblin.window.closed` is the only event with a matching schema signal, and its payload is `name` and `object`, not this legacy window record; see the [events index](index).
+
 Track window, workspace, and monitor records as compositor state changes.
 
 Lifecycle events describe active state in the current compositor session.

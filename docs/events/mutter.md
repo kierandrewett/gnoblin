@@ -1,5 +1,7 @@
 # Mutter Events
 
+> **Rust status:** The Mutter/GObject events on this page have no Rust Lua source and are unbuilt. The Rust event bus accepts only schema-declared object-model signals; see the [events index](index).
+
 Subscribe to forwarded GObject signals from Mutter objects.
 
 Available signals depend on the running Mutter build and can change between Mutter versions.

@@ -1,5 +1,7 @@
 # Gnoblin Lifecycle Events
 
+> **Rust status:** This page describes legacy event payloads. `gnoblin.window.closed` is the only listed name with a schema signal, and its payload differs; other event names are unbuilt in Rust. See the [events index](index).
+
 Observe lifecycle changes for Gnoblin capabilities, configuration, runtime,
 appearance, and session state.
 

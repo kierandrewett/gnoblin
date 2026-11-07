@@ -1,5 +1,7 @@
 # Launch Events
 
+> **Rust status:** The launch and shortcut-capture API and event contracts on this page are unbuilt in Rust. Its event bus accepts only the schema signals listed on the [events index](index).
+
 Observe launch feedback events.
 
 Events are emitted when the launch tracker reports a change.

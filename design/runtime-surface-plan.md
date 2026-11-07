@@ -1,22 +1,19 @@
 # Runtime surface plan
 
-Status: plan. Docs only; no Rust changed. Written against `crates/` on `rust-compositor`, with the legacy C tree
-`src/` as reference. The audit rows it relies on are in `design/docs-parity/{api,config,guides}.md`.
+Status: implementation plan for the Rust tree. S1 and S2 are being ported to `crates/`; the C tree in
+`src/` remains a reference. The audit rows it relies on are in `design/docs-parity/{api,config,guides}.md`.
 
 Related: `design/rust-compositor.md` (Phase 3 at lines 815-826, Phase 4 at 828-861, object model at 1052-1063,
 Configuration and Lua at 1064-1083), `design/lua-api-goal.md`, `design/shell-api-redesign.md`.
 
 ## 1. The main finding: the design lives in the legacy C tree
 
-The audits found most documented Lua and CLI surface missing from `crates/`. That is correct. It hides a larger
-fact. The primitives that `design/shell-api-redesign.md` marks "Done" (lines 80-88 and onward) are in the C tree:
-`src/config/lua/api/process.h`, `windows.h`, `src/config/lua/gnoblin-lua-operations.c`, and the `lua_api[]` table in
-`src/config/lua/gnoblin-lua-api.h`. The redesign's branch, `refactor/lua-api-table`, is an ancestor of HEAD, so the
-work exists. It has not been ported.
+The parity audit confirms that most documented Lua and CLI APIs remain missing from `crates/`. The earlier redesign's
+"Done" primitives are in the C tree (`src/config/lua/`); its API-table branch is an ancestor of HEAD, so those
+primitives are a reference but have not been ported.
 
-"Done" in that redesign therefore means done in C. The Rust port must rebuild each primitive. This plan ports the
-redesign's names and principles, not the C shapes, unless Kieran decides otherwise (decision 2 below). The redesign's
-status line should say so; slice 14 fixes it.
+The Rust port rebuilds them using the redesign's names and principles, not its C shapes. This plan records that
+distinction and S14 corrects the redesign status line.
 
 ## 2. Verified evidence
 
@@ -82,7 +79,7 @@ Foundations first, then the window and process surface, then animation, input, C
 | #   | Slice                                     | Effort | Depends on      | Start now |
 | --- | ----------------------------------------- | ------ | --------------- | --------- |
 | S1  | Timers and Operation combinators          | M      | decision 1      | yes       |
-| S2  | Global event bus                          | M      | S1              | no        |
+| S2  | Global event bus                          | M      | S1              | yes       |
 | S3  | Object collections and `find`             | M      | S2              | no        |
 | S4  | Window method set and `present`           | L      | S3, decision 3  | no        |
 | S5  | Process object and attribution            | L      | S1, S2          | no        |

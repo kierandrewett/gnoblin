@@ -1,5 +1,7 @@
 # Listen to Forwarded Events
 
+> **Rust status:** Wildcards, listener inspection, and live-config semantics on this page are unbuilt in Rust. Rust accepts only the schema signals listed on the [events index](index); a failing handler does not stop later handlers.
+
 Subscribe to all forwarded events when inspecting an integration or building a generic event viewer.
 
 The event set depends on the running Mutter build and supported Gnoblin API version.

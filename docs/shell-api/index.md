@@ -36,6 +36,8 @@ Read-only calls return live objects or detached snapshots. Runtime mutations ret
 
 Subscribe with `gnoblin.on(name, callback)`, or `gnoblin.once(name, callback)` for one event. See the [event reference](/events/).
 
+The Rust event bus is narrower than the legacy reference: `gnoblin.on` and `gnoblin.once` accept only schema-declared object-model signals. The [events reference](/events/) marks broader contracts unbuilt for Rust.
+
 The local socket protocol for non-Lua clients is documented in the [compositor bridge](/bridge/). For command-line use, see [gnoblinctl](/cli/).
 
 ## Runtime identity and settings
