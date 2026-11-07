@@ -542,6 +542,100 @@ mod gnoblin_objects {
             self.method(object, "window", "kill", gnoblin_model::Fields::new())
         }
 
+        /// Ask the window's client to close. The client may refuse or ignore it.
+        fn close(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "window", "close", gnoblin_model::Fields::new())
+        }
+
+        fn set_minimized(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            value: bool,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("value".to_owned(), Value::Bool(value));
+            self.method(object, "window", "set_minimized", arguments)
+        }
+
+        fn set_maximized(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            value: bool,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("value".to_owned(), Value::Bool(value));
+            self.method(object, "window", "set_maximized", arguments)
+        }
+
+        fn set_fullscreen(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            value: bool,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("value".to_owned(), Value::Bool(value));
+            self.method(object, "window", "set_fullscreen", arguments)
+        }
+
+        /// Move the top-left corner to `x`, `y` in global logical coordinates.
+        fn move_(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            x: i64,
+            y: i64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("x".to_owned(), Value::Int(x));
+            arguments.insert("y".to_owned(), Value::Int(y));
+            self.method(object, "window", "move", arguments)
+        }
+
+        /// Resize to `width` by `height` logical pixels, keeping the position.
+        fn resize(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            width: u64,
+            height: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("width".to_owned(), Value::Uint(width));
+            arguments.insert("height".to_owned(), Value::Uint(height));
+            self.method(object, "window", "resize", arguments)
+        }
+
+        /// Move to the workspace named by the `workspace` object identity.
+        fn set_workspace(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            workspace: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert(
+                "workspace".to_owned(),
+                Value::Object(gnoblin_model::ObjectId::new(workspace)),
+            );
+            self.method(object, "window", "set_workspace", arguments)
+        }
+
+        /// Move to the output named by the `output` object identity.
+        fn set_output(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            output: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("output".to_owned(), Value::Object(gnoblin_model::ObjectId::new(output)));
+            self.method(object, "window", "set_output", arguments)
+        }
+
         fn request_menu(
             &mut self,
             handle: Resource<ObjectRep>,

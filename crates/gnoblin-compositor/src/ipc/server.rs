@@ -79,7 +79,8 @@ use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tic
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
-    ControlHandle, EffectSpec, Observer, ProcessIdentity, SessionSnapshot, WindowChange, WindowProcess,
+    ControlHandle, EffectSpec, Observer, ProcessIdentity, SessionSnapshot, WindowChange, WindowChangeRefusal,
+    WindowProcess,
 };
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -1394,7 +1395,14 @@ impl Dispatcher {
                 if ty == "window"
                     && matches!(
                         method.as_str(),
-                        "close" | "set_minimized" | "set_maximized" | "set_fullscreen"
+                        "close"
+                            | "set_minimized"
+                            | "set_maximized"
+                            | "set_fullscreen"
+                            | "move"
+                            | "resize"
+                            | "set_workspace"
+                            | "set_output"
                     ) =>
             {
                 self.window_control_call(client, envelope, object, &method, &arguments, window);
@@ -1717,12 +1725,13 @@ impl Dispatcher {
         self.finish(object, &operation, Some(outcome));
     }
 
-    /// Serves the window-state verbs: `close`, `set_minimized`, `set_maximized` and
-    /// `set_fullscreen`. The loop applies the change through the same paths the taskbar's
-    /// foreign-toplevel requests use, and the operation completes `done` only when the
-    /// window was there to change. A connection without `window-control` is refused
-    /// `power-missing` before the graph sees the call; a state change without its boolean
-    /// `value` is refused before an operation exists.
+    /// Serves the window verbs that change a window's state, place or workspace: `close`,
+    /// `set_minimized`, `set_maximized`, `set_fullscreen`, `move`, `resize`, `set_workspace`
+    /// and `set_output`. The loop applies the change through the window manager, so the
+    /// constraints a drag obeys apply to these too. The operation completes `done` only when
+    /// the change was made; a refusal completes with the reason the window manager gave. A
+    /// connection without `window-control` is refused `power-missing` before the graph sees
+    /// the call, and arguments that name no change are refused before an operation exists.
     fn window_control_call(
         &mut self,
         client: ClientId,
@@ -1741,22 +1750,12 @@ impl Dispatcher {
             );
             return;
         }
-        let value = bool_argument(arguments, "value");
-        let change = match (method, value) {
-            ("close", _) => Some(WindowChange::Close),
-            ("set_minimized", Some(value)) => Some(WindowChange::Minimised(value)),
-            ("set_maximized", Some(value)) => Some(WindowChange::Maximised(value)),
-            ("set_fullscreen", Some(value)) => Some(WindowChange::Fullscreen(value)),
-            _ => None,
-        };
-        let Some(change) = change else {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::UNKNOWN_MEMBER,
-                &format!("`{method}` needs its boolean `value`"),
-            );
-            return;
+        let change = match self.window_change(method, arguments) {
+            Ok(change) => change,
+            Err((code, message)) => {
+                self.refuse(client, envelope, code, &message);
+                return;
+            }
         };
         let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
             Ok(operation) => operation,
@@ -1772,15 +1771,67 @@ impl Dispatcher {
         let applied = self.control.window_control(window, change);
         self.sync();
         let outcome = match applied {
-            Some(true) => Some(OperationOutcome::Done),
-            // The window closed while the request was on its way, so there was nothing to
-            // change; `finish` maps a gone object to `object-gone` itself.
-            Some(false) => Some(OperationOutcome::Failed(OBJECT_GONE)),
+            Some(Ok(())) => Some(OperationOutcome::Done),
+            // The window manager's reason becomes the completion's code. `finish` still maps
+            // a gone object to `object-gone` itself.
+            Some(Err(refusal)) => Some(OperationOutcome::Failed(window_refusal_code(refusal))),
             // The loop did not answer, which means it is stopping: the operation is left
             // pending rather than given an outcome this server would have invented.
             None => None,
         };
         self.finish(object, &operation, outcome);
+    }
+
+    /// Reads a window verb's arguments into the change the loop applies. The error is the
+    /// refusal code and message for arguments that name no change, or for a workspace or
+    /// output object the session does not declare.
+    fn window_change(
+        &self,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+    ) -> Result<WindowChange, (&'static str, String)> {
+        let missing = |needs: &str| (wire::code::UNKNOWN_MEMBER, format!("`{method}` needs {needs}"));
+        let flag = bool_argument(arguments, "value").ok_or_else(|| missing("its boolean `value`"));
+        Ok(match method {
+            "close" => WindowChange::Close,
+            "set_minimized" => WindowChange::Minimised(flag?),
+            "set_maximized" => WindowChange::Maximised(flag?),
+            "set_fullscreen" => WindowChange::Fullscreen(flag?),
+            "move" => {
+                let x = int_argument(arguments, "x").and_then(|x| i32::try_from(x).ok());
+                let y = int_argument(arguments, "y").and_then(|y| i32::try_from(y).ok());
+                match (x, y) {
+                    (Some(x), Some(y)) => WindowChange::MoveTo { x, y },
+                    _ => return Err(missing("integer `x` and `y`")),
+                }
+            }
+            "resize" => {
+                let width = uint_argument(arguments, "width").and_then(|w| u32::try_from(w).ok());
+                let height = uint_argument(arguments, "height").and_then(|h| u32::try_from(h).ok());
+                match (width, height) {
+                    (Some(width), Some(height)) => WindowChange::Resize { width, height },
+                    _ => return Err(missing("unsigned `width` and `height`")),
+                }
+            }
+            "set_workspace" => {
+                let object =
+                    object_argument(arguments, "workspace").ok_or_else(|| missing("its `workspace` object"))?;
+                let workspace = self.store.workspace_of(object).ok_or((
+                    wire::code::OBJECT_UNKNOWN,
+                    format!("`{method}` needs a workspace the session declares"),
+                ))?;
+                WindowChange::Workspace(workspace)
+            }
+            "set_output" => {
+                let object = object_argument(arguments, "output").ok_or_else(|| missing("its `output` object"))?;
+                let (output, _) = self.store.output_of(object).ok_or((
+                    wire::code::OBJECT_UNKNOWN,
+                    format!("`{method}` needs an output the session declares"),
+                ))?;
+                WindowChange::Output(output)
+            }
+            _ => return Err(missing("a window verb this server serves")),
+        })
     }
 
     /// Serves `workspace.set_layout`: the layout is swapped, and the completion says
@@ -2285,6 +2336,26 @@ fn menu_anchor_from(arguments: &gnoblin_model::Fields) -> gnoblin_wayland::MenuA
             .unwrap_or(0)
     };
     gnoblin_wayland::MenuAnchor::new(coordinate("x"), coordinate("y"), size("width"), size("height"))
+}
+
+/// The object identity at `name`; `None` when it is absent or of another type.
+fn object_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<gnoblin_types::ObjectId> {
+    match arguments.get(name) {
+        Some(gnoblin_model::Value::Object(object)) => Some(*object),
+        _ => None,
+    }
+}
+
+/// The code a window verb completes with when the window manager refused it. The window's
+/// own `Gone` is `object-gone`; each other code names the constraint that refused the change.
+fn window_refusal_code(refusal: WindowChangeRefusal) -> ErrorCode {
+    match refusal {
+        WindowChangeRefusal::Gone => OBJECT_GONE,
+        WindowChangeRefusal::UnknownTarget => ErrorCode::from_static(wire::code::OBJECT_UNKNOWN),
+        WindowChangeRefusal::NotFloating => ErrorCode::from_static("not-floating"),
+        WindowChangeRefusal::TransientFollowsParent => ErrorCode::from_static("transient-follows-parent"),
+        WindowChangeRefusal::Refused => ErrorCode::from_static("refused"),
+    }
 }
 
 /// The signed integer at `name`; `None` when it is absent or of another type.

@@ -201,12 +201,12 @@ pub use clock::{Clock, ManualClock, SystemClock};
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 /// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
-pub use observation::WindowChange;
 /// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
     ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
     ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
 };
+pub use observation::{WindowChange, WindowChangeRefusal};
 /// Output configuration types a host reports and applies, and the host trait.
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
 /// Output control: the trait a backend implements and the no-op default.

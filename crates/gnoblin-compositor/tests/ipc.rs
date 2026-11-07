@@ -259,6 +259,63 @@ fn set_fullscreen_without_its_value_is_refused() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// A move needs both coordinates and a resize both sizes. A call without them is refused
+/// with the schema's code for a bad member, and the window keeps the geometry it had.
+#[test]
+fn move_and_resize_without_their_geometry_are_refused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    let mut client = ipc(&session);
+    let only_x = Fields::from([("x".to_owned(), Value::Int(40))]);
+    let only_width = Fields::from([("width".to_owned(), Value::Uint(300))]);
+    for (method, arguments) in [
+        ("move", Fields::new()),
+        ("move", only_x),
+        ("resize", Fields::new()),
+        ("resize", only_width),
+    ] {
+        let error = client
+            .call(ObjectId::new(id), method, &arguments)
+            .expect_err("move and resize need their full geometry");
+        match error {
+            gnoblin_client::ClientError::Refused { code, .. } => {
+                assert_eq!(code, gnoblin_client::code::UNKNOWN_MEMBER, "{method}");
+            }
+            other => panic!("{method}: expected unknown-member, got {other:?}"),
+        }
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+/// `set_workspace` and `set_output` take the object the session declared for the target.
+/// A window's own identity is not a workspace or an output, so both are refused as an
+/// object the session does not declare, and the window is left where it was.
+#[test]
+fn set_workspace_and_set_output_refuse_objects_that_are_not_declared_targets() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    let mut client = ipc(&session);
+    for (method, name) in [("set_workspace", "workspace"), ("set_output", "output")] {
+        let arguments = Fields::from([(name.to_owned(), Value::Object(ObjectId::new(id)))]);
+        let error = client
+            .call(ObjectId::new(id), method, &arguments)
+            .expect_err("a window is not a workspace or an output");
+        match error {
+            gnoblin_client::ClientError::Refused { code, .. } => {
+                assert_eq!(code, gnoblin_client::code::OBJECT_UNKNOWN, "{method}");
+            }
+            other => panic!("{method}: expected object-unknown, got {other:?}"),
+        }
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
 #[test]
 fn focus_completes_after_the_diff_it_caused() {
     let session = Session::start();

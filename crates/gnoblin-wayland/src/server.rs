@@ -57,7 +57,7 @@ use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
-use crate::observation::{MenuAnchor, MenuSource, Observer, SessionSnapshot, WindowChange};
+use crate::observation::{MenuAnchor, MenuSource, Observer, SessionSnapshot, WindowChange, WindowChangeRefusal};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
@@ -770,11 +770,12 @@ impl ControlHandle {
     }
 
     /// Applies one window-control request, as the IPC's `window.close` and `window.set_*`
-    /// do. The loop applies it through the same effect a taskbar produces. `Some(true)`
-    /// means the window existed and the change was applied, `Some(false)` means the window
-    /// is gone, and [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`].
+    /// do. The loop applies it through the same effect a taskbar produces. `Some(Ok(()))`
+    /// means the change was applied, `Some(Err(reason))` means the window is gone or the
+    /// window manager refused it, and [`None`] means the loop did not answer within
+    /// [`FOCUS_TIMEOUT`].
     #[must_use]
-    pub fn window_control(&self, window: WindowId, change: WindowChange) -> Option<bool> {
+    pub fn window_control(&self, window: WindowId, change: WindowChange) -> Option<Result<(), WindowChangeRefusal>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowControl { window, change, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1114,11 +1115,11 @@ enum Command {
         reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// A window-control request from the IPC, and the channel its answer goes back on:
-    /// `true` when the window exists and the change was applied, `false` when it is gone.
+    /// `Ok(())` when the change was applied, `Err` with the reason when it was not.
     WindowControl {
         window: WindowId,
         change: WindowChange,
-        reply: std::sync::mpsc::SyncSender<bool>,
+        reply: std::sync::mpsc::SyncSender<Result<(), WindowChangeRefusal>>,
     },
     /// A session lock request. The answer is sent once the lock settles: `true` when
     /// the session is `locked`, `false` when the lock is refused or the cover fails.

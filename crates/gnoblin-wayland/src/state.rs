@@ -80,6 +80,7 @@ use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
     LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, SessionSnapshot, WindowChange,
+    WindowChangeRefusal,
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
@@ -875,35 +876,84 @@ impl State {
         Arc::clone(&self.access)
     }
 
-    /// Applies one window-control request from the IPC. The answer is whether the window
-    /// exists: a closed window is refused, so a script learns it asked too late rather
-    /// than seeing a silent success. Close goes to the toplevel when the window has one and
-    /// to the X11 policy otherwise; the other changes are the taskbar's own.
-    pub(crate) fn window_control(&mut self, window: WindowId, change: WindowChange) -> bool {
-        if self.wm.window(window).is_none() {
-            return false;
-        }
+    /// Applies one window-control request from the IPC. The answer is `Err(Gone)` for a closed
+    /// window, so a script learns it asked too late rather than seeing a silent success, and
+    /// `Err` with the window manager's reason when the change is refused. Close goes to the
+    /// toplevel when the window has one and to the X11 policy otherwise; move, resize,
+    /// workspace and output go through the window manager, so the constraints a drag obeys
+    /// apply to them too.
+    pub(crate) fn window_control(&mut self, window: WindowId, change: WindowChange) -> Result<(), WindowChangeRefusal> {
+        let Some(managed) = self.wm.window(window) else {
+            return Err(WindowChangeRefusal::Gone);
+        };
+        let current = managed.geometry;
         match change {
             WindowChange::Close => {
-                if self.toplevel_of(window).is_some() {
+                let closed = if self.toplevel_of(window).is_some() {
                     self.toplevel_close(window);
                     true
                 } else {
                     self.close_x11_window(window)
-                }
+                };
+                if closed { Ok(()) } else { Err(WindowChangeRefusal::Gone) }
             }
             WindowChange::Minimised(minimised) => {
                 self.toplevel_minimise(window, minimised);
-                true
+                Ok(())
             }
             WindowChange::Maximised(maximised) => {
                 self.toplevel_maximise(window, maximised);
-                true
+                Ok(())
             }
             WindowChange::Fullscreen(fullscreen) => {
                 self.toplevel_fullscreen(window, fullscreen, None);
-                true
+                Ok(())
             }
+            WindowChange::MoveTo { x, y } => {
+                let geometry = gnoblin_types::Rect { x, y, ..current };
+                self.wm_change(Event::MoveResize { window, geometry })
+            }
+            WindowChange::Resize { width, height } => {
+                let geometry = gnoblin_types::Rect {
+                    width,
+                    height,
+                    ..current
+                };
+                self.wm_change(Event::MoveResize { window, geometry })
+            }
+            WindowChange::Workspace(workspace) => self.wm_change(Event::MoveToWorkspace { window, workspace }),
+            WindowChange::Output(output) => self.wm_change(Event::MoveToOutput { window, output }),
+        }
+    }
+
+    /// Applies a window-management event a control request asked for. A rejected event
+    /// changes nothing and its reason is returned, so the reply never reports a refused
+    /// change as done.
+    fn wm_change(&mut self, event: Event) -> Result<(), WindowChangeRefusal> {
+        let effects = self.wm.apply(event);
+        let rejected = effects.iter().find_map(|effect| match effect {
+            Effect::Rejected { reason } => Some(*reason),
+            _ => None,
+        });
+        if let Some(reason) = rejected {
+            return Err(Self::refusal_of(reason));
+        }
+        self.apply(effects);
+        self.publish();
+        Ok(())
+    }
+
+    /// Maps the window manager's reason for refusing an event to the reply a caller sees.
+    /// A window or target that has gone is named apart from a state refusal, so a script
+    /// can tell that it lost a race from a change it can never make.
+    fn refusal_of(reason: gnoblin_wm::Rejection) -> WindowChangeRefusal {
+        use gnoblin_wm::Rejection;
+        match reason {
+            Rejection::UnknownWindow(_) => WindowChangeRefusal::Gone,
+            Rejection::UnknownWorkspace(_) | Rejection::UnknownOutput(_) => WindowChangeRefusal::UnknownTarget,
+            Rejection::NotFloating(_) => WindowChangeRefusal::NotFloating,
+            Rejection::TransientFollowsParent(_) => WindowChangeRefusal::TransientFollowsParent,
+            _ => WindowChangeRefusal::Refused,
         }
     }
 

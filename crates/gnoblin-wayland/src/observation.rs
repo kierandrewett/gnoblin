@@ -291,6 +291,31 @@ pub enum WindowChange {
     Maximised(bool),
     /// Fullscreen the window, or restore it.
     Fullscreen(bool),
+    /// Move the window's top-left corner to a global logical point, keeping its size.
+    MoveTo { x: i32, y: i32 },
+    /// Resize the window to a logical extent, keeping its position.
+    Resize { width: u32, height: u32 },
+    /// Move the window, and its transient children, to a workspace.
+    Workspace(WorkspaceId),
+    /// Move the window, and its transient children, to an output.
+    Output(OutputId),
+}
+
+/// Why the loop did not apply a [`WindowChange`]. A caller is told the reason, so a request
+/// the window manager rejects is never reported as done.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowChangeRefusal {
+    /// The window closed before the loop reached the request.
+    Gone,
+    /// The workspace or output the request names is no longer declared or connected.
+    UnknownTarget,
+    /// The window is fullscreen, so a move, resize or maximise has no free rectangle to act on.
+    NotFloating,
+    /// The window is a transient, so it moves only with its parent when it changes workspace.
+    TransientFollowsParent,
+    /// The window manager refuses the change for another reason, such as an output or
+    /// workspace state that does not allow it.
+    Refused,
 }
 
 /// Who asked for a window menu.

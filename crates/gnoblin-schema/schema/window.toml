@@ -134,6 +134,62 @@ name = "value"
 type = "bool"
 since = "0.2.0"
 
+# Move the window's top-left corner to `x`, `y` in global logical coordinates, keeping
+# its size. The rectangle is constrained to the work area as a drag is. A fullscreen
+# window is refused `not-floating`: its rectangle is its monitor.
+[[object.method]]
+name = "move"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+# Resize the window to `width` by `height` logical pixels, keeping its position. An
+# empty extent is raised to one pixel. A fullscreen window is refused `not-floating`.
+[[object.method]]
+name = "resize"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+
+# Move the window, and its transient children, to `workspace`. A transient window is
+# refused `transient-follows-parent`: it shares its parent's workspace, so the parent
+# moves it. Moving to the workspace it is on completes `done` and changes nothing.
+[[object.method]]
+name = "set_workspace"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+since = "0.2.0"
+
+# Move the window, and its transient children, to `output`, reshaping each into that
+# output's work area. A fullscreen window is refused `not-floating`.
+[[object.method]]
+name = "set_output"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+since = "0.2.0"
+
 # The window's effects in paint order, first to last. Read-only: the compositor
 # sets it as effects are added and removed. Each element is an `effect` object.
 [[object.property]]
@@ -319,4 +375,14 @@ since = "0.2.0"
 # `kind` is not `blur`, `shadow` or `shader`, so no effect was added.
 [[error]]
 name = "unknown-effect-kind"
+since = "0.2.0"
+
+# The window is fullscreen, so a move, resize or output change has no free rectangle to act on.
+[[error]]
+name = "not-floating"
+since = "0.2.0"
+
+# The window is a transient, so it moves to another workspace only with its parent.
+[[error]]
+name = "transient-follows-parent"
 since = "0.2.0"
