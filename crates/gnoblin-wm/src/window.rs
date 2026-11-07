@@ -87,13 +87,19 @@ pub struct Window {
     /// Whether the active layout assigned this window its geometry. Set by the
     /// window manager from the layout's kind; never set by a client.
     pub placement: WindowPlacement,
-    /// How many window rules applied completely to this window.
+    /// How many window rules applied completely to this window, from the set in
+    /// `matched_rules` at the time the set last changed.
     ///
-    /// Rules run once, when the window is taken into management. The counter makes
-    /// that observable, so a test can prove that a title change or a rules reload
-    /// did not apply them again, and a rule whose workspace target was missing is
-    /// not counted because nothing was applied.
+    /// A rule's fields apply when the window's set of matching rules changes, which is
+    /// when the window opens and when its title or application id changes the set. The
+    /// counter makes that observable, so a test can prove that an unchanged match does
+    /// not apply rules again, and a rule whose workspace target was missing is not
+    /// counted because nothing was applied.
     pub applied_rules: usize,
+    /// The indices of the rules that matched the window the last time its set was
+    /// computed. A title or application-id change recomputes it and applies the rules
+    /// again only when it differs.
+    pub matched_rules: Vec<usize>,
     /// The protocol the window arrived on. Window rules that select by client type read
     /// it, and it is fixed for the window's life.
     pub protocol: WindowProtocol,
@@ -129,6 +135,7 @@ mod tests {
             restore: Rect::new(0, 0, 100, 100),
             state: WindowState::default(),
             applied_rules: 0,
+            matched_rules: Vec::new(),
             protocol: WindowProtocol::Wayland,
         }
     }

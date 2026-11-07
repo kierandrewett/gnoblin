@@ -1,284 +1,109 @@
 # gnoblin.window_rule
 
-Add an ordered window or layer-surface rule. All fields in `match` must
-match. Later matching rules override only the fields they provide.
+Add an ordered window rule. Every key in `match` must hold for the rule to
+apply. Matching rules run in list order, and a later rule overrides an earlier
+one only for the fields it sets.
 
 See the [window rules guide](/guides/window_rules) for usage patterns.
 
 ```lua
 gnoblin.window_rule {
-    match = {type = "window", app_id = "^org.example.App$"},
-    opacity = 0.9,
+    match = {type = "window", app_id = "^org%.example%.Editor$"},
+    workspace = {id = "code"},
+    maximise = true,
 }
 ```
 
-## Match fields
+## Match keys
 
-| Field              | Values                                                         |
-| ------------------ | -------------------------------------------------------------- |
-| `type`             | `"window"` or `"layer"`                                        |
-| `focused`          | Boolean                                                        |
-| `app_id`           | Lua pattern against GTK app ID, falling back to WM class       |
-| `title`            | Lua pattern against the window title                           |
-| `layer`            | Lua pattern against the layer-shell namespace                  |
-| `workspace_id`     | Exact workspace ID; declared or explicitly assigned at runtime |
-| `workspace_number` | Current one-based workspace position, 1–1024                   |
-| `client_type`      | `"wayland"` or `"x11"`; `"x11"` is an Xwayland client          |
+| Key                | Values                                                   |
+| ------------------ | -------------------------------------------------------- |
+| `type`             | `"window"`                                               |
+| `focused`          | Boolean; matches the window's keyboard focus             |
+| `app_id`           | Lua pattern against GTK app ID, falling back to WM class |
+| `title`            | Lua pattern against the current window title             |
+| `workspace_id`     | Exact workspace ID                                       |
+| `workspace_number` | Current one-based workspace position, 1–1024             |
+| `client_type`      | `"wayland"` or `"x11"`; `"x11"` is an Xwayland client    |
 
-All supplied match fields must match. Text patterns use Lua 5.4
-`string.find` syntax. They are case-sensitive and search anywhere by default.
-Use `^` and `$` to match the whole value.
+All supplied match keys must match. An omitted or empty `match` selects every
+window.
 
-In Lua patterns, `.` matches any character and `%.` matches a literal dot.
-For example, `^org%.example%.App$` matches the complete ID
-`org.example.App`. JavaScript and PCRE regex syntax is not supported.
-`workspace_id` matches an exact, case-sensitive ID.
+Text patterns use Lua 5.4 `string.find` syntax. They are case-sensitive and
+search anywhere by default. Use `^` and `$` to match the whole value.
 
-See the [window rules guide](/guides/window_rules#find-the-values) for examples
-and ways to find a live app ID, title, or layer namespace.
+- `.` matches any character, and `%.` matches a literal dot.
+- `^org%.example%.App$` matches the complete ID `org.example.App`.
+- JavaScript and PCRE regex syntax is not supported.
+- A malformed pattern is a load error.
 
-Declare persistent workspace IDs in `gnoblin.configure.workspaces`. A matcher
-can also name an explicitly assigned runtime ID. Generated `@session-N` IDs
-are temporary and should not be saved in configuration. A `{id = ...}`
-placement target must exist when a matching window opens; if it does not,
-Gnoblin leaves the window in place and logs a warning.
+See the [window rules guide](/guides/window_rules#find-the-values) for ways to
+find a live app ID or title.
 
-## Rule fields {#rule-fields}
+Declare persistent workspaces in `gnoblin.configure`'s `workspaces` field and
+match them by ID here.
 
-| Field                 | Values                                                                     |
-| --------------------- | -------------------------------------------------------------------------- |
-| `blur`                | Number 0–100; blur radius in pixels; 0 disables blur                       |
-| `opacity`             | Number 0–1; affects content and text                                       |
-| `blur_ignore_shadows` | Boolean; default `false`; limits blur to the window frame                  |
-| `corners`             | Corner fields below                                                        |
-| `shader`              | GLSL file path; `""` clears it                                             |
-| `shader_uniforms`     | Up to 64 uniform names mapped to finite numeric values                     |
-| `animation`           | Built-in or registered animation name, or an event map                     |
-| `workspace`           | `{id = "code"}` or `{number = 1..1024}`; place a new window on a workspace |
-| `frame`               | Frame fields below                                                         |
+## Rule fields
 
-To change one of these effects for one window while the session runs, use
-[`window:set_effect`](/shell-api/overrides#window-effects).
+| Field       | Values                                                             |
+| ----------- | ------------------------------------------------------------------ |
+| `workspace` | `{id = "code"}` or `{number = 1..1024}`, exactly one of the two    |
+| `maximise`  | Boolean; `true` maximises, `false` restores, when the rule applies |
 
-Blur follows the opacity of the surface it sits behind. When a layer-shell panel
-fades in or out, whether through a `layer-open` animation or its own alpha, the
-blur fades with it. Panels need no extra protocol or setting for this.
+`workspace` places the window on that workspace. A `{id = ...}` target must
+exist; otherwise the window stays where it is and Gnoblin logs a warning.
 
-If a backdrop capture fails, Gnoblin shows the current backdrop without blur
-for that frame. Blur resumes after the next successful capture.
+`maximise` takes effect at the window's first match and again when a re-match
+changes the set of matching rules. A fullscreen window is not maximised.
 
-Uniform names must be valid GLSL-style identifiers; the `gnoblin_` prefix is
-reserved. Values must fit in a finite 32-bit float.
+## When rules apply
 
-Workspace match fields select a window's current workspace and update when
-the window changes workspaces.
+Rules are matched when a window opens. They are matched again when its title or
+application ID changes. The fields of the matching rules apply again only when
+the set of matching rules differs from the set the window last had. The whole
+current set is merged, so the last matching rule still wins.
 
-The `workspace` placement effect runs once when a normal window is created. It
-is not reapplied when its title or focus
-changes or when the configuration reloads. Transient and modal windows stay
-with their parent. See the [workspaces section of the window rules guide](/guides/window_rules#workspaces).
+A re-match can therefore move a window or change its maximised state, for
+example when a title change makes a rule with `workspace` start to match.
 
-## Corners
+A window that loses its match keeps what the rule already did. A configuration
+reload does not re-run rules on windows that are already open; new rules apply
+only to windows that open afterwards.
 
-| Field                           | Default          | Values                                                                    |
-| ------------------------------- | ---------------- | ------------------------------------------------------------------------- |
-| `radius`                        | `0`              | 0–200 logical pixels                                                      |
-| `smoothing`                     | `0`              | 0–1; circular to a squarer curve                                          |
-| `mode`                          | `"auto"`         | `auto`, `force`, `off`; `off` disables corner, border, and shadow effects |
-| `padding`                       | `{0, 0, 0, 0}`   | Top/right/bottom/left inset, −128–128 logical pixels                      |
-| `keep_maximized`                | `true`           | Keep rounding when maximised                                              |
-| `keep_fullscreen`, `keep_tiled` | `false`          | Keep rounding in those states                                             |
-| `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                                  |
-| `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                                        |
-| `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd)            |
-| `border_width`, `border_color`  | `0`, `#808080ff` | Single native outline; width −40–40 logical pixels                        |
-| `shadow`                        | `false`          | `true` for the default shadow, one table, or a list of 1–4 layers         |
-| `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states             |
+## Limits
 
-## Shadows
+A `window-rules` list holds at most 256 rules. A longer list is a load error.
 
-The single native outline is configured by `corners.border_width` and
-`corners.border_color` above. Positive widths draw inward; negative widths
-draw outward where the client's existing buffer has room. The `corners.shadow`
-field accepts `false`, `true` for the default, one table, or a list of 1–4
-shadow layers.
+## Refused keys
 
-| Field                                | Values / default                                           |
-| ------------------------------------ | ---------------------------------------------------------- |
-| `corners.shadow.{x, y, spread}`      | Defaults `0`, `4`, `4`; −100–100                           |
-| `corners.shadow.blur`                | Default `28`; 0–100                                        |
-| `corners.shadow.opacity`             | Default `0.6`; 0–1                                         |
-| `corners.shadow.color`               | Default `#000000ff`; `#RRGGBB` or `#RRGGBBAA`              |
-| `corners.shadow_animation.animation` | Animation name that supports the `shadow-change` event     |
-| `corners.shadow_animation.duration`  | 0–2000 ms; default 0                                       |
-| `corners.shadow_animation.easing`    | Same easing values as `gnoblin.configure` shell animations |
+A configuration that sets one of these keys is rejected at load, and the last
+accepted configuration stays in force. Each refusal names the key and ends with
+"not built in this compositor". Either the dashed or underscored spelling
+of a key is refused.
 
-## Animation fields
+| Key                         | Reason given                           |
+| --------------------------- | -------------------------------------- |
+| `blur`                      | Needs the blur pass                    |
+| `blur-ignore-shadows`       | Needs the blur pass                    |
+| `opacity`                   | Needs the alpha pass                   |
+| `corners`                   | Needs the rounded-corner pass          |
+| `shader`, `shader-uniforms` | Needs the WASM shader host             |
+| `animation`                 | Needs the animation system             |
+| `frame`                     | Needs the layer-shell surface renderer |
+| `match.layer`               | Needs the layer-shell surface selector |
 
-Choose a built-in or registered animation name. To select names by event, use
-a table:
+## Migrating from the legacy effect keys
 
-- Use `layer_open` and `layer_close` for layer surfaces.
-- `duration` and `easing` override the selected animation.
+The older docs describe flat effect keys, which do not apply in this build:
 
-See the [animation guide](/guides/animations#register-a-custom-animation) for
-supported events and presets.
+- `blur` and `opacity`
+- `corners`, `shader`, `animation` and `frame`
 
-| Field                                                                                | Values                                                     |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `animation.open`, `animation.close`, `animation.layer_open`, `animation.layer_close` | Built-in or registered animation name                      |
-| `animation.duration`                                                                 | 0–5000 ms                                                  |
-| `animation.easing`                                                                   | Same easing values as `gnoblin.configure` shell animations |
+None of them takes effect here. Remove them from `window_rule` tables, or the
+load fails. Keep the rules that set `workspace`, `maximise` or match keys.
 
-Omitted values inherit shell settings. `in` needs brackets because it is a Lua keyword.
-
-## Frame fields
-
-| Field                 | Default                             | Values                                                    |
-| --------------------- | ----------------------------------- | --------------------------------------------------------- |
-| `mode`                | `"off"`                             | `"off"`, `"auto"`, `"prefer-server"`, `"replace"`         |
-| `extents`             | `{32, 1, 1, 1}`                     | Top/right/bottom/left frame size; integers 0–256          |
-| `crop`                | `{0, 0, 0, 0}`                      | Removed client margins; same order and range              |
-| `renderer`            | `"native"`                          | Registered service name                                   |
-| `style`               | `"default"`                         | Style understood by that renderer                         |
-| `background`          | `"#242424"`                         | Active background colour                                  |
-| `foreground`          | `"#eeeeee"`                         | Foreground colour                                         |
-| `inactive_background` | `"#303030"`                         | Unfocused background colour                               |
-| `button_layout`       | `{"minimize", "maximize", "close"}` | Native-frame buttons, without duplicates; `{}` hides them |
-
-The generic default mode is `off`. GTK Wayland windows that create a KDE
-server-decoration object use `auto` behavior by default and receive Gnoblin's
-native frame. X11 apps running through Xwayland use `auto` when no rule sets
-`frame.mode`, because an X11 app has always left decorations to the window
-manager. A matching rule's `frame.mode` overrides that behavior.
-
-An X11 app asks for a server frame when it is a normal, dialog or utility
-window and does not turn decorations off. An app that sets its Motif
-decorations hint to 0 draws its own frame and gets none under `auto`.
-
-- `_GTK_FRAME_EXTENTS` declares the visible bounds, like
-  `xdg_surface.set_window_geometry`.
-- `client_type = "x11"` in `match` gives X11 apps their own frame rule.
-
-`auto` supplies SSD only for explicit client requests. `replace` crops client
-pixels and adds a frame.
-
-With `prefer-server`, Gnoblin clips CSD buffer margins to the app's declared
-visible bounds and applies Gnoblin's configured border and shadow there. It
-does not estimate margin sizes. An app that omits visible bounds uses its full
-surface.
-
-`frame.button_layout` sets the right-side buttons in Gnoblin's built-in native
-frame, including the fallback shown while an external renderer is unavailable.
-It is not sent to external renderers. Those renderers use their own layout
-settings; Bingux follows GTK settings or its `--button-layout` argument.
-
-The global `window_management.button_layout` preference does not control these
-frames. See [titlebar button placement](/config/configure/window_management#titlebar-button-placement).
-
-See the [window frames guide](/guides/window_frames) for frame modes and
-extents. Register renderers with
-[`gnoblin.configure`](/config/configure#window-management).
-
-### `remove_csd`
-
-Enable `remove_csd` when an application draws its own rounded corners and you
-want Gnoblin's configured shape to control the result. Gnoblin inspects the
-window's rendered pixels to detect the corner cutouts, then fills those gaps
-from the app's nearby background before applying the configured corners.
-
-Gnoblin adapts to each window's actual content instead of assuming a
-particular toolkit, corner radius, or background colour.
-
-It also handles the narrow antialiased edge around the detected curve while
-preserving opaque content.
-
-```lua
-gnoblin.window_rule {
-    match = {type = "window", app_id = "^org.example.App$"},
-    corners = {
-        radius = 12,
-        mode = "force",
-        remove_csd = true,
-    },
-}
-```
-
-This is opt-in because detecting and sampling the window image has a cost. Use
-it on rules for apps whose own rounded corners conflict with Gnoblin's shape;
-leave it off for other windows. The option changes corner rendering only. It
-does not remove client-side titlebars or other decorations.
-
-If the app's corner background varies sharply near the edge, Gnoblin may not
-find a safe fill, so the original corner can remain visible.
-
-## Type definition
-
-This is schema pseudocode in Lua table form. `?` marks an optional field;
-`|` separates accepted alternatives. Every supplied `match` field must match.
-
-```lua
-gnoblin.window_rule {
-    match = {
-        type = "window" | "layer"?,
-        focused = boolean?,
-        app_id = string?, -- Lua 5.4 pattern
-        title = string?, -- Lua 5.4 pattern
-        layer = string?, -- Lua 5.4 pattern
-        client_type = "wayland" | "x11"?,
-        workspace_id = string?,
-        workspace_number = integer?, -- 1–1024
-    },
-    blur = integer?, -- 0–100
-    opacity = number?, -- 0–1
-    blur_ignore_shadows = boolean?,
-    shader = string?,
-    shader_uniforms = {string = number}?,
-    animation = string | {
-        open = string?, close = string?,
-        dialog_open = string?, dialog_close = string?,
-        layer_open = string?, layer_close = string?,
-        minimize = string?, restore = string?, workspace_switch = string?,
-        shadow_change = string?,
-        resize = string?,
-        duration = integer?, -- 0–5000 ms
-        easing = string?,
-    }?,
-    workspace = {id = string} | {number = integer}?,
-    corners = {
-        radius = number?, -- 0–200
-        smoothing = number?, -- 0–1
-        mode = "auto" | "force" | "off"?,
-        padding = {number, number, number, number}?,
-        border_width = number?, -- -40 to 40
-        border_color = string?, -- #RRGGBB or #RRGGBBAA
-        keep_maximized = boolean?,
-        keep_fullscreen = boolean?,
-        keep_tiled = boolean?,
-        skip_libadwaita = boolean?,
-        skip_libhandy = boolean?,
-        remove_csd = boolean?,
-        shadow = false | Shadow | {Shadow, ...}?,
-        keep_shadow = boolean?,
-        shadow_animation = {
-        animation = string?,
-            duration = integer?, -- 0–2000 ms
-            easing = "linear" | "ease-out-cubic" | "ease-out-quad" | "ease-in-out-cubic"?,
-        }?,
-    }?,
-    frame = {
-        mode = "off" | "auto" | "prefer-server" | "replace"?,
-        extents = {integer, integer, integer, integer}?, -- 0–256 each
-        crop = {integer, integer, integer, integer}?, -- 0–256 each
-        renderer = string?,
-        style = string?,
-        background = string?,
-        foreground = string?,
-        inactive_background = string?,
-        button_layout = {"minimize" | "maximize" | "close", ...} | {}?,
-    }?,
-}
-
--- Shadow = {x = number?, y = number?, blur = number?, spread = number?,
---           opacity = number?, color = string?}
-```
+The planned replacement is an ordered `effects` list on each rule. Each entry
+is one pass, added in stack order, so the author decides the order of blur,
+shadow and shader. The design is D26 in `design/rust-compositor.md`. The flat
+`blur` and `shader` keys are removed in the same cutover that replaces
+`window:set_effect`, so no config should depend on either until that lands.

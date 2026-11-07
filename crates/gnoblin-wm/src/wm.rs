@@ -76,7 +76,7 @@ use crate::layout::{
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
-use crate::rules::{Facts, Rule, merge, validate_list};
+use crate::rules::{Facts, Rule, RuleOutcome, matching, outcome_of, validate_list};
 use crate::snapping::SnapZone;
 use crate::stack::{ClaimOrigin, Stack, StackItem, StackLayer};
 use crate::tiled::{TiledEdges, tiled_edges};
@@ -1131,6 +1131,7 @@ impl Wm {
             state: WindowState::default(),
             placement,
             applied_rules: 0,
+            matched_rules: Vec::new(),
             protocol: spec.protocol,
         };
         let mut effects = Vec::new();
@@ -1155,17 +1156,64 @@ impl Wm {
         effects
     }
 
-    /// Applies the configured rules to a window that is being taken into management.
-    ///
-    /// This is the only place rules run. The rules that match are merged, so the last
-    /// rule to set a field wins. A workspace target that does not exist leaves the
-    /// window where it is and reports why.
-    fn apply_rules(&self, window: &mut Window) -> Vec<Effect> {
-        let facts = Facts {
+    /// The facts a rule may match on for one window, read from the session around it.
+    fn facts_for(&self, window: &Window) -> Facts {
+        Facts {
             focused: self.focus == Some(window.id),
             workspace_number: self.workspaces.number_of(window.workspace),
+        }
+    }
+
+    /// Applies the configured rules to a window that is being taken into management.
+    ///
+    /// The rules that match are recorded on the window, then merged, so the last rule to
+    /// set a field wins. A workspace target that does not exist leaves the window where
+    /// it is and reports why.
+    fn apply_rules(&self, window: &mut Window) -> Vec<Effect> {
+        let matched = matching(&self.rules, &*window, self.facts_for(&*window));
+        let outcome = outcome_of(&self.rules, &matched);
+        window.matched_rules = matched;
+        self.apply_outcome(window, outcome)
+    }
+
+    /// Re-matches a window whose title or application id changed.
+    ///
+    /// The fields apply again only when the set of matching rules differs from the set
+    /// the window last had, and the whole current set is merged, so the last matching
+    /// rule still wins. A window that loses a match keeps what the rule already did.
+    fn rematch(&mut self, id: WindowId) -> Vec<Effect> {
+        let Some(snapshot) = self.windows.get(&id) else {
+            return Vec::new();
         };
-        let outcome = merge(&self.rules, &*window, facts);
+        if snapshot.kind.is_transient() {
+            return Vec::new();
+        }
+        let matched = matching(&self.rules, snapshot, self.facts_for(snapshot));
+        if matched == snapshot.matched_rules {
+            return Vec::new();
+        }
+        let (old_workspace, old_geometry) = (snapshot.workspace, snapshot.geometry);
+        let Some(mut window) = self.windows.remove(&id) else {
+            return Vec::new();
+        };
+        let outcome = outcome_of(&self.rules, &matched);
+        window.matched_rules = matched;
+        let mut effects = self.apply_outcome(&mut window, outcome);
+        let moved = window.workspace != old_workspace || window.geometry != old_geometry;
+        self.windows.insert(id, window);
+        if moved {
+            effects.extend(self.configured(id));
+            effects.push(Effect::visible(id, self.is_visible(id)));
+        }
+        if self.focus == Some(id) && !self.is_visible(id) {
+            effects.extend(self.refocus());
+        }
+        effects
+    }
+
+    /// Carries out one rule outcome on a window: its workspace target and its maximise
+    /// state. The counter records how many rules applied, not how many matched.
+    fn apply_outcome(&self, window: &mut Window, outcome: RuleOutcome) -> Vec<Effect> {
         let mut effects = Vec::new();
         let mut applied = outcome.matched;
         if let Some((rule, selector)) = outcome.workspace {
@@ -1185,6 +1233,9 @@ impl Wm {
             }
         }
         match outcome.maximise {
+            // Fullscreen owns the geometry, so a re-matched rule cannot maximise a window
+            // that is fullscreen. The rule still counts as applied; only maximise is skipped.
+            _ if window.state.fullscreen => {}
             Some(true) => {
                 if let Some(area) = window.output.and_then(|output| self.work_area(output)) {
                     if !window.state.maximised && window.state.snapped.is_none() {
@@ -1242,9 +1293,8 @@ impl Wm {
         let Some(window) = self.windows.get_mut(&id) else {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         };
-        // Rules do not run again: placement and maximise are one-shot decisions.
         window.title = title;
-        Vec::new()
+        self.rematch(id)
     }
 
     fn window_app_id_changed(&mut self, id: WindowId, app_id: String) -> Vec<Effect> {
@@ -1252,7 +1302,7 @@ impl Wm {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         };
         window.app_id = app_id;
-        Vec::new()
+        self.rematch(id)
     }
 
     /// Applies a role change: the kind and parent of a window. A transient follows its

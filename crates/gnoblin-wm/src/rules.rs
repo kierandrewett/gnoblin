@@ -1,10 +1,11 @@
 //! Window rules: which windows a rule selects, and what it sets on them.
 //!
-//! A rule has a `match`, which selects windows, and `fields`, which set window state
-//! when the window is first taken into management. Every rule is evaluated once per
-//! window, so a title change, an application-id change or a rules reload never applies
-//! a rule a second time. Later rules override earlier ones field by field, which is
-//! why the whole list is walked rather than stopping at the first match.
+//! A rule has a `match`, which selects windows, and `fields`, which set window state.
+//! The rules that match a window are recomputed when it opens and whenever its title or
+//! application id changes. Their fields are applied only when that set of matching
+//! rules differs from the last one, so an unchanged match never re-runs a rule, and a
+//! rules reload never re-runs one either. Later rules override earlier ones field by
+//! field, which is why the whole list is walked rather than stopping at the first match.
 //!
 //! # Patterns
 //!
@@ -183,14 +184,25 @@ pub struct RuleOutcome {
     pub maximise: Option<bool>,
 }
 
-/// Walks the rule list for one window and combines the rules that match it.
+/// The indices, in list order, of every rule that matches one window.
 #[must_use]
-pub fn merge(rules: &[Rule], window: &Window, facts: Facts) -> RuleOutcome {
+pub fn matching(rules: &[Rule], window: &Window, facts: Facts) -> Vec<usize> {
+    rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| rule.matcher.matches(window, facts))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Combines the rules at the given indices, in list order, into one outcome.
+///
+/// `indices` comes from [`matching`], so every index names a rule in `rules`.
+#[must_use]
+pub fn outcome_of(rules: &[Rule], indices: &[usize]) -> RuleOutcome {
     let mut outcome = RuleOutcome::default();
-    for (index, rule) in rules.iter().enumerate() {
-        if !rule.matcher.matches(window, facts) {
-            continue;
-        }
+    for &index in indices {
+        let rule = &rules[index];
         outcome.matched += 1;
         if let Some(selector) = rule.fields.workspace {
             outcome.workspace = Some((index, selector));
@@ -293,6 +305,7 @@ mod tests {
             restore: Rect::new(0, 0, 100, 100),
             state: Default::default(),
             applied_rules: 0,
+            matched_rules: Vec::new(),
             protocol: WindowProtocol::Wayland,
         }
     }
@@ -489,7 +502,7 @@ mod tests {
                 },
             ),
         ];
-        let outcome = merge(&rules, &window, no_facts());
+        let outcome = outcome_of(&rules, &matching(&rules, &window, no_facts()));
         assert_eq!(outcome.matched, 2);
         assert_eq!(outcome.workspace, Some((2, WorkspaceSelector::Number(2))));
         assert_eq!(
@@ -502,7 +515,8 @@ mod tests {
     #[test]
     fn a_rule_with_no_fields_still_counts_as_matched() {
         let window = window("app", "t", WindowKind::Normal);
-        let outcome = merge(&[Rule::default()], &window, no_facts());
+        let rules = [Rule::default()];
+        let outcome = outcome_of(&rules, &matching(&rules, &window, no_facts()));
         assert_eq!(outcome.matched, 1);
         assert_eq!(outcome.workspace, None);
         assert_eq!(outcome.maximise, None);

@@ -280,9 +280,9 @@ fn focus_without_raise_leaves_the_stack_alone() {
     check(&wm);
 }
 
-// Failure mode 5: a rule applied twice.
+// Failure mode 5: a rule applied again when its match does not change.
 #[test]
-fn rules_apply_once_even_when_titles_and_rules_change() {
+fn rules_do_not_reapply_while_the_same_rules_match() {
     let mut wm = default_wm();
     rules(
         &mut wm,
@@ -314,20 +314,117 @@ fn rules_apply_once_even_when_titles_and_rules_change() {
             title: "notes.txt".to_owned(),
         })
         .is_empty(),
-        "a title change does not re-run rules"
+        "a title change that keeps the same rules matching changes nothing"
     );
     assert!(
         wm.apply(Event::WindowAppIdChanged {
             window: window(1),
             app_id: "org.example.Other".to_owned(),
         })
-        .is_empty()
+        .is_empty(),
+        "losing a match does not undo what the rule already did"
     );
     rules(
         &mut wm,
         vec![rule(Match::default(), place(WorkspaceSelector::Number(1)))],
     );
-    assert_eq!(managed(&wm), after_open, "a rules reload does not re-run rules");
+    // The rules reload above does not run, so the window keeps the placement it had.
+    assert_eq!(
+        wm.window(window(1))
+            .map(|w| (w.workspace, w.state.maximised, w.geometry)),
+        Some((WorkspaceId::new(2), true, MONITOR)),
+        "losing a match leaves the window where the rule put it"
+    );
+    check(&wm);
+}
+
+#[test]
+fn a_title_that_newly_matches_a_rule_applies_it() {
+    let mut wm = default_wm();
+    rules(
+        &mut wm,
+        vec![rule(
+            Match {
+                title: Some(Pattern::new("^Notes$").expect("test pattern is valid")),
+                ..Match::default()
+            },
+            place(WorkspaceSelector::Id(WorkspaceId::new(2))),
+        )],
+    );
+    wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.example.App").with_title("Untitled"),
+    ));
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(1)));
+    let effects = wm.apply(Event::WindowTitleChanged {
+        window: window(1),
+        title: "Notes".to_owned(),
+    });
+    let managed = wm.window(window(1));
+    assert_eq!(managed.map(|w| w.workspace), Some(WorkspaceId::new(2)));
+    assert_eq!(managed.map(|w| w.applied_rules), Some(1));
+    assert_eq!(
+        visibility(&effects, window(1)),
+        Some(false),
+        "the window left the active workspace, so it is hidden"
+    );
+    check(&wm);
+}
+
+#[test]
+fn an_app_id_that_newly_matches_a_rule_applies_it() {
+    let mut wm = default_wm();
+    rules(
+        &mut wm,
+        vec![rule(
+            app("^org.example.Editor$"),
+            place(WorkspaceSelector::Id(WorkspaceId::new(2))),
+        )],
+    );
+    open(&mut wm, 1);
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(1)));
+    wm.apply(Event::WindowAppIdChanged {
+        window: window(1),
+        app_id: "org.example.Editor".to_owned(),
+    });
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(2)));
+    assert_eq!(wm.window(window(1)).map(|w| w.applied_rules), Some(1));
+    check(&wm);
+}
+
+// A re-match merges every rule that now matches, so the last rule in the list still
+// wins even when an earlier rule is the one that newly matched.
+#[test]
+fn a_re_match_merges_all_matching_rules_in_list_order() {
+    let mut wm = default_wm();
+    rules(
+        &mut wm,
+        vec![
+            rule(
+                Match {
+                    title: Some(Pattern::new("^Notes$").expect("test pattern is valid")),
+                    ..Match::default()
+                },
+                place(WorkspaceSelector::Id(WorkspaceId::new(2))),
+            ),
+            rule(
+                app("^org.example.Editor$"),
+                place(WorkspaceSelector::Id(WorkspaceId::new(3))),
+            ),
+        ],
+    );
+    wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.example.Editor").with_title("Untitled"),
+    ));
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(3)));
+    wm.apply(Event::WindowTitleChanged {
+        window: window(1),
+        title: "Notes".to_owned(),
+    });
+    assert_eq!(
+        wm.window(window(1)).map(|w| (w.workspace, w.applied_rules)),
+        Some((WorkspaceId::new(3), 2)),
+        "rule 1 is still last among the two that match, so it still wins"
+    );
     check(&wm);
 }
 
