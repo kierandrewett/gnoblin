@@ -59,8 +59,8 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use gnoblin_layers::{
-    Band, EndReason, LayerHandle, LayerProvider, LayerRecord, LayerRegistry, LayerScope, LayerSpec, LocalName,
-    RegisterError,
+    Band, EndReason, LayerHandle, LayerName, LayerProvider, LayerRecord, LayerRegistry, LayerScope, LayerSpec,
+    LocalName, ProviderId, RegisterError,
 };
 use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
@@ -165,6 +165,12 @@ fn reshape(state: WindowState, geometry: Rect, work_area: Rect, monitor: Rect) -
         return zone.rect(work_area);
     }
     geometry.clamp_inside(work_area)
+}
+
+/// The provider every window surface record is registered under, so the window manager
+/// is the only writer allowed to change a record's `secure` flag.
+fn wm_provider() -> LayerProvider {
+    LayerProvider::Gnoblin("gnoblin-wm")
 }
 
 /// The stack layer a window belongs in for its state.
@@ -374,8 +380,9 @@ impl Wm {
     /// Every path that changes which windows are drawn goes through here, so a
     /// layer cannot drift from its window however the change arrived.
     fn apply_event(&mut self, event: Event) -> Vec<Effect> {
-        let effects = self.dispatch(event);
+        let mut effects = self.dispatch(event);
         self.sync_layer_visibility();
+        effects.extend(self.sync_secure());
         effects
     }
 
@@ -646,6 +653,61 @@ impl Wm {
             let visible = self.is_visible(id);
             self.layers.set_target_visible(id, visible);
         }
+    }
+
+    /// Brings every window's surface record in line with the rules that match it.
+    ///
+    /// Secure follows the state, not an event of its own: a rule stops matching when a
+    /// title changes, when focus moves or when the rules are reloaded, and the record
+    /// must follow each time. Matching runs only when some rule sets `secure`; without
+    /// one, every record is driven back to false, which also clears a flag that a
+    /// reload just removed.
+    fn sync_secure(&mut self) -> Vec<Effect> {
+        let rules_use_secure = self.rules.iter().any(|rule| rule.fields.secure.is_some());
+        let ids: Vec<WindowId> = self.windows.keys().copied().collect();
+        let mut effects = Vec::new();
+        for id in ids {
+            let Some(handle) = self.surface_handle(id) else {
+                continue;
+            };
+            let Some(window) = self.windows.get(&id) else {
+                continue;
+            };
+            // Secure follows the same matching as `apply_rules`, so a dialog that a
+            // rule matches is masked as well.
+            let desired = rules_use_secure && {
+                let matched = matching(&self.rules, window, self.facts_for(window));
+                outcome_of(&self.rules, &matched).secure == Some(true)
+            };
+            let Some(before) = self
+                .layers
+                .get(handle)
+                .map(|record| self.layers.effective_secure(record))
+            else {
+                continue;
+            };
+            // The window manager owns this record, so the owner check always passes.
+            let _ = self.layers.set_secure(&wm_provider(), handle, desired);
+            let after = self
+                .layers
+                .get(handle)
+                .is_some_and(|record| self.layers.effective_secure(record));
+            if after != before {
+                effects.push(Effect::SecureChanged {
+                    window: id,
+                    secure: after,
+                });
+            }
+        }
+        effects
+    }
+
+    /// The handle of a window's `gnoblin.surface_toplevel:<id>` record while it is live.
+    fn surface_handle(&self, id: WindowId) -> Option<LayerHandle> {
+        let local = LocalName::keyed("surface_toplevel", &id.get().to_string()).ok()?;
+        self.layers
+            .by_name(&LayerName::new(ProviderId::gnoblin(), local))
+            .map(|record| record.handle)
     }
 
     /// Checks every invariant the state machine promises, counting the checks it ran.
@@ -1056,7 +1118,7 @@ impl Wm {
             return;
         };
         let spec = LayerSpec::new(local, LayerScope::Window(Some(id)), Band::Windows);
-        let result = self.layers.register(&LayerProvider::Gnoblin("gnoblin-wm"), spec);
+        let result = self.layers.register(&wm_provider(), spec);
         debug_assert!(result.is_ok(), "surface record for {id} refused: {result:?}");
     }
 

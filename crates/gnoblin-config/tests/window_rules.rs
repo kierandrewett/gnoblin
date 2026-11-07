@@ -54,6 +54,25 @@ fn a_rule_selects_and_places_a_window() {
 }
 
 #[test]
+fn a_rule_marks_a_window_secure() {
+    let config = Config::from_value(document(vec![table([
+        ("match", table([("app-id", text("^keepassxc$"))])),
+        ("secure", flag(true)),
+    ])]))
+    .expect("a rule with a secure flag validates");
+    assert_eq!(config.window_rules[0].secure, Some(true));
+}
+
+#[test]
+fn a_secure_flag_must_be_a_boolean() {
+    let problems = problems(document(vec![table([("secure", text("yes"))])]));
+    assert!(
+        problems.iter().any(|(path, _)| path.contains("secure")),
+        "the refusal names the secure field: {problems:?}"
+    );
+}
+
+#[test]
 fn an_empty_rule_selects_every_window() {
     let config = Config::from_value(document(vec![table([])])).expect("an empty rule validates");
     assert_eq!(config.window_rules.len(), 1);

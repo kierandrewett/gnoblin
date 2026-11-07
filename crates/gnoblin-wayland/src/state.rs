@@ -1235,6 +1235,9 @@ impl State {
                     self.composer.set_window_visible(window, visible);
                     self.set_visible(window, visible);
                 }
+                Effect::SecureChanged { window, secure } => {
+                    self.composer.set_window_secure(window, secure);
+                }
                 Effect::Stack { order } => {
                     // The policy states the order topmost first; the scene keeps its
                     // paint order bottom first.

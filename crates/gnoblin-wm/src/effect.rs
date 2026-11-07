@@ -42,6 +42,14 @@ pub enum Effect {
         /// Whether it should be drawn.
         visible: bool,
     },
+    /// A window's surface became secure or stopped being secure, because a rule that
+    /// matched it changed. The compositor masks secure surfaces in every capture.
+    SecureChanged {
+        /// The window whose surface changed.
+        window: WindowId,
+        /// Whether its surface is secure now.
+        secure: bool,
+    },
     /// The stacking order changed. The list is topmost first and holds every
     /// managed window exactly once.
     Stack {

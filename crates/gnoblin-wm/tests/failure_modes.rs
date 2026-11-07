@@ -291,6 +291,7 @@ fn rules_do_not_reapply_while_the_same_rules_match() {
             RuleFields {
                 workspace: Some(WorkspaceSelector::Id(WorkspaceId::new(2))),
                 maximise: Some(true),
+                secure: None,
             },
         )],
     );
@@ -1232,5 +1233,132 @@ fn a_rest_focus_does_not_fire_while_a_button_is_held() {
     wm.apply(Event::PointerGrab { active: true });
     pointer_tick(&mut wm, 400);
     assert_eq!(wm.focused(), Some(window(1)));
+    check(&wm);
+}
+
+// The surface record of a window, read by its window scope and the window manager's
+// provider. `None` once the window has closed and its record has left the registry.
+fn secure_of(wm: &Wm, raw: u64) -> Option<bool> {
+    wm.layers()
+        .records()
+        .find(|record| {
+            record.spec.scope == gnoblin_layers::LayerScope::Window(Some(window(raw)))
+                && record.provider == gnoblin_layers::LayerProvider::Gnoblin("gnoblin-wm")
+        })
+        .map(|record| wm.layers().effective_secure(record))
+}
+
+fn secure_effect(effects: &[Effect], raw: u64) -> Option<bool> {
+    effects.iter().find_map(|effect| match effect {
+        Effect::SecureChanged { window: id, secure } if *id == window(raw) => Some(*secure),
+        _ => None,
+    })
+}
+
+fn secret_rule() -> Rule {
+    rule(
+        app("org.secret.App"),
+        RuleFields {
+            secure: Some(true),
+            ..RuleFields::default()
+        },
+    )
+}
+
+// A window matching a `secure` rule has its surface marked secure, so capture masks it.
+#[test]
+fn a_secure_rule_marks_the_matching_window_secure() {
+    let mut wm = default_wm();
+    rules(&mut wm, vec![secret_rule()]);
+    let effects = wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.secret.App").with_requested(Rect::new(0, 0, 600, 400)),
+    ));
+    assert_eq!(
+        secure_effect(&effects, 1),
+        Some(true),
+        "the matched window turns secure"
+    );
+    assert_eq!(secure_of(&wm, 1), Some(true));
+    check(&wm);
+}
+
+// A window the rule does not match keeps its surface unmasked, and gets no effect.
+#[test]
+fn a_non_matching_window_is_not_secure() {
+    let mut wm = default_wm();
+    rules(&mut wm, vec![secret_rule()]);
+    let effects = wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.example.App").with_requested(Rect::new(0, 0, 600, 400)),
+    ));
+    assert_eq!(
+        secure_effect(&effects, 1),
+        None,
+        "an unmatched window raises no secure change"
+    );
+    assert_eq!(secure_of(&wm, 1), Some(false));
+    check(&wm);
+}
+
+// Reloading the rules without the secure rule clears the flag, and says so once.
+#[test]
+fn reloading_without_the_secure_rule_clears_secure() {
+    let mut wm = default_wm();
+    rules(&mut wm, vec![secret_rule()]);
+    wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.secret.App").with_requested(Rect::new(0, 0, 600, 400)),
+    ));
+    assert_eq!(secure_of(&wm, 1), Some(true));
+    let effects = wm.apply(Event::RulesChanged { rules: Vec::new() });
+    assert_eq!(secure_effect(&effects, 1), Some(false), "the reload clears secure");
+    assert_eq!(secure_of(&wm, 1), Some(false));
+    check(&wm);
+}
+
+// A title change that stops a rule matching clears secure; one that starts a match sets it.
+#[test]
+fn a_title_change_toggles_secure_with_the_match() {
+    let mut wm = default_wm();
+    let titled = rule(
+        Match {
+            title: Some(Pattern::new("secret").expect("test pattern is valid")),
+            ..Match::default()
+        },
+        RuleFields {
+            secure: Some(true),
+            ..RuleFields::default()
+        },
+    );
+    rules(&mut wm, vec![titled]);
+    wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.example.App")
+            .with_title("public")
+            .with_requested(Rect::new(0, 0, 600, 400)),
+    ));
+    assert_eq!(secure_of(&wm, 1), Some(false), "the title does not match yet");
+
+    let effects = wm.apply(Event::WindowTitleChanged {
+        window: window(1),
+        title: "secret notes".to_owned(),
+    });
+    assert_eq!(secure_effect(&effects, 1), Some(true), "the new title matches");
+
+    let effects = wm.apply(Event::WindowTitleChanged {
+        window: window(1),
+        title: "public again".to_owned(),
+    });
+    assert_eq!(secure_effect(&effects, 1), Some(false), "the title no longer matches");
+    check(&wm);
+}
+
+// A closed window's record leaves the registry, so nothing stays secure after it.
+#[test]
+fn a_closed_secure_window_leaves_no_secure_record() {
+    let mut wm = default_wm();
+    rules(&mut wm, vec![secret_rule()]);
+    wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.secret.App").with_requested(Rect::new(0, 0, 600, 400)),
+    ));
+    wm.apply(Event::WindowClosed { window: window(1) });
+    assert_eq!(secure_of(&wm, 1), None, "the closed window has no surface record");
     check(&wm);
 }

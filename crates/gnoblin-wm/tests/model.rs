@@ -115,6 +115,7 @@ fn rules(rng: &mut Rng) -> Vec<Rule> {
             fields: RuleFields {
                 workspace: Some(selector),
                 maximise,
+                secure: None,
             },
         },
         Rule {

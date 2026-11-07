@@ -49,12 +49,23 @@ match them by ID here.
 | ----------- | ------------------------------------------------------------------ |
 | `workspace` | `{id = "code"}` or `{number = 1..1024}`, exactly one of the two    |
 | `maximise`  | Boolean; `true` maximises, `false` restores, when the rule applies |
+| `secure`    | Boolean; `true` makes the window secure while the rule matches     |
 
 `workspace` places the window on that workspace. A `{id = ...}` target must
 exist; otherwise the window stays where it is and Gnoblin logs a warning.
 
 `maximise` takes effect at the window's first match and again when a re-match
 changes the set of matching rules. A fullscreen window is not maximised.
+
+`secure` sets the window's surface secure while the rule matches. It is a live
+state, not a one-off action: it is recomputed on every match change.
+
+It clears when the rule stops matching, when the window closes, and when a
+reload removes the rule. The default is `false`.
+
+A secure window is masked in screen captures according to
+`capture.secure-treatment`: `mask`, the default, draws a neutral shape in its
+place; `omit` draws nothing.
 
 ## When rules apply
 
@@ -66,9 +77,11 @@ current set is merged, so the last matching rule still wins.
 A re-match can therefore move a window or change its maximised state, for
 example when a title change makes a rule with `workspace` start to match.
 
-A window that loses its match keeps what the rule already did. A configuration
-reload does not re-run rules on windows that are already open; new rules apply
-only to windows that open afterwards.
+A window that loses its match keeps what the rule already did, except `secure`,
+which clears. A configuration reload does not re-run placement rules on windows
+that are already open; new rules apply only to windows that open afterwards. A
+reload does re-evaluate `secure` on open windows, so a rule the reload removed
+cannot leave a window masked.
 
 ## Limits
 

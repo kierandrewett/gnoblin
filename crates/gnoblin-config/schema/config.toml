@@ -1661,6 +1661,13 @@ accepted = "a boolean"
 doc = "Whether a matching window starts maximised."
 since = "0.2.0"
 
+[[record.field]]
+key = "secure"
+kind = "bool"
+accepted = "a boolean"
+doc = "Whether a matching window's surface is secure: masked in every capture while the rule matches. Default false."
+since = "0.2.0"
+
 # --- Sections ---------------------------------------------------------------
 # A section is a top-level document key. `spread` means the section's own keys
 # are the map (`protocols`, `frame-renderers`) rather than settings.

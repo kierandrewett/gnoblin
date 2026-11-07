@@ -159,6 +159,9 @@ pub struct RuleFields {
     pub workspace: Option<WorkspaceSelector>,
     /// Maximises (`true`) or unmaximises (`false`) the window when it is first managed.
     pub maximise: Option<bool>,
+    /// Marks the window's surface secure (`true`) or not (`false`) while the rule matches.
+    /// Secure content is masked in every capture.
+    pub secure: Option<bool>,
 }
 
 /// One rule: the conditions that select a window and the state it is given.
@@ -182,6 +185,8 @@ pub struct RuleOutcome {
     pub workspace: Option<(usize, WorkspaceSelector)>,
     /// The winning maximise state.
     pub maximise: Option<bool>,
+    /// The winning secure state. `None` when no matching rule sets it, which means not secure.
+    pub secure: Option<bool>,
 }
 
 /// The indices, in list order, of every rule that matches one window.
@@ -209,6 +214,9 @@ pub fn outcome_of(rules: &[Rule], indices: &[usize]) -> RuleOutcome {
         }
         if let Some(maximise) = rule.fields.maximise {
             outcome.maximise = Some(maximise);
+        }
+        if let Some(secure) = rule.fields.secure {
+            outcome.secure = Some(secure);
         }
     }
     outcome
@@ -482,6 +490,7 @@ mod tests {
                 RuleFields {
                     workspace: Some(WorkspaceSelector::Number(1)),
                     maximise: Some(true),
+                    secure: None,
                 },
             ),
             rule(
@@ -492,6 +501,7 @@ mod tests {
                 RuleFields {
                     workspace: Some(WorkspaceSelector::Number(3)),
                     maximise: None,
+                    secure: None,
                 },
             ),
             rule(
@@ -499,6 +509,7 @@ mod tests {
                 RuleFields {
                     workspace: Some(WorkspaceSelector::Number(2)),
                     maximise: Some(false),
+                    secure: None,
                 },
             ),
         ];
@@ -563,6 +574,7 @@ mod tests {
                 RuleFields {
                     workspace: Some(WorkspaceSelector::Number(0)),
                     maximise: None,
+                    secure: None,
                 },
             ),
         ];

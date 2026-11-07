@@ -128,6 +128,10 @@ struct WindowNode {
     effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
     visible: bool,
+    /// Whether the window's surface is secure, so a capture masks it. The window
+    /// manager sets it from a matched `secure` rule; the layer registry records the same
+    /// flag for the window's surface record.
+    secure: bool,
     /// The client's content, when it has committed one.
     content: Option<Content>,
     /// The buffer the content is read from, when the client has attached one.
@@ -279,6 +283,7 @@ impl Composer {
                 transform: VisualTransform::IDENTITY,
                 effects: Effects::new(),
                 visible: true,
+                secure: false,
                 content: None,
                 surface_alpha: 1.0,
                 buffer: None,
@@ -322,6 +327,23 @@ impl Composer {
         }
         entry.visible = visible;
         self.sync(window, false);
+    }
+
+    /// Marks a window's surface secure, or clears the mark.
+    ///
+    /// A secure surface is masked in a capture, and the frame that a capture reads back
+    /// is kept only when it has a secure layer. The mark changes what a capture shows
+    /// without changing the pixels on screen, so the window is damaged with force: the
+    /// frame is redrawn and the capture reads the new mark rather than a stale frame.
+    pub fn set_window_secure(&mut self, window: WindowId, secure: bool) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if entry.secure == secure {
+            return;
+        }
+        entry.secure = secure;
+        self.sync(window, true);
     }
 
     /// Sets a window's group opacity.
@@ -669,7 +691,7 @@ impl Composer {
                 corner_radius: entry.transform.corner_radius,
                 effects: entry.effects.clone(),
                 model,
-                secure: false,
+                secure: entry.secure,
             }));
         }
         if let Some(flash) = self.flash {
@@ -935,6 +957,36 @@ mod tests {
         assert!(
             frame.layers().is_empty(),
             "the node exists and damages its rectangle, but nothing can be drawn"
+        );
+    }
+
+    // A secure mark redraws the window, so a capture reads the new mark rather than a
+    // frame drawn before it. Setting the same mark again changes nothing and damages nothing.
+    #[test]
+    fn a_secure_mark_damages_the_window_only_when_it_changes() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        assert!(damage_of(&mut composer, output).is_some(), "the new node is drawn once");
+        assert_eq!(
+            damage_of(&mut composer, output),
+            None,
+            "a steady window has nothing to draw"
+        );
+
+        composer.set_window_secure(window, true);
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "marking secure redraws the window"
+        );
+        composer.set_window_secure(window, true);
+        assert_eq!(damage_of(&mut composer, output), None, "the same mark damages nothing");
+
+        composer.set_window_secure(window, false);
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "clearing the mark redraws the window"
         );
     }
 
