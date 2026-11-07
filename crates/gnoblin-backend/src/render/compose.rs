@@ -66,12 +66,35 @@ use gnoblin_render::{
 };
 use gnoblin_types::{OutputId, Rect, RectF, Size, Vec3, WindowId};
 
-use crate::render::frame::{Layer, Model, OutputFrame, Surface};
+use crate::render::frame::{Layer, Model, OutputFrame, Solid, Surface};
 
 use crate::log;
 
 /// How long a placement, move or other visual change takes to reach its target.
 const MOTION_MS: u32 = 200;
+
+/// How long a visual bell's flash takes to fade out, in milliseconds.
+const FLASH_MS: u32 = 150;
+
+/// The alpha a visual bell's flash starts at, before it fades.
+const FLASH_PEAK: f32 = 0.5;
+
+/// One visual bell flash in progress.
+///
+/// It is a white rectangle drawn over everything on the output, fading out over
+/// [`FLASH_MS`]. The composer keeps no pixels for it: it is described afresh in every
+/// frame until it ends, so the damage it leaves behind is what the next frame paints.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Flash {
+    /// The rectangle flashed, in global logical coordinates, or `None` for every output
+    /// in full.
+    area: Option<Rect>,
+    /// How long the flash has been running.
+    elapsed_ms: u32,
+    /// Whether motion is reduced: the flash is drawn once at its peak and then ends with the frame
+    /// that draws it, instead of fading.
+    reduced: bool,
+}
 
 /// A window's committed content: the crop to draw and its logical size.
 ///
@@ -132,6 +155,9 @@ pub struct Composer {
     reduced_motion: bool,
     /// Where the cursor was last drawn, in global layout coordinates, or `None` when hidden.
     cursor: Option<Rect>,
+    /// The visual bell's flash in progress, if any. Only one runs at a time: a bell rung
+    /// during a flash restarts it.
+    flash: Option<Flash>,
 }
 
 impl Default for Composer {
@@ -155,6 +181,7 @@ impl Composer {
             tracks: BTreeMap::new(),
             reduced_motion: false,
             cursor: None,
+            flash: None,
         }
     }
 
@@ -229,6 +256,11 @@ impl Composer {
     /// Drops the damage of the iteration that just ended.
     pub fn end_frame(&mut self) {
         self.damage = None;
+        // A reduced-motion flash is drawn by the one frame that began after its bell, so it
+        // ends here rather than on a timer that might pass before any frame draws it.
+        if self.flash.is_some_and(|flash| flash.reduced) {
+            self.flash = None;
+        }
     }
 
     /// Starts drawing a window.
@@ -419,12 +451,83 @@ impl Composer {
         self.reduced_motion = reduced;
     }
 
+    /// Starts a visual bell's flash over `window`, or over every output when `window` is `None`
+    /// or not one the composer holds.
+    ///
+    /// A flash already running is replaced. With reduced motion the flash is drawn once at its
+    /// peak and then ends with the frame that draws it; otherwise it fades out over [`FLASH_MS`].
+    pub fn flash_window(&mut self, window: Option<WindowId>) {
+        let area = window
+            .and_then(|window| self.windows.get(&window))
+            .map(|entry| entry.geometry);
+        let flash = Flash {
+            area,
+            elapsed_ms: 0,
+            reduced: self.reduced_motion,
+        };
+        if let Some(old) = self.flash.replace(flash) {
+            self.damage_flash(old);
+        }
+        self.damage_flash(flash);
+    }
+
     /// Advances every running animation by `elapsed_ms` and forgets the ones that ended.
+    ///
+    /// It also moves a visual bell's flash on, so the next frame shows its fade.
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
         self.motion.advance(&mut self.scene, elapsed_ms);
         for end in self.motion.take_ended() {
             self.tracks.retain(|_, track| *track != end.track);
         }
+        self.advance_flash(elapsed_ms);
+    }
+
+    /// Whether a visual bell's flash is still on screen, so the caller keeps frames coming.
+    #[must_use]
+    pub fn flash_running(&self) -> bool {
+        self.flash.is_some()
+    }
+
+    /// Moves the flash on by `elapsed_ms`, damaging the area it covers so the next frame repaints
+    /// it. A reduced-motion flash does not move: it is ended by the frame that draws it, in
+    /// [`Composer::end_frame`].
+    fn advance_flash(&mut self, elapsed_ms: u32) {
+        let Some(mut flash) = self.flash else {
+            return;
+        };
+        if flash.reduced {
+            return;
+        }
+        self.damage_flash(flash);
+        flash.elapsed_ms = flash.elapsed_ms.saturating_add(elapsed_ms);
+        if flash.elapsed_ms >= FLASH_MS {
+            self.flash = None;
+        } else {
+            self.flash = Some(flash);
+        }
+    }
+
+    /// Damages the area a flash covers: every output in full when it has no area.
+    fn damage_flash(&mut self, flash: Flash) {
+        match flash.area {
+            Some(area) => self.scene.damage_rect(area),
+            None => {
+                let outputs: Vec<OutputId> = self.scene.outputs().keys().copied().collect();
+                for output in outputs {
+                    self.scene.damage_output(output);
+                }
+            }
+        }
+    }
+
+    /// The alpha a flash is drawn at: its peak, fading to nothing over [`FLASH_MS`] unless motion
+    /// is reduced.
+    fn flash_alpha(flash: Flash) -> f32 {
+        if flash.reduced {
+            return FLASH_PEAK;
+        }
+        let remaining = FLASH_MS.saturating_sub(flash.elapsed_ms);
+        FLASH_PEAK * (remaining as f32 / FLASH_MS as f32)
     }
 
     /// A window's node's world matrix, as the scene currently holds it, or `None` when it is not drawn.
@@ -567,6 +670,17 @@ impl Composer {
                 effects: entry.effects.clone(),
                 model,
             }));
+        }
+        if let Some(flash) = self.flash {
+            // The bell's flash is drawn over every window, on the part of this output it covers.
+            let covered = match flash.area {
+                Some(area) => area.intersection(rect),
+                None => Some(rect),
+            };
+            if let Some(covered) = covered {
+                let colour = Color::new(1.0, 1.0, 1.0, Self::flash_alpha(flash));
+                frame.push_layer(Layer::Solid(Solid::new(local(covered, rect), colour)));
+            }
         }
         !frame.is_empty()
     }
@@ -1090,6 +1204,120 @@ mod tests {
         assert_eq!(
             local(Rect::new(-30, -10, 40, 50), Rect::new(-100, 0, 800, 600)),
             Rect::new(70, -10, 40, 50)
+        );
+    }
+
+    /// The solid layers `output`'s next frame draws, as their rectangle and alpha.
+    fn solids_of(composer: &mut Composer, output: OutputId) -> Vec<(Rect, f32)> {
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Solid(solid) => Some((solid.dst, solid.colour.a)),
+                Layer::Surface(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_flash_fades_out_over_its_duration() {
+        let (mut composer, output) = screen();
+        composer.flash_window(None);
+        let first = solids_of(&mut composer, output);
+        assert_eq!(first, vec![(Rect::new(0, 0, 800, 600), FLASH_PEAK)]);
+
+        composer.advance_motion(FLASH_MS / 2);
+        let halfway = solids_of(&mut composer, output);
+        assert_eq!(halfway.len(), 1);
+        assert!(
+            (halfway[0].1 - FLASH_PEAK / 2.0).abs() < 1e-4,
+            "half the peak after half the time"
+        );
+        assert!(composer.flash_running());
+
+        composer.advance_motion(FLASH_MS);
+        assert!(!composer.flash_running(), "the flash ends once its duration has passed");
+        assert!(
+            solids_of(&mut composer, output).is_empty(),
+            "an ended flash draws nothing"
+        );
+    }
+
+    #[test]
+    fn a_flash_damages_every_output_it_covers() {
+        let (mut composer, output) = screen();
+        composer.flash_window(None);
+        let damage = damage_of(&mut composer, output).expect("a flash changes the output");
+        assert!(
+            covers(&damage, Rect::new(0, 0, 800, 600)),
+            "the whole output is repainted"
+        );
+    }
+
+    #[test]
+    fn a_flash_over_a_window_covers_only_that_window() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 80, 200, 150));
+        composer.flash_window(Some(window));
+        assert_eq!(
+            solids_of(&mut composer, output),
+            vec![(Rect::new(100, 80, 200, 150), FLASH_PEAK)],
+            "the flash is drawn over the window's rectangle alone"
+        );
+        composer.advance_motion(1);
+        let damage = damage_of(&mut composer, output).expect("the fade repaints the window");
+        assert!(covers(&damage, Rect::new(100, 80, 200, 150)));
+        assert!(
+            !covers(&damage, Rect::new(0, 0, 800, 600)),
+            "the rest of the output is untouched"
+        );
+    }
+
+    #[test]
+    fn a_flash_over_an_unknown_window_falls_back_to_every_output() {
+        let (mut composer, output) = screen();
+        composer.flash_window(Some(WindowId::new(99)));
+        assert_eq!(
+            solids_of(&mut composer, output),
+            vec![(Rect::new(0, 0, 800, 600), FLASH_PEAK)]
+        );
+    }
+
+    #[test]
+    fn a_reduced_motion_flash_is_drawn_once_at_its_peak() {
+        let (mut composer, output) = screen();
+        composer.set_reduced_motion(true);
+        composer.flash_window(None);
+        composer.advance_motion(FLASH_MS * 2);
+        assert!(
+            composer.flash_running(),
+            "a reduced flash waits for the frame that draws it"
+        );
+        assert_eq!(
+            solids_of(&mut composer, output),
+            vec![(Rect::new(0, 0, 800, 600), FLASH_PEAK)],
+            "reduced motion does not fade the flash"
+        );
+        assert!(!composer.flash_running(), "the frame that drew it ends it");
+        assert!(solids_of(&mut composer, output).is_empty());
+    }
+
+    #[test]
+    fn a_new_flash_replaces_a_running_one() {
+        let (mut composer, output) = screen();
+        composer.flash_window(None);
+        composer.advance_motion(FLASH_MS / 2);
+        composer.flash_window(None);
+        let restarted = solids_of(&mut composer, output);
+        assert_eq!(
+            restarted,
+            vec![(Rect::new(0, 0, 800, 600), FLASH_PEAK)],
+            "a bell restarts the fade"
         );
     }
 }
