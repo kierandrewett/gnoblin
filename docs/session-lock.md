@@ -146,6 +146,15 @@ height)`, acknowledge its serial before committing a non-null buffer with those
 exact surface-local dimensions. If multiple configures arrive before a commit,
 acknowledging the last one is sufficient.
 
+Gnoblin draws the owner's lock surface over the cover on its output, cropped
+from the surface's committed buffer. A lock surface with no committed buffer
+shows the bare cover, so a locker that unmaps its surface sees the cover again.
+
+The owner's lock surfaces receive frame callbacks while the session is locked.
+Windows behind the cover receive none, so a client cannot render frames the
+user cannot see. The lock surface is masked in screen captures, so the lock
+screen's content does not leak into them.
+
 | Interface                     | Request or event                    | Contract                                                                                                         |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `ext_session_lock_manager_v1` | `destroy`                           | Release the manager object; existing lock objects remain valid.                                                  |
