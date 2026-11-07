@@ -215,7 +215,7 @@ fn an_offer_the_role_cannot_draw_is_declined_at_once() {
     assert_eq!(decline.member, wire::member::DECLINE, "{decline:?}");
     assert_eq!(
         wire::read_decline(decline.payload().unwrap_or(&[])).expect("a decline"),
-        RequestId::new(7)
+        (RequestId::new(7), None)
     );
     peer.reply(&decline, Vec::new());
 

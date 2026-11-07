@@ -25,8 +25,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::fd::OwnedFd;
 
 use gnoblin_model::{
-    Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, Provider, RequestCompletion, RequestId,
-    Snapshot, Tick,
+    DeclineReason, Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, Provider, RequestCompletion,
+    RequestId, Snapshot, Tick,
 };
 use gnoblin_proto::{Capabilities, Envelope, Grant, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
@@ -369,8 +369,13 @@ impl<T: Transport> Client<T> {
     /// This is the refusal and provider-gone outcome, and it is a different member
     /// from [`Client::answer`] so the two can never be confused.
     pub fn decline(&mut self, request: RequestId) -> Result<(), ClientError> {
+        self.decline_with(request, None)
+    }
+
+    /// Decline a request this client claimed, saying why. `None` is the same as [`Client::decline`].
+    pub fn decline_with(&mut self, request: RequestId, reason: Option<DeclineReason>) -> Result<(), ClientError> {
         let correlation = self.next_id();
-        let frame = wire::decline(correlation, request);
+        let frame = wire::decline(correlation, request, reason);
         self.send(&frame)?;
         let _ = self.await_reply(correlation)?;
         Ok(())

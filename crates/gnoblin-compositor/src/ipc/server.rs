@@ -993,8 +993,8 @@ impl Dispatcher {
 
     /// `request.decline`: the provider will not answer, which is its own outcome.
     fn decline(&mut self, client: ClientId, envelope: &Envelope) {
-        let request = match wire::read_decline(envelope.payload().unwrap_or(&[])) {
-            Ok(request) => request,
+        let (request, reason) = match wire::read_decline(envelope.payload().unwrap_or(&[])) {
+            Ok(decoded) => decoded,
             Err(reason) => {
                 self.refuse(
                     client,
@@ -1005,7 +1005,7 @@ impl Dispatcher {
                 return;
             }
         };
-        match self.requests.decline(client, request) {
+        match self.requests.decline(client, request, reason) {
             Ok(deliveries) => {
                 self.reply(client, envelope);
                 self.deliver(deliveries);

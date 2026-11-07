@@ -40,6 +40,18 @@ use crate::error::RequestError;
 /// refusal: forgetting never reopens a request.
 pub const REMEMBERED_FINISHED: usize = 256;
 
+/// Why a provider declined a request. A decline without a reason stays [`RequestOutcome::Ended`],
+/// so every decline sent before reasons existed means the same thing it always did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeclineReason {
+    /// The provider cannot answer while its store is locked. The host can ask the user to unlock.
+    Locked,
+    /// The provider was asked and refused.
+    Denied,
+    /// The provider cannot answer at all right now.
+    Unavailable,
+}
+
 /// How a request ended. Exactly one of these is produced per request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RequestOutcome {
@@ -48,6 +60,8 @@ pub enum RequestOutcome {
     Answered(Vec<u8>),
     /// The request was ended without an answer.
     Ended,
+    /// The provider declined and said why. It carries no value.
+    Refused(DeclineReason),
     /// The deadline passed before an answer arrived.
     TimedOut,
 }
@@ -59,6 +73,8 @@ pub enum RequestCompletion {
     Answered,
     /// The request was ended without an answer.
     Ended,
+    /// The provider declined and said why. The reason is not secret, so a peer may read it.
+    Refused(DeclineReason),
     /// The deadline passed.
     TimedOut,
 }
@@ -68,6 +84,7 @@ impl From<&RequestOutcome> for RequestCompletion {
         match outcome {
             RequestOutcome::Answered(_) => RequestCompletion::Answered,
             RequestOutcome::Ended => RequestCompletion::Ended,
+            RequestOutcome::Refused(reason) => RequestCompletion::Refused(*reason),
             RequestOutcome::TimedOut => RequestCompletion::TimedOut,
         }
     }
@@ -204,7 +221,21 @@ impl RequestBroker {
     /// [`RequestOutcome::Ended`] and carries no value, so nothing secret can travel
     /// on it. The owner rules are the same as [`RequestBroker::answer`].
     pub fn decline(&mut self, request: RequestId, owner: OwnerId) -> Result<(), RequestError> {
-        self.finish_owned(request, owner, RequestOutcome::Ended)
+        self.decline_with(request, owner, None)
+    }
+
+    /// Decline a request, saying why. `None` is the same outcome as [`RequestBroker::decline`].
+    pub fn decline_with(
+        &mut self,
+        request: RequestId,
+        owner: OwnerId,
+        reason: Option<DeclineReason>,
+    ) -> Result<(), RequestError> {
+        let outcome = match reason {
+            Some(reason) => RequestOutcome::Refused(reason),
+            None => RequestOutcome::Ended,
+        };
+        self.finish_owned(request, owner, outcome)
     }
 
     /// Finish a request only its owner may finish.

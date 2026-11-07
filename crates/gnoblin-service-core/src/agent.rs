@@ -534,6 +534,7 @@ impl Decision {
     pub fn from_outcome(outcome: &RequestOutcome) -> Decision {
         match outcome {
             RequestOutcome::Ended | RequestOutcome::TimedOut => Decision::Cancelled,
+            RequestOutcome::Refused(_) => Decision::Denied,
             RequestOutcome::Answered(bytes) if bytes.is_empty() => Decision::Denied,
             RequestOutcome::Answered(bytes) => match std::str::from_utf8(bytes) {
                 Ok(identity) => Decision::Allowed {

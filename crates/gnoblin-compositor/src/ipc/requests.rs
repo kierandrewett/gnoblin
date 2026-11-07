@@ -53,8 +53,8 @@ use gnoblin_proto::Envelope;
 
 use gnoblin_client::wire;
 use gnoblin_model::{
-    CapabilitySlot, Fields, Provider, RequestBroker, RequestCompletion, RequestEvent, RequestId, RequestOutcome, Slots,
-    Tick,
+    CapabilitySlot, DeclineReason, Fields, Provider, RequestBroker, RequestCompletion, RequestEvent, RequestId,
+    RequestOutcome, Slots, Tick,
 };
 use gnoblin_types::{ClientId, OwnerId};
 
@@ -261,14 +261,15 @@ impl Requests {
         Ok(self.drain())
     }
 
-    /// Decline a request this connection claimed.
+    /// Decline a request this connection claimed, with the reason the provider gives when it has one.
     pub(crate) fn decline(
         &mut self,
         owner: ClientId,
         request: RequestId,
+        reason: Option<DeclineReason>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.broker
-            .decline(request, OwnerId::new(owner.get()))
+            .decline_with(request, OwnerId::new(owner.get()), reason)
             .map_err(|error| RequestRefusal {
                 code: request_code(&error),
                 message: error.to_string(),

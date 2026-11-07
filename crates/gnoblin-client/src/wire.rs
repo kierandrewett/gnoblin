@@ -43,8 +43,8 @@
 //! keeps an older client working.
 
 use gnoblin_model::{
-    ErrorCode, Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, Provider,
-    RequestCompletion, RequestId, Revision, Snapshot, Tick, TypeKey, Value,
+    DeclineReason, ErrorCode, Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome,
+    Provider, RequestCompletion, RequestId, Revision, Snapshot, Tick, TypeKey, Value,
 };
 use gnoblin_proto::Envelope;
 
@@ -243,10 +243,14 @@ pub fn answer(request_id: u64, request: RequestId, answer: &[u8]) -> Envelope {
 /// A request declining a request the client holds: the provider will not answer it.
 ///
 /// This is the refusal and provider-gone outcome, and it carries no value at all,
-/// which is why its frame is never flagged sensitive.
-pub fn decline(request_id: u64, request: RequestId) -> Envelope {
+/// which is why its frame is never flagged sensitive. A reason, when given, trails
+/// the request id; a decline without one is the frame sent before reasons existed.
+pub fn decline(request_id: u64, request: RequestId, reason: Option<DeclineReason>) -> Envelope {
     let mut writer = Writer::new();
     writer.u64(request.get());
+    if let Some(reason) = reason {
+        writer.u8(reason_tag(reason));
+    }
     Envelope::request(NAMESPACE, member::DECLINE, request_id, writer.finish())
 }
 
@@ -370,12 +374,35 @@ pub fn config_current(request_id: u64) -> Envelope {
 pub fn finished(request: RequestId, completion: RequestCompletion) -> Envelope {
     let mut writer = Writer::new();
     writer.u64(request.get());
-    writer.u8(match completion {
-        RequestCompletion::Answered => 0,
-        RequestCompletion::Ended => 1,
-        RequestCompletion::TimedOut => 2,
-    });
+    match completion {
+        RequestCompletion::Answered => writer.u8(0),
+        RequestCompletion::Ended => writer.u8(1),
+        RequestCompletion::TimedOut => writer.u8(2),
+        RequestCompletion::Refused(reason) => {
+            writer.u8(3);
+            writer.u8(reason_tag(reason));
+        }
+    }
     Envelope::event(NAMESPACE, member::REQUEST_FINISHED, writer.finish())
+}
+
+/// The wire tag for a decline reason. Tags are stable: a reason is added, never renumbered.
+fn reason_tag(reason: DeclineReason) -> u8 {
+    match reason {
+        DeclineReason::Locked => 1,
+        DeclineReason::Denied => 2,
+        DeclineReason::Unavailable => 3,
+    }
+}
+
+/// Read a decline reason tag.
+fn read_reason(reader: &mut Reader) -> Result<DeclineReason, WireError> {
+    match reader.u8()? {
+        1 => Ok(DeclineReason::Locked),
+        2 => Ok(DeclineReason::Denied),
+        3 => Ok(DeclineReason::Unavailable),
+        tag => Err(WireError::Tag(tag)),
+    }
 }
 
 /// Encode one observation.
@@ -506,12 +533,18 @@ pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Vec<u8>), WireError> {
     Ok((request, answer))
 }
 
-/// Decode a `request.decline` request.
-pub fn read_decline(payload: &[u8]) -> Result<RequestId, WireError> {
+/// Decode a `request.decline` request. The reason trails the id and is absent from
+/// a decline sent before reasons existed.
+pub fn read_decline(payload: &[u8]) -> Result<(RequestId, Option<DeclineReason>), WireError> {
     let mut reader = Reader::new(payload);
     let request = RequestId::new(reader.u64()?);
+    let reason = if reader.at_end() {
+        None
+    } else {
+        Some(read_reason(&mut reader)?)
+    };
     reader.done()?;
-    Ok(request)
+    Ok((request, reason))
 }
 
 /// Decode a `request.offer` request. Privileged.
@@ -804,6 +837,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
                 0 => RequestCompletion::Answered,
                 1 => RequestCompletion::Ended,
                 2 => RequestCompletion::TimedOut,
+                3 => RequestCompletion::Refused(read_reason(&mut reader)?),
                 tag => return Err(WireError::Tag(tag)),
             };
             reader.done()?;
@@ -928,6 +962,11 @@ impl<'a> Reader<'a> {
         let slice = self.bytes.get(self.at..end).ok_or(WireError::Truncated)?;
         self.at = end;
         Ok(slice)
+    }
+
+    /// Whether every byte has been read. A trailing optional field is present only when this is false.
+    fn at_end(&self) -> bool {
+        self.at == self.bytes.len()
     }
 
     fn u8(&mut self) -> Result<u8, WireError> {
@@ -1244,8 +1283,18 @@ mod tests {
             );
         }
 
-        let frame = decline(7, RequestId::new(2));
-        assert_eq!(read_decline(frame.payload().expect("payload")), Ok(RequestId::new(2)));
+        for reason in [
+            None,
+            Some(DeclineReason::Locked),
+            Some(DeclineReason::Denied),
+            Some(DeclineReason::Unavailable),
+        ] {
+            let frame = decline(7, RequestId::new(2), reason);
+            assert_eq!(
+                read_decline(frame.payload().expect("payload")),
+                Ok((RequestId::new(2), reason))
+            );
+        }
     }
 
     #[test]
@@ -1385,11 +1434,14 @@ mod tests {
     fn a_decline_frame_is_not_flagged() {
         // Ending a request carries no value, so the frame is readable: the schema
         // marks no field of `request.end` secret, and the generated table agrees.
-        let frame = decline(1, RequestId::new(2));
+        let frame = decline(1, RequestId::new(2), None);
         assert_eq!(frame.member, member::DECLINE);
         assert!(!frame.is_sensitive(), "a declined request carries nothing secret");
         assert_eq!(frame.redact(), frame, "redaction leaves it alone");
-        assert_eq!(read_decline(frame.payload().expect("payload")), Ok(RequestId::new(2)));
+        assert_eq!(
+            read_decline(frame.payload().expect("payload")),
+            Ok((RequestId::new(2), None))
+        );
     }
 
     #[test]
@@ -1406,8 +1458,8 @@ mod tests {
             Ok((request, Vec::new()))
         );
         assert_eq!(
-            read_decline(decline(1, request).payload().expect("payload")),
-            Ok(request)
+            read_decline(decline(1, request, None).payload().expect("payload")),
+            Ok((request, None))
         );
         assert_ne!(
             member::ANSWER,

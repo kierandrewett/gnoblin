@@ -498,7 +498,7 @@ impl<O: Offerer> Prompter<O> {
             return Err(self.absent(request));
         };
         let decision = match outcome {
-            RequestOutcome::Ended | RequestOutcome::TimedOut => Decision::Cancelled,
+            RequestOutcome::Ended | RequestOutcome::TimedOut | RequestOutcome::Refused(_) => Decision::Cancelled,
             RequestOutcome::Answered(bytes) => match waiting.kind {
                 PromptKind::Password => Decision::Password(Secret::new(bytes.clone())),
                 PromptKind::Confirm => Decision::Confirmed(bytes == b"yes"),

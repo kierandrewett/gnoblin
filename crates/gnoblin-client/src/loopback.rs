@@ -174,7 +174,7 @@ impl Inner {
                 )),
             },
             wire::member::DECLINE => match wire::read_decline(payload) {
-                Ok(request) => match self.broker.decline(request, owner) {
+                Ok((request, reason)) => match self.broker.decline_with(request, owner, reason) {
                     Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::DECLINE,

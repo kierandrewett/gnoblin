@@ -92,7 +92,7 @@ pub use error::{ModelError, RequestError};
 pub use graph::{Filter, Graph, OBJECT_GONE, ObjectView, Observation, Snapshot, Subscription};
 pub use object::Object;
 pub use operation::{Operation, OperationOutcome};
-pub use request::{RequestBroker, RequestCompletion, RequestEvent, RequestOutcome, RequestState};
+pub use request::{DeclineReason, RequestBroker, RequestCompletion, RequestEvent, RequestOutcome, RequestState};
 pub use slot::{CapabilitySlot, ClaimError, Provider, Slots, UnknownSlot};
 pub use types::TypeKey;
 pub use value::{Fields, Value};

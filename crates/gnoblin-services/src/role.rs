@@ -258,6 +258,7 @@ impl Agents {
                 match completion {
                     RequestCompletion::Answered => {}
                     RequestCompletion::Ended => self.answer(request, &RequestOutcome::Ended),
+                    RequestCompletion::Refused(reason) => self.answer(request, &RequestOutcome::Refused(reason)),
                     RequestCompletion::TimedOut => self.answer(request, &RequestOutcome::TimedOut),
                 }
             }
