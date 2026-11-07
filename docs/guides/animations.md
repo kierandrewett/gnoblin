@@ -155,6 +155,10 @@ presets calculate their destination from dock/icon or monitor geometry. Custom
 animations should supply their own `x` and `y` values when they need to move
 toward a specific place.
 
+Hiding a window in the compositor, as minimizing it does, fades the window's last picture out over
+200 ms. The window keeps its content, so restoring it shows the last frame its client committed.
+Restoring it during that fade eases it back to opaque. With reduced motion the window is hidden at once.
+
 ## Recreate a preset
 
 For example, this gives a custom `open` animation the same duration, curve,
