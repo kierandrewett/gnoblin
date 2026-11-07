@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use mlua::{Error, Function, Lua, MultiValue, Table, Value};
 
-use crate::pattern::{Matcher, PatternError, Piece};
+use crate::pattern::{PatternError, PatternMatcher, Piece};
 use crate::{Guard, budget_message};
 
 /// What the installed functions share: the guard whose budget they draw from, the
@@ -96,7 +96,7 @@ pub(crate) fn install(lua: &Lua, guard: Rc<Guard>, budget: u64) -> Result<(), Er
         let env = Rc::clone(&env);
         lua.create_function(move |lua, args: MultiValue| {
             let args: Vec<Value> = args.into_iter().collect();
-            let r = find_aux(lua, &env, &args, Mode::Find);
+            let r = find_aux(lua, &env, &args, SearchKind::Find);
             env.surface(lua, r)
         })?
     };
@@ -104,7 +104,7 @@ pub(crate) fn install(lua: &Lua, guard: Rc<Guard>, budget: u64) -> Result<(), Er
         let env = Rc::clone(&env);
         lua.create_function(move |lua, args: MultiValue| {
             let args: Vec<Value> = args.into_iter().collect();
-            let r = find_aux(lua, &env, &args, Mode::Match);
+            let r = find_aux(lua, &env, &args, SearchKind::Match);
             env.surface(lua, r)
         })?
     };
@@ -139,23 +139,23 @@ pub(crate) fn install(lua: &Lua, guard: Rc<Guard>, budget: u64) -> Result<(), Er
 
 /// Which of the two search functions is running. They share one body.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode {
+enum SearchKind {
     Find,
     Match,
 }
 
-impl Mode {
+impl SearchKind {
     /// The name `luaL_argerror` would print for this function.
     fn name(self) -> &'static str {
         match self {
-            Mode::Find => "find",
-            Mode::Match => "match",
+            SearchKind::Find => "find",
+            SearchKind::Match => "match",
         }
     }
 }
 
 /// `str_find_aux`: the body of `string.find` and `string.match`.
-fn find_aux(lua: &Lua, env: &Env, args: &[Value], mode: Mode) -> Result<MultiValue, Error> {
+fn find_aux(lua: &Lua, env: &Env, args: &[Value], mode: SearchKind) -> Result<MultiValue, Error> {
     let name = mode.name();
     let subject = check_string(env, args, 0, name)?;
     let pattern = check_string(env, args, 1, name)?;
@@ -171,7 +171,7 @@ fn find_aux(lua: &Lua, env: &Env, args: &[Value], mode: Mode) -> Result<MultiVal
     // ")" is not an error when it cannot match at all.
     let plain_flag = truthy(args.get(3));
     let no_specials = !pattern.iter().any(|c| b"^$*+?.([%-".contains(c));
-    if mode == Mode::Find && (plain_flag || no_specials) {
+    if mode == SearchKind::Find && (plain_flag || no_specials) {
         let found = if pattern.is_empty() {
             Some(init)
         } else {
@@ -191,20 +191,20 @@ fn find_aux(lua: &Lua, env: &Env, args: &[Value], mode: Mode) -> Result<MultiVal
 
     let anchor = pattern.first() == Some(&b'^');
     let pat = if anchor { &pattern[1..] } else { &pattern[..] };
-    let mut matcher = Matcher::new(&subject, pat, &env.guard.remaining);
+    let mut matcher = PatternMatcher::new(&subject, pat, &env.guard.remaining);
     let mut start = init;
     loop {
         if let Some(end) = lift(env, matcher.match_here(start))? {
             let mut out = Vec::new();
             match mode {
-                Mode::Find => {
+                SearchKind::Find => {
                     out.push(Value::Integer(start as i64 + 1));
                     out.push(Value::Integer(end as i64));
                     for piece in lift(env, matcher.captures(None))? {
                         out.push(piece_value(lua, &subject, piece)?);
                     }
                 }
-                Mode::Match => {
+                SearchKind::Match => {
                     for piece in lift(env, matcher.captures(Some(start..end)))? {
                         out.push(piece_value(lua, &subject, piece)?);
                     }
@@ -262,7 +262,7 @@ struct GmatchState {
 
 /// `gmatch_aux`: find the next match and return its captures, or nothing when done.
 fn gmatch_step(lua: &Lua, state: &GmatchState) -> Result<MultiValue, Error> {
-    let mut matcher = Matcher::new(&state.subject, &state.pattern, &state.env.guard.remaining);
+    let mut matcher = PatternMatcher::new(&state.subject, &state.pattern, &state.env.guard.remaining);
     let mut start = state.src.get();
     while start <= state.subject.len() {
         // A match that ends where the previous one ended is skipped (5.4+ rule).
@@ -304,7 +304,7 @@ fn gsub_aux(lua: &Lua, env: &Env, args: &[Value]) -> Result<MultiValue, Error> {
     let anchor = pattern.first() == Some(&b'^');
     let pat = if anchor { &pattern[1..] } else { &pattern[..] };
 
-    let mut matcher = Matcher::new(&subject, pat, &env.guard.remaining);
+    let mut matcher = PatternMatcher::new(&subject, pat, &env.guard.remaining);
     let mut out = Vec::with_capacity(subject.len());
     let mut pos = 0usize;
     let mut lastmatch = None;
@@ -351,7 +351,7 @@ fn gsub_aux(lua: &Lua, env: &Env, args: &[Value]) -> Result<MultiValue, Error> {
 fn add_value(
     lua: &Lua,
     env: &Env,
-    matcher: &Matcher<'_>,
+    matcher: &PatternMatcher<'_>,
     out: &mut Vec<u8>,
     subject: &[u8],
     s: usize,
@@ -418,7 +418,7 @@ fn finish_value(
 /// `add_s`: expand a replacement string, with `%0`..`%9` and `%%`.
 fn add_s(
     env: &Env,
-    matcher: &Matcher<'_>,
+    matcher: &PatternMatcher<'_>,
     out: &mut Vec<u8>,
     subject: &[u8],
     s: usize,

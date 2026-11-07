@@ -10,8 +10,8 @@
 //! what lets `tests/pattern_parity.rs` compare results with stock Lua.
 //!
 //! Positions are byte offsets, and `src.len()` plays the part of C's `src_end`. The
-//! C code reads the byte after a string's end as a NUL; [`Matcher::at`] and
-//! [`Matcher::src_at`] do the same, so the two ports take the same branches.
+//! C code reads the byte after a string's end as a NUL; [`PatternMatcher::at`] and
+//! [`PatternMatcher::src_at`] do the same, so the two ports take the same branches.
 use std::cell::Cell;
 use std::ops::Range;
 
@@ -49,7 +49,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 /// One capture: where it starts in the subject and how long it is, or one of the
 /// `CAP_*` markers.
 #[derive(Clone, Copy, Debug, Default)]
-struct Capture {
+struct PatternCapture {
     init: usize,
     len: isize,
 }
@@ -65,10 +65,10 @@ pub(crate) enum Piece {
 
 /// The matcher state for one subject and one pattern.
 ///
-/// A `Matcher` is cheap to build. Callers reuse one for a whole `gsub` or `gmatch`
-/// loop, calling [`Matcher::match_here`] at each start position, which resets the
+/// A `PatternMatcher` is cheap to build. Callers reuse one for a whole `gsub` or `gmatch`
+/// loop, calling [`PatternMatcher::match_here`] at each start position, which resets the
 /// per-attempt state the way `reprepstate` does in C.
-pub(crate) struct Matcher<'a> {
+pub(crate) struct PatternMatcher<'a> {
     src: &'a [u8],
     pat: &'a [u8],
     /// Steps the caller has left. Each step costs one unit, and the matcher stops
@@ -78,26 +78,26 @@ pub(crate) struct Matcher<'a> {
     depth: u32,
     /// Captures opened so far (`level` in C).
     level: usize,
-    captures: [Capture; MAX_CAPTURES],
+    captures: [PatternCapture; MAX_CAPTURES],
 }
 
-impl<'a> Matcher<'a> {
+impl<'a> PatternMatcher<'a> {
     /// A matcher for `pat` over `src`, drawing steps from `fuel`.
-    pub(crate) fn new(src: &'a [u8], pat: &'a [u8], fuel: &'a Cell<u64>) -> Matcher<'a> {
-        Matcher {
+    pub(crate) fn new(src: &'a [u8], pat: &'a [u8], fuel: &'a Cell<u64>) -> PatternMatcher<'a> {
+        PatternMatcher {
             src,
             pat,
             fuel,
             depth: MAX_DEPTH,
             level: 0,
-            captures: [Capture::default(); MAX_CAPTURES],
+            captures: [PatternCapture::default(); MAX_CAPTURES],
         }
     }
 
     /// Try to match the whole pattern starting at subject index `s`.
     ///
     /// On success it returns the end index and leaves the captures in place for
-    /// [`Matcher::captures`] or [`Matcher::capture`].
+    /// [`PatternMatcher::captures`] or [`PatternMatcher::capture`].
     pub(crate) fn match_here(&mut self, s: usize) -> Result<Option<usize>> {
         self.depth = MAX_DEPTH;
         self.level = 0;
@@ -118,7 +118,7 @@ impl<'a> Matcher<'a> {
         (0..count).map(|i| self.capture(i, &whole)).collect()
     }
 
-    /// Capture `i` (0-based) of the current match, as `get_onecapture` gives it.
+    /// PatternCapture `i` (0-based) of the current match, as `get_onecapture` gives it.
     ///
     /// `whole` is the range that capture 0 means when the pattern has no captures.
     pub(crate) fn capture(&self, i: usize, whole: &Range<usize>) -> Result<Piece> {
@@ -262,7 +262,7 @@ impl<'a> Matcher<'a> {
         if self.level >= MAX_CAPTURES {
             return fail("too many captures");
         }
-        self.captures[self.level] = Capture { init: s, len: what };
+        self.captures[self.level] = PatternCapture { init: s, len: what };
         self.level += 1;
         let result = self.match_fn(s, p)?;
         if result.is_none() {
