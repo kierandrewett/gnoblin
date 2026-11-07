@@ -759,7 +759,10 @@ fn a_hotplugged_output_is_covered_before_it_shows_anything() {
                 gnoblin_types::Scale::integral(1),
             )
             .expect("a mode with pixels");
-        let observation = session.wait_for(|observation| observation.outputs().len() == 2);
+        // The output and the restarted barrier land in one turn of the loop, but a
+        // snapshot published between the two shows the new output with the old state.
+        let observation = session
+            .wait_for(|observation| observation.outputs().len() == 2 && observation.lock_state() == LockState::Locking);
         assert_eq!(
             observation.lock_state(),
             LockState::Locking,
