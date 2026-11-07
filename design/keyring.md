@@ -230,6 +230,10 @@ phase starts.
 2. **Secret Service server.** The `Service`, `Collection`, `Item` and `Prompt`
    interfaces over zbus, with `dh-ietf1024` only. Bus name taken under the
    coexistence rule. Tests: method replies match the specification.
+   Built in `gnoblin-service-keyring`. Serves `dh-ietf1024` sessions only and
+   requests the bus name with `DO_NOT_QUEUE`, so gnome-keyring keeps its name.
+   A locked store returns no items; that choice lives in `search_locked` and is
+   still open under "Needs Kieran" item 1.
 3. **Unlock path.** The PAM hand-off (`pam_gnoblin_keyring`), the password-change
    hook, and the one-per-session unlock prompt for the no-password case. Tests:
    login with a password unlocks; login without one prompts once.

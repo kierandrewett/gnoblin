@@ -264,6 +264,10 @@ const RULES: &[Rule] = &[
         id: "keyring-store-isolation",
         check: keyring_store_isolation,
     },
+    Rule {
+        id: "service-keyring-isolation",
+        check: service_keyring_isolation,
+    },
 ];
 
 /// One broken edge.
@@ -856,6 +860,23 @@ fn keyring_store_isolation(package: &Package, dep: &Dep) -> Option<String> {
         dep.name
     ))
 }
+
+/// The Secret Service face is a thin layer over the keyring store. It may name only the store and
+/// the logging facade among workspace crates, so the bus code cannot reach the compositor's graph.
+fn service_keyring_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != SERVICE_KEYRING_CRATE || !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    if dep.name == LOG_CRATE || dep.name == KEYRING_STORE_CRATE {
+        return None;
+    }
+    Some(format!(
+        "`{SERVICE_KEYRING_CRATE}` may depend only on `{KEYRING_STORE_CRATE}` and `{LOG_CRATE}` among workspace crates, not `{}`",
+        dep.name
+    ))
+}
+
+const SERVICE_KEYRING_CRATE: &str = "gnoblin-service-keyring";
 
 /// The test kit and the parity harness are development dependencies only.
 fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {

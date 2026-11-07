@@ -1,0 +1,26 @@
+[package]
+name = "gnoblin-service-keyring"
+description = "The Secret Service provider on org.freedesktop.secrets: the keyring's bus face, with dh-ietf1024 sessions only."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-keyring-store = { path = "../gnoblin-keyring-store" }
+gnoblin-log = { path = "../gnoblin-log" }
+# The bus face: the Service, Collection, Item, Session and Prompt interfaces are zbus objects.
+zbus.workspace = true
+# The `dh-ietf1024-sha256-aes128-cbc-pkcs7` session: the same arithmetic as the gcr adapter, on the
+# RFC 2409 group, with HKDF-SHA256 and AES-128-CBC.
+sha2.workspace = true
+hkdf.workspace = true
+aes.workspace = true
+cbc.workspace = true
+num-bigint.workspace = true
+getrandom.workspace = true
+# The session key and the exponent are wiped on drop.
+zeroize.workspace = true
+
+[lints]
+workspace = true

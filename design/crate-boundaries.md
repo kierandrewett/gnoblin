@@ -18,6 +18,8 @@ Cursor (`gnoblin-render/src/cursor/`, 2014 lines) is owned by the CursorCrate la
 
 New crate `gnoblin-keyring-store` (phase 1 of `design/keyring.md`) is a leaf: it names only `gnoblin-log` among workspace crates. `xtask/src/deps.rs` rule `keyring-store-isolation` enforces this. It is not a split of an existing crate, so it is not in the table below.
 
+New crate `gnoblin-service-keyring` (phase 2 of `design/keyring.md`) is the Secret Service face on `org.freedesktop.secrets`. It names only `gnoblin-keyring-store` and `gnoblin-log` among workspace crates. `xtask/src/deps.rs` rule `service-keyring-isolation` enforces this.
+
 ## Flagged splits
 
 | Crate               | Module                                       | Lines                   | Heavy deps it alone pulls       | Rule   | Proposed crate           |

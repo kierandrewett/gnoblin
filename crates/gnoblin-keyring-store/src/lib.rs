@@ -56,6 +56,31 @@ pub struct CollectionId(i64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ItemId(i64);
 
+impl CollectionId {
+    /// The row number this id names in the file. Paths on the bus carry it, so the service
+    /// reads it back when a caller names a collection.
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+
+    /// The id for row `raw`. It names nothing until a lookup finds a collection with it.
+    pub fn from_raw(raw: i64) -> CollectionId {
+        CollectionId(raw)
+    }
+}
+
+impl ItemId {
+    /// The row number this id names in the file.
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+
+    /// The id for row `raw`. It names nothing until a lookup finds an item with it.
+    pub fn from_raw(raw: i64) -> ItemId {
+        ItemId(raw)
+    }
+}
+
 /// One stored item. The secret is wiped when the item is dropped.
 pub struct Item {
     pub id: ItemId,
@@ -64,6 +89,10 @@ pub struct Item {
     pub secret: Zeroizing<Vec<u8>>,
     /// The attributes in name order, each a name and its value.
     pub attributes: Vec<(String, String)>,
+    /// Creation time, in milliseconds since the Unix epoch.
+    pub created_ms: i64,
+    /// Last modification time, in milliseconds since the Unix epoch.
+    pub modified_ms: i64,
 }
 
 /// Why a keyring operation failed.
@@ -240,18 +269,20 @@ impl Keyring {
         let row = self
             .conn
             .query_row(
-                "SELECT collection_id, label, secret FROM items WHERE id = ?1",
+                "SELECT collection_id, label, secret, created_ms, modified_ms FROM items WHERE id = ?1",
                 params![id.0],
                 |row| {
                     Ok((
                         row.get::<_, i64>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
                     ))
                 },
             )
             .optional()?;
-        let Some((collection, label, secret)) = row else {
+        let Some((collection, label, secret, created_ms, modified_ms)) = row else {
             return Ok(None);
         };
         let mut statement = self
@@ -268,6 +299,8 @@ impl Keyring {
             label,
             secret: Zeroizing::new(secret),
             attributes,
+            created_ms,
+            modified_ms,
         }))
     }
 
@@ -287,6 +320,28 @@ impl Keyring {
         let mut statement = self.conn.prepare(&sql)?;
         let ids = statement
             .query_map(params_from_iter(bound), |row| row.get::<_, i64>(0).map(ItemId))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids)
+    }
+
+    /// Every collection in the file, in id order, with its label.
+    pub fn collections(&self) -> Result<Vec<(CollectionId, String)>, KeyringError> {
+        let mut statement = self.conn.prepare("SELECT id, label FROM collections ORDER BY id")?;
+        let collections = statement
+            .query_map([], |row| {
+                Ok((CollectionId(row.get::<_, i64>(0)?), row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(collections)
+    }
+
+    /// The ids of every item in `collection`, in id order.
+    pub fn items_in(&self, collection: CollectionId) -> Result<Vec<ItemId>, KeyringError> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT id FROM items WHERE collection_id = ?1 ORDER BY id")?;
+        let ids = statement
+            .query_map(params![collection.0], |row| row.get::<_, i64>(0).map(ItemId))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ids)
     }
