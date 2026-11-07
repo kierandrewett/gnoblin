@@ -206,6 +206,10 @@ const RULES: &[Rule] = &[
         check: portal_crates,
     },
     Rule {
+        id: "pipewire-export-isolation",
+        check: pipewire_export_isolation,
+    },
+    Rule {
         id: "dev-crates",
         check: dev_crates,
     },
@@ -543,6 +547,48 @@ fn portal_crates(package: &Package, dep: &Dep) -> Option<String> {
         allowed.join(", "),
         dep.name
     ))
+}
+
+/// The crates the PipeWire export may name. It is fed plain values and a `PlaneSource` by
+/// the wayland crate and names no other workspace crate beyond the capture, lock, types
+/// and backend crates its frames are built from.
+const PIPEWIRE_EXPORT_ALLOWED: &[&str] = &[
+    "gnoblin-backend",
+    "gnoblin-capture",
+    "gnoblin-lock",
+    "gnoblin-types",
+    "pipewire",
+];
+
+/// Only `gnoblin-wayland` may name the PipeWire export, and only the export may link
+/// `pipewire`. The PipeWire client is a large stack, so one crate owns it, and the export
+/// names only the types listed in [`PIPEWIRE_EXPORT_ALLOWED`].
+fn pipewire_export_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name == "gnoblin-pipewire-export" {
+        if dep.name == "pipewire" || dep.name.starts_with("gnoblin-") {
+            return (!PIPEWIRE_EXPORT_ALLOWED.contains(&dep.name.as_str())).then(|| {
+                format!(
+                    "`gnoblin-pipewire-export` may depend only on {}; `{}` is not one of them",
+                    PIPEWIRE_EXPORT_ALLOWED.join(", "),
+                    dep.name
+                )
+            });
+        }
+        return None;
+    }
+    if dep.name == "gnoblin-pipewire-export" && package.name != "gnoblin-wayland" {
+        return Some(format!(
+            "`{}` may not depend on `gnoblin-pipewire-export`; only `gnoblin-wayland` names the PipeWire export",
+            package.name
+        ));
+    }
+    if dep.name == "pipewire" && dep.kind == DepKind::Normal {
+        return Some(format!(
+            "`{}` may not link `pipewire`; only `gnoblin-pipewire-export` does",
+            package.name
+        ));
+    }
+    None
 }
 
 /// What one process may name.
@@ -1118,6 +1164,46 @@ mod tests {
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].contains("[foundation-purity]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    #[test]
+    fn only_the_wayland_crate_may_name_the_pipewire_export() {
+        // The export is the one place `pipewire` is linked. A second crate naming it would
+        // be a second owner of the PipeWire stack, so the rule rejects both the edge to the
+        // export and a direct link to `pipewire`.
+        let reported = violations(&[
+            ("gnoblin-wayland", &["gnoblin-pipewire-export"]),
+            ("gnoblin-session", &["gnoblin-pipewire-export"]),
+            ("gnoblin-render", &["pipewire"]),
+        ]);
+        assert_eq!(reported.len(), 2, "expected two violations, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-session -> gnoblin-pipewire-export [pipewire-export-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+        assert!(
+            reported[1].starts_with("gnoblin-render -> pipewire [pipewire-export-isolation]"),
+            "unexpected violation: {}",
+            reported[1]
+        );
+    }
+
+    #[test]
+    fn the_pipewire_export_may_name_only_its_allowed_crates() {
+        // The export is fed plain values and a `PlaneSource` by the wayland crate, so it
+        // must not name the wayland crate (a cycle) or any other workspace crate beyond the
+        // frame-building set.
+        let reported = violations(&[(
+            "gnoblin-pipewire-export",
+            &["gnoblin-capture", "gnoblin-wayland", "pipewire"],
+        )]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-pipewire-export -> gnoblin-wayland [pipewire-export-isolation]"),
             "unexpected violation: {}",
             reported[0]
         );

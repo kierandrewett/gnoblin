@@ -444,6 +444,7 @@ gnoblin/
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
+    gnoblin-pipewire-export/  PipeWire video streams for granted capture sessions; the only crate that links `pipewire`
     gnoblin-log/              the one logging crate (D23): macros, components and `Role`; `tracing` alone, plus the `console`, `store`, `journal` and `init` features, which only a binary enables
     gnoblin-xwayland/         Xwayland startup and window management
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state

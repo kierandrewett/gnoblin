@@ -70,7 +70,7 @@ These add a graph node and no feature. They are flagged in the opposite directio
 
 ## Ranked top ten
 
-1. `gnoblin-wayland` pipewire export to `gnoblin-pipewire-export`.
+1. `gnoblin-wayland` pipewire export to `gnoblin-pipewire-export`. Done: the module moved with its tests, and `xtask deps` rule `pipewire-export-isolation` holds it.
 2. `gnoblin-input` EIS to `gnoblin-input-eis`.
 3. `gnoblin-backend` Vulkan to `gnoblin-backend-vulkan`.
 4. `gnoblin-backend` hardware to `gnoblin-backend-drm`.
