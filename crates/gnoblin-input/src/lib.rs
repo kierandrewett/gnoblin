@@ -91,7 +91,7 @@ pub mod name;
 pub mod policy;
 pub mod router;
 
-pub use binding::{Binding, BindingId, BindingTable, Conflict, Insertion, Trigger};
+pub use binding::{Binding, BindingId, BindingTable, Conflict, ConflictCode, Declaration, Insertion, Trigger};
 pub use chord::{Chord, ChordKind, Key, Keysyms, ParseError, Symbol};
 pub use gesture::{
     CancelReason, Contact, ContactPhase, EdgeBand, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase,

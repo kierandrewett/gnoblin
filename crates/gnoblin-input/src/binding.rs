@@ -146,7 +146,44 @@ impl fmt::Display for Conflict {
     }
 }
 
+/// The stable reason a declaration was refused. A session reports it by name, so a log
+/// or a control client never has to parse the human message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConflictCode {
+    /// Another binding already owns the chord.
+    DuplicateChord,
+}
+
+impl ConflictCode {
+    /// The wire and log spelling of the code.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DuplicateChord => "duplicate-chord",
+        }
+    }
+}
+
+impl Conflict {
+    /// Why the declaration was refused.
+    pub const fn code(&self) -> ConflictCode {
+        ConflictCode::DuplicateChord
+    }
+}
+
 impl std::error::Error for Conflict {}
+
+/// One binding as a configuration declares it, the input to [`BindingTable::reconcile`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Declaration {
+    /// The declared name.
+    pub name: Name,
+    /// The chord the binding owns.
+    pub chord: Chord,
+    /// The edge that runs it.
+    pub trigger: Trigger,
+    /// Whether it still runs while the focused client inhibits shortcuts.
+    pub allow_when_inhibited: bool,
+}
 
 /// The bindings a session has declared, keyed by chord and by name.
 #[derive(Clone, Debug, Default)]
@@ -195,7 +232,11 @@ impl BindingTable {
                 replaced.chord = chord.clone();
                 replaced.trigger = trigger;
                 replaced.allow_when_inhibited = allow_when_inhibited;
-                self.by_chord.remove(&previous_chord);
+                // Drop the old chord only if this binding still owns it: in a reload that
+                // swaps two chords, the old chord may already belong to a sibling.
+                if self.by_chord.get(&previous_chord) == Some(&id) {
+                    self.by_chord.remove(&previous_chord);
+                }
                 self.by_chord.insert(chord, id);
                 Ok(Insertion::Replaced(id))
             }
@@ -233,6 +274,42 @@ impl BindingTable {
     pub fn remove_name(&mut self, name: &Name) -> Option<Binding> {
         let id = self.by_name.get(name.as_str()).copied()?;
         self.remove(id)
+    }
+
+    /// The table a configuration reload produces from the declared set.
+    ///
+    /// Names that are declared again keep their id, names that are no longer declared are
+    /// removed, and every chord is freed before the set is inserted, so two names that swap
+    /// chords do not conflict with each other. The result is all or nothing: a conflict
+    /// returns the error and `self` is untouched, so a failed reload keeps the bindings
+    /// that worked.
+    pub fn reconcile(&self, declared: &[Declaration]) -> Result<Self, Conflict> {
+        let mut next = self.clone();
+        let wanted: std::collections::BTreeSet<&str> = declared.iter().map(|d| d.name.as_str()).collect();
+        let stale: Vec<BindingId> = next
+            .by_name
+            .iter()
+            .filter(|(name, _)| !wanted.contains(name.as_str()))
+            .map(|(_, id)| *id)
+            .collect();
+        for id in stale {
+            next.remove(id);
+        }
+        for name in &wanted {
+            if let Some(id) = next.by_name.get(*name).copied() {
+                let chord = next.entries[&id].chord.clone();
+                next.by_chord.remove(&chord);
+            }
+        }
+        for declaration in declared {
+            next.insert(
+                &declaration.name,
+                declaration.chord.clone(),
+                declaration.trigger,
+                declaration.allow_when_inhibited,
+            )?;
+        }
+        Ok(next)
     }
 
     /// The binding with this id.
@@ -282,6 +359,7 @@ mod tests {
             let (symbol, canonical) = match lowered.as_str() {
                 "q" => (0x71, "q"),
                 "w" => (0x77, "w"),
+                "e" => (0x65, "e"),
                 _ => return None,
             };
             Some(Symbol::new(Keysym::new(symbol), canonical))
@@ -323,6 +401,8 @@ mod tests {
         let conflict = table
             .insert(&name("second"), chord("<super>q"), Trigger::Press, false)
             .expect_err("the same chord written another way");
+        assert_eq!(conflict.code(), super::ConflictCode::DuplicateChord);
+        assert_eq!(conflict.code().as_str(), "duplicate-chord");
         assert_eq!(conflict.existing_name, name("first"));
         assert_eq!(conflict.incoming_name, name("second"));
         assert_eq!(table.len(), 1);
@@ -343,5 +423,54 @@ mod tests {
         assert_eq!(table.lookup(&chord("w")).expect("w").name(), &name("b"));
         assert_eq!(table.lookup(&chord("q")).expect("q").name(), &name("a"));
         assert_eq!(table.len(), 2);
+    }
+
+    fn declaration(name_text: &str, chord_text: &str) -> super::Declaration {
+        super::Declaration {
+            name: name(name_text),
+            chord: chord(chord_text),
+            trigger: Trigger::Press,
+            allow_when_inhibited: false,
+        }
+    }
+
+    #[test]
+    fn a_reload_removes_names_it_no_longer_declares() {
+        let mut table = BindingTable::new();
+        let kept = table
+            .insert(&name("a"), chord("q"), Trigger::Press, false)
+            .expect("a")
+            .id();
+        table.insert(&name("b"), chord("w"), Trigger::Press, false).expect("b");
+        let reloaded = table.reconcile(&[declaration("a", "e")]).expect("reload");
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded.lookup(&chord("w")), None);
+        assert_eq!(reloaded.lookup(&chord("e")).expect("e").id(), kept);
+        assert_eq!(reloaded.lookup(&chord("q")), None);
+    }
+
+    #[test]
+    fn names_may_swap_chords_in_one_reload() {
+        let mut table = BindingTable::new();
+        table.insert(&name("a"), chord("q"), Trigger::Press, false).expect("a");
+        table.insert(&name("b"), chord("w"), Trigger::Press, false).expect("b");
+        let reloaded = table
+            .reconcile(&[declaration("a", "w"), declaration("b", "q")])
+            .expect("a swap is not a conflict");
+        assert_eq!(reloaded.lookup(&chord("w")).expect("w").name(), &name("a"));
+        assert_eq!(reloaded.lookup(&chord("q")).expect("q").name(), &name("b"));
+    }
+
+    #[test]
+    fn a_conflicting_reload_leaves_the_table_it_came_from() {
+        let mut table = BindingTable::new();
+        table.insert(&name("a"), chord("q"), Trigger::Press, false).expect("a");
+        let conflict = table
+            .reconcile(&[declaration("a", "e"), declaration("c", "e")])
+            .expect_err("two names want e");
+        assert_eq!(conflict.existing_name, name("a"));
+        assert_eq!(conflict.incoming_name, name("c"));
+        assert_eq!(table.lookup(&chord("q")).expect("q").name(), &name("a"));
+        assert_eq!(table.lookup(&chord("e")), None);
     }
 }

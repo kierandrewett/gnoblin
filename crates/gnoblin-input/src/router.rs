@@ -653,6 +653,22 @@ mod tests {
     }
 
     #[test]
+    fn a_shortcut_does_nothing_under_the_lock() {
+        // The lock cover takes both devices. A bound chord must reach the cover and must
+        // not fire, so a shortcut cannot launch a command from a locked session.
+        let mut router = Router::new();
+        router
+            .bind(&name("terminal"), chord("q"), Trigger::Press, true)
+            .expect("q");
+        let lock = router.begin_grab(Scope::Both);
+        let routed = router.route(press(Q, Modifiers::NONE), ShortcutInhibit::Clear);
+        assert_eq!(routed.target, Target::Grab(lock));
+        assert_eq!(routed.fired, None);
+        route(&mut router, release(Q, Modifiers::NONE));
+        assert!(router.end_grab(lock));
+    }
+
+    #[test]
     fn a_release_trigger_reserves_its_press_and_fires_once() {
         let mut router = Router::new();
         let id = router
