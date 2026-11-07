@@ -1603,7 +1603,9 @@ impl State {
                 self.constraint_tables.held.retain(|held| held.surface != wl_surface);
                 log::debug!(area = "window", %window, surface = ?wl_surface.id(), "closed");
             }
-            self.composer.remove_window(window);
+            // The window fades out from the picture its buffer holds now, before the
+            // client can free that buffer.
+            self.composer.close_window(window);
             // The layout a window remembered goes with it: a recycled identity must not
             // inherit another window's source.
             self.forget_layout(window);

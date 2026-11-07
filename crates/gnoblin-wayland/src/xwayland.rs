@@ -376,7 +376,7 @@ impl State {
                 output.output.leave(&wl_surface);
             }
         }
-        self.composer.remove_window(window);
+        self.composer.close_window(window);
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
         self.publish();
