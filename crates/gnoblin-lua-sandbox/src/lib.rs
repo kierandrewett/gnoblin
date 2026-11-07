@@ -634,26 +634,32 @@ mod tests {
 
     #[test]
     fn layout_profile_drops_every_global_outside_the_allowlist() {
+        // `load`, `print`, `warn` and `utf8` are deliberately kept (see `restrict_layout`).
+        // Only the names that reach the host are absent.
         let lua = lua(Profile::Layout);
-        for name in ["io", "debug", "package", "require", "load", "dofile", "print", "utf8"] {
+        for name in ["io", "debug", "package", "require", "dofile", "loadfile"] {
             let value: Value = lua.globals().get(name).expect("a global reads");
             assert!(
                 matches!(value, Value::Nil),
                 "{name} must be absent in the layout profile"
             );
         }
+        for name in ["load", "print", "warn", "utf8"] {
+            let value: Value = lua.globals().get(name).expect("a global reads");
+            assert!(!matches!(value, Value::Nil), "{name} must stay in the layout profile");
+        }
     }
 
     #[test]
-    fn layout_profile_refuses_pattern_functions_and_random() {
+    fn layout_profile_refuses_clock_reads_and_unseeded_randomness() {
+        // Each refusal is one of the layout guards: the clock, an unseeded `randomseed`, and
+        // a format width above the limit. Pattern functions are served by `strlib` and work.
         let lua = lua(Profile::Layout);
         for call in [
-            "string.find('abc', 'b')",
-            "string.match('abc', 'b')",
-            "string.gsub('abc', 'b', 'c')",
-            "string.rep('a', 10)",
-            "math.random()",
-            "string.dump(print)",
+            "os.time()",
+            "os.date()",
+            "math.randomseed()",
+            "string.format('%1000d', 1)",
         ] {
             assert!(lua.load(call).exec().is_err(), "{call} must be refused");
         }
