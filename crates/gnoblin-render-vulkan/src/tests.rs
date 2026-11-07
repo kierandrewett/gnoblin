@@ -27,7 +27,7 @@ use smithay::utils::Transform;
 use super::harness::{BufferSpec, ShmClient};
 use super::pipeline::ShaderSources;
 use super::*;
-use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface};
+use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
@@ -83,7 +83,7 @@ fn solid(frame: &mut OutputFrame, rect: Rect, colour: Color) {
 /// A surface layer drawing `src` of `buffer` at `dst`.
 fn surface(buffer: &ShmClient, index: usize, src: RectF, dst: Rect, opacity: f32, tint: Color) -> Layer {
     Layer::Surface(Surface {
-        buffer: buffer.buffer(index),
+        source: SurfaceSource::Buffer(buffer.buffer(index)),
         src,
         dst,
         transform: Transform::Normal,

@@ -37,7 +37,7 @@ use super::error::classify;
 use super::pipeline::{BLOCK_RANGE, DescriptorArena};
 use super::plan::{FramePlan, PassKind, TextureSizes, TextureSlot, damage_of, overlay_of, plan};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::{Layer, OutputFrame};
+use gnoblin_render_frame::frame::{Layer, OutputFrame, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 
@@ -855,17 +855,15 @@ fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
         if surface.model.is_some() {
             continue;
         }
-        match shm::shape(&surface.buffer) {
-            Ok(shape) => found.push((
-                TextureSlot::Layer(index),
-                PixelSource::Shm {
-                    buffer: &surface.buffer,
-                    shape,
-                },
-            )),
-            Err(error) => {
-                log::warn!(area = "render", %error, "a client buffer could not be read; the layer is skipped")
-            }
+        match &surface.source {
+            SurfaceSource::Buffer(buffer) => match shm::shape(buffer) {
+                Ok(shape) => found.push((TextureSlot::Layer(index), PixelSource::Shm { buffer, shape })),
+                Err(error) => {
+                    log::warn!(area = "render", %error, "a client buffer could not be read; the layer is skipped")
+                }
+            },
+            // A snapshot is premultiplied pixels already, the same as the overlay bitmap.
+            SurfaceSource::Snapshot(image) => found.push((TextureSlot::Layer(index), PixelSource::Bitmap(image))),
         }
     }
     if let Some(overlay) = overlay_of(frame) {

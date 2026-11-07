@@ -116,7 +116,7 @@ use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
 use gl::{Depth, Framebuffer, GlContext, Program, QuadPlacement, Texture};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, View};
+use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
@@ -531,7 +531,7 @@ impl Gles {
                     owned.extend(texture);
                     handle
                 }
-                Layer::Surface(surface) => self.import(surface),
+                Layer::Surface(surface) => self.import(surface, &mut owned),
             });
         }
         // The overlay is the frame's last layer, so it is drawn after the model pass and the glass.
@@ -663,12 +663,23 @@ impl Gles {
         Ok(())
     }
 
-    /// Imports a surface layer's client buffer.
-    fn import(&mut self, surface: &Surface) -> Option<Texture> {
+    /// Imports a surface layer's pixels: its client buffer, or the snapshot a closing window
+    /// keeps once the client has let the buffer go. A snapshot's texture is pushed to `owned`,
+    /// which keeps its GL name alive until the frame is painted.
+    fn import(&mut self, surface: &Surface, owned: &mut Vec<GlesTexture>) -> Option<Texture> {
+        let buffer = match &surface.source {
+            SurfaceSource::Buffer(buffer) => buffer,
+            SurfaceSource::Snapshot(image) => {
+                let texture = self.import_overlay(image)?;
+                let handle = Texture::from_smithay(&texture);
+                owned.push(texture);
+                return handle;
+            }
+        };
         let texture = self
             .device
             .renderer()
-            .import_shm_buffer(&surface.buffer, None, &[])
+            .import_shm_buffer(buffer, None, &[])
             .map_err(|error| {
                 log::warn!(
                     area = "render",

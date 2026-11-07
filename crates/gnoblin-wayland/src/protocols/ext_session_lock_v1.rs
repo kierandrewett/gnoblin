@@ -91,7 +91,7 @@ use gnoblin_lock::{
     State as LockState, Subject,
 };
 use gnoblin_render::Effects;
-use gnoblin_render_frame::frame::{Layer, OutputFrame, Surface};
+use gnoblin_render_frame::frame::{Layer, OutputFrame, Surface, SurfaceSource};
 use gnoblin_types::{ClientId, Color, OutputId, Rect};
 
 use crate::State;
@@ -427,7 +427,7 @@ impl State {
             && let Some((buffer, content)) = crate::state::committed_content(&surface)
         {
             frame.push_layer(Layer::Surface(Surface {
-                buffer,
+                source: SurfaceSource::Buffer(buffer),
                 src: content.src,
                 dst: Rect::new(0, 0, rect.width, rect.height),
                 transform: content.transform,

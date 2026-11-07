@@ -112,16 +112,30 @@ impl Layer {
     }
 }
 
+/// What a [`Surface`] draws its pixels from.
+#[derive(Clone, Debug)]
+pub enum SurfaceSource {
+    /// The client's buffer, held by a handle so a client that destroys it mid-frame keeps
+    /// the object alive until the frame is done. The renderer reads it through Smithay,
+    /// which is the only safe way to touch memory the client can also write.
+    Buffer(WlBuffer),
+    /// A copy of a buffer's pixels taken earlier, while the client still had it.
+    ///
+    /// A window that is closing outlives its buffer: the client may destroy the `wl_buffer`
+    /// at once, but the fade needs the last picture the window showed. The copy is the
+    /// buffer's raw pixels, full size and in the buffer's own orientation, so the
+    /// layer's `src` and `transform` apply to it exactly as they did to the buffer. Its
+    /// alpha is premultiplied, the way the renderer samples a buffer, so the bytes can
+    /// be drawn again without a conversion. This is the same convention the overlay
+    /// bitmap uses, and it is why the copy is not straight-alpha like a readback.
+    Snapshot(Arc<Image>),
+}
+
 /// A client buffer on the output.
-///
-/// The buffer is the client's `wl_shm` allocation, held by a handle so a client
-/// that destroys it mid-frame keeps the object alive until the frame is done. The
-/// renderer reads it through Smithay, which is the only safe way to touch memory
-/// the client can also write.
 #[derive(Clone, Debug)]
 pub struct Surface {
-    /// The client's buffer.
-    pub buffer: WlBuffer,
+    /// The pixels to draw: a live client buffer or a snapshot of one.
+    pub source: SurfaceSource,
     /// The crop to draw, in the buffer's own pixels.
     ///
     /// It is fractional because a viewported surface's source rectangle is stated

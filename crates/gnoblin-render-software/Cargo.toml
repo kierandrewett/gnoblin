@@ -16,6 +16,10 @@ gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # `[tag]` log lines for a refused operation or a skipped layer.
 gnoblin-log = { path = "../gnoblin-log" }
 
+[dev-dependencies]
+# Building a `Surface` in tests needs its `Effects`; the normal build only sees it through the frame.
+gnoblin-render = { path = "../gnoblin-render" }
+
 [features]
 # Exposes `Software::composed`, the readback the Vulkan parity tests compare with. Off in
 # every normal build, so the compositor cannot depend on a test-only entry point.

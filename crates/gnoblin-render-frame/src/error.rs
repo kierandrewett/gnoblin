@@ -26,6 +26,12 @@ pub enum RenderError {
     /// Nothing the renderer created can be used again: the caller builds a new renderer
     /// and damages the whole output. Only a GPU renderer reports it.
     Lost,
+    /// The renderer cannot do this operation at all, as opposed to failing at it.
+    ///
+    /// The caller falls back to the behaviour that needs nothing from the renderer: a window
+    /// that cannot be snapshotted is removed at once instead of fading out. Named so the
+    /// refusal is visible in logs rather than looking like a dropped frame.
+    Unsupported,
 }
 
 impl fmt::Display for RenderError {
@@ -35,6 +41,7 @@ impl fmt::Display for RenderError {
             Self::Degenerate { width, height } => write!(formatter, "a {width}x{height} target covers no pixels"),
             Self::Failed => write!(formatter, "the renderer refused a drawing operation"),
             Self::Lost => write!(formatter, "the renderer's device was lost"),
+            Self::Unsupported => write!(formatter, "this renderer cannot do that"),
         }
     }
 }

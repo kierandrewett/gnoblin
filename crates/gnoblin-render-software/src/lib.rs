@@ -66,7 +66,7 @@ use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as Physic
 use gnoblin_types::{Color, Scale, Size};
 
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, View};
+use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
@@ -215,6 +215,27 @@ impl Software {
             self.final_pass(view, matrix)?;
         }
         Ok(())
+    }
+
+    /// Copies what a surface layer shows, as the renderer samples it: the raw pixels of its
+    /// client buffer, before the layer's tint, opacity and transform.
+    ///
+    /// The copy is what a closing window keeps after its client has let go of the buffer, so
+    /// it is taken from the same import the draw uses. A [`SurfaceSource::Snapshot`] is
+    /// already such a copy and is returned as it is.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when the buffer cannot be imported or read back, for example
+    /// when the client has destroyed it. The caller then has nothing to fade and removes the
+    /// window at once.
+    pub fn snapshot(&mut self, surface: &Surface) -> Result<Image, RenderError> {
+        let buffer = match &surface.source {
+            SurfaceSource::Snapshot(image) => return Ok(image.as_ref().clone()),
+            SurfaceSource::Buffer(buffer) => buffer,
+        };
+        let texture = self.renderer.import_shm_buffer(buffer, None, &[]).map_err(failed)?;
+        read_texture(&mut self.renderer, &texture)
     }
 
     /// Reads the buffer back as an [`Image`], without the cursor.
@@ -412,13 +433,13 @@ impl Software {
         for layer in frame.layers() {
             match layer {
                 Layer::Solid(_) => textures.push(None),
-                Layer::Overlay(overlay) => textures.push(import_overlay(renderer, overlay.image())),
+                Layer::Overlay(overlay) => textures.push(import_bitmap(renderer, overlay.image())),
                 Layer::Surface(surface) => textures.push(import(renderer, surface, scratch)),
             }
         }
         *cursor_texture = frame
             .cursor()
-            .and_then(|cursor| import_overlay(renderer, cursor.image()));
+            .and_then(|cursor| import_bitmap(renderer, cursor.image()));
     }
 }
 
@@ -646,22 +667,47 @@ fn create_buffer(renderer: &mut PixmanRenderer, physical: Size) -> Result<Pixman
         })
 }
 
-/// Imports a layer's client buffer, applying its tint.
+/// Reads a whole texture back as an [`Image`] of its own size, top left first.
 ///
-/// An import failure is logged and skipped: the client may have destroyed the
-/// buffer between the commit and this frame, and one window's missing content must
-/// not stop the output from being drawn.
+/// The bytes are the texture's own and are not un-premultiplied: pixman copies them raw, so a
+/// client buffer's pixels come back premultiplied, which is the convention
+/// [`SurfaceSource::Snapshot`] documents. The mapping's stride is pixman's, so it is measured
+/// from the slice rather than assumed.
+fn read_texture(renderer: &mut PixmanRenderer, texture: &PixmanTexture) -> Result<Image, RenderError> {
+    let region = Rectangle::from_size(texture.size());
+    let mapping = renderer
+        .copy_texture(texture, region, READBACK_FORMAT)
+        .map_err(failed)?;
+    let width = mapping.width();
+    let height = mapping.height();
+    let bytes = renderer.map_texture(&mapping).map_err(failed)?;
+    if height == 0 {
+        return Err(RenderError::Failed);
+    }
+    let stride = bytes.len() / height as usize;
+    Image::new(Size::new(width, height), stride, bytes.to_vec()).ok_or(RenderError::Failed)
+}
+
+/// Imports a layer's pixels, applying its tint.
+///
+/// A client buffer is imported through Smithay's `wl_shm` mapping, a snapshot from its own
+/// bytes. An import failure is logged and skipped: the client may have destroyed the buffer
+/// between the commit and this frame, and one window's missing content must not stop the
+/// output from being drawn.
 fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8>) -> Option<PixmanTexture> {
-    let texture = renderer
-        .import_shm_buffer(&surface.buffer, None, &[])
-        .map_err(|error| {
-            log::warn!(
-                area = "render",
-                ?error,
-                "a client buffer could not be imported; the layer is skipped"
-            );
-        })
-        .ok()?;
+    let texture = match &surface.source {
+        SurfaceSource::Buffer(buffer) => renderer
+            .import_shm_buffer(buffer, None, &[])
+            .map_err(|error| {
+                log::warn!(
+                    area = "render",
+                    ?error,
+                    "a client buffer could not be imported; the layer is skipped"
+                );
+            })
+            .ok()?,
+        SurfaceSource::Snapshot(image) => import_bitmap(renderer, image)?,
+    };
     if surface.tint == Color::WHITE {
         return Some(texture);
     }
@@ -688,15 +734,33 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
         .ok()
 }
 
-/// Imports the overlay's premultiplied pixels.
+/// Imports premultiplied pixels held in an [`Image`]: the overlay, the cursor and a snapshot.
 ///
-/// An import failure is logged and the overlay is skipped for this frame, the same
-/// way a client buffer is.
-fn import_overlay(renderer: &mut PixmanRenderer, image: &Image) -> Option<PixmanTexture> {
+/// An import failure is logged and the bitmap is skipped for this frame, the same way a
+/// client buffer is.
+///
+/// `import_memory` takes rows packed at `width * 4` bytes, so an image whose stride is padded
+/// is repacked first; reading its bytes as they are would put every row after the first at the
+/// wrong offset.
+fn import_bitmap(renderer: &mut PixmanRenderer, image: &Image) -> Option<PixmanTexture> {
     let size = image.size();
+    let row = size.width as usize * 4;
+    let packed: std::borrow::Cow<'_, [u8]> = if image.stride() == row {
+        std::borrow::Cow::Borrowed(image.data())
+    } else {
+        std::borrow::Cow::Owned(
+            image
+                .data()
+                .chunks(image.stride())
+                .take(size.height as usize)
+                .flat_map(|line| &line[..row])
+                .copied()
+                .collect(),
+        )
+    };
     renderer
         .import_memory(
-            image.data(),
+            &packed,
             READBACK_FORMAT,
             PhysicalSize::from((size.width as i32, size.height as i32)),
             false,
@@ -705,7 +769,7 @@ fn import_overlay(renderer: &mut PixmanRenderer, image: &Image) -> Option<Pixman
             log::warn!(
                 area = "render",
                 ?error,
-                "the overlay could not be imported; it is not drawn"
+                "a bitmap could not be imported; it is not drawn"
             );
         })
         .ok()
@@ -778,6 +842,7 @@ fn failed(error: impl std::fmt::Debug) -> RenderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_render::Effects;
     use gnoblin_render_frame::frame::Solid;
     use gnoblin_types::Rect;
 
@@ -807,6 +872,74 @@ mod tests {
             Some([0, 0, 0, 255]),
             "the background elsewhere"
         );
+    }
+
+    /// A surface layer drawing a snapshot, at `dst`, with no tint, opacity or transform.
+    fn snapshot_layer(image: Image, dst: Rect) -> Layer {
+        Layer::Surface(Surface {
+            source: SurfaceSource::Snapshot(std::sync::Arc::new(image)),
+            src: gnoblin_types::RectF::new(0.0, 0.0, f64::from(dst.width), f64::from(dst.height)),
+            dst,
+            transform: smithay::utils::Transform::Normal,
+            opacity: 1.0,
+            tint: Color::WHITE,
+            corner_radius: 0.0,
+            effects: Effects::new(),
+            model: None,
+            secure: false,
+        })
+    }
+
+    /// A 2 by 2 image of four distinct opaque colours, stride padded to 12 bytes so a
+    /// wrong stride would move the colours.
+    fn quad_image() -> Image {
+        let mut data = vec![0u8; 12 * 2];
+        for (index, colour) in [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [9, 9, 9, 255]]
+            .iter()
+            .enumerate()
+        {
+            let (x, y) = (index % 2, index / 2);
+            data[y * 12 + x * 4..y * 12 + x * 4 + 4].copy_from_slice(colour);
+        }
+        Image::new(Size::new(2, 2), 12, data).expect("a valid image")
+    }
+
+    #[test]
+    fn a_snapshot_layer_draws_its_pixels_unchanged() {
+        // Rule: a closing window draws the picture it kept, byte for byte, so the snapshot
+        // is what the window last showed rather than a re-rendered approximation.
+        let image = quad_image();
+        let mut frame = frame_with(Color::BLACK, Rect::new(0, 0, 2, 2), Color::TRANSPARENT);
+        frame.push_layer(snapshot_layer(image.clone(), Rect::new(0, 0, 2, 2)));
+        let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let drawn = software.screenshot().expect("a readback");
+        for y in 0..2 {
+            for x in 0..2 {
+                assert_eq!(drawn.colour_at(x, y), image.colour_at(x, y), "pixel ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn a_snapshot_of_a_snapshot_is_the_same_image() {
+        // Rule: snapshotting a layer that is already a snapshot copies it rather than
+        // failing, so a window can close twice (fade out, then re-close) without losing its picture.
+        let image = quad_image();
+        let surface = Surface {
+            source: SurfaceSource::Snapshot(std::sync::Arc::new(image.clone())),
+            src: gnoblin_types::RectF::new(0.0, 0.0, 2.0, 2.0),
+            dst: Rect::new(0, 0, 2, 2),
+            transform: smithay::utils::Transform::Normal,
+            opacity: 1.0,
+            tint: Color::WHITE,
+            corner_radius: 0.0,
+            effects: Effects::new(),
+            model: None,
+            secure: false,
+        };
+        let mut software = Software::new(Size::new(2, 2)).expect("a software renderer");
+        assert_eq!(software.snapshot(&surface).expect("a snapshot"), image);
     }
 
     #[test]

@@ -66,7 +66,7 @@ use gnoblin_render::{
 };
 use gnoblin_types::{Color, NodeId, OutputId, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
-use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface};
+use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, SurfaceSource};
 
 use crate::log;
 
@@ -691,7 +691,7 @@ impl Composer {
                 continue;
             }
             frame.push_layer(Layer::Surface(Surface {
-                buffer: buffer.clone(),
+                source: SurfaceSource::Buffer(buffer.clone()),
                 src: content.src,
                 dst,
                 transform: content.transform,
