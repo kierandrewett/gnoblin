@@ -58,6 +58,12 @@ mod member {
     pub const BELL: &str = "bell";
     /// The bell signal's field: how many times the bell has rung.
     pub const COUNT: &str = "count";
+    /// The `window` object's menu_requested signal, and its fields.
+    pub const MENU_REQUESTED: &str = "menu_requested";
+    /// The menu signal's source field: client, keyboard or extension.
+    pub const SOURCE: &str = "source";
+    /// The menu signal's seat field.
+    pub const SEAT: &str = "seat";
     /// The `window` object's identity.
     pub const ID: &str = "id";
     /// The `window` object's title property.
@@ -175,6 +181,8 @@ pub struct SessionSync {
     /// How many bells the last snapshot counted, so `apply` raises the signal once per
     /// ring rather than once per snapshot.
     bells: u64,
+    /// The sequence of the last menu request emitted, so each request is raised once.
+    menu_seq: u64,
     /// Last published state per window, kept so each new snapshot is diffed against it and
     /// unchanged properties are not rewritten.
     windows: BTreeMap<WindowId, PublishedWindow>,
@@ -215,6 +223,7 @@ impl SessionSync {
             idle,
             settings,
             bells: 0,
+            menu_seq: 0,
             windows: BTreeMap::new(),
             workspaces: BTreeMap::new(),
             outputs: BTreeMap::new(),
@@ -266,6 +275,35 @@ impl SessionSync {
         Ok(())
     }
 
+    /// Raises `window.menu_requested` once for every menu request the snapshot carries
+    /// that this session has not yet emitted, in the order the loop made them.
+    ///
+    /// The cursor is the request's sequence number, so a request is emitted once even
+    /// though every snapshot carries the recent ones again. A request whose window is no
+    /// longer published is skipped rather than guessed at: its menu has nowhere to appear.
+    fn raise_menu_requests(&mut self, snapshot: &SessionSnapshot) {
+        for request in snapshot.menu_requests() {
+            if request.seq() <= self.menu_seq {
+                continue;
+            }
+            self.menu_seq = request.seq();
+            let Some(published) = self.windows.get(&request.window()) else {
+                continue;
+            };
+            let anchor = request.anchor();
+            let mut fields = Fields::new();
+            fields.insert(member::X.to_owned(), Value::Int(i64::from(anchor.x())));
+            fields.insert(member::Y.to_owned(), Value::Int(i64::from(anchor.y())));
+            fields.insert(member::WIDTH.to_owned(), Value::Uint(u64::from(anchor.width())));
+            fields.insert(member::HEIGHT.to_owned(), Value::Uint(u64::from(anchor.height())));
+            fields.insert(member::SOURCE.to_owned(), Value::Text(request.source().as_str().to_owned()));
+            fields.insert(member::SEAT.to_owned(), Value::Text(request.seat().to_owned()));
+            if let Err(error) = self.graph.signal(published.object, member::MENU_REQUESTED, fields) {
+                error_in!("compositor", %error, "[ipc] the window object declares no menu_requested signal");
+            }
+        }
+    }
+
     /// Raises `session.bell` once for every ring the snapshot counted since the last one.
     ///
     /// The snapshot carries a count rather than a queue: a reader that missed one still
@@ -301,6 +339,7 @@ impl SessionSync {
     /// [`PublishError`] when the schema refuses a write this module makes, naming each
     /// object that could not be published.
     pub fn apply(&mut self, snapshot: &SessionSnapshot) -> Result<(), PublishError> {
+        self.raise_menu_requests(snapshot);
         self.raise_bell(snapshot.bells());
         let mut failures = Vec::new();
         self.apply_windows(snapshot, &mut failures);

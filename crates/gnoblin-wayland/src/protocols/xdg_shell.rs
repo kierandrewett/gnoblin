@@ -29,13 +29,14 @@ use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Point, Rectangle, Serial, Size};
+use smithay::utils::{Logical, Point, Rectangle, Serial, Size};
 use smithay::wayland::shell::xdg::{
     Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 
 use gnoblin_wm::Event;
 
+use crate::observation::{MenuAnchor, MenuSource};
 use crate::State;
 
 use crate::log;
@@ -43,6 +44,36 @@ use crate::log;
 impl XdgShellHandler for State {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
+    }
+
+    /// The client asks for the compositor's window menu at a point on its surface.
+    ///
+    /// The request is honoured only with a serial the session handed to this client on
+    /// an input event, which is the protocol's rule against a client opening menus on its
+    /// own. A serial the session never issued, or one that has aged out, is ignored with
+    /// a debug log, and nothing is shown. The point is surface-local, so it is shifted by
+    /// the window's own origin to give the output position the menu is anchored at.
+    fn show_window_menu(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: wl_seat::WlSeat,
+        serial: Serial,
+        location: Point<i32, Logical>,
+    ) {
+        if !self.serial_issued(u32::from(serial)) {
+            debug_in!("wayland", serial = u32::from(serial), "[xdg] a window menu with an unissued serial was ignored");
+            return;
+        }
+        let Some(window) = self.window_of(surface.wl_surface()) else {
+            debug_in!("wayland", "[xdg] a window menu for an unmanaged surface was ignored");
+            return;
+        };
+        let Some(origin) = self.geometry_of(window) else {
+            debug_in!("wayland", ?window, "[xdg] a window menu for a closed window was ignored");
+            return;
+        };
+        let anchor = MenuAnchor::point(origin.x + location.x, origin.y + location.y);
+        self.request_window_menu(window, anchor, MenuSource::Client);
     }
 
     fn client_pong(&mut self, client: smithay::wayland::shell::xdg::ShellClient) {

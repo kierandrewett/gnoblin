@@ -201,6 +201,134 @@ pub struct ObservedOutput {
     pub layout: String,
 }
 
+/// Where a window menu should appear, in output logical coordinates.
+///
+/// A point has zero size. A client's anchor for a titlebar button is that button's
+/// rectangle, so the menu can open beside it rather than over it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MenuAnchor {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+impl MenuAnchor {
+    /// An anchor covering the given rectangle.
+    #[must_use]
+    pub const fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        Self { x, y, width, height }
+    }
+
+    /// A zero-size anchor at a point.
+    #[must_use]
+    pub const fn point(x: i32, y: i32) -> Self {
+        Self::new(x, y, 0, 0)
+    }
+
+    /// The anchor's left edge.
+    #[must_use]
+    pub const fn x(&self) -> i32 {
+        self.x
+    }
+
+    /// The anchor's top edge.
+    #[must_use]
+    pub const fn y(&self) -> i32 {
+        self.y
+    }
+
+    /// The anchor's width; zero for a point.
+    #[must_use]
+    pub const fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// The anchor's height; zero for a point.
+    #[must_use]
+    pub const fn height(&self) -> u32 {
+        self.height
+    }
+}
+
+/// Who asked for a window menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuSource {
+    /// A client sent `xdg_toplevel.show_window_menu` with a serial the session issued.
+    Client,
+    /// The window-menu key binding fired while the window was focused.
+    Keyboard,
+    /// An extension called `window.request_menu`.
+    Extension,
+}
+
+impl MenuSource {
+    /// The name the `menu_requested` signal carries in its `source` field.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::Keyboard => "keyboard",
+            Self::Extension => "extension",
+        }
+    }
+}
+
+/// One request for a window's menu, as the `menu_requested` signal reports it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MenuRequest {
+    window: WindowId,
+    seq: u64,
+    anchor: MenuAnchor,
+    source: MenuSource,
+    seat: String,
+}
+
+impl MenuRequest {
+    /// A request numbered `seq`. Numbers only grow, which is how a reader tells a request
+    /// it has published from one it has not.
+    #[must_use]
+    pub fn new(window: WindowId, seq: u64, anchor: MenuAnchor, source: MenuSource, seat: &str) -> Self {
+        Self {
+            window,
+            seq,
+            anchor,
+            source,
+            seat: seat.to_owned(),
+        }
+    }
+
+    /// The window whose menu was asked for.
+    #[must_use]
+    pub fn window(&self) -> WindowId {
+        self.window
+    }
+
+    /// This request's sequence number.
+    #[must_use]
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    /// Where the menu should appear.
+    #[must_use]
+    pub fn anchor(&self) -> MenuAnchor {
+        self.anchor
+    }
+
+    /// Who asked.
+    #[must_use]
+    pub fn source(&self) -> MenuSource {
+        self.source
+    }
+
+    /// The seat that asked.
+    #[must_use]
+    pub fn seat(&self) -> &str {
+        &self.seat
+    }
+}
+
 /// The window state at one instant.
 #[derive(Clone, Default, PartialEq, Debug)]
 pub struct SessionSnapshot {
@@ -245,6 +373,10 @@ pub struct SessionSnapshot {
     pub(crate) idle_ms: u64,
     /// How many idle inhibitors hold idle off, as the `idle` object's `inhibitors` reports.
     pub(crate) inhibitors: usize,
+    /// The window menu requests made recently, oldest first, capped at the state's kept
+    /// count. A request is an event, so a reader publishes each one once by its sequence
+    /// number rather than diffing this list against its last snapshot.
+    pub(crate) menu_requests: Vec<MenuRequest>,
 }
 
 impl SessionSnapshot {
@@ -435,6 +567,19 @@ impl SessionSnapshot {
         self
     }
 
+    /// The same snapshot with window menu requests, for a reader that replays events.
+    #[must_use]
+    pub fn with_menu_requests(mut self, requests: Vec<MenuRequest>) -> Self {
+        self.menu_requests = requests;
+        self
+    }
+
+    /// The window menu requests this snapshot carries, oldest first.
+    #[must_use]
+    pub fn menu_requests(&self) -> &[MenuRequest] {
+        &self.menu_requests
+    }
+
     /// Assemble a snapshot from its parts.
     ///
     /// A session builds its own snapshot in [`crate::State`]; this is for a reader
@@ -462,6 +607,7 @@ impl SessionSnapshot {
             activation_denied: None,
             selection: None,
             bells: 0,
+            menu_requests: Vec::new(),
             capture_sessions: 0,
             idle_ms: 0,
             inhibitors: 0,

@@ -1206,6 +1206,9 @@ impl Dispatcher {
             (Some(ty), Some(window), _, _) if ty == "window" && method == "focus" => {
                 self.focus(client, envelope, object, &method, &arguments, window);
             }
+            (Some(ty), Some(window), _, _) if ty == "window" && method == "request_menu" => {
+                self.request_menu_call(client, envelope, object, &method, &arguments, window);
+            }
             (Some(ty), Some(window), _, _) if ty == "window" && method == "kill" => {
                 self.kill(client, envelope, object, &method, &arguments, window);
             }
@@ -1657,6 +1660,40 @@ impl Dispatcher {
         self.finish_effect(object, &operation, answered);
     }
 
+    /// Serves `window.request_menu`: the graph issues the operation, the loop publishes
+    /// the menu request with the extension as its source, and the operation completes
+    /// once that is done. A window that is gone when the loop answers completes
+    /// `object-gone`, the same as `focus`.
+    fn request_menu_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        window: gnoblin_types::WindowId,
+    ) {
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let answered = self.control.request_menu(window, menu_anchor_from(arguments));
+        self.sync();
+        let outcome = match answered {
+            Some(true) => Some(OperationOutcome::Done),
+            Some(false) => Some(OperationOutcome::Failed(OBJECT_GONE)),
+            None => None,
+        };
+        if let Some(outcome) = outcome {
+            let _ = self.store.graph_mut().complete(operation.id(), outcome);
+        }
+    }
+
     /// Completes an `add_effect` operation from the window's answer. A refusal's reason
     /// begins with its error code, which becomes the operation's failure code.
     fn finish_effect(
@@ -1889,6 +1926,23 @@ fn effect_spec_from(arguments: &gnoblin_model::Fields) -> EffectSpec {
         }
     }
     spec
+}
+
+/// Reads a `window.request_menu` anchor from its arguments. A missing or out-of-range
+/// coordinate becomes zero, so a call the schema already typed still yields an anchor
+/// rather than a guessed position.
+fn menu_anchor_from(arguments: &gnoblin_model::Fields) -> gnoblin_wayland::MenuAnchor {
+    let coordinate = |name| int_argument(arguments, name).and_then(|value| i32::try_from(value).ok()).unwrap_or(0);
+    let size = |name| uint_argument(arguments, name).and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
+    gnoblin_wayland::MenuAnchor::new(coordinate("x"), coordinate("y"), size("width"), size("height"))
+}
+
+/// The signed integer at `name`; `None` when it is absent or of another type.
+fn int_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<i64> {
+    match arguments.get(name) {
+        Some(gnoblin_model::Value::Int(value)) => Some(*value),
+        _ => None,
+    }
 }
 
 /// The unsigned integer at `name`; `None` when it is absent or of another type.

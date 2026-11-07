@@ -69,6 +69,7 @@ use gnoblin_input::{
 };
 use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, WindowId};
 
+use crate::observation::{MenuAnchor, MenuSource};
 use crate::State;
 
 use crate::log;
@@ -105,6 +106,16 @@ impl KeySource {
     }
 }
 
+/// The name of the binding that opens the window menu for the focused window.
+///
+/// The name is what a configured binding must use to replace the default, so it is part
+/// of the configuration contract rather than an internal detail.
+pub(crate) const WINDOW_MENU_BINDING: &str = "window-menu";
+
+/// The default chord for the window-menu binding, Alt+Space: the conventional key for a
+/// window's system menu on the desktops this compositor follows.
+pub(crate) const WINDOW_MENU_CHORD: &str = "<Alt>space";
+
 /// The keyboard's bookkeeping: the sources, the memory and the router.
 #[derive(Debug)]
 pub(crate) struct KeyboardTables {
@@ -124,13 +135,23 @@ pub(crate) struct KeyboardTables {
 
 impl Default for KeyboardTables {
     fn default() -> Self {
+        let mut router = Router::new();
+        // The default window-menu binding, Alt+Space. It is declared here, in the same
+        // table as every other binding, so a configured binding of the same name replaces
+        // it in place rather than adding a second one. A default that does not parse is a
+        // bug in this file, not in the user's configuration, so it fails loudly.
+        let name = Name::new(WINDOW_MENU_BINDING).expect("the default window-menu name is valid ASCII");
+        let chord = Chord::parse(WINDOW_MENU_CHORD, ChordKind::Key, &SeatKeysyms)
+            .expect("the default window-menu chord parses against the seat's keysyms");
+        let inserted = router.bind(&name, chord, Trigger::Press, false);
+        debug_assert!(inserted.is_ok(), "the default window-menu binding conflicts with nothing");
         Self {
             sources: Vec::new(),
             active: 0,
             per_window: false,
             remembered: BTreeMap::new(),
             options: None,
-            router: Router::new(),
+            router,
         }
     }
 }
@@ -393,7 +414,39 @@ impl State {
         if consumed {
             log::debug!(area = "key", keycode, target = %routed.target, fired = ?routed.fired, "consumed");
         }
+        // A press that fired the window-menu binding opens the menu for the focused
+        // window, anchored at that window's top-left. The router reports a fired binding
+        // only on the edge that runs it, so the release of the same chord does nothing.
+        if let Some(fired) = routed.fired {
+            let is_window_menu = self
+                .keyboard_tables
+                .router
+                .bindings()
+                .get(fired)
+                .is_some_and(|binding| binding.name().as_str() == WINDOW_MENU_BINDING);
+            if is_window_menu {
+                self.open_focused_window_menu();
+            }
+        }
         consumed
+    }
+
+    /// Opens the window menu for the focused window from the keyboard.
+    ///
+    /// With no focused window there is nothing to anchor to, so nothing is emitted. The
+    /// anchor is the window's top-left in output coordinates, which is where the keyboard
+    /// default places the menu.
+    fn open_focused_window_menu(&mut self) {
+        let Some(window) = self.wm.focused() else {
+            debug_in!("wayland", "[menu] the window-menu key was pressed with no focused window");
+            return;
+        };
+        let Some(geometry) = self.geometry_of(window) else {
+            debug_in!("wayland", ?window, "[menu] the focused window has no geometry for its menu");
+            return;
+        };
+        let anchor = MenuAnchor::point(geometry.x, geometry.y);
+        self.request_window_menu(window, anchor, MenuSource::Keyboard);
     }
 
     /// Whether the focused client holds a shortcut inhibitor.

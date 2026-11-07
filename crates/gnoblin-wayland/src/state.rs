@@ -7,7 +7,7 @@
 //! Smithay type and this module never decides policy: the same split the plan draws
 //! between the composition root and the pure crates.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -62,13 +62,13 @@ use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
 use gnoblin_backend::render::compose::{Composer, Content};
-use gnoblin_render::Mat4;
-use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_backend::{Host, InputEvent};
 use gnoblin_config::Protocols;
 use gnoblin_input::Activity;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
+use gnoblin_render::Mat4;
+use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
@@ -76,7 +76,9 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, Wind
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
-use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
+use crate::observation::{
+    LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, SessionSnapshot,
+};
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_idle_notify_v1::ExtIdleNotifyV1Tables;
@@ -98,6 +100,11 @@ use crate::log;
 
 /// How many workspaces a session declares when its configuration names none.
 const DEFAULT_WORKSPACES: u32 = 1;
+
+/// How many window menu requests the session keeps for a reader to catch up on. A reader
+/// that polls slower than requests arrive loses the oldest, so the bound is generous: a
+/// request is a human action, not a stream.
+const MENU_REQUESTS_KEPT: usize = 32;
 
 /// The keyboard repeat settings a session starts with: the delay before a held key
 /// repeats, and the gap between repeats, both in milliseconds. These are the values the
@@ -417,6 +424,13 @@ pub struct State {
     /// The visual bell the document declares, read each time a bell rings. A session that
     /// declares none flashes nothing.
     pub(crate) visual_bell: crate::server::VisualBellSettings,
+    /// The window menu requests made recently, oldest first. Bounded by
+    /// `MENU_REQUESTS_KEPT`; the sequence number is what a reader publishes by.
+    menu_requests: VecDeque<MenuRequest>,
+    /// The last sequence number handed to a menu request.
+    menu_seq: u64,
+    /// The name the seat was created with, reported in each menu request.
+    seat_name: String,
     /// The current clipboard and primary selections.
     pub(crate) selections: WlDataDeviceManagerSelections,
     /// Sandbox listeners waiting for the event loop to watch them.
@@ -759,6 +773,9 @@ impl State {
             titlebar_actions,
             bells: 0,
             visual_bell,
+            menu_requests: VecDeque::new(),
+            menu_seq: 0,
+            seat_name: seat_name.to_owned(),
             selections: WlDataDeviceManagerSelections::default(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
@@ -2111,6 +2128,33 @@ impl State {
         Some(self.shown_geometry(self.wm.window(window)?))
     }
 
+    /// Asks for a window's menu at an anchor, on behalf of a source, and publishes it.
+    ///
+    /// The request is numbered and kept in a bounded log, so a reader that publishes
+    /// each request once can see it even after another arrives first. A window that
+    /// has closed gets no request: there is no menu to open for it.
+    pub(crate) fn request_window_menu(&mut self, window: WindowId, anchor: MenuAnchor, source: MenuSource) -> bool {
+        if self.wm.window(window).is_none() {
+            debug_in!("wayland", ?window, "[menu] a request for a closed window was dropped");
+            return false;
+        }
+        self.menu_seq = self.menu_seq.saturating_add(1);
+        let request = MenuRequest::new(window, self.menu_seq, anchor, source, &self.seat_name);
+        debug_in!(
+            "wayland",
+            ?window,
+            seq = self.menu_seq,
+            source = source.as_str(),
+            "[menu] requested"
+        );
+        self.menu_requests.push_back(request);
+        while self.menu_requests.len() > MENU_REQUESTS_KEPT {
+            self.menu_requests.pop_front();
+        }
+        self.publish();
+        true
+    }
+
     /// The rectangle a window is drawn at: the placement a settled layout gave it, or
     /// otherwise its own geometry. A tiled window's own geometry is the floating rectangle
     /// it returns to when it floats, not where it is shown.
@@ -2364,6 +2408,7 @@ impl State {
             layers: self.layers.observed(),
             activation_denied: self.activation.denied().cloned(),
             bells: self.bells,
+            menu_requests: self.menu_requests.iter().cloned().collect(),
             selection: self.clipboard_mime_types(),
             ..SessionSnapshot::default()
         };

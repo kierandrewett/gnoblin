@@ -203,7 +203,7 @@ pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use modal::{Modal, ModalEvent};
 /// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
-    ActivationDenial, EffectSpec, LockObservation, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace,
+    ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace,
     Observer, SessionSnapshot,
 };
 /// Output configuration types a host reports and applies, and the host trait.

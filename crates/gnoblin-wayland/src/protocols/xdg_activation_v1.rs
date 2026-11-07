@@ -148,7 +148,7 @@ impl XdgActivationV1 {
     }
 
     /// Whether a serial is one this session issued.
-    fn issued(&self, serial: u32) -> bool {
+    pub(crate) fn issued(&self, serial: u32) -> bool {
         self.issued.contains(&serial)
     }
 
@@ -337,6 +337,14 @@ impl State {
     /// Remembers a serial handed to a client on an input event.
     pub(crate) fn remember_input_serial(&mut self, serial: u32) {
         self.activation.remember_serial(serial);
+    }
+
+    /// Whether a serial is one this session handed to a client on an input event.
+    ///
+    /// A client that names a serial it was never given, or one that has aged out of the
+    /// kept set, asks for nothing: the protocol says such a request is ignored.
+    pub(crate) fn serial_issued(&self, serial: u32) -> bool {
+        self.activation.issued(serial)
     }
 
     /// The session's turn, which is the only clock authority reads.

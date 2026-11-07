@@ -17,9 +17,9 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::{UnixListener, UnixStream};
 
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_client::{Client, ConnectError};
+use gnoblin_client::{Client, ConnectError, Event};
 use gnoblin_compositor::{Error, IpcError};
-use gnoblin_model::{Fields, Filter, ObjectId, Observation};
+use gnoblin_model::{Fields, Filter, ObjectId, Observation, Value};
 use gnoblin_proto::HandshakeKind;
 use gnoblin_types::Version;
 
@@ -400,5 +400,55 @@ fn the_holder_cap_refuses_the_257th_inhibit() {
     let said = format!("{}{}", refusal.out, refusal.err);
     assert!(said.contains("too-many-inhibitors"), "{said}");
     assert_eq!(inhibitors(&session), 256, "the refused hold was not recorded");
+    session.stop().expect("the session stops cleanly");
+}
+
+/// `window.request_menu` emits `menu_requested` on the window with the anchor it was
+/// given and `source = "extension"`, and a subscriber to that window receives it.
+///
+/// The signal is the only way a menu is shown, so this is the end-to-end proof that an
+/// extension asking for a menu reaches the subscriber that would draw it.
+#[test]
+fn a_request_menu_call_reaches_a_subscriber_with_its_anchor() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    let mut client = ipc(&session);
+    client
+        .subscribe(Filter::Object(ObjectId::new(id)))
+        .expect("the snapshot");
+    let arguments = Fields::from([
+        ("x".to_owned(), Value::Int(40)),
+        ("y".to_owned(), Value::Int(50)),
+        ("width".to_owned(), Value::Uint(0)),
+        ("height".to_owned(), Value::Uint(0)),
+    ]);
+    client
+        .call(ObjectId::new(id), "request_menu", &arguments)
+        .expect("the call is accepted");
+
+    // The signal may arrive after other model changes, so read a bounded run of events
+    // and stop at the first `menu_requested` on this window.
+    let mut seen = None;
+    for _ in 0..200 {
+        match client.next_event().expect("the next event") {
+            Event::Model(Observation::Signalled { object, signal, fields, .. })
+                if object == ObjectId::new(id) && signal == "menu_requested" =>
+            {
+                seen = Some(fields);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let fields = seen.expect("menu_requested reached the subscriber");
+    assert_eq!(fields.get("x"), Some(&Value::Int(40)), "{fields:?}");
+    assert_eq!(fields.get("y"), Some(&Value::Int(50)), "{fields:?}");
+    assert_eq!(fields.get("source"), Some(&Value::Text("extension".to_owned())), "{fields:?}");
+    assert!(matches!(fields.get("seat"), Some(Value::Text(_))), "{fields:?}");
+
+    wayland.destroy(window);
     session.stop().expect("the session stops cleanly");
 }

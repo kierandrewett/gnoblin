@@ -3133,7 +3133,9 @@ Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are i
 
 **What a shell developer implements.** Subscribe to `menu_requested`, register a window-scope layer at the anchor, draw the entries, and call window methods on choice. Then disable `gnoblin.window_menu` in the extension configuration.
 
-**Not implemented.** The compositor emitting `menu_requested` and the `request_menu` handler are a later lane. The schema declaration is the only part in this change.
+**Implemented.** The compositor emits `menu_requested` from all three sources: `xdg_toplevel.show_window_menu` (serial-checked, stale serials dropped), the Alt+Space default binding (`keyboard`, focused window's top-left anchor), and `window.request_menu` (`extension`). The signal reaches IPC subscribers.
+
+**Not built.** The shipped `gnoblin.window_menu` extension cannot show a menu yet. It needs the layers frame wiring (design/layers.md phase 3) and the draw-list painter, neither of which exists. Until both land a subscriber receives the signal and nothing appears.
 
 Needs Kieran:
 

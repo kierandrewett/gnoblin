@@ -55,7 +55,7 @@ use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
-use crate::observation::{Observer, SessionSnapshot};
+use crate::observation::{MenuAnchor, MenuSource, Observer, SessionSnapshot};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
@@ -436,6 +436,13 @@ impl Server {
                                 // the focus request did.
                                 let _ = reply.send(state.focus_window(window));
                             }
+                            Command::RequestMenu { window, anchor, reply } => {
+                                // The source is the extension's: the window menu is asked
+                                // for by a client or script, not by the keyboard or a
+                                // client's own serial. The answer follows the publish, so
+                                // the caller's sync sees the request.
+                                let _ = reply.send(state.request_window_menu(window, anchor, MenuSource::Extension));
+                            }
                             Command::Lock { reply } => state.request_lock(reply),
                             Command::SetWorkspaceLayout { workspace, name, reply } => {
                                 let _ = reply.send(state.set_workspace_layout(workspace, &name));
@@ -688,6 +695,19 @@ impl ControlHandle {
     pub fn focus(&self, window: WindowId) -> Option<bool> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::Focus { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Asks for a window's menu at an anchor, as the IPC's `window.request_menu` does.
+    ///
+    /// The loop publishes the request with the extension as its source, so the IPC
+    /// emits `menu_requested` for it. `Some(true)` means the menu was published,
+    /// `Some(false)` means the window is gone, and [`None`] means the loop did not answer
+    /// within [`FOCUS_TIMEOUT`] because it is stopping.
+    #[must_use]
+    pub fn request_menu(&self, window: WindowId, anchor: MenuAnchor) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::RequestMenu { window, anchor, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -988,6 +1008,14 @@ enum Command {
     /// A focus request, and the channel its answer goes back on.
     Focus {
         window: WindowId,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// A window-menu request from the extension path, and the channel its answer goes
+    /// back on: `Some(true)` when the menu was published, `Some(false)` when the window
+    /// is gone and nothing was.
+    RequestMenu {
+        window: WindowId,
+        anchor: MenuAnchor,
         reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// A session lock request. The answer is sent once the lock settles: `true` when
