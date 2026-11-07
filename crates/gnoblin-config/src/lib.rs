@@ -100,6 +100,8 @@ pub use generated::{
     TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualBellType, WindowManagement, Workspace, Xwayland,
     XwaylandExtension,
 };
+/// The layout a setting names: a layout name, or a module reference and its options.
+pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
 /// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 /// Config path lookup: the located path, its origin and the search order.

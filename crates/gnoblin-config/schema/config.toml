@@ -473,10 +473,9 @@ since = "0.2.0"
 
 [[record.field]]
 key = "layout"
-kind = "text"
-nonempty = true
-required = "a layout name"
-accepted = "a nonempty layout name"
+kind = "layout-selector"
+required = "a layout name or a module reference"
+accepted = "a layout name or a module reference"
 doc = "The layout name the output's workspaces use."
 since = "0.2.0"
 
@@ -495,10 +494,9 @@ since = "0.2.0"
 
 [[record.field]]
 key = "layout"
-kind = "text"
-nonempty = true
-required = "a layout name"
-accepted = "a nonempty layout name"
+kind = "layout-selector"
+required = "a layout name or a module reference"
+accepted = "a layout name or a module reference"
 doc = "The layout name this workspace uses."
 since = "0.2.0"
 
@@ -1993,11 +1991,9 @@ doc = "Which layout engine arranges each workspace's windows."
 
 [[section.field]]
 key = "default"
-kind = "text"
-nonempty = true
-accepted = "a nonempty layout name"
-default = { text = "floating" }
-doc = "The layout of a workspace with no override. floating arranges nothing."
+kind = "layout-selector"
+accepted = "a layout name or a module reference"
+doc = "The layout of a workspace with no override. An unset default is floating, which arranges nothing."
 since = "0.2.0"
 
 [[section.field]]

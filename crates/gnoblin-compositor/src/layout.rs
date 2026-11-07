@@ -25,9 +25,10 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Instant;
 
-use gnoblin_config::{Layout, SearchPaths, Store};
-
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, default_prefix, installed_module_dir};
+use gnoblin_config::{Layout, LayoutOptionValue, LayoutRoot, LayoutSelector, SearchPaths, Store};
+use gnoblin_lua::layout::{
+    Data, Gaps, Host, HostConfig, HostFailure, LayoutKey, LayoutRoots, LuaEngine, default_prefix, installed_module_dir,
+};
 use gnoblin_types::WorkspaceId;
 use gnoblin_wayland::LayoutControl;
 use gnoblin_wm::layout::{
@@ -46,11 +47,11 @@ pub const FLOATING: &str = "floating";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LayoutSettings {
     /// The layout of a workspace with no override.
-    pub default: String,
+    pub default: LayoutSelector,
     /// Layout names by output connector.
-    pub outputs: Vec<(String, String)>,
+    pub outputs: Vec<(String, LayoutSelector)>,
     /// Layout names by workspace id, as the decimal id the wm uses.
-    pub workspaces: Vec<(String, String)>,
+    pub workspaces: Vec<(String, LayoutSelector)>,
     /// The directory of the configuration file, which is the user root: a layout name
     /// without the `gnoblin.` prefix loads from here. `None` when no configuration file is
     /// known, so such names fail to load. Set from the store by [`configure_from_store`].
@@ -66,7 +67,7 @@ impl Default for LayoutSettings {
     /// configuration directory is known.
     fn default() -> Self {
         Self {
-            default: FLOATING.to_owned(),
+            default: LayoutSelector::Named(FLOATING.to_owned()),
             outputs: Vec::new(),
             workspaces: Vec::new(),
             config_dir: None,
@@ -80,7 +81,9 @@ impl LayoutSettings {
     /// dropped, and an absent `default` is floating.
     fn from_section(section: Layout) -> Self {
         Self {
-            default: section.default.unwrap_or_else(|| FLOATING.to_owned()),
+            default: section
+                .default
+                .unwrap_or_else(|| LayoutSelector::Named(FLOATING.to_owned())),
             outputs: section
                 .outputs
                 .unwrap_or_default()
@@ -108,7 +111,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             // The user root is the directory the accepted document was read from, so a
             // `require` in that document and the layouts it names resolve from one place.
             settings.config_dir = source.parent().map(Path::to_path_buf);
-            log::debug!(default = %settings.default, "[layout] loaded from the last accepted configuration");
+            log::debug!(default = %selector_key(&settings.default), "[layout] loaded from the last accepted configuration");
             config.layouts = settings;
         }
         Err(error) => log::warn!(%error, "[layout] configuration not readable; every workspace floats"),
@@ -145,6 +148,62 @@ pub struct WorkspaceLayouts {
     failed: RefCell<BTreeSet<String>>,
 }
 
+/// Whether `selector` names the floating layout, which is never loaded as a module.
+fn is_floating(selector: &LayoutSelector) -> bool {
+    matches!(selector, LayoutSelector::Named(name) if name == FLOATING)
+}
+
+/// The key a selector's layout is registered and looked up under. A name is its own
+/// key. A reference is keyed by its root, module and hash, so two references to the same
+/// module at different hashes are distinct layouts; the `root:` prefix keeps a reference
+/// key apart from a plain name.
+fn selector_key(selector: &LayoutSelector) -> String {
+    match selector {
+        LayoutSelector::Named(name) => name.clone(),
+        LayoutSelector::Reference(reference) => {
+            let root = match reference.root {
+                LayoutRoot::Shipped => "shipped",
+                LayoutRoot::User => "user",
+            };
+            format!("{root}:{}#{}", reference.module, reference.hash)
+        }
+    }
+}
+
+/// Registers the layout `selector` names in `host` and returns its key. A reference is
+/// checked against its hash by the host before the module runs, so a file that changed
+/// after the configuration was accepted is refused rather than loaded.
+fn load_selector(host: &mut Host, selector: &LayoutSelector) -> Result<String, HostFailure> {
+    let key = selector_key(selector);
+    match selector {
+        LayoutSelector::Named(name) => host.register(name, name, Data::Table(BTreeMap::new()))?,
+        LayoutSelector::Reference(reference) => host.register_reference(
+            &key,
+            matches!(reference.root, LayoutRoot::Shipped),
+            &reference.module,
+            &reference.hash,
+            Data::Table(
+                reference
+                    .options
+                    .iter()
+                    .map(|(name, value)| (LayoutKey::String(name.clone()), option_data(value)))
+                    .collect(),
+            ),
+        )?,
+    }
+    Ok(key)
+}
+
+/// A layout option as the Lua value a module receives.
+fn option_data(value: &LayoutOptionValue) -> Data {
+    match value {
+        LayoutOptionValue::Bool(value) => Data::Boolean(*value),
+        LayoutOptionValue::Integer(value) => Data::Integer(*value),
+        LayoutOptionValue::Float(value) => Data::Number(*value),
+        LayoutOptionValue::Text(value) => Data::String(value.clone()),
+    }
+}
+
 impl WorkspaceLayouts {
     /// Loads every layout the settings name. A layout that cannot be loaded is named
     /// in a warning, and every workspace that asks for it floats.
@@ -158,25 +217,40 @@ impl WorkspaceLayouts {
         };
         let mut host = Host::new(HostConfig::new(roots));
         let mut failed = BTreeSet::new();
-        let names: BTreeSet<&str> = std::iter::once(settings.default.as_str())
-            .chain(settings.outputs.iter().map(|(_, layout)| layout.as_str()))
-            .chain(settings.workspaces.iter().map(|(_, layout)| layout.as_str()))
-            .filter(|name| *name != FLOATING)
-            .collect();
-        for name in names {
-            if let Err(failure) = host.register(name, name, Data::Table(BTreeMap::new())) {
-                log::warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] layout cannot be loaded; workspaces that use it float");
-                failed.insert(name.to_owned());
+        // Each distinct layout is loaded once, under its key. A failed layout is recorded
+        // by key, so every workspace that names it floats.
+        let mut selectors: BTreeMap<String, &LayoutSelector> = BTreeMap::new();
+        for selector in std::iter::once(&settings.default)
+            .chain(settings.outputs.iter().map(|(_, selector)| selector))
+            .chain(settings.workspaces.iter().map(|(_, selector)| selector))
+            .filter(|selector| !is_floating(selector))
+        {
+            selectors.entry(selector_key(selector)).or_insert(selector);
+        }
+        for (key, selector) in selectors {
+            if let Err(failure) = load_selector(&mut host, selector) {
+                log::warn!(layout = %key, reason = ?failure.reason, message = %failure.message, "[layout] layout cannot be loaded; workspaces that use it float");
+                failed.insert(key);
             }
         }
         Self {
-            default: RefCell::new(settings.default),
-            outputs: RefCell::new(settings.outputs.into_iter().collect()),
+            default: RefCell::new(selector_key(&settings.default)),
+            outputs: RefCell::new(
+                settings
+                    .outputs
+                    .iter()
+                    .map(|(output, selector)| (output.clone(), selector_key(selector)))
+                    .collect(),
+            ),
             workspaces: RefCell::new(
                 settings
                     .workspaces
                     .into_iter()
-                    .filter_map(|(key, layout)| key.parse::<u64>().ok().map(|id| (WorkspaceId::new(id), layout)))
+                    .filter_map(|(key, selector)| {
+                        key.parse::<u64>()
+                            .ok()
+                            .map(|id| (WorkspaceId::new(id), selector_key(&selector)))
+                    })
                     .collect(),
             ),
             host: Rc::new(RefCell::new(host)),

@@ -7,7 +7,9 @@
 
 mod support;
 
-use gnoblin_config::{Blur, Config, Fault, FocusMode, GestureWhen, Inherit, MAX_DEPTH, Path, TapButtonMap, Value};
+use gnoblin_config::{
+    Blur, Config, Fault, FocusMode, GestureWhen, Inherit, LayoutSelector, MAX_DEPTH, Path, TapButtonMap, Value,
+};
 
 use support::{flag, int, kitchen_sink, list, number, table, text};
 
@@ -395,10 +397,10 @@ fn a_layout_section_loads_with_defaults_and_overrides() {
     )]);
     let config = Config::from_value(document).expect("a layout section validates");
     let layout = config.layout.as_ref().expect("layout");
-    assert_eq!(layout.default.as_deref(), Some("master_stack"));
+    assert!(matches!(&layout.default, Some(LayoutSelector::Named(name)) if name == "master_stack"));
     let outputs = layout.outputs.as_ref().expect("outputs");
     assert_eq!(outputs[0].output.as_deref(), Some("DP-1"));
-    assert_eq!(outputs[0].layout.as_deref(), Some("columns"));
+    assert!(matches!(&outputs[0].layout, Some(LayoutSelector::Named(name)) if name == "columns"));
     let workspaces = layout.workspaces.as_ref().expect("workspaces");
     assert_eq!(workspaces[0].workspace.as_deref(), Some("main"));
 }

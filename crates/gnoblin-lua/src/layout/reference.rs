@@ -125,7 +125,7 @@ impl LayoutModuleLoader {
             "user"
         };
         if self.vm.is_none() {
-            let vm = Vm::new(self.limits.clone(), roots).map_err(|error| error.to_string())?;
+            let vm = Vm::new(self.limits, roots).map_err(|error| error.to_string())?;
             self.vm = Some(vm);
         }
         let vm = self.vm.as_mut().ok_or_else(unknown)?;

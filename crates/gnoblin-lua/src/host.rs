@@ -297,7 +297,7 @@ impl<T: Transport + 'static> Host<T> {
             reported: BTreeSet::new(),
             reports: Vec::new(),
             extensions: ExtensionRegistry::new(),
-            layouts: crate::layout::LayoutModuleLoader::new(limits.clone()),
+            layouts: crate::layout::LayoutModuleLoader::new(limits),
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {
