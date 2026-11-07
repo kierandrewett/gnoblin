@@ -563,6 +563,18 @@ Each path below moves to the registry, with no shim.
     Each slice compiles on Agent37 after rebase, then pushes. Stop at a green pushed slice.
 
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
+   Plan (not yet implemented). Slices, each compiled on Agent37 before push:
+   (a) `gnoblin-wm`: `Wm::register_surface(provider, spec)` records a layer without attaching it to the stack. Windows keep their stack entry; a surface record is a registry-only fact. `Wm::end_layer(handle, reason)` ends one. Tests in `wm.rs`.
+   (b) Toplevels: `gnoblin-wayland/src/state.rs` registers `gnoblin.surface_toplevel:<window id>` in `Band::Windows`, scoped to its window, when `WindowOpened` is applied. Close ends it through the existing `end_target`, so no path ends it twice.
+   (c) Layer shell: `gnoblin-wayland/src/protocols/zwlr_layer_shell_v1.rs` registers `gnoblin.surface_layer_shell:<namespace>` in Background, Bottom, Top or Overlay, scoped to its output. Registration waits for the first commit that places it on a monitor, because the output can be chosen late. A layer change re-registers; destroy ends it.
+   (d) Duplicate namespaces: the second surface takes the key `<namespace>.<n>`, since keys allow dots and base names do not.
+   (e) Popups: not registered. A popup has no record of its own, so it hides, ends and stacks with its root.
+   (f) X11: `gnoblin-xwayland/src/windows.rs` registers `gnoblin.surface_x11:<window id>` in `Band::Windows` at map; `closed` ends it through `WindowClosed`. Adds `gnoblin-layers` to `crates/gnoblin-xwayland/Cargo.toml`.
+   (g) Provider: `Gnoblin("gnoblin-wayland")` for toplevels and layer shell, `Gnoblin("gnoblin-xwayland")` for X11. The table above says `gnoblin-wm` for toplevels; the engine that owns the protocol registers them, because the window manager never sees a surface kind. Divergence recorded here.
+   (h) Ordering: records do not change stacking. Z-order and exclusive zones are unchanged; the registry answers what exists, not how it is drawn.
+   (i) Parity: the scenario's expectation key moves from `namespace = "osd"` to `name = "gnoblin.surface_layer_shell:osd"`. The recorded candidate gains a `name` on each observation, and the assertion text in `crates/gnoblin-parity/tests/scenarios.rs` changes to match. Nothing else moves.
+   (j) Files: `crates/gnoblin-wm/src/wm.rs`, `crates/gnoblin-wayland/{Cargo.toml,src/state.rs,src/protocols/zwlr_layer_shell_v1.rs}`, `crates/gnoblin-xwayland/{Cargo.toml,src/windows.rs}`, `tests/parity/fixtures/layer-surface-stacking/candidate.json`, `tests/parity/scenarios/layer-surface-stacking.toml`, `crates/gnoblin-parity/tests/scenarios.rs`.
+   (k) Gate per slice: `cargo test` for gnoblin-wayland, gnoblin-xwayland, gnoblin-layers, gnoblin-wm and gnoblin-parity; `clippy --no-deps -D warnings`; `xtask` deps, dupes, logging and layout.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
 6. `gnoblin.window_frame`, built in, with its paint and input areas (see Window frames).
 7. `menu_requested` signal and `request_menu` on `window` (D29). The shipped `gnoblin.window_menu` extension follows, enabled by default. No core menu layer.
