@@ -227,21 +227,16 @@ Each slice is gated on Agent37 (`~/dev/lanes/a37-gate.sh`), tests first, failure
 7. Docs: `docs/config/window_rule.md`, `docs/shell-api/overrides.md`, `docs/shell-api/windows.md`, generated Lua
    annotations, to match the real behaviour once each slice lands.
 
-## 6. Needs Kieran
+## 6. Decisions
 
-Only real choices. Everything else above is derived from the legacy code or the decided design.
+Decided 2026-11-07 by Kieran, delegated to Main; these replace the open questions.
 
-1. **Pattern engine.** Port the legacy Lua 5.4 matcher with a work budget (recommended), so existing configs keep
-   working. Or keep the quantifier-free matcher and change the docs. The second breaks any config that uses
-   `-`, `*`, `+` or `?`.
-2. **Re-match on title or app_id change.** Legacy does (and the guide says "Use `title` to target a particular
-   document ... titles often change"). The Rust `rules.rs` doc says rules run once so a title change cannot
-   re-apply a rule. Recommended: re-match on change, with the merge defined per window so it is stable.
-3. **Flat keys removed (D26, still "Proposed").** Accept `effects` and drop flat `blur` and `shader` keys (a
-   breaking config change, with a migration note). Or keep flat keys as sugar that builds one pass. Recommended:
-   accept D26.
-4. **Rule count cap.** Pick a number (the pass cap is 32). Proposed: 256 rules per list. Say if you want another
-   value.
-5. **Unsupported fields.** Refuse at load (section 4, the task's rule) or accept and warn. This doc assumes refuse.
-6. **`maximise` action and `window.matched_rules`.** `maximise` exists in Rust but not in the legacy contract.
-   Keep it as a config key (`maximise = true`), or drop it. `window.matched_rules` is a proposal; say if you want it.
+1. **Pattern engine.** Port the legacy Lua 5.4 matcher with a work budget, using the shared `gnoblin-lua-pattern`
+   crate. Existing configs keep working, including `-`, `*`, `+` and `?`.
+2. **Re-match on title or app_id change.** The merge is defined per window so the result is stable across repeated
+   matches.
+3. **Effects list (D26) accepted.** `effects` replaces the flat `blur` and `shader` keys. Flat keys are removed, not
+   kept as sugar. The docs carry a migration note.
+4. **Rule cap.** 256 rules per list.
+5. **Unsupported fields refused at load.** The loader names the field and its prerequisite.
+6. **`maximise` stays a config key** (`maximise = true`). `window.matched_rules` is not added.
