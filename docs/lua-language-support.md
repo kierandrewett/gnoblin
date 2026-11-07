@@ -2,7 +2,7 @@
 
 This page is generated from `crates/gnoblin-lua-sandbox/tests/conformance.rs`. Regenerate it with `GNOBLIN_WRITE_LUA_DOCS=1 cargo test -p gnoblin-lua-sandbox --test conformance`.
 
-A yes means the probe snippet returns `true` in that profile. The sandbox removes `io`, `package`, `debug`, `require`, `dofile` and `loadfile` in both profiles, and removes `os.execute`, `os.remove`, `os.rename`, `os.getenv`, `os.tmpname` and `os.exit` in both profiles. This is the only deliberate exception to full Lua: those functions reach the host system, which is the sandbox boundary.
+A yes means the probe snippet returns `true` in that profile. The sandbox removes `io`, `package`, `debug`, `require`, `dofile` and `loadfile` in both profiles, and removes `os.execute`, `os.remove`, `os.rename`, `os.getenv`, `os.tmpname` and `os.exit` in both profiles. This is the only deliberate exception to full Lua: those functions reach the host system, which is the sandbox boundary. Coroutines inside `arrange` are control flow, not async scheduling: the compositor does not resume them across frames, and the same budget bounds them.
 
 | Feature                          | Config | Layout |
 | -------------------------------- | ------ | ------ |

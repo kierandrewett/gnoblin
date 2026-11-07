@@ -959,6 +959,105 @@ mod tests {
         assert!(aborted);
     }
 
+    /// Run `first` and then `second` on one state, re-arming the guard between them, on a
+    /// worker thread with a five-second cap. Returns the second entry's string result (or
+    /// its error text), whether the first entry aborted, and the guard's final abort flag.
+    fn two_entries(profile: Profile, limits: Limits, first: &'static str, second: &'static str) -> (String, bool, u64) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let guard = Rc::new(Guard::new());
+            guard.begin(&limits);
+            let lua = create(profile, &limits, Rc::clone(&guard)).expect("the sandbox builds");
+            let _ = lua.load(first).exec();
+            guard.begin(&limits);
+            let result = match lua.load(second).eval::<String>() {
+                Ok(value) => value,
+                Err(error) => error.to_string(),
+            };
+            let calls: u64 = guard.hook_calls().iter().map(|(_, count)| count).sum();
+            let _ = sender.send((result, guard.aborted(), calls));
+        });
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the two entries must end within five seconds; a hang means the hook missed its thread")
+    }
+
+    #[test]
+    fn layout_coroutine_created_before_exhaustion_is_bounded_when_resumed_after() {
+        // Created in entry one, which then burns its budget through pcall. Entry two re-arms
+        // and resumes the old thread, which must end with the budget error, not success.
+        let (result, aborted, calls) = two_entries(
+            Profile::Layout,
+            small_budget(),
+            "co = coroutine.create(function() while true do end end) while true do pcall(function() while true do end end) end",
+            "local ok = coroutine.resume(co) if ok then error('resume succeeded') end return 'resume failed'",
+        );
+        assert_eq!(result, "resume failed", "{calls} hook calls");
+        assert!(aborted, "{calls} hook calls");
+    }
+
+    #[test]
+    fn layout_coroutine_resumed_in_a_later_entry_is_bounded_by_that_entry() {
+        // Yields in entry one, then loops forever after the yield. Entry two's budget must
+        // bound the inner loop, so the resume returns the budget error as its message.
+        let (result, aborted, calls) = two_entries(
+            Profile::Layout,
+            small_budget(),
+            "co = coroutine.create(function() coroutine.yield() while true do end end) coroutine.resume(co)",
+            "local ok = coroutine.resume(co) if ok then error('resume succeeded') end return 'resume failed'",
+        );
+        assert_eq!(result, "resume failed", "{calls} hook calls");
+        assert!(aborted, "{calls} hook calls");
+    }
+
+    #[test]
+    fn layout_coroutine_nested_three_deep_inside_pcall_is_bounded() {
+        let outcome = capped(
+            layout_state,
+            small_budget(),
+            "local a = coroutine.wrap(function() pcall(coroutine.wrap(function() coroutine.wrap(function() while true do end end)() end)) end) a()",
+        );
+        assert!(
+            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            "{} ({} hook calls on {} threads)",
+            outcome.error,
+            outcome.hook_calls,
+            outcome.hook_threads
+        );
+        assert!(outcome.aborted, "{} hook calls", outcome.hook_calls);
+    }
+
+    #[test]
+    fn layout_wrap_iterator_with_an_infinite_generator_is_bounded() {
+        let outcome = capped(
+            layout_state,
+            small_budget(),
+            "for v in coroutine.wrap(function() while true do coroutine.yield(1) end end) do end",
+        );
+        assert!(
+            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            "{} ({} hook calls on {} threads)",
+            outcome.error,
+            outcome.hook_calls,
+            outcome.hook_threads
+        );
+        assert!(outcome.aborted, "{} hook calls", outcome.hook_calls);
+    }
+
+    #[test]
+    fn layout_coroutine_close_running_an_endless_close_handler_is_bounded() {
+        // The `__close` handler of a suspended coroutine loops forever. The script must end
+        // within the cap. Either the handler ran and the budget aborted it, or Lua never
+        // ran the handler and the script ended cleanly. A hang is the only failure.
+        let (result, aborted, calls) = two_entries(
+            Profile::Layout,
+            small_budget(),
+            "",
+            "local flag = 'not-run' local co = coroutine.create(function() local c <close> = setmetatable({}, {__close = function() flag = 'entered' while true do end end}) coroutine.yield() end) coroutine.resume(co) coroutine.close(co) return flag",
+        );
+        assert!(aborted || result == "not-run", "{result} ({calls} hook calls)");
+    }
+
     #[test]
     fn config_profile_opens_the_coroutine_library() {
         let lua = lua(Profile::Config);

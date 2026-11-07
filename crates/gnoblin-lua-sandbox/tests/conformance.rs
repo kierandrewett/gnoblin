@@ -296,7 +296,9 @@ fn render_page() -> String {
          `io`, `package`, `debug`, `require`, `dofile` and `loadfile` in both profiles, and \
          removes `os.execute`, `os.remove`, `os.rename`, `os.getenv`, `os.tmpname` and \
          `os.exit` in both profiles. This is the only deliberate exception to full Lua: \
-         those functions reach the host system, which is the sandbox boundary.\n\n",
+         those functions reach the host system, which is the sandbox boundary. Coroutines \
+         inside `arrange` are control flow, not async scheduling: the compositor does not \
+         resume them across frames, and the same budget bounds them.\n\n",
     );
     // Rows are padded to a common width so the committed page is already prettier-formatted,
     // which keeps `prettier --check` clean on the docs.
