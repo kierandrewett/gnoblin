@@ -291,7 +291,11 @@ pub(super) fn install<T: Transport + 'static>(
     for namespace in NAMESPACES.iter().filter(|namespace| namespace.name == "gnoblin") {
         for spec in namespace.objects {
             install_instance_meta(lua, &shared, namespace.name, spec)?;
-            gnoblin.set(spec.name, install_class(lua, &shared, namespace.name, spec)?)?;
+            let class = install_class(lua, &shared, namespace.name, spec)?;
+            if spec.name == "request" {
+                crate::requests::install_methods(lua, &shared, &class)?;
+            }
+            gnoblin.set(spec.name, class)?;
             core.push(spec.name);
         }
     }

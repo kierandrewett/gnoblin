@@ -125,6 +125,7 @@ mod loader;
 #[cfg(test)]
 #[path = "../lua_names.rs"]
 mod lua_names;
+mod requests;
 pub mod role;
 
 /// The `gnoblin.d.lua` stub, and the writer that copies it out for an editor.

@@ -9,7 +9,15 @@ outcome.
 ## Lifecycle
 
 1. **Offered.** The compositor offers the request to the connections that hold
-   its slot. The `request.offered` signal names it by identity.
+   its slot. The `request.offered` signal names it by identity and carries what
+   a provider needs to draw its prompt:
+    - `request`: the identity the later calls name.
+    - `deadline`: when the offer fails if nobody claims and answers it.
+    - `slot`: the provider slot the offer is routed to.
+    - `title` and `message`: the prompt's heading and body, chosen by the
+      offering client.
+    - `subject`: opaque bytes chosen by the offering client. The compositor
+      does not interpret them.
 2. **Claimed.** One connection claims it with `request.claim`. The first claim
    wins. A second claimant is refused with `request-taken`, which names the
    holder. A connection the request was not offered to is refused with
@@ -45,11 +53,10 @@ recorder and logs never show the bytes.
 ## Status
 
 The IPC lifecycle is implemented in `crates/gnoblin-compositor/src/ipc/requests.rs`.
-Lua is not wired to it:
-
-- Event handlers do not receive `request.offered` or `request.finished`.
-- The `request` class has no way to claim, answer or decline without an object
-  identity.
+The schema now declares the full `offered` signal above. The Lua surface is
+being wired to it; until that lands, Lua does not receive `request.offered` or
+`request.finished`, and the `request` class has no way to claim, answer or
+decline without an object identity.
 
 With no provider holding a request's slot, the request is refused at once. A
 provider that claims it but never answers ends it as timed out.

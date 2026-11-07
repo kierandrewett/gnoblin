@@ -37,7 +37,7 @@ use gnoblin_config::{Config, ConfigPath, Report, SearchPaths, Value, locate};
 use gnoblin_model::{Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, Tick};
 use mlua::Value as LuaValue;
 use mlua::prelude::LuaChunkMode;
-use mlua::{Error, Lua};
+use mlua::{Error, Lua, Table};
 
 use crate::error::{HostError, ScriptError};
 use crate::extensions::ExtensionRegistry;
@@ -764,10 +764,24 @@ impl<T: Transport + 'static> Host<T> {
                 member,
                 fields,
             } => self.run_extension_signal(&namespace, &member, &fields, handlers),
-            // The runtime offers no requests in this slice and answers none: prompts and
-            // input policy are later lanes. With no claimant the broker refuses an offer at
-            // once (`NO_PROVIDER`); a claimed offer that nobody answers fails at its deadline.
-            Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
+            // A request's answer goes only to the connection that offered it, so a script
+            // never sees one. Its completion arrives on `finished`.
+            Event::RequestAnswered { .. } => {}
+            Event::RequestOffered {
+                request,
+                deadline,
+                slot,
+                title,
+                message,
+                subject,
+            } => self.run_request_signal("offered", handlers, move |lua| {
+                crate::requests::offered_table(lua, request, deadline, &slot, &title, &message, &subject)
+            }),
+            Event::RequestFinished { request, completion } => {
+                self.run_request_signal("finished", handlers, move |lua| {
+                    crate::requests::finished_table(lua, request, &completion)
+                })
+            }
         }
     }
 
@@ -927,6 +941,34 @@ impl<T: Transport + 'static> Host<T> {
                     object,
                     fields,
                 ) {
+                    Ok(event) => self.run_handler(id, Some(LuaValue::Table(event)), handlers),
+                    Err(error) => self.report(ScriptError::from_lua(&error)),
+                }
+            }
+            if once {
+                self.forget_callback(id);
+            }
+        }
+    }
+
+    /// Run every global handler watching one request signal. The table is built per
+    /// handler, as `run_signal` does, so one handler cannot change what the next receives.
+    fn run_request_signal(&mut self, signal: &str, handlers: &mut usize, build: impl Fn(&Lua) -> mlua::Result<Table>) {
+        let global = self
+            .shared
+            .borrow()
+            .global_signal_handlers("gnoblin", "request", signal);
+        for id in global {
+            let once = matches!(
+                self.shared.borrow().handlers.get(&id),
+                Some(Watching::GlobalSignal { once: true, .. })
+            );
+            if once {
+                // Remove the watch before entering Lua so reentrant delivery cannot run it twice.
+                self.shared.borrow_mut().cancel_handler(id);
+            }
+            if self.shared.borrow().handlers.contains_key(&id) || once {
+                match build(&self.lua) {
                     Ok(event) => self.run_handler(id, Some(LuaValue::Table(event)), handlers),
                     Err(error) => self.report(ScriptError::from_lua(&error)),
                 }

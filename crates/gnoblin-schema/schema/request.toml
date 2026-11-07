@@ -70,7 +70,10 @@ name = "request"
 type = "uint"
 since = "0.2.0"
 
-# A request is available to claim.
+# A request is available to claim. The slot, title, message and subject are what a
+# provider needs to draw its prompt: without them a handler cannot show anything, so
+# they travel with the offer. `subject` is opaque bytes the offering client chose
+# (for example a polkit action or a secret's name) and is never interpreted here.
 [[object.signal]]
 name = "offered"
 since = "0.2.0"
@@ -86,6 +89,30 @@ name = "deadline"
 type = "uint"
 since = "0.2.0"
 
+# The provider slot the offer is routed to, as the compositor names it.
+[[object.signal.field]]
+name = "slot"
+type = "string"
+since = "0.2.0"
+
+# A short heading for the prompt, chosen by the offering client.
+[[object.signal.field]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+# The prompt's body text, chosen by the offering client.
+[[object.signal.field]]
+name = "message"
+type = "string"
+since = "0.2.0"
+
+# Opaque subject bytes chosen by the offering client; not interpreted by the compositor.
+[[object.signal.field]]
+name = "subject"
+type = "bytes"
+since = "0.2.0"
+
 # The request ended. Emitted exactly once per request, and never carries the
 # answer: only the host that offered the request reads that.
 [[object.signal]]
@@ -97,8 +124,16 @@ name = "request"
 type = "uint"
 since = "0.2.0"
 
-# `answered`, `ended` or `timed-out`.
+# `answered`, `ended`, `refused` or `timed-out`. `refused` means the provider declined.
+# A string rather than an enum, so a host built before a new completion still sees it.
 [[object.signal.field]]
 name = "completion"
+type = "string"
+since = "0.2.0"
+
+# Why the provider declined: `locked`, `denied` or `unavailable` when the completion is
+# `refused`, and empty otherwise. The reason is not secret, so a peer may read it.
+[[object.signal.field]]
+name = "reason"
 type = "string"
 since = "0.2.0"

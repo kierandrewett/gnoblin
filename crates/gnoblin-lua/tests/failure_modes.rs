@@ -1688,3 +1688,148 @@ assert(string.find(tostring(message), "predicate boom", 1, true) ~= nil, "the me
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 }
+
+#[test]
+fn a_claimed_request_is_answered_once_and_finishes_answered() {
+    let config = Config::new("request-answer");
+    config.write(
+        "init.lua",
+        r#"
+local finished = 0
+gnoblin.on("gnoblin.request.offered", function(e)
+  gnoblin.request.claim(e.request)
+  gnoblin.request.answer(e.request, "passphrase")
+end)
+gnoblin.on("gnoblin.request.finished", function(e)
+  finished = finished + 1
+  assert(e.completion == "answered", e.completion)
+  assert(finished == 1, "finished ran " .. finished .. " times")
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    let request = server.offer(
+        "slot_prompt_secret",
+        "Unlock",
+        "Enter the passphrase",
+        b"keyring",
+        Tick::new(100),
+    );
+    let first = host.pump(Tick::new(1)).expect("the pump runs");
+    let second = host.pump(Tick::new(2)).expect("the pump runs");
+    assert!(
+        first.errors.is_empty() && second.errors.is_empty(),
+        "{:#?}",
+        (first.errors, second.errors)
+    );
+    // The offered handler and the finished handler each ran exactly once.
+    assert_eq!(first.handlers + second.handlers, 2, "offered and finished, once each");
+    assert!(matches!(
+        server.finished(request),
+        Some(gnoblin_model::RequestCompletion::Answered)
+    ));
+}
+
+#[test]
+fn a_repeat_claim_by_the_holder_is_accepted_and_keeps_the_request_claimed() {
+    let config = Config::new("request-taken");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.request.offered", function(e)
+  gnoblin.request.claim(e.request)
+  local ok, err = pcall(gnoblin.request.claim, e.request)
+  -- The holder repeating its own claim is idempotent: the broker keeps the request claimed.
+  assert(ok, tostring(err))
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    let request = server.offer(
+        "slot_prompt_secret",
+        "Unlock",
+        "Enter the passphrase",
+        b"keyring",
+        Tick::new(100),
+    );
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert_eq!(pumped.handlers, 1);
+    assert!(
+        server.finished(request).is_none(),
+        "the first claim still holds the request"
+    );
+}
+
+#[test]
+fn an_answer_before_the_claim_is_refused_as_taken() {
+    let config = Config::new("request-unclaimed");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.request.offered", function(e)
+  local ok, err = pcall(gnoblin.request.answer, e.request, "early")
+  assert(not ok, "an unclaimed request accepted an answer")
+  assert(string.find(tostring(err), "request-taken", 1, true), tostring(err))
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    let request = server.offer(
+        "slot_prompt_secret",
+        "Unlock",
+        "Enter the passphrase",
+        b"keyring",
+        Tick::new(100),
+    );
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert!(server.finished(request).is_none(), "a refused answer finishes nothing");
+}
+
+#[test]
+fn an_answer_after_the_request_finished_is_refused_as_finished() {
+    let config = Config::new("request-finished");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.request.offered", function(e)
+  gnoblin.request.claim(e.request)
+  gnoblin.request.answer(e.request, "first")
+  local ok, err = pcall(gnoblin.request.answer, e.request, "second")
+  assert(not ok, "a finished request accepted a second answer")
+  assert(string.find(tostring(err), "request-finished", 1, true), tostring(err))
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    let request = server.offer(
+        "slot_prompt_secret",
+        "Unlock",
+        "Enter the passphrase",
+        b"keyring",
+        Tick::new(100),
+    );
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert!(matches!(
+        server.finished(request),
+        Some(gnoblin_model::RequestCompletion::Answered)
+    ));
+}
