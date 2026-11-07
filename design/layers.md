@@ -584,7 +584,7 @@ Each path below moves to the registry, with no shim.
 
     Implemented (IPC part only): the `layers` object (`crates/gnoblin-schema/schema/layers.toml`) has one verb, `register(local, target)`. The compositor derives the provider from the connection, as `LayerProvider::Gnoblin(COMPOSITOR_CRATE)`, and a connection without the `register-layer` capability is refused `power-missing` before the graph sees the call (`crates/gnoblin-compositor/tests/layers.rs`).
 
-    The `services` role holds `register-layer` in `privileged.rs`. Not yet done from this phase: the `secure` field on `gnoblin.window_rule` and the `layers` config section, which need the WindowRules and config lanes.
+    The `services` role alone holds `register-layer` in `privileged.rs`, because it draws the keyring and polkit prompts. The `runtime`, `portal` and `input` roles hold no layer capability, and a plain socket client holds nothing; `tests/layers.rs` refuses the runtime and plain connections `power-missing`. Not yet done from this phase: the `secure` field on `gnoblin.window_rule` and the `layers` config section, which need the WindowRules and config lanes.
 
 10. Lua `gnoblin.layers` and `[powers.layers]` through D22. This is the unblock for the phase 9 binding: per-extension Lua environments, and grants that name each extension namespace.
 
