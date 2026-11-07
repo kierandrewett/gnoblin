@@ -8,3 +8,7 @@ reason = "gnoblin-parity is a command-line tool: its stdout is the report it exi
 [[allow]]
 path = "crates/gnoblin-log/src/store.rs"
 reason = "the stderr fallback of the sink: when the database cannot take a batch the record is printed directly, since routing it through the facade would feed the failure back into the same sink"
+
+[[allow]]
+path = "crates/gnoblin-store/src/logs.rs"
+reason = "the stderr report of a failed log write: it names the failure once per run of failures, and it must not go through the log pipeline it is reporting on, since the same write would fail again"

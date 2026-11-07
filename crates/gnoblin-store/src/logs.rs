@@ -188,7 +188,7 @@ impl Logs {
             if let Some(legacy) = legacy
                 && let Err(error) = migrate::run(&mut connection, legacy)
             {
-                eprintln!("gnoblin-store: legacy log import stopped ({}): {error}", error.code());
+                log::warn!("cannot import the old log file ({}): {error}", error.code());
             }
             // Retention is best effort at open: a failure is logged, and the file still serves.
             if let Err(error) = retention::apply(&connection, retention, kv::now_ms()) {

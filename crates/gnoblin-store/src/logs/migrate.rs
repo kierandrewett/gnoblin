@@ -10,8 +10,8 @@
 //! last committed batch and never copies a row twice. Old row ids are not kept: the new file
 //! gives its own ids in the order the old rows were read.
 //!
-//! An import that cannot finish never stops the store from starting. It is reported once on
-//! stderr, with a name from [`ImportError::code`], and the next writable open tries again.
+//! An import that cannot finish never stops the store from starting. It is logged as a warning
+//! with a name from [`ImportError::code`], and the next writable open tries again.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, TransactionBehavior, params};
 
 use super::INSERT_SQL;
+use crate::log;
 
 /// The file name the old `gnoblin-log` wrote, next to the store directory.
 pub(super) const LEGACY_FILE: &str = "logs.sqlite3";
@@ -140,10 +141,7 @@ pub(crate) fn run(store: &mut Connection, legacy: &Path) -> Result<(), ImportErr
         copy_rows(store, &source)?
     };
     if imported > 0 {
-        eprintln!(
-            "gnoblin-store: imported {imported} log records from {}",
-            legacy.display()
-        );
+        log::info!("imported {imported} log records from {}", legacy.display());
     }
     rename_migrated(legacy)
 }
