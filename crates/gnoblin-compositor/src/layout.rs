@@ -134,10 +134,15 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 /// The resolved layout settings for the session's workspaces, with the Lua host that
 /// runs them. Built once, inside the thread that runs the compositor.
 pub struct WorkspaceLayouts {
+    /// Layout name used for any workspace the outputs and workspaces maps do not name.
     default: RefCell<String>,
+    /// Layout name per output connector, from the settings' per-output table.
     outputs: RefCell<BTreeMap<String, String>>,
+    /// Layout name per workspace, overriding the output and default choices.
     workspaces: RefCell<BTreeMap<WorkspaceId, String>>,
+    /// The Lua host that runs the layout modules. Shared with the rest of the compositor.
     host: Rc<RefCell<Host>>,
+    /// Layout names that failed to load, so the failure is reported once and not retried.
     failed: RefCell<BTreeSet<String>>,
 }
 
@@ -274,6 +279,7 @@ impl LayoutControl for WorkspaceLayouts {
 /// wm applies its own logic.
 #[derive(Default)]
 pub struct FloatingEngine {
+    /// The last arrange's outcome, held until the wm collects it. `None` until one runs.
     ready: Option<(Generation, Result<Reply, LayoutFailure>)>,
 }
 

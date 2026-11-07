@@ -51,21 +51,28 @@ pub type Reply = (ClientId, Envelope);
 /// A request the service refuses before admitting it: the wire code and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortalRefusal {
+    /// Stable wire code the client matches on, such as `REQUEST_TAKEN`.
     pub code: &'static str,
+    /// Human-readable detail for logs and error dialogs; not part of the contract.
     pub message: String,
 }
 
 /// The connection that submitted an admitted request, and the envelope id its
 /// outcome is sent under.
 struct HeldRequest {
+    /// The request the client submitted, so the outcome can be routed back to it.
     request: RequestId,
+    /// The connection that submitted the request; replies go only to this client.
     client: ClientId,
+    /// The envelope id the outcome is sent under, so the client can pair it with its call.
     envelope_id: u64,
 }
 
 /// The portal UI session and the routing of its requests to their owners.
 pub struct PortalService {
+    /// The dialog UI that shows requests to the user, one dialog at a time.
     ui: PortalUi,
+    /// Admitted requests still waiting for an outcome, in admission order.
     owners: Vec<HeldRequest>,
     /// The output the dialog modal is shown on, while one is shown.
     shown: Option<OutputId>,
