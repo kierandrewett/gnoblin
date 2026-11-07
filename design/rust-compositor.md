@@ -3077,7 +3077,7 @@ Consequences:
 
 **Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `design/layers.md`.
 
-Today the output frame has one `overlay` slot, shared by the portal dialog and the modal (`crates/gnoblin-backend/src/render/frame.rs:235-237`, `:358-360`). Portal placement centres on the output rectangle, not on the requesting window (`crates/gnoblin-compositor/src/ipc/portal.rs:370-377`). The portal request's `parent_window` is stored and never read (`crates/xdg-desktop-portal-gnoblin/src/backends.rs:85`). No Rust code draws the not-responding dialog or the window menu.
+Today the output frame has one `overlay` slot, shared by the portal dialog and the modal (`crates/gnoblin-render-frame/src/frame.rs:235-237`, `:358-360`). Portal placement centres on the output rectangle, not on the requesting window (`crates/gnoblin-compositor/src/ipc/portal.rs:370-377`). The portal request's `parent_window` is stored and never read (`crates/xdg-desktop-portal-gnoblin/src/backends.rs:85`). No Rust code draws the not-responding dialog or the window menu.
 
 Options weighed: A, keep the single overlay slot and add a flag per feature (not chosen: each feature adds a flag and a special case); B, closed bands with no names or owners (not chosen: a band cannot say which portal or extension owns a claim, or which window it follows); C, a runtime registry of named layers with a closed band set for ordering (chosen); D, client-chosen integer z-order (not chosen: a client could sort above the lock).
 
@@ -3268,7 +3268,7 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
 
 - **No cursor pixels.** `gnoblin-backend`'s frame has a cursor slot and the
   software renderer draws it, but nothing loads a theme image, so a session
-  composes no cursor (`crates/gnoblin-backend/src/render/frame.rs`).
+  composes no cursor (`crates/gnoblin-render-frame/src/frame.rs`).
 
 - **Naming the perspective refusal.** The renderer refuses a perspective camera
   with its own error type whose member is the literal `"perspective"`

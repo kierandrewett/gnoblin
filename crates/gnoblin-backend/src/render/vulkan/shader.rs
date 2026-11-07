@@ -1,7 +1,7 @@
 //! WGSL to SPIR-V, with `naga`.
 //!
 //! The passes the Vulkan renderer draws are the ones the GLES renderer draws: the same
-//! WGSL sources (`render/shader/wgsl/`), the same uniform block, the same vertex stage.
+//! WGSL sources (`gnoblin-render-frame`'s `shader/wgsl/`), the same uniform block, the same vertex stage.
 //! This file is the only place they become SPIR-V. Nothing is generated at build time and
 //! no `.spv` file is checked in: the sources are compiled when the renderer is created,
 //! which takes milliseconds, and a source that does not compile is a named startup error

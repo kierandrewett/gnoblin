@@ -8,9 +8,10 @@
 use gnoblin_config::RendererChoice;
 use gnoblin_types::{Scale, Size};
 
+use super::gles::Gles;
+use super::software::Software;
 #[cfg(feature = "vulkan")]
-use super::Vulkan;
-use super::{Gles, Software};
+use super::vulkan::Vulkan;
 use gnoblin_render_frame::{error::RenderError, frame::OutputFrame, image::Image};
 
 #[cfg(not(feature = "vulkan"))]

@@ -19,7 +19,7 @@
 //!
 //! [`HeadlessConfig`] holds the [`RendererKind`] every output draws with: software
 //! (the default and the reference), [`Gles`] (the same frame drawn on a surfaceless GLES
-//! context, D12's GPU half) or Vulkan (`render::Vulkan`, behind the `vulkan` feature). The
+//! context, D12's GPU half) or Vulkan (`render::vulkan::Vulkan`, behind the `vulkan` feature). The
 //! `compositor.renderer` setting reaches this through [`HeadlessConfig::from_setting`], and
 //! `auto` means [`RendererKind::AUTO`]. This file only holds the choice: building and
 //! driving the renderer is [`AnyRenderer`]'s job.
@@ -60,13 +60,13 @@ use gnoblin_config::RendererChoice;
 
 use crate::render::gles::Gles;
 use crate::render::renderer::{AnyRenderer, RendererKind};
-use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::OutputFrame;
-use gnoblin_render_frame::image::Image;
 use crate::{
     Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
     Target,
 };
+use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::image::Image;
 
 /// The number of entries in each gamma table a headless output has.
 ///

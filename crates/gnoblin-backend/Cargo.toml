@@ -7,10 +7,8 @@ license.workspace = true
 publish.workspace = true
 
 # The workspace table forbids `unsafe` outright, which cannot be lifted, and this crate
-# needs three things it does not offer:
+# needs two things it does not offer:
 #
-# - one block that turns Smithay's mapping of a client's `wl_shm` pool into a slice
-#   (`render/shm.rs`, the only writer of client pixels);
 # - the EGL and GL calls a GLES context and its draws are made of. Smithay's
 #   `EGLDisplay::new` and `GlowRenderer::new` are `unsafe` because it cannot check a native
 #   display or that a context is idle on another thread, and `glow`'s calls are `unsafe`
@@ -20,7 +18,7 @@ publish.workspace = true
 #
 # So the crate restates the workspace's levels with `deny` and confines the exemption to
 # named FFI shim modules, each opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment
-# per block: `render/shm.rs`, `render/gles/egl.rs`, `render/gles/gl.rs` and the three files of
+# per block: `render/gles/egl.rs`, `render/gles/gl.rs` and the three files of
 # `render/vulkan/` that call `ash` (`context.rs`, `pipeline.rs` and `frame.rs`). Nothing else
 # in the crate may contain `unsafe`, and a session on the software path reaches none of them.
 [lints.rust]

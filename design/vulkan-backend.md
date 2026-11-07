@@ -167,7 +167,7 @@ Nothing outside `render/vulkan/` names an `ash` type. The renderer's public surf
 is the same four methods as the other two (`new`, `draw`, `capture`, `resize`) over
 an `OutputFrame`, and callers reach it through `render::AnyRenderer`. A `wgpu` or
 `vulkano` renderer would replace the module and keep that surface. The WGSL sources
-(`render/shader/`), the uniform packing and the parity tests stay as they are.
+(`gnoblin-render-frame`'s `shader/`), the uniform packing and the parity tests stay as they are.
 
 ### Default
 

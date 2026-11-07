@@ -652,9 +652,9 @@ fn portal_crates(package: &Package, dep: &Dep) -> Option<String> {
 
 /// The crates the PipeWire export may name. It is fed plain values and a `PlaneSource` by
 /// the wayland crate and names no other workspace crate beyond the capture, lock, types
-/// and backend crates its frames are built from.
+/// and frame crate its frames are built from.
 const PIPEWIRE_EXPORT_ALLOWED: &[&str] = &[
-    "gnoblin-backend",
+    "gnoblin-render-frame",
     "gnoblin-capture",
     "gnoblin-lock",
     "gnoblin-types",

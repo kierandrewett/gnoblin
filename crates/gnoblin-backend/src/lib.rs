@@ -50,10 +50,10 @@
 //! # Where this crate has to use unsafe
 //!
 //! The workspace forbids `unsafe`, and this crate opts out with the table `Cargo.toml`
-//! records, for two reasons:
+//! records. The `wl_shm` pool mapping that the frame writes through lives in
+//! `gnoblin-render-frame` (`shm.rs`), not here. The remaining reasons are the GLES and
+//! Vulkan renderers, which are FFI shims for the following reasons:
 //!
-//! - **A client's pixels are a mapping.** Turning Smithay's view of a `wl_shm` pool into a
-//!   slice is an `mmap`-shaped operation, and it lives in one module (`render/shm.rs`).
 //! - **A GLES context cannot be created safely.** Smithay's `EGLDisplay::new`,
 //!   `EGLContext::new` and `GlowRenderer::new` are `unsafe` because Smithay cannot check
 //!   that a native display is valid or that a context is not in use on another thread, and
@@ -265,7 +265,10 @@ pub trait Target {
     /// [`gnoblin_render_frame::error::RenderError`] when the renderer refuses an operation. A layer whose
     /// client buffer cannot be read is not an error: a client may destroy its buffer
     /// at any time, and the rest of the frame still has to appear.
-    fn draw(&mut self, frame: &gnoblin_render_frame::frame::OutputFrame) -> Result<(), gnoblin_render_frame::error::RenderError>;
+    fn draw(
+        &mut self,
+        frame: &gnoblin_render_frame::frame::OutputFrame,
+    ) -> Result<(), gnoblin_render_frame::error::RenderError>;
 
     /// Present the frame the host drew, with the damage that changed.
     ///

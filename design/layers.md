@@ -79,7 +79,7 @@ marks a claim not checked against code or a primary source.
 - The window stack has two layers, `StackLayer::Normal` and `Fullscreen`. They never
   interleave (`crates/gnoblin-wm/src/stack.rs:1-13`, `:21-26`).
 - The output frame has a `layers` list, one `overlay` slot and one `cursor` slot
-  (`crates/gnoblin-backend/src/render/frame.rs:235-237`). `set_overlay` replaces the
+  (`crates/gnoblin-render-frame/src/frame.rs:235-237`). `set_overlay` replaces the
   one overlay (`frame.rs:358-360`), drawn "above every layer and below the cursor"
   (`frame.rs:351`).
 - wlr layer shell has four layers: background, bottom, top and overlay [INFERENCE:
@@ -477,7 +477,7 @@ A window rule takes `secure = true|false`, spelled as in `docs/config/window_rul
 
 Each path below moves to the registry, with no shim.
 
-- `crates/gnoblin-backend/src/render/frame.rs:236`: the `overlay` slot goes. `layers` (`:235`) becomes the one ordered list, walked in registry order. `cursor` (`:237`) stays. A breaking change to the frame type, shared by every renderer.
+- `crates/gnoblin-render-frame/src/frame.rs:236`: the `overlay` slot goes. `layers` (`:235`) becomes the one ordered list, walked in registry order. `cursor` (`:237`) stays. A breaking change to the frame type, shared by every renderer.
   The capture view is a second walk of the same list. It draws a masked silhouette in place of each secure node, not the node itself. Cost: one alpha-mask fill per secure node per capture frame, and the mask itself, which D26 already keeps for shaped windows. A rectangle needs no mask.
 - `crates/gnoblin-wayland/src/modal.rs:1-54`: `Modal` and `ModalEvent` become the
   input policy of the `portals` and `alerts` layers.
