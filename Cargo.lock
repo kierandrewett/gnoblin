@@ -1303,6 +1303,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-service-core",
  "gnoblin-types",
  "hkdf",
  "num-bigint",
@@ -1326,6 +1327,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-service-core",
  "gnoblin-testkit",
  "zbus",
 ]
@@ -1341,57 +1343,6 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
- "zbus",
-]
-
-[[package]]
-name = "gnoblin-compat-file-gtk-dconf-settings"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-compat-core",
- "gnoblin-log",
- "tempfile",
-]
-
-[[package]]
-name = "gnoblin-compat-wayland-gtk-shell1"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-compat-core",
- "gnoblin-config",
- "gnoblin-log",
- "gnoblin-types",
- "gnoblin-wayland",
- "tempfile",
- "wayland-backend",
- "wayland-client",
- "wayland-scanner",
- "wayland-server",
-]
-
-[[package]]
-name = "gnoblin-compat-host"
-version = "0.2.0-alpha.0"
-dependencies = [
- "futures-lite",
- "gnoblin-compat-core",
- "gnoblin-compat-dbus-gnome-keyring-prompter",
- "gnoblin-compat-dbus-gnome-shell-introspect",
- "gnoblin-compat-file-gtk-dconf-settings",
- "gnoblin-compat-wayland-gtk-shell1",
- "gnoblin-compat-dbus-mutter-displayconfig",
- "gnoblin-compat-dbus-mutter-idlemonitor",
- "gnoblin-compat-wayland-mutter-x11-interop",
- "gnoblin-compat-file-qt-portal-settings",
- "gnoblin-compat-x11-xsettings",
- "gnoblin-compositor",
- "gnoblin-log",
- "gnoblin-services",
- "gnoblin-session",
- "gnoblin-xwayland",
- "tempfile",
- "wayland-client",
- "x11rb",
  "zbus",
 ]
 
@@ -1413,6 +1364,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-service-core",
  "gnoblin-testkit",
  "zbus",
 ]
@@ -1428,6 +1380,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-service-core",
  "zbus",
 ]
 
@@ -1464,6 +1417,67 @@ name = "gnoblin-compat-dbus-mutter-servicechannel"
 version = "0.2.0-alpha.0"
 
 [[package]]
+name = "gnoblin-compat-file-gtk-dconf-settings"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+ "gnoblin-log",
+ "gnoblin-service-core",
+ "tempfile",
+]
+
+[[package]]
+name = "gnoblin-compat-file-qt-portal-settings"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+ "gnoblin-session",
+ "tempfile",
+]
+
+[[package]]
+name = "gnoblin-compat-host"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-compat-core",
+ "gnoblin-compat-dbus-gnome-keyring-prompter",
+ "gnoblin-compat-dbus-gnome-shell-introspect",
+ "gnoblin-compat-dbus-mutter-displayconfig",
+ "gnoblin-compat-dbus-mutter-idlemonitor",
+ "gnoblin-compat-file-gtk-dconf-settings",
+ "gnoblin-compat-file-qt-portal-settings",
+ "gnoblin-compat-wayland-gtk-shell1",
+ "gnoblin-compat-wayland-mutter-x11-interop",
+ "gnoblin-compat-x11-xsettings",
+ "gnoblin-compositor",
+ "gnoblin-log",
+ "gnoblin-services",
+ "gnoblin-session",
+ "gnoblin-xwayland",
+ "tempfile",
+ "wayland-client",
+ "x11rb",
+ "zbus",
+]
+
+[[package]]
+name = "gnoblin-compat-wayland-gtk-shell1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+ "gnoblin-config",
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland",
+ "tempfile",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+ "wayland-server",
+]
+
+[[package]]
 name = "gnoblin-compat-wayland-mutter-x11-interop"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1476,15 +1490,6 @@ dependencies = [
  "wayland-client",
  "wayland-scanner",
  "wayland-server",
-]
-
-[[package]]
-name = "gnoblin-compat-file-qt-portal-settings"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-compat-core",
- "gnoblin-session",
- "tempfile",
 ]
 
 [[package]]
@@ -1549,6 +1554,7 @@ dependencies = [
 name = "gnoblin-input"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-log",
  "gnoblin-types",
 ]
 

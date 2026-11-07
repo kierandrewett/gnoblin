@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 # The shared primitives: the tick counter, the request identity and the edge names.
 gnoblin-types.workspace = true
+# `[tag]` lines for the input policy's logs, through the `gnoblin-log` facade.
+gnoblin-log = { path = "../gnoblin-log" }
 
 [lints]
 workspace = true
