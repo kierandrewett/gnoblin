@@ -597,10 +597,15 @@ fn the_command_tree_matches_the_schema() {
     let catalog = catalog();
     let tree = gnoblinctl::command_tree();
 
+    // `store` and `log` are generated objects the CLI does not expose; see `generate::HAND_WRITTEN`.
+    const OBJECTS_NOT_GENERATED: &[&str] = &["store", "log"];
+
     let mut objects: Vec<(String, &gnoblin_schema::ObjectType)> = Vec::new();
     for schema in catalog.schemas() {
         for object in &schema.objects {
-            objects.push((schema.namespace.to_string(), object));
+            if !OBJECTS_NOT_GENERATED.contains(&object.name.as_str()) {
+                objects.push((schema.namespace.to_string(), object));
+            }
         }
     }
     let mut counts = std::collections::BTreeMap::new();
