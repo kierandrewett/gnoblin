@@ -620,7 +620,6 @@ mod tests {
                 "idle",
                 "layers",
                 "lock",
-                "log",
                 "output",
                 "portal_ui",
                 "portal_outcome",
@@ -628,6 +627,7 @@ mod tests {
                 "session",
                 "settings",
                 "store",
+                "log",
                 "window",
                 "workspace",
             ]
