@@ -43,8 +43,8 @@ marks a claim not checked against code or a primary source.
        parent field. Changing that frame changes what external slot providers receive.
     2. The compositor's `PortalService::submit` (`ipc/portal.rs`) does not read
        `parent_window`, and no resolver exists.
-    3. `wayland:` needs `XdgForeign::exported_surface`, which lives in the Wayland
-       `State`, not on the IPC thread. A channel or shared table is missing.
+    3. `wayland:` has a lookup now (`ControlHandle::exported_window`, from f44c61b72),
+       but no caller. The portal path must reach it from the IPC thread.
     4. `x11:` has no XID-to-window lookup in `gnoblin-xwayland`.
     5. The caller's identity is not read. The relay would need the sender's pid from
        `org.freedesktop.DBus.GetConnectionUnixProcessID`, and the compositor would need
