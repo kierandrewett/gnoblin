@@ -40,13 +40,17 @@ marks a claim not checked against code or a primary source.
   (`GetConnectionUnixProcessID` on the sender), never from the request. `PortalRequest.caller`
   carries it through `portal.ui`. The compositor trusts that frame only because the privileged
   IPC peer is the portal role; that boundary is what the frame's pid rests on.
-- **Done:** the compositor checks a parent it is given before the dialog opens.
-  `ipc/server.rs` `check_portal_parent` resolves `wayland:` through `exported_window` and
-  `window_process`, then `parent_owner_check` (`ipc/portal.rs`) compares that pid with the bus
-  pid. A parent that fails any check (no parent, X11, unknown or revoked handle, another
-  process) does not refuse the request: the dialog opens on the output and one log line names
-  the reason. The test `a_payload_claiming_another_pid_is_checked_against_the_bus_pid` covers
-  a forged pid.
+- **Done:** the compositor resolves a parent before the dialog opens. `ipc/server.rs` `portal_ui`
+  calls `resolve_portal_scope` (`ipc/portal.rs`), which resolves `wayland:` through
+  `exported_window` and `window_process`, then `parent_owner_check` compares that pid with the
+  bus pid. It returns `PortalScope::Parent` or `PortalScope::Output { reason }`, and the handler
+  logs the scope used. A parent that fails any check (no parent, X11, unknown or revoked handle,
+  another process) does not refuse the request: the dialog opens on the output. The test
+  `a_payload_claiming_another_pid_is_checked_against_the_bus_pid` covers a forged pid.
+- **Scope today:** output-scope fallback is permitted and is NOT end-to-end parent-window support
+  until the relay sends the verified caller and parent, and modal-to-parent lands (Needs Kieran 15).
+- **Not built:** portal.ui claimants are ignored, built-in only. Claimant-first routing (D19) is
+  unbuilt.
 - **Gaps, in order:**
     1. Nothing sends `portal.ui` in production. The relay has no path from its portal calls to
        the compositor, so `verified_caller` has no caller yet and only tests send the frame.
@@ -554,6 +558,10 @@ Open items only. Numbers are stable, so cross-references still hold. Each open i
 7. (A) Whether the compositor checks that a `parent_window` belongs to the requesting client before placing a dialog over it. Invariant 1. Proposed: yes, and it is not optional.
 8. (B) Bar visibility while a fullscreen window is on its output: hidden (proposed). The alternative lifts fullscreen windows above `top`, as wlroots does, which breaks one band per record.
 9. (B) Override-redirect X11 windows: X's own stacking inside `windows` (proposed), or lifted to `top` as menus.
+
+**15.** (A) Is output-scope fallback acceptable for unverified parents, or deny? Today a dialog whose parent
+cannot be verified opens on the output and the app still gets its consent answer. Denying instead
+would refuse those requests. Until Kieran decides, the fallback stays.
 
 ### Decided
 
