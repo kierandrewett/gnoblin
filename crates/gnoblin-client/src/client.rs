@@ -644,7 +644,7 @@ mod routing_tests {
 
     use gnoblin_proto::{CodecError, Envelope, Transport, Version};
 
-    use super::{Capabilities, Client, wire};
+    use super::{Capabilities, Client, PortalOutcome, PortalTicket, wire};
 
     /// A transport that replays scripted frames and records what the client sent.
     #[derive(Debug, Default)]
