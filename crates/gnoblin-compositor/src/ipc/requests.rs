@@ -250,11 +250,22 @@ impl Requests {
     }
 
     /// Claim a request this connection was offered.
+    ///
+    /// Only the provider the offer was sent to may claim it. A connection that was not
+    /// offered the request is refused as unknown to it before the broker sees the claim,
+    /// so the broker's first-claim-wins rule cannot hand a request to a stranger.
     pub(crate) fn claim_request(
         &mut self,
         owner: ClientId,
         request: RequestId,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        if self.offers.get(&request).is_some_and(|offer| offer.provider != owner) {
+            let error = gnoblin_model::RequestError::Unknown { request };
+            return Err(RequestRefusal {
+                code: request_code(&error),
+                message: error.to_string(),
+            });
+        }
         self.broker
             .claim(request, OwnerId::new(owner.get()))
             .map_err(|error| RequestRefusal {
@@ -350,10 +361,13 @@ impl Requests {
         // A claim it held is released, so its requests end as gone rather than staying
         // with a connection that will never answer them.
         let _ = self.broker.release(OwnerId::new(client.get()));
+        // An offer the departed connection was sent but never claimed ends too: nobody will
+        // answer it, and the offering host should learn that now rather than at the deadline.
+        // An offer the departed connection made is abandoned for the same reason.
         let abandoned: Vec<RequestId> = self
             .offers
             .iter()
-            .filter(|(_, offer)| offer.offered_by == client)
+            .filter(|(_, offer)| offer.offered_by == client || offer.provider == client)
             .map(|(request, _)| *request)
             .collect();
         for request in abandoned {
@@ -688,6 +702,187 @@ mod tests {
         assert!(
             deliveries.iter().any(|delivery| delivery.client == HOST),
             "the relay is told the request finished"
+        );
+    }
+
+    const OTHER: ClientId = ClientId::new(5);
+
+    /// A shell claims the prompt slot and a host offers a request to it, so the provider and
+    /// the offering host are two different connections.
+    fn shell_provided_request(requests: &mut Requests) -> RequestId {
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PromptSecret, Provider::Shell, false)
+            .expect("a shell claims the prompt slot");
+        let (request, _) = requests
+            .offer(HOST, "prompt.secret", "Unlock", "Passphrase", b"", Tick::new(1_000))
+            .expect("the shell provides the prompt slot");
+        request
+    }
+
+    #[test]
+    fn a_connection_that_was_not_offered_a_request_cannot_claim_or_answer_it() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        let refusal = requests
+            .claim_request(OTHER, request)
+            .expect_err("a connection that was not offered the request cannot claim it");
+        assert_eq!(refusal.code, wire::code::REQUEST_UNKNOWN);
+        let refusal = requests
+            .claim_request(HOST, request)
+            .expect_err("the offering host is not the provider, so it cannot claim the request");
+        assert_eq!(refusal.code, wire::code::REQUEST_UNKNOWN);
+        assert!(
+            matches!(
+                requests.broker.state(request),
+                Some(gnoblin_model::RequestState::Offered { .. })
+            ),
+            "a refused claim leaves the request offered to its provider"
+        );
+        requests
+            .claim_request(SHELL, request)
+            .expect("the provider claims the request");
+        let refusal = requests
+            .answer(OTHER, request, b"hunter2".to_vec())
+            .expect_err("a connection that does not hold the request cannot answer it");
+        assert_eq!(refusal.code, wire::code::REQUEST_TAKEN);
+        assert!(
+            matches!(
+                requests.broker.state(request),
+                Some(gnoblin_model::RequestState::Claimed { .. })
+            ),
+            "a refused answer leaves the claim with its provider"
+        );
+    }
+
+    #[test]
+    fn an_answer_from_a_connection_that_does_not_hold_it_is_refused() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        requests
+            .claim_request(SHELL, request)
+            .expect("the provider claims the request");
+        let refusal = requests
+            .answer(HOST, request, b"hunter2".to_vec())
+            .expect_err("the offering host does not hold the claim, so it cannot answer");
+        assert_eq!(refusal.code, wire::code::REQUEST_TAKEN);
+    }
+
+    #[test]
+    fn a_departed_provider_ends_its_requests() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        requests
+            .claim_request(SHELL, request)
+            .expect("the provider claims the request");
+        let deliveries = requests.departed(SHELL);
+        assert_eq!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::Ended
+            )),
+            "a claimed request whose provider left ends as ended"
+        );
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == HOST),
+            "the host learns its request ended"
+        );
+    }
+
+    #[test]
+    fn a_departed_provider_ends_the_requests_it_was_offered_but_did_not_claim() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        let deliveries = requests.departed(SHELL);
+        assert_eq!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::Ended
+            )),
+            "an offer nobody will now claim ends rather than waiting for its deadline"
+        );
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == HOST),
+            "the host learns its request ended instead of waiting out the deadline"
+        );
+    }
+
+    #[test]
+    fn a_departed_offerer_abandons_its_requests() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        let deliveries = requests.departed(HOST);
+        assert_eq!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::Ended
+            )),
+            "a request whose host left is abandoned"
+        );
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == SHELL),
+            "the provider is told the request it was offered is gone"
+        );
+        assert!(
+            requests.departed(HOST).is_empty(),
+            "a second departure reports nothing: the request finished exactly once"
+        );
+    }
+
+    #[test]
+    fn only_the_offering_connection_reads_the_answer() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        requests
+            .claim_request(SHELL, request)
+            .expect("the provider claims the request");
+        let answer = b"hunter2".to_vec();
+        let deliveries = requests
+            .answer(SHELL, request, answer.clone())
+            .expect("the provider answers");
+        let carries = |delivery: &FrameDelivery| {
+            delivery
+                .envelope
+                .payload()
+                .is_some_and(|payload| payload.windows(answer.len()).any(|window| window == answer.as_slice()))
+        };
+        assert!(
+            deliveries
+                .iter()
+                .any(|delivery| delivery.client == HOST && carries(delivery)),
+            "the offering host reads the answer"
+        );
+        assert!(
+            deliveries
+                .iter()
+                .all(|delivery| delivery.client != SHELL || !carries(delivery)),
+            "the provider never receives the answer back"
+        );
+        assert!(
+            deliveries
+                .iter()
+                .all(|delivery| !carries(delivery) || delivery.client == HOST),
+            "no other connection receives the answer"
+        );
+    }
+
+    #[test]
+    fn a_request_past_its_deadline_ends_as_timed_out() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        assert!(
+            requests.tick(Tick::new(999)).is_empty(),
+            "a request before its deadline is left alone"
+        );
+        let deliveries = requests.tick(Tick::new(1_000));
+        assert_eq!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::TimedOut
+            ))
+        );
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == HOST),
+            "the host learns its request timed out"
         );
     }
 }
