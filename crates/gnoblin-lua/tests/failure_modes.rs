@@ -835,7 +835,12 @@ end
 assert(refused == 1, "expected one refusal past 1024, saw " .. refused)
 "#,
     );
-    let (_server, mut host) = pair();
+    // The 1025 `pcall`s are cheap, but a debug build under a parallel suite can exceed the default
+    // 16 ms handler deadline. The deadline is not what this test measures, so it is widened.
+    let (_server, mut host) = pair_with(Limits {
+        handler_ticks: 600_000,
+        ..Limits::default()
+    });
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
     assert_eq!(host.pump(Tick::new(1000)).expect("a pump").handlers, 1024);
