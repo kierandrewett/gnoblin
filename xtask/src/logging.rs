@@ -7,9 +7,9 @@
 //!   crate. Everything else reaches `tracing` through `gnoblin-log`, and nothing names `log` or
 //!   `env_logger`.
 //! - **Sources.** Library and daemon sources under `crates/*/src` must not call `tracing::` macros or the
-//!   stock print macros. Tests are exempt: `#[test]` functions, `#[cfg(test)]` items, files named
-//!   `tests.rs` or `*_test(s).rs`, `build.rs` and `examples/`. Comments and string literals never count,
-//!   because the scanner reads tokens rather than text.
+//!   stock print macros, or a retired `*_in!` macro. Tests are exempt: `#[test]` functions,
+//!   `#[cfg(test)]` items, files named `tests.rs` or `*_test(s).rs`, `build.rs` and `examples/`.
+//!   Comments and string literals never count, because the scanner reads tokens rather than text.
 //!
 //! A reviewed exception goes in `xtask/logging-allow.toml`, one `[[allow]]` entry per file or crate,
 //! each with a `reason`. An entry that matches no hit fails too, so the list cannot rot.
@@ -38,6 +38,10 @@ const LOGGING_CRATES: &[&str] = &["tracing", "tracing-subscriber", "log", "env_l
 
 /// The stock macros that write to stdout or stderr, or print debug output, in library code.
 const PRINT_MACROS: &[&str] = &["println", "print", "eprintln", "eprint", "dbg"];
+
+/// The `*_in!` macros that took the component as a string. `logger!` replaced them, so a call to
+/// one is a violation.
+const RETIRED_MACROS: &[&str] = &["error_in", "warn_in", "info_in", "debug_in", "trace_in"];
 
 /// One source-level violation: the line and what was found there.
 #[derive(Debug, PartialEq, Eq)]
@@ -211,6 +215,11 @@ fn scan_tokens(tokens: &[TokenTree], hits: &mut Vec<Hit>) {
                         line: ident.span().start().line,
                         what: format!("`{path}!`"),
                     });
+                } else if RETIRED_MACROS.contains(&name.as_str()) && is_punct(tokens.get(index + 1), '!') {
+                    hits.push(Hit {
+                        line: ident.span().start().line,
+                        what: format!("`{name}!`, retired: declare a `logger!` and call its level macro"),
+                    });
                 }
             }
             TokenTree::Punct(_) | TokenTree::Literal(_) => {}
@@ -334,6 +343,12 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn a_retired_in_macro_is_a_violation() {
+        assert_eq!(scan_source("fn f() { warn_in!(\"x\", \"y\"); }").unwrap().len(), 1);
+        assert_eq!(scan_source("fn f() { log::warn!(\"x\"); }").unwrap().len(), 0);
     }
 
     #[test]
