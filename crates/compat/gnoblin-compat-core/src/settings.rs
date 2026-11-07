@@ -3,8 +3,8 @@
 //! D15 publishes the desktop's settings **one way**: Gnoblin's configuration is the
 //! source, a per-toolkit switch in `gnoblin.configure.compat` decides whether the
 //! target hears about it at all, and nothing a toolkit writes is read back. The
-//! publishers are three adapters — [`gnoblin-compat-file-gtk-dconf-settings`],
-//! [`gnoblin-compat-file-qt-portal-settings`] and [`gnoblin-compat-x11-xsettings`] — and
+//! publishers are three adapters — [`gnoblin-compat-gtk-dconf-settings`],
+//! [`gnoblin-compat-qt-portal-settings`] and [`gnoblin-compat-x11-xsettings`] — and
 //! the vocabulary they publish lives here because two of them name the same values
 //! and the plan forbids a compat crate depending on another.
 //!
@@ -26,7 +26,7 @@
 //! 1. **A publisher invents a value the desktop never declared.** Every field of
 //!    [`DesktopSettings::default`] is GNOME's own default, so a session that
 //!    configures nothing publishes the values a stock GNOME session would:
-//!    `gnoblin-compat-file-gtk-dconf-settings`'s `the_defaults_are_gnomes_own`.
+//!    `gnoblin-compat-gtk-dconf-settings`'s `the_defaults_are_gnomes_own`.
 //! 2. **A target that is switched off still hears something.** [`Switch::Off`] is
 //!    what every publisher's applier checks first, and its test asserts that the
 //!    target received no action at all rather than a neutral one.

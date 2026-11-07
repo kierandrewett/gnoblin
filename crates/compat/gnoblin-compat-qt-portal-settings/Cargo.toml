@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-file-qt-portal-settings"
+name = "gnoblin-compat-qt-portal-settings"
 description = "Qt settings via QT_QPA_PLATFORMTHEME=xdgdesktopportal, over the portal Settings interface."
 version.workspace = true
 edition.workspace = true

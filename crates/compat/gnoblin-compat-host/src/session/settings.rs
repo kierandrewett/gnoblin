@@ -9,7 +9,7 @@ use std::path::Path;
 
 use gnoblin_compat_core::{Mode, Switch};
 
-use gnoblin_compat_file_gtk_dconf_settings::agent as dconf;
+use gnoblin_compat_gtk_dconf_settings::agent as dconf;
 
 /// Exports `DCONF_PROFILE` into `environment` when the dconf target is on.
 ///
@@ -27,7 +27,7 @@ pub fn export_dconf_profile(environment: &mut gnoblin_session::Environment, mode
 /// The adapter decides what is exported; this only copies its settings into the guardian's
 /// session environment, which is what every child inherits.
 pub fn export_qt_settings(environment: &mut gnoblin_session::Environment, mode: Mode) {
-    let effects = gnoblin_compat_file_qt_portal_settings::apply(Switch::from_enabled(mode != Mode::Off));
+    let effects = gnoblin_compat_qt_portal_settings::apply(Switch::from_enabled(mode != Mode::Off));
     for effect in effects {
         if let gnoblin_session::Effect::ExportEnv {
             target: gnoblin_session::EnvTarget::Session,

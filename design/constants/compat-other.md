@@ -21,8 +21,8 @@ Counts are `const`/`static` items only. Functions marked `const fn` are not cons
 | gnoblin-compat-x11-xsettings              | 12                 | 12                  | 0       | Names and xdpi scale (lib.rs:47-91)                                                          |
 | gnoblin-compat-wayland-gtk-shell1         | 5                  | 4                   | 1       | NAME, MATRIX, SHELL, SURFACE grouped as names; SHELL_VERSION listed                          |
 | gnoblin-compat-wayland-mutter-x11-interop | 4                  | 3                   | 1       | NAME, INTERFACE, INTEROP_VERSION listed; MATRIX grouped                                      |
-| gnoblin-compat-file-gtk-dconf-settings    | 5                  | 3                   | 2       | Paths, schema groups and key names (lib.rs:63-182, agent.rs:18-21)                           |
-| gnoblin-compat-file-qt-portal-settings    | 3                  | 2                   | 1       | PLATFORM_THEME and PORTAL_THEME listed; MATRIX grouped                                       |
+| gnoblin-compat-gtk-dconf-settings         | 5                  | 3                   | 2       | Paths, schema groups and key names (lib.rs:63-182, agent.rs:18-21)                           |
+| gnoblin-compat-qt-portal-settings         | 3                  | 2                   | 1       | PLATFORM_THEME and PORTAL_THEME listed; MATRIX grouped                                       |
 
 Total: 30 const/static items across 7 crates. Every item is covered below.
 
@@ -92,7 +92,7 @@ Q2: GTK's shell protocol is not in wayland-protocols. The vendored XML comes fro
 | `NAME` `mutter-x11-interop`      | compat.rs:17 | KEEP    | Adapter name. Internal.                                                                                                   | low    | S      |
 | `INTERFACE` `mutter_x11_interop` | compat.rs:23 | KEEP    | Equal to the XML protocol and interface name (protocols/mutter-x11-interop.xml:2, 8).                                     | low    | S      |
 
-### 2.6 GTK dconf layer (gnoblin-compat-file-gtk-dconf-settings)
+### 2.6 GTK dconf layer (gnoblin-compat-gtk-dconf-settings)
 
 Keys below were checked against the GNOME schemas listed at the top. Each row verifies the key name, type and default that GTK reads.
 
@@ -122,7 +122,7 @@ Q2 finding: key defaults drift upstream (section 2.1). The keys themselves are s
 
 `XDG_RUNTIME_DIR` (agent.rs:29) is the XDG base-dir variable and is read at runtime: already DERIVE.
 
-### 2.7 Qt portal (gnoblin-compat-file-qt-portal-settings)
+### 2.7 Qt portal (gnoblin-compat-qt-portal-settings)
 
 | Constant                                | Line      | Verdict | Q2 finding                                                                                                  | Risk | Effort |
 | --------------------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------- | ---- | ------ |

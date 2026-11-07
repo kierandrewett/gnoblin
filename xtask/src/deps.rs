@@ -254,6 +254,10 @@ pub struct Violation {
 
 impl fmt::Display for Violation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // A package-level rule names no edge, so it prints without the arrow.
+        if self.dependency.is_empty() {
+            return write!(formatter, "{} [{}]: {}", self.package, self.rule, self.message);
+        }
         write!(
             formatter,
             "{} -> {} [{}]: {}",
@@ -266,6 +270,14 @@ impl fmt::Display for Violation {
 pub fn check(graph: &Graph) -> Vec<Violation> {
     let mut violations = Vec::new();
     for package in &graph.packages {
+        if let Some(message) = compat_naming(package) {
+            violations.push(Violation {
+                package: package.name.clone(),
+                dependency: String::new(),
+                rule: "compat-naming",
+                message,
+            });
+        }
         for dep in &package.deps {
             for rule in RULES {
                 if let Some(message) = (rule.check)(package, dep) {
@@ -298,6 +310,43 @@ fn is_compat(name: &str) -> bool {
 /// wires them. The host names every adapter, so it is exempt from the adapter rules.
 fn is_adapter(name: &str) -> bool {
     is_compat(name) && name != COMPAT_HOST
+}
+
+/// Settings-layer adapters that write a toolkit's own configuration. They carry no transport
+/// prefix: each is named `gnoblin-compat-<toolkit>-<what>`. Listing them makes an unprefixed name
+/// a reviewed choice rather than drift.
+const UNPREFIXED_COMPAT_ADAPTERS: &[&str] = &["gnoblin-compat-gtk-dconf-settings", "gnoblin-compat-qt-portal-settings"];
+
+/// The transport prefixes a compat adapter that serves a protocol carries after `gnoblin-compat-`:
+/// `dbus` for D-Bus, `wayland` for a Wayland protocol, `x11` for the Xwayland transport.
+const COMPAT_TRANSPORT_PREFIXES: &[&str] = &["dbus", "wayland", "x11"];
+
+/// Whether a compat adapter's name is allowed: one of the listed unprefixed settings adapters, or
+/// `gnoblin-compat-<transport>-<what>` with a known transport and a non-empty `<what>`.
+fn compat_name_is_allowed(name: &str) -> bool {
+    if UNPREFIXED_COMPAT_ADAPTERS.contains(&name) {
+        return true;
+    }
+    let Some(rest) = name.strip_prefix("gnoblin-compat-") else {
+        return false;
+    };
+    COMPAT_TRANSPORT_PREFIXES.iter().any(|transport| {
+        rest.strip_prefix(transport)
+            .and_then(|what| what.strip_prefix('-'))
+            .is_some_and(|what| !what.is_empty())
+    })
+}
+
+/// The naming rule: every compat adapter is named for the transport it serves, or is one of the
+/// listed unprefixed settings adapters. `gnoblin-compat-core` is the shared frame, not an adapter.
+fn compat_naming(package: &Package) -> Option<String> {
+    if !is_adapter(&package.name) || package.name == COMPAT_CORE || compat_name_is_allowed(&package.name) {
+        return None;
+    }
+    Some(format!(
+        "an adapter is `gnoblin-compat-<transport>-<what>` with transport dbus, wayland or x11, or one of the unprefixed settings adapters ({})",
+        UNPREFIXED_COMPAT_ADAPTERS.join(", ")
+    ))
 }
 
 /// Smithay, any `wayland-*` crate, a renderer, D-Bus or Lua.
@@ -1058,9 +1107,9 @@ mod tests {
         // The `service` module of an adapter implements `LinkedAgent`, which lives in
         // `gnoblin-service-core`. That edge is allowed; the engine is still not, and
         // `gnoblin-service-core` itself stays under the client-side rule, which bans the engine.
-        let allowed = violations(&[("gnoblin-compat-file-gtk-dconf-settings", &["gnoblin-service-core"])]);
+        let allowed = violations(&[("gnoblin-compat-gtk-dconf-settings", &["gnoblin-service-core"])]);
         assert!(allowed.is_empty(), "expected no violation, got {allowed:#?}");
-        let banned = violations(&[("gnoblin-compat-file-gtk-dconf-settings", &["gnoblin-compositor"])]);
+        let banned = violations(&[("gnoblin-compat-gtk-dconf-settings", &["gnoblin-compositor"])]);
         assert_eq!(banned.len(), 1, "expected one violation, got {banned:#?}");
     }
 
@@ -1120,6 +1169,54 @@ mod tests {
     /// Every violation in a fixture, as the report prints them.
     fn violations(packages: &[(&str, &[&str])]) -> Vec<String> {
         check(&graph(packages)).iter().map(Violation::to_string).collect()
+    }
+
+    /// The naming rule: an adapter names the transport it serves, and the two settings adapters
+    /// that write a toolkit's own configuration are the only unprefixed names allowed.
+    #[test]
+    fn an_adapter_named_for_a_transport_passes_the_naming_rule() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin-compat-dbus-mutter-clipboard", &["gnoblin-compat-core"]),
+                ("gnoblin-compat-wayland-gtk-shell1", &["gnoblin-compat-core"]),
+                ("gnoblin-compat-x11-xsettings", &["gnoblin-compat-core"]),
+                ("gnoblin-compat-core", &[]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_two_settings_adapters_carry_no_transport_prefix() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin-compat-gtk-dconf-settings", &["gnoblin-compat-core"]),
+                ("gnoblin-compat-qt-portal-settings", &["gnoblin-compat-core"]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn an_unknown_unprefixed_adapter_fails_the_naming_rule() {
+        let found = violations(&[("gnoblin-compat-mutter-clipboard", &["gnoblin-compat-core"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("gnoblin-compat-mutter-clipboard [compat-naming]: "),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_transport_or_a_transport_without_a_name_fails_the_naming_rule() {
+        for name in [
+            "gnoblin-compat-file-gtk-dconf-settings",
+            "gnoblin-compat-dbus",
+            "gnoblin-compat-dbus-",
+        ] {
+            let found = violations(&[(name, &["gnoblin-compat-core"])]);
+            assert_eq!(found.len(), 1, "{name}: {found:?}");
+        }
     }
 
     #[test]

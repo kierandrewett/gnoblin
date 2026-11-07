@@ -9,7 +9,7 @@ use gnoblin_compat_dbus_gnome_keyring_prompter::agent as gcr;
 use gnoblin_compat_dbus_gnome_shell_introspect::agent as introspect;
 use gnoblin_compat_dbus_mutter_displayconfig::agent as displayconfig;
 use gnoblin_compat_dbus_mutter_idlemonitor::agent as idlemonitor;
-use gnoblin_compat_file_gtk_dconf_settings::agent as dconf;
+use gnoblin_compat_gtk_dconf_settings::agent as dconf;
 
 use gnoblin_compat_core::Mode;
 use gnoblin_services::link::LinkedAgent;

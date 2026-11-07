@@ -466,8 +466,8 @@ gnoblin/
       gnoblin-compat-dbus-gnome-session-manager/  org.gnome.SessionManager
       gnoblin-compat-dbus-gnome-keyring-prompter/  org.gnome.keyring.SystemPrompter and PrivatePrompter, for gcr callers
       gnoblin-compat-wayland-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
-      gnoblin-compat-file-gtk-dconf-settings/  dconf layer for GTK (D15)
-      gnoblin-compat-file-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
+      gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
+      gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
       gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem; `portal` module: provider negotiation, request queue, reply validation, outcomes (D19)
     gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; the `layout` module (Lua layout host, D17, in progress); extension Lua modules (D22); uses gnoblin-lua-sandbox
@@ -1202,11 +1202,14 @@ failure-mode list that must be complete before isolated tests or code.
 
 ### Compatibility crates: `compat/`
 
-A crate is named `gnoblin-compat-<vendor>-<interface>`, so the name says whose
-interface it adapts. The vendor is one of mutter, gnome-shell, gnome-session,
-gnome-keyring, gtk, qt or x11. For example, gnoblin-compat-dbus-mutter-screencast
+A protocol adapter is named `gnoblin-compat-<transport>-<interface>`, so the name
+says which transport it serves and whose interface it adapts. The transport is one
+of `dbus`, `wayland` or `x11`. For example, gnoblin-compat-dbus-mutter-screencast
 adapts org.gnome.Mutter.ScreenCast, and gnoblin-compat-x11-xsettings serves
-XSETTINGS. The directory name equals the crate name.
+XSETTINGS. The directory name equals the crate name. The settings adapters that
+write a toolkit's own configuration carry no transport prefix and are named
+`gnoblin-compat-<toolkit>-<what>`: gnoblin-compat-gtk-dconf-settings and
+gnoblin-compat-qt-portal-settings. `xtask deps` enforces this list.
 
 - **Layout:** one crate per compatibility path (the tree under "Project
   structure"), all built on `gnoblin-compat-core`. A path is one GNOME, Mutter

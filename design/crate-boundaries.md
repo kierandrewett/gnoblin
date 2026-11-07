@@ -62,7 +62,7 @@ These add a graph node and no feature. They are flagged in the opposite directio
 
 - `gnoblin-compat-dbus-gnome-session-manager`, `gnoblin-compat-dbus-mutter-servicechannel`, `gnoblin-compat-dbus-mutter-inputmapping`: `src/lib.rs` is one comment line each.
 - `gnoblin-service-testkit`: 48 lines.
-- `gnoblin-compat-file-qt-portal-settings`: 91 lines, one dependant (`gnoblin-compat-host`).
+- `gnoblin-compat-qt-portal-settings`: 91 lines, one dependant (`gnoblin-compat-host`).
 
 ## Store duplication
 

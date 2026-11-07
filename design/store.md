@@ -471,7 +471,7 @@ column says whether it moves to a store.
 | AppChooser "remember"   | `gnoblin-portal-core/src/model/interface.rs:123`; no write code exists                   | Moves to a `kv` store (decided).                |
 | Layout `ctx.state`      | `gnoblin-lua/src/layout/host.rs:94`, in memory per worker                                | Stays in memory.                                |
 | Pre-snap window frame   | `design/lua-api.md:515`; no disk write found                                             | Stays in memory [INFERENCE].                    |
-| Session dconf keyfile   | `compat/gnoblin-compat-file-gtk-dconf-settings/src/lib.rs:249`                           | Stays. Written into the caller's profile.       |
+| Session dconf keyfile   | `compat/gnoblin-compat-gtk-dconf-settings/src/lib.rs:249`                                | Stays. Written into the caller's profile.       |
 | Extension state         | None. The wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`)                   | New. A `kv` store is its first home.            |
 | Secrets                 | None in the tree. Keyring is planned (`design/keyring.md:10`)                            | A `secret` store (D27). Never in `kv` or `log`. |
 
