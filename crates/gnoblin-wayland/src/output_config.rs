@@ -201,9 +201,9 @@ impl OutputConfigHost for BackendOutputConfig<'_> {
         if test_only {
             return Ok(());
         }
-        let steps: Vec<Step> = plans
+        let steps: Vec<OutputChange> = plans
             .into_iter()
-            .map(|(id, mode, before, after)| Step {
+            .map(|(id, mode, before, after)| OutputChange {
                 id,
                 mode,
                 before,
@@ -239,7 +239,7 @@ impl State {
 /// One output change in a configuration: the mode it is driven in, and the scale to move it
 /// from and to. Rollback reuses the same mode with the old scale.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Step {
+pub(crate) struct OutputChange {
     /// The head being changed.
     pub(crate) id: OutputId,
     /// The mode the head is driven in during the change.
@@ -283,7 +283,7 @@ impl ApplyFailure {
 /// order, so the last change made is the first undone. A rollback that is refused is recorded
 /// as stuck rather than hidden, because the client must be told which output kept its change.
 pub(crate) fn apply_in_order(
-    steps: &[Step],
+    steps: &[OutputChange],
     mut configure: impl FnMut(OutputId, DisplayMode, Scale) -> Result<(), String>,
 ) -> Result<(), ApplyFailure> {
     for (index, step) in steps.iter().enumerate() {
@@ -312,10 +312,10 @@ mod tests {
     use gnoblin_output::DisplayMode;
     use gnoblin_types::{OutputId, Scale};
 
-    use super::{ApplyFailure, Step, apply_in_order};
+    use super::{ApplyFailure, OutputChange, apply_in_order};
 
-    fn step(id: u64, from: u32, to: u32) -> Step {
-        Step {
+    fn step(id: u64, from: u32, to: u32) -> OutputChange {
+        OutputChange {
             id: OutputId::new(id),
             mode: DisplayMode::new(1920, 1080, 60_000),
             before: Scale::from_percent(from),
@@ -325,7 +325,10 @@ mod tests {
 
     /// Runs `apply_in_order` and records every call as `(output, scale percent)`, so a test can
     /// check the forward changes and the rollback order.
-    fn run(steps: &[Step], refuse: impl Fn(OutputId, u32) -> bool) -> (Result<(), ApplyFailure>, Vec<(u64, u32)>) {
+    fn run(
+        steps: &[OutputChange],
+        refuse: impl Fn(OutputId, u32) -> bool,
+    ) -> (Result<(), ApplyFailure>, Vec<(u64, u32)>) {
         let mut calls = Vec::new();
         let result = apply_in_order(steps, |id, _mode, scale| {
             let percent = (scale.as_f64() * 100.0).round() as u32;
