@@ -29,6 +29,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # `config validate` parses a file with the runtime's own parser, so a document
 # that validates here is one the compositor accepts.
 gnoblin-config = { path = "../gnoblin-config" }
+# `config validate` on an `init.lua` runs the runtime's own host, so a refused file is
+# refused for the reasons the compositor would give.
+gnoblin-lua = { path = "../gnoblin-lua" }
 serde_json.workspace = true
 
 [build-dependencies]

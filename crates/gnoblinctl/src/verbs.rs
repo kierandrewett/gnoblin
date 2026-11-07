@@ -8,14 +8,16 @@
 //! the runtime surface plan keeps this set to what is built; a verb is added only
 //! with the member that answers it.
 //!
-//! `config validate` is the one verb that never opens a connection: it checks a
-//! file on disk with the same parser the runtime uses, so it works with no session.
+//! `config validate` is the one verb that never opens a connection: it checks a file on
+//! disk. An `init.lua` is evaluated by the runtime's own host against stock schemas, so a
+//! file that validates here is one the compositor accepts; a JSON document goes through the
+//! configuration layer's parser. Neither needs a session.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use gnoblin_client::{Capabilities, Capability, Client, Transport};
-use gnoblin_config::document::Config;
+use gnoblin_config::{SearchPaths, document::Config};
 use gnoblin_model::{Filter, ObjectView, Snapshot, TypeKey, Value};
 use serde_json::{Value as Json, json};
 
@@ -250,18 +252,14 @@ fn parse_committed(bytes: &[u8]) -> Result<Json, Failure> {
     })
 }
 
-/// `config validate FILE`: parse a configuration document with the runtime's own
-/// parser. Deprecated spellings are reported as warnings; they do not fail it.
+/// `config validate FILE`: check a configuration document the way the runtime would.
+/// Deprecated spellings are reported as warnings; they do not fail it.
 pub(crate) fn validate(path: &Path, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
-    let bytes = std::fs::read(path).map_err(|error| Failure::Refusal {
-        code: "io".to_owned(),
-        message: format!("cannot read {}: {error}", path.display()),
-    })?;
-    let config = Config::from_json_bytes(&bytes).map_err(|message| Failure::Refusal {
-        code: "invalid-config".to_owned(),
-        message,
-    })?;
-    let warnings: Vec<String> = config.deprecations().iter().map(ToString::to_string).collect();
+    let warnings = if path.extension().is_some_and(|extension| extension == "lua") {
+        validate_lua(path)?
+    } else {
+        validate_json(path)?
+    };
     let result = if json {
         writeln!(out, "{}", json!({"valid": true, "warnings": warnings}))
     } else {
@@ -273,6 +271,41 @@ pub(crate) fn validate(path: &Path, json: bool, out: &mut dyn Write) -> Result<u
     };
     result.map_err(Failure::Io)?;
     Ok(0)
+}
+
+/// Evaluate an `init.lua` with the host the runtime uses, so a refused file is refused for the
+/// same reasons the compositor would give. Validation runs against an empty object graph; see
+/// `gnoblin_lua::check` for what that does not check.
+fn validate_lua(path: &Path) -> Result<Vec<String>, Failure> {
+    let paths = SearchPaths {
+        home: None,
+        config_home: None,
+        override_path: Some(path.to_path_buf()),
+    };
+    let check = gnoblin_lua::check::check(&paths).map_err(|message| Failure::Refusal {
+        code: "validation-unavailable".to_owned(),
+        message,
+    })?;
+    if !check.problems.is_empty() {
+        return Err(Failure::Refusal {
+            code: "invalid-config".to_owned(),
+            message: check.problems.join("\n"),
+        });
+    }
+    Ok(check.warnings)
+}
+
+/// Parse a JSON configuration document with the configuration layer's own parser.
+fn validate_json(path: &Path) -> Result<Vec<String>, Failure> {
+    let bytes = std::fs::read(path).map_err(|error| Failure::Refusal {
+        code: "io".to_owned(),
+        message: format!("cannot read {}: {error}", path.display()),
+    })?;
+    let config = Config::from_json_bytes(&bytes).map_err(|message| Failure::Refusal {
+        code: "invalid-config".to_owned(),
+        message,
+    })?;
+    Ok(config.deprecations().iter().map(ToString::to_string).collect())
 }
 
 /// The first live object of a schema type, by its command name.
@@ -318,9 +351,9 @@ mod tests {
         assert_eq!(code, "invalid-document");
     }
 
-    /// Write `bytes` to a file unique to this test and run `validate` on it.
-    fn validate_bytes(name: &str, bytes: &[u8]) -> (Result<u8, Failure>, String) {
-        let path = std::env::temp_dir().join(format!("gnoblinctl-validate-{}-{name}.json", std::process::id()));
+    /// Write `bytes` to a file unique to this test, named with `extension`, and run `validate` on it.
+    fn validate_bytes(name: &str, extension: &str, bytes: &[u8]) -> (Result<u8, Failure>, String) {
+        let path = std::env::temp_dir().join(format!("gnoblinctl-validate-{}-{name}.{extension}", std::process::id()));
         std::fs::write(&path, bytes).expect("write the test document");
         let mut out = Vec::new();
         let result = validate(&path, false, &mut out);
@@ -330,14 +363,18 @@ mod tests {
 
     #[test]
     fn a_valid_document_validates_with_no_warnings() {
-        let (result, out) = validate_bytes("valid", b"{}");
+        let (result, out) = validate_bytes("valid", "json", b"{}");
         assert_eq!(result.expect("an empty document is valid"), 0);
         assert_eq!(out, "valid\n");
     }
 
     #[test]
     fn a_deprecated_spelling_warns_but_still_validates() {
-        let (result, out) = validate_bytes("deprecated", br#"{"window-management": {"focus-mode": "sloppy"}}"#);
+        let (result, out) = validate_bytes(
+            "deprecated",
+            "json",
+            br#"{"window-management": {"focus-mode": "sloppy"}}"#,
+        );
         assert_eq!(result.expect("a deprecated spelling is not a failure"), 0);
         assert!(out.starts_with("valid\n"), "{out}");
         assert!(out.contains("warning: window-management.focus-mode"), "{out}");
@@ -345,11 +382,34 @@ mod tests {
 
     #[test]
     fn a_document_that_does_not_parse_is_refused() {
-        let (result, _) = validate_bytes("invalid", b"not json");
+        let (result, _) = validate_bytes("invalid", "json", b"not json");
         let Err(Failure::Refusal { code, .. }) = result else {
             panic!("an unparseable document is refused");
         };
         assert_eq!(code, "invalid-config");
+    }
+
+    /// A good init.lua, in the form the repo's default configuration uses, validates.
+    #[test]
+    fn a_good_init_lua_validates_as_the_runtime_loads_it() {
+        let (result, out) = validate_bytes(
+            "lua-good",
+            "lua",
+            br#"gnoblin.configure { ["window-management"] = { ["focus-mode"] = "click" } }"#,
+        );
+        assert_eq!(result.expect("a good init.lua validates"), 0);
+        assert_eq!(out, "valid\n");
+    }
+
+    /// An init.lua the Lua host cannot evaluate is refused with the runtime's own problem.
+    #[test]
+    fn a_bad_init_lua_is_refused_with_the_runtime_error() {
+        let (result, _) = validate_bytes("lua-bad", "lua", b"gnoblin.configure {");
+        let Err(Failure::Refusal { code, message }) = result else {
+            panic!("an init.lua that does not evaluate is refused");
+        };
+        assert_eq!(code, "invalid-config");
+        assert!(!message.is_empty(), "the refusal names the problem");
     }
 
     #[test]

@@ -239,7 +239,7 @@ fn refuse(report: &RunReport, reporter: &mut Reporter, problems: &str) -> RoleEr
 ///
 /// The schema requires a command on every entry, so an entry without one is refused here
 /// rather than started with nothing.
-fn enabled_autostart(config: &Config) -> Result<Vec<(&str, &[String])>, String> {
+pub(crate) fn enabled_autostart(config: &Config) -> Result<Vec<(&str, &[String])>, String> {
     let Some(autostart) = &config.autostart else {
         return Ok(Vec::new());
     };
@@ -269,20 +269,36 @@ fn bind_configured_extensions<T: Transport + 'static>(
     if report.config.is_err() {
         return Ok(());
     }
-    let base = report.path.path().parent().unwrap_or_else(|| Path::new("."));
-    let loaded = load_extensions(&report.document, base, stock);
-    for refusal in &loaded.refused {
+    let (registry, refusals) = configured_extensions(report, stock);
+    for refusal in &refusals {
         log::warn!(area = "runtime", "{refusal}");
-    }
-    let mut registry = ExtensionRegistry::new();
-    for extension in loaded.accepted {
-        let namespace = extension.namespace.clone();
-        if let Err(error) = registry.register_extension(extension.schema) {
-            log::warn!(area = "runtime", namespace = %namespace, error = ?error, "extension refused at registration");
-        }
     }
     host.bind_extensions(&registry)
         .map_err(|error| RoleError::Config(error.to_string()))
+}
+
+/// The extensions the accepted configuration names, bound into a registry, and every reason
+/// one was refused.
+///
+/// Shared by the runtime and `check`, so validation refuses an extension exactly when the
+/// runtime would. A rejected document yields an empty registry and no refusals: its own
+/// problems are reported by the commit that follows.
+pub(crate) fn configured_extensions(report: &RunReport, stock: &[Schema]) -> (ExtensionRegistry, Vec<String>) {
+    let mut registry = ExtensionRegistry::new();
+    let mut refusals = Vec::new();
+    if report.config.is_err() {
+        return (registry, refusals);
+    }
+    let base = report.path.path().parent().unwrap_or_else(|| Path::new("."));
+    let loaded = load_extensions(&report.document, base, stock);
+    refusals.extend(loaded.refused.iter().map(ToString::to_string));
+    for extension in loaded.accepted {
+        let namespace = extension.namespace.clone();
+        if let Err(error) = registry.register_extension(extension.schema) {
+            refusals.push(format!("extension {namespace} refused at registration: {error:?}"));
+        }
+    }
+    (registry, refusals)
 }
 
 /// Serve the handlers until the guardian asks the role to stop or the connection ends.
@@ -358,6 +374,6 @@ fn reload<T: Transport + 'static>(
 }
 
 /// The IPC version this build advertises, from the schema the bindings were generated from.
-fn version() -> Version {
+pub(crate) fn version() -> Version {
     Version::parse(env!("GNOBLIN_IPC_VERSION")).expect("the build script wrote the schema's own version")
 }

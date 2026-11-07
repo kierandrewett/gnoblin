@@ -2111,6 +2111,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-config",
  "gnoblin-log",
+ "gnoblin-lua",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",

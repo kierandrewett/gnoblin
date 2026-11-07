@@ -112,6 +112,7 @@
 //!   `i64::MAX` cannot be read and raises rather than arriving wrapped.
 
 mod bindings;
+pub mod check;
 mod configure;
 mod error;
 mod extension_bindings;
