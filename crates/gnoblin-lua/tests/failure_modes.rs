@@ -648,3 +648,150 @@ end)
     let again = host.pump(Tick::new(2)).expect("the host still pumps");
     assert_eq!(again.errors.len(), 0);
 }
+
+// Plain modules: `require("a.b.c")` loads `a/b/c.lua` under the configuration's
+// module roots. These tests pin the resolver's observable contract; they fail
+// until the config VM's `require` is pointed at the shared resolver.
+
+#[test]
+fn require_maps_a_dotted_name_to_a_file_under_the_user_root() {
+    let config = Config::new("require-dotted");
+    config.write(
+        "lib/util/strings.lua",
+        "return { shout = function(s) return s .. '!' end }\n",
+    );
+    config.write(
+        "init.lua",
+        r#"
+local strings = require("lib.util.strings")
+assert(type(strings) == "table", "a plain module returns its value")
+assert(strings.shout("hi") == "hi!", "the module's function is reachable")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_plain_module_is_evaluated_once_per_run() {
+    let config = Config::new("require-cache");
+    config.write("lib/counter.lua", "COUNT = (COUNT or 0) + 1\nreturn { runs = COUNT }\n");
+    config.write(
+        "init.lua",
+        r#"
+local first = require("lib.counter")
+local second = require("lib.counter")
+assert(rawequal(first, second), "a second require must return the cached value")
+assert(first.runs == 1, "the module ran more than once")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn an_unknown_plain_module_names_both_searched_roots() {
+    let config = Config::new("require-unknown");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(require, "lib.missing")
+assert(not ok, "require loaded a module that does not exist")
+message = tostring(message)
+assert(string.match(message, "unknown module `lib.missing`: no extension namespace or module has that name") ~= nil, "message was " .. message)
+assert(string.match(message, "searched `") ~= nil, "message does not name the searched roots: " .. message)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_name_that_is_not_a_module_name_is_refused() {
+    let config = Config::new("require-bad-name");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(require, "lib..util")
+assert(not ok, "require accepted an empty component")
+assert(string.match(tostring(message), "`lib..util` is not a module name") ~= nil, "message was " .. tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_plain_module_symlinked_outside_its_root_is_refused() {
+    let config = Config::new("require-escape");
+    let outside = Config::new("require-escape-outside");
+    outside.write("secret.lua", "return { leaked = true }\n");
+    config.write("lib/.keep", "");
+    std::os::unix::fs::symlink(outside.root.join("secret.lua"), config.root.join("lib/evil.lua"))
+        .expect("a test can create a symlink");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(require, "lib.evil")
+assert(not ok, "require followed a symlink out of the configuration root")
+assert(string.match(tostring(message), "module `lib.evil` resolves outside its root") ~= nil, "message was " .. tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn an_unknown_gnoblin_name_says_the_namespace_is_reserved() {
+    let config = Config::new("require-reserved");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(require, "gnoblin.nothing")
+assert(not ok, "require invented a shipped module")
+assert(string.match(tostring(message), "reserved") ~= nil, "message was " .. tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_module_that_requires_itself_through_a_cycle_is_refused() {
+    let config = Config::new("require-cycle");
+    config.write("cyc/a.lua", "return require('cyc.b')\n");
+    config.write("cyc/b.lua", "return require('cyc.a')\n");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(require, "cyc.a")
+assert(not ok, "a cycle loaded")
+assert(string.match(tostring(message), "requires itself") ~= nil, "message was " .. tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_missing_layout_reference_keeps_the_unknown_module_message() {
+    let config = Config::new("require-layout-missing");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(require, "layouts.nothing")
+assert(not ok, "require returned a layout that does not exist")
+assert(string.match(tostring(message), "unknown module `layouts.nothing`") ~= nil, "message was " .. tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
