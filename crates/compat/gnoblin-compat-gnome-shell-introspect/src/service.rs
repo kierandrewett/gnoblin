@@ -42,6 +42,8 @@ use crate::compat::{IntrospectAdmission, IntrospectCall, default_gate};
 use crate::error::IntrospectError;
 use crate::state::{IntrospectState, WindowInfo};
 
+use crate::log;
+
 /// The bus name GNOME Shell owns, which this adapter takes when it serves.
 pub const BUS_NAME: &str = "org.gnome.Shell";
 
@@ -328,12 +330,7 @@ pub async fn export(connection: &Connection, service: &IntrospectService) -> Res
         .map_err(|_| IntrospectError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    gnoblin_log::info_in!(
-        "compat-introspect",
-        name = BUS_NAME,
-        path = PATH,
-        "serving shell introspection"
-    );
+    log::info!(name = BUS_NAME, path = PATH, "serving shell introspection");
     Ok(())
 }
 

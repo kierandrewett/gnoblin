@@ -13,9 +13,11 @@ use std::thread::JoinHandle;
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{Gate, Mode};
 use gnoblin_compat_gnome_shell_introspect::{IntrospectService, export, link_from_environment};
-use gnoblin_log::{debug_in, info_in, warn_in};
+
 use gnoblin_services::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use zbus::Connection;
+
+use crate::log;
 
 /// The introspection adapter as a linked agent of the services role.
 #[derive(Default)]
@@ -36,31 +38,31 @@ impl LinkedAgent for Introspection {
         let mut link = match link_from_environment() {
             Ok(link) => link,
             Err(error) => {
-                info_in!("gnoblin", %error, "[services] no compositor graph, so no introspection adapter");
+                log::info!(%error, "[services] no compositor graph, so no introspection adapter");
                 return false;
             }
         };
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                info_in!("gnoblin", %error, "[services] no session bus, so no introspection adapter");
+                log::info!(%error, "[services] no session bus, so no introspection adapter");
                 return false;
             }
         };
         let service = match IntrospectService::with_gate(Gate::new(self.mode, Default::default(), Default::default())) {
             Ok(service) => service,
             Err(error) => {
-                warn_in!("gnoblin", %error, "[services] the introspection adapter refused its support matrix");
+                log::warn!(%error, "[services] the introspection adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service)) {
-            warn_in!("gnoblin", %error, "[services] the introspection name is unavailable");
+            log::warn!(%error, "[services] the introspection name is unavailable");
             return false;
         }
         service.attach(&connection);
         if let Err(error) = block_on(service.publish(link.state().clone())) {
-            warn_in!("gnoblin", %error, "[services] the introspection state could not be published");
+            log::warn!(%error, "[services] the introspection state could not be published");
             return false;
         }
         let serving = service.clone();
@@ -71,21 +73,21 @@ impl LinkedAgent for Introspection {
                     match link.advance() {
                         Ok(true) => {
                             if let Err(error) = block_on(serving.publish(link.state().clone())) {
-                                warn_in!("gnoblin", %error, "[services] the introspection state could not be published");
+                                log::warn!(%error, "[services] the introspection state could not be published");
                             }
                         }
                         Ok(false) => {
-                            debug_in!("gnoblin", "[services] the compositor closed the introspection link");
+                            log::debug!("[services] the compositor closed the introspection link");
                             break;
                         }
                         Err(error) => {
-                            warn_in!("gnoblin", %error, "[services] the introspection link failed");
+                            log::warn!(%error, "[services] the introspection link failed");
                             break;
                         }
                     }
                 }
             })
-            .map_err(|error| warn_in!("gnoblin", %error, "[services] the introspection loop could not be started"));
+            .map_err(|error| log::warn!(%error, "[services] the introspection loop could not be started"));
         match handle {
             Ok(handle) => {
                 self.served = Some((service, connection, handle));

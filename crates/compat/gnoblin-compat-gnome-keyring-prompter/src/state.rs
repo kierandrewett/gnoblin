@@ -50,6 +50,8 @@ use gnoblin_model::{RequestId, RequestOutcome, Tick};
 
 use crate::exchange::{Exchange, Secret};
 
+use crate::log;
+
 /// The slot this adapter exists for, as the plan's table names it.
 pub const SLOT: &str = "prompt.secret";
 
@@ -585,7 +587,7 @@ impl<O: Offerer> Prompter<O> {
                 });
             }
             Err(error) => {
-                gnoblin_log::warn_in!("compat-keyring", %error, request = request.get(), "could not build the secret exchange string");
+                log::warn!(%error, request = request.get(), "could not build the secret exchange string");
                 self.notify(Effect::Done {
                     sender: waiting.callback.sender.clone(),
                     path: waiting.callback.path.clone(),

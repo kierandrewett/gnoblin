@@ -10,13 +10,14 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use gnoblin_log::debug_in;
 use gnoblin_wayland::{Dispatch2, Extension, ExtensionError, GlobalDispatch2, State, Surface, X11InteropHost};
 use wayland_server::{Client, DataInit, DisplayHandle, New};
 
 use crate::compat::{Admission, Call};
 use crate::protocol::mutter_x11_interop;
 use crate::relations::ParentRelations;
+
+use crate::log;
 
 /// The protocol's version, which is the only one upstream has.
 pub const INTEROP_VERSION: u32 = 1;
@@ -133,7 +134,7 @@ impl GlobalDispatch2<mutter_x11_interop::MutterX11Interop, State> for InteropDat
         data_init: &mut DataInit<'_, State>,
     ) {
         data_init.init(resource, self.clone_data());
-        debug_in!("compat-x11", client = ?client.id(), "[x11-interop] a client bound the redirect");
+        log::debug!(client = ?client.id(), "[x11-interop] a client bound the redirect");
     }
 }
 
@@ -196,18 +197,11 @@ pub fn handle_request<H: X11InteropHost>(host: &mut H, data: &InteropData, reque
                 return;
             }
             let Surface::Window(child) = host.surface(&surface) else {
-                debug_in!(
-                    "compat-x11",
-                    "[x11-interop] the child surface is not a window of this session"
-                );
+                log::debug!("[x11-interop] the child surface is not a window of this session");
                 return;
             };
             let Some(parent) = host.window_for_x11(xwindow) else {
-                debug_in!(
-                    "compat-x11",
-                    xwindow,
-                    "[x11-interop] the X11 window is not managed by this session"
-                );
+                log::debug!(xwindow, "[x11-interop] the X11 window is not managed by this session");
                 return;
             };
             data.lock().record(child, parent);
@@ -216,7 +210,7 @@ pub fn handle_request<H: X11InteropHost>(host: &mut H, data: &InteropData, reque
             {
                 own.push(child);
             }
-            debug_in!("compat-x11", %child, %parent, xwindow, "[x11-interop] a parent relation was recorded");
+            log::debug!(%child, %parent, xwindow, "[x11-interop] a parent relation was recorded");
         }
     }
 }

@@ -12,8 +12,10 @@ use std::path::{Path, PathBuf};
 
 use gnoblin_compat_core::{DesktopSettings, Mode, Switch, settings_from_environment};
 use gnoblin_compat_gtk_dconf_settings::{Written, apply, publish};
-use gnoblin_log::{info_in, warn_in};
+
 use gnoblin_services::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
+
+use crate::log;
 
 /// The profile file name dconf reads `DCONF_PROFILE` from, beside the compiled database.
 pub const PROFILE: &str = "profile";
@@ -72,25 +74,22 @@ impl DconfLayer {
 impl LinkedAgent for DconfLayer {
     fn start(&mut self, _host: &Host, _deadline: Tick) -> bool {
         let Some(directory) = profile_directory() else {
-            warn_in!(
-                "gnoblin",
-                "[services] XDG_RUNTIME_DIR is not set, so no dconf layer is written"
-            );
+            log::warn!("[services] XDG_RUNTIME_DIR is not set, so no dconf layer is written");
             return false;
         };
         let settings = settings_from_environment();
         match write_layer(&settings, self.mode, &directory) {
             Ok(Written::Skipped) => true,
             Ok(written @ Written::Keyfile { compiled: true, .. }) => {
-                info_in!("gnoblin", written = ?written, "[services] the dconf layer is compiled");
+                log::info!(written = ?written, "[services] the dconf layer is compiled");
                 true
             }
             Ok(written) => {
-                warn_in!("gnoblin", written = ?written, "[services] the dconf layer is written but not compiled");
+                log::warn!(written = ?written, "[services] the dconf layer is written but not compiled");
                 true
             }
             Err(error) => {
-                warn_in!("gnoblin", %error, "[services] the dconf layer cannot be written");
+                log::warn!(%error, "[services] the dconf layer cannot be written");
                 false
             }
         }

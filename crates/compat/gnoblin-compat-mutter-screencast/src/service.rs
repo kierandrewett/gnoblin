@@ -50,6 +50,8 @@ use crate::caller;
 use crate::compat::{ScreenCastAdmission, ScreenCastCall, default_gate};
 use crate::error::ScreenCastError;
 
+use crate::log;
+
 /// The bus name Mutter owns, which this adapter takes when it serves.
 pub const BUS_NAME: &str = "org.gnome.Mutter.ScreenCast";
 
@@ -281,11 +283,11 @@ impl ScreenCastService {
             match SignalEmitter::new(&connection, record.path.as_str()) {
                 Ok(emitter) => {
                     if let Err(error) = ScreenCastSession::closed(&emitter).await {
-                        gnoblin_log::debug_in!("compat-screencast", session = id, %error, "the Closed signal could not be delivered");
+                        log::debug!(session = id, %error, "the Closed signal could not be delivered");
                     }
                 }
                 Err(error) => {
-                    gnoblin_log::debug_in!("compat-screencast", session = id, %error, "the session path is not a signal path")
+                    log::debug!(session = id, %error, "the session path is not a signal path")
                 }
             }
             for stream in &record.streams {
@@ -295,7 +297,7 @@ impl ScreenCastService {
                         .remove::<ScreenCastStream, _>(stream.as_str())
                         .await
                 {
-                    gnoblin_log::debug_in!("compat-screencast", stream, %error, "a stream object could not be removed");
+                    log::debug!(stream, %error, "a stream object could not be removed");
                 }
             }
             if let Err(error) = connection
@@ -303,21 +305,20 @@ impl ScreenCastService {
                 .remove::<ScreenCastSession, _>(record.path.as_str())
                 .await
             {
-                gnoblin_log::debug_in!("compat-screencast", session = id, %error, "a session object could not be removed");
+                log::debug!(session = id, %error, "a session object could not be removed");
             }
         }
         if let Some(handle) = record.capture
             && let Err(error) = self.shared.bridge.close(crate::bridge::CaptureHandle::new(handle))
         {
-            gnoblin_log::warn_in!(
-                "compat-screencast",
+            log::warn!(
                 session = id,
                 handle,
                 reason = error.reason(),
                 "the compositor did not confirm the capture session ended"
             );
         }
-        gnoblin_log::debug_in!("compat-screencast", session = id, "a screen cast session ended");
+        log::debug!(session = id, "a screen cast session ended");
         true
     }
 
@@ -382,7 +383,7 @@ impl ScreenCastService {
                 )));
             }
             Err(reason) => {
-                gnoblin_log::debug_in!("compat-screencast", caller = %owner, %reason, "a read proceeded without identifying the caller");
+                log::debug!(caller = %owner, %reason, "a read proceeded without identifying the caller");
                 gnoblin_compat_core::CallerContext::UNSANDBOXED
             }
         };
@@ -534,10 +535,7 @@ impl ScreenCastService {
             // The session is announced without an animation switch: the object protocol
             // has no member for it, and a caller that asked gets no silent claim that it
             // was honoured.
-            gnoblin_log::debug_in!(
-                "compat-screencast",
-                "a screen cast session asked for animations to be disabled; the IPC has no switch"
-            );
+            log::debug!("a screen cast session asked for animations to be disabled; the IPC has no switch");
         }
         let (id, path) = {
             let mut state = self.state_lock();
@@ -567,7 +565,7 @@ impl ScreenCastService {
                 "the session object could not be exported: {error}"
             )));
         }
-        gnoblin_log::debug_in!("compat-screencast", session = id, "a screen cast session was created");
+        log::debug!(session = id, "a screen cast session was created");
         ObjectPath::try_from(path).map_err(|error| fdo::Error::Failed(error.to_string()))
     }
 
@@ -628,11 +626,7 @@ impl ScreenCastSession {
             _ => {
                 drop(state);
                 if let Err(error) = service.shared.bridge.close(handle) {
-                    gnoblin_log::warn_in!(
-                        "compat-screencast",
-                        reason = error.reason(),
-                        "a capture session could not be closed"
-                    );
+                    log::warn!(reason = error.reason(), "a capture session could not be closed");
                 }
                 Err(fdo::Error::Failed("the session closed while starting".to_owned()))
             }
@@ -771,7 +765,7 @@ impl ScreenCastStream {
             .remove::<ScreenCastStream, _>(&*self.path)
             .await
         {
-            gnoblin_log::debug_in!("compat-screencast", stream = self.id, %error, "a stopped stream object could not be removed");
+            log::debug!(stream = self.id, %error, "a stopped stream object could not be removed");
         }
         Ok(())
     }
@@ -851,7 +845,7 @@ pub async fn watch_callers(mut watcher: CallerWatcher, service: ScreenCastServic
     while let Some(owner) = watcher.next().await {
         let ended = service.forget_owner(&owner).await;
         if ended > 0 {
-            gnoblin_log::debug_in!("compat-screencast", caller = %owner, ended, "a caller left the bus and its capture sessions ended");
+            log::debug!(caller = %owner, ended, "a caller left the bus and its capture sessions ended");
         }
     }
 }
@@ -882,11 +876,6 @@ pub async fn export(connection: &Connection, service: &ScreenCastService) -> Res
         .map_err(|_| ScreenCastError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    gnoblin_log::info_in!(
-        "compat-screencast",
-        name = BUS_NAME,
-        path = PATH,
-        "serving the screen cast adapter"
-    );
+    log::info!(name = BUS_NAME, path = PATH, "serving the screen cast adapter");
     Ok(())
 }

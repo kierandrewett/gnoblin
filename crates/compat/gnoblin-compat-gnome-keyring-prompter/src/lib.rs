@@ -90,6 +90,8 @@ use futures_lite::StreamExt as _;
 use zbus::Connection;
 use zbus::fdo::RequestNameFlags;
 
+gnoblin_log::logger!(log = "compat-keyring");
+
 /// Which of gcr's two bus names this adapter serves.
 ///
 /// A session normally serves both, which is what GNOME's `gcr-prompter` does. A
@@ -144,7 +146,7 @@ pub async fn export(connection: &Connection, service: &PromptService, names: Nam
                 name: (*name).to_owned(),
             })?;
     }
-    gnoblin_log::info_in!("compat-keyring", names = ?names.as_slice(), "serving gcr prompts");
+    log::info!(names = ?names.as_slice(), "serving gcr prompts");
     Ok(())
 }
 
@@ -163,7 +165,7 @@ pub async fn run(connection: Connection, service: PromptService) {
             // The caller has closed its prompt object, or the bus is gone. Either way
             // there is nobody left to answer, and the request itself was already
             // finished.
-            gnoblin_log::debug_in!("compat-keyring", %error, "a prompt callback could not be delivered");
+            log::debug!(%error, "a prompt callback could not be delivered");
         }
     }
 }

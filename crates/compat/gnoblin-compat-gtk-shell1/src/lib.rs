@@ -81,6 +81,8 @@ pub use global::{Redirect, SHELL_VERSION};
 /// The titlebar gestures, the requests they arrive as, and the resolution to a configured action.
 pub use mapping::{Gesture, Requested, action_for, resolve};
 
+gnoblin_log::logger!(log = "compat-gtk-shell");
+
 /// The vendored protocol's own names, for a client that has to speak it.
 pub mod names {
     /// The `gtk_shell1` and `gtk_surface1` protocol modules, re-exported for clients.

@@ -38,6 +38,8 @@ use std::fmt;
 
 use gnoblin_config::appearance::Accent;
 
+use crate::log;
+
 /// The colour scheme a toolkit should prefer.
 ///
 /// The spellings are the ones `org.gnome.desktop.interface color-scheme` and the
@@ -243,12 +245,12 @@ pub fn settings_from_environment() -> DesktopSettings {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => settings_from_config(&stored.config),
             Err(error) => {
-                gnoblin_log::warn_in!("compat-core", %error, "[settings] configuration not readable; publishing the defaults");
+                log::warn!(%error, "[settings] configuration not readable; publishing the defaults");
                 DesktopSettings::default()
             }
         },
         Err(error) => {
-            gnoblin_log::debug_in!("compat-core", %error, "[settings] no configuration file; publishing the defaults");
+            log::debug!(%error, "[settings] no configuration file; publishing the defaults");
             DesktopSettings::default()
         }
     }

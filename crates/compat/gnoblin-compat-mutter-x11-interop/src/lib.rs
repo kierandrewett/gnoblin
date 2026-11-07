@@ -61,3 +61,5 @@ pub mod names {
 }
 
 mod protocol;
+
+gnoblin_log::logger!(log = "compat-x11");

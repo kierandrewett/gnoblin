@@ -37,3 +37,5 @@ pub mod services;
 pub mod session;
 
 pub use gnoblin_compat_core::Mode;
+
+gnoblin_log::logger!(log = "gnoblin");

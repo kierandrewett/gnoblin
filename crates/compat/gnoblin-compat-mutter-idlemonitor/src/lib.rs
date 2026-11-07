@@ -90,3 +90,5 @@ pub use link::{IdleLink, IdleState};
 pub use service::{BUS_NAME, INTERFACE, IdleMonitorService, PATH, VERSION, export, watch_callers};
 /// The watch types the registry hands out.
 pub use watches::{Watch, WatchKind, Watches};
+
+gnoblin_log::logger!(log = "compat-idle");

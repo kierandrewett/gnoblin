@@ -56,6 +56,8 @@ use crate::callback::PromptCallbackProxy;
 use crate::compat::{Admission, Call};
 use crate::state::{Callback, Effect, Offerer, Pending, Prompt, PromptKind, Prompter, Unavailable};
 
+use crate::log;
+
 /// The object path gcr's prompter answers on.
 pub const PROMPTER_PATH: &str = "/org/gnome/keyring/Prompter";
 
@@ -244,8 +246,7 @@ impl PromptService {
             path: callback.to_string(),
         };
         let prompt = Prompt::from_properties(kind, &key.path, &properties);
-        gnoblin_log::info_in!("compat-keyring",
-            callback = %key.path,
+        log::info!(callback = %key.path,
             kind = kind.as_str(),
             title = %prompt.title,
             "offering a secret prompt"

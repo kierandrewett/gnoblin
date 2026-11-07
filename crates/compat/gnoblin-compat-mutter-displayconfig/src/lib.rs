@@ -103,3 +103,5 @@ pub use link::DisplayLink;
 pub use service::{BUS_NAME, DisplayConfigService, INTERFACE, OutputApplier, PATH, VERSION, export};
 /// The state types the adapter reports and the apply plan it builds.
 pub use state::{ApplyMethod, ApplyPlan, DisplayOutput, DisplayState, LogicalMonitor, MonitorAssignment, MonitorMode};
+
+gnoblin_log::logger!(log = "compat-displayconfig");

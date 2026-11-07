@@ -16,6 +16,8 @@ use gnoblin_compat_gnome_keyring_prompter::{
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use support::log::Captured;
 
+gnoblin_log::logger!(log = "compat-keyring");
+
 const PASSPHRASE: &str = "correct horse battery staple";
 const CALLBACK: &str = "/org/example/Keyring1";
 
@@ -280,14 +282,14 @@ fn a_passphrase_never_reaches_the_log() {
 
     let mut fixture = Fixture::new();
     let request = fixture.perform().expect("offered").request;
-    gnoblin_log::info_in!("compat-keyring", "answering the prompt");
+    log::info!("answering the prompt");
     fixture
         .prompter
         .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
         .expect("the request is pending");
     let effect = fixture.effect().expect("the caller is told");
     // Logged at `info`: the default filter drops `debug`, and this line must reach the capture.
-    gnoblin_log::info_in!("compat-keyring", ?effect, "the effect was queued");
+    log::info!(?effect, "the effect was queued");
 
     let lines = captured.lines();
     assert_eq!(lines.len(), 2, "the test's own lines were captured: {lines:?}");

@@ -91,3 +91,5 @@ pub use link::IntrospectLink;
 pub use service::{BUS_NAME, INTERFACE, IntrospectService, PATH, VERSION, export};
 /// Every window the graph publishes, and one window's record as the interface describes it.
 pub use state::{IntrospectState, WindowInfo};
+
+gnoblin_log::logger!(log = "compat-introspect");

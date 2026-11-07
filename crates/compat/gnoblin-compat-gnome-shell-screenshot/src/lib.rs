@@ -80,3 +80,5 @@ pub use error::ScreenshotError;
 pub use link::ScreenshotLink;
 /// The bus name, interface, object path and version, plus the exportable service and its export helper.
 pub use service::{BUS_NAME, INTERFACE, PATH, ScreenshotService, VERSION, export};
+
+gnoblin_log::logger!(log = "compat-screenshot");

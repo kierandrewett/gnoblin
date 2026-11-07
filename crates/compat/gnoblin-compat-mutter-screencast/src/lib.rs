@@ -85,3 +85,5 @@ pub use error::ScreenCastError;
 pub use service::{
     BUS_NAME, INTERFACE, PATH, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, VERSION, export, watch_callers,
 };
+
+gnoblin_log::logger!(log = "compat-screencast");

@@ -11,11 +11,13 @@
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
 use gnoblin_compat_mutter_idlemonitor::{IdleLink, IdleMonitorService, export, watch_callers};
-use gnoblin_log::{debug_in, info_in, warn_in};
+
 use gnoblin_services::link::{
     Client, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
 };
 use zbus::Connection;
+
+use crate::log;
 
 /// The version this adapter's compositor subscription speaks.
 const CLIENT_VERSION: Version = Version::new(0, 2, 0);
@@ -46,14 +48,14 @@ impl LinkedAgent for MutterIdleMonitor {
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                info_in!("gnoblin", %error, "[services] no session bus, so no idle monitor adapter");
+                log::info!(%error, "[services] no session bus, so no idle monitor adapter");
                 return false;
             }
         };
         let mut link = match connect_link() {
             Ok(link) => link,
             Err(error) => {
-                warn_in!("gnoblin", %error, "[services] the idle monitor adapter has no compositor link");
+                log::warn!(%error, "[services] the idle monitor adapter has no compositor link");
                 return false;
             }
         };
@@ -61,16 +63,16 @@ impl LinkedAgent for MutterIdleMonitor {
         let service = match IdleMonitorService::with_gate(gate) {
             Ok(service) => service,
             Err(error) => {
-                warn_in!("gnoblin", %error, "[services] the idle monitor adapter refused its support matrix");
+                log::warn!(%error, "[services] the idle monitor adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service)) {
-            warn_in!("gnoblin", %error, "[services] the idle monitor name is unavailable");
+            log::warn!(%error, "[services] the idle monitor name is unavailable");
             return false;
         }
         if let Err(error) = block_on(service.publish(link.state())) {
-            warn_in!("gnoblin", %error, "[services] the idle monitor could not publish its counter");
+            log::warn!(%error, "[services] the idle monitor could not publish its counter");
         }
         block_on(watch_callers(connection.clone(), service.clone()));
         let handle = std::thread::Builder::new()
@@ -82,15 +84,15 @@ impl LinkedAgent for MutterIdleMonitor {
                     match link.advance() {
                         Ok(true) => {
                             if let Err(error) = block_on(service.publish(link.state())) {
-                                debug_in!("gnoblin", %error, "[services] the idle monitor did not publish");
+                                log::debug!(%error, "[services] the idle monitor did not publish");
                             }
                         }
                         Ok(false) => {
-                            info_in!("gnoblin", "[services] the compositor link ended; idle monitor stops");
+                            log::info!("[services] the compositor link ended; idle monitor stops");
                             break;
                         }
                         Err(error) => {
-                            warn_in!("gnoblin", %error, "[services] the idle monitor link failed");
+                            log::warn!(%error, "[services] the idle monitor link failed");
                             break;
                         }
                     }
@@ -99,7 +101,7 @@ impl LinkedAgent for MutterIdleMonitor {
         match handle {
             Ok(_) => true,
             Err(error) => {
-                warn_in!("gnoblin", %error, "[services] the idle monitor loop could not be started");
+                log::warn!(%error, "[services] the idle monitor loop could not be started");
                 false
             }
         }

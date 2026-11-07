@@ -7,10 +7,12 @@
 use gnoblin_client::{Client, UnixTransport, socket_path};
 use gnoblin_compat_core::Mode;
 use gnoblin_config::{SearchPaths, Store};
-use gnoblin_log::{debug_in, warn_in};
+
 use gnoblin_proto::Version;
 
 use crate::{IntrospectError, IntrospectLink};
+
+use crate::log;
 
 /// Connects to the compositor socket named by the environment and subscribes to its graph.
 pub fn link_from_environment() -> Result<IntrospectLink<UnixTransport>, IntrospectError> {
@@ -31,12 +33,12 @@ pub fn mode_from_environment() -> Mode {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => mode(stored.config.compat.as_ref()),
             Err(error) => {
-                warn_in!("compat-introspect", %error, "[services] configuration not readable; compat stays at its default");
+                log::warn!(%error, "[services] configuration not readable; compat stays at its default");
                 Mode::default()
             }
         },
         Err(error) => {
-            debug_in!("compat-introspect", %error, "[services] no configuration file; compat stays at its default");
+            log::debug!(%error, "[services] no configuration file; compat stays at its default");
             Mode::default()
         }
     }

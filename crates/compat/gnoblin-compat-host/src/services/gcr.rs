@@ -13,9 +13,11 @@ use gnoblin_compat_core::Gate;
 use gnoblin_compat_gnome_keyring_prompter::{
     Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run,
 };
-use gnoblin_log::{debug_in, info_in, warn_in};
+
 use gnoblin_services::link::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
 use zbus::Connection;
+
+use crate::log;
 
 /// The slot the prompter adapter exists for, as the plan's table names it.
 pub const PROMPT_SLOT: &str = "prompt.secret";
@@ -54,26 +56,26 @@ impl LinkedAgent for GcrPrompter {
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                info_in!("gnoblin", %error, "[services] no session bus, so no prompt adapter");
+                log::info!(%error, "[services] no session bus, so no prompt adapter");
                 return false;
             }
         };
         let service = match PromptService::new(PromptHost(host.clone()), Gate::default(), deadline) {
             Ok(service) => service,
             Err(error) => {
-                warn_in!("gnoblin", %error, "[services] the prompt adapter refused its support matrix");
+                log::warn!(%error, "[services] the prompt adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service, Names::Both)) {
-            warn_in!("gnoblin", %error, "[services] the prompt names are unavailable");
+            log::warn!(%error, "[services] the prompt names are unavailable");
             return false;
         }
         let serving = service.clone();
         let handle = std::thread::Builder::new()
             .name("gnoblin-prompter".to_owned())
             .spawn(move || block_on(run(connection, serving)))
-            .map_err(|error| warn_in!("gnoblin", %error, "[services] the prompt loop could not be started"));
+            .map_err(|error| log::warn!(%error, "[services] the prompt loop could not be started"));
         match handle {
             Ok(handle) => {
                 self.served = Some((service, handle));
@@ -87,7 +89,7 @@ impl LinkedAgent for GcrPrompter {
         if let Some((prompter, _)) = &self.served
             && let Err(error) = prompter.answer(request, outcome)
         {
-            debug_in!("gnoblin", %error, request = request.get(), "[services] the prompter did not own the answer");
+            log::debug!(%error, request = request.get(), "[services] the prompter did not own the answer");
         }
     }
 }

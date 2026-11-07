@@ -99,3 +99,5 @@ pub use mode::{CallerContext, Decision, LockState, Mode, OperationClass, Sandbox
 pub use refusal::{Refusal, Rule};
 /// Desktop settings an adapter publishes, read from configuration or the environment.
 pub use settings::{ColourScheme, DesktopSettings, Switch, settings_from_config, settings_from_environment};
+
+gnoblin_log::logger!(log = "compat-core");

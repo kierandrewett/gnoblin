@@ -34,6 +34,8 @@ use zbus::{Connection, fdo};
 use crate::compat::{ScreenshotAdmission, ScreenshotCall, default_gate};
 use crate::error::ScreenshotError;
 
+use crate::log;
+
 /// The bus name GNOME Shell owns for screenshots, which this adapter takes when it serves.
 pub const BUS_NAME: &str = "org.gnome.Shell.Screenshot";
 
@@ -253,11 +255,6 @@ pub async fn export(connection: &Connection, service: &ScreenshotService) -> Res
         .map_err(|_| ScreenshotError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    gnoblin_log::info_in!(
-        "compat-screenshot",
-        name = BUS_NAME,
-        path = PATH,
-        "refusing screenshots on the shell's name"
-    );
+    log::info!(name = BUS_NAME, path = PATH, "refusing screenshots on the shell's name");
     Ok(())
 }
