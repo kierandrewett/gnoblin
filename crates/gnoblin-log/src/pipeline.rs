@@ -94,6 +94,7 @@ where
         let record = LogRecord {
             time_ms: now_ms(),
             level: event.metadata().level().as_str(),
+            key: logged.component.clone(),
             component: logged.component,
             role: self.pipeline.role,
             target: logged.target,
@@ -139,6 +140,7 @@ pub(crate) fn dropped_record(role: &'static str, lost: u64) -> LogRecord {
     LogRecord {
         time_ms: now_ms(),
         level: "WARN",
+        key: DROPPED_COMPONENT.to_owned(),
         component: DROPPED_COMPONENT.to_owned(),
         role,
         target: "gnoblin::log".to_owned(),

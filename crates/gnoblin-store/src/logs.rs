@@ -38,6 +38,8 @@ const TRIM_EVERY: Duration = Duration::from_secs(60);
 /// The migrations of the log file. Version 1 is the record table, with the columns gnoblin-log
 /// wrote before the store took the kind over, so a file migrated from it keeps its shape.
 /// Version 2 is the progress table of the one-off import of that old file (see `migrate`).
+/// Version 3 adds the indexed `key` column. Existing rows take their component as their key,
+/// because the component is the area that logged them. Each step is forward-only.
 pub(crate) const LOG_STEPS: &[&str] = &[
     "CREATE TABLE log_records (
         id INTEGER PRIMARY KEY,
@@ -55,11 +57,14 @@ pub(crate) const LOG_STEPS: &[&str] = &[
         last_id INTEGER NOT NULL,
         done INTEGER NOT NULL
     );",
+    "ALTER TABLE log_records ADD COLUMN key TEXT NOT NULL DEFAULT '';
+    UPDATE log_records SET key = component;
+    CREATE INDEX log_records_key ON log_records (key, id);",
 ];
 
 /// The insert every record uses. The statement is cached on the writer connection.
-const INSERT_SQL: &str = "INSERT INTO log_records (time_ms, level, component, role, target, message, fields)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+const INSERT_SQL: &str = "INSERT INTO log_records (time_ms, level, component, key, role, target, message, fields)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
 
 /// The columns a [`StoredRecord`] reads, in the order [`read_record`] takes them.
 const SELECT_COLUMNS: &str = "id, time_ms, level, component, role, target, message, fields";
@@ -355,6 +360,7 @@ fn insert(connection: &mut Connection, records: &[LogRecord]) -> Result<(), Stor
                     record.time_ms,
                     record.level,
                     record.component,
+                    record.key,
                     record.role,
                     record.target,
                     record.message,
@@ -467,6 +473,7 @@ mod tests {
             time_ms,
             level,
             component: component.to_owned(),
+            key: component.to_owned(),
             role,
             target: format!("gnoblin::{component}"),
             message: message.to_owned(),
@@ -605,6 +612,53 @@ mod tests {
             messages(&logs.search(&after).expect("searches")),
             ["dialog slow to open", "output lost"]
         );
+    }
+
+    #[test]
+    fn each_record_is_stored_under_the_key_it_carries() {
+        let (logs, dir) = open("keyed", Retention::default());
+        let mut keyed = record(1_000, "INFO", "compositor", "layout", "settled");
+        keyed.key = "outputs".to_owned();
+        logs.write_batch(&[keyed]);
+        let connection = Connection::open(dir.join(FILE_NAME)).expect("opens the file");
+        let (component, key): (String, String) = connection
+            .query_row("SELECT component, key FROM log_records", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .expect("reads the row");
+        assert_eq!((component.as_str(), key.as_str()), ("layout", "outputs"));
+    }
+
+    #[test]
+    fn a_version_two_file_gains_the_key_from_each_records_component() {
+        let dir = scratch("key-migration");
+        let path = dir.join(FILE_NAME);
+        {
+            let connection = Connection::open(&path).expect("creates the file");
+            connection.execute_batch(LOG_STEPS[0]).expect("version 1 schema");
+            connection.execute_batch(LOG_STEPS[1]).expect("version 2 schema");
+            connection
+                .pragma_update(None, "user_version", 2)
+                .expect("marks version 2");
+            connection
+                .execute(
+                    "INSERT INTO log_records (time_ms, level, component, role, target, message, fields)
+                     VALUES (1, 'INFO', 'layout', 'compositor', 'gnoblin::layout', 'old row', '')",
+                    [],
+                )
+                .expect("inserts a row from before the key");
+        }
+        drop(Logs::open(&path, true, Retention::default(), None).expect("migrates the file"));
+
+        let connection = Connection::open(&path).expect("reopens the file");
+        let key: String = connection
+            .query_row("SELECT key FROM log_records", [], |row| row.get(0))
+            .expect("reads the key");
+        assert_eq!(key, "layout");
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("reads the version");
+        assert_eq!(version, LOG_STEPS.len() as i64);
     }
 
     #[test]

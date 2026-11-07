@@ -18,6 +18,10 @@ pub struct LogRecord {
     /// The component that logged the event, as named by the `*_in!` call, or `ext` for a
     /// dependency's event.
     pub component: String,
+    /// The key the store indexes the record by: the area that logged it. The layer sets it to
+    /// the component, so a record's key and component agree today; the store keeps the two as
+    /// separate columns so the area can be named independently later.
+    pub key: String,
     /// The process role that logged the event, such as `compositor` or `portal`.
     pub role: &'static str,
     /// The event's target, which is `gnoblin::<component>` for a gnoblin event.

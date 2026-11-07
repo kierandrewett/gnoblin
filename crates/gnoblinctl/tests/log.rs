@@ -38,6 +38,7 @@ fn store_with(messages: &[&str]) -> PathBuf {
             time_ms,
             level: "INFO",
             component: "compositor".to_owned(),
+            key: "compositor".to_owned(),
             role: "compositor",
             target: "gnoblin::test".to_owned(),
             message: (*message).to_owned(),

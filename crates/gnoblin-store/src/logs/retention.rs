@@ -74,10 +74,12 @@ mod tests {
     /// The instant the tests treat as now: day 100, so day-old records have a known cutoff.
     const NOW: i64 = 100 * DAY_MS;
 
-    /// A database with the `log` kind's table and no rows.
+    /// A database with the `log` kind's table at its latest schema, and no rows.
     fn database() -> Connection {
         let connection = Connection::open_in_memory().expect("memory database");
-        connection.execute_batch(LOG_STEPS[0]).expect("schema");
+        for step in LOG_STEPS {
+            connection.execute_batch(step).expect("schema");
+        }
         connection
     }
 
@@ -85,8 +87,8 @@ mod tests {
     fn insert(connection: &Connection, time_ms: i64, message: &str) {
         connection
             .execute(
-                "INSERT INTO log_records (time_ms, level, component, role, target, message, fields) \
-                 VALUES (?1, 'INFO', 'test', 'test', 'gnoblin::test', ?2, '')",
+                "INSERT INTO log_records (time_ms, level, component, key, role, target, message, fields) \
+                 VALUES (?1, 'INFO', 'test', 'test', 'test', 'gnoblin::test', ?2, '')",
                 params![time_ms, message],
             )
             .expect("insert");

@@ -192,6 +192,7 @@ fn copy_rows(store: &mut Connection, source: &Connection) -> Result<u64, ImportE
                         row.time_ms,
                         row.level,
                         row.component,
+                        row.component,
                         row.role,
                         row.target,
                         row.message,
@@ -410,8 +411,8 @@ mod tests {
             for index in 0..1_000 {
                 transaction
                     .execute(
-                        "INSERT INTO log_records (time_ms, level, component, role, target, message, fields)
-                         VALUES (?1, 'INFO', 'compositor', 'layout', 'gnoblin::main', ?2, '')",
+                        "INSERT INTO log_records (time_ms, level, component, key, role, target, message, fields)
+                         VALUES (?1, 'INFO', 'compositor', 'compositor', 'layout', 'gnoblin::main', ?2, '')",
                         params![index, format!("row {index}")],
                     )
                     .expect("inserts a committed row");
