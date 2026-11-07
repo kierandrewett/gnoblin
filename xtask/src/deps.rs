@@ -261,14 +261,14 @@ const RULES: &[Rule] = &[
 ];
 
 /// One broken edge.
-pub struct Violation {
+pub struct DepViolation {
     package: String,
     dependency: String,
     rule: &'static str,
     message: String,
 }
 
-impl fmt::Display for Violation {
+impl fmt::Display for DepViolation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         // A package-level rule names no edge, so it prints without the arrow.
         if self.dependency.is_empty() {
@@ -283,11 +283,11 @@ impl fmt::Display for Violation {
 }
 
 /// Every violation of every rule in the graph, in package order.
-pub fn check(graph: &Graph) -> Vec<Violation> {
+pub fn check(graph: &Graph) -> Vec<DepViolation> {
     let mut violations = Vec::new();
     for package in &graph.packages {
         if let Some(message) = compat_naming(package) {
-            violations.push(Violation {
+            violations.push(DepViolation {
                 package: package.name.clone(),
                 dependency: String::new(),
                 rule: "compat-naming",
@@ -297,7 +297,7 @@ pub fn check(graph: &Graph) -> Vec<Violation> {
         for dep in &package.deps {
             for rule in RULES {
                 if let Some(message) = (rule.check)(package, dep) {
-                    violations.push(Violation {
+                    violations.push(DepViolation {
                         package: package.name.clone(),
                         dependency: dep.name.clone(),
                         rule: rule.id,
@@ -863,7 +863,7 @@ mod tests {
     fn a_compat_adapter_depending_on_another_adapter_fails() {
         let graph = from_json(COMPAT_CHAIN).expect("fixture parses");
         let violations = check(&graph);
-        let reported: Vec<String> = violations.iter().map(Violation::to_string).collect();
+        let reported: Vec<String> = violations.iter().map(DepViolation::to_string).collect();
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].starts_with(
@@ -1074,7 +1074,7 @@ mod tests {
             }],
         });
         let graph = from_json(&document.to_string()).expect("the fixture parses");
-        check(&graph).iter().map(Violation::to_string).collect()
+        check(&graph).iter().map(DepViolation::to_string).collect()
     }
 
     #[test]
@@ -1178,7 +1178,7 @@ mod tests {
     fn the_test_kit_as_a_normal_dependency_fails() {
         let graph = from_json(TESTKIT_AS_NORMAL).expect("fixture parses");
         let violations = check(&graph);
-        let reported: Vec<String> = violations.iter().map(Violation::to_string).collect();
+        let reported: Vec<String> = violations.iter().map(DepViolation::to_string).collect();
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].starts_with("gnoblin-wm -> gnoblin-testkit [dev-crates]"),
@@ -1205,7 +1205,7 @@ mod tests {
 
     /// Every violation in a fixture, as the report prints them.
     fn violations(packages: &[(&str, &[&str])]) -> Vec<String> {
-        check(&graph(packages)).iter().map(Violation::to_string).collect()
+        check(&graph(packages)).iter().map(DepViolation::to_string).collect()
     }
 
     /// The naming rule: an adapter names the transport it serves, and the two settings adapters
@@ -1310,7 +1310,7 @@ mod tests {
         });
         let graph = from_json(&shipping.to_string()).expect("the fixture parses");
         assert_eq!(
-            check(&graph).iter().map(Violation::to_string).collect::<Vec<_>>(),
+            check(&graph).iter().map(DepViolation::to_string).collect::<Vec<_>>(),
             vec![
                 "gnoblin-xwayland -> gnoblin-wayland [engine-isolation]: engine crates reach each other only \
                  through gnoblin-backend traits; `gnoblin-wayland` is an engine crate"
@@ -1328,7 +1328,7 @@ mod tests {
         });
         let graph = from_json(&testing.to_string()).expect("the fixture parses");
         assert_eq!(
-            check(&graph).iter().map(Violation::to_string).collect::<Vec<_>>(),
+            check(&graph).iter().map(DepViolation::to_string).collect::<Vec<_>>(),
             Vec::<String>::new()
         );
     }
@@ -1555,7 +1555,7 @@ mod tests {
         let graph = crate::metadata::load(&workspace_root).expect("cargo metadata for the workspace");
         assert!(!graph.packages.is_empty(), "workspace metadata lists no packages");
         let violations = check(&graph);
-        let reported: Vec<String> = violations.iter().map(Violation::to_string).collect();
+        let reported: Vec<String> = violations.iter().map(DepViolation::to_string).collect();
         assert!(
             reported.is_empty(),
             "workspace violates its own rules:\n{}",

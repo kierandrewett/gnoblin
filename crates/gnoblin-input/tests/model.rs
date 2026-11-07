@@ -25,10 +25,10 @@ use std::collections::BTreeMap;
 
 use common::{CODE_Q, CODE_W, Q, W, button_event, chord, name, pointer_chord};
 use gnoblin_input::{
-    Activity, ButtonState, Contact, ContactPhase, Context, Decision, Event, GestureAction, GestureConfig, GestureEvent,
-    GestureKind, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
-    PinchDirection, PolicyQueue, Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted,
-    Target, Tick, Trigger, When,
+    Activity, ButtonState, Contact, ContactPhase, Decision, Event, GestureAction, GestureConfig, GestureEvent,
+    GestureKind, GestureLock, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState,
+    Keysym, Modifiers, PinchDirection, PolicyQueue, Recogniser, Reply, RequestId, Routed, Router, Scope,
+    ShortcutInhibit, Submitted, Target, Tick, Trigger, When,
 };
 
 /// Sequences per test run.
@@ -448,7 +448,7 @@ impl Model {
     }
 
     fn observe_gesture(&mut self, event: GestureEvent) {
-        let route = self.gestures.observe(&event, Context::Unlocked);
+        let route = self.gestures.observe(&event, GestureLock::Unlocked);
         let reserved = self.gestures.reserved();
         match (event.phase(), route) {
             (GesturePhase::Begin, GestureRoute::Reserved { binding }) => assert_eq!(reserved, Some(binding)),

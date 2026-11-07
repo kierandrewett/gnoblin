@@ -98,7 +98,7 @@ pub use gesture::{
     Recogniser,
 };
 pub use gesture_router::{
-    Context, GestureAction, GestureBinding, GestureError, GestureRoute, GestureRouter, GestureSpec, GestureStats,
+    GestureAction, GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats,
     PinchDirection, When,
 };
 pub use gnoblin_types::{ButtonState, Edge, KeyCode, KeyState, Keysym, Modifiers, RequestId, Tick};

@@ -65,7 +65,7 @@ use smithay::xwayland::xwm::settings::Value as SettingValue;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, X11Surface, X11Wm, XwmId};
 use smithay::xwayland::{XWayland, XWaylandClientData, XwmHandler};
 
-use gnoblin_backend::x11::{self, Command, Launch, Restart, Session, Start, WindowEvent, WindowMeta};
+use gnoblin_backend::x11::{self, Launch, Restart, Session, Start, WindowEvent, WindowMeta, X11Request};
 use gnoblin_types::Rect;
 use gnoblin_wm::Event;
 
@@ -402,14 +402,14 @@ impl State {
         self.apply(outcome.effects);
         for command in outcome.commands {
             match command {
-                Command::SetMapped { window, mapped } => {
+                X11Request::SetMapped { window, mapped } => {
                     if let Some(surface) = running.surfaces.get(&window).cloned()
                         && let Err(error) = surface.set_mapped(mapped)
                     {
                         log::debug!(area = "xwayland", %error, %window, "a mapping request failed");
                     }
                 }
-                Command::Close { window } => {
+                X11Request::Close { window } => {
                     if let Some(surface) = running.surfaces.get(&window).cloned()
                         && let Err(error) = surface.close()
                     {

@@ -110,6 +110,6 @@ gnoblin_log::logger!(log = "input");
 pub use gnoblin_authority::Consent;
 pub use server::{Endpoint, Options};
 pub use service::{
-    Action, Caps, Command, Context, ContextId, ContextType, Device, DeviceId, Ending, Grant, Injection, Origin, Quota,
-    Region, Service, Violation,
+    Action, Caps, Context, ContextId, ContextType, DeviceId, EiDevice, EiRequest, Ending, Grant, Injection, Origin,
+    Quota, Region, Service, Violation,
 };

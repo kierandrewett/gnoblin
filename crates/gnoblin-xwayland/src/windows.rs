@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 use gnoblin_types::{Rect, WindowId};
 use gnoblin_wm::{ActivationDecision, Event, WindowKind, WindowSpec, Wm};
 
-use gnoblin_backend::x11::{Command, EventOutcome, WindowEvent, WindowMeta, Windows};
+use gnoblin_backend::x11::{EventOutcome, WindowEvent, WindowMeta, Windows, X11Request};
 
 /// The bit that separates an X11 window identity from a Wayland one.
 ///
@@ -181,7 +181,7 @@ impl Xwm {
                     window,
                     decision: ActivationDecision::Allow,
                 }),
-                commands: vec![Command::SetMapped { window, mapped: true }],
+                commands: vec![X11Request::SetMapped { window, mapped: true }],
             };
         }
         let Some(spec) = self.spec(meta.x11) else {
@@ -202,7 +202,7 @@ impl Xwm {
         EventOutcome {
             window: Some(window),
             effects,
-            commands: vec![Command::SetMapped { window, mapped: true }],
+            commands: vec![X11Request::SetMapped { window, mapped: true }],
         }
     }
 
@@ -347,7 +347,7 @@ impl Windows for Xwm {
         EventOutcome {
             window: Some(window),
             effects: Vec::new(),
-            commands: vec![Command::Close { window }],
+            commands: vec![X11Request::Close { window }],
         }
     }
 
@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(managed.title, "kieran@fsociety");
         let geometry = configured(&outcome.effects, window).expect("the manager configures the window");
         assert_eq!(geometry, managed.geometry);
-        assert_eq!(outcome.commands, vec![Command::SetMapped { window, mapped: true }]);
+        assert_eq!(outcome.commands, vec![X11Request::SetMapped { window, mapped: true }]);
     }
 
     /// A client that exits sends no unmap, so a destroy leaves the manager the same way
@@ -575,7 +575,7 @@ mod tests {
             EventOutcome {
                 window: Some(window_id(8)),
                 effects: Vec::new(),
-                commands: vec![Command::Close { window: window_id(8) }],
+                commands: vec![X11Request::Close { window: window_id(8) }],
             }
         );
         assert_eq!(xwm.close(window_id(99)), EventOutcome::nothing());

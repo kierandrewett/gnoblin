@@ -391,7 +391,7 @@ fn accept_loop(
                     served,
                     Capabilities::NONE,
                     grants,
-                    Ending::Closed,
+                    ConnectionEnd::Closed,
                 )
             }) {
             Ok(handle) => {
@@ -419,7 +419,7 @@ fn serve(
     events: Sender<IpcEvent>,
     capabilities: Capabilities,
     extension_grants: Arc<[u8]>,
-    ending: Ending,
+    ending: ConnectionEnd,
 ) {
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
@@ -494,17 +494,17 @@ fn serve(
 /// grants belong to the guardian, so the connection keeps its identity and only what the stream
 /// carried ends.
 #[derive(Clone, Copy)]
-enum Ending {
+enum ConnectionEnd {
     Closed,
     Lost,
 }
 
-impl Ending {
+impl ConnectionEnd {
     /// The event that tells the dispatcher how the connection ended.
     fn event(self, client: ClientId) -> IpcEvent {
         match self {
-            Ending::Closed => IpcEvent::Closed { client },
-            Ending::Lost => IpcEvent::Lost { client },
+            ConnectionEnd::Closed => IpcEvent::Closed { client },
+            ConnectionEnd::Lost => IpcEvent::Lost { client },
         }
     }
 }
@@ -570,8 +570,17 @@ fn serve_control(
         let served = events.clone();
         match std::thread::Builder::new()
             .name(format!("gnoblin-ipc-{}", client.get()))
-            .spawn(move || serve(stream, client, version, served, capabilities, frame, Ending::Lost))
-        {
+            .spawn(move || {
+                serve(
+                    stream,
+                    client,
+                    version,
+                    served,
+                    capabilities,
+                    frame,
+                    ConnectionEnd::Lost,
+                )
+            }) {
             Ok(handle) => {
                 serving.insert(client, Serving { stream: shared, handle });
             }
@@ -1932,8 +1941,16 @@ fn effect_spec_from(arguments: &gnoblin_model::Fields) -> EffectSpec {
 /// coordinate becomes zero, so a call the schema already typed still yields an anchor
 /// rather than a guessed position.
 fn menu_anchor_from(arguments: &gnoblin_model::Fields) -> gnoblin_wayland::MenuAnchor {
-    let coordinate = |name| int_argument(arguments, name).and_then(|value| i32::try_from(value).ok()).unwrap_or(0);
-    let size = |name| uint_argument(arguments, name).and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
+    let coordinate = |name| {
+        int_argument(arguments, name)
+            .and_then(|value| i32::try_from(value).ok())
+            .unwrap_or(0)
+    };
+    let size = |name| {
+        uint_argument(arguments, name)
+            .and_then(|value| u32::try_from(value).ok())
+            .unwrap_or(0)
+    };
     gnoblin_wayland::MenuAnchor::new(coordinate("x"), coordinate("y"), size("width"), size("height"))
 }
 

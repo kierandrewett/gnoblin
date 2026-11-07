@@ -4,8 +4,8 @@ mod common;
 
 use common::{CODE_Q, CODE_W, E, Q, W, button_event, chord, key_event, name, pointer_chord, press, release};
 use gnoblin_input::{
-    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Context, Decision,
-    Edge, EdgeBand, Expired, GestureAction, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase,
+    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Decision, Edge,
+    EdgeBand, Expired, GestureAction, GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase,
     GestureRoute, GestureRouter, GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, PolicyQueue,
     Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick, Trigger, When,
 };
@@ -164,7 +164,7 @@ fn a_gesture_is_claimed_once_or_not_at_all() {
         edge: Some(Edge::Right),
     };
     assert_eq!(
-        router.observe(&begin, Context::Unlocked),
+        router.observe(&begin, GestureLock::Unlocked),
         GestureRoute::Reserved { binding: 0 }
     );
     // No update can hand the gesture to another binding.
@@ -180,7 +180,7 @@ fn a_gesture_is_claimed_once_or_not_at_all() {
             angle_delta: 0.0,
         };
         assert_eq!(
-            router.observe(&update, Context::Unlocked),
+            router.observe(&update, GestureLock::Unlocked),
             GestureRoute::Reserved { binding: 0 }
         );
     }
@@ -195,7 +195,7 @@ fn a_gesture_is_claimed_once_or_not_at_all() {
         duration: 5,
     };
     assert_eq!(
-        router.observe(&matching, Context::Unlocked),
+        router.observe(&matching, GestureLock::Unlocked),
         GestureRoute::Fired { binding: 0 }
     );
     assert_eq!(router.reserved(), None);
@@ -203,7 +203,7 @@ fn a_gesture_is_claimed_once_or_not_at_all() {
     // A reserved gesture whose movement does not match runs nothing and is not offered to
     // the other binding, which is the documented behaviour and the reason a second claim
     // would be worse than no claim.
-    router.observe(&begin, Context::Unlocked);
+    router.observe(&begin, GestureLock::Unlocked);
     let mismatched = GestureEvent::End {
         tick: Tick::new(9),
         kind: GestureKind::Swipe,
@@ -215,7 +215,7 @@ fn a_gesture_is_claimed_once_or_not_at_all() {
         duration: 2,
     };
     assert_eq!(
-        router.observe(&mismatched, Context::Unlocked),
+        router.observe(&mismatched, GestureLock::Unlocked),
         GestureRoute::MatchedNothing { binding: 0 }
     );
     assert_eq!(router.stats().unmatched, 1);
@@ -406,7 +406,7 @@ fn a_removed_device_cancels_the_gesture_once() {
     let begin = swipe_frame(&mut recogniser, 2);
     assert_eq!(begin.phase(), GesturePhase::Begin);
     assert_eq!(
-        router.observe(&begin, Context::Unlocked),
+        router.observe(&begin, GestureLock::Unlocked),
         GestureRoute::Reserved { binding: 0 }
     );
 
@@ -421,7 +421,7 @@ fn a_removed_device_cancels_the_gesture_once() {
         }
     ));
     assert_eq!(
-        router.observe(&cancel, Context::Unlocked),
+        router.observe(&cancel, GestureLock::Unlocked),
         GestureRoute::Cancelled { binding: Some(0) }
     );
     assert_eq!(router.reserved(), None);
@@ -444,7 +444,7 @@ fn a_lost_terminal_event_ends_the_gesture() {
 
     gather(&mut recogniser, 1);
     let begin = swipe_frame(&mut recogniser, 2);
-    router.observe(&begin, Context::Unlocked);
+    router.observe(&begin, GestureLock::Unlocked);
     assert_eq!(router.reserved(), Some(0));
 
     // The terminal frame never arrives. The stream expires and the reservation is over,
@@ -459,7 +459,7 @@ fn a_lost_terminal_event_ends_the_gesture() {
         }
     ));
     assert_eq!(
-        router.observe(&stale, Context::Unlocked),
+        router.observe(&stale, GestureLock::Unlocked),
         GestureRoute::Cancelled { binding: Some(0) }
     );
 

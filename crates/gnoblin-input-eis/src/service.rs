@@ -2,7 +2,7 @@
 //! perform out.
 //!
 //! Nothing in this module reads a socket, spawns a thread or looks at a clock. The
-//! wiring in [`super::server`] owns all of that, maps EI requests to [`Command`]s and
+//! wiring in [`super::server`] owns all of that, maps EI requests to [`EiRequest`]s and
 //! performs the [`Action`]s that come back. The split is what makes every rule below
 //! testable without a peer, and it is why the rules are stated here rather than in the
 //! protocol handler: this type is the owner of "may this event reach the seat".
@@ -304,7 +304,7 @@ pub enum Violation {
     /// More events between two frames than the quota allows.
     Flood,
     /// A request whose value cannot be represented, or one the protocol layer refused
-    /// before it became a [`Command`].
+    /// before it became a [`EiRequest`].
     Malformed,
 }
 
@@ -407,7 +407,7 @@ impl Injection {
 
 /// An EI request, as the state machine sees it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Command {
+pub enum EiRequest {
     /// `ei_seat.bind`: the client asked for these capabilities.
     Bind {
         /// What it asked for.
@@ -529,7 +529,7 @@ pub enum Command {
     Disconnect,
 }
 
-impl Command {
+impl EiRequest {
     /// The device the command names, if it names one.
     ///
     /// Binding and disconnecting are the connection's own two commands; everything else
@@ -655,7 +655,7 @@ pub enum Emulation {
 
 /// One device a client bound, and what it holds down.
 #[derive(Clone, Debug)]
-pub struct Device {
+pub struct EiDevice {
     id: DeviceId,
     capabilities: Caps,
     regions: Vec<Region>,
@@ -669,7 +669,7 @@ pub struct Device {
     dropped: u64,
 }
 
-impl Device {
+impl EiDevice {
     /// The identity its events name.
     #[must_use]
     pub const fn id(&self) -> DeviceId {
@@ -755,7 +755,7 @@ pub struct Context {
     name: Option<String>,
     grant: Grant,
     capabilities: Caps,
-    devices: BTreeMap<DeviceId, Device>,
+    devices: BTreeMap<DeviceId, EiDevice>,
     next_device: u64,
     phase: ContextPhase,
 }
@@ -799,13 +799,13 @@ impl Context {
     }
 
     /// The devices the client holds.
-    pub fn devices(&self) -> impl Iterator<Item = &Device> {
+    pub fn devices(&self) -> impl Iterator<Item = &EiDevice> {
         self.devices.values()
     }
 
     /// One device, if the client has it.
     #[must_use]
-    pub fn device(&self, device: DeviceId) -> Option<&Device> {
+    pub fn device(&self, device: DeviceId) -> Option<&EiDevice> {
         self.devices.get(&device)
     }
 
@@ -825,7 +825,7 @@ impl Context {
     /// report a client that keeps getting it wrong.
     #[must_use]
     pub fn dropped_releases(&self) -> u64 {
-        self.devices.values().map(Device::dropped_releases).sum()
+        self.devices.values().map(EiDevice::dropped_releases).sum()
     }
 
     /// The action that puts this context's capabilities on the wire.
@@ -884,7 +884,7 @@ impl Context {
         } else {
             Vec::new()
         };
-        let device = Device {
+        let device = EiDevice {
             id,
             capabilities,
             regions: regions.clone(),
@@ -902,19 +902,19 @@ impl Context {
     }
 
     /// Applies one command, refusing it when it breaks a rule.
-    fn handle(&mut self, command: Command, quota: Quota, layout: &[Region]) -> Result<Vec<Action>, Violation> {
+    fn handle(&mut self, command: EiRequest, quota: Quota, layout: &[Region]) -> Result<Vec<Action>, Violation> {
         if self.ended().is_some() {
             // A context that has ended accepts nothing more: every event after the end
             // would be one the client sent before it heard about it.
             return Ok(Vec::new());
         }
-        if let Command::Disconnect = command {
+        if let EiRequest::Disconnect = command {
             return Ok(self.end(Ending::Disconnected));
         }
-        if let Command::Bind { capabilities } = command {
+        if let EiRequest::Bind { capabilities } = command {
             return self.bind(capabilities, layout);
         }
-        if let Command::Release { device } = command {
+        if let EiRequest::Release { device } = command {
             let Some(mut released) = self.devices.remove(&device) else {
                 return Err(Violation::UnknownDevice);
             };
@@ -928,7 +928,7 @@ impl Context {
         let device = command.device().ok_or(Violation::UnknownDevice)?;
         let device = self.devices.get_mut(&device).ok_or(Violation::UnknownDevice)?;
         match command {
-            Command::StartEmulating { sequence, .. } => {
+            EiRequest::StartEmulating { sequence, .. } => {
                 let last = match device.emulation {
                     Emulation::Emulating { .. } => return Err(Violation::AlreadyEmulating),
                     Emulation::Idle { last } => last,
@@ -946,14 +946,14 @@ impl Context {
                 device.frame_events = 0;
                 Ok(Vec::new())
             }
-            Command::StopEmulating { .. } => {
+            EiRequest::StopEmulating { .. } => {
                 let Emulation::Emulating { sequence } = device.emulation else {
                     return Err(Violation::NotEmulating);
                 };
                 device.emulation = Emulation::Idle { last: Some(sequence) };
                 Ok(device.release_all())
             }
-            Command::Frame { .. } => {
+            EiRequest::Frame { .. } => {
                 if device.emulating().is_none() {
                     return Err(Violation::NotEmulating);
                 }
@@ -962,7 +962,7 @@ impl Context {
                 device.frame_events = 0;
                 Ok(Vec::new())
             }
-            Command::RelativeMotion { dx, dy, .. } => {
+            EiRequest::RelativeMotion { dx, dy, .. } => {
                 admits(device, Caps::POINTER, quota)?;
                 if !dx.is_finite() || !dy.is_finite() {
                     return Err(Violation::Malformed);
@@ -972,7 +972,7 @@ impl Context {
                     dy: round(f64::from(dy)),
                 })])
             }
-            Command::AbsoluteMotion { x, y, .. } => {
+            EiRequest::AbsoluteMotion { x, y, .. } => {
                 admits(device, Caps::POINTER_ABSOLUTE, quota)?;
                 if !x.is_finite() || !y.is_finite() {
                     return Err(Violation::Malformed);
@@ -980,7 +980,7 @@ impl Context {
                 let (output, position) = locate(device, x, y)?;
                 Ok(vec![inject(InputEvent::PointerMotion { output, position })])
             }
-            Command::Button { button, pressed, .. } => {
+            EiRequest::Button { button, pressed, .. } => {
                 admits(device, Caps::BUTTON, quota)?;
                 if button == 0 || button > CODE_MAX {
                     return Err(Violation::ButtonOutOfRange);
@@ -998,7 +998,7 @@ impl Context {
                 }
                 Ok(vec![inject(InputEvent::PointerButton { button, pressed })])
             }
-            Command::Key { key, pressed, .. } => {
+            EiRequest::Key { key, pressed, .. } => {
                 admits(device, Caps::KEYBOARD, quota)?;
                 if key == 0 || key > CODE_MAX {
                     return Err(Violation::KeyOutOfRange);
@@ -1016,14 +1016,14 @@ impl Context {
                 }
                 Ok(vec![inject(InputEvent::Key { keycode: key, pressed })])
             }
-            Command::ScrollDiscrete { dx, dy, .. } => {
+            EiRequest::ScrollDiscrete { dx, dy, .. } => {
                 admits(device, Caps::SCROLL, quota)?;
                 Ok(vec![inject(InputEvent::PointerAxis {
                     horizontal: dx,
                     vertical: dy,
                 })])
             }
-            Command::ScrollDelta { dx, dy, .. } => {
+            EiRequest::ScrollDelta { dx, dy, .. } => {
                 admits(device, Caps::SCROLL, quota)?;
                 if !dx.is_finite() || !dy.is_finite() {
                     return Err(Violation::Malformed);
@@ -1033,7 +1033,7 @@ impl Context {
                     vertical: steps(dy),
                 })])
             }
-            Command::TouchDown { contact, x, y, .. } => {
+            EiRequest::TouchDown { contact, x, y, .. } => {
                 admits(device, Caps::TOUCH, quota)?;
                 if device.contacts.len() >= usize::from(quota.contacts) {
                     return Err(Violation::TooManyContacts);
@@ -1049,7 +1049,7 @@ impl Context {
                     phase: TouchPhase::Down,
                 })])
             }
-            Command::TouchMotion { contact, x, y, .. } => {
+            EiRequest::TouchMotion { contact, x, y, .. } => {
                 admits(device, Caps::TOUCH, quota)?;
                 let (output, position) = locate(device, x, y)?;
                 let Some(slot) = device.contacts.get_mut(&contact) else {
@@ -1063,12 +1063,12 @@ impl Context {
                     phase: TouchPhase::Motion,
                 })])
             }
-            Command::TouchUp { contact, .. } | Command::TouchCancel { contact, .. } => {
+            EiRequest::TouchUp { contact, .. } | EiRequest::TouchCancel { contact, .. } => {
                 admits(device, Caps::TOUCH, quota)?;
                 let Some((output, position)) = device.contacts.remove(&contact) else {
                     return Err(Violation::NoSuchContact);
                 };
-                let phase = if matches!(command, Command::TouchUp { .. }) {
+                let phase = if matches!(command, EiRequest::TouchUp { .. }) {
                     TouchPhase::Up
                 } else {
                     TouchPhase::Cancel
@@ -1080,7 +1080,7 @@ impl Context {
                     phase,
                 })])
             }
-            Command::Bind { .. } | Command::Disconnect | Command::Release { .. } => Ok(Vec::new()),
+            EiRequest::Bind { .. } | EiRequest::Disconnect | EiRequest::Release { .. } => Ok(Vec::new()),
         }
     }
 
@@ -1205,7 +1205,7 @@ impl Service {
     }
 
     /// Applies one command from one context.
-    pub fn apply(&mut self, id: ContextId, command: Command) -> Vec<Action> {
+    pub fn apply(&mut self, id: ContextId, command: EiRequest) -> Vec<Action> {
         let Self {
             contexts,
             regions,
@@ -1278,7 +1278,7 @@ fn eis_space(layout: &[Region]) -> Vec<Region> {
 }
 
 /// The output and output-local position an absolute point names.
-fn locate(device: &Device, x: f32, y: f32) -> Result<(OutputId, Point), Violation> {
+fn locate(device: &EiDevice, x: f32, y: f32) -> Result<(OutputId, Point), Violation> {
     if device.regions.is_empty() {
         return Err(Violation::NoRegions);
     }
@@ -1316,7 +1316,7 @@ fn steps(delta: f32) -> i32 {
 /// the client must have said it is emulating, and the event must fit in the frame budget.
 /// A refusal ends the session either way; the order is what makes the reason the first
 /// thing that is wrong rather than the last.
-fn admits(device: &mut Device, capability: Caps, quota: Quota) -> Result<(), Violation> {
+fn admits(device: &mut EiDevice, capability: Caps, quota: Quota) -> Result<(), Violation> {
     if !device.capabilities.contains(capability) {
         return Err(Violation::WrongCapability);
     }

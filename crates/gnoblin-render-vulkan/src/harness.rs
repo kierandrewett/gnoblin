@@ -89,7 +89,7 @@ struct Permissive;
 
 impl ClientData for Permissive {}
 
-enum Command {
+enum ClientAction {
     Destroy(usize),
     Finish,
 }
@@ -99,7 +99,7 @@ pub(super) struct ShmClient {
     display: Display<ServerState>,
     state: ServerState,
     buffers: Vec<WlBuffer>,
-    commands: Sender<Command>,
+    commands: Sender<ClientAction>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -163,7 +163,7 @@ impl ShmClient {
     /// Has the client destroy a buffer and its pool, and waits until the server has seen it.
     pub(super) fn destroy(&mut self, index: usize) {
         self.commands
-            .send(Command::Destroy(index))
+            .send(ClientAction::Destroy(index))
             .expect("the client is listening");
         let deadline = Instant::now() + Duration::from_secs(20);
         while self.buffers[index].is_alive() {
@@ -176,7 +176,7 @@ impl ShmClient {
 
 impl Drop for ShmClient {
     fn drop(&mut self) {
-        let _ = self.commands.send(Command::Finish);
+        let _ = self.commands.send(ClientAction::Finish);
         if let Some(worker) = self.worker.take() {
             // The client's last round trip needs the server to answer, so keep pumping.
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -210,7 +210,7 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
 
 /// The client: binds `wl_shm`, makes a pool and a buffer per spec, reports the buffers' ids and
 /// then obeys commands until told to finish.
-fn run_client(stream: UnixStream, specs: &[BufferSpec], ids: &Sender<Vec<u32>>, commands: &Receiver<Command>) {
+fn run_client(stream: UnixStream, specs: &[BufferSpec], ids: &Sender<Vec<u32>>, commands: &Receiver<ClientAction>) {
     let connection = Connection::from_socket(stream).expect("a client connection");
     let (globals, mut queue) = registry_queue_init::<App>(&connection).expect("the global list");
     let qh = queue.handle();
@@ -229,7 +229,7 @@ fn run_client(stream: UnixStream, specs: &[BufferSpec], ids: &Sender<Vec<u32>>, 
     if ids.send(protocol_ids).is_err() {
         return;
     }
-    while let Ok(Command::Destroy(index)) = commands.recv() {
+    while let Ok(ClientAction::Destroy(index)) = commands.recv() {
         let (buffer, pool, _file) = &live[index];
         buffer.destroy();
         pool.destroy();

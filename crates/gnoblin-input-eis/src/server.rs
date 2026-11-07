@@ -1,7 +1,7 @@
 //! The EI wire: a socket, one thread and `reis`.
 //!
 //! This is the only module in the crate that owns an I/O type. It speaks the protocol
-//! `reis` implements, turns every request into a [`Command`] for [`super::service`], and
+//! `reis` implements, turns every request into a [`EiRequest`] for [`super::service`], and
 //! performs the [`Action`]s that come back: seat capabilities, devices, events for the
 //! seat, and the end of a connection.
 //!
@@ -39,7 +39,7 @@ use reis::request::{Connection, DeviceCapability, EisRequest, EisRequestConverte
 use rustix::event::{PollFd, PollFlags, poll};
 
 use super::service::{
-    Action, Caps, Command, ContextId, ContextType, DeviceId, Ending, Grant, Quota, Region, Service, Violation,
+    Action, Caps, ContextId, ContextType, DeviceId, EiRequest, Ending, Grant, Quota, Region, Service, Violation,
 };
 
 use crate::log;
@@ -311,11 +311,11 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
                 break;
             }
             match target {
-                Target::Wake => {
+                PollTarget::Wake => {
                     drain(wake_read);
                     answer(shared.take(), &mut service, &mut sessions, &*sink);
                 }
-                Target::Listener => {
+                PollTarget::Listener => {
                     while let Ok(Some(socket)) = listener.accept() {
                         let handshaker = EisHandshaker::new(&socket, 1);
                         log::debug!("a client connected");
@@ -329,7 +329,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
                         next_session += 1;
                     }
                 }
-                Target::Peer(key) => {
+                PollTarget::Peer(key) => {
                     let Some(session) = sessions.get_mut(&key) else {
                         continue;
                     };
@@ -372,7 +372,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
 }
 
 /// What the poll reported as ready.
-enum Target {
+enum PollTarget {
     /// The listening socket has a connection waiting.
     Listener,
     /// The caller asked for something.
@@ -382,7 +382,11 @@ enum Target {
 }
 
 /// Waits for anything, and reports what became ready.
-fn wait(listener: &eis::Listener, sessions: &BTreeMap<u64, Peer>, wake_read: &UnixStream) -> io::Result<Vec<Target>> {
+fn wait(
+    listener: &eis::Listener,
+    sessions: &BTreeMap<u64, Peer>,
+    wake_read: &UnixStream,
+) -> io::Result<Vec<PollTarget>> {
     let order: Vec<u64> = sessions.keys().copied().collect();
     let mut fds = Vec::with_capacity(order.len() + 2);
     fds.push(PollFd::new(listener, PollFlags::IN));
@@ -408,10 +412,10 @@ fn wait(listener: &eis::Listener, sessions: &BTreeMap<u64, Peer>, wake_read: &Un
             continue;
         }
         targets.push(match index {
-            0 => Target::Listener,
-            1 => Target::Wake,
+            0 => PollTarget::Listener,
+            1 => PollTarget::Wake,
             _ => match index - 2 < order.len() {
-                true => Target::Peer(order[index - 2]),
+                true => PollTarget::Peer(order[index - 2]),
                 false => continue,
             },
         });
@@ -762,73 +766,73 @@ fn flags(capabilities: Caps) -> BitFlags<DeviceCapability> {
 /// scroll stopped", so the momentum it would start is not something this server can
 /// ask for, and inventing an axis event would scroll a client by an amount nobody
 /// sent. Text events are dropped for the same reason: the seat has no text path yet.
-fn command(request: EisRequest, devices: &[(reis::request::Device, DeviceId)]) -> Option<Command> {
+fn command(request: EisRequest, devices: &[(reis::request::Device, DeviceId)]) -> Option<EiRequest> {
     let device = |wire: &reis::request::Device| identity_of(devices, wire);
     Some(match request {
-        EisRequest::Disconnect => Command::Disconnect,
-        EisRequest::Bind(bind) => Command::Bind {
+        EisRequest::Disconnect => EiRequest::Disconnect,
+        EisRequest::Bind(bind) => EiRequest::Bind {
             capabilities: Caps::from_bits(u8::try_from(bind.capabilities.bits()).unwrap_or(u8::MAX)),
         },
-        EisRequest::DeviceClosed(closed) => Command::Release {
+        EisRequest::DeviceClosed(closed) => EiRequest::Release {
             device: device(&closed.device)?,
         },
-        EisRequest::DeviceStartEmulating(started) => Command::StartEmulating {
+        EisRequest::DeviceStartEmulating(started) => EiRequest::StartEmulating {
             device: device(&started.device)?,
             sequence: started.sequence,
         },
-        EisRequest::DeviceStopEmulating(stopped) => Command::StopEmulating {
+        EisRequest::DeviceStopEmulating(stopped) => EiRequest::StopEmulating {
             device: device(&stopped.device)?,
         },
-        EisRequest::Frame(frame) => Command::Frame {
+        EisRequest::Frame(frame) => EiRequest::Frame {
             device: device(&frame.device)?,
         },
-        EisRequest::PointerMotion(motion) => Command::RelativeMotion {
+        EisRequest::PointerMotion(motion) => EiRequest::RelativeMotion {
             device: device(&motion.device)?,
             dx: motion.dx,
             dy: motion.dy,
         },
-        EisRequest::PointerMotionAbsolute(motion) => Command::AbsoluteMotion {
+        EisRequest::PointerMotionAbsolute(motion) => EiRequest::AbsoluteMotion {
             device: device(&motion.device)?,
             x: motion.dx_absolute,
             y: motion.dy_absolute,
         },
-        EisRequest::Button(button) => Command::Button {
+        EisRequest::Button(button) => EiRequest::Button {
             device: device(&button.device)?,
             button: button.button,
             pressed: matches!(button.state, eis::button::ButtonState::Press),
         },
-        EisRequest::KeyboardKey(key) => Command::Key {
+        EisRequest::KeyboardKey(key) => EiRequest::Key {
             device: device(&key.device)?,
             key: key.key,
             pressed: matches!(key.state, eis::keyboard::KeyState::Press),
         },
-        EisRequest::ScrollDiscrete(scroll) => Command::ScrollDiscrete {
+        EisRequest::ScrollDiscrete(scroll) => EiRequest::ScrollDiscrete {
             device: device(&scroll.device)?,
             dx: scroll.discrete_dx,
             dy: scroll.discrete_dy,
         },
-        EisRequest::ScrollDelta(scroll) => Command::ScrollDelta {
+        EisRequest::ScrollDelta(scroll) => EiRequest::ScrollDelta {
             device: device(&scroll.device)?,
             dx: scroll.dx,
             dy: scroll.dy,
         },
-        EisRequest::TouchDown(touch) => Command::TouchDown {
+        EisRequest::TouchDown(touch) => EiRequest::TouchDown {
             device: device(&touch.device)?,
             contact: touch.touch_id,
             x: touch.x,
             y: touch.y,
         },
-        EisRequest::TouchMotion(touch) => Command::TouchMotion {
+        EisRequest::TouchMotion(touch) => EiRequest::TouchMotion {
             device: device(&touch.device)?,
             contact: touch.touch_id,
             x: touch.x,
             y: touch.y,
         },
-        EisRequest::TouchUp(touch) => Command::TouchUp {
+        EisRequest::TouchUp(touch) => EiRequest::TouchUp {
             device: device(&touch.device)?,
             contact: touch.touch_id,
         },
-        EisRequest::TouchCancel(touch) => Command::TouchCancel {
+        EisRequest::TouchCancel(touch) => EiRequest::TouchCancel {
             device: device(&touch.device)?,
             contact: touch.touch_id,
         },

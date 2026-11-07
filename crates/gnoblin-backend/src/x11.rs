@@ -190,7 +190,7 @@ pub enum WindowEvent<'a> {
 
 /// An X11 request the compositor has to send, and the policy cannot.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Command {
+pub enum X11Request {
     /// Tell the server the window is mapped, or no longer is.
     SetMapped {
         /// The managed window.
@@ -221,7 +221,7 @@ pub struct EventOutcome {
     /// The window manager effects to apply, in order.
     pub effects: Vec<Effect>,
     /// The X11 requests to send, in order.
-    pub commands: Vec<Command>,
+    pub commands: Vec<X11Request>,
 }
 
 impl EventOutcome {
@@ -251,7 +251,7 @@ pub trait Windows: Send {
     ///
     /// This is the shell's close request, not a protocol event: the compositor calls
     /// it when a person closes the window and the answer is the
-    /// [`Command::Close`] to send.
+    /// [`X11Request::Close`] to send.
     fn close(&mut self, window: WindowId) -> EventOutcome;
 
     /// Whether X11 clients may take keyboard grabs at all.

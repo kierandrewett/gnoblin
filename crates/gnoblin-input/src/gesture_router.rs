@@ -68,10 +68,10 @@ impl When {
     }
 
     /// Whether this value applies in `context`.
-    pub const fn matches(self, context: Context) -> bool {
+    pub const fn matches(self, context: GestureLock) -> bool {
         matches!(
             (self, context),
-            (Self::Any, _) | (Self::Unlocked, Context::Unlocked) | (Self::Locked, Context::Locked)
+            (Self::Any, _) | (Self::Unlocked, GestureLock::Unlocked) | (Self::Locked, GestureLock::Locked)
         )
     }
 
@@ -115,9 +115,9 @@ impl fmt::Display for WhenError {
 
 impl std::error::Error for WhenError {}
 
-/// The session state a gesture arrives in.
+/// Whether the session a gesture arrives in is locked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Context {
+pub enum GestureLock {
     /// The session is unlocked.
     Unlocked,
     /// The lock screen is up.
@@ -198,7 +198,7 @@ impl GestureBinding {
     }
 
     /// Whether this binding reserves a gesture that began as given.
-    pub const fn claims(&self, kind: GestureKind, fingers: u8, context: Context) -> bool {
+    pub const fn claims(&self, kind: GestureKind, fingers: u8, context: GestureLock) -> bool {
         self.fingers == fingers && self.matches_kind(kind) && self.when.matches(context)
     }
 
@@ -601,7 +601,7 @@ impl GestureRouter {
     }
 
     /// Decide what a recognised gesture means.
-    pub fn observe(&mut self, event: &GestureEvent, context: Context) -> GestureRoute {
+    pub fn observe(&mut self, event: &GestureEvent, context: GestureLock) -> GestureRoute {
         match event.phase() {
             GesturePhase::Begin => {
                 // At most one binding can match: construction refuses two overlapping bindings
@@ -665,7 +665,8 @@ impl GestureRouter {
 #[cfg(test)]
 mod tests {
     use super::{
-        Context, GestureAction, GestureError, GestureRoute, GestureRouter, GestureSpec, Matcher, PinchDirection, When,
+        GestureAction, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, Matcher, PinchDirection,
+        When,
     };
     use crate::gesture::{GestureEvent, GestureKind, GesturePath};
     use crate::name::Name;
@@ -779,7 +780,7 @@ mod tests {
         );
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
 
-        let route = router.observe(&begin(GestureKind::Swipe, 3), Context::Unlocked);
+        let route = router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::Reserved { binding: 0 });
         let route = router.observe(
             &end(
@@ -789,12 +790,12 @@ mod tests {
                 120.0,
                 1.0,
             ),
-            Context::Unlocked,
+            GestureLock::Unlocked,
         );
         assert_eq!(route, GestureRoute::Fired { binding: 0 });
         assert_eq!(router.stats().fired, 1);
 
-        let route = router.observe(&begin(GestureKind::Swipe, 3), Context::Unlocked);
+        let route = router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::Reserved { binding: 0 });
         let route = router.observe(
             &end(
@@ -804,7 +805,7 @@ mod tests {
                 120.0,
                 1.0,
             ),
-            Context::Unlocked,
+            GestureLock::Unlocked,
         );
         assert_eq!(route, GestureRoute::MatchedNothing { binding: 0 });
         assert_eq!(router.reserved(), None, "the reservation is over either way");
@@ -814,10 +815,10 @@ mod tests {
     fn a_short_gesture_does_not_reach_the_threshold() {
         let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
-        router.observe(&begin(GestureKind::Swipe, 3), Context::Unlocked);
+        router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         let route = router.observe(
             &end(GestureKind::Swipe, 3, &[(0.0, 0.0), (40.0, 0.0)], 40.0, 1.0),
-            Context::Unlocked,
+            GestureLock::Unlocked,
         );
         assert_eq!(route, GestureRoute::MatchedNothing { binding: 0 });
     }
@@ -830,12 +831,12 @@ mod tests {
                 .expect("valid"),
         ])
         .expect("no conflict");
-        router.observe(&begin(GestureKind::Pinch, 4), Context::Unlocked);
-        let route = router.observe(&end(GestureKind::Pinch, 4, &[], 0.0, 0.5), Context::Unlocked);
+        router.observe(&begin(GestureKind::Pinch, 4), GestureLock::Unlocked);
+        let route = router.observe(&end(GestureKind::Pinch, 4, &[], 0.0, 0.5), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::MatchedNothing { binding: 0 });
-        let route = router.observe(&begin(GestureKind::Pinch, 4), Context::Unlocked);
+        let route = router.observe(&begin(GestureKind::Pinch, 4), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::Reserved { binding: 0 });
-        let route = router.observe(&end(GestureKind::Pinch, 4, &[], 0.0, 1.4), Context::Unlocked);
+        let route = router.observe(&end(GestureKind::Pinch, 4, &[], 0.0, 1.4), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::Fired { binding: 0 });
     }
 
@@ -843,11 +844,11 @@ mod tests {
     fn an_unmatched_context_leaves_the_gesture_to_the_client() {
         let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Locked, command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
-        let route = router.observe(&begin(GestureKind::Swipe, 3), Context::Unlocked);
+        let route = router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::Unclaimed);
         let route = router.observe(
             &end(GestureKind::Swipe, 3, &[(0.0, 0.0), (60.0, 0.0)], 60.0, 1.0),
-            Context::Unlocked,
+            GestureLock::Unlocked,
         );
         assert_eq!(route, GestureRoute::Unclaimed);
     }
@@ -856,7 +857,7 @@ mod tests {
     fn a_cancel_releases_the_reservation() {
         let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
-        router.observe(&begin(GestureKind::Swipe, 3), Context::Unlocked);
+        router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         let cancel = GestureEvent::Cancel {
             tick: Tick::new(2),
             kind: GestureKind::Swipe,
@@ -864,7 +865,7 @@ mod tests {
             reason: crate::gesture::CancelReason::Cancelled,
         };
         assert_eq!(
-            router.observe(&cancel, Context::Unlocked),
+            router.observe(&cancel, GestureLock::Unlocked),
             GestureRoute::Cancelled { binding: Some(0) }
         );
         assert_eq!(router.reserved(), None);

@@ -7,7 +7,7 @@
 
 use gnoblin_backend::{InputEvent, TouchPhase};
 use gnoblin_input_eis::{
-    Action, Caps, Command, Context, ContextId, ContextType, Device, DeviceId, Ending, Grant, Origin, Quota, Region,
+    Action, Caps, Context, ContextId, ContextType, DeviceId, EiDevice, EiRequest, Ending, Grant, Origin, Quota, Region,
     Service, Violation,
 };
 use gnoblin_types::{OutputId, Point, Rect};
@@ -81,12 +81,12 @@ impl Peer {
         peer
     }
 
-    fn apply(&mut self, command: Command) -> Vec<Action> {
+    fn apply(&mut self, command: EiRequest) -> Vec<Action> {
         self.service.apply(self.id, command)
     }
 
     fn bind(&mut self, capabilities: Caps) -> Vec<Action> {
-        let actions = self.apply(Command::Bind { capabilities });
+        let actions = self.apply(EiRequest::Bind { capabilities });
         for action in &actions {
             if let Action::Device {
                 device, capabilities, ..
@@ -106,7 +106,7 @@ impl Peer {
 
     fn emulate(&mut self) {
         for device in [self.pointer, self.keyboard, self.touch].into_iter().flatten() {
-            self.apply(Command::StartEmulating { device, sequence: 1 });
+            self.apply(EiRequest::StartEmulating { device, sequence: 1 });
         }
     }
 
@@ -114,7 +114,7 @@ impl Peer {
         self.service.context(self.id).expect("the context exists")
     }
 
-    fn device(&self, id: Option<DeviceId>) -> &Device {
+    fn device(&self, id: Option<DeviceId>) -> &EiDevice {
         self.context()
             .device(id.expect("the device was bound"))
             .expect("the device exists")
@@ -134,12 +134,12 @@ impl Peer {
 
     fn key(&mut self, key: u32, pressed: bool) -> Vec<Action> {
         let device = self.keyboard_device();
-        self.apply(Command::Key { device, key, pressed })
+        self.apply(EiRequest::Key { device, key, pressed })
     }
 
     fn button(&mut self, button: u32, pressed: bool) -> Vec<Action> {
         let device = self.pointer_device();
-        self.apply(Command::Button {
+        self.apply(EiRequest::Button {
             device,
             button,
             pressed,
@@ -147,7 +147,7 @@ impl Peer {
     }
 
     fn frame(&mut self, device: DeviceId) -> Vec<Action> {
-        self.apply(Command::Frame { device })
+        self.apply(EiRequest::Frame { device })
     }
 }
 
@@ -187,7 +187,7 @@ fn a_disconnect_releases_every_held_edge_once() {
     peer.key(KEY_A, true);
     peer.button(BTN_LEFT, true);
 
-    let actions = peer.apply(Command::Disconnect);
+    let actions = peer.apply(EiRequest::Disconnect);
     let released = injections(&actions);
 
     assert_eq!(released.len(), 2, "one release per held edge: {released:?}");
@@ -202,7 +202,7 @@ fn a_disconnect_releases_every_held_edge_once() {
     assert_eq!(ending(&actions), Some(Ending::Disconnected));
 
     // A second disconnect has nothing left to release and does not repeat the ending.
-    assert_eq!(peer.apply(Command::Disconnect), Vec::new());
+    assert_eq!(peer.apply(EiRequest::Disconnect), Vec::new());
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn a_stop_emulating_releases_what_the_device_holds() {
     let keyboard = peer.keyboard_device();
     peer.key(KEY_A, true);
 
-    let actions = peer.apply(Command::StopEmulating { device: keyboard });
+    let actions = peer.apply(EiRequest::StopEmulating { device: keyboard });
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Key {
@@ -258,7 +258,7 @@ fn an_absolute_event_outside_every_region_is_refused() {
     let mut peer = Peer::ready();
     let device = peer.pointer_device();
 
-    let actions = peer.apply(Command::AbsoluteMotion {
+    let actions = peer.apply(EiRequest::AbsoluteMotion {
         device,
         x: 4000.0,
         y: 10.0,
@@ -269,7 +269,7 @@ fn an_absolute_event_outside_every_region_is_refused() {
     // than rounded onto an output.
     let mut peer = Peer::ready();
     let device = peer.pointer_device();
-    let actions = peer.apply(Command::AbsoluteMotion {
+    let actions = peer.apply(EiRequest::AbsoluteMotion {
         device,
         x: f32::NAN,
         y: 10.0,
@@ -286,7 +286,7 @@ fn an_absolute_event_without_a_region_is_refused() {
     let (id, _) = service.connect(Some("no-outputs"), ContextType::Sender);
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::POINTER_ABSOLUTE,
         },
     );
@@ -294,8 +294,8 @@ fn an_absolute_event_without_a_region_is_refused() {
         Action::Device { device, .. } => *device,
         other => panic!("a device was expected, got {other:?}"),
     };
-    service.apply(id, Command::StartEmulating { device, sequence: 1 });
-    let actions = service.apply(id, Command::AbsoluteMotion { device, x: 1.0, y: 1.0 });
+    service.apply(id, EiRequest::StartEmulating { device, sequence: 1 });
+    let actions = service.apply(id, EiRequest::AbsoluteMotion { device, x: 1.0, y: 1.0 });
     assert_eq!(ending(&actions), Some(Ending::Violation(Violation::NoRegions)));
 }
 
@@ -304,7 +304,7 @@ fn an_absolute_event_lands_in_the_region_it_names() {
     let mut peer = Peer::ready();
     let device = peer.pointer_device();
 
-    let actions = peer.apply(Command::AbsoluteMotion {
+    let actions = peer.apply(EiRequest::AbsoluteMotion {
         device,
         x: 2000.0,
         y: 40.0,
@@ -332,7 +332,7 @@ fn a_flood_ends_the_session() {
     let (id, _) = service.connect(Some("flood"), ContextType::Sender);
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::KEYBOARD,
         },
     );
@@ -340,13 +340,13 @@ fn a_flood_ends_the_session() {
         Action::Device { device, .. } => *device,
         other => panic!("a device was expected, got {other:?}"),
     };
-    service.apply(id, Command::StartEmulating { device, sequence: 1 });
+    service.apply(id, EiRequest::StartEmulating { device, sequence: 1 });
 
     let mut last = Vec::new();
     for offset in 0..4u32 {
         last = service.apply(
             id,
-            Command::Key {
+            EiRequest::Key {
                 device,
                 key: KEY_A + offset,
                 pressed: true,
@@ -376,7 +376,7 @@ fn a_device_event_before_start_emulating_is_refused() {
 fn a_second_start_emulating_is_refused() {
     let mut peer = Peer::ready();
     let device = peer.keyboard_device();
-    let actions = peer.apply(Command::StartEmulating { device, sequence: 2 });
+    let actions = peer.apply(EiRequest::StartEmulating { device, sequence: 2 });
     assert_eq!(ending(&actions), Some(Ending::Violation(Violation::AlreadyEmulating)));
 }
 
@@ -384,8 +384,8 @@ fn a_second_start_emulating_is_refused() {
 fn a_sequence_that_does_not_increase_is_refused() {
     let mut peer = Peer::ready();
     let device = peer.keyboard_device();
-    peer.apply(Command::StopEmulating { device });
-    let actions = peer.apply(Command::StartEmulating { device, sequence: 1 });
+    peer.apply(EiRequest::StopEmulating { device });
+    let actions = peer.apply(EiRequest::StartEmulating { device, sequence: 1 });
     assert_eq!(
         ending(&actions),
         Some(Ending::Violation(Violation::SequenceNotIncreasing))
@@ -396,9 +396,9 @@ fn a_sequence_that_does_not_increase_is_refused() {
 fn an_event_for_an_unknown_device_is_refused() {
     let mut peer = Peer::ready();
     let device = peer.pointer_device();
-    peer.apply(Command::Release { device });
+    peer.apply(EiRequest::Release { device });
 
-    let actions = peer.apply(Command::AbsoluteMotion {
+    let actions = peer.apply(EiRequest::AbsoluteMotion {
         device,
         x: 10.0,
         y: 10.0,
@@ -412,7 +412,7 @@ fn a_released_device_is_destroyed_after_its_edges() {
     let device = peer.keyboard_device();
     peer.key(KEY_A, true);
 
-    let actions = peer.apply(Command::Release { device });
+    let actions = peer.apply(EiRequest::Release { device });
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Key {
@@ -428,7 +428,7 @@ fn a_released_device_is_destroyed_after_its_edges() {
 fn an_event_for_a_capability_the_device_lacks_is_refused() {
     let mut peer = Peer::ready();
     let keyboard = peer.keyboard_device();
-    let actions = peer.apply(Command::AbsoluteMotion {
+    let actions = peer.apply(EiRequest::AbsoluteMotion {
         device: keyboard,
         x: 10.0,
         y: 10.0,
@@ -485,7 +485,7 @@ fn an_orphaned_release_is_dropped() {
 fn a_touch_contact_must_be_down_before_it_moves() {
     let mut peer = Peer::ready();
     let device = peer.touch_device();
-    let actions = peer.apply(Command::TouchMotion {
+    let actions = peer.apply(EiRequest::TouchMotion {
         device,
         contact: 7,
         x: 10.0,
@@ -498,7 +498,7 @@ fn a_touch_contact_must_be_down_before_it_moves() {
 fn a_touch_down_and_up_reach_the_seat_once_each() {
     let mut peer = Peer::ready();
     let device = peer.touch_device();
-    let actions = peer.apply(Command::TouchDown {
+    let actions = peer.apply(EiRequest::TouchDown {
         device,
         contact: 3,
         x: 1900.0,
@@ -513,7 +513,7 @@ fn a_touch_down_and_up_reach_the_seat_once_each() {
             phase: TouchPhase::Down
         }]
     );
-    let actions = peer.apply(Command::TouchUp { device, contact: 3 });
+    let actions = peer.apply(EiRequest::TouchUp { device, contact: 3 });
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Touch {
@@ -529,13 +529,13 @@ fn a_touch_down_and_up_reach_the_seat_once_each() {
 fn a_disconnect_cancels_the_contacts_it_holds() {
     let mut peer = Peer::ready();
     let device = peer.touch_device();
-    peer.apply(Command::TouchDown {
+    peer.apply(EiRequest::TouchDown {
         device,
         contact: 1,
         x: 5.0,
         y: 5.0,
     });
-    let actions = peer.apply(Command::Disconnect);
+    let actions = peer.apply(EiRequest::Disconnect);
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Touch {
@@ -560,7 +560,7 @@ fn more_contacts_than_the_quota_is_refused() {
     let (id, _) = service.connect(Some("many-fingers"), ContextType::Sender);
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::TOUCH,
         },
     );
@@ -568,10 +568,10 @@ fn more_contacts_than_the_quota_is_refused() {
         Action::Device { device, .. } => *device,
         other => panic!("a device was expected, got {other:?}"),
     };
-    service.apply(id, Command::StartEmulating { device, sequence: 1 });
+    service.apply(id, EiRequest::StartEmulating { device, sequence: 1 });
     service.apply(
         id,
-        Command::TouchDown {
+        EiRequest::TouchDown {
             device,
             contact: 1,
             x: 1.0,
@@ -580,7 +580,7 @@ fn more_contacts_than_the_quota_is_refused() {
     );
     service.apply(
         id,
-        Command::TouchDown {
+        EiRequest::TouchDown {
             device,
             contact: 2,
             x: 2.0,
@@ -589,7 +589,7 @@ fn more_contacts_than_the_quota_is_refused() {
     );
     let actions = service.apply(
         id,
-        Command::TouchDown {
+        EiRequest::TouchDown {
             device,
             contact: 3,
             x: 3.0,
@@ -629,7 +629,7 @@ fn a_pending_grant_advertises_nothing_until_the_decision() {
     // Nothing was advertised, so a bind for anything is an escalation.
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::KEYBOARD,
         },
     );
@@ -653,7 +653,7 @@ fn a_pending_grant_advertises_nothing_until_the_decision() {
     );
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::KEYBOARD,
         },
     );
@@ -684,7 +684,7 @@ fn a_layout_change_does_not_move_an_existing_devices_regions() {
         regions.as_slice(),
         "the layout a device was created with is the one it keeps"
     );
-    let actions = peer.apply(Command::AbsoluteMotion {
+    let actions = peer.apply(EiRequest::AbsoluteMotion {
         device,
         x: 10.0,
         y: 10.0,
@@ -717,7 +717,7 @@ fn an_absolute_event_uses_the_translated_layout() {
     let (id, _) = service.connect(Some("negative"), ContextType::Sender);
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::POINTER_ABSOLUTE,
         },
     );
@@ -738,10 +738,10 @@ fn an_absolute_event_uses_the_translated_layout() {
         ]
     );
     let device = *device;
-    service.apply(id, Command::StartEmulating { device, sequence: 1 });
+    service.apply(id, EiRequest::StartEmulating { device, sequence: 1 });
     let actions = service.apply(
         id,
-        Command::AbsoluteMotion {
+        EiRequest::AbsoluteMotion {
             device,
             x: 1300.0,
             y: 10.0,
@@ -777,7 +777,7 @@ fn an_injected_event_carries_the_eis_origin() {
 fn a_relative_motion_reaches_the_seat_as_a_delta() {
     let mut peer = Peer::ready();
     let device = peer.pointer_device();
-    let actions = peer.apply(Command::RelativeMotion {
+    let actions = peer.apply(EiRequest::RelativeMotion {
         device,
         dx: 4.6,
         dy: -3.2,
@@ -792,7 +792,7 @@ fn a_relative_motion_reaches_the_seat_as_a_delta() {
 fn a_discrete_scroll_reaches_the_seat_in_wheel_units() {
     let mut peer = Peer::ready();
     let device = peer.pointer_device();
-    let actions = peer.apply(Command::ScrollDiscrete {
+    let actions = peer.apply(EiRequest::ScrollDiscrete {
         device,
         dx: 0,
         dy: -120,
@@ -806,7 +806,7 @@ fn a_discrete_scroll_reaches_the_seat_in_wheel_units() {
     );
     // A smooth delta is converted at the same rate the nested backend uses: ten logical
     // pixels to one notch, and one notch is 120 units.
-    let actions = peer.apply(Command::ScrollDelta {
+    let actions = peer.apply(EiRequest::ScrollDelta {
         device,
         dx: 5.0,
         dy: 10.0,
@@ -830,12 +830,12 @@ fn the_same_commands_produce_the_same_actions() {
         actions.extend(peer.key(KEY_B, true));
         actions.extend(peer.frame(keyboard));
         actions.extend(peer.button(BTN_LEFT, true));
-        actions.extend(peer.apply(Command::AbsoluteMotion {
+        actions.extend(peer.apply(EiRequest::AbsoluteMotion {
             device: pointer,
             x: 100.0,
             y: 200.0,
         }));
-        actions.extend(peer.apply(Command::Disconnect));
+        actions.extend(peer.apply(EiRequest::Disconnect));
         actions
     };
     let mut first = Peer::ready();
@@ -848,7 +848,7 @@ fn the_same_commands_produce_the_same_actions() {
 #[test]
 fn a_forgotten_context_stops_being_reported() {
     let mut peer = Peer::ready();
-    peer.apply(Command::Disconnect);
+    peer.apply(EiRequest::Disconnect);
     assert_eq!(
         peer.service.contexts().count(),
         1,
@@ -856,13 +856,13 @@ fn a_forgotten_context_stops_being_reported() {
     );
     assert!(peer.service.forget(peer.id).is_some());
     assert_eq!(peer.service.contexts().count(), 0);
-    assert!(peer.service.apply(peer.id, Command::Disconnect).is_empty());
+    assert!(peer.service.apply(peer.id, EiRequest::Disconnect).is_empty());
 }
 
 #[test]
 fn a_bind_after_the_connection_ended_creates_no_device() {
     let mut peer = Peer::connect(Grant::granted(all_caps()));
-    let ended = peer.apply(Command::Disconnect);
+    let ended = peer.apply(EiRequest::Disconnect);
     assert_eq!(ending(&ended), Some(Ending::Disconnected));
 
     let actions = peer.bind(all_caps());
@@ -893,7 +893,7 @@ fn an_empty_bind_before_the_decision_leaves_the_seat_bound() {
     let (id, _) = service.connect(Some("waiting"), ContextType::Sender);
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::NONE,
         },
     );
@@ -903,7 +903,7 @@ fn an_empty_bind_before_the_decision_leaves_the_seat_bound() {
     service.set_grant(Grant::granted(Caps::KEYBOARD));
     let actions = service.apply(
         id,
-        Command::Bind {
+        EiRequest::Bind {
             capabilities: Caps::KEYBOARD,
         },
     );
@@ -914,7 +914,7 @@ fn an_empty_bind_before_the_decision_leaves_the_seat_bound() {
 fn a_decision_after_the_connection_ended_is_not_sent() {
     let mut service = Service::new(Grant::pending(), layout(), Quota::default());
     let (id, _) = service.connect(Some("waiting"), ContextType::Sender);
-    let ended = service.apply(id, Command::Disconnect);
+    let ended = service.apply(id, EiRequest::Disconnect);
     assert_eq!(ending(&ended), Some(Ending::Disconnected));
 
     let told = service.set_grant(Grant::granted(Caps::KEYBOARD));
@@ -931,14 +931,14 @@ fn a_restart_with_a_larger_sequence_is_accepted_and_reported() {
     let device = peer.keyboard_device();
     assert_eq!(peer.device(Some(device)).emulating(), Some(1));
 
-    peer.apply(Command::StopEmulating { device });
+    peer.apply(EiRequest::StopEmulating { device });
     assert_eq!(
         peer.device(Some(device)).emulating(),
         None,
         "a stopped device is not emulating"
     );
 
-    let actions = peer.apply(Command::StartEmulating { device, sequence: 2 });
+    let actions = peer.apply(EiRequest::StartEmulating { device, sequence: 2 });
     assert_eq!(ending(&actions), None, "a larger sequence restarts the emulation");
     assert_eq!(peer.device(Some(device)).emulating(), Some(2));
 }
