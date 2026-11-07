@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-keyring-store"
+description = "The keyring's encrypted database: one SQLCipher file of collections, items and attributes, opened with a passphrase."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-log = { path = "../gnoblin-log" }
+# The SQLCipher build comes from the workspace's `bundled-sqlcipher` feature, so every page of
+# the file is encrypted under the key and an unkeyed open is the plain SQLite behaviour.
+rusqlite.workspace = true
+# The passphrase and every decrypted secret are wiped on drop: a plain `String` or `Vec<u8>`
+# would leave the bytes in freed heap memory.
+zeroize.workspace = true
+
+[lints]
+workspace = true

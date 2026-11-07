@@ -260,6 +260,10 @@ const RULES: &[Rule] = &[
         id: "cursor-isolation",
         check: cursor_isolation,
     },
+    Rule {
+        id: "keyring-store-isolation",
+        check: keyring_store_isolation,
+    },
 ];
 
 /// One broken edge.
@@ -835,6 +839,21 @@ fn cursor_isolation(package: &Package, dep: &Dep) -> Option<String> {
     Some(format!(
         "only the pointer's users may depend on `{CURSOR_CRATE}`; `{}` is not one of them",
         package.name
+    ))
+}
+
+/// The keyring's encrypted file. It is a leaf over the logging facade: the file format and its key
+/// handling must not pull the compositor's graph into a process that only reads a keyring.
+const KEYRING_STORE_CRATE: &str = "gnoblin-keyring-store";
+
+/// Keeps the keyring store a leaf: it may name only the logging facade among workspace crates.
+fn keyring_store_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != KEYRING_STORE_CRATE || !is_workspace_crate(&dep.name) || dep.name == LOG_CRATE {
+        return None;
+    }
+    Some(format!(
+        "`{KEYRING_STORE_CRATE}` may depend only on `{LOG_CRATE}` among workspace crates, not `{}`",
+        dep.name
     ))
 }
 

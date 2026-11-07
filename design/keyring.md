@@ -238,6 +238,19 @@ phase starts.
 5. **Prompt UI.** Gnoblin's prompt UI draws `Prompt` objects (`prompt.secret`).
 6. **Compat acceptance.** Run the acceptance checks below.
 
+Phase 1 facts, measured on Agent37 (rusqlite 0.41.1, libsqlite3-sys 0.39.1):
+
+- `bundled-sqlcipher` builds SQLCipher 4.19.0 from `sqlcipher-src` 419.0.6, which
+  contains SQLite 3.53.4. Plain `bundled` builds SQLite 3.54.1, so the store moves
+  back one SQLite minor version. The plain-file fixture opens unchanged with an
+  empty key.
+- The build compiles with `SQLITE_TEMP_STORE=2`, so temporary tables and indices
+  default to memory. Plain `bundled` does not set it. `PRAGMA temp_store` can still override.
+- The build links libcrypto dynamically (`dylib=crypto`) unless `OPENSSL_LIB_DIR` and
+  `OPENSSL_INCLUDE_DIR` point elsewhere. It needs the OpenSSL 3 headers at build time.
+  The runtime dependency is `libcrypto.so.3`, which `gnoblin` must declare (see
+  `distribution.md`). `bundled-sqlcipher-vendored-openssl` would vendor it instead; not used.
+
 Acceptance is compatibility with existing software:
 
 - `secret-tool store` and `secret-tool lookup` (libsecret) round trip a value

@@ -49,6 +49,7 @@ members = [
     "crates/gnoblin-portal-ui",
     "crates/gnoblin-input",
     "crates/gnoblin-input-eis",
+    "crates/gnoblin-keyring-store",
     "crates/gnoblin-layers",
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
@@ -314,9 +315,10 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
     "registry",
     "std",
 ] }
-# The SQLite library behind the log database. `bundled` compiles SQLite into the
-# binary, so the database needs no system library and the same version everywhere.
-rusqlite = { version = "0.41.1", features = ["bundled"] }
+# The SQLite library behind the log and keyring databases. `bundled-sqlcipher` compiles SQLCipher
+# (SQLite 3.53.4, see design/keyring.md "Phased implementation") into the binary. Without a key set,
+# SQLCipher opens a file exactly as SQLite does, so the store's plain files are unchanged.
+rusqlite = { version = "0.41.1", features = ["bundled-sqlcipher"] }
 
 # The gcr prompter's `prompt.secret` transport: `GcrSecretExchange` protocol 1 is
 # DH over the 1536-bit MODP group with HKDF-SHA256 and AES-128-CBC, so the adapter
@@ -336,3 +338,6 @@ num-bigint = "0.5.1"
 # `rand` uses underneath, and it needs no trait plumbing in a crate with no
 # dependency on a random-number generator.
 getrandom = "0.4.3"
+# Wipes the passphrase and the derived secrets the keyring store holds in memory. The
+# plain `drop` leaves the bytes in the heap, so a secret is zeroed before its buffer is freed.
+zeroize = { version = "1.8", features = ["zeroize_derive"] }

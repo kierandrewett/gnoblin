@@ -25,6 +25,9 @@ Gnoblin installs as its own session and can coexist with GNOME. Four packages co
   `gnoblin-mutter-devel`, so systems with the old packages upgrade.
 - Private libraries must not satisfy stock GNOME dependencies. `gnoblinctl` needs GLib and
   JSON-GLib at runtime. Python is a build tool.
+- The keyring store links the system libcrypto dynamically (`libcrypto.so.3`), because the
+  workspace builds SQLCipher against it. Each package format must declare that soname as a
+  runtime dependency once `gnoblin-service-keyring` ships.
 - The four packages have the same version, the Gnoblin version in `data/gnoblin-version.json`,
   and epoch 1. The portal backend keeps the version of its GNOME source (`51.0.0`). Its release
   number follows the Gnoblin release, so each release has a distinct portal package.
