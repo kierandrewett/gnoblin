@@ -600,6 +600,16 @@ pub fn read_portal_outcome(payload: &[u8]) -> Result<(String, String), WireError
     Ok((kind, detail))
 }
 
+/// Encode a `portal.ui` reply the way the compositor does, for tests of the client's
+/// routing of outcomes.
+#[cfg(test)]
+pub fn portal_outcome_payload(kind: &str, detail: &str) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.text(kind);
+    writer.text(detail);
+    writer.finish()
+}
+
 /// Decode a `slot.claim` request.
 pub fn read_slot_claim(payload: &[u8]) -> Result<(String, Provider), WireError> {
     let mut reader = Reader::new(payload);

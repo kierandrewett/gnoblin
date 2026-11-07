@@ -766,4 +766,77 @@ mod routing_tests {
         client.forget(second);
         assert!(client.stashed.is_empty());
     }
+
+    /// A `portal.ui` request, the shape the relay sends.
+    fn portal_request() -> wire::PortalRequest {
+        wire::PortalRequest {
+            interface: "org.freedesktop.impl.portal.Access".to_owned(),
+            caller: wire::VerifiedCaller::new(0, "org.example.App"),
+            prompt: "Allow the camera".to_owned(),
+            timeout_ms: 0,
+            options: Default::default(),
+            parent_window: String::new(),
+        }
+    }
+
+    /// A `portal.ui` reply to `id`, carrying how the request settled.
+    fn outcome(id: u64, kind: &str, detail: &str) -> Envelope {
+        Envelope::reply(
+            wire::NAMESPACE,
+            wire::member::PORTAL_UI,
+            id,
+            wire::portal_outcome_payload(kind, detail),
+        )
+    }
+
+    #[test]
+    fn a_reply_to_an_unknown_ticket_is_not_taken_as_an_outcome() {
+        // Ticket 9 was never sent; its reply must not surface under any ticket.
+        let mut client = client(vec![outcome(9, "handled", "allowed")]);
+        let ticket = client.portal_ui(&portal_request()).expect("the ticket is sent");
+        assert!(client.take_portal_outcome(PortalTicket(9)).is_none());
+        assert!(
+            client.take_portal_outcome(ticket).is_none(),
+            "the ticket is still pending"
+        );
+    }
+
+    #[test]
+    fn a_cancelled_ticket_collects_the_cancelled_outcome() {
+        let mut client = client(vec![outcome(1, "cancelled", "withdrawn")]);
+        let ticket = client.portal_ui(&portal_request()).expect("the ticket is sent");
+        client.portal_cancel(ticket).expect("the withdrawal is sent");
+        let settled = client.portal_outcome(ticket).expect("the outcome arrives");
+        assert_eq!(settled, PortalOutcome::Cancelled("withdrawn".to_owned()));
+        assert!(client.pending.is_empty());
+    }
+
+    #[test]
+    fn two_tickets_in_flight_each_collect_their_own_outcome() {
+        // The compositor settles the second ticket first.
+        let mut client = client(vec![outcome(2, "declined", ""), outcome(1, "handled", "allowed")]);
+        let first = client.portal_ui(&portal_request()).expect("ticket 1 is sent");
+        let second = client.portal_ui(&portal_request()).expect("ticket 2 is sent");
+        assert_eq!(
+            client.portal_outcome(first).expect("ticket 1 settles"),
+            PortalOutcome::Handled("allowed".to_owned())
+        );
+        assert_eq!(
+            client.portal_outcome(second).expect("ticket 2 settles"),
+            PortalOutcome::Declined
+        );
+        assert!(client.stashed.is_empty() && client.pending.is_empty());
+    }
+
+    #[test]
+    fn an_outcome_that_arrives_before_the_take_is_held_for_it() {
+        // The outcome arrives while the client reads events; nobody awaits it yet.
+        let mut client = client(vec![outcome(1, "handled", "allowed")]);
+        let ticket = client.portal_ui(&portal_request()).expect("the ticket is sent");
+        // The script then runs dry, which ends the read; the held outcome survives it.
+        assert!(client.next_event().is_err());
+        let taken = client.take_portal_outcome(ticket).expect("the outcome is held");
+        assert_eq!(taken.expect("it decodes"), PortalOutcome::Handled("allowed".to_owned()));
+        assert!(client.take_portal_outcome(ticket).is_none(), "an outcome is taken once");
+    }
 }
