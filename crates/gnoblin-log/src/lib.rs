@@ -1,15 +1,17 @@
 //! The logging facade every gnoblin crate depends on.
 //!
-//! Every call names its component as the first argument, as a string literal:
+//! A crate defines its loggers once, with [`logger!`], and logs through the module it names:
 //!
 //! ```ignore
-//! gnoblin_log::info_in!("wayland", surfaces = count, "mapped");
+//! gnoblin_log::logger!(log = "wayland");
+//! log::info!("surface {id} mapped", id = 3);
 //! ```
 //!
-//! The literal is checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading
-//! or trailing `-`. A sub-area of a crate is simply another component name, so there is no
-//! separate override. The level macros are `error_in!`, `warn_in!`, `info_in!`, `debug_in!` and
-//! `trace_in!`, and each call site owns a `static` filter, so a disabled call formats nothing.
+//! The component literal is checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with
+//! no leading or trailing `-`. A sub-area of a crate is its own logger with its own component, so
+//! `logger!(wire = "wayland-wire")` gives `wire::info!`. The level macros are `error!`, `warn!`,
+//! `info!`, `debug!` and `trace!`, and `enabled!` asks whether a level is on. A disabled call
+//! formats nothing.
 //!
 //! The macros take the arguments of their `tracing` counterparts, including fields and `%`/`?`
 //! sigils. Every event carries its component in a `component` field, which [`event`] reads. An
@@ -48,6 +50,9 @@ pub mod init;
 /// Crates other than this one must not use it to log; they use the macros.
 #[doc(hidden)]
 pub use tracing as __tracing;
+
+/// The levels a call can name, for [`enabled!`]: `Level::DEBUG` and the rest.
+pub use tracing::Level;
 
 /// The longest component name, in bytes.
 const MAX_COMPONENT_LEN: usize = 24;
@@ -173,6 +178,79 @@ macro_rules! trace_in {
     ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, TRACE, $($rest)+) };
 }
 
+/// Defines a logger: a module named `name` whose `error!`, `warn!`, `info!`, `debug!` and
+/// `trace!` macros log to `component`, and whose `enabled!` asks whether a level is on.
+///
+/// ```ignore
+/// gnoblin_log::logger!(log = "wayland");
+/// log::info!("surface {id} mapped", id = 3);
+/// ```
+///
+/// The visibility goes before the name: `logger!(pub(crate) log = "wayland")`. One crate may
+/// define several, such as `log` and `wire`. The component literal is checked when the module is
+/// built: a bad id fails the build at this call, with the rule it breaks. The message does not
+/// name the id, since a const panic cannot format one; the error points at the literal.
+#[macro_export]
+macro_rules! logger {
+    ($vis:vis $name:ident = $component:literal) => {
+        $crate::__logger!(($) $vis $name $component);
+    };
+}
+
+/// Expands a [`logger!`] into its module. `$d` is a literal `$`, which the nested macros need
+/// because they are written inside this one.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __logger {
+    (($d:tt) $vis:vis $name:ident $component:literal) => {
+        const _: () = {
+            $crate::__checked_component($component);
+        };
+        $vis mod $name {
+            macro_rules! __error {
+                ($d($args:tt)+) => { $crate::__emit!($component, ERROR, $d($args)+) };
+            }
+            macro_rules! __warn {
+                ($d($args:tt)+) => { $crate::__emit!($component, WARN, $d($args)+) };
+            }
+            macro_rules! __info {
+                ($d($args:tt)+) => { $crate::__emit!($component, INFO, $d($args)+) };
+            }
+            macro_rules! __debug {
+                ($d($args:tt)+) => { $crate::__emit!($component, DEBUG, $d($args)+) };
+            }
+            macro_rules! __trace {
+                ($d($args:tt)+) => { $crate::__emit!($component, TRACE, $d($args)+) };
+            }
+            macro_rules! __enabled {
+                ($d($level:tt)+) => { $crate::__enabled!($component, $d($level)+) };
+            }
+            // A logger need not use every level, so the unused re-exports are allowed here.
+            #[allow(unused_imports)]
+            pub(crate) use {
+                __error as error,
+                __warn as warn,
+                __info as info,
+                __debug as debug,
+                __trace as trace,
+                __enabled as enabled,
+            };
+        }
+    };
+}
+
+/// Whether a call at `$level` is enabled for `$component`. A [`logger!`] module's `enabled!`
+/// expands to this. Each expansion owns its `static` filter, so the check is one relaxed load.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __enabled {
+    ($component:literal, $level:expr) => {{
+        static SITE: $crate::filter::Component =
+            $crate::filter::Component::new($crate::__checked_component($component));
+        SITE.enabled($level)
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::event::capture::logged;
@@ -238,5 +316,47 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].component, "logger-test");
         assert_eq!(events[0].message, "hello 1");
+    }
+
+    /// Two loggers in one module: `log` for the crate, `wire` for a sub-area with its own
+    /// component, and `gate`, which only the enabled check uses.
+    mod loggers {
+        crate::logger!(log = "logger-one");
+        crate::logger!(wire = "logger-wire");
+        crate::logger!(gate = "logger-gate");
+
+        pub(super) fn emit() {
+            log::info!("one {}", 1);
+            wire::warn!(frames = 2, "wire {}", 3);
+            log::debug!("below the default");
+        }
+
+        pub(super) fn gate_checks() -> [bool; 3] {
+            [
+                gate::enabled!(crate::Level::ERROR),
+                gate::enabled!(crate::Level::INFO),
+                gate::enabled!(crate::Level::DEBUG),
+            ]
+        }
+    }
+
+    #[test]
+    fn logger_events_carry_their_component_and_target() {
+        let events = logged(loggers::emit);
+        let tags: Vec<_> = events
+            .iter()
+            .map(|event| (event.component.as_str(), event.message.as_str()))
+            .collect();
+        assert_eq!(tags, [("logger-one", "one 1"), ("logger-wire", "wire 3")]);
+        assert_eq!(events[0].target, "gnoblin::logger-one");
+        assert_eq!(events[1].target, "gnoblin::logger-wire");
+        assert_eq!(events[1].fields, [("frames".to_owned(), "2".to_owned())]);
+    }
+
+    #[test]
+    fn enabled_reports_the_default_level_of_a_logger() {
+        // The default specification is `info`. Other tests set and reset the global
+        // specification, but none changes the default, so this holds whichever runs first.
+        assert_eq!(loggers::gate_checks(), [true, true, false]);
     }
 }

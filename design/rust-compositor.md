@@ -2917,9 +2917,9 @@ A crate writes `gnoblin_log::logger!(log = "wayland");` at its module or crate r
 
 Visibility goes before the name: `logger!(pub(crate) log = "wayland")`. The module name `log` is the convention. A subsystem inside a crate takes its own name and component, such as `logger!(wire = "wayland-wire")`, which gives `wire::info!`.
 
-Component ids are checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading or trailing dash. A bad id fails the build with a message that names it.
+Component ids are checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading or trailing dash. A bad id fails the build at its literal, with the rule it breaks. The message does not repeat the id, because a const panic cannot format one.
 
-The handle is a `static` inside the generated module. It registers itself on first use in a global registry, which `gnoblin_log::components()` lists in process. Each component holds one atomic level. A disabled call does one relaxed load and formats nothing, so the call site needs no cache of its own.
+Each call site owns a `static` handle, because a `macro_rules!` cannot name a static in the generated module from a call site. Sites with the same component share one registry entry, which `gnoblin_log::components()` lists in process. The handle registers itself on first use. Each component holds one atomic level, so a disabled call does one relaxed load and formats nothing.
 
 The level comes from the `logging` configuration and from `GNOBLIN_LOG`, which takes `wayland:debug,compositor:info,*:warn`. A bad spec is refused with a named error. No IPC subcommand is added for listing components.
 
