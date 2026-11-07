@@ -264,6 +264,12 @@ pub struct PipewireExport {
     socket: Option<PathBuf>,
 }
 
+impl Default for PipewireExport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PipewireExport {
     /// An export that connects to the daemon the environment names.
     pub fn new() -> Self {
