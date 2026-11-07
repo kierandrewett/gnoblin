@@ -57,7 +57,7 @@ use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
-use crate::observation::{MenuAnchor, MenuSource, Observer, SessionSnapshot};
+use crate::observation::{MenuAnchor, MenuSource, Observer, SessionSnapshot, WindowChange};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
@@ -485,6 +485,11 @@ impl Server {
                                 // the caller's sync sees the request.
                                 let _ = reply.send(state.request_window_menu(window, anchor, MenuSource::Extension));
                             }
+                            Command::WindowControl { window, change, reply } => {
+                                // The answer follows the request's effect, so a caller that
+                                // reads the observation on the strength of it sees the change.
+                                let _ = reply.send(state.window_control(window, change));
+                            }
                             Command::Lock { reply } => state.request_lock(reply),
                             Command::SetWorkspaceLayout {
                                 workspace,
@@ -761,6 +766,17 @@ impl ControlHandle {
     pub fn request_menu(&self, window: WindowId, anchor: MenuAnchor) -> Option<bool> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::RequestMenu { window, anchor, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Applies one window-control request, as the IPC's `window.close` and `window.set_*`
+    /// do. The loop applies it through the same effect a taskbar produces. `Some(true)`
+    /// means the window existed and the change was applied, `Some(false)` means the window
+    /// is gone, and [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`].
+    #[must_use]
+    pub fn window_control(&self, window: WindowId, change: WindowChange) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::WindowControl { window, change, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -1095,6 +1111,13 @@ enum Command {
     RequestMenu {
         window: WindowId,
         anchor: MenuAnchor,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// A window-control request from the IPC, and the channel its answer goes back on:
+    /// `true` when the window exists and the change was applied, `false` when it is gone.
+    WindowControl {
+        window: WindowId,
+        change: WindowChange,
         reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// A session lock request. The answer is sent once the lock settles: `true` when

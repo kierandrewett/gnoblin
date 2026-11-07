@@ -105,6 +105,43 @@ since = "0.2.0"
 name = "kill"
 since = "0.2.0"
 
+# Ask the window's client to close. The client may refuse or ignore the request; the
+# window goes away only when the client destroys it. Refused for an unknown window.
+[[object.method]]
+name = "close"
+since = "0.2.0"
+
+# Minimise (true) or restore (false) the window. Setting the state it already has is
+# a no-op that still completes.
+[[object.method]]
+name = "set_minimized"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "value"
+type = "bool"
+since = "0.2.0"
+
+# Maximise (true) or restore (false) the window.
+[[object.method]]
+name = "set_maximized"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "value"
+type = "bool"
+since = "0.2.0"
+
+# Enter (true) or leave (false) fullscreen. Setting the state it already has is a no-op.
+[[object.method]]
+name = "set_fullscreen"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "value"
+type = "bool"
+since = "0.2.0"
+
 # The window's effects in paint order, first to last. Read-only: the compositor
 # sets it as effects are added and removed. Each element is an `effect` object.
 [[object.property]]

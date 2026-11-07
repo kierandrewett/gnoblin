@@ -191,11 +191,11 @@ A connection holds only the capabilities its source grants, and the compositor
 decides the source. Three sources exist:
 
 - **Privileged roles** hold their role's grant from `privileged.rs`: `runtime`
-  holds `commit-config`, `read-config` (it reads back what it committed) and
-  `input-policy`; `services` holds `offer-request` and `register-layer`; `portal`
-  holds `portal-ui`; and `input` holds `portal-input`.
-- **The session owner's socket connection** holds `read-config` and
-  `reload-config`. The compositor reads the peer's uid from `SO_PEERCRED` when it
+  holds `commit-config`, `read-config` (it reads back what it committed),
+  `input-policy` and `window-control`; `services` holds `offer-request` and
+  `register-layer`; `portal` holds `portal-ui`; and `input` holds `portal-input`.
+- **The session owner's socket connection** holds `read-config`, `reload-config` and
+  `window-control`. The compositor reads the peer's uid from `SO_PEERCRED` when it
   accepts the connection, never from the handshake. The socket sits in the
   owner's 0700 runtime directory, so only the owner reaches it normally, and the
   uid check holds even if that changes.

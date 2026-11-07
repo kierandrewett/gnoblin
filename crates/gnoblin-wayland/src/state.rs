@@ -79,7 +79,7 @@ use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
-    LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, SessionSnapshot,
+    LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, SessionSnapshot, WindowChange,
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
@@ -873,6 +873,38 @@ impl State {
     #[must_use]
     pub(crate) fn access(&self) -> Arc<Access> {
         Arc::clone(&self.access)
+    }
+
+    /// Applies one window-control request from the IPC. The answer is whether the window
+    /// exists: a closed window is refused, so a script learns it asked too late rather
+    /// than seeing a silent success. Close goes to the toplevel when the window has one and
+    /// to the X11 policy otherwise; the other changes are the taskbar's own.
+    pub(crate) fn window_control(&mut self, window: WindowId, change: WindowChange) -> bool {
+        if self.wm.window(window).is_none() {
+            return false;
+        }
+        match change {
+            WindowChange::Close => {
+                if self.toplevel_of(window).is_some() {
+                    self.toplevel_close(window);
+                    true
+                } else {
+                    self.close_x11_window(window)
+                }
+            }
+            WindowChange::Minimised(minimised) => {
+                self.toplevel_minimise(window, minimised);
+                true
+            }
+            WindowChange::Maximised(maximised) => {
+                self.toplevel_maximise(window, maximised);
+                true
+            }
+            WindowChange::Fullscreen(fullscreen) => {
+                self.toplevel_fullscreen(window, fullscreen, None);
+                true
+            }
+        }
     }
 
     /// The toplevel object of one managed window, when it is a Wayland one.

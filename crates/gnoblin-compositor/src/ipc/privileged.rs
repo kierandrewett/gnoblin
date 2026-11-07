@@ -80,6 +80,7 @@ pub fn grants(role: &str) -> Capabilities {
             Capability::CommitConfig,
             Capability::ReadConfig,
             Capability::InputPolicy,
+            Capability::WindowControl,
         ]),
         "services" => Capabilities::of(&[Capability::OfferRequest, Capability::RegisterLayer]),
         "portal" => Capabilities::of(&[Capability::PortalUi, Capability::RetrieveSecret]),
@@ -90,14 +91,19 @@ pub fn grants(role: &str) -> Capabilities {
 
 /// What a connection accepted from the ordinary socket is granted, from its peer's uid.
 ///
-/// The session owner's own connections may read the configuration and ask for a reload:
-/// the CLI does both, and a reload still goes through the runtime, which is the one that
-/// commits. Commit itself stays with the runtime role, so a same-uid shell cannot write
+/// The session owner's own connections may read the configuration, ask for a reload and
+/// change window state (close, minimise, maximise, fullscreen): the CLI does these, and a
+/// reload still goes through the runtime, which is the one that commits. Commit itself
+/// stays with the runtime role, so a same-uid shell cannot write
 /// the document the runtime evaluates. Any other uid, or a peer whose credentials cannot
 /// be read, is granted nothing.
 pub fn owner_grants(peer_uid: Option<u32>, owner_uid: u32) -> Capabilities {
     match peer_uid {
-        Some(uid) if uid == owner_uid => Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]),
+        Some(uid) if uid == owner_uid => Capabilities::of(&[
+            Capability::ReadConfig,
+            Capability::ReloadConfig,
+            Capability::WindowControl,
+        ]),
         _ => Capabilities::NONE,
     }
 }
@@ -233,7 +239,11 @@ mod tests {
         let granted = owner_grants(Some(1000), 1000);
         assert_eq!(
             granted,
-            gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig])
+            gnoblin_proto::Capabilities::of(&[
+                Capability::ReadConfig,
+                Capability::ReloadConfig,
+                Capability::WindowControl,
+            ])
         );
         // The owner's CLI asks the runtime to reload; the runtime is the one that commits.
         assert!(!granted.contains(Capability::CommitConfig));
@@ -265,7 +275,11 @@ mod tests {
         let (ours, _theirs) = std::os::unix::net::UnixStream::pair().expect("a socket pair");
         assert_eq!(
             socket_grants(&ours),
-            gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig])
+            gnoblin_proto::Capabilities::of(&[
+                Capability::ReadConfig,
+                Capability::ReloadConfig,
+                Capability::WindowControl,
+            ])
         );
     }
 }

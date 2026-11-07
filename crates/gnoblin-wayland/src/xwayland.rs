@@ -128,6 +128,27 @@ pub(crate) struct Running {
 }
 
 impl Running {
+    /// Performs one request the X11 policy answered with: the mapping it chose, or the
+    /// close a person asked for. A surface that is gone has nothing to send to.
+    fn send(&self, command: X11Request) {
+        match command {
+            X11Request::SetMapped { window, mapped } => {
+                if let Some(surface) = self.surfaces.get(&window).cloned()
+                    && let Err(error) = surface.set_mapped(mapped)
+                {
+                    log::debug!(area = "xwayland", %error, %window, "a mapping request failed");
+                }
+            }
+            X11Request::Close { window } => {
+                if let Some(surface) = self.surfaces.get(&window).cloned()
+                    && let Err(error) = surface.close()
+                {
+                    log::debug!(area = "xwayland", %error, %window, "a close request failed");
+                }
+            }
+        }
+    }
+
     fn new(session: Box<dyn Session>, windows: Box<dyn x11::Windows>) -> Self {
         Self {
             session,
@@ -407,22 +428,7 @@ impl State {
         }
         self.apply(outcome.effects);
         for command in outcome.commands {
-            match command {
-                X11Request::SetMapped { window, mapped } => {
-                    if let Some(surface) = running.surfaces.get(&window).cloned()
-                        && let Err(error) = surface.set_mapped(mapped)
-                    {
-                        log::debug!(area = "xwayland", %error, %window, "a mapping request failed");
-                    }
-                }
-                X11Request::Close { window } => {
-                    if let Some(surface) = running.surfaces.get(&window).cloned()
-                        && let Err(error) = surface.close()
-                    {
-                        log::debug!(area = "xwayland", %error, %window, "a close request failed");
-                    }
-                }
-            }
+            running.send(command);
         }
         // A destroy closes the window: the composer fades it out and forgets it. An unmap
         // only hides it: the composer fades the last picture and keeps the node and the X11
@@ -440,6 +446,24 @@ impl State {
         }
         self.x11 = Some(running);
         self.publish();
+    }
+
+    /// Asks the X11 policy to close a window: the same answer a person closing it gets.
+    /// The policy names the close and the surface sends it. `false` when no X11 session
+    /// holds the window, so nothing was asked.
+    pub(crate) fn close_x11_window(&mut self, window: gnoblin_types::WindowId) -> bool {
+        let Some(mut running) = self.x11.take() else {
+            return false;
+        };
+        let outcome = running.windows.close(window);
+        let known = outcome.window.is_some();
+        for command in outcome.commands {
+            running.send(command);
+        }
+        self.apply(outcome.effects);
+        self.x11 = Some(running);
+        self.publish();
+        known
     }
 }
 

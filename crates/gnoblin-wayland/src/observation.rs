@@ -277,6 +277,22 @@ impl MenuAnchor {
     }
 }
 
+/// One window change a control request asks for, in the terms the loop applies them.
+///
+/// A change carries the value the caller set rather than a toggle, so repeating a request
+/// is a no-op instead of undoing the first one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowChange {
+    /// Ask the window to close, as its close button does.
+    Close,
+    /// Minimise the window, or restore it.
+    Minimised(bool),
+    /// Maximise the window, or restore it.
+    Maximised(bool),
+    /// Fullscreen the window, or restore it.
+    Fullscreen(bool),
+}
+
 /// Who asked for a window menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuSource {

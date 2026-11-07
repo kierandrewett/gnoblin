@@ -209,6 +209,56 @@ fn focus_on_a_closed_window_is_refused() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// The window-control methods refuse a dead identity the same way focus does: the
+/// object is unknown, and the session keeps running.
+#[test]
+fn window_control_on_a_closed_window_is_refused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+    wayland.destroy(window);
+    wait_for("the window is gone", || {
+        let listed = session.ctl(&["window", "list"]).ok();
+        listed.out.is_empty().then_some(())
+    });
+
+    let mut client = ipc(&session);
+    for method in ["close", "set_minimized", "set_maximized", "set_fullscreen"] {
+        let arguments = Fields::new();
+        let error = client
+            .call(ObjectId::new(id), method, &arguments)
+            .expect_err("a closed window takes no window-control call");
+        match error {
+            gnoblin_client::ClientError::Refused { code, .. } => {
+                assert_eq!(code, gnoblin_client::code::OBJECT_UNKNOWN, "{method}");
+            }
+            other => panic!("{method}: expected object-unknown, got {other:?}"),
+        }
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+/// A state change needs its boolean. A call without one is refused with the schema's
+/// code for a bad member, and the window keeps the state it had.
+#[test]
+fn set_fullscreen_without_its_value_is_refused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    let mut client = ipc(&session);
+    let error = client
+        .call(ObjectId::new(id), "set_fullscreen", &Fields::new())
+        .expect_err("set_fullscreen needs its value");
+    assert!(
+        matches!(error, gnoblin_client::ClientError::Refused { .. }),
+        "a missing value is refused: {error:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
 #[test]
 fn focus_completes_after_the_diff_it_caused() {
     let session = Session::start();

@@ -78,7 +78,9 @@ use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
-use gnoblin_wayland::{ControlHandle, EffectSpec, Observer, ProcessIdentity, SessionSnapshot, WindowProcess};
+use gnoblin_wayland::{
+    ControlHandle, EffectSpec, Observer, ProcessIdentity, SessionSnapshot, WindowChange, WindowProcess,
+};
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
@@ -1388,6 +1390,15 @@ impl Dispatcher {
             (Some(ty), Some(window), _, _) if ty == "window" && method == "kill" => {
                 self.kill(client, envelope, object, &method, &arguments, window);
             }
+            (Some(ty), Some(window), _, _)
+                if ty == "window"
+                    && matches!(
+                        method.as_str(),
+                        "close" | "set_minimized" | "set_maximized" | "set_fullscreen"
+                    ) =>
+            {
+                self.window_control_call(client, envelope, object, &method, &arguments, window);
+            }
             (Some(ty), Some(window), _, _) if ty == "window" && method == "add_effect" => {
                 self.add_effect_call(client, envelope, object, &method, &arguments, window);
             }
@@ -1704,6 +1715,72 @@ impl Dispatcher {
             Err(_) => OperationOutcome::Failed(OBJECT_GONE),
         };
         self.finish(object, &operation, Some(outcome));
+    }
+
+    /// Serves the window-state verbs: `close`, `set_minimized`, `set_maximized` and
+    /// `set_fullscreen`. The loop applies the change through the same paths the taskbar's
+    /// foreign-toplevel requests use, and the operation completes `done` only when the
+    /// window was there to change. A connection without `window-control` is refused
+    /// `power-missing` before the graph sees the call; a state change without its boolean
+    /// `value` is refused before an operation exists.
+    fn window_control_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        window: WindowId,
+    ) {
+        if !self.capabilities(client).contains(Capability::WindowControl) {
+            self.refuse(
+                client,
+                envelope,
+                "power-missing",
+                &format!("`{method}` needs the `window-control` capability, which this connection does not hold"),
+            );
+            return;
+        }
+        let value = bool_argument(arguments, "value");
+        let change = match (method, value) {
+            ("close", _) => Some(WindowChange::Close),
+            ("set_minimized", Some(value)) => Some(WindowChange::Minimised(value)),
+            ("set_maximized", Some(value)) => Some(WindowChange::Maximised(value)),
+            ("set_fullscreen", Some(value)) => Some(WindowChange::Fullscreen(value)),
+            _ => None,
+        };
+        let Some(change) = change else {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::UNKNOWN_MEMBER,
+                &format!("`{method}` needs its boolean `value`"),
+            );
+            return;
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        // The change is made in the loop, so the diff it caused is published before the
+        // completion reaches the client.
+        let applied = self.control.window_control(window, change);
+        self.sync();
+        let outcome = match applied {
+            Some(true) => Some(OperationOutcome::Done),
+            // The window closed while the request was on its way, so there was nothing to
+            // change; `finish` maps a gone object to `object-gone` itself.
+            Some(false) => Some(OperationOutcome::Failed(OBJECT_GONE)),
+            // The loop did not answer, which means it is stopping: the operation is left
+            // pending rather than given an outcome this server would have invented.
+            None => None,
+        };
+        self.finish(object, &operation, outcome);
     }
 
     /// Serves `workspace.set_layout`: the layout is swapped, and the completion says

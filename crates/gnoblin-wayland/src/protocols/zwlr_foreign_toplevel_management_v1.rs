@@ -303,7 +303,7 @@ impl State {
     }
 
     /// A taskbar asked for a window to be closed.
-    fn toplevel_close(&mut self, window: WindowId) {
+    pub(crate) fn toplevel_close(&mut self, window: WindowId) {
         let Some(entry) = self.toplevel_of(window) else {
             log::trace!(area = "toplevel", %window, "close for a window that is gone");
             return;
@@ -313,7 +313,7 @@ impl State {
     }
 
     /// A taskbar asked for a window to be maximised or restored.
-    fn toplevel_maximise(&mut self, window: WindowId, maximised: bool) {
+    pub(crate) fn toplevel_maximise(&mut self, window: WindowId, maximised: bool) {
         let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
             log::trace!(area = "toplevel", %window, "maximise for a window that is gone");
             return;
@@ -326,7 +326,7 @@ impl State {
     }
 
     /// A taskbar asked for a window to be minimised or restored.
-    fn toplevel_minimise(&mut self, window: WindowId, minimised: bool) {
+    pub(crate) fn toplevel_minimise(&mut self, window: WindowId, minimised: bool) {
         let Some(managed) = self.wm.window(window) else {
             log::trace!(area = "toplevel", %window, "minimise for a window that is gone");
             return;
@@ -344,7 +344,7 @@ impl State {
     }
 
     /// A taskbar asked for a window to be fullscreened or restored.
-    fn toplevel_fullscreen(&mut self, window: WindowId, fullscreen: bool, output: Option<&WlOutput>) {
+    pub(crate) fn toplevel_fullscreen(&mut self, window: WindowId, fullscreen: bool, output: Option<&WlOutput>) {
         let _ = output;
         let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
             log::trace!(area = "toplevel", %window, "fullscreen for a window that is gone");

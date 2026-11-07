@@ -75,11 +75,19 @@ pub enum Capability {
     /// does the reload: a connection with this capability commits nothing itself, and
     /// the reload is refused unless the runtime is connected.
     ReloadConfig,
+    /// Change a window's state: close it, minimise or restore it, maximise it, or make it
+    /// fullscreen (`window.close`, `window.set_minimized`, `window.set_maximized`,
+    /// `window.set_fullscreen`).
+    ///
+    /// Granted to the session owner's ordinary socket connection and to the runtime, the
+    /// two parties that shape windows on the user's behalf. Any other connection is refused
+    /// `denied` before the graph sees the call.
+    WindowControl,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 9] = [
+    pub const ALL: [Capability; 10] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
@@ -89,6 +97,7 @@ impl Capability {
         Capability::RetrieveSecret,
         Capability::ReadConfig,
         Capability::ReloadConfig,
+        Capability::WindowControl,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -103,6 +112,7 @@ impl Capability {
             Capability::RetrieveSecret => "retrieve-secret",
             Capability::ReadConfig => "read-config",
             Capability::ReloadConfig => "reload-config",
+            Capability::WindowControl => "window-control",
         }
     }
 
@@ -118,6 +128,7 @@ impl Capability {
             Capability::RetrieveSecret => 1 << 6,
             Capability::ReadConfig => 1 << 7,
             Capability::ReloadConfig => 1 << 8,
+            Capability::WindowControl => 1 << 9,
         }
     }
 

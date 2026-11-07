@@ -201,6 +201,7 @@ pub use clock::{Clock, ManualClock, SystemClock};
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 /// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
+pub use observation::WindowChange;
 /// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
     ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,

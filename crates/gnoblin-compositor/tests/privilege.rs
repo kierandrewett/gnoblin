@@ -85,8 +85,12 @@ fn a_socket_client_cannot_use_a_privileged_member() {
     let mut client = socket_client(&session);
     assert_eq!(
         client.capabilities(),
-        gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]),
-        "the owner's socket connection reads and reloads, and holds nothing else"
+        gnoblin_proto::Capabilities::of(&[
+            Capability::ReadConfig,
+            Capability::ReloadConfig,
+            Capability::WindowControl,
+        ]),
+        "the owner's socket connection reads, reloads and changes window state, and holds nothing else"
     );
 
     let (code, message) = refusal(
@@ -325,7 +329,11 @@ fn a_handshake_cannot_ask_for_a_grant() {
     }
     assert_eq!(
         answer.capabilities,
-        gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]),
+        gnoblin_proto::Capabilities::of(&[
+            Capability::ReadConfig,
+            Capability::ReloadConfig,
+            Capability::WindowControl,
+        ]),
         "the compositor grants the owner's socket reads and reloads, whatever the hello asked for"
     );
     assert!(
