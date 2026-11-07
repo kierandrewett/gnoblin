@@ -2,7 +2,7 @@
 //! `string.gmatch` and `string.gsub`.
 //!
 //! The stock functions run the C matcher, which the count hook cannot stop from
-//! inside one call. These replacements run [`crate::pattern`] instead, and every
+//! inside one call. These replacements run [`gnoblin_lua_pattern`] instead, and every
 //! step draws from the same instruction budget the hook enforces. The behaviour is
 //! meant to match Lua 5.5 exactly: the same results, the same error texts (argument
 //! errors included, named by hand as `luaL_argerror` would name them), and the same
@@ -15,9 +15,9 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use gnoblin_lua_pattern::{PatternError, PatternMatcher, Piece};
 use mlua::{Error, Function, Lua, MultiValue, Table, Value};
 
-use crate::pattern::{PatternError, PatternMatcher, Piece};
 use crate::{Guard, budget_message};
 
 /// What the installed functions share: the guard whose budget they draw from, the

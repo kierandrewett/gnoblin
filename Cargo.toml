@@ -59,6 +59,7 @@ members = [
     "crates/gnoblin-store",
     "crates/gnoblin-lua",
     "crates/gnoblin-lua-sandbox",
+    "crates/gnoblin-lua-pattern",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
     "crates/gnoblin-pipewire-export",
@@ -260,6 +261,8 @@ rustix = { version = "1.1.6", features = ["process"] }
 gnoblin-types = { path = "crates/gnoblin-types" }
 # The layer registry: named layers, their scopes and their lifecycle (design/layers.md).
 gnoblin-layers = { path = "crates/gnoblin-layers" }
+# The Lua 5.4 pattern matcher and the load-time pattern checker (window rules and the sandbox).
+gnoblin-lua-pattern = { path = "crates/gnoblin-lua-pattern" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
 # The portal dialog models, the payload and result types the compositor negotiates with (D19).
 gnoblin-portal-core = { path = "crates/gnoblin-portal-core" }

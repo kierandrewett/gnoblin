@@ -8,109 +8,46 @@
 //!
 //! # Patterns
 //!
-//! `app_id` and `title` accept a deliberately small pattern language instead of the
-//! Lua patterns the configuration documents:
-//!
-//! - plain characters match themselves anywhere in the value;
-//! - `.` matches any single character;
-//! - `%` escapes the next character, so `%.` matches a literal dot and `%%` a
-//!   literal percent sign;
-//! - a leading `^` anchors at the start and a trailing bare `$` anchors at the end.
-//!
-//! Because the language has no quantifiers, matching is a single linear pass with
-//! no backtracking: a pattern cannot loop, and it cannot blow up on a long title.
-//! Quantifiers are the part of Lua patterns a rule author would notice missing, and
-//! the configuration layer is the place to translate them.
+//! `app_id` and `title` take Lua 5.4 `string.find` patterns, the language the
+//! configuration has always documented. A pattern is checked when it is built, so a
+//! malformed one is refused before any window exists. Matching draws from a step
+//! budget: a match that runs out does not match, so one pathological title cannot hold
+//! the policy thread.
 
 use gnoblin_types::WorkspaceId;
 
 use crate::window::{Window, WindowKind};
 
-/// A compiled match pattern.
+pub use gnoblin_lua_pattern::PatternSyntaxError;
+
+/// Steps one match may take before it gives up and reports no match.
+const MATCH_BUDGET: u64 = 1 << 20;
+
+/// A compiled match pattern. Construction checks the whole pattern, so a stored
+/// `Pattern` is always well formed.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Pattern {
-    tokens: Vec<Token>,
-    anchored_start: bool,
-    anchored_end: bool,
-}
-
-/// One position in a pattern.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Token {
-    /// Any single character.
-    Any,
-    /// Exactly this character.
-    Literal(char),
+    source: String,
 }
 
 impl Pattern {
-    /// Compiles a pattern.
-    #[must_use]
-    pub fn new(source: &str) -> Self {
-        let mut chars = source.chars().peekable();
-        let anchored_start = chars.peek() == Some(&'^');
-        if anchored_start {
-            chars.next();
-        }
-        let mut tokens = Vec::new();
-        let mut escaped = false;
-        while let Some(character) = chars.next() {
-            if escaped {
-                tokens.push(Token::Literal(character));
-                escaped = false;
-                continue;
-            }
-            match character {
-                '%' => escaped = true,
-                '.' => tokens.push(Token::Any),
-                // A trailing bare `$` anchors; anywhere else it is a literal.
-                '$' if chars.peek().is_none() => {
-                    return Self {
-                        tokens,
-                        anchored_start,
-                        anchored_end: true,
-                    };
-                }
-                other => tokens.push(Token::Literal(other)),
-            }
-        }
-        // A dangling `%` matches a literal percent sign rather than swallowing the
-        // end of the pattern.
-        if escaped {
-            tokens.push(Token::Literal('%'));
-        }
-        Self {
-            tokens,
-            anchored_start,
-            anchored_end: false,
-        }
+    /// Checks `source` and stores it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first syntax error, with the byte offset where it was found.
+    pub fn new(source: &str) -> Result<Self, PatternSyntaxError> {
+        gnoblin_lua_pattern::validate(source.as_bytes())?;
+        Ok(Self {
+            source: source.to_owned(),
+        })
     }
 
-    /// Whether the value matches.
+    /// Whether the value matches. A match that exhausts its budget, or recurses past
+    /// the depth limit, does not match.
     #[must_use]
     pub fn matches(&self, value: &str) -> bool {
-        let text: Vec<char> = value.chars().collect();
-        if self.anchored_start {
-            return self.matches_at(&text, 0);
-        }
-        (0..=text.len()).any(|start| self.matches_at(&text, start))
-    }
-
-    /// Whether the pattern matches when it starts at `start`.
-    fn matches_at(&self, text: &[char], start: usize) -> bool {
-        let mut index = start;
-        for token in &self.tokens {
-            let Some(character) = text.get(index) else {
-                return false;
-            };
-            if let Token::Literal(expected) = token
-                && character != expected
-            {
-                return false;
-            }
-            index += 1;
-        }
-        !self.anchored_end || index == text.len()
+        gnoblin_lua_pattern::find(self.source.as_bytes(), value.as_bytes(), MATCH_BUDGET).unwrap_or(false)
     }
 }
 
@@ -190,6 +127,7 @@ impl Rule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_lua_pattern::PatternError;
     use gnoblin_types::{OutputId, Rect, WindowId};
 
     fn window(app_id: &str, title: &str, kind: WindowKind) -> Window {
@@ -209,9 +147,14 @@ mod tests {
         }
     }
 
+    /// A pattern the test expects to be valid.
+    fn pattern(source: &str) -> Pattern {
+        Pattern::new(source).expect("test pattern is valid")
+    }
+
     #[test]
     fn a_plain_pattern_matches_anywhere_in_the_value() {
-        let pattern = Pattern::new("Notes");
+        let pattern = pattern("Notes");
         assert!(pattern.matches("Notes"));
         assert!(pattern.matches("Notes - Work"));
         assert!(pattern.matches("My Notes - Work"));
@@ -220,28 +163,43 @@ mod tests {
 
     #[test]
     fn anchors_require_the_whole_value() {
-        let pattern = Pattern::new("^Notes$");
-        assert!(pattern.matches("Notes"));
-        assert!(!pattern.matches("Notes - Work"));
-        assert!(!pattern.matches("My Notes"));
-        assert!(Pattern::new("^Notes").matches("Notes - Work"));
-        assert!(Pattern::new("Notes$").matches("My Notes"));
+        assert!(pattern("^Notes$").matches("Notes"));
+        assert!(!pattern("^Notes$").matches("Notes - Work"));
+        assert!(!pattern("^Notes$").matches("My Notes"));
+        assert!(pattern("^Notes").matches("Notes - Work"));
+        assert!(pattern("Notes$").matches("My Notes"));
     }
 
     #[test]
     fn a_dot_matches_one_character_and_percent_escapes_a_literal() {
-        assert!(Pattern::new("org.gnome.Nautilus").matches("orgxgnomeyNautilus"));
-        assert!(Pattern::new("^org%.gnome%.Nautilus$").matches("org.gnome.Nautilus"));
-        assert!(!Pattern::new("^org%.gnome%.Nautilus$").matches("orgxgnomexNautilus"));
-        assert!(Pattern::new("100%%").matches("100%"));
-        assert!(Pattern::new("done%").matches("done%"));
-        assert!(Pattern::new("a$b").matches("a$b"));
+        assert!(pattern("org.gnome.Nautilus").matches("orgxgnomeyNautilus"));
+        assert!(pattern("^org%.gnome%.Nautilus$").matches("org.gnome.Nautilus"));
+        assert!(!pattern("^org%.gnome%.Nautilus$").matches("orgxgnomexNautilus"));
+        assert!(pattern("100%%").matches("100%"));
+        assert!(pattern("a$b").matches("a$b"));
+    }
+
+    #[test]
+    fn quantifiers_follow_lua() {
+        assert!(pattern("^v%d+%.%d+$").matches("v12.3"));
+        assert!(!pattern("^v%d+%.%d+$").matches("v.3"));
+        assert!(pattern("^%a+%-").matches("gnome-shell"));
+        assert!(pattern("^a-b$").matches("aaab"));
+        assert!(pattern("colou?r").matches("color"));
     }
 
     #[test]
     fn an_empty_pattern_matches_everything() {
-        assert!(Pattern::new("").matches(""));
-        assert!(Pattern::new("").matches("anything"));
+        assert!(pattern("").matches(""));
+        assert!(pattern("").matches("anything"));
+    }
+
+    #[test]
+    fn a_malformed_pattern_is_refused_with_its_position() {
+        let error = Pattern::new("done%").expect_err("a trailing % is malformed");
+        assert_eq!(error.reason, "malformed pattern (ends with '%')");
+        assert_eq!(error.offset, 4);
+        assert!(Pattern::new("[abc").is_err());
     }
 
     #[test]
@@ -249,8 +207,8 @@ mod tests {
         let rule = Rule {
             matcher: Match {
                 kind: Some(WindowKind::Normal),
-                app_id: Some(Pattern::new("^org.example.Editor$")),
-                title: Some(Pattern::new("Untitled")),
+                app_id: Some(pattern("^org.example.Editor$")),
+                title: Some(pattern("Untitled")),
             },
             actions: vec![RuleAction::Maximise],
         };
@@ -264,7 +222,7 @@ mod tests {
     fn an_unset_condition_does_not_constrain() {
         let rule = Rule {
             matcher: Match {
-                title: Some(Pattern::new("^Notes$")),
+                title: Some(pattern("^Notes$")),
                 ..Match::default()
             },
             actions: Vec::new(),
@@ -273,10 +231,21 @@ mod tests {
     }
 
     #[test]
-    fn a_long_title_does_not_slow_matching_to_a_crawl() {
-        // A pattern with no quantifiers can only scan linearly; a pathological
-        // title mixing dots and literals must still finish immediately.
+    fn a_pathological_pattern_stops_at_the_budget_and_does_not_match() {
+        // Three greedy repeats over a title with no `b` backtrack through every split:
+        // cubic work that the budget must cut short rather than finish.
+        let title = "a".repeat(2_000);
+        let source = "%a*%a*%a*b";
+        assert_eq!(
+            gnoblin_lua_pattern::find(source.as_bytes(), title.as_bytes(), MATCH_BUDGET),
+            Err(PatternError::Budget)
+        );
+        assert!(!pattern(source).matches(&title));
+    }
+
+    #[test]
+    fn a_long_title_with_no_quantifiers_scans_linearly() {
         let title: String = "a.".repeat(20_000);
-        assert!(!Pattern::new("^a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.b$").matches(&title));
+        assert!(!pattern("^a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.a%.b$").matches(&title));
     }
 }

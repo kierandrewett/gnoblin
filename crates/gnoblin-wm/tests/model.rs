@@ -98,7 +98,8 @@ impl Rng {
 
 /// A rule list that exercises both typed actions and both selector kinds.
 fn rules(rng: &mut Rng) -> Vec<Rule> {
-    let app_id = Pattern::new(if rng.below(2) == 0 { "org.example" } else { "Other" });
+    let app_id =
+        Pattern::new(if rng.below(2) == 0 { "org.example" } else { "Other" }).expect("fixed patterns are valid");
     let selector = if rng.below(2) == 0 {
         WorkspaceSelector::Id(rng.workspace())
     } else {
@@ -118,7 +119,7 @@ fn rules(rng: &mut Rng) -> Vec<Rule> {
         },
         Rule {
             matcher: Match {
-                title: Some(Pattern::new("^Report")),
+                title: Some(Pattern::new("^Report").expect("fixed patterns are valid")),
                 ..Match::default()
             },
             actions: Vec::new(),

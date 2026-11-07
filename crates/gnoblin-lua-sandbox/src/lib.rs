@@ -28,7 +28,7 @@
 //!   the count hook. `os` keeps only the pure parts: `time(table)`, `date(format,
 //!   time)` and `difftime`. Calls that would read the clock are refused.
 //! - In the configuration profile `string.find`, `match`, `gmatch` and `gsub` are
-//!   replaced by a Rust matcher in [`pattern`] that spends the same step budget, with
+//!   replaced by a Rust matcher in [`gnoblin_lua_pattern`] that spends the same step budget, with
 //!   output identical to stock Lua 5.5 (`tests/pattern_parity.rs`). `pcall` and
 //!   `xpcall` are wrapped in both profiles so a limit cannot be caught. A coroutine
 //!   here is only control flow inside one entry, so the same hook bounds it.
@@ -52,7 +52,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use mlua::{Error, Function, HookTriggers, Lua, LuaOptions, MultiValue, StdLib, Table, Value, VmState};
 
 mod output;
-mod pattern;
 mod strlib;
 
 pub use output::{LogLevel, Sink};
@@ -410,12 +409,12 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     // entry's budget. Config keeps `__gc` because its budget is the host's own script budget.
     let set_metatable: Function = globals.get("setmetatable")?;
     let guarded = lua.create_function(move |_, args: MultiValue| {
-        if let Some(Value::Table(metatable)) = args.get(1) {
-            if !metatable.get::<Value>("__gc")?.is_nil() {
-                return Err(mlua::Error::RuntimeError(
-                    "__gc is not supported in the layout profile".into(),
-                ));
-            }
+        if let Some(Value::Table(metatable)) = args.get(1)
+            && !metatable.get::<Value>("__gc")?.is_nil()
+        {
+            return Err(mlua::Error::RuntimeError(
+                "__gc is not supported in the layout profile".into(),
+            ));
         }
         set_metatable.call::<Value>(args)
     })?;

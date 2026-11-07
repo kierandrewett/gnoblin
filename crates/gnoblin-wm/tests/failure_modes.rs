@@ -58,7 +58,7 @@ fn rule(matcher: Match, actions: Vec<RuleAction>) -> Rule {
 
 fn app(app_id: &str) -> Match {
     Match {
-        app_id: Some(Pattern::new(app_id)),
+        app_id: Some(Pattern::new(app_id).expect("test pattern is valid")),
         ..Match::default()
     }
 }

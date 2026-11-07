@@ -10,6 +10,8 @@ publish.workspace = true
 # The Lua VM (D10). The sandbox owns its construction and limits; no other crate
 # builds a Lua state.
 mlua.workspace = true
+# The pattern matcher behind string.find and friends; the sandbox only wires it in.
+gnoblin-lua-pattern.workspace = true
 
 [lints]
 workspace = true
