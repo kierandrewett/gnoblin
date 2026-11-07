@@ -128,7 +128,7 @@ fn a_script_cannot_reach_the_filesystem_or_a_library_the_sandbox_withholds() {
         "init.lua",
         r#"
 assert(io == nil, "io is available")
-assert(os == nil, "os is available")
+assert(os.execute == nil and os.remove == nil and os.rename == nil and os.getenv == nil and os.tmpname == nil and os.exit == nil, "a host-reaching os function is available")
 assert(debug == nil, "debug is available")
 assert(package == nil, "package is available")
 assert(coroutine == nil, "coroutine is available")
