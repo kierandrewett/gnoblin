@@ -131,15 +131,14 @@ fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::Log
 }
 
 /// The log options for this process: the environment over the `logging` section. When the
-/// section keeps the log, the store receives every record. A store that cannot open is a
+/// section keeps the log, the log file receives every record. A file that cannot open is a
 /// problem the log reports once it is installed, and console logging still works.
 fn log_options(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::LogOptions {
     let mut options = gnoblin_log::init::LogOptions::from_environment(&log_settings(logging));
-    if logging.store.unwrap_or(true) {
-        match gnoblin_compositor::open_log_store(logging) {
-            Ok(logs) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(logs))),
-            Err(problem) => options.problems.push(problem),
-        }
+    match gnoblin_compositor::open_log_file(logging) {
+        Ok(Some(sink)) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(sink))),
+        Ok(None) => {}
+        Err(problem) => options.problems.push(problem),
     }
     options
 }
@@ -183,7 +182,6 @@ fn compositor() -> Result<(), Exit> {
     gnoblin_compositor::configure_monitors_from_environment(&mut config);
     gnoblin_compositor::configure_xwayland_from_environment(&mut config);
     gnoblin_compositor::configure_renderer_from_environment(&mut config);
-    gnoblin_compositor::configure_store_from_environment(&mut config);
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {

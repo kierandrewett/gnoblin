@@ -35,14 +35,6 @@ use gnoblin_schema::{Catalog, Namespace, ObjectType, Version};
 /// The namespace whose version is the IPC version.
 const CORE_NAMESPACE: &str = "gnoblin";
 
-/// Objects `gnoblinctl` reaches through hand-written subcommands, not generated ones.
-///
-/// `store` and `log` are the IPC surface of the log and key-value stores, but
-/// `gnoblinctl store` and `gnoblinctl log` are hand-written verb trees (design/store.md,
-/// "`gnoblinctl store`"). Generating the object as well would give clap two subcommands
-/// of one name, which clap refuses in debug builds. `ipc` still reaches both objects.
-const HAND_WRITTEN: &[&str] = &["store", "log"];
-
 /// One object in the tree, as `src/tree.rs` reads it.
 struct Entry<'a> {
     command: String,
@@ -121,9 +113,7 @@ fn entries<'a>(catalog: &'a Catalog) -> Result<Vec<Entry<'a>>, Vec<String>> {
     let mut flat: Vec<(String, &'a ObjectType)> = Vec::new();
     for schema in catalog.schemas() {
         for object in &schema.objects {
-            if !HAND_WRITTEN.contains(&object.name.as_str()) {
-                flat.push((schema.namespace.to_string(), object));
-            }
+            flat.push((schema.namespace.to_string(), object));
         }
     }
 

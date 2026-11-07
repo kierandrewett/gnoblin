@@ -220,11 +220,6 @@ impl SessionSync {
         ]);
         let idle = graph.create(TypeKey::gnoblin("idle"), idle_properties)?;
         let settings = graph.create(TypeKey::gnoblin("settings"), super::settings::defaults())?;
-        // The `store` and `log` objects carry no properties: their verbs act on the caller's
-        // own store, so one object of each serves every owner and the owner is read from the
-        // connection. Nothing here needs their ids, so they are not kept.
-        graph.create(TypeKey::gnoblin("store"), Fields::new())?;
-        graph.create(TypeKey::gnoblin("log"), Fields::new())?;
         // The `layers` object carries no properties either: its one verb registers a layer
         // under the caller's own provider, which the compositor derives from the connection.
         graph.create(TypeKey::gnoblin("layers"), Fields::new())?;

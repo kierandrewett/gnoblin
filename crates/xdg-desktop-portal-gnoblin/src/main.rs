@@ -84,19 +84,16 @@ fn log_settings(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogSett
 }
 
 /// The log options for this process: the environment over the `logging` section. When the
-/// section keeps the log, the store receives every record. A store that cannot open is a
+/// section keeps the log, the log file receives every record. A file that cannot open is a
 /// problem the log reports once it is installed, and console logging still works.
 fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptions {
     let mut options = gnoblin_log::init::LogOptions::from_environment(&log_settings(logging));
-    if logging.store.unwrap_or(true) {
-        let opened = gnoblin_store::open_logs_from_settings(
-            logging.store_path.as_deref(),
-            logging.store_max_age_days,
-            logging.store_max_size_mb,
-            |key| std::env::var(key).ok(),
-        );
+    if logging.file.unwrap_or(true) {
+        let opened = gnoblin_log::file::open_from_settings(logging.dir.as_deref(), logging.max_size_mb, |key| {
+            std::env::var(key).ok()
+        });
         match opened {
-            Ok(logs) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(logs))),
+            Ok(sink) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(sink))),
             Err(problem) => options.problems.push(problem),
         }
     }

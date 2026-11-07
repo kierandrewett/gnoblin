@@ -58,9 +58,6 @@ zeroize.workspace = true
 gnoblin-config = { path = "../gnoblin-config" }
 # `[tag]` log lines, the same crate the Wayland engine logs through.
 gnoblin-log = { path = "../gnoblin-log" }
-# The log store the logging section opens: the composition root opens it, so the session
-# binary names the root and not the store.
-gnoblin-store = { path = "../gnoblin-store" }
 
 [build-dependencies]
 # The build script validates the checked-in schema once and embeds it, so the

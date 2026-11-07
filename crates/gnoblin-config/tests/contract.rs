@@ -105,7 +105,7 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
     (
         "logging",
         "0.2.0",
-        "the logging section: the log store and retention settings, loaded by gnoblin_config::logging",
+        "the logging section: the log file and console settings, loaded by gnoblin_config::logging",
     ),
     (
         "keyring",

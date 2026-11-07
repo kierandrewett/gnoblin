@@ -626,8 +626,6 @@ mod tests {
                 "request",
                 "session",
                 "settings",
-                "store",
-                "log",
                 "window",
                 "workspace",
             ]

@@ -20,7 +20,7 @@
 //! gnoblinctl [--json] <object> call <ID> <METHOD> [NAME=VALUE ...]
 //! gnoblinctl ipc dump [FILE]
 //! gnoblinctl completions <bash|zsh|fish> [--output PATH]
-//! gnoblinctl log [--store DIR] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]
+//! gnoblinctl log [--dir DIR] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]
 //!     [--since TIME] [--until TIME] [--follow [--interval DURATION]]
 //! ```
 //!
@@ -93,7 +93,6 @@ mod connection;
 mod dump;
 mod logs;
 mod output;
-mod store;
 mod tree;
 mod value;
 mod verbs;
@@ -135,7 +134,6 @@ pub fn run(
         cli::Invocation::IpcDump { source } => dump::run(&source, out, err),
         cli::Invocation::Completions { shell, output } => completions(shell, output, out, err),
         cli::Invocation::Log { request } => logs::run(&request, out, err),
-        cli::Invocation::Store { request } => store::run(&request, out, err),
         cli::Invocation::Verb {
             verb: verbs::Verb::ConfigValidate { path },
             json,

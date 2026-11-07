@@ -132,7 +132,7 @@ pub use layout::{
     LayoutSettings, configure_from_environment as configure_layouts_from_environment,
     configure_from_store as configure_layouts_from_store,
 };
-pub use log_store::{open_kv_store, open_log_store};
+pub use log_store::open_log_file;
 pub use monitors::{
     configure_from_environment as configure_monitors_from_environment,
     configure_from_store as configure_monitors_from_store,
@@ -221,21 +221,6 @@ pub struct SessionConfig {
     /// The `layout` section: which layout each workspace runs. The default floats every
     /// workspace; [`configure_layouts_from_store`] fills it from the accepted document.
     pub layouts: LayoutSettings,
-    /// The key-value store the `store` object's verbs write into, or [`None`] when it could not
-    /// open. [`configure_store_from_environment`] fills it from the `logging` section, so the log
-    /// and the keys share one directory.
-    pub kv_store: Option<gnoblin_store::Store>,
-}
-
-/// Opens the key-value store the `logging` section names and hands it to the session. A store
-/// that cannot open is logged and the session starts without it; the verbs then complete
-/// `store-unavailable` rather than the session refusing to start.
-pub fn configure_store_from_environment(config: &mut SessionConfig) {
-    let logging = logging_from_environment().unwrap_or_default();
-    match open_kv_store(&logging) {
-        Ok(store) => config.kv_store = Some(store),
-        Err(problem) => log::warn!(area = "store", "{problem}; the store verbs are unavailable"),
-    }
 }
 
 /// A handle that stops a running session from another thread.
@@ -322,7 +307,7 @@ impl Compositor {
     /// [`Error::BackendRefused`] names a backend this build does not carry, and
     /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
     /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
-    pub fn run(mut config: SessionConfig) -> Result<(), Error> {
+    pub fn run(config: SessionConfig) -> Result<(), Error> {
         // The schema is embedded at build time (see `schema.rs`), so a failure here is a
         // problem with this build rather than with the host configuration.
         let catalog = schema::catalog().map_err(Error::Schema)?;
@@ -409,7 +394,6 @@ impl Compositor {
             config.privileged,
             config.guardian,
             &config.extensions,
-            config.kv_store.take(),
         )
         .map_err(Error::Ipc)?;
 

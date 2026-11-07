@@ -28,10 +28,8 @@ gnoblin-client = { path = "../gnoblin-client" }
 # are `gnoblin-model`'s, so a setting is one type from the graph to the wire.
 gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-types = { path = "../gnoblin-types" }
-# The log's installer, so the portal's refusals reach the console and the log store.
+# The log's installer, so the portal's refusals reach the console and the log file.
 gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
-# The log store the portal's records reach, owned by `gnoblin-store`.
-gnoblin-store = { path = "../gnoblin-store" }
 # The `logging` section the binary reads before it installs the log.
 gnoblin-config = { path = "../gnoblin-config" }
 # The IPC version the handshake advertises is the schema's, and the wire crate is where

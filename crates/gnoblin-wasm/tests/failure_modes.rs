@@ -118,7 +118,9 @@ fn module(start: &str, on_event: &str) -> String {
         r#"
 (component
   (import "gnoblin:ipc/gnoblin@{PACKAGE}" (instance $api
-    (type $ec (enum "corrupt" "database" "denied" "disk-full" "idle-unavailable" "internal" "invalid-key" "invalid-name" "layer-refused" "migration-failed" "no-store-owner" "not-locked" "power-missing" "quota-exceeded" "read-only" "refused" "store-unavailable" "too-many-inhibitors" "too-many-passes" "undecodable" "unknown-effect-kind" "unknown-layout" "unknown-member" "unknown-object" "value-not-storable" "value-too-large"))
+    (type $ec (enum "denied" "idle-unavailable" "layer-refused" "not-locked" "power-missing"
+      "refused" "too-many-inhibitors" "too-many-passes" "unknown-effect-kind" "unknown-layout"
+      "unknown-member" "unknown-object"))
     (export "error-code" (type $ecx (eq $ec)))
     (export "operation" (type $op (sub resource)))
     (export "window" (type $w (sub resource)))
@@ -305,7 +307,7 @@ fn a_module_that_calls_an_undeclared_method_is_denied_once() {
       (global.set $window (i32.load (i32.const 68)))
       (call $focus (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))
-      (if (i32.ne (i32.load (i32.const 100)) (i32.const 2)) (then (unreachable)))
+      (if (i32.ne (i32.load (i32.const 100)) (i32.const 0)) (then (unreachable)))
       (call $focus (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))"#,
         "      (nop)",
@@ -345,7 +347,7 @@ fn a_module_that_calls_kill_without_the_grant_is_denied_once() {
       (global.set $window (i32.load (i32.const 68)))
       (call $kill (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))
-      (if (i32.ne (i32.load (i32.const 100)) (i32.const 2)) (then (unreachable)))
+      (if (i32.ne (i32.load (i32.const 100)) (i32.const 0)) (then (unreachable)))
       (call $kill (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))"#,
         "      (nop)",
@@ -378,12 +380,12 @@ fn a_module_that_calls_kill_without_the_grant_is_denied_once() {
 #[test]
 fn a_module_that_asks_for_a_missing_layers_object_is_refused_unknown_object() {
     // Window 1 is a window, not a layers object, so the mirror refuses the lookup.
-    // `unknown-object` is index 23 in the sorted `error-code` enum; the module traps
+    // `unknown-object` is index 11 in the sorted `error-code` enum; the module traps
     // unless the result is the error arm carrying exactly that code.
     let looking = compile(&module(
         r#"      (call $lbyid (i64.const 1) (i32.const 64))
       (if (i32.ne (i32.load8_u (i32.const 64)) (i32.const 1)) (then (unreachable)))
-      (if (i32.ne (i32.load (i32.const 68)) (i32.const 23)) (then (unreachable)))"#,
+      (if (i32.ne (i32.load (i32.const 68)) (i32.const 11)) (then (unreachable)))"#,
         "      (nop)",
     ));
 

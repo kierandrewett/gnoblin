@@ -56,7 +56,6 @@ members = [
     "crates/gnoblin-layers",
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
-    "crates/gnoblin-store",
     "crates/gnoblin-lua",
     "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-lua-pattern",

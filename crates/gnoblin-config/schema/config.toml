@@ -2383,7 +2383,7 @@ carried = true
 [[section]]
 key = "logging"
 type = "Logging"
-doc = "What the process logs, where the database is, and how long it is kept."
+doc = "What the process logs, and where the log file is kept."
 
 [[section.field]]
 key = "console"
@@ -2404,39 +2404,29 @@ doc = "Which events are recorded, by level and by target."
 since = "0.2.0"
 
 [[section.field]]
-key = "store"
+key = "file"
 kind = "bool"
 accepted = "a boolean"
 default = { bool = true }
-doc = "Whether events are written to the log store."
+doc = "Whether events are appended to gnoblin.jsonl in the log directory."
 since = "0.2.0"
 
 [[section.field]]
-key = "store-path"
+key = "dir"
 kind = "text"
 accepted = "a directory path, or an empty string for the default"
 default = { text = "" }
-doc = "The store directory, which holds log.sqlite3. Empty means the state directory's gnoblin/store."
+doc = "The log directory, which holds gnoblin.jsonl. Empty means the state directory's gnoblin/log."
 since = "0.2.0"
 
 [[section.field]]
-key = "store-max-age-days"
-kind = "int"
-min = 0
-max = 36500
-accepted = "an integer from 0 to 36500; 0 keeps every record"
-default = { int = 0 }
-doc = "Delete records older than this many days when the store opens."
-since = "0.2.0"
-
-[[section.field]]
-key = "store-max-size-mb"
+key = "max-size-mb"
 kind = "int"
 min = 0
 max = 1048576
 accepted = "an integer from 0 to 1048576; 0 means no limit"
 default = { int = 0 }
-doc = "Delete the oldest records when the database file exceeds this many megabytes."
+doc = "Rotate gnoblin.jsonl when a batch would take it past this many megabytes. Three rotated files are kept as gnoblin.jsonl.1 to .3."
 since = "0.2.0"
 
 [[section]]

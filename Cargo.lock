@@ -1526,7 +1526,6 @@ dependencies = [
  "gnoblin-render",
  "gnoblin-render-frame",
  "gnoblin-schema",
- "gnoblin-store",
  "gnoblin-types",
  "gnoblin-wayland",
  "gnoblin-wm",
@@ -1980,15 +1979,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-store"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-log",
- "gnoblin-model",
- "rusqlite",
-]
-
-[[package]]
 name = "gnoblin-testkit"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2084,7 +2074,6 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
- "gnoblin-store",
  "gnoblin-testkit",
  "prost",
  "serde_json",
@@ -4787,7 +4776,6 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
- "gnoblin-store",
  "gnoblin-types",
  "zbus",
  "zeroize",
