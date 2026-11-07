@@ -68,7 +68,7 @@ use rustix::process::{Pid, Signal as ProcessSignal};
 
 use crate::effect::{Effect, Level};
 use crate::environment::{EnvTarget, Environment, InheritedEnvironment};
-use crate::event::{Event, EventKind, ExitStatus, ShutdownReason};
+use crate::event::{AutostartEntry, Event, EventKind, ExitStatus, ShutdownReason};
 use crate::guardian::{Guardian, Rules};
 use crate::ids::ChildId;
 use crate::plan::{Backoff, ChildKind, ChildSpec, Plan, Restart};
@@ -663,6 +663,9 @@ fn supervise_child(
     let mut lines = std::io::BufRead::lines(std::io::BufReader::new(reader));
     let mut ready = false;
     let mut environment: Vec<(String, String)> = Vec::new();
+    // The autostart lines of a revision arrive before its `config-accepted`, so they wait here.
+    // A rejection, or a line for another revision, discards them.
+    let mut pending: Option<(u64, Vec<AutostartEntry>)> = None;
     while let Some(Ok(line)) = lines.next() {
         match report::parse(&line) {
             report::Line::Ready => {
@@ -685,13 +688,30 @@ fn supervise_child(
                     ready = false;
                 }
             }
+            report::Line::Autostart {
+                revision,
+                name,
+                command,
+            } => {
+                if !matches!(&pending, Some((pending_revision, _)) if *pending_revision == revision) {
+                    pending = Some((revision, Vec::new()));
+                }
+                if let Some((_, entries)) = pending.as_mut() {
+                    entries.push(AutostartEntry { name, command });
+                }
+            }
             report::Line::ConfigAccepted { revision } => {
+                let autostart = match pending.take() {
+                    Some((pending_revision, entries)) if pending_revision == revision => entries,
+                    _ => Vec::new(),
+                };
                 let _ = events.send(LoopWake::Event(Event::new(
                     tick(),
-                    EventKind::ConfigAccepted { revision },
+                    EventKind::ConfigAccepted { revision, autostart },
                 )));
             }
             report::Line::ConfigRejected { revision, diagnostic } => {
+                pending = None;
                 let _ = events.send(LoopWake::Event(Event::new(
                     tick(),
                     EventKind::ConfigRejected { revision, diagnostic },

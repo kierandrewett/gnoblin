@@ -180,7 +180,7 @@ impl Guardian {
                 status,
             } => self.exited(child, generation, status, now, &mut effects),
             EventKind::Shutdown { reason } => self.end(reason, now, &mut effects),
-            EventKind::ConfigAccepted { revision } => self.config_accepted(revision, &mut effects),
+            EventKind::ConfigAccepted { revision, .. } => self.config_accepted(revision, &mut effects),
             EventKind::ConfigRejected { revision, diagnostic } => {
                 self.config_rejected(revision, &diagnostic, &mut effects);
             }

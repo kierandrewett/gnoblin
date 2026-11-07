@@ -352,6 +352,7 @@ fn generate(rng: &mut Rng, guardian: &Guardian, now: &mut u64) -> Event {
             if rng.below(2) == 0 {
                 EventKind::ConfigAccepted {
                     revision: rng.below(9) + 1,
+                    autostart: Vec::new(),
                 }
             } else {
                 EventKind::ConfigRejected {

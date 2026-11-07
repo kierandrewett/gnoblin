@@ -595,7 +595,13 @@ fn safe_mode_is_requested_after_the_configured_failed_starts() {
     assert_eq!(next.session(), SessionState::Up);
     assert_eq!(next.recovery().failed_starts, 0);
     assert!(next.recovery().safe_mode);
-    next.apply(at(10, EventKind::ConfigAccepted { revision: 4 }));
+    next.apply(at(
+        10,
+        EventKind::ConfigAccepted {
+            revision: 4,
+            autostart: Vec::new(),
+        },
+    ));
     assert!(!next.recovery().safe_mode, "an accepted configuration leaves safe mode");
 }
 
@@ -603,7 +609,13 @@ fn safe_mode_is_requested_after_the_configured_failed_starts() {
 fn a_rejected_configuration_keeps_the_last_good_revision() {
     let mut guardian = guardian();
     guardian.apply(at(0, EventKind::Start));
-    guardian.apply(at(1, EventKind::ConfigAccepted { revision: 7 }));
+    guardian.apply(at(
+        1,
+        EventKind::ConfigAccepted {
+            revision: 7,
+            autostart: Vec::new(),
+        },
+    ));
     let effects = guardian.apply(at(
         2,
         EventKind::ConfigRejected {

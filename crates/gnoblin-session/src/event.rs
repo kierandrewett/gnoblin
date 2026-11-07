@@ -60,10 +60,12 @@ pub enum EventKind {
         /// Why the session is ending.
         reason: ShutdownReason,
     },
-    /// The runtime committed a configuration document.
+    /// The runtime committed a configuration document, with the autostart entries it enables.
     ConfigAccepted {
         /// The revision it committed.
         revision: u64,
+        /// The enabled autostart entries of that revision, in the runtime's order.
+        autostart: Vec<AutostartEntry>,
     },
     /// The runtime rejected a configuration document; the previous accepted
     /// document stays in force.
@@ -78,6 +80,15 @@ pub enum EventKind {
         /// Why the saved document was unusable.
         reason: String,
     },
+}
+
+/// One enabled autostart entry of an accepted configuration revision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutostartEntry {
+    /// The entry's name, the key of its table in the configuration.
+    pub name: String,
+    /// The program and its arguments, run directly without a shell.
+    pub command: Vec<String>,
 }
 
 /// How a child's process ended.
