@@ -8,12 +8,13 @@
 
 use std::sync::Arc;
 
-use gnoblin_log::{debug_in, warn_in};
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::virtual_keyboard::{VirtualKeyboardBackend, VirtualKeyboardHandler, VirtualKeyboardManagerState};
 
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
+
+use crate::log;
 
 /// Creates the `zwp_virtual_keyboard_manager_v1` global.
 pub(crate) fn virtual_keyboard_global(display: &DisplayHandle, access: &Arc<Access>) -> VirtualKeyboardManagerState {
@@ -36,12 +37,9 @@ impl VirtualKeyboardHandler for State {
                 self.dispatch_key(u32::from(event.key_code()), state, serial, event.time());
             }
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {
-                debug_in!("wayland", "[virtual-keyboard] the device set changed");
+                log::debug!("[virtual-keyboard] the device set changed");
             }
-            _ => warn_in!(
-                "wayland",
-                "[virtual-keyboard] a virtual keyboard sent an event it cannot send"
-            ),
+            _ => log::warn!("[virtual-keyboard] a virtual keyboard sent an event it cannot send"),
         }
     }
 }

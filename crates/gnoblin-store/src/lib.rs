@@ -36,6 +36,8 @@ pub use query::{Order, Query};
 
 use kv::Kv;
 
+gnoblin_log::logger!(log = "store");
+
 /// The default per-namespace quota: 16 MiB across every key and value in one file.
 pub const DEFAULT_QUOTA: u64 = 16 * 1024 * 1024;
 

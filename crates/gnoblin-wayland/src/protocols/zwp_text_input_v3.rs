@@ -23,7 +23,6 @@
 
 use std::collections::HashSet;
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_v3::{
     ContentHint, ContentPurpose,
 };
@@ -32,6 +31,8 @@ use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::text_input::{TextInputActivation, TextInputManagerState};
 
 use crate::State;
+
+use crate::log;
 
 /// Creates the `zwp_text_input_manager_v3` global.
 pub(crate) fn text_input_global(display: &DisplayHandle) -> TextInputManagerState {
@@ -70,8 +71,7 @@ pub(crate) fn announce_new_text_inputs(state: &mut State) {
 
 impl TextInputActivation for State {
     fn activated(&mut self, content_type: Option<(ContentHint, ContentPurpose)>) {
-        debug_in!("wayland",
-            hint = ?content_type.map(|(hint, _)| hint),
+        log::debug!(hint = ?content_type.map(|(hint, _)| hint),
             "[text-input] a client enabled its text input"
         );
         // A client enables a text input only after it was told it has focus, and the sweep
@@ -80,6 +80,6 @@ impl TextInputActivation for State {
     }
 
     fn deactivated(&mut self) {
-        debug_in!("wayland", "[text-input] the active text input was disabled");
+        log::debug!("[text-input] the active text input was disabled");
     }
 }

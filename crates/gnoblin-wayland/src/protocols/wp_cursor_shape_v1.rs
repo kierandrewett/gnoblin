@@ -24,11 +24,12 @@
 //!    the same [`smithay::input::pointer::CursorImageStatus`], so the last request wins
 //!    by construction rather than by two code paths agreeing.
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 
 use crate::State;
+
+use crate::log;
 
 /// Creates the `wp_cursor_shape_manager_v1` global.
 pub(crate) fn global(display: &DisplayHandle) -> CursorShapeManagerState {
@@ -38,8 +39,7 @@ pub(crate) fn global(display: &DisplayHandle) -> CursorShapeManagerState {
 impl State {
     /// Records the cursor a client asked for.
     pub(crate) fn set_cursor_image(&mut self, image: smithay::input::pointer::CursorImageStatus) {
-        debug_in!("wayland",
-            shape = ?match &image {
+        log::debug!(shape = ?match &image {
                 smithay::input::pointer::CursorImageStatus::Named(icon) => Some(*icon),
                 _ => None,
             },

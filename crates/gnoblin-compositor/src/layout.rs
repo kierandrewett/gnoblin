@@ -26,7 +26,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use gnoblin_config::{Layout, SearchPaths, Store};
-use gnoblin_log::{debug_in, warn_in};
+
 use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, default_prefix, installed_module_dir};
 use gnoblin_types::WorkspaceId;
 use gnoblin_wayland::LayoutControl;
@@ -35,6 +35,8 @@ use gnoblin_wm::layout::{
 };
 
 use crate::SessionConfig;
+
+use crate::log;
 
 /// The layout name that floats every window. It is never loaded as a module.
 pub const FLOATING: &str = "floating";
@@ -106,10 +108,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             // The user root is the directory the accepted document was read from, so a
             // `require` in that document and the layouts it names resolve from one place.
             settings.config_dir = source.parent().map(Path::to_path_buf);
-            debug_in!("compositor", default = %settings.default, "[layout] loaded from the last accepted configuration");
+            log::debug!(default = %settings.default, "[layout] loaded from the last accepted configuration");
             config.layouts = settings;
         }
-        Err(error) => warn_in!("compositor", %error, "[layout] configuration not readable; every workspace floats"),
+        Err(error) => log::warn!(%error, "[layout] configuration not readable; every workspace floats"),
     }
 }
 
@@ -119,15 +121,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// file there is no accepted document, so every workspace floats.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug_in!(
-            "compositor",
-            "[layout] no state directory is set; every workspace floats"
-        );
+        log::debug!("[layout] no state directory is set; every workspace floats");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => debug_in!("compositor", %error, "[layout] no configuration file; every workspace floats"),
+        Err(error) => log::debug!(%error, "[layout] no configuration file; every workspace floats"),
     }
 }
 
@@ -166,7 +165,7 @@ impl WorkspaceLayouts {
             .collect();
         for name in names {
             if let Err(failure) = host.register(name, name, Data::Table(BTreeMap::new())) {
-                warn_in!("compositor", layout = name, reason = ?failure.reason, message = %failure.message, "[layout] layout cannot be loaded; workspaces that use it float");
+                log::warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] layout cannot be loaded; workspaces that use it float");
                 failed.insert(name.to_owned());
             }
         }
@@ -227,7 +226,7 @@ impl WorkspaceLayouts {
         match host.register(name, name, Data::Table(BTreeMap::new())) {
             Ok(()) => Ok(()),
             Err(failure) => {
-                warn_in!("compositor", layout = name, reason = ?failure.reason, message = %failure.message, "[layout] runtime layout cannot be loaded");
+                log::warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] runtime layout cannot be loaded");
                 if failure.message.contains("not found") {
                     return Err(format!("unknown layout: `{name}` has no layout module"));
                 }

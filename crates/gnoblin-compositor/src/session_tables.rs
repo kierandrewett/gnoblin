@@ -9,9 +9,10 @@
 use std::path::Path;
 
 use gnoblin_config::{SearchPaths, Store};
-use gnoblin_log::{debug_in, warn_in};
 
 use crate::SessionConfig;
+
+use crate::log;
 
 /// Sets the session tables of `config.wayland` from the last accepted configuration in
 /// `store`, read from `source`.
@@ -21,13 +22,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             config.wayland.protocols = stored.config.protocols.unwrap_or_default();
             config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
             config.wayland.input_sources = stored.config.input_sources;
-            debug_in!(
-                "compositor",
-                "[session tables] loaded from the last accepted configuration"
-            );
+            log::debug!("[session tables] loaded from the last accepted configuration");
         }
         Err(error) => {
-            warn_in!("compositor", %error, "[session tables] configuration not readable; the defaults are used");
+            log::warn!(%error, "[session tables] configuration not readable; the defaults are used");
         }
     }
 }
@@ -37,16 +35,13 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug_in!(
-            "compositor",
-            "[session tables] no state directory is set; the defaults are used"
-        );
+        log::debug!("[session tables] no state directory is set; the defaults are used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
-            debug_in!("compositor", %error, "[session tables] no configuration file; the defaults are used");
+            log::debug!(%error, "[session tables] no configuration file; the defaults are used");
         }
     }
 }

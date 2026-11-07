@@ -10,11 +10,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_client::wire;
-use gnoblin_log::debug_in;
+
 use gnoblin_proto::{Envelope, Kind};
 use gnoblin_types::ClientId;
 
 use super::requests::FrameDelivery;
+
+use crate::log;
 
 /// The wire code a caller gets when the provider of its extension is not connected.
 pub(crate) const PROVIDER_GONE: &str = "provider-gone";
@@ -151,16 +153,14 @@ impl ExtensionRouter {
         match &envelope.kind {
             Some(Kind::Reply(_)) | Some(Kind::Error(_)) => {
                 let Some(pending) = self.pending.remove(&envelope.request_id) else {
-                    debug_in!(
-                        "compositor",
+                    log::debug!(
                         id = envelope.request_id,
                         "[ipc] a provider answered a request nobody is waiting for"
                     );
                     return Vec::new();
                 };
                 if pending.provider != provider || pending.namespace != envelope.namespace {
-                    debug_in!(
-                        "compositor",
+                    log::debug!(
                         id = envelope.request_id,
                         "[ipc] a provider answered a request addressed to another"
                     );
@@ -234,7 +234,7 @@ impl ExtensionRouter {
 /// Anything that is not a request has no one waiting for it, so it is dropped.
 fn refuse(client: ClientId, envelope: &Envelope, code: &str, message: &str) -> Vec<FrameDelivery> {
     if !matches!(&envelope.kind, Some(Kind::Request(_))) {
-        debug_in!("compositor", code, message, "[ipc] an extension frame was refused");
+        log::debug!(code, message, "[ipc] an extension frame was refused");
         return Vec::new();
     }
     vec![FrameDelivery {

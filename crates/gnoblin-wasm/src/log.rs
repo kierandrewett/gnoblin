@@ -16,6 +16,8 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use crate::host_log;
+
 /// How important a line is.
 ///
 /// The four levels are the module ABI's words: a module passes one and the host
@@ -97,10 +99,10 @@ impl Sink for LogSink {
         let module = record.module;
         let message = record.message;
         match record.level {
-            Level::Error => gnoblin_log::error_in!("wasm", module = module, "{message}"),
-            Level::Warn => gnoblin_log::warn_in!("wasm", module = module, "{message}"),
-            Level::Info => gnoblin_log::info_in!("wasm", module = module, "{message}"),
-            Level::Debug => gnoblin_log::debug_in!("wasm", module = module, "{message}"),
+            Level::Error => host_log::error!(module = module, "{message}"),
+            Level::Warn => host_log::warn!(module = module, "{message}"),
+            Level::Info => host_log::info!(module = module, "{message}"),
+            Level::Debug => host_log::debug!(module = module, "{message}"),
         }
     }
 }

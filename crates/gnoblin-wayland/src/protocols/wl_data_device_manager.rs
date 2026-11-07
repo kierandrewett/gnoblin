@@ -47,13 +47,14 @@
 
 use std::os::unix::io::OwnedFd;
 
-use gnoblin_log::{debug_in, trace_in};
 use smithay::input::Seat;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::selection::data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler};
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
 
 use crate::State;
+
+use crate::log;
 
 /// The selection targets the session holds a source for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,8 +112,8 @@ impl SelectionHandler for State {
         // would be asking a resource that may be gone.
         let mime_types = source.as_ref().map(SelectionSource::mime_types);
         match &mime_types {
-            Some(mime_types) => debug_in!("wayland", ?target, ?mime_types, "[selection] set"),
-            None => debug_in!("wayland", ?target, "[selection] cleared"),
+            Some(mime_types) => log::debug!(?target, ?mime_types, "[selection] set"),
+            None => log::debug!(?target, "[selection] cleared"),
         }
         self.selections.set(target, mime_types);
         self.publish();
@@ -136,12 +137,7 @@ impl SelectionHandler for State {
         // the source's own client, which is what keeps the bytes out of the compositor.
         // This path is a compositor-set selection, and this slice sets none, so the
         // honest answer is end of file — dropping the write end is exactly that.
-        trace_in!(
-            "wayland",
-            ?target,
-            mime_type,
-            "[selection] no compositor selection to send"
-        );
+        log::trace!(?target, mime_type, "[selection] no compositor selection to send");
         drop(fd);
     }
 }

@@ -101,7 +101,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use gnoblin_log::info_in;
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 
 pub use backend::Backend;
@@ -146,6 +145,8 @@ pub use xwayland::{
 use gnoblin_backend::nested::NestedError;
 use gnoblin_model::ModelError;
 use gnoblin_schema::SchemaError;
+
+gnoblin_log::logger!(log = "compositor");
 
 /// How a compositor session is configured.
 ///
@@ -370,8 +371,7 @@ impl Compositor {
             ("WAYLAND_DISPLAY".to_owned(), display_name.clone()),
             ("GNOBLIN_IPC_SOCKET".to_owned(), path.display().to_string()),
         ]);
-        info_in!("compositor",
-            socket = %path.display(),
+        log::info!(socket = %path.display(),
             display = %display_name,
             version = %version,
             backend = backend_name,

@@ -20,13 +20,14 @@
 //!    changes nothing about placement or focus.
 //! 4. **A description shown.** Not exposed: only the tag reaches the snapshot.
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::xdg_toplevel_tag::{XdgToplevelTagHandler, XdgToplevelTagManager};
 
 use crate::State;
+
+use crate::log;
 
 /// Creates the `xdg_toplevel_tag_manager_v1` global.
 pub(crate) fn global(display: &DisplayHandle) -> XdgToplevelTagManager {
@@ -35,10 +36,10 @@ pub(crate) fn global(display: &DisplayHandle) -> XdgToplevelTagManager {
 
 impl XdgToplevelTagHandler for State {
     fn set_tag(&mut self, toplevel: XdgToplevel, tag: String) {
-        debug_in!("wayland", toplevel = %toplevel.id(), %tag, "[xdg-toplevel-tag] tag set; read on the next toplevel commit");
+        log::debug!(toplevel = %toplevel.id(), %tag, "[xdg-toplevel-tag] tag set; read on the next toplevel commit");
     }
 
     fn set_description(&mut self, toplevel: XdgToplevel, description: String) {
-        debug_in!("wayland", toplevel = %toplevel.id(), %description, "[xdg-toplevel-tag] description set");
+        log::debug!(toplevel = %toplevel.id(), %description, "[xdg-toplevel-tag] description set");
     }
 }

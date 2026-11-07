@@ -32,6 +32,8 @@ use crate::query::{Order, Query};
 use crate::schema::{self, STEPS};
 use crate::{Options, State, StoreError};
 
+use crate::log;
+
 /// How many read connections a namespace keeps warm. More readers than this are opened on demand
 /// and closed when they are returned, so an idle namespace holds only a few file handles.
 const READER_POOL: usize = 4;
@@ -260,11 +262,7 @@ impl Kv {
             }
             Err(error) => {
                 if matches!(error, StoreError::DiskFull(_)) && !self.disk_full_logged.swap(true, Ordering::Relaxed) {
-                    gnoblin_log::warn_in!(
-                        "store",
-                        "disk full writing {}: the batch was rolled back",
-                        self.path.display()
-                    );
+                    log::warn!("disk full writing {}: the batch was rolled back", self.path.display());
                 }
                 Err(error)
             }
@@ -714,7 +712,7 @@ fn quarantine(path: &Path, reason: &str) {
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_default();
     let target = path.with_file_name(format!("{stem}.corrupt-{stamp}"));
-    gnoblin_log::error_in!("store", "quarantining {}: {reason}", path.display());
+    log::error!("quarantining {}: {reason}", path.display());
     for suffix in ["", "-wal", "-shm"] {
         let from = PathBuf::from(format!("{}{suffix}", path.display()));
         if !from.exists() {
@@ -722,7 +720,7 @@ fn quarantine(path: &Path, reason: &str) {
         }
         let to = PathBuf::from(format!("{}{suffix}", target.display()));
         if let Err(error) = std::fs::rename(&from, &to) {
-            gnoblin_log::error_in!("store", "cannot move {} aside: {error}", from.display());
+            log::error!("cannot move {} aside: {error}", from.display());
         }
     }
 }

@@ -144,3 +144,5 @@ pub use host::{Host, MAX_LOADS, PumpReport, RunReport};
 pub use gnoblin_lua_sandbox::Limits;
 /// The runtime role and the error it ends with.
 pub use role::{RoleError, RoleRunner};
+
+gnoblin_log::logger!(log = "lua");

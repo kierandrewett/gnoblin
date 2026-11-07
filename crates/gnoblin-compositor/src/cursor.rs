@@ -9,10 +9,12 @@ use std::path::Path;
 
 use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, ProviderKind};
 use gnoblin_config::{CursorProvider, SearchPaths, Store};
-use gnoblin_log::{debug_in, warn_in};
+
 use gnoblin_wayland::CursorSettings;
 
 use crate::SessionConfig;
+
+use crate::log;
 
 /// Sets `config.wayland.cursor` from the last accepted configuration in `store`, read from
 /// `source`.
@@ -21,10 +23,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.cursor.clone().unwrap_or_default();
             let settings = cursor_settings(section);
-            debug_in!("compositor", theme = %settings.theme, size = settings.size, "[cursor] loaded from the last accepted configuration");
+            log::debug!(theme = %settings.theme, size = settings.size, "[cursor] loaded from the last accepted configuration");
             config.wayland.cursor = settings;
         }
-        Err(error) => warn_in!("compositor", %error, "[cursor] configuration not readable; the default cursor is used"),
+        Err(error) => log::warn!(%error, "[cursor] configuration not readable; the default cursor is used"),
     }
 }
 
@@ -33,15 +35,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the default cursor is used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug_in!(
-            "compositor",
-            "[cursor] no state directory is set; the default cursor is used"
-        );
+        log::debug!("[cursor] no state directory is set; the default cursor is used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => debug_in!("compositor", %error, "[cursor] no configuration file; the default cursor is used"),
+        Err(error) => log::debug!(%error, "[cursor] no configuration file; the default cursor is used"),
     }
 }
 

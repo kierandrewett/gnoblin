@@ -55,7 +55,6 @@
 //!    output drops its reservation and its surfaces' rectangles instead of leaving a
 //!    strip reserved for ever: `a_disconnected_output_reserves_nothing`.
 
-use gnoblin_log::{debug_in, trace_in};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -70,6 +69,8 @@ use gnoblin_types::{Edge, Insets, OutputId, Rect};
 
 use crate::State;
 use crate::observation::ObservedLayer;
+
+use crate::log;
 
 impl WlrLayerShellHandler for State {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
@@ -87,8 +88,7 @@ impl WlrLayerShellHandler for State {
     fn ack_configure(&mut self, surface: WlSurface, configure: LayerSurfaceConfigure) {
         // Like a toplevel, a layer surface's acknowledgement is its own business:
         // the next commit carries the state and nothing waits on it here.
-        trace_in!("wayland",
-            serial = ?configure.serial,
+        log::trace!(serial = ?configure.serial,
             size = ?configure.state.size,
             surface = ?surface.id(),
             "[layer] configure acknowledged"
@@ -203,8 +203,7 @@ impl State {
             .and_then(SmithayOutput::from_resource)
             .and_then(|output| self.output_id_of(&output))
             .or_else(|| self.output_ids().first().copied());
-        debug_in!("wayland",
-            namespace = %namespace,
+        log::debug!(namespace = %namespace,
             layer = layer_name(layer),
             surface = ?surface.wl_surface().id(),
             "[layer] created"
@@ -241,7 +240,7 @@ impl State {
             // No output to place it on: the surface keeps its place in the list and is
             // configured by the next output that connects, which is what a session
             // starting before its first output does.
-            debug_in!("wayland", "[layer] no output to place a layer surface on yet");
+            log::debug!("[layer] no output to place a layer surface on yet");
             return;
         };
         let rect = place(monitor, &cached);
@@ -261,8 +260,7 @@ impl State {
         entry.keyboard = cached.keyboard_interactivity;
         entry.rect = rect;
         entry.mapped = crate::state::has_buffer(surface.wl_surface());
-        debug_in!("wayland",
-            namespace = %entry.namespace,
+        log::debug!(namespace = %entry.namespace,
             ?rect,
             mapped = entry.mapped,
             "[layer] configured"
@@ -284,7 +282,7 @@ impl State {
             return;
         };
         let entry = self.layers.entries.remove(index);
-        debug_in!("wayland", namespace = %entry.namespace, "[layer] destroyed");
+        log::debug!(namespace = %entry.namespace, "[layer] destroyed");
         // The strip goes back with the surface: a bar that exits must not keep the
         // work area short for the rest of the session.
         if entry.surface.wl_surface() == wl_surface {
@@ -306,7 +304,7 @@ impl State {
         popup: &smithay::wayland::shell::xdg::PopupSurface,
     ) {
         if let Err(error) = self.popups.track_popup(smithay::desktop::PopupKind::Xdg(popup.clone())) {
-            debug_in!("wayland", ?error, "[layer] a popup could not be tracked");
+            log::debug!(?error, "[layer] a popup could not be tracked");
         }
     }
 
@@ -354,7 +352,7 @@ impl State {
                 output: policy,
                 reserved,
             });
-            debug_in!("wayland", ?reserved, "[layer] reserved");
+            log::debug!(?reserved, "[layer] reserved");
             self.apply(effects);
         }
         // An output that disconnected keeps no reservation.

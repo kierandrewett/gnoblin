@@ -15,12 +15,14 @@ use std::path::Path;
 
 use gnoblin_config::extensions::{ExtensionEntry, ExtensionRefusal, LoadedExtensions, load_extensions};
 use gnoblin_config::{SearchPaths, Store, StoreError};
-use gnoblin_log::{debug_in, info_in, warn_in};
+
 use gnoblin_proto::Grant;
 
 use crate::SessionConfig;
 use crate::ipc::ExtensionRoute;
 use crate::schema::catalog;
+
+use crate::log;
 
 /// What the accepted extensions become in one session.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -93,21 +95,18 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     let stored = match store.load(source) {
         Ok(stored) => stored,
         Err(StoreError::Io { error, .. }) if error.kind() == io::ErrorKind::NotFound => {
-            debug_in!(
-                "compositor",
-                "[extensions] no accepted configuration yet; starting without extensions"
-            );
+            log::debug!("[extensions] no accepted configuration yet; starting without extensions");
             return;
         }
         Err(error) => {
-            warn_in!("compositor", %error, "[extensions] the last accepted configuration cannot be read; starting without extensions");
+            log::warn!(%error, "[extensions] the last accepted configuration cannot be read; starting without extensions");
             return;
         }
     };
     let catalog = match catalog() {
         Ok(catalog) => catalog,
         Err(error) => {
-            warn_in!("compositor", %error, "[extensions] the stock schema cannot be read; starting without extensions");
+            log::warn!(%error, "[extensions] the stock schema cannot be read; starting without extensions");
             return;
         }
     };
@@ -121,18 +120,17 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     let plan = plan(loaded, &privileged);
 
     for refusal in &plan.refused {
-        warn_in!("compositor", namespace = %refusal.namespace, reason = %refusal.reason, "[extensions] {refusal}");
+        log::warn!(namespace = %refusal.namespace, reason = %refusal.reason, "[extensions] {refusal}");
     }
     for (role, grant) in plan.grants {
         match config.privileged.iter_mut().find(|connection| connection.role == role) {
             Some(connection) => connection.extension_grants.push(grant),
             None => {
-                warn_in!("compositor", role = %role, "[extensions] a grant names a role with no privileged connection")
+                log::warn!(role = %role, "[extensions] a grant names a role with no privileged connection")
             }
         }
     }
-    info_in!(
-        "compositor",
+    log::info!(
         loaded = plan.routes.len(),
         refused = plan.refused.len(),
         "[extensions] loaded from the last accepted configuration"
@@ -146,16 +144,13 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// file is found, there is no accepted document either, so nothing is loaded.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        warn_in!(
-            "compositor",
-            "[extensions] no state directory is set; starting without extensions"
-        );
+        log::warn!("[extensions] no state directory is set; starting without extensions");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
-            debug_in!("compositor", %error, "[extensions] no configuration file; starting without extensions")
+            log::debug!(%error, "[extensions] no configuration file; starting without extensions")
         }
     }
 }

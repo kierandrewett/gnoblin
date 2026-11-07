@@ -25,7 +25,6 @@
 //! `maximise_and_fullscreen_reach_the_window_manager` and
 //! `a_request_for_a_closed_window_does_nothing`.
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::ClientId as ClientKey;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -36,6 +35,8 @@ use gnoblin_types::{OutputId, WindowId};
 
 use super::{ext_foreign_toplevel_list_v1 as ext, zwlr_foreign_toplevel_management_v1 as wlr};
 use crate::State;
+
+use crate::log;
 
 /// The state flags of a window, as the window manager states them: one set, not a list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -186,7 +187,7 @@ impl State {
                 let entry = self.foreign_toplevels.entries.remove(index);
                 wlr::send_closed(&entry);
                 self.foreign_toplevel_list_state.remove_toplevel(&entry.ext);
-                debug_in!("wayland", %window, "[toplevel] closed");
+                log::debug!(%window, "[toplevel] closed");
             }
         }
 

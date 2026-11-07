@@ -52,7 +52,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::xdg::foreign::zv2::server::{
     zxdg_exported_v2::{self, ZxdgExportedV2},
     zxdg_exporter_v2::{self, ZxdgExporterV2},
@@ -68,6 +67,8 @@ use smithay::wayland::shell::{is_toplevel_equivalent, is_valid_parent};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use crate::State;
+
+use crate::log;
 
 /// The version of `zxdg_exporter_v2` and `zxdg_importer_v2` this compositor serves.
 pub const VERSION: u32 = 1;
@@ -249,7 +250,7 @@ fn revoke_export(state: &mut State, handle: &str) {
         return;
     }
     let parent = export.surface.clone();
-    debug_in!("wayland", handle = %handle, "[xdg-foreign] an export was revoked");
+    log::debug!(handle = %handle, "[xdg-foreign] an export was revoked");
 
     let importers: Vec<ObjectId> = state
         .xdg_foreign
@@ -381,7 +382,7 @@ impl Dispatch2<ZxdgExporterV2, State> for XdgForeignExporterData {
                         state: ForeignExportState::Exported,
                     },
                 );
-                debug_in!("wayland", handle = %handle, "[xdg-foreign] a toplevel was exported");
+                log::debug!(handle = %handle, "[xdg-foreign] a toplevel was exported");
             }
             zxdg_exporter_v2::Request::Destroy => {}
             // The request enums are non-exhaustive: a request from a newer revision is ignored.
@@ -476,7 +477,7 @@ impl Dispatch2<ZxdgImportedV2, State> for XdgForeignImportedData {
                 }
                 // An import whose export is gone is orphaned: it accepts the request but sets nothing.
                 let Some(parent) = state.xdg_foreign.exported_surface(&self.handle).cloned() else {
-                    debug_in!("wayland", handle = %self.handle, "[xdg-foreign] set_parent_of on an orphaned import");
+                    log::debug!(handle = %self.handle, "[xdg-foreign] set_parent_of on an orphaned import");
                     return;
                 };
                 if !is_valid_parent(&child, &parent) {

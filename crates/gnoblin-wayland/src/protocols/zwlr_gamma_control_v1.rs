@@ -46,7 +46,6 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 
-use gnoblin_log::{debug_in, trace_in, warn_in};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
@@ -60,6 +59,8 @@ use gnoblin_types::OutputId;
 
 use crate::State;
 use crate::access::{Access, Global};
+
+use crate::log;
 
 /// The version of `zwlr_gamma_control_manager_v1` this session serves.
 pub const MANAGER_VERSION: u32 = 1;
@@ -102,7 +103,7 @@ impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1Man
         data_init: &mut DataInit<'_, State>,
     ) {
         data_init.init(resource, ZwlrGammaControlV1ManagerUserData);
-        debug_in!("wayland", client = ?client.id(), "[gamma] a client bound the gamma control manager");
+        log::debug!(client = ?client.id(), "[gamma] a client bound the gamma control manager");
     }
 
     fn can_view(&self, client: &Client) -> bool {
@@ -130,20 +131,17 @@ impl Dispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1ManagerUs
                         let object = data_init.init(id, ZwlrGammaControlV1ControlUserData { output: Some(output) });
                         state.output_controls.hold_gamma(output, object.clone());
                         object.gamma_size(size);
-                        debug_in!("wayland", output = %output, size, "[gamma] a client took gamma control");
+                        log::debug!(output = %output, size, "[gamma] a client took gamma control");
                     }
                     _ => {
                         let object = data_init.init(id, ZwlrGammaControlV1ControlUserData { output: None });
                         object.failed();
-                        debug_in!(
-                            "wayland",
-                            "[gamma] gamma control was refused: no such output, no support, or already held"
-                        );
+                        log::debug!("[gamma] gamma control was refused: no such output, no support, or already held");
                     }
                 }
             }
             manager::Request::Destroy => {}
-            _ => trace_in!("wayland", "[gamma] an unknown manager request"),
+            _ => log::trace!("[gamma] an unknown manager request"),
         }
     }
 }
@@ -173,11 +171,11 @@ impl Dispatch2<ZwlrGammaControlV1, State> for ZwlrGammaControlV1ControlUserData 
                 match read_ramp(File::from(fd), size) {
                     Ok(tables) => state.output_controls.queue_gamma(output, tables),
                     Err(ZwlrGammaControlV1RampError::Read(error)) => {
-                        warn_in!("wayland", %error, "[gamma] the ramp descriptor could not be read");
+                        log::warn!(%error, "[gamma] the ramp descriptor could not be read");
                         object.failed();
                     }
                     Err(ZwlrGammaControlV1RampError::Short) => {
-                        warn_in!("wayland", "[gamma] the ramp descriptor was shorter than the table");
+                        log::warn!("[gamma] the ramp descriptor was shorter than the table");
                         object.failed();
                     }
                     Err(ZwlrGammaControlV1RampError::Long) => {
@@ -189,7 +187,7 @@ impl Dispatch2<ZwlrGammaControlV1, State> for ZwlrGammaControlV1ControlUserData 
                 }
             }
             control::Request::Destroy => {}
-            _ => trace_in!("wayland", "[gamma] an unknown gamma control request"),
+            _ => log::trace!("[gamma] an unknown gamma control request"),
         }
     }
 

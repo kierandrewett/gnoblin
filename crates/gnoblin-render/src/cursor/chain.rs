@@ -15,6 +15,8 @@ use super::builtin;
 use super::selection;
 use super::{CursorFiles, CursorImages, CursorProvider, CursorRequest, Lookup, MAX_PHYSICAL_SIZE};
 
+use crate::log;
+
 /// The physical pixel size for a logical size at `scale`, clamped to
 /// [`MAX_PHYSICAL_SIZE`] so no provider is asked to rasterise past it.
 #[must_use]
@@ -61,8 +63,7 @@ impl CursorChain {
         let theme = if files.theme_exists(theme) {
             theme.to_owned()
         } else {
-            gnoblin_log::warn_in!(
-                "render",
+            log::warn!(
                 theme,
                 fallback = selection::DEFAULT_CURSOR_THEME,
                 "cursor theme not found; using the default theme"
@@ -110,11 +111,11 @@ impl CursorChain {
                 Ok(Lookup::Miss) => {}
                 Ok(Lookup::Failed(reason)) => {
                     clean = false;
-                    gnoblin_log::warn_in!("render", provider = kind, shape, reason = %reason, "cursor provider failed");
+                    log::warn!(provider = kind, shape, reason = %reason, "cursor provider failed");
                 }
                 Err(_) => {
                     clean = false;
-                    gnoblin_log::warn_in!("render", provider = kind, shape, "cursor provider panicked");
+                    log::warn!(provider = kind, shape, "cursor provider panicked");
                 }
             }
         }

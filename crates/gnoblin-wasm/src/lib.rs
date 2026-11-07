@@ -22,3 +22,5 @@ pub use error::{CallError, ModuleError};
 pub use host::{ModuleHost, ModuleState};
 pub use log::{Level, LogLine, LogSink, Sink};
 pub use manifest::{Budget, Grants, Manifest, ModuleLimits};
+
+gnoblin_log::logger!(host_log = "wasm");

@@ -12,10 +12,12 @@
 use std::path::Path;
 
 use gnoblin_config::{Inherit, Monitors, SearchPaths, Store};
-use gnoblin_log::{debug_in, warn_in};
+
 use gnoblin_wayland::MonitorSettings;
 
 use crate::SessionConfig;
+
+use crate::log;
 
 /// Sets the monitor settings of `config.wayland` from the last accepted configuration in
 /// `store`, read from `source`.
@@ -24,9 +26,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.monitors.clone().unwrap_or_default();
             config.wayland.monitors = settings(&section);
-            debug_in!("compositor", "[monitors] loaded from the last accepted configuration");
+            log::debug!("[monitors] loaded from the last accepted configuration");
         }
-        Err(error) => warn_in!("compositor", %error, "[monitors] configuration not readable; the defaults are used"),
+        Err(error) => log::warn!(%error, "[monitors] configuration not readable; the defaults are used"),
     }
 }
 
@@ -35,15 +37,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug_in!(
-            "compositor",
-            "[monitors] no state directory is set; the defaults are used"
-        );
+        log::debug!("[monitors] no state directory is set; the defaults are used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => debug_in!("compositor", %error, "[monitors] no configuration file; the defaults are used"),
+        Err(error) => log::debug!(%error, "[monitors] no configuration file; the defaults are used"),
     }
 }
 

@@ -200,3 +200,5 @@ pub use scene::{DEFAULT_DAMAGE_RECT_LIMIT, Hit, Node, NodeKind, NodeSpec, Scene,
 pub use transform::VisualTransform;
 /// Animation tracks: the player, its specs and its terminal reports.
 pub use tween::{TrackEnd, TrackEndReason, TrackError, TrackSpec, TrackStart, TweenPlayer};
+
+gnoblin_log::logger!(log = "render");

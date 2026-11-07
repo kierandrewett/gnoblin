@@ -54,6 +54,8 @@ use gnoblin_wm::Event;
 
 use crate::State;
 
+use crate::log;
+
 /// One protocol a session serves through an adapter.
 ///
 /// Implemented by the adapter's crate, next to the protocol it serves. The session
@@ -319,7 +321,7 @@ impl Shell1Host for State {
         // There is no startup-notification sequence table yet, so the id is
         // recorded for the log and attributes nothing. The focus rule is present's.
         if let Some(startup_id) = startup_id {
-            gnoblin_log::debug_in!("wayland", startup_id, %window, "[gtk-shell] a focus request named a startup id");
+            log::debug!(startup_id, %window, "[gtk-shell] a focus request named a startup id");
         }
         <Self as Shell1Host>::present(self, window, 0)
     }
@@ -331,7 +333,7 @@ impl Shell1Host for State {
     fn launch(&mut self, startup_id: &str) {
         // Mutter adds a startup sequence here; this session has no sequence table,
         // so the launch is recorded and logged and nothing is completed by it.
-        gnoblin_log::debug_in!("wayland", startup_id, "[gtk-shell] a client announced a launch");
+        log::debug!(startup_id, "[gtk-shell] a client announced a launch");
     }
 }
 

@@ -27,7 +27,6 @@
 //!    not make the sandboxed application privileged: the same test, from the privileged
 //!    socket's creator.
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::security_context::{
     SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState,
@@ -35,10 +34,11 @@ use smithay::wayland::security_context::{
 
 use crate::State;
 
+use crate::log;
+
 impl SecurityContextHandler for State {
     fn context_created(&mut self, source: SecurityContextListenerSource, context: SecurityContext) {
-        debug_in!("wayland",
-            engine = ?context.sandbox_engine,
+        log::debug!(engine = ?context.sandbox_engine,
             app_id = ?context.app_id,
             instance = ?context.instance_id,
             "[access] a security context was created"

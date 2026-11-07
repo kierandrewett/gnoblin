@@ -40,7 +40,6 @@
 
 use std::time::Duration;
 
-use gnoblin_log::debug_in;
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -52,6 +51,8 @@ use smithay::wayland::presentation::{PresentationFeedbackCachedState, Presentati
 use gnoblin_types::OutputId;
 
 use crate::State;
+
+use crate::log;
 
 /// The clock every timestamp this module sends is read from: `CLOCK_MONOTONIC`.
 const CLOCK_MONOTONIC: u32 = 1;
@@ -93,8 +94,7 @@ impl State {
                 cached.current().callbacks.split_off(0)
             });
             for callback in callbacks {
-                debug_in!("wayland",
-                    surface = ?surface.id(),
+                log::debug!(surface = ?surface.id(),
                     milliseconds = time.as_millis(),
                     sequence,
                     "[presentation] a frame was presented"

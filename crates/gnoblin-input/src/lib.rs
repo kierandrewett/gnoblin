@@ -109,3 +109,5 @@ pub use idle::Activity;
 pub use name::{Name, NameError};
 pub use policy::{Decision, Expired, MAX_PENDING, PolicyQueue, PolicyStats, Reply, Submitted};
 pub use router::{Event, GrabId, Routed, Router, Scope, ShortcutInhibit, Stats, Target};
+
+gnoblin_log::logger!(log = "input");

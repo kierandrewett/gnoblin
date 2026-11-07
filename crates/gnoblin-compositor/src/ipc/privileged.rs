@@ -28,8 +28,10 @@ use std::fmt;
 use std::os::unix::net::UnixStream;
 
 use gnoblin_client::{Inherited, inherited_stream};
-use gnoblin_log::warn_in;
+
 use gnoblin_proto::{Capabilities, Capability, privilege};
+
+use crate::log;
 
 /// One privileged connection this process was handed.
 #[derive(Debug)]
@@ -86,7 +88,7 @@ impl Privileged {
                 continue;
             };
             if grants(&role).is_empty() {
-                warn_in!("compositor", variable = %name, "[ipc] ignoring a privileged descriptor this build grants nothing to");
+                log::warn!(variable = %name, "[ipc] ignoring a privileged descriptor this build grants nothing to");
                 continue;
             }
             let stream =

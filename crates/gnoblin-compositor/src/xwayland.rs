@@ -10,10 +10,12 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use gnoblin_config::{SearchPaths, Store, Xwayland};
-use gnoblin_log::{debug_in, info_in, warn_in};
+
 use gnoblin_xwayland::{Settings, probe};
 
 use crate::SessionConfig;
+
+use crate::log;
 
 /// Sets `config.xwayland` from the last accepted configuration in `store`, read from `source`.
 pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &Path) {
@@ -21,7 +23,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     match store.load(source) {
         Ok(stored) => apply(config, stored.config.xwayland.as_ref(), path.as_deref()),
         Err(error) => {
-            warn_in!("compositor", %error, "[xwayland] configuration not readable; the defaults are used");
+            log::warn!(%error, "[xwayland] configuration not readable; the defaults are used");
             apply(config, None, path.as_deref());
         }
     }
@@ -32,17 +34,14 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug_in!(
-            "compositor",
-            "[xwayland] no state directory is set; the defaults are used"
-        );
+        log::debug!("[xwayland] no state directory is set; the defaults are used");
         apply(config, None, std::env::var_os("PATH").as_deref());
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
-            debug_in!("compositor", %error, "[xwayland] no configuration file; the defaults are used");
+            log::debug!(%error, "[xwayland] no configuration file; the defaults are used");
             apply(config, None, std::env::var_os("PATH").as_deref());
         }
     }
@@ -53,14 +52,11 @@ fn apply(config: &mut SessionConfig, section: Option<&Xwayland>, path: Option<&O
     match settings_for(section, path) {
         Ok(Some(settings)) => config.xwayland = Some(settings),
         Ok(None) => {
-            info_in!(
-                "compositor",
-                "[xwayland] no Xwayland binary on PATH; the session runs without X11"
-            );
+            log::info!("[xwayland] no Xwayland binary on PATH; the session runs without X11");
             config.xwayland = None;
         }
         Err(reason) => {
-            warn_in!("compositor", "[xwayland] {reason}; the session runs without X11");
+            log::warn!("[xwayland] {reason}; the session runs without X11");
             config.xwayland = None;
         }
     }

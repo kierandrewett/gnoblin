@@ -249,6 +249,8 @@ pub use protocols::gnoblin_window_frame_v1::{
     GnoblinWindowFrameV1Action, GnoblinWindowFrameV1Frame, GnoblinWindowFrameV1Region,
 };
 
+gnoblin_log::logger!(log = "wayland");
+
 // The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
 // `Dispatch2` implementation below, which is why no protocol module carries its own
 // delegate macro.

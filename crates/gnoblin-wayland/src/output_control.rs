@@ -30,6 +30,8 @@ use wayland_protocols_wlr::output_power_management::v1::server::zwlr_output_powe
 
 use crate::State;
 
+use crate::log;
+
 /// The host side of per-output controls.
 ///
 /// The composition root implements it over the backend; [`NoOutputControl`] is the answer
@@ -261,19 +263,19 @@ impl State {
                         blue: &tables[2],
                     };
                     if let Err(error) = control.set_gamma(output, ramp) {
-                        gnoblin_log::warn_in!("wayland", %error, "[gamma] the backend refused the ramp");
+                        log::warn!(%error, "[gamma] the backend refused the ramp");
                         self.fail_gamma(output);
                     }
                 }
                 PendingOp::RestoreGamma { output } => {
                     if let Err(error) = control.restore_gamma(output) {
-                        gnoblin_log::warn_in!("wayland", %error, "[gamma] the backend could not restore the ramp");
+                        log::warn!(%error, "[gamma] the backend could not restore the ramp");
                     }
                 }
                 PendingOp::SetPower { output, on } => match control.set_power(output, on) {
                     Ok(()) => self.power_changed(output, on),
                     Err(error) => {
-                        gnoblin_log::warn_in!("wayland", %error, "[power] the backend refused the power change");
+                        log::warn!(%error, "[power] the backend refused the power change");
                         if let Some(holder) = self.output_controls.power_holders.get(&output) {
                             holder.failed();
                         }

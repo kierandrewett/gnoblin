@@ -50,8 +50,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::backend::ClientId as ClientKey;
+
+use crate::log;
 
 /// The privileged globals this crate serves.
 ///
@@ -318,8 +319,7 @@ impl Access {
             .is_some_and(|record| record.role == ClientRole::Sandboxed)
             && role != ClientRole::Sandboxed
         {
-            debug_in!("wayland",
-                client = ?client,
+            log::debug!(client = ?client,
                 refused = role.as_str(),
                 "[access] a sandboxed connection keeps its sandbox"
             );
@@ -335,7 +335,7 @@ impl Access {
             },
             |record| record.number,
         );
-        debug_in!("wayland", client = ?client, role = role.as_str(), number, "[access] recorded");
+        log::debug!(client = ?client, role = role.as_str(), number, "[access] recorded");
         connections.insert(client.clone(), Membership { role, number });
     }
 
@@ -346,7 +346,7 @@ impl Access {
     /// connection. It never upgrades a sandbox: [`Access::record`] keeps a sandboxed
     /// connection sandboxed whatever a promise says.
     pub fn promise(&self, pid: u32, role: ClientRole) {
-        debug_in!("wayland", pid, role = role.as_str(), "[access] promised");
+        log::debug!(pid, role = role.as_str(), "[access] promised");
         self.promised
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -366,7 +366,7 @@ impl Access {
     /// Forgets a connection that disconnected.
     pub fn forget(&self, client: &ClientKey) {
         if self.connections().remove(client).is_some() {
-            debug_in!("wayland", client = ?client, "[access] forgotten");
+            log::debug!(client = ?client, "[access] forgotten");
         }
     }
 
