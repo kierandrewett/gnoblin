@@ -51,11 +51,14 @@ How it works:
    to the library default). [INFERENCE] The hash is PBKDF2-HMAC-SHA512, from the
    SQLCipher 4 defaults; confirm on Agent37 before relying on it.
 2. **No password (fingerprint login, autologin).** The PAM module gets no
-   password, so it cannot unlock. The keyring then offers **one** `prompt.secret`
-   request per login session. A shell claims that slot and draws the prompt; the
-   keyring never draws UI itself. If no shell claims the slot, the request is
-   refused at once and the store stays locked. The store stays unlocked until
-   logout, so the user is never asked twice in one session.
+   password, so it cannot unlock. The keyring then offers a `prompt.secret`
+   request when a client asks to unlock. A shell claims that slot and draws the
+   prompt; the keyring never draws UI itself. If no shell claims the slot, the
+   request is refused at once and the store stays locked. While a request is
+   pending, further asks join it, so the user sees one prompt. A wrong password
+   or a dismissed prompt ends the request, and the next ask offers a new one, so
+   a typo does not lock the user out for the session. Once the store is
+   unlocked, no request is offered until logout.
 3. **Password change.** A hook in the PAM password stage re-keys the store. If
    the hook is missing, the store stays locked after a change. [INFERENCE] This
    follows `pam_gnome_keyring`; it is not yet tested on greetd or
@@ -74,7 +77,7 @@ restart of the service asks for the key again. That cost is accepted for now.
 
 | Option                            | Why it is not the default                                                                                      |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Second passphrase at every login  | Asks the user twice: at login and at the store. The no-password prompt is asked once per session.              |
+| Second passphrase at every login  | Asks the user twice: at login and at the store. The no-password prompt is not asked again once unlocked.       |
 | `systemd-creds` / TPM2 sealed key | Needs the same machine and TPM, and root-only host key data. Not used by Linux desktop keyrings. See appendix. |
 | Kernel session keyring cache      | Lost at logout. Not a root of trust. The service's memory already holds the key for the session.               |
 | Coexistence (bus rule, not a key) | Not a key source. See "Coexistence".                                                                           |
@@ -230,19 +233,19 @@ written to disk.
 
 ## Failure modes
 
-| Event                                   | Result                                                                                 |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| Store locked (no key yet)               | Collections report locked. `Unlock` returns a `Prompt`. Portal: `error { locked }`     |
-| No password at login                    | One unlock prompt per login session. Unlocked until logout. Never asked twice          |
-| Unlock cancelled                        | `cancelled { user }`. The store stays locked                                           |
-| Wrong key                               | SQLCipher refuses to open. Store stays locked. No data is touched                      |
-| Password changed, hook missing          | Store stays locked. The user unlocks with the old password, then re-keys               |
-| Provider refuses `dh-ietf1024`          | `error { not-supported }`. No `plain` fallback                                         |
-| Built-in keyring off                    | No name request, no store opened, no Secret object. The system keyring answers         |
-| Services role down                      | `error { not-supported }` until services returns, as for other services-hosted portals |
-| Two or more master items found          | Use the oldest and log the others by id. Never create a second master                  |
-| Default collection missing on first run | Create it, with the same attribute, if the store allows it                             |
-| Session locked                          | Refused: `error { locked }`, as for every consent request                              |
+| Event                                   | Result                                                                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Store locked (no key yet)               | Collections report locked. `Unlock` returns a `Prompt`. Portal: `error { locked }`                                     |
+| No password at login                    | One prompt per pending request; a wrong or dismissed answer lets the next ask prompt again. Not re-asked once unlocked |
+| Unlock cancelled                        | `cancelled { user }`. The store stays locked                                                                           |
+| Wrong key                               | SQLCipher refuses to open. Store stays locked. No data is touched                                                      |
+| Password changed, hook missing          | Store stays locked. The user unlocks with the old password, then re-keys                                               |
+| Provider refuses `dh-ietf1024`          | `error { not-supported }`. No `plain` fallback                                                                         |
+| Built-in keyring off                    | No name request, no store opened, no Secret object. The system keyring answers                                         |
+| Services role down                      | `error { not-supported }` until services returns, as for other services-hosted portals                                 |
+| Two or more master items found          | Use the oldest and log the others by id. Never create a second master                                                  |
+| Default collection missing on first run | Create it, with the same attribute, if the store allows it                                                             |
+| Session locked                          | Refused: `error { locked }`, as for every consent request                                                              |
 
 ## Security
 
@@ -276,8 +279,8 @@ phase starts.
    A locked store returns no items; that choice lives in `search_locked` and is
    still open under "Needs Kieran" item 1.
 3. **Unlock path.** The PAM hand-off (`pam_gnoblin_keyring`), the password-change
-   hook, and the one-per-session unlock prompt for the no-password case. Tests:
-   login with a password unlocks; login without one prompts once.
+   hook, and the unlock prompt for the no-password case. Tests:
+   login with a password unlocks; login without one prompts on the first unlock request.
 4. **Secret portal.** `RetrieveSecret`, the per-app derivation, the session grant
    in memory, consent through the compositor.
 5. **Prompt UI.** Done for unlock (3fc351de6): the keyring offers `prompt.secret`
@@ -301,7 +304,7 @@ Phase 3 facts, for `pam_gnoblin_keyring`:
 
 - The module sits in the login stack after `pam_systemd`, so `XDG_RUNTIME_DIR` exists by the session stage. Without it, the module uses `/run/user/<uid>`.
 - It never fails a login and never grants one. Every auth entry point returns `PAM_IGNORE`, and the session and password stages return `PAM_SUCCESS`.
-- A hand-off that fails leaves the service to prompt once, as the no-password case does.
+- A hand-off that fails leaves the service to prompt on the next unlock request, as the no-password case does.
 - The password-change stage re-keys the store only when both old and new passwords are present. If the service is down, the store stays locked with the old password.
 
 Acceptance is compatibility with existing software:

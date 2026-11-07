@@ -157,12 +157,14 @@ impl PromptAnswers {
         let Some(end) = end else {
             return;
         };
-        if let Err(error) = block_on(objects::emit_completed(
-            self.connection.object_server(),
-            &end.path,
-            end.dismissed,
-        )) {
-            log::warn!("the prompt at {} could not be finished: {error:?}", end.path);
+        for path in &end.paths {
+            if let Err(error) = block_on(objects::emit_completed(
+                self.connection.object_server(),
+                path,
+                end.dismissed,
+            )) {
+                log::warn!("the prompt at {path} could not be finished: {error:?}");
+            }
         }
     }
 }

@@ -80,18 +80,20 @@ pub trait PasswordOffer: Send {
     fn offer(&mut self, title: &str, message: &str) -> Result<PromptId, String>;
 }
 
-/// The password request this source offered and is still waiting on.
+/// The password request this source offered and is still waiting on, with every bus object that
+/// joined it while it was pending.
 struct PendingPassword {
     request: PromptId,
-    /// The bus object the caller is waiting on for the `Completed` signal.
-    path: String,
+    /// The bus objects waiting on the `Completed` signal, one per caller that joined the request.
+    paths: Vec<String>,
 }
 
-/// A prompt that has finished, and what its bus object must now report. `dismissed` is true when
+/// A prompt that has finished, and what its bus objects must now report. `dismissed` is true when
 /// the store is still locked, so the caller is told it was cancelled.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PromptEnd {
-    pub path: String,
+    /// Every bus object that joined the request. Each one is told the same outcome.
+    pub paths: Vec<String>,
     pub dismissed: bool,
 }
 
@@ -100,9 +102,6 @@ pub struct PromptEnd {
 pub struct UnlockKeySource {
     path: PathBuf,
     state: State,
-    /// Set once the password has been offered, so a login session is never asked twice. A failed
-    /// offer does not set it, because nothing was asked.
-    offered: bool,
     pending: Option<PendingPassword>,
     on_unlock: Box<dyn FnMut() + Send>,
     offers: Box<dyn PasswordOffer>,
@@ -118,7 +117,6 @@ impl UnlockKeySource {
         UnlockKeySource {
             path,
             state,
-            offered: false,
             pending: None,
             on_unlock,
             offers,
@@ -165,20 +163,22 @@ impl UnlockKeySource {
     }
 
     /// Ask for the login password through a request, for a login that had none (fingerprint or
-    /// autologin). The request is offered at most once per login session. `path` is the bus
-    /// object the caller waits on; it is handed back by [`UnlockKeySource::answer_password`].
+    /// autologin). While a request is pending, a further caller joins it, so the user sees one
+    /// prompt rather than one per caller. `path` is the bus object the caller waits on; it is handed
+    /// back by [`UnlockKeySource::answer_password`]. Once a request has ended, the next one asks
+    /// again: a typo or a dismissed prompt does not lock the user out for the session.
     pub fn offer_password(&mut self, path: &str) -> Result<(), String> {
         if objects::is_unlocked(&self.state) {
             return Err("the keyring is already open".to_owned());
         }
-        if self.offered {
-            return Err("the password was already asked in this login session".to_owned());
+        if let Some(pending) = self.pending.as_mut() {
+            pending.paths.push(path.to_owned());
+            return Ok(());
         }
         let request = self.offers.offer(PROMPT_TITLE, PROMPT_MESSAGE)?;
-        self.offered = true;
         self.pending = Some(PendingPassword {
             request,
-            path: path.to_owned(),
+            paths: vec![path.to_owned()],
         });
         log::info!("asked for the keyring password");
         Ok(())
@@ -200,16 +200,20 @@ impl UnlockKeySource {
             PromptOutcome::TimedOut => log::info!("the password prompt timed out"),
         }
         Some(PromptEnd {
-            path: pending.path,
+            paths: pending.paths,
             dismissed: !objects::is_unlocked(&self.state),
         })
     }
 
-    /// The prompt object at `path` was dismissed by its caller. A later answer for that prompt is
-    /// then refused as unknown.
+    /// The prompt object at `path` was dismissed by its caller. It leaves the shared prompt, which
+    /// stays open for the callers still waiting on it. When none is left, a later answer for it is
+    /// refused as unknown.
     pub fn dismiss_password(&mut self, path: &str) {
-        if self.pending.as_ref().is_some_and(|pending| pending.path == path) {
-            self.pending = None;
+        if let Some(pending) = self.pending.as_mut() {
+            pending.paths.retain(|waiting| waiting != path);
+            if pending.paths.is_empty() {
+                self.pending = None;
+            }
         }
     }
 
@@ -370,7 +374,7 @@ mod tests {
         assert_eq!(
             end,
             Some(PromptEnd {
-                path: "/prompt/1".to_owned(),
+                paths: vec!["/prompt/1".to_owned()],
                 dismissed: true,
             })
         );
@@ -441,7 +445,7 @@ mod tests {
             assert_eq!(
                 end,
                 Some(PromptEnd {
-                    path: "/prompt/1".to_owned(),
+                    paths: vec!["/prompt/1".to_owned()],
                     dismissed: true,
                 }),
                 "reply {index} dismisses the prompt"
@@ -462,7 +466,7 @@ mod tests {
         assert_eq!(
             end,
             Some(PromptEnd {
-                path: "/prompt/1".to_owned(),
+                paths: vec!["/prompt/1".to_owned()],
                 dismissed: false,
             })
         );
@@ -486,7 +490,7 @@ mod tests {
         assert_eq!(
             end,
             Some(PromptEnd {
-                path: "/prompt/1".to_owned(),
+                paths: vec!["/prompt/1".to_owned()],
                 dismissed: false,
             })
         );
@@ -512,15 +516,72 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_is_offered_once_per_session() {
-        let dir = scratch("prompt-once");
+    fn a_request_made_while_one_is_pending_joins_it() {
+        let dir = scratch("prompt-join");
         let (mut source, state, offers) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the first offer");
-        source.answer_password(PromptId::new(7), PromptOutcome::Ended);
-        assert!(source.offer_password("/prompt/2").is_err(), "a second offer is refused");
-        assert_eq!(offers.load(Ordering::SeqCst), 1);
+        source.offer_password("/prompt/2").expect("the second caller joins");
+        assert_eq!(
+            offers.load(Ordering::SeqCst),
+            1,
+            "one request is asked, however many callers wait"
+        );
+        let end = source.answer_password(PromptId::new(7), PromptOutcome::Ended);
+        assert_eq!(
+            end,
+            Some(PromptEnd {
+                paths: vec!["/prompt/1".to_owned(), "/prompt/2".to_owned()],
+                dismissed: true,
+            })
+        );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn dismissing_one_joined_caller_leaves_the_others_waiting() {
+        let dir = scratch("prompt-leave");
+        let (mut source, state, _) = prompt_source(&dir, Ok(PromptId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the first offer");
+        source.offer_password("/prompt/2").expect("the second caller joins");
+        source.dismiss_password("/prompt/1");
+        let end = source.answer_password(PromptId::new(7), PromptOutcome::Ended);
+        assert_eq!(
+            end,
+            Some(PromptEnd {
+                paths: vec!["/prompt/2".to_owned()],
+                dismissed: true,
+            })
+        );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_wrong_password_is_asked_for_again_by_the_next_request() {
+        let dir = scratch("prompt-retry-wrong");
+        let (mut source, state, offers) = prompt_source(&dir, Ok(PromptId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the first offer");
+        source.answer_password(PromptId::new(7), PromptOutcome::answered(b"wrong".to_vec()));
+        source.offer_password("/prompt/2").expect("the next request asks again");
+        assert_eq!(offers.load(Ordering::SeqCst), 2);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_dismissed_prompt_is_asked_for_again_by_the_next_request() {
+        let dir = scratch("prompt-retry-dismissed");
+        let (mut source, state, offers) = prompt_source(&dir, Ok(PromptId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the first offer");
+        source.dismiss_password("/prompt/1");
+        source.offer_password("/prompt/2").expect("the next request asks again");
+        assert_eq!(offers.load(Ordering::SeqCst), 2);
         std::fs::remove_dir_all(dir).ok();
     }
 
