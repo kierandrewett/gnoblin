@@ -23,7 +23,8 @@ use crate::appearance::Accent;
 use crate::engine::{Parser, is_inherit};
 use crate::generated::{
     AccelCurve, Appearance, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, GestureWhen, PadButton,
-    PadButtonAction, Tablet, TouchpadGestures, WindowManagement, Workspace, Workspaces, Xwayland,
+    PadButtonAction, Tablet, TouchpadGestures, WindowManagement, WindowRule, WindowRuleType, WindowRules, Workspace,
+    Workspaces, Xwayland,
 };
 use crate::model::Inherit;
 use crate::path::Path;
@@ -116,6 +117,116 @@ pub(crate) fn window_management(
         valid = false;
     }
     valid
+}
+
+/// The effect and frame keys this build cannot apply yet, with what is missing.
+///
+/// The legacy docs name these; they are refused by name so someone who copies
+/// one from an old config is told why it does nothing here, not that it is a typo.
+const REFUSED_RULE_KEYS: &[(&str, &str)] = &[
+    ("blur", "effects need the blur pass (render)"),
+    ("blur-ignore-shadows", "blur needs the blur pass (render)"),
+    ("opacity", "opacity needs the alpha pass (render)"),
+    ("corners", "corners need the rounded-corner pass (render)"),
+    ("shader", "shaders need the WASM host"),
+    ("shader-uniforms", "shader uniforms need the WASM host"),
+    ("animation", "animations need the animation system"),
+    ("frame", "frames need the layers phase 6 surface renderer"),
+];
+
+/// The most window rules one `window-rules` list may hold.
+///
+/// Every rule is tested against every window on every title change, so the cap
+/// bounds the work one document can ask the compositor to do.
+const MAX_WINDOW_RULES: usize = 256;
+
+/// The spelling a rule table uses for a key, dashed or legacy underscored.
+///
+/// The legacy docs spell these with underscores, the schema with dashes. Both are
+/// caught, so a copied line gets the explanation instead of an unknown-key report.
+fn rule_key_spelling(map: &BTreeMap<String, Value>, key: &str) -> Option<String> {
+    [key.to_owned(), key.replace('-', "_")]
+        .into_iter()
+        .find(|spelling| map.contains_key(spelling))
+}
+
+/// `window-rules[]`: refused fields, pattern syntax, and the workspace choice.
+///
+/// A refused field is a load error rather than a silent no-op: a rule that quietly
+/// does less than it says would put a window somewhere the user did not intend.
+pub(crate) fn window_rule(
+    section: &mut WindowRule,
+    map: &BTreeMap<String, Value>,
+    path: &Path,
+    out: &mut Parser,
+) -> bool {
+    let mut valid = true;
+    for &(key, reason) in REFUSED_RULE_KEYS {
+        if let Some(spelling) = rule_key_spelling(map, key) {
+            out.problem(&path.key(&spelling), Fault::Refused { reason });
+            valid = false;
+        }
+    }
+    if let Some(matcher) = &section.r#match {
+        let match_path = path.key("match");
+        if matcher.layer.is_some() {
+            out.problem(
+                &match_path.key("layer"),
+                Fault::Refused {
+                    reason: "layer matching needs the layer-shell surface selector",
+                },
+            );
+            valid = false;
+        }
+        if matches!(matcher.r#type, Some(WindowRuleType::Layer)) {
+            out.problem(
+                &match_path.key("type"),
+                Fault::Refused {
+                    reason: "layer surfaces need the layer-shell surface selector",
+                },
+            );
+            valid = false;
+        }
+        for (key, pattern) in [("app-id", &matcher.app_id), ("title", &matcher.title)] {
+            if let Some(pattern) = pattern
+                && let Err(error) = gnoblin_lua_pattern::validate(pattern.as_bytes())
+            {
+                out.problem(
+                    &match_path.key(key),
+                    Fault::UnsupportedValue {
+                        expected: format!("a Lua 5.4 pattern: {error}"),
+                    },
+                );
+                valid = false;
+            }
+        }
+    }
+    if let Some(workspace) = &section.workspace
+        && workspace.id.is_some() == workspace.number.is_some()
+    {
+        out.problem(
+            &path.key("workspace"),
+            Fault::UnsupportedValue {
+                expected: "exactly one of id or number".to_owned(),
+            },
+        );
+        valid = false;
+    }
+    valid
+}
+
+/// `window-rules`: the list is at most [`MAX_WINDOW_RULES`] long.
+pub(crate) fn window_rules(section: &mut WindowRules, _value: &Value, path: &Path, out: &mut Parser) -> bool {
+    if section.rules.len() > MAX_WINDOW_RULES {
+        out.problem(
+            path,
+            Fault::UnsupportedValue {
+                expected: format!("at most {MAX_WINDOW_RULES} window rules"),
+            },
+        );
+        return false;
+    }
+    true
 }
 
 /// `workspaces`: ids are unique, and the list is not empty.

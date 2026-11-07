@@ -18,13 +18,12 @@
 //! document saved by this version never needs the "an older Gnoblin wrote this"
 //! check the C core performs on load.
 //!
-//! Six sections are *carried*: `extensions`, `keybindings`, `portals`,
-//! `autostart`, `window-rules` and `animations`. Their values are callbacks and rule
-//! declarations, which the Lua host and the window-management crate own; this
-//! layer keeps them in the document, rewrites nothing inside them, and validates
-//! nothing inside them. Carrying them is not the same as accepting them: a
-//! consumer that cannot use a rule still refuses it, and that refusal happens
-//! where the meaning is known.
+//! Five sections are *carried*: `extensions`, `keybindings`, `portals`,
+//! `autostart` and `animations`. Their values are callbacks and declarations the
+//! Lua host and the window-management crate own; this layer keeps them in the
+//! document, rewrites nothing inside them, and validates nothing inside them.
+//! Carrying them is not the same as accepting them: a consumer that cannot use a
+//! rule still refuses it, and that refusal happens where the meaning is known.
 
 use std::collections::BTreeMap;
 
@@ -32,11 +31,11 @@ use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
     Appearance, Auth, CaptureSettings, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources,
     KeyringConfig, LayerShell, Layers, Layout, Location, Logging, Monitors, Prompts, Protocols, Shortcuts,
-    VisualAccessibility, WindowManagement, Workspace, Xwayland, parse_appearance, parse_auth, parse_capture_settings,
-    parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input, parse_input_sources,
-    parse_keyring_config, parse_layer_shell, parse_layers, parse_layout, parse_location, parse_logging, parse_monitors,
-    parse_prompts, parse_protocols, parse_shortcuts, parse_touchpad_gestures, parse_visual_accessibility,
-    parse_window_management, parse_workspaces, parse_xwayland,
+    VisualAccessibility, WindowManagement, WindowRule, Workspace, Xwayland, parse_appearance, parse_auth,
+    parse_capture_settings, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input,
+    parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layers, parse_layout, parse_location,
+    parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_shortcuts, parse_touchpad_gestures,
+    parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -101,6 +100,8 @@ pub struct Config {
     pub touchpad_gestures: Vec<Gesture>,
     /// `window-management`: stacking, focus and placement policy.
     pub window_management: Option<WindowManagement>,
+    /// `window-rules`: the rules, in declaration order. A later rule overrides the fields an earlier rule sets.
+    pub window_rules: Vec<WindowRule>,
     /// `workspaces`: the declared workspaces, in declaration order.
     pub workspaces: Vec<Workspace>,
     /// `xwayland`: how the X11 server behaves.
@@ -206,6 +207,10 @@ impl Config {
                     Some(value) => parse_workspaces(value, &root.key("workspaces"), &mut out).workspaces,
                     None => Vec::new(),
                 };
+                config.window_rules = match entries.get_mut("window-rules") {
+                    Some(value) => parse_window_rules(value, &root.key("window-rules"), &mut out).rules,
+                    None => Vec::new(),
+                };
                 // A declared workspace list fixes the count, so a document that
                 // also asks for dynamic workspaces contradicts itself. The
                 // problem is anchored on the declaration, which is the newer of
@@ -285,6 +290,7 @@ impl Config {
             shortcuts: None,
             touchpad_gestures: Vec::new(),
             window_management: None,
+            window_rules: Vec::new(),
             workspaces: Vec::new(),
             xwayland: None,
             document: Value::Map(BTreeMap::new()),

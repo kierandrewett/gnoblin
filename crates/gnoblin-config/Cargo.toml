@@ -17,6 +17,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # The layer name a `layers` key is checked against is the registry's own grammar,
 # so a config key and a registered name cannot disagree about what a name is.
 gnoblin-layers = { path = "../gnoblin-layers" }
+# A window rule's app-id, title and layer are Lua 5.4 patterns; the pattern
+# grammar is the shared crate's, so the loader and the matcher cannot disagree.
+gnoblin-lua-pattern.workspace = true
 
 [build-dependencies]
 # The generator is the same library `cargo xtask gen-config` calls, so the build

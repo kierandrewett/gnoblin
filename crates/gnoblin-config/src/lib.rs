@@ -50,8 +50,8 @@
 //!     names a current spelling, and the hooks the schema lists are the hooks that
 //!     exist.
 //!
-//! Six sections are carried but not interpreted: `extensions`, `keybindings`,
-//! `portals`, `autostart`, `window-rules` and `animations`.
+//! Five sections are carried but not interpreted: `extensions`, `keybindings`,
+//! `portals`, `autostart` and `animations`.
 
 /// Accent and colour rules for the `appearance` table.
 pub mod appearance;
@@ -96,10 +96,11 @@ pub use generated::{
     GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource, InputSourceType,
     InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Layout, LayoutOutput, LayoutWorkspace,
     Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, NewWindowPlacement, PadButton,
-    PadButtonAction, PointingStick, Prompts, Protocol, Protocols, RendererChoice, ScrollMethod, Shortcut,
-    ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping,
-    TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType,
-    WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    PadButtonAction, PointingStick, Prompts, Protocol, Protocols, RendererChoice, RuleClientType, RuleWorkspace,
+    ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode,
+    Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball,
+    VisualAccessibility, VisualBellType, WindowManagement, WindowMatch, WindowRule, WindowRuleType, Workspace,
+    Xwayland, XwaylandExtension,
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};

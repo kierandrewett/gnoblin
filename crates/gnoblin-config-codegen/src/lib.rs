@@ -407,6 +407,8 @@ pub const HOOKS: &[&str] = &[
     "pad_button",
     "tablet",
     "window_management",
+    "window_rule",
+    "window_rules",
     "workspace",
     "workspaces",
     "xwayland",
@@ -1085,7 +1087,6 @@ fn kind_literal_spread(spread: &SpreadDecl) -> String {
         Kind::TextListMap => "Kind::TextListMap".to_owned(),
         Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", spread.record.clone().unwrap_or_default()),
         Kind::RecordList => format!("Kind::RecordList(\"{}\")", spread.record.clone().unwrap_or_default()),
-        Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", spread.record.clone().unwrap_or_default()),
         _ => "Kind::Bool".to_owned(),
     }
 }

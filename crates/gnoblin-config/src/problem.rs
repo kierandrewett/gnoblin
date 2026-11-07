@@ -62,6 +62,14 @@ pub enum Fault {
     },
     /// The value is a float that is not finite.
     NotFinite,
+    /// The setting is in the schema but this build cannot apply it yet. The
+    /// reason names the missing prerequisite, so a user knows what to wait for
+    /// rather than assuming the setting was accepted and ignored. Refusal is a
+    /// load error: a rule list is never partly applied.
+    Refused {
+        /// What is missing, as a sentence fragment: `shaders need the WASM host`.
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for Fault {
@@ -84,6 +92,7 @@ impl fmt::Display for Fault {
             Fault::Conflict { other } => write!(formatter, "cannot be combined with {other}"),
             Fault::TooDeep { maximum } => write!(formatter, "nested deeper than {maximum} levels"),
             Fault::NotFinite => formatter.write_str("expected a finite number"),
+            Fault::Refused { reason } => write!(formatter, "{reason}, not yet built in this compositor"),
         }
     }
 }

@@ -381,6 +381,24 @@ variants = [
     { spelling = "off", doc = "Print nothing; the database still records events." },
 ]
 
+[[enum]]
+name = "WindowRuleType"
+setting = "type"
+doc = "Which kind of surface a window rule selects."
+variants = [
+    { spelling = "window", doc = "An application window." },
+    { spelling = "layer", doc = "A layer-shell surface. Not yet selectable: a rule that names it is refused." },
+]
+
+[[enum]]
+name = "RuleClientType"
+setting = "client-type"
+doc = "Which protocol a window's client speaks."
+variants = [
+    { spelling = "wayland", doc = "A native Wayland client." },
+    { spelling = "x11", doc = "An X11 client running under Xwayland." },
+]
+
 # --- Deprecated spellings ----------------------------------------------------
 # One table, accepted until `removed_in`. A spelling must not also be a current
 # variant: the generator refuses that, because an alias that is already current
@@ -1491,6 +1509,120 @@ accepted = "a nonempty layout or engine id"
 doc = "The layout or engine id."
 since = "0.2.0"
 
+[[record]]
+name = "WindowMatch"
+doc = "The conditions a window rule's window must meet. Every key given must hold."
+
+[[record.field]]
+key = "type"
+kind = "enum"
+enum = "WindowRuleType"
+accepted = "one of window, layer"
+doc = "The kind of surface: an application window or a layer-shell surface."
+since = "0.2.0"
+
+[[record.field]]
+key = "focused"
+kind = "bool"
+accepted = "a boolean"
+doc = "Whether the window has keyboard focus."
+since = "0.2.0"
+
+[[record.field]]
+key = "app-id"
+kind = "text"
+accepted = "a Lua 5.4 pattern for the app id, falling back to the WM class"
+doc = "A case-sensitive Lua 5.4 pattern searched in the GTK app id, or in the WM class when the app id is empty."
+since = "0.2.0"
+
+[[record.field]]
+key = "title"
+kind = "text"
+accepted = "a Lua 5.4 pattern for the window title"
+doc = "A case-sensitive Lua 5.4 pattern searched in the current window title."
+since = "0.2.0"
+
+[[record.field]]
+key = "layer"
+kind = "text"
+accepted = "a Lua 5.4 pattern for the layer namespace"
+doc = "A Lua 5.4 pattern for the layer-shell namespace. Not yet selectable: a rule that names it is refused."
+since = "0.2.0"
+
+[[record.field]]
+key = "workspace-id"
+kind = "text"
+nonempty = true
+accepted = "a nonempty workspace id"
+doc = "The exact, case-sensitive id of the workspace the window is on."
+since = "0.2.0"
+
+[[record.field]]
+key = "workspace-number"
+kind = "int"
+min = 1
+max = 1024
+accepted = "an integer from 1 to 1024"
+doc = "The one-based position of the window's workspace."
+since = "0.2.0"
+
+[[record.field]]
+key = "client-type"
+kind = "enum"
+enum = "RuleClientType"
+accepted = "one of wayland, x11"
+doc = "The protocol the client speaks. X11 means an Xwayland client."
+since = "0.2.0"
+
+[[record]]
+name = "RuleWorkspace"
+doc = "The workspace a window rule places a window on. Give exactly one of id or number."
+
+[[record.field]]
+key = "id"
+kind = "text"
+nonempty = true
+accepted = "a nonempty workspace id"
+doc = "The workspace id to place the window on."
+since = "0.2.0"
+
+[[record.field]]
+key = "number"
+kind = "int"
+min = 1
+max = 1024
+accepted = "an integer from 1 to 1024"
+doc = "The one-based workspace position to place the window on."
+since = "0.2.0"
+
+[[record]]
+name = "WindowRule"
+doc = "One window rule: the conditions it selects and the fields it sets."
+hook = "window_rule"
+
+[[record.field]]
+key = "match"
+kind = "record"
+record = "WindowMatch"
+accepted = "a table of match keys"
+doc = "The conditions a window must meet. An omitted or empty match selects every window."
+since = "0.2.0"
+
+[[record.field]]
+key = "workspace"
+kind = "record"
+record = "RuleWorkspace"
+accepted = "a table with exactly one of id or number"
+doc = "The workspace to place a matching window on."
+since = "0.2.0"
+
+[[record.field]]
+key = "maximise"
+kind = "bool"
+accepted = "a boolean"
+doc = "Whether a matching window starts maximised."
+since = "0.2.0"
+
 # --- Sections ---------------------------------------------------------------
 # A section is a top-level document key. `spread` means the section's own keys
 # are the map (`protocols`, `frame-renderers`) rather than settings.
@@ -2311,5 +2443,13 @@ doc = "Each shortcut, in name order."
 
 [[section]]
 key = "window-rules"
-doc = "Window and layer-surface rules."
-carried = true
+type = "WindowRules"
+doc = "Window rules: which windows a rule selects and what it does to them."
+hook = "window_rules"
+
+[section.spread]
+field = "rules"
+kind = "record-list"
+record = "WindowRule"
+accepted = "a list of window rule tables"
+doc = "The rules, in declaration order. A later rule overrides the fields an earlier rule sets."
