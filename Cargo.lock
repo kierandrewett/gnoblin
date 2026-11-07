@@ -1206,29 +1206,15 @@ name = "gnoblin"
 version = "0.2.0-alpha.0"
 dependencies = [
  "clap",
- "futures-lite",
- "gnoblin-compat-core",
- "gnoblin-compat-gnome-keyring-prompter",
- "gnoblin-compat-gnome-shell-introspect",
- "gnoblin-compat-gtk-dconf-settings",
- "gnoblin-compat-gtk-shell1",
- "gnoblin-compat-mutter-displayconfig",
- "gnoblin-compat-mutter-idlemonitor",
- "gnoblin-compat-mutter-x11-interop",
- "gnoblin-compat-qt-portal-settings",
- "gnoblin-compat-x11-xsettings",
+ "gnoblin-compat-host",
  "gnoblin-compositor",
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-services",
  "gnoblin-session",
- "gnoblin-xwayland",
  "gnoblinctl",
  "rustix 1.1.6",
  "tempfile",
- "wayland-client",
- "x11rb",
- "zbus",
 ]
 
 [[package]]
@@ -1403,6 +1389,7 @@ dependencies = [
  "gnoblin-services",
  "gnoblin-session",
  "gnoblin-xwayland",
+ "tempfile",
  "wayland-client",
  "x11rb",
  "zbus",
@@ -1664,7 +1651,6 @@ dependencies = [
  "gnoblin-portal-consent",
  "gnoblin-portal-core",
  "gnoblin-portal-filechooser",
- "gnoblin-schema",
  "gnoblin-types",
  "png",
 ]
@@ -1675,6 +1661,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
+ "gnoblin-types",
 ]
 
 [[package]]
@@ -1701,6 +1688,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
+ "gnoblin-types",
 ]
 
 [[package]]
@@ -1713,6 +1701,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "protox",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -1885,6 +1874,7 @@ dependencies = [
 name = "gnoblin-wm"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-layers",
  "gnoblin-types",
 ]
 

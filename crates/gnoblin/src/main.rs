@@ -41,16 +41,7 @@
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
-mod compat;
-mod dconf;
-mod displayconfig;
-mod gcr;
-mod idlemonitor;
-mod introspect;
 mod role;
-mod settings;
-
-use gnoblin_compat_core::Mode;
 
 use std::process::ExitCode;
 
@@ -174,7 +165,7 @@ fn compositor() -> Result<(), Exit> {
     gnoblin_compositor::configure_from_environment(&mut config);
     // The compat adapters are served with the session's default mode until a configuration
     // key selects one. A failure to build them starts the session without them.
-    if let Err(error) = compat::configure(&mut config, gnoblin_compat_core::Mode::default()) {
+    if let Err(error) = gnoblin_compat_host::session::configure(&mut config, gnoblin_compat_host::Mode::default()) {
         gnoblin_log::warn_in!(
             "gnoblin",
             "compat adapters not loaded, starting without them: {error:?}"
@@ -206,12 +197,8 @@ fn guardian() -> Result<(), Exit> {
         gnoblin_log::error_in!("gnoblin", "{error}");
         Exit(1)
     })?;
-    // The settings targets are exported into the session every child inherits; a switched-off mode exports nothing.
-    let mode = gnoblin_compat_gnome_shell_introspect::mode_from_environment();
-    settings::export_qt_settings(&mut config.rules.environment.session, mode);
-    if let Some(directory) = dconf::profile_directory() {
-        settings::export_dconf_profile(&mut config.rules.environment.session, mode, &directory);
-    }
+    // The settings targets are exported into the session every child inherits.
+    gnoblin_compat_host::session::export_guardian_environment(&mut config.rules.environment.session);
     match gnoblin_session::run_guardian(config) {
         Ok(0) => Ok(()),
         Ok(status) => Err(Exit(status)),
@@ -240,30 +227,9 @@ fn runtime() -> Result<(), Exit> {
     }
 }
 
-/// The agents the services role links in for `mode`: the prompt adapter when `prompts` is on, the
-/// GeoClue agent, which takes the `location` table of the configuration as its policy, and the compat
-/// adapters (dconf layer, DisplayConfig, IdleMonitor and introspection) when the mode is on. An `off`
-/// mode serves no compat adapter; the GeoClue agent is not a compat adapter and always links.
-fn linked_agents_for(mode: Mode, prompts: bool) -> Vec<Box<dyn gnoblin_services::link::LinkedAgent>> {
-    let location = gnoblin_services::location_agent();
-    let mut agents: Vec<Box<dyn gnoblin_services::link::LinkedAgent>> = Vec::new();
-    if prompts {
-        agents.push(Box::new(gcr::GcrPrompter::new()));
-    }
-    agents.push(location);
-    if mode != Mode::Off {
-        agents.push(Box::new(dconf::DconfLayer::new(mode)));
-        agents.push(Box::new(displayconfig::MutterDisplayConfig::new(mode)));
-        agents.push(Box::new(idlemonitor::MutterIdleMonitor::new(mode)));
-        agents.push(Box::new(introspect::Introspection::new(mode)));
-    }
-    agents
-}
-
 /// Runs the services role: the D-Bus agents, until the session ends.
 fn services() -> Result<(), Exit> {
-    let prompts = gnoblin_services::prompts::enabled_from_environment();
-    let linked = linked_agents_for(gnoblin_compat_gnome_shell_introspect::mode_from_environment(), prompts);
+    let linked = gnoblin_compat_host::services::linked_agents_from_environment();
     match gnoblin_services::Role::from_environment().run(never_stopped, linked) {
         Ok(()) => Ok(()),
         Err(error) => {
@@ -283,37 +249,7 @@ fn never_stopped() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Exit, linked_agents_for, run};
-    use gnoblin_compat_core::Mode;
-
-    #[test]
-    fn the_services_role_is_given_the_location_agent() {
-        // The role claims the location.agent slot as the services provider, so the GeoClue agent
-        // has to be in the list it starts, next to the prompt adapter and the compat adapters
-        // that are on in the default mode.
-        assert_eq!(linked_agents_for(Mode::default(), true).len(), 6);
-    }
-
-    #[test]
-    fn the_prompter_is_linked_only_when_prompts_are_enabled() {
-        // `prompts.enabled` is false by default, and the names stay unowned while it is: the
-        // services role links the GeoClue agent and the compat adapters, but not the prompter.
-        assert_eq!(linked_agents_for(Mode::default(), false).len(), 5);
-        assert_eq!(linked_agents_for(Mode::default(), true).len(), 6);
-    }
-
-    #[test]
-    fn the_compat_adapters_are_served_when_the_mode_is_on() {
-        // Portal is the default and Unmediated is the other mode that serves reads: both add the
-        // dconf layer, DisplayConfig, IdleMonitor and introspection to the prompter and GeoClue agent.
-        assert_eq!(linked_agents_for(Mode::Portal, true).len(), 6);
-        assert_eq!(linked_agents_for(Mode::Unmediated, true).len(), 6);
-    }
-
-    #[test]
-    fn the_compat_adapters_are_not_served_when_the_mode_is_off() {
-        assert_eq!(linked_agents_for(Mode::Off, true).len(), 2);
-    }
+    use super::{Exit, run};
 
     #[test]
     fn the_guardian_is_the_default_role() {

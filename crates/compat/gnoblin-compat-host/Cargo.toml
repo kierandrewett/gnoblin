@@ -37,3 +37,4 @@ futures-lite.workspace = true
 gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
 wayland-client = "0.31.14"
 x11rb = "0.14.0"
+tempfile = "3.23.0"
