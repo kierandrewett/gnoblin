@@ -1041,7 +1041,10 @@ impl Dispatcher {
                 return;
             }
         };
-        match self.requests.claim_slot(client, slot, provider) {
+        // Only the services role holds `OfferRequest`, so it is the role that may claim the
+        // internal `secret.derive` slot.
+        let services_role = self.capabilities(client).contains(Capability::OfferRequest);
+        match self.requests.claim_slot(client, slot, provider, services_role) {
             Ok(deliveries) => {
                 self.reply(client, envelope);
                 self.deliver(deliveries);

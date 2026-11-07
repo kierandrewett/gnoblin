@@ -54,8 +54,11 @@ use gnoblin_types::OwnerId;
 
 use crate::value::{Fields, Value};
 
-/// How many slots the table has.
-const COUNT: usize = 4;
+/// How many slots the registry tracks: the published four and `secret.derive`.
+const COUNT: usize = 5;
+
+/// How many of those slots are published in the session object and the schema.
+const PUBLISHED: usize = 4;
 
 /// One optional capability, named as the plan's slot table names it.
 ///
@@ -73,15 +76,28 @@ pub enum CapabilitySlot {
     LocationAgent,
     /// Idle watches and the ScreenSaver names, default provider the services role.
     IdlePolicy,
+    /// Internal: the consent-gated secret derivation behind `portal.secret`. Only the
+    /// services role may claim it, it is not published, and no config or shell names it.
+    SecretDerive,
 }
 
 impl CapabilitySlot {
-    /// Every slot, in publication order.
-    pub const ALL: [CapabilitySlot; COUNT] = [
+    /// The published slots, in publication order. `secret.derive` is absent on purpose:
+    /// it is internal, so no schema, config or user doc names it.
+    pub const ALL: [CapabilitySlot; PUBLISHED] = [
         CapabilitySlot::AuthPolkit,
         CapabilitySlot::PromptSecret,
         CapabilitySlot::LocationAgent,
         CapabilitySlot::IdlePolicy,
+    ];
+
+    /// Every slot the registry tracks, published or not, in index order.
+    const REGISTRY: [CapabilitySlot; COUNT] = [
+        CapabilitySlot::AuthPolkit,
+        CapabilitySlot::PromptSecret,
+        CapabilitySlot::LocationAgent,
+        CapabilitySlot::IdlePolicy,
+        CapabilitySlot::SecretDerive,
     ];
 
     /// The slot name from the plan's table, which is also the configuration and
@@ -92,6 +108,7 @@ impl CapabilitySlot {
             CapabilitySlot::PromptSecret => "prompt.secret",
             CapabilitySlot::LocationAgent => "location.agent",
             CapabilitySlot::IdlePolicy => "idle.policy",
+            CapabilitySlot::SecretDerive => "secret.derive",
         }
     }
 
@@ -106,6 +123,7 @@ impl CapabilitySlot {
             CapabilitySlot::PromptSecret => "slot_prompt_secret",
             CapabilitySlot::LocationAgent => "slot_location_agent",
             CapabilitySlot::IdlePolicy => "slot_idle_policy",
+            CapabilitySlot::SecretDerive => "slot_secret_derive",
         }
     }
 
@@ -113,9 +131,10 @@ impl CapabilitySlot {
     pub const fn default_provider(self) -> Provider {
         match self {
             CapabilitySlot::PromptSecret => Provider::None,
-            CapabilitySlot::AuthPolkit | CapabilitySlot::LocationAgent | CapabilitySlot::IdlePolicy => {
-                Provider::Services
-            }
+            CapabilitySlot::AuthPolkit
+            | CapabilitySlot::LocationAgent
+            | CapabilitySlot::IdlePolicy
+            | CapabilitySlot::SecretDerive => Provider::Services,
         }
     }
 
@@ -126,6 +145,7 @@ impl CapabilitySlot {
             CapabilitySlot::PromptSecret => 1,
             CapabilitySlot::LocationAgent => 2,
             CapabilitySlot::IdlePolicy => 3,
+            CapabilitySlot::SecretDerive => 4,
         }
     }
 }
@@ -160,7 +180,7 @@ impl FromStr for CapabilitySlot {
     type Err = UnknownSlot;
 
     fn from_str(name: &str) -> Result<CapabilitySlot, UnknownSlot> {
-        CapabilitySlot::ALL
+        CapabilitySlot::REGISTRY
             .into_iter()
             .find(|slot| slot.name() == name)
             .ok_or_else(|| UnknownSlot { name: name.to_owned() })
@@ -280,7 +300,7 @@ impl Slots {
     /// The registry at the plan's defaults, before any shell claimed anything.
     pub fn new() -> Slots {
         Slots {
-            providers: CapabilitySlot::ALL.map(CapabilitySlot::default_provider),
+            providers: CapabilitySlot::REGISTRY.map(CapabilitySlot::default_provider),
             claims: [None; COUNT],
         }
     }
@@ -293,6 +313,13 @@ impl Slots {
     /// Who claimed the slot, when a shell holds it.
     pub fn claimant(&self, slot: CapabilitySlot) -> Option<OwnerId> {
         self.claims[slot.index()]
+    }
+
+    /// The slots this owner holds, so a departing connection releases exactly its own claims.
+    pub fn held_by(&self, owner: OwnerId) -> impl Iterator<Item = CapabilitySlot> + '_ {
+        CapabilitySlot::REGISTRY
+            .into_iter()
+            .filter(move |slot| self.claims[slot.index()] == Some(owner))
     }
 
     /// Claim a slot for a shell.
@@ -324,7 +351,7 @@ impl Slots {
             (Provider::Services, Provider::Shell) => Err(ClaimError::TakenOver { slot }),
             (Provider::Services, Provider::None | Provider::Services) => {
                 self.providers[slot.index()] = Provider::Services;
-                self.claims[slot.index()] = None;
+                self.claims[slot.index()] = owner;
                 Ok(current != Provider::Services)
             }
             (Provider::None, _) => {
@@ -335,13 +362,14 @@ impl Slots {
         }
     }
 
-    /// Release a shell's claim, restoring the slot's default provider.
+    /// Release a claim, restoring the slot's default provider.
     ///
     /// Returns whether the provider changed. A release from a connection that does
     /// not hold the slot is refused, so one shell cannot take a prompt away from
-    /// another by releasing its claim.
+    /// another by releasing its claim. The services role's own claim on
+    /// `secret.derive` is released the same way, by the connection that made it.
     pub fn release(&mut self, slot: CapabilitySlot, owner: OwnerId) -> Result<bool, ClaimError> {
-        if self.provider(slot) != Provider::Shell || self.claims[slot.index()] != Some(owner) {
+        if self.claims[slot.index()] != Some(owner) {
             return Err(ClaimError::NotHolder { slot });
         }
         let next = slot.default_provider();

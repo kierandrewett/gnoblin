@@ -5,23 +5,17 @@
 //! gets 32 bytes from HKDF-SHA256 over that master, with the app id as `info`, so two app ids
 //! never share a secret and the same app id always gets the same one.
 //!
-//! Consent is asked once per app per session. The answer is held in [`Grants`], which lives in
-//! memory and is never written to the store or to disk. A refusal grants nothing, so the next
-//! request asks again. When no consent provider can be reached, the request is refused with no
-//! secret: this module never falls back to answering on the user's behalf.
+//! Consent is decided by the compositor, which asks the user and holds the session's grants. This
+//! module refuses an empty app id and an ungranted app, so no caller gets a secret by skipping the
+//! grant.
 //!
 //! # Failure modes first
 //!
 //! 1. **Two apps share a secret.** `distinct_apps_derive_distinct_secrets` pins it.
 //! 2. **The same app gets a different secret on the next request.** `derivation_is_deterministic`.
-//! 3. **A refused prompt still returns a secret.** `a_refused_prompt_returns_no_secret`.
-//! 4. **A refusal is remembered.** `a_refusal_is_not_remembered`.
-//! 5. **A grant is asked again within the session.** `an_allowed_app_is_not_asked_again`.
-//! 6. **No consent provider still returns a secret.** `no_consent_provider_fails_closed`.
-//! 7. **An empty app id derives a shared secret.** `an_empty_app_id_is_refused_before_asking`.
-//! 8. **The master is replaced on a second run.** `the_master_is_created_once_and_read_back`.
-
-use std::collections::BTreeSet;
+//! 3. **An ungranted app gets a secret.** `an_ungranted_app_gets_no_secret`.
+//! 4. **An empty app id gets a secret.** `retrieve_refuses_an_empty_app_id_even_when_granted`.
+//! 5. **The master is replaced on a second run.** `the_master_is_created_once_and_read_back`.
 
 use gnoblin_keyring_store::{Keyring, KeyringError};
 use hkdf::Hkdf;
@@ -101,84 +95,37 @@ pub fn derive(master: &[u8], app_id: &str) -> AppSecret {
     out
 }
 
-/// What the user answered when asked whether an app may read its secret.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Consent {
-    /// The app may read its secret.
-    Allowed,
-    /// The app may not, this time.
-    Refused,
-}
-
-/// No consent provider could be asked. The answer is refusal, never a default.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NoConsent;
-
-/// Asks the user whether `app_id` may read its secret. The services role implements this over
-/// the `portal.ui` slot; a missing provider is [`NoConsent`].
-pub trait ConsentPrompt {
-    /// Ask once for `app_id`.
-    fn ask(&mut self, app_id: &str) -> Result<Consent, NoConsent>;
-}
-
-/// The apps the user has allowed in this session. It is memory only: a restart forgets it, and
-/// nothing about it is written to the store.
-#[derive(Debug, Default)]
-pub struct Grants {
-    allowed: BTreeSet<String>,
-}
-
-impl Grants {
-    /// Whether `app_id` was allowed earlier in this session.
-    #[must_use]
-    pub fn is_granted(&self, app_id: &str) -> bool {
-        self.allowed.contains(app_id)
-    }
-}
-
 /// Why a request got no secret.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Refusal {
     /// The request named no app, so there is no secret to give.
     NoApp,
-    /// The user refused this app.
+    /// The app is not granted this session, so its secret is withheld.
     Denied,
-    /// No consent provider could be asked, so the request failed closed.
-    NoPrompt,
 }
 
 impl Refusal {
-    /// The portal response code for this refusal: 1 is "cancelled by the user", 2 is "other".
+    /// The portal response code: 1 is "cancelled by the user", 2 is "other".
     #[must_use]
     pub const fn response(self) -> u32 {
         match self {
             Refusal::Denied => 1,
-            Refusal::NoApp | Refusal::NoPrompt => 2,
+            Refusal::NoApp => 2,
         }
     }
 }
 
-/// The secret for `app_id`, asking for consent first unless this session already allowed it.
+/// The secret for `app_id`, once the caller has established that the app is granted.
 ///
-/// A refusal records nothing, so the next request asks again. The secret is derived only after an
-/// allow, so a refused request never holds one.
-pub fn retrieve(
-    master: &[u8],
-    grants: &mut Grants,
-    prompt: &mut dyn ConsentPrompt,
-    app_id: &str,
-) -> Result<AppSecret, Refusal> {
+/// Consent is decided by the compositor before a request reaches this module. The check here is
+/// only what the store can verify: an app id is named and the app is granted. Either failing gets
+/// no secret.
+pub fn retrieve(master: &[u8], app_id: &str, granted: bool) -> Result<AppSecret, Refusal> {
     if app_id.is_empty() {
         return Err(Refusal::NoApp);
     }
-    if !grants.is_granted(app_id) {
-        match prompt.ask(app_id) {
-            Ok(Consent::Allowed) => {
-                grants.allowed.insert(app_id.to_owned());
-            }
-            Ok(Consent::Refused) => return Err(Refusal::Denied),
-            Err(NoConsent) => return Err(Refusal::NoPrompt),
-        }
+    if !granted {
+        return Err(Refusal::Denied);
     }
     Ok(derive(master, app_id))
 }
@@ -186,28 +133,6 @@ pub fn retrieve(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A prompt that answers from a script and counts the questions it was asked.
-    struct Scripted {
-        answers: Vec<Result<Consent, NoConsent>>,
-        asked: Vec<String>,
-    }
-
-    impl Scripted {
-        fn answering(answers: Vec<Result<Consent, NoConsent>>) -> Scripted {
-            Scripted {
-                answers,
-                asked: Vec::new(),
-            }
-        }
-    }
-
-    impl ConsentPrompt for Scripted {
-        fn ask(&mut self, app_id: &str) -> Result<Consent, NoConsent> {
-            self.asked.push(app_id.to_owned());
-            self.answers.remove(0)
-        }
-    }
 
     const MASTER: &[u8] = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -244,56 +169,21 @@ mod tests {
     }
 
     #[test]
-    fn an_allowed_app_is_not_asked_again() {
-        let mut grants = Grants::default();
-        let mut prompt = Scripted::answering(vec![Ok(Consent::Allowed)]);
-        let first = retrieve(MASTER, &mut grants, &mut prompt, "org.example.App").expect("allowed");
-        let second = retrieve(MASTER, &mut grants, &mut prompt, "org.example.App").expect("granted");
-        assert_eq!(*first, *second);
-        assert_eq!(prompt.asked, vec!["org.example.App".to_owned()]);
-        assert!(grants.is_granted("org.example.App"));
-    }
-
-    #[test]
-    fn a_refused_prompt_returns_no_secret() {
-        let mut grants = Grants::default();
-        let mut prompt = Scripted::answering(vec![Ok(Consent::Refused)]);
-        let refusal = retrieve(MASTER, &mut grants, &mut prompt, "org.example.App")
-            .expect_err("a refused request gets no secret");
+    fn an_ungranted_app_gets_no_secret() {
+        let refusal = retrieve(MASTER, "org.example.App", false).expect_err("ungranted");
         assert_eq!(refusal, Refusal::Denied);
         assert_eq!(refusal.response(), 1);
-        assert!(!grants.is_granted("org.example.App"));
     }
 
     #[test]
-    fn a_refusal_is_not_remembered() {
-        let mut grants = Grants::default();
-        let mut prompt = Scripted::answering(vec![Ok(Consent::Refused), Ok(Consent::Allowed)]);
-        assert_eq!(
-            retrieve(MASTER, &mut grants, &mut prompt, "org.example.App"),
-            Err(Refusal::Denied)
-        );
-        assert!(retrieve(MASTER, &mut grants, &mut prompt, "org.example.App").is_ok());
-        assert_eq!(prompt.asked.len(), 2, "the second request asks again");
+    fn retrieve_refuses_an_empty_app_id_even_when_granted() {
+        assert_eq!(retrieve(MASTER, "", true), Err(Refusal::NoApp));
     }
 
     #[test]
-    fn no_consent_provider_fails_closed() {
-        let mut grants = Grants::default();
-        let mut prompt = Scripted::answering(vec![Err(NoConsent)]);
-        let refusal =
-            retrieve(MASTER, &mut grants, &mut prompt, "org.example.App").expect_err("no provider means no secret");
-        assert_eq!(refusal, Refusal::NoPrompt);
-        assert_eq!(refusal.response(), 2);
-        assert!(!grants.is_granted("org.example.App"));
-    }
-
-    #[test]
-    fn an_empty_app_id_is_refused_before_asking() {
-        let mut grants = Grants::default();
-        let mut prompt = Scripted::answering(vec![]);
-        assert_eq!(retrieve(MASTER, &mut grants, &mut prompt, ""), Err(Refusal::NoApp));
-        assert!(prompt.asked.is_empty());
+    fn a_granted_app_gets_its_derived_secret() {
+        let secret = retrieve(MASTER, "org.example.App", true).expect("granted");
+        assert_eq!(*secret, *derive(MASTER, "org.example.App"));
     }
 
     fn scratch(label: &str) -> std::path::PathBuf {

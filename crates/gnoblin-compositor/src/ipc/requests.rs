@@ -182,12 +182,22 @@ impl Requests {
     }
 
     /// Claim a slot, so offers for it come to this connection.
+    ///
+    /// `secret.derive` is internal: only the services role, providing it, may claim it. A
+    /// shell's claim is refused, so no shell can answer the consent that releases app secrets.
     pub(crate) fn claim_slot(
         &mut self,
         owner: ClientId,
         slot: CapabilitySlot,
         provider: Provider,
+        services_role: bool,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        if slot == CapabilitySlot::SecretDerive && (!services_role || provider != Provider::Services) {
+            return Err(RequestRefusal {
+                code: wire::code::DENIED,
+                message: "`secret.derive` is internal: only the services role may claim it".to_owned(),
+            });
+        }
         self.slots
             .claim(slot, provider, Some(OwnerId::new(owner.get())))
             .map_err(|error| RequestRefusal {
@@ -296,14 +306,10 @@ impl Requests {
             .into_iter()
             .filter(|delivery| delivery.client != client)
             .collect();
-        // A slot a departed shell held falls back to its default provider, so the next
-        // offer for it reaches the services role instead of nowhere.
-        let held: Vec<CapabilitySlot> = self
-            .claims
-            .iter()
-            .filter(|(_, claimant)| **claimant == client)
-            .map(|(slot, _)| *slot)
-            .collect();
+        // A slot a departed connection held falls back to its default provider, so the next
+        // offer for it reaches the services role instead of nowhere. The model owns who holds
+        // what, services claims included, so the release follows it rather than the shell map.
+        let held: Vec<CapabilitySlot> = self.slots.held_by(OwnerId::new(client.get())).collect();
         for slot in held {
             let _ = self.slots.release(slot, OwnerId::new(client.get()));
             self.claims.remove(&slot);
@@ -391,5 +397,69 @@ fn request_code(error: &gnoblin_model::RequestError) -> &'static str {
         }
         gnoblin_model::RequestError::Finished { .. } => wire::code::REQUEST_FINISHED,
         gnoblin_model::RequestError::Unknown { .. } => wire::code::REQUEST_UNKNOWN,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SERVICES: ClientId = ClientId::new(2);
+    const SHELL: ClientId = ClientId::new(3);
+    const HOST: ClientId = ClientId::new(4);
+
+    #[test]
+    fn a_shell_cannot_claim_the_internal_secret_derive_slot() {
+        let mut requests = Requests::new();
+        let refusal = requests
+            .claim_slot(SHELL, CapabilitySlot::SecretDerive, Provider::Shell, false)
+            .expect_err("a shell claim is refused");
+        assert_eq!(refusal.code, wire::code::DENIED);
+        assert!(
+            refusal.message.contains("only the services role"),
+            "{}",
+            refusal.message
+        );
+    }
+
+    #[test]
+    fn a_services_connection_claims_secret_derive_as_its_provider() {
+        let mut requests = Requests::new();
+        assert!(
+            requests
+                .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Services, true)
+                .is_ok()
+        );
+        assert!(
+            requests
+                .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Shell, true)
+                .is_err(),
+            "the services role cannot hand the internal slot to a shell"
+        );
+    }
+
+    #[test]
+    fn a_services_originated_offer_still_goes_to_the_offering_connection() {
+        let mut requests = Requests::new();
+        let (request, _) = requests
+            .offer(SERVICES, "auth.polkit", "Authenticate", "Confirm", Tick::new(1_000))
+            .expect("the services role provides auth.polkit by default");
+        let offer = requests.offers.get(&request).expect("the offer is recorded");
+        assert_eq!(offer.provider, SERVICES, "the provider is the connection that offered");
+        assert_eq!(offer.offered_by, SERVICES);
+    }
+
+    #[test]
+    fn a_host_offer_to_a_shell_claimed_slot_goes_to_the_shell() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PromptSecret, Provider::Shell, false)
+            .expect("a shell claims the prompt slot");
+        let (request, _) = requests
+            .offer(HOST, "prompt.secret", "Unlock", "Passphrase", Tick::new(1_000))
+            .expect("the shell provides the prompt slot");
+        let offer = requests.offers.get(&request).expect("the offer is recorded");
+        assert_eq!(offer.provider, SHELL);
+        assert_eq!(offer.offered_by, HOST);
     }
 }
