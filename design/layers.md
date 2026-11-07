@@ -572,6 +572,7 @@ cannot be verified opens on the output and the app still gets its consent answer
 would refuse those requests. Until Kieran decides, the fallback stays.
 
 **16.** (A) How a portal dialog may be placed over a parent window when the app cannot be verified. Today every request uses output scope. Options:
+
 - (a) Keep output scope for every request until a real attribution source exists. Pro: no spoofing risk, nothing new to trust. Con: dialogs never centre on their window, and the parent-window code stays unused.
 - (b) Treat the xdg-foreign handle as a bearer capability: random, unguessable, known only to the exporter. Honour it when it resolves, and always show the requesting app's label in the dialog. Pro: works for host apps. Con: a leaked handle lets another app place a dialog over that window. Risk: the label is the only signal, and the app id it shows may be empty.
 - (c) Honour the parent only when `app_id` is non-empty and matches the exporter's toplevel `app_id` (sandboxed apps only). Pro: a real identity check where Flatpak supplies one. Con: host apps (empty `app_id`) get output scope, and the check trusts `app_id`, which the docs do not name as an attribution.
