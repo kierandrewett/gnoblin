@@ -95,6 +95,7 @@ mod logs;
 mod output;
 mod tree;
 mod value;
+mod verbs;
 
 pub use connection::{ConnectFailure, Connection, SocketConnection};
 // Where the socket is and the transport over it are the client library's, because
@@ -133,6 +134,20 @@ pub fn run(
         cli::Invocation::IpcDump { source } => dump::run(&source, out, err),
         cli::Invocation::Completions { shell, output } => completions(shell, output, out, err),
         cli::Invocation::Log { request } => logs::run(&request, out, err),
+        cli::Invocation::Verb {
+            verb: verbs::Verb::ConfigValidate { path },
+            json,
+        } => match verbs::validate(&path, json, out) {
+            Ok(code) => code,
+            Err(failure) => failure.report(err, json),
+        },
+        cli::Invocation::Verb { verb, json } => match connection.connect() {
+            Ok(mut client) => verbs::execute(&mut client, &verb, json, out, err),
+            Err(failure) => {
+                let _ = output::error(err, json, failure.code(), &failure.to_string());
+                failure.exit_code()
+            }
+        },
         cli::Invocation::Object { object, action, json } => match connection.connect() {
             Ok(mut client) => commands::execute(&mut client, object, &action, json, out, err),
             Err(failure) => {

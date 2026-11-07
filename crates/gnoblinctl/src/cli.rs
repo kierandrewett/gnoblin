@@ -25,6 +25,7 @@ use gnoblin_store::LogQuery;
 use crate::args;
 use crate::logs;
 use crate::tree::{self, CliObject};
+use crate::verbs;
 
 /// The shells `completions` writes a script for.
 pub(crate) const SHELLS: &[&str] = &["bash", "zsh", "fish"];
@@ -47,6 +48,8 @@ pub(crate) enum Invocation {
     Completions { shell: Shell, output: Option<PathBuf> },
     /// Print the stored log records, or follow them.
     Log { request: Box<logs::LogRequest> },
+    /// A hand-written verb: the session's state, the version, or a config check.
+    Verb { verb: verbs::Verb, json: bool },
 }
 
 /// The action taken on an object.
@@ -143,6 +146,9 @@ pub(crate) fn command_tree() -> Command {
         );
     for object in tree::OBJECTS {
         root = root.subcommand(object_command(object));
+    }
+    for command in verb_commands() {
+        root = root.subcommand(command);
     }
     root.subcommand(ipc_command())
         .subcommand(completions_command())
@@ -350,6 +356,33 @@ fn log_command() -> Command {
         )
 }
 
+/// The hand-written verbs. Each asks the session one fixed question, so they are
+/// written out here rather than generated from the schema.
+fn verb_commands() -> Vec<Command> {
+    vec![
+        Command::new("ping").about("Exit 0 when the compositor answers the handshake."),
+        Command::new("status").about("The session's state, its revision and the lock."),
+        Command::new("version").about("The Gnoblin version and the IPC version this connection speaks."),
+        Command::new("capabilities").about("Every capability, and whether this connection holds it."),
+        Command::new("config")
+            .about("Read the configuration, or check a file against the runtime's parser.")
+            .subcommand_required(true)
+            .arg_required_else_help(true)
+            .subcommand(Command::new("get").about("Print the configuration the compositor last accepted."))
+            .subcommand(
+                Command::new("validate")
+                    .about("Check a configuration file without connecting to a session.")
+                    .arg(
+                        Arg::new("file")
+                            .value_name("FILE")
+                            .required(true)
+                            .value_parser(value_parser!(PathBuf))
+                            .help("The configuration document to check."),
+                    ),
+            ),
+    ]
+}
+
 /// Parse one command line, without the program name.
 pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Usage> {
     let matches = match command_tree().try_get_matches_from(args) {
@@ -370,6 +403,23 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         "ipc" => ipc_invocation(sub)?,
         "completions" => completions_invocation(sub)?,
         "log" => log_invocation(sub, json)?,
+        "ping" => Invocation::Verb {
+            verb: verbs::Verb::Ping,
+            json,
+        },
+        "status" => Invocation::Verb {
+            verb: verbs::Verb::Status,
+            json,
+        },
+        "version" => Invocation::Verb {
+            verb: verbs::Verb::Version,
+            json,
+        },
+        "capabilities" => Invocation::Verb {
+            verb: verbs::Verb::Capabilities,
+            json,
+        },
+        "config" => config_invocation(sub, json)?,
         command => {
             let object = tree::CliObject::find(command).expect("every subcommand comes from the generated tree");
             object_invocation(object, sub, json)?
@@ -394,6 +444,20 @@ fn completions_invocation(matches: &ArgMatches) -> Result<Invocation, Usage> {
     let shell = Shell::parse(matches.get_one::<String>("shell").expect("clap requires the shell"));
     let output = matches.get_one::<PathBuf>("output").cloned();
     Ok(Invocation::Completions { shell, output })
+}
+
+/// The `config` subcommands. `get` asks the session; `validate` reads a file and
+/// needs no session at all.
+fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
+    let (name, sub) = matches.subcommand().expect("a subcommand is required");
+    let verb = match name {
+        "get" => verbs::Verb::ConfigGet,
+        "validate" => verbs::Verb::ConfigValidate {
+            path: sub.get_one::<PathBuf>("file").cloned().expect("clap requires the file"),
+        },
+        other => unreachable!("clap refuses `config {other}`"),
+    };
+    Ok(Invocation::Verb { verb, json })
 }
 
 /// A refusal of the `log` options, with the message the parser produced.

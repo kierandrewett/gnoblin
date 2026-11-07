@@ -26,6 +26,9 @@ prost.workspace = true
 # The schema types, so a generated `string`/`uint`/`object:window` argument is
 # parsed and checked by the same code that validates the graph.
 gnoblin-schema = { path = "../gnoblin-schema" }
+# `config validate` parses a file with the runtime's own parser, so a document
+# that validates here is one the compositor accepts.
+gnoblin-config = { path = "../gnoblin-config" }
 serde_json.workspace = true
 
 [build-dependencies]

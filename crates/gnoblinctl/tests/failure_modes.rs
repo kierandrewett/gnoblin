@@ -34,6 +34,10 @@ use gnoblinctl::{ConnectFailure, Connection, SocketConnection, UnixTransport};
 /// The version this build speaks, which the fixture server serves.
 const VERSION: Version = Version::new(0, 2, 0);
 
+/// The verbs written by hand rather than generated from the schema. They are not
+/// object commands, so the drift check must not expect a schema object behind them.
+const HAND_WRITTEN: &[&str] = &["ping", "status", "version", "capabilities", "config"];
+
 /// A unique path under the temporary directory.
 fn scratch(suffix: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -260,6 +264,83 @@ fn get_of_an_unknown_identity_is_an_error_response() {
     assert_eq!(code, 1, "an identity no object has is an error, not a usage mistake");
     assert!(out.is_empty(), "{out}");
     assert!(err.contains("object-unknown"), "{err}");
+}
+
+#[test]
+fn ping_exits_0_once_the_handshake_has_succeeded() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["ping"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "pong\n");
+}
+
+#[test]
+fn version_reports_the_session_and_the_ipc_version() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["version"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "gnoblin 0.2.0\nipc 0.2.0\n");
+}
+
+#[test]
+fn version_as_json_names_both_versions() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["--json", "version"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+    assert_eq!(document["gnoblin"], "0.2.0");
+    assert_eq!(document["ipc"], "0.2.0");
+}
+
+#[test]
+fn status_reports_the_revision_and_an_unavailable_lock() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["status"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("state     running\n"), "{out}");
+    assert!(out.contains("revision  "), "{out}");
+    assert!(
+        out.contains("lock      unavailable\n"),
+        "a compositor with no lock object is not unlocked:\n{out}"
+    );
+}
+
+#[test]
+fn status_as_json_marks_the_lock_unavailable_not_unlocked() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["--json", "status"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+    assert_eq!(document["state"], "running");
+    assert_eq!(document["lock_available"], false);
+    assert!(document["lock_state"].is_null(), "{out}");
+}
+
+#[test]
+fn capabilities_lists_every_capability_and_grants_none_on_the_ordinary_socket() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["capabilities"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.starts_with("capability"), "{out}");
+    assert!(out.contains("offer-request  no\n"), "{out}");
+    assert!(out.contains("commit-config  no\n"), "{out}");
+    assert!(
+        out.contains("portal-input   no\n"),
+        "the name column is padded to the longest name:\n{out}"
+    );
+    assert!(!out.contains("yes"), "the loopback grants nothing:\n{out}");
+}
+
+#[test]
+fn capabilities_as_json_is_one_row_per_capability() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["--json", "capabilities"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 0, "stderr: {err}");
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&out).expect("one JSON array");
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0]["name"], "offer-request");
+    assert_eq!(rows[0]["granted"], false);
+    assert_eq!(rows[4]["name"], "portal-input");
 }
 
 #[test]
@@ -588,7 +669,13 @@ fn the_command_tree_matches_the_schema() {
     let mut present: Vec<String> = tree
         .get_subcommands()
         .map(|subcommand| subcommand.get_name().to_owned())
-        .filter(|name| name != "ipc" && name != "completions" && name != "log" && name != "help")
+        .filter(|name| {
+            !HAND_WRITTEN.contains(&name.as_str())
+                && name != "ipc"
+                && name != "completions"
+                && name != "log"
+                && name != "help"
+        })
         .collect();
     present.sort();
     expected.sort();

@@ -194,7 +194,8 @@ fn call<T: Transport>(
 }
 
 /// Something that stopped an action.
-enum Failure {
+#[derive(Debug)]
+pub(crate) enum Failure {
     /// The compositor refused a member, closed the connection, or sent a payload
     /// this build cannot read.
     Client(ClientError),
@@ -206,7 +207,7 @@ enum Failure {
 
 impl Failure {
     /// Print the failure on standard error and return its exit code.
-    fn report(self, err: &mut dyn Write, json: bool) -> u8 {
+    pub(crate) fn report(self, err: &mut dyn Write, json: bool) -> u8 {
         let (code, message) = match self {
             Failure::Client(error) => match error {
                 ClientError::Refused { code, message, .. } => (code, message),
