@@ -49,8 +49,20 @@ const LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
 /// 1.0 (full dichromacy). Their paper applies these to linear RGB. Gnoblin
 /// applies them to the same values it renders, which is an approximation; a
 /// gamma-correct pass would need a linearisation step the renderer does not
-/// have. The numbers below were transcribed from the paper's published table
-/// and have not been re-checked against the PDF in this change.
+/// have.
+///
+/// Provenance: the nine severity-1.0 numbers below were checked digit by digit
+/// against `CVD_MATRICES_MACHADO2010` in colour-science,
+/// `colour/blindness/datasets/machado2010.py`
+/// (https://raw.githubusercontent.com/colour-science/colour/develop/colour/blindness/datasets/machado2010.py),
+/// entries `Protanomaly`, `Deuteranomaly` and `Tritanomaly` at key `1.0`. That
+/// file cites Machado's 2010 thesis (http://www.lume.ufrgs.br/handle/10183/26950),
+/// not the 2009 TVCG paper directly; the TVCG PDF itself was not read.
+///
+/// These matrices SIMULATE colour blindness: they show what a viewer with the
+/// deficiency sees. They are not a correction. Using them to recolour content
+/// for a colour-blind viewer (daltonisation) is a different question, and is
+/// not decided here.
 const PROTANOPIA: Rows = [
     [0.152_286, 1.052_583, -0.204_868, 0.0, 0.0],
     [0.114_503, 0.786_281, 0.099_216, 0.0, 0.0],
@@ -58,8 +70,8 @@ const PROTANOPIA: Rows = [
     [0.0, 0.0, 0.0, 1.0, 0.0],
 ];
 
-/// Machado et al. (2009), severity 1.0, deuteranopia. Same provenance note as
-/// [`PROTANOPIA`].
+/// Machado et al. (2009), severity 1.0, deuteranopia. Simulation only, and
+/// verified as described on [`PROTANOPIA`].
 const DEUTERANOPIA: Rows = [
     [0.367_322, 0.860_646, -0.227_968, 0.0, 0.0],
     [0.280_085, 0.672_501, 0.047_413, 0.0, 0.0],
@@ -67,8 +79,8 @@ const DEUTERANOPIA: Rows = [
     [0.0, 0.0, 0.0, 1.0, 0.0],
 ];
 
-/// Machado et al. (2009), severity 1.0, tritanopia. Same provenance note as
-/// [`PROTANOPIA`].
+/// Machado et al. (2009), severity 1.0, tritanopia. Simulation only, and
+/// verified as described on [`PROTANOPIA`].
 const TRITANOPIA: Rows = [
     [1.255_528, -0.076_749, -0.178_779, 0.0, 0.0],
     [-0.078_411, 0.930_809, 0.147_602, 0.0, 0.0],
@@ -134,6 +146,37 @@ mod colour_tests {
                 [0.0, 0.0, 0.0, 1.0, 0.0],
             ],
         );
+    }
+
+    /// Applies a matrix to one colour (RGB, alpha 1) the way the renderer does.
+    fn apply(m: super::Rows, c: [f32; 3]) -> [f32; 3] {
+        let mut out = [0.0_f32; 3];
+        for (channel, slot) in out.iter_mut().enumerate() {
+            let r = m[channel];
+            *slot = r[0] * c[0] + r[1] * c[1] + r[2] * c[2] + r[3] + r[4];
+        }
+        out
+    }
+
+    #[test]
+    fn invert_maps_black_to_white_and_back() {
+        let m = ColourFilter::Invert.matrix();
+        assert_eq!(apply(m, [0.0, 0.0, 0.0]), [1.0, 1.0, 1.0]);
+        assert_eq!(apply(m, [1.0, 1.0, 1.0]), [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn colour_blindness_filters_map_white_to_white() {
+        for filter in [
+            ColourFilter::Protanopia,
+            ColourFilter::Deuteranopia,
+            ColourFilter::Tritanopia,
+        ] {
+            let out = apply(filter.matrix(), [1.0, 1.0, 1.0]);
+            for channel in out {
+                assert!((channel - 1.0).abs() < 1e-3, "{filter:?} white became {out:?}");
+            }
+        }
     }
 
     #[test]
