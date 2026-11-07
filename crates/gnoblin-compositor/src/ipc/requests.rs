@@ -69,6 +69,9 @@ struct Offer {
     title: String,
     /// The sentence the provider shows.
     message: String,
+    /// What the request is about, for a provider that answers by subject. The
+    /// compositor carries it without reading it.
+    subject: Vec<u8>,
     /// The connection it was sent to.
     provider: ClientId,
     /// The connection that offered it, which is the only one that reads the answer.
@@ -143,6 +146,7 @@ impl Requests {
         slot: &str,
         title: &str,
         message: &str,
+        subject: &[u8],
         deadline: Tick,
     ) -> Result<(RequestId, Vec<FrameDelivery>), RequestRefusal> {
         let slot = CapabilitySlot::from_str(slot).map_err(|error| RequestRefusal {
@@ -159,6 +163,7 @@ impl Requests {
                 slot,
                 title: title.to_owned(),
                 message: message.to_owned(),
+                subject: subject.to_vec(),
                 provider,
                 offered_by,
             },
@@ -354,7 +359,15 @@ impl Requests {
                     };
                     deliveries.push(FrameDelivery {
                         client: offer.provider,
-                        envelope: wire::offer(0, request, deadline, offer.slot.name(), &offer.title, &offer.message),
+                        envelope: wire::offer(
+                            0,
+                            request,
+                            deadline,
+                            offer.slot.name(),
+                            &offer.title,
+                            &offer.message,
+                            &offer.subject,
+                        ),
                     });
                 }
                 RequestEvent::Finished { request, outcome } => {
@@ -443,7 +456,14 @@ mod tests {
     fn a_services_originated_offer_still_goes_to_the_offering_connection() {
         let mut requests = Requests::new();
         let (request, _) = requests
-            .offer(SERVICES, "auth.polkit", "Authenticate", "Confirm", Tick::new(1_000))
+            .offer(
+                SERVICES,
+                "auth.polkit",
+                "Authenticate",
+                "Confirm",
+                b"",
+                Tick::new(1_000),
+            )
             .expect("the services role provides auth.polkit by default");
         let offer = requests.offers.get(&request).expect("the offer is recorded");
         assert_eq!(offer.provider, SERVICES, "the provider is the connection that offered");
@@ -457,7 +477,7 @@ mod tests {
             .claim_slot(SHELL, CapabilitySlot::PromptSecret, Provider::Shell, false)
             .expect("a shell claims the prompt slot");
         let (request, _) = requests
-            .offer(HOST, "prompt.secret", "Unlock", "Passphrase", Tick::new(1_000))
+            .offer(HOST, "prompt.secret", "Unlock", "Passphrase", b"", Tick::new(1_000))
             .expect("the shell provides the prompt slot");
         let offer = requests.offers.get(&request).expect("the offer is recorded");
         assert_eq!(offer.provider, SHELL);

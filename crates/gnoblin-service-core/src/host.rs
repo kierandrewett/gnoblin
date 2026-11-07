@@ -89,13 +89,21 @@ impl Host {
         }
     }
 
-    /// Offer one request on `slot` to whoever provides it.
-    pub fn offer(&self, slot: &str, title: &str, message: &str, deadline: Tick) -> Result<RequestId, OfferFailure> {
+    /// Offer one request on `slot` to whoever provides it. `subject` is carried to the
+    /// provider unread; see [`Proposition::subject`].
+    pub fn offer(
+        &self,
+        slot: &str,
+        title: &str,
+        message: &str,
+        subject: &[u8],
+        deadline: Tick,
+    ) -> Result<RequestId, OfferFailure> {
         // The agent's deadline is what it told the compositor to enforce; the role's own
         // default is the floor, because an agent with no deadline of its own must still
         // get one.
         let timeout = Duration::from_millis(deadline.get()).max(self.deadline);
-        match self.lock().offer(slot, title, message, timeout) {
+        match self.lock().offer(slot, title, message, subject, timeout) {
             Ok(request) => Ok(request),
             Err(ClientError::Refused { code, message, .. }) if code == gnoblin_client::code::NO_PROVIDER => {
                 Err(OfferFailure::NoProvider { reason: message })
@@ -132,6 +140,7 @@ impl Offerer for Host {
             proposition.slot.name(),
             &title,
             &proposition.request.message,
+            &proposition.subject,
             deadline,
         ) {
             Ok(request) => Ok(request),

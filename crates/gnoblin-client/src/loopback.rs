@@ -71,7 +71,7 @@ struct Inner {
     /// What each offered request is about, so the offer frame carries the
     /// proposition. The broker owns the state machine and deliberately knows nothing
     /// about what a request means.
-    propositions: BTreeMap<RequestId, (String, String, String)>,
+    propositions: BTreeMap<RequestId, (String, String, String, Vec<u8>)>,
     version: Version,
     next_owner: u64,
     links: Vec<Link>,
@@ -257,12 +257,12 @@ impl Inner {
                     RequestEvent::Offered { request, deadline } => {
                         let correlation = self.links[index].next_offer;
                         self.links[index].next_offer += 1;
-                        let (slot, title, message) = self
+                        let (slot, title, message, subject) = self
                             .propositions
                             .get(request)
                             .cloned()
-                            .unwrap_or_else(|| (String::new(), String::new(), String::new()));
-                        wire::offer(correlation, *request, *deadline, &slot, &title, &message)
+                            .unwrap_or_else(|| (String::new(), String::new(), String::new(), Vec::new()));
+                        wire::offer(correlation, *request, *deadline, &slot, &title, &message, &subject)
                     }
                     RequestEvent::Finished { request, outcome } => wire::finished(*request, outcome.into()),
                 };
@@ -415,12 +415,13 @@ impl Server {
     }
 
     /// Offer a request that fails at `deadline`, announcing it to every client.
-    pub fn offer(&mut self, slot: &str, title: &str, message: &str, deadline: Tick) -> RequestId {
+    pub fn offer(&mut self, slot: &str, title: &str, message: &str, subject: &[u8], deadline: Tick) -> RequestId {
         let mut inner = self.inner.borrow_mut();
         let request = inner.broker.offer(deadline);
-        inner
-            .propositions
-            .insert(request, (slot.to_owned(), title.to_owned(), message.to_owned()));
+        inner.propositions.insert(
+            request,
+            (slot.to_owned(), title.to_owned(), message.to_owned(), subject.to_vec()),
+        );
         inner.broadcast_requests();
         request
     }

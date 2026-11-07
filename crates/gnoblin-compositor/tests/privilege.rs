@@ -89,7 +89,7 @@ fn a_socket_client_cannot_use_a_privileged_member() {
 
     let (code, message) = refusal(
         client
-            .offer("auth.polkit", "Title", "Message", Duration::from_secs(5))
+            .offer("auth.polkit", "Title", "Message", b"", Duration::from_secs(5))
             .expect_err("an ordinary connection cannot offer"),
     );
     assert_eq!(code, code::DENIED);
@@ -129,7 +129,7 @@ fn a_role_cannot_use_another_role_s_capability() {
     // The runtime offers nothing: prompts are the services role's or a shell's.
     let (code, _) = refusal(
         runtime
-            .offer("prompt.secret", "t", "m", Duration::from_secs(1))
+            .offer("prompt.secret", "t", "m", b"", Duration::from_secs(1))
             .expect_err("the runtime cannot offer"),
     );
     assert_eq!(code, code::DENIED);
@@ -156,6 +156,7 @@ fn an_offer_to_a_slot_with_no_provider_is_refused() {
                 "prompt.secret",
                 "Unlock the keyring",
                 "Enter your passphrase",
+                b"",
                 Duration::from_secs(60),
             )
             .expect_err("nobody provides the slot"),
@@ -182,6 +183,7 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
             "auth.polkit",
             "Authentication required",
             "Authenticate to run /usr/bin/mount",
+            b"",
             Duration::from_secs(30),
         )
         .expect("the slot has a provider");

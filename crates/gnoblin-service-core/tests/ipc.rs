@@ -72,6 +72,7 @@ impl Offerer for LoopbackHost {
             proposition.slot.name(),
             &proposition.request.action_id,
             &proposition.request.message,
+            &proposition.subject,
             deadline,
         ))
     }
@@ -214,6 +215,7 @@ fn two_shells_cannot_claim_one_request() {
             slot: "auth.polkit".to_owned(),
             title: "org.freedesktop.policykit.exec".to_owned(),
             message: "Authentication is required".to_owned(),
+            subject: Vec::new(),
         }
     );
     assert_eq!(
@@ -224,6 +226,7 @@ fn two_shells_cannot_claim_one_request() {
             slot: "auth.polkit".to_owned(),
             title: "org.freedesktop.policykit.exec".to_owned(),
             message: "Authentication is required".to_owned(),
+            subject: Vec::new(),
         }
     );
     first.claim(offered.request).expect("the first claim wins");

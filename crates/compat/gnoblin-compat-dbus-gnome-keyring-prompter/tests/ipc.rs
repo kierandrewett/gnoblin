@@ -38,7 +38,7 @@ impl Offerer for LoopbackHost {
         Ok(self
             .server
             .borrow_mut()
-            .offer(SLOT, &prompt.title, &prompt.message, deadline))
+            .offer(SLOT, &prompt.title, &prompt.message, &[], deadline))
     }
 }
 

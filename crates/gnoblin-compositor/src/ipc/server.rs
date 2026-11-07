@@ -1016,7 +1016,7 @@ impl Dispatcher {
 
     /// `request.offer`: a privileged host asks a provider to decide something.
     fn offer(&mut self, client: ClientId, envelope: &Envelope) {
-        let (slot, title, message, timeout) = match wire::read_offer(envelope.payload().unwrap_or(&[])) {
+        let (slot, title, message, subject, timeout) = match wire::read_offer(envelope.payload().unwrap_or(&[])) {
             Ok(offer) => offer,
             Err(reason) => {
                 self.refuse(
@@ -1029,7 +1029,7 @@ impl Dispatcher {
             }
         };
         let deadline = self.now().saturating_add(timeout);
-        match self.requests.offer(client, &slot, &title, &message, deadline) {
+        match self.requests.offer(client, &slot, &title, &message, &subject, deadline) {
             Ok((request, deliveries)) => {
                 let request = request.get();
                 if let Some(connection) = self.connections.get_mut(&client) {

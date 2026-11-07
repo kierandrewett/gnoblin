@@ -137,6 +137,7 @@ fn an_answer_after_the_finish_is_refused() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(1_000),
     );
 
@@ -147,6 +148,7 @@ fn an_answer_after_the_finish_is_refused() {
             slot,
             title,
             message,
+            ..
         } => {
             assert_eq!(offered, request);
             assert_eq!(deadline, Tick::new(1_000));
@@ -193,6 +195,7 @@ fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(1_000),
     );
     assert!(
@@ -217,6 +220,7 @@ fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(1_000),
     );
     assert!(
@@ -247,6 +251,7 @@ fn two_clients_cannot_claim_one_request() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(1_000),
     );
 
@@ -380,6 +385,7 @@ fn an_unanswered_request_times_out_and_the_client_learns_it() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(10),
     );
     assert!(matches!(
@@ -419,12 +425,14 @@ fn an_empty_answer_is_not_an_ended_request() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(500),
     );
     let ended = server.offer(
         "auth.polkit",
         "Authentication required",
         "Authenticate to continue",
+        b"",
         Tick::new(500),
     );
     for _ in 0..2 {

@@ -162,6 +162,9 @@ pub enum Incoming {
         title: String,
         /// The sentence the provider shows.
         message: String,
+        /// What the request is about, for a provider that answers by subject. Empty when
+        /// the offer named none.
+        subject: Vec<u8>,
     },
     /// The answer to a request this connection offered. Only the host that offered
     /// the request ever receives this, and the frame is flagged sensitive because it
@@ -261,13 +264,22 @@ pub fn decline(request_id: u64, request: RequestId, reason: Option<DeclineReason
 /// The proposition travels with the offer because the schema's `request` object
 /// carries only the identity and the deadline, and a provider that had to ask what a
 /// request is about would need a second round trip before it could draw anything.
-pub fn offer(request_id: u64, request: RequestId, deadline: Tick, slot: &str, title: &str, message: &str) -> Envelope {
+pub fn offer(
+    request_id: u64,
+    request: RequestId,
+    deadline: Tick,
+    slot: &str,
+    title: &str,
+    message: &str,
+    subject: &[u8],
+) -> Envelope {
     let mut writer = Writer::new();
     writer.u64(request.get());
     writer.u64(deadline.get());
     writer.text(slot);
     writer.text(title);
     writer.text(message);
+    writer.bytes(subject);
     Envelope::request(NAMESPACE, member::REQUEST_OFFERED, request_id, writer.finish())
 }
 
@@ -285,11 +297,19 @@ pub fn answered(request: RequestId, answer: &[u8]) -> Envelope {
 }
 
 /// A request offering a request to the slot that owns it. Privileged.
-pub fn request_offer(request_id: u64, slot: &str, title: &str, message: &str, timeout_ms: u64) -> Envelope {
+pub fn request_offer(
+    request_id: u64,
+    slot: &str,
+    title: &str,
+    message: &str,
+    subject: &[u8],
+    timeout_ms: u64,
+) -> Envelope {
     let mut writer = Writer::new();
     writer.text(slot);
     writer.text(title);
     writer.text(message);
+    writer.bytes(subject);
     writer.u64(timeout_ms);
     Envelope::request(NAMESPACE, member::OFFER, request_id, writer.finish())
 }
@@ -548,14 +568,15 @@ pub fn read_decline(payload: &[u8]) -> Result<(RequestId, Option<DeclineReason>)
 }
 
 /// Decode a `request.offer` request. Privileged.
-pub fn read_offer(payload: &[u8]) -> Result<(String, String, String, u64), WireError> {
+pub fn read_offer(payload: &[u8]) -> Result<(String, String, String, Vec<u8>, u64), WireError> {
     let mut reader = Reader::new(payload);
     let slot = reader.text()?;
     let title = reader.text()?;
     let message = reader.text()?;
+    let subject = reader.bytes()?;
     let timeout = reader.u64()?;
     reader.done()?;
-    Ok((slot, title, message, timeout))
+    Ok((slot, title, message, subject, timeout))
 }
 
 /// The caller a portal request is made on behalf of, as the portal relay verified it on
@@ -814,6 +835,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
             let slot = reader.text()?;
             let title = reader.text()?;
             let message = reader.text()?;
+            let subject = reader.bytes()?;
             reader.done()?;
             Incoming::Offered {
                 request,
@@ -821,6 +843,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
                 slot,
                 title,
                 message,
+                subject,
             }
         }
         member::ANSWER => {
@@ -1320,6 +1343,7 @@ mod tests {
             "auth.polkit",
             "Authentication required",
             "Authenticate to run /usr/bin/mount",
+            b"com.example.app",
         );
         assert_eq!(
             decode(&frame).expect("decodes"),
@@ -1329,6 +1353,7 @@ mod tests {
                 slot: "auth.polkit".to_owned(),
                 title: "Authentication required".to_owned(),
                 message: "Authenticate to run /usr/bin/mount".to_owned(),
+                subject: b"com.example.app".to_vec(),
             })
         );
         let frame = finished(RequestId::new(2), RequestCompletion::TimedOut);
@@ -1343,13 +1368,14 @@ mod tests {
 
     #[test]
     fn the_offer_request_round_trips_its_proposition() {
-        let frame = request_offer(1, "auth.polkit", "Title", "Message", 30_000);
+        let frame = request_offer(1, "auth.polkit", "Title", "Message", b"com.example.app", 30_000);
         assert_eq!(
             read_offer(frame.payload().expect("payload")),
             Ok((
                 "auth.polkit".to_owned(),
                 "Title".to_owned(),
                 "Message".to_owned(),
+                b"com.example.app".to_vec(),
                 30_000
             ))
         );
@@ -1473,7 +1499,7 @@ mod tests {
         // The other half of the rule: claiming names a request and nothing else, so
         // a dump of it is useful for debugging.
         assert!(!claim(1, RequestId::new(2)).is_sensitive());
-        assert!(!offer(1, RequestId::new(2), Tick::new(500), "auth.polkit", "t", "m").is_sensitive());
+        assert!(!offer(1, RequestId::new(2), Tick::new(500), "auth.polkit", "t", "m", &[]).is_sensitive());
     }
 
     #[test]

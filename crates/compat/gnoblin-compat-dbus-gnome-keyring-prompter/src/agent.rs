@@ -26,7 +26,7 @@ struct PromptHost(Host);
 
 impl PromptOfferer for PromptHost {
     fn offer(&mut self, prompt: &Prompt, deadline: Tick) -> Result<RequestId, Unavailable> {
-        match Host::offer(&self.0, PROMPT_SLOT, &prompt.title, &prompt.message, deadline) {
+        match Host::offer(&self.0, PROMPT_SLOT, &prompt.title, &prompt.message, &[], deadline) {
             Ok(request) => Ok(request),
             // The adapter's own refusals name the slot, because `prompt.secret` has no
             // default provider and a prompt nobody draws must fail closed.

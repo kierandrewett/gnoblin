@@ -200,6 +200,7 @@ fn an_offer_the_role_cannot_draw_is_declined_at_once() {
         "auth.polkit",
         "Authentication required",
         "Authenticate to run /usr/bin/mount",
+        b"",
     ));
 
     // It claims the request, because only its owner may end it, and then declines it.
@@ -247,6 +248,7 @@ fn an_answer_reaches_the_agent_that_offered_the_request() {
         "location.agent",
         "Location",
         "Allow this application to use your location",
+        b"",
     ));
     let claim = peer.next().expect("the claim");
     assert_eq!(claim.member, wire::member::CLAIM, "{claim:?}");

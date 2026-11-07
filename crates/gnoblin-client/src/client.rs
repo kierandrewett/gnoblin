@@ -70,6 +70,8 @@ pub enum Event {
         title: String,
         /// The sentence the provider shows.
         message: String,
+        /// What the request is about, as the offer carried it. Empty when none was named.
+        subject: Vec<u8>,
     },
     /// The answer to a request this client offered. Only the host that offered the
     /// request receives it, and the frame it arrived in is flagged sensitive.
@@ -390,16 +392,21 @@ impl<T: Transport> Client<T> {
     ///
     /// `timeout` is how long the offer stands before the compositor fails it as timed
     /// out; the deadline the provider receives is the compositor's own tick.
+    ///
+    /// `subject` is what the request is about, as opaque bytes. The compositor carries
+    /// it to the provider without reading it, so a provider can answer by subject
+    /// rather than by the sentence it shows.
     pub fn offer(
         &mut self,
         slot: &str,
         title: &str,
         message: &str,
+        subject: &[u8],
         timeout: std::time::Duration,
     ) -> Result<RequestId, ClientError> {
         let timeout = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
         let correlation = self.next_id();
-        let frame = wire::request_offer(correlation, slot, title, message, timeout);
+        let frame = wire::request_offer(correlation, slot, title, message, subject, timeout);
         self.send(&frame)?;
         let payload = self.await_reply(correlation)?;
         let request = wire::read_revision(&payload).map_err(|reason| ClientError::Protocol {
@@ -631,6 +638,7 @@ impl<T: Transport> Client<T> {
                 slot,
                 title,
                 message,
+                subject,
             }) => {
                 self.inbox.push_back(Event::RequestOffered {
                     request,
@@ -638,6 +646,7 @@ impl<T: Transport> Client<T> {
                     slot,
                     title,
                     message,
+                    subject,
                 });
             }
             Some(wire::Incoming::Answered { request, answer }) => {

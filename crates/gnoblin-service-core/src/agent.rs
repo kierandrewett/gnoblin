@@ -103,6 +103,11 @@ pub struct Proposition {
     pub slot: CapabilitySlot,
     /// The action, message, icon, details and identities of the request.
     pub request: PolkitRequest,
+    /// What the request is about, as opaque bytes the compositor carries unread. A
+    /// provider answers by subject rather than by the sentence it shows, so a request
+    /// with no subject is one a provider can only answer by its message. Empty for
+    /// polkit and GeoClue, which name themselves through the request itself.
+    pub subject: Vec<u8>,
 }
 
 impl Proposition {
@@ -111,6 +116,7 @@ impl Proposition {
         Proposition {
             slot: CapabilitySlot::AuthPolkit,
             request,
+            subject: Vec::new(),
         }
     }
 
@@ -130,6 +136,7 @@ impl Proposition {
                 details: BTreeMap::new(),
                 identities: Vec::new(),
             },
+            subject: Vec::new(),
         }
     }
 }
