@@ -359,7 +359,6 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     })?;
     string.set("format", format)?;
 
-    let table: Table = globals.get("table")?;
     let math: Table = globals.get("math")?;
     math.set("random", Value::Nil)?;
     math.set("randomseed", Value::Nil)?;
@@ -654,9 +653,10 @@ mod tests {
                 .is_ok()
         );
         assert!(lua.load("return os.date('!%Y', 0)").eval::<String>().is_ok());
-        let lua = lua(Profile::Config);
+        let config = lua(Profile::Config);
         assert!(
-            lua.load("return type(os.time()) == 'number' and type(os.clock()) == 'number'")
+            config
+                .load("return type(os.time()) == 'number' and type(os.clock()) == 'number'")
                 .eval::<bool>()
                 .expect("reads")
         );
