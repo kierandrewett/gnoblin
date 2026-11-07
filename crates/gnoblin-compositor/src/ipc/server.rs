@@ -116,6 +116,9 @@ pub(crate) enum IpcEvent {
         /// What the compositor granted it. A connection accepted from the socket holds
         /// nothing; a privileged one holds what its role grants.
         capabilities: Capabilities,
+        /// The store owner the connection acts for: the privileged role it was handed over
+        /// for. `None` for a connection from the socket, which owns no store.
+        owner: Option<String>,
     },
     /// One frame a client sent.
     Request { client: ClientId, envelope: Envelope },
@@ -206,6 +209,7 @@ impl IpcServer {
         privileged: Vec<Privileged>,
         guardian: Option<UnixStream>,
         routes: &[ExtensionRoute],
+        kv: Option<gnoblin_store::Store>,
     ) -> Result<IpcServer, IpcError> {
         // Each connection's frame is encoded before anything is spawned, so a bad grant
         // list fails the whole start instead of leaving threads behind.
@@ -255,6 +259,7 @@ impl IpcServer {
             readers: Arc::clone(&readers),
             start: Instant::now(),
             extensions,
+            kv,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
@@ -395,6 +400,7 @@ fn accept_loop(
                     Capabilities::NONE,
                     grants,
                     ConnectionEnd::Closed,
+                    None,
                 )
             }) {
             Ok(handle) => {
@@ -423,6 +429,7 @@ fn serve(
     capabilities: Capabilities,
     extension_grants: Arc<[u8]>,
     ending: ConnectionEnd,
+    owner: Option<String>,
 ) {
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
@@ -468,6 +475,7 @@ fn serve(
             client,
             writer,
             capabilities,
+            owner,
         })
         .is_err()
     {
@@ -570,6 +578,7 @@ fn serve_control(
         };
         let capabilities = declared.capabilities;
         let frame = Arc::clone(&declared.frame);
+        let owner = role.clone();
         let served = events.clone();
         match std::thread::Builder::new()
             .name(format!("gnoblin-ipc-{}", client.get()))
@@ -582,6 +591,7 @@ fn serve_control(
                     capabilities,
                     frame,
                     ConnectionEnd::Lost,
+                    Some(owner),
                 )
             }) {
             Ok(handle) => {
@@ -655,6 +665,8 @@ struct Connection {
     /// What this connection may do beyond reading the graph. Empty for every
     /// connection that reached the socket.
     capabilities: Capabilities,
+    /// The store owner this connection acts for, or `None` when it owns no store.
+    owner: Option<String>,
     /// Diff streams this connection subscribed to. They end when the connection is dropped.
     subscriptions: Vec<Subscription>,
     /// Set once a write fails, so the connection is dropped after this turn instead
@@ -703,6 +715,8 @@ struct Dispatcher {
     start: Instant,
     /// The routing state of the loaded extensions: which connection serves and which may call each.
     extensions: ExtensionRouter,
+    /// The key-value store the `store` verbs act on, or `None` when it did not open.
+    kv: Option<gnoblin_store::Store>,
 }
 
 impl Dispatcher {
@@ -736,6 +750,7 @@ impl Dispatcher {
                     client,
                     writer,
                     capabilities,
+                    owner,
                 } => {
                     self.extensions.began(client);
                     self.connections.insert(
@@ -743,6 +758,7 @@ impl Dispatcher {
                         Connection {
                             writer,
                             capabilities,
+                            owner,
                             subscriptions: Vec::new(),
                             broken: false,
                         },
@@ -1314,6 +1330,9 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
+            (Some(ty), _, _, _) if ty == "store" => {
+                self.store_call(client, envelope, object, &method, &arguments);
+            }
             (None, _, _, _) => self.refuse(
                 client,
                 envelope,
@@ -1446,6 +1465,44 @@ impl Dispatcher {
             },
             None => OperationOutcome::Failed(IDLE_UNAVAILABLE),
         };
+        self.sync();
+        self.finish(object, &operation, Some(outcome));
+    }
+
+    /// Serves the `store` object's verbs on the store the connection's owner holds. A connection
+    /// the compositor did not attribute to a role owns no store, so the call is refused before the
+    /// graph sees it.
+    fn store_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+    ) {
+        let Some(owner) = self
+            .connections
+            .get(&client)
+            .and_then(|connection| connection.owner.clone())
+        else {
+            self.refuse(
+                client,
+                envelope,
+                "no-store-owner",
+                "this connection has no store: only a privileged role owns one",
+            );
+            return;
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let outcome = store_outcome(self.kv.as_ref(), &owner, method, arguments);
         self.sync();
         self.finish(object, &operation, Some(outcome));
     }
@@ -2062,6 +2119,76 @@ fn uint_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<u64> {
         Some(gnoblin_model::Value::Uint(value)) => Some(*value),
         _ => None,
     }
+}
+
+/// The outcome of one `store` verb on `owner`'s namespace. A store that did not open completes
+/// `store-unavailable`; a failure from the store completes with its own code, so the caller learns
+/// why the verb did not run.
+fn store_outcome(
+    kv: Option<&gnoblin_store::Store>,
+    owner: &str,
+    method: &str,
+    arguments: &gnoblin_model::Fields,
+) -> OperationOutcome {
+    let Some(kv) = kv else {
+        return OperationOutcome::Failed(ErrorCode::from_static("store-unavailable"));
+    };
+    let namespace = match kv.namespace(owner) {
+        Ok(namespace) => namespace,
+        Err(error) => return OperationOutcome::Failed(ErrorCode::from_static(error.code())),
+    };
+    // A verb whose argument the graph let through without is a store bug. The schema makes every
+    // argument required, so the call is reported as `internal` rather than given a guessed value.
+    store_verb(&namespace, method, arguments).unwrap_or(OperationOutcome::Failed(ErrorCode::from_static("internal")))
+}
+
+/// Runs one verb against `namespace`. `None` means an argument is missing or the method is not
+/// one this object serves.
+fn store_verb(
+    namespace: &gnoblin_store::Namespace,
+    method: &str,
+    arguments: &gnoblin_model::Fields,
+) -> Option<OperationOutcome> {
+    Some(match method {
+        "put" => settle(
+            namespace
+                .put(
+                    &text_argument(arguments, "key")?,
+                    gnoblin_model::Value::Text(text_argument(arguments, "value")?),
+                )
+                .map(|_| OperationOutcome::Done),
+        ),
+        "get" => settle(
+            namespace
+                .get(&text_argument(arguments, "key")?)
+                .map(|entry| match entry {
+                    Some(entry) => OperationOutcome::Value(entry.value),
+                    None => OperationOutcome::Done,
+                }),
+        ),
+        "delete" => settle(
+            namespace
+                .delete(&text_argument(arguments, "key")?)
+                .map(|_| OperationOutcome::Done),
+        ),
+        "keys" => {
+            // The empty string is the first page, so it is no cursor.
+            let after = text_argument(arguments, "after").filter(|after| !after.is_empty());
+            let limit = uint_argument(arguments, "limit")?.clamp(1, 1000);
+            let prefix = text_argument(arguments, "prefix")?;
+            settle(namespace.list(&prefix, after.as_deref(), limit as usize).map(|keys| {
+                OperationOutcome::Value(gnoblin_model::Value::List(
+                    keys.into_iter().map(gnoblin_model::Value::Text).collect(),
+                ))
+            }))
+        }
+        _ => return None,
+    })
+}
+
+/// Turns a store result into the operation's outcome: a failure carries the store's own code.
+fn settle(result: Result<OperationOutcome, gnoblin_store::StoreError>) -> OperationOutcome {
+    result.unwrap_or_else(|error| OperationOutcome::Failed(ErrorCode::from_static(error.code())))
 }
 
 /// The double at `name`; `None` when it is absent or of another type.

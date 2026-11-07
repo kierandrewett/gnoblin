@@ -1,0 +1,146 @@
+# The `store` object: the caller's own key-value store.
+#
+# The verbs act on the store the connection owns. A connection reaches its store by
+# its role, so a method takes no store name, and a connection with no owner is refused
+# with `no-store-owner` rather than given a store it may not use. Opening another
+# owner's store needs a grant, which is not part of this object yet.
+#
+# Each store is a `kv` store: a value per key, kept until it is replaced or deleted.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "store"
+since = "0.2.0"
+
+# Adds or replaces the value under `key`. The value is text. Completes `done`. A key
+# is 1 to 256 bytes with no NUL and no leading or trailing `/`.
+[[object.method]]
+name = "put"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "value"
+type = "string"
+since = "0.2.0"
+
+# Completes with the value stored under `key` as a value, or `done` with nothing when the
+# key is absent.
+[[object.method]]
+name = "get"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+# Removes the value under `key`. Completes `done` whether or not the key existed.
+[[object.method]]
+name = "delete"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+# Completes with the keys under `prefix`, in key order, after `after` and at most
+# `limit` of them. `after` is the empty string for the first page. `limit` is clamped
+# to 1 to 1000.
+[[object.method]]
+name = "keys"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "prefix"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "after"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "limit"
+type = "uint"
+since = "0.2.0"
+
+# The connection has no store, because nothing attributed it to an owner. Only the
+# privileged roles have one in this version.
+[[error]]
+name = "no-store-owner"
+since = "0.2.0"
+
+# The owner's name does not make a valid store name.
+[[error]]
+name = "invalid-name"
+since = "0.2.0"
+
+# The key breaks the key rules: empty, too long, or containing NUL or an edge `/`.
+[[error]]
+name = "invalid-key"
+since = "0.2.0"
+
+# The value has a type this store does not keep, such as a NaN.
+[[error]]
+name = "value-not-storable"
+since = "0.2.0"
+
+# The encoded value is over the 64 KiB limit. Nothing is written.
+[[error]]
+name = "value-too-large"
+since = "0.2.0"
+
+# The write would take the store past its quota. Nothing is written.
+[[error]]
+name = "quota-exceeded"
+since = "0.2.0"
+
+# The store was opened read-only, so the write was refused.
+[[error]]
+name = "read-only"
+since = "0.2.0"
+
+# The store could not open, or it is quarantined, so the verb cannot be served.
+[[error]]
+name = "store-unavailable"
+since = "0.2.0"
+
+# SQLite reported a full disk. Reads continue; writes are refused.
+[[error]]
+name = "disk-full"
+since = "0.2.0"
+
+# A migration step failed, or the file came from a newer store. The file keeps the
+# version of the last step that committed.
+[[error]]
+name = "migration-failed"
+since = "0.2.0"
+
+# The file is not a database or fails its integrity check. It is quarantined, never
+# overwritten.
+[[error]]
+name = "corrupt"
+since = "0.2.0"
+
+# A stored value does not decode. The row is damaged and is never guessed at.
+[[error]]
+name = "undecodable"
+since = "0.2.0"
+
+# Any other SQLite failure.
+[[error]]
+name = "database"
+since = "0.2.0"
+
+# A bug in the store, reported rather than hidden.
+[[error]]
+name = "internal"
+since = "0.2.0"

@@ -213,6 +213,16 @@ pub struct Store {
     namespaces: Mutex<HashMap<String, Arc<Kv>>>,
 }
 
+impl fmt::Debug for Store {
+    // The namespace files are not printed: they hold every key, and a session's configuration is
+    // logged in debug form, so only the directory the store lives in is shown.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Store")
+            .field("root", &self.root)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Store {
     /// Opens the store at `root` with the default [`Options`].
     ///
@@ -454,11 +464,7 @@ pub fn open_logs_from_settings(
     max_size_mb: Option<i64>,
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Result<Logs, String> {
-    let root = match store_path.filter(|path| !path.is_empty()) {
-        Some(path) => PathBuf::from(path),
-        None => default_root(lookup)
-            .ok_or_else(|| "no state directory: neither HOME nor XDG_STATE_HOME is set".to_owned())?,
-    };
+    let root = root_from_settings(store_path, lookup)?;
     let retention = Retention {
         max_age_days: max_age_days.and_then(|days| u32::try_from(days).ok()).unwrap_or(0),
         max_bytes: max_size_mb
@@ -469,6 +475,26 @@ pub fn open_logs_from_settings(
     Store::open(&root)
         .and_then(|store| store.logs(retention))
         .map_err(|error| format!("no log store at {}: {error}", root.display()))
+}
+
+/// Opens the store the settings name, for the kv verbs. The directory is resolved as for the
+/// log store, so both kinds of the same configured store live in one place.
+pub fn open_store_from_settings(
+    store_path: Option<&str>,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<Store, String> {
+    let root = root_from_settings(store_path, lookup)?;
+    Store::open(&root).map_err(|error| format!("no store at {}: {error}", root.display()))
+}
+
+/// The directory the settings name: `store_path` when set, else the default root.
+fn root_from_settings(store_path: Option<&str>, lookup: impl Fn(&str) -> Option<String>) -> Result<PathBuf, String> {
+    match store_path.filter(|path| !path.is_empty()) {
+        Some(path) => Ok(PathBuf::from(path)),
+        None => {
+            default_root(lookup).ok_or_else(|| "no state directory: neither HOME nor XDG_STATE_HOME is set".to_owned())
+        }
+    }
 }
 
 /// The log file inside a store directory: the file the log kind reads and writes. A follower

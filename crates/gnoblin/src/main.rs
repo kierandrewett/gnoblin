@@ -178,6 +178,7 @@ fn compositor() -> Result<(), Exit> {
     gnoblin_compositor::configure_monitors_from_environment(&mut config);
     gnoblin_compositor::configure_xwayland_from_environment(&mut config);
     gnoblin_compositor::configure_renderer_from_environment(&mut config);
+    gnoblin_compositor::configure_store_from_environment(&mut config);
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {

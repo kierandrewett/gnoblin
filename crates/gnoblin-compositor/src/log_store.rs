@@ -15,3 +15,10 @@ pub fn open_log_store(logging: &Logging) -> Result<gnoblin_store::Logs, String> 
         |key| std::env::var(key).ok(),
     )
 }
+
+/// Opens the store the key-value verbs of the IPC socket write into. It is the same store the
+/// `logging` section names, so one directory holds the log and the keys, and a plain client never
+/// sees a path it did not configure.
+pub fn open_kv_store(logging: &Logging) -> Result<gnoblin_store::Store, String> {
+    gnoblin_store::open_store_from_settings(logging.store_path.as_deref(), |key| std::env::var(key).ok())
+}

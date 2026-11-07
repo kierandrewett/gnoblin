@@ -118,7 +118,7 @@ fn module(start: &str, on_event: &str) -> String {
         r#"
 (component
   (import "gnoblin:ipc/gnoblin@{PACKAGE}" (instance $api
-    (type $ec (enum "denied" "idle-unavailable" "not-locked" "refused" "too-many-inhibitors" "too-many-passes" "unknown-effect-kind" "unknown-layout" "unknown-member" "unknown-object"))
+    (type $ec (enum "corrupt" "database" "denied" "disk-full" "idle-unavailable" "internal" "invalid-key" "invalid-name" "migration-failed" "no-store-owner" "not-locked" "quota-exceeded" "read-only" "refused" "store-unavailable" "too-many-inhibitors" "too-many-passes" "undecodable" "unknown-effect-kind" "unknown-layout" "unknown-member" "unknown-object" "value-not-storable" "value-too-large"))
     (export "error-code" (type $ecx (eq $ec)))
     (export "operation" (type $op (sub resource)))
     (export "window" (type $w (sub resource)))
@@ -299,7 +299,7 @@ fn a_module_that_calls_an_undeclared_method_is_denied_once() {
       (global.set $window (i32.load (i32.const 68)))
       (call $focus (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))
-      (if (i32.ne (i32.load (i32.const 100)) (i32.const 0)) (then (unreachable)))
+      (if (i32.ne (i32.load (i32.const 100)) (i32.const 2)) (then (unreachable)))
       (call $focus (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))"#,
         "      (nop)",
@@ -339,7 +339,7 @@ fn a_module_that_calls_kill_without_the_grant_is_denied_once() {
       (global.set $window (i32.load (i32.const 68)))
       (call $kill (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))
-      (if (i32.ne (i32.load (i32.const 100)) (i32.const 0)) (then (unreachable)))
+      (if (i32.ne (i32.load (i32.const 100)) (i32.const 2)) (then (unreachable)))
       (call $kill (global.get $window) (i32.const 96))
       (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))"#,
         "      (nop)",

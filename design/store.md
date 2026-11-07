@@ -405,8 +405,8 @@ properties `name`, `kind`, `provider`, `state`, `writable` and `usage`.
 - **Lua: `gnoblin.store.open(name)`.** Returns a handle with the verbs above.
   Async calls return `Operation<Result>`, as in `design/lua-api.md:204`.
   Opening another owner's store needs a grant.
-- **IPC: `store` object.** The same verbs, gated by grant. The signal `changed`
-  carries keys and revisions.
+- **IPC: `store` object.** The same verbs, gated by grant. The verb `list` is `keys`
+  on the wire, because `list` is a WIT keyword. The signal `changed` carries keys and revisions.
 - **`gnoblinctl store`.** Subcommands `list`, `usage`, `get`, `put`, `delete`,
   `search`, `export` and `purge`. Writes need the compositor.
 - **WASM.** A host import in the extension world (D22, `gnoblin:ext@0.2.0`,
@@ -633,6 +633,8 @@ Decisions from Kieran. Each one stands unless he reopens it.
 - **`[powers.store]` manifest table (D22).** The manifest parser has no powers
   table yet. Decide whether manifests may request `store` at all, or whether only
   host configuration grants it.
+- **Plain clients get no store yet.** A connection that no privileged role owns is
+  refused with `no-store-owner`. Deciding how ordinary clients reach a store is open.
 
 ## Change log
 
