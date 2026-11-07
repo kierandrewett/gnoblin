@@ -1131,11 +1131,10 @@ mod tests {
         let alpha = f32::from(plain[3]) / 255.0;
         let straight = f32::from(plain[0]) / 255.0 / alpha;
         let want = ((1.0 - straight) * alpha * 255.0).round() as i32;
-        for channel in 0..3 {
+        for (channel, &value) in got.iter().enumerate().take(3) {
             assert!(
-                (i32::from(got[channel]) - want).abs() <= 1,
-                "channel {channel}: got {} want about {want}",
-                got[channel]
+                (i32::from(value) - want).abs() <= 1,
+                "channel {channel}: got {value} want about {want}"
             );
         }
     }
