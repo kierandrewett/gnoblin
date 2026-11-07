@@ -54,8 +54,12 @@
 //!    scene is global: `a_second_output_damages_its_own_coordinates`.
 //! 8. **A hidden window's move repaints the output.** A window with no node has no
 //!    pixels to move: `a_window_that_is_not_visible_damages_nothing_when_it_moves`.
+//! 9. **A closed window vanishes at once.** A window the client destroyed fades its last
+//!    picture out, copied from its buffer before the client can free it:
+//!    `a_closing_window_is_drawn_from_its_picture`.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
@@ -67,6 +71,8 @@ use gnoblin_render::{
 use gnoblin_types::{Color, NodeId, OutputId, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, SurfaceSource};
+use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::shm;
 
 use crate::log;
 
@@ -112,6 +118,15 @@ pub struct Content {
     pub transform: Transform,
 }
 
+/// A window that is closing: the picture it kept and the crop it was drawn with.
+#[derive(Clone, Debug)]
+struct Closing {
+    /// The buffer's pixels, read back when the window was closed.
+    image: Arc<Image>,
+    /// The crop and transform the window was drawn with, so the picture matches it.
+    content: Content,
+}
+
 /// One managed window's rendering state.
 #[derive(Clone, Debug)]
 struct WindowNode {
@@ -136,6 +151,9 @@ struct WindowNode {
     content: Option<Content>,
     /// The buffer the content is read from, when the client has attached one.
     buffer: Option<WlBuffer>,
+    /// The window's last picture, once it is closing: drawn in place of its buffer until its
+    /// fade ends, when the window is removed.
+    closing: Option<Closing>,
 }
 
 /// The session's scene and the windows it draws.
@@ -287,6 +305,7 @@ impl Composer {
                 content: None,
                 surface_alpha: 1.0,
                 buffer: None,
+                closing: None,
             },
         );
         self.order.push(window);
@@ -303,6 +322,55 @@ impl Composer {
             let _ = self.scene.remove(node);
         }
         self.order.retain(|candidate| *candidate != window);
+    }
+
+    /// Stops drawing a window the client has destroyed, fading its last picture out.
+    ///
+    /// The picture is read from the window's buffer now, because the client may free that
+    /// buffer once it has destroyed the window. A window with no picture to read, or with
+    /// motion reduced, is removed at once, as [`Composer::remove_window`] does.
+    pub fn close_window(&mut self, window: WindowId) {
+        let closing = match self.windows.get(&window) {
+            Some(entry) if !self.reduced_motion => match (entry.buffer.as_ref(), entry.content) {
+                (Some(buffer), Some(content)) => shm::readback(buffer).ok().map(|image| Closing {
+                    image: Arc::new(image),
+                    content,
+                }),
+                _ => None,
+            },
+            _ => None,
+        };
+        self.close_with_snapshot(window, closing);
+    }
+
+    /// The body of [`Composer::close_window`]: fades the picture `closing` keeps, or removes
+    /// the window when there is none.
+    ///
+    /// The fade is an opacity track to zero on the window's node, so the scene damages the
+    /// rectangle on every step and the frames repaint it until the track ends.
+    fn close_with_snapshot(&mut self, window: WindowId, closing: Option<Closing>) {
+        let node = self.windows.get(&window).and_then(|entry| entry.node);
+        let (Some(closing), Some(node)) = (closing, node) else {
+            self.remove_window(window);
+            return;
+        };
+        self.cancel_tracks(window);
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.closing = Some(closing);
+            entry.buffer = None;
+        }
+        let spec = TrackSpec {
+            from: TrackStart::Current,
+            duration_ms: MOTION_MS,
+            easing: Easing::EaseOutCubic,
+            ..TrackSpec::new(node, VisualProperty::Opacity, PropertyValue::number(0.0))
+        };
+        match self.motion.start(&mut self.scene, spec) {
+            Ok(track) => {
+                self.tracks.insert((window, VisualProperty::Opacity), track);
+            }
+            Err(_) => self.remove_window(window),
+        }
     }
 
     /// Moves a window's frame rectangle.
@@ -504,7 +572,17 @@ impl Composer {
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
         self.motion.advance(&mut self.scene, elapsed_ms);
         for end in self.motion.take_ended() {
+            let owner = self
+                .tracks
+                .iter()
+                .find(|(_, track)| **track == end.track)
+                .map(|(key, _)| *key);
             self.tracks.retain(|_, track| *track != end.track);
+            if let Some((window, VisualProperty::Opacity)) = owner
+                && self.windows.get(&window).is_some_and(|entry| entry.closing.is_some())
+            {
+                self.remove_window(window);
+            }
         }
         self.advance_flash(elapsed_ms);
     }
@@ -647,10 +725,15 @@ impl Composer {
             if entry.node.is_none() {
                 continue;
             }
-            let (Some(content), Some(buffer)) = (entry.content, entry.buffer.as_ref()) else {
-                // A window whose client has committed content but no buffer has no
-                // pixels to draw.
-                continue;
+            let (source, content) = if let Some(closing) = &entry.closing {
+                (SurfaceSource::Snapshot(Arc::clone(&closing.image)), closing.content)
+            } else {
+                let (Some(content), Some(buffer)) = (entry.content, entry.buffer.as_ref()) else {
+                    // A window whose client has committed content but no buffer has no
+                    // pixels to draw.
+                    continue;
+                };
+                (SurfaceSource::Buffer(buffer.clone()), content)
             };
             // The window's placed rectangle is the scene's, mid-tween, not its target.
             let Some(pose) = self.pose(*window) else {
@@ -691,7 +774,7 @@ impl Composer {
                 continue;
             }
             frame.push_layer(Layer::Surface(Surface {
-                source: SurfaceSource::Buffer(buffer.clone()),
+                source,
                 src: content.src,
                 dst,
                 transform: content.transform,
@@ -834,6 +917,18 @@ impl Composer {
         let Some(entry) = self.windows.get(&window) else {
             return;
         };
+        if entry.closing.is_some() {
+            // A closing window keeps its node and picture until its fade ends. Only its
+            // stacking position still follows the policy.
+            let node = entry.node;
+            let z_order = self.z_order(window);
+            if let Some(node) = node
+                && self.scene.z_order(node) != Some(z_order)
+            {
+                let _ = self.scene.set_z_order(node, z_order);
+            }
+            return;
+        }
         let content = if entry.visible { entry.content } else { None };
         let node = entry.node;
         let transform = Self::target(entry);
@@ -1060,6 +1155,105 @@ mod tests {
         assert!(
             rects.iter().any(|rect| rect.contains(Point::new(20, 30))),
             "the rectangle the window held is damaged: {rects:?}"
+        );
+    }
+
+    /// A picture the size of `content()`, for a closing window to keep.
+    fn picture() -> Arc<Image> {
+        let bytes = vec![0xff; 40 * 50 * 4];
+        Arc::new(Image::new(Size::new(40, 50), 40 * 4, bytes).expect("a picture the size of its window"))
+    }
+
+    #[test]
+    fn a_window_with_no_picture_to_keep_is_removed_at_once() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.close_window(window);
+        assert!(
+            !composer.windows.contains_key(&window),
+            "a window with no buffer to read has nothing to fade"
+        );
+    }
+
+    #[test]
+    fn a_closing_window_is_drawn_from_its_picture() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.close_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+            }),
+        );
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        assert!(composer.compose(output, &mut frame));
+        composer.end_frame();
+        let drawn = frame.layers().iter().any(|layer| {
+            matches!(
+                layer,
+                Layer::Surface(Surface {
+                    source: SurfaceSource::Snapshot(_),
+                    ..
+                })
+            )
+        });
+        assert!(
+            drawn,
+            "the closing window is drawn from the picture it kept, not a buffer it no longer has"
+        );
+    }
+
+    #[test]
+    fn a_closing_window_is_repainted_as_its_fade_runs() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        damage_of(&mut composer, output);
+        composer.close_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+            }),
+        );
+        damage_of(&mut composer, output);
+        composer.advance_motion(MOTION_MS / 2);
+        let rects = damage_of(&mut composer, output).expect("the fade repaints the pixels it covers");
+        assert!(
+            rects.iter().any(|rect| rect.contains(Point::new(20, 30))),
+            "the fading window's rectangle is repainted: {rects:?}"
+        );
+    }
+
+    #[test]
+    fn a_closing_window_is_removed_once_its_fade_ends() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.close_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+            }),
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        assert!(composer.windows.contains_key(&window), "the window is still fading");
+        composer.advance_motion(MOTION_MS);
+        assert!(
+            !composer.windows.contains_key(&window),
+            "the window is gone once its fade ends"
         );
     }
 
