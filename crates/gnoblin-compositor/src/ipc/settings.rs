@@ -111,6 +111,17 @@ pub fn from_config(config: &gnoblin_config::Config) -> Fields {
         fields.insert(member::ACCENT_RED.to_owned(), Value::Double(red));
         fields.insert(member::ACCENT_GREEN.to_owned(), Value::Double(green));
         fields.insert(member::ACCENT_BLUE.to_owned(), Value::Double(blue));
+        // The accessibility preferences. `reduced-motion` also turns animations off, because the
+        // `enable_animations` property answers the same question for GTK 3 that `reduced_motion`
+        // answers for GTK 4 and the portal. `high-contrast` is the portal's `contrast` value 1.
+        let reduced_motion = appearance.reduced_motion.unwrap_or(false);
+        let high_contrast = appearance.high_contrast.unwrap_or(false);
+        fields.insert(
+            member::REDUCED_MOTION.to_owned(),
+            Value::Uint(u64::from(reduced_motion)),
+        );
+        fields.insert(member::CONTRAST.to_owned(), Value::Uint(u64::from(high_contrast)));
+        fields.insert(member::ENABLE_ANIMATIONS.to_owned(), Value::Bool(!reduced_motion));
     }
     if let Some(cursor) = &config.cursor {
         if let Some(theme) = cursor.theme.as_ref().filter(|theme| !theme.trim().is_empty()) {
@@ -121,4 +132,52 @@ pub fn from_config(config: &gnoblin_config::Config) -> Fields {
         }
     }
     fields
+}
+
+#[cfg(test)]
+mod tests {
+    use gnoblin_model::Value;
+
+    use super::{defaults, from_config, member};
+
+    /// The values `publish_settings` writes: the stock values, with the configuration's on top.
+    fn published(json: &str) -> gnoblin_model::Fields {
+        let config = gnoblin_config::Config::from_json_bytes(json.as_bytes()).expect("the document is valid");
+        let mut fields = defaults();
+        fields.extend(from_config(&config));
+        fields
+    }
+
+    /// `reduced-motion = true` publishes the portal preference and turns animations off.
+    #[test]
+    fn reduced_motion_is_published_and_stops_animations() {
+        let fields = published(r#"{"appearance":{"reduced-motion":true}}"#);
+        assert_eq!(fields.get(member::REDUCED_MOTION), Some(&Value::Uint(1)));
+        assert_eq!(fields.get(member::ENABLE_ANIMATIONS), Some(&Value::Bool(false)));
+    }
+
+    /// `high-contrast = true` publishes the portal's `contrast` value 1 and leaves animations on.
+    #[test]
+    fn high_contrast_is_published_as_contrast_one() {
+        let fields = published(r#"{"appearance":{"high-contrast":true}}"#);
+        assert_eq!(fields.get(member::CONTRAST), Some(&Value::Uint(1)));
+        assert_eq!(fields.get(member::REDUCED_MOTION), Some(&Value::Uint(0)));
+        assert_eq!(fields.get(member::ENABLE_ANIMATIONS), Some(&Value::Bool(true)));
+    }
+
+    /// A configuration that names neither preference, or no appearance at all, publishes the
+    /// stock values, so turning a preference off on reload restores them.
+    #[test]
+    fn absent_preferences_publish_the_stock_values() {
+        for json in [r#"{}"#, r#"{"appearance":{"color-scheme":"prefer-dark"}}"#] {
+            let fields = published(json);
+            assert_eq!(fields.get(member::CONTRAST), Some(&Value::Uint(0)), "{json}");
+            assert_eq!(fields.get(member::REDUCED_MOTION), Some(&Value::Uint(0)), "{json}");
+            assert_eq!(
+                fields.get(member::ENABLE_ANIMATIONS),
+                Some(&Value::Bool(true)),
+                "{json}"
+            );
+        }
+    }
 }
