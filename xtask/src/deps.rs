@@ -930,8 +930,11 @@ mod tests {
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].contains("[portal-crates]"), "{found:?}");
         let found = violations(&[("gnoblin-portal-core", &["gnoblin-portal-ui"])]);
-        assert_eq!(found.len(), 1, "{found:?}");
-        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+        assert!(found.iter().any(|found| found.contains("[portal-crates]")), "{found:?}");
+        assert!(
+            found.iter().any(|found| found.contains("[portal-layering]")),
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -941,8 +944,11 @@ mod tests {
             Vec::<String>::new()
         );
         let found = violations(&[("gnoblin-portal-ui", &["egui", "gnoblin-portal-consent"])]);
-        assert_eq!(found.len(), 1, "{found:?}");
-        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+        assert!(found.iter().any(|found| found.contains("[portal-crates]")), "{found:?}");
+        assert!(
+            found.iter().any(|found| found.contains("[portal-layering]")),
+            "{found:?}"
+        );
     }
 
     #[test]
