@@ -529,7 +529,7 @@ impl PortalService {
         // with: a settled or resized dialog may have drawn at a new size in this take.
         let placement = dialog_placement(rect, width, height);
         let image = Image::new(Size::new(width, height), frame.width() * 4, frame.bytes().to_vec())?;
-        let overlay = Overlay::new(placement, &image)?;
+        let overlay = Overlay::new(placement, &image)?.with_secure(true);
         self.shown = Some(output);
         Some(Some(Modal::new(InputPolicy::ModalToOutput, output, overlay)))
     }
