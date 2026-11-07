@@ -427,6 +427,9 @@ impl Server {
                                 };
                                 let _ = reply.send(process);
                             }
+                            Command::ExportedWindow { handle, reply } => {
+                                let _ = reply.send(state.exported_window(&handle));
+                            }
                             Command::Layout {
                                 workspace,
                                 command,
@@ -714,6 +717,19 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// The window an xdg-foreign handle names. `None` when the loop did not answer in time;
+    /// otherwise `None` when the handle is unknown, revoked, or its surface has no window.
+    /// The portal `parent_window` mapping will call this to resolve `wayland:<handle>`; no
+    /// caller exists yet.
+    pub fn exported_window(&self, handle: &str) -> Option<Option<WindowId>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::ExportedWindow {
+            handle: handle.to_owned(),
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Sends a command to a workspace's layout. `None` when the loop did not answer in
     /// time; otherwise `Err` carries the refusal (`unknown layout:` or `refused:`).
     pub fn layout_command(
@@ -972,6 +988,11 @@ enum Command {
     WindowProcess {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<Option<crate::WindowProcess>>,
+    },
+    /// The window an xdg-foreign handle names; see `ControlHandle::exported_window`.
+    ExportedWindow {
+        handle: String,
+        reply: std::sync::mpsc::SyncSender<Option<WindowId>>,
     },
     /// A command for a workspace's layout; the answer is the refusal, if any.
     Layout {

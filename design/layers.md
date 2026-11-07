@@ -39,7 +39,7 @@ marks a claim not checked against code or a primary source.
 
 - xdg-foreign is served: `zxdg_exporter_v2` and `zxdg_importer_v2`, from `crates/gnoblin-wayland/src/protocols/xdg_foreign.rs`. The handle table is `State::xdg_foreign`. `xdg_dialog_v1` is served too.
 - A parent relation reaches the WM as `WindowRoleChanged`. The WM floats an imported dialog above its parent (`crates/gnoblin-wm/src/wm.rs:994-998`).
-- **`wayland:<handle>` has a lookup, but no route to a window yet.** The table mints each handle from 128 kernel random bits and maps it to the exported surface. `XdgForeign::exported_surface` is the lookup. No caller outside the protocol exists in `crates/` (grep), so the portal `parent_window` mapping does not resolve `wayland:` handles.
+- **`wayland:<handle>` has a lookup, but no caller yet.** Each handle is 128 random bits mapped to its exported surface. `XdgForeign::exported_surface` gives the surface; `ControlHandle::exported_window` gives its window, or `None` when revoked or unknown. The portal `parent_window` mapping will call `exported_window`; that wiring is the next lane, so `wayland:` stays unresolved until then.
 - `x11:<XID>`: Gnoblin has `gnoblin-xwayland` (`xtask/src/deps.rs:61`). XID lookup
   against its window map is possible [INFERENCE: not checked].
 

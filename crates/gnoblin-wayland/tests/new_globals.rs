@@ -1277,3 +1277,53 @@ fn a_surface_has_one_alpha_modifier() {
         fresh.roundtrip();
     });
 }
+
+/// The compositor's `handle -> window` lookup: an exported handle names the exporter's window
+/// until its surface is destroyed, after which the handle resolves to nothing. An unknown
+/// handle resolves to nothing too.
+#[test]
+fn an_exported_handle_resolves_to_its_window_until_revoked() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (surface, xdg, toplevel) = client.titled_toplevel("looked up parent");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _exported = exporter.export_toplevel(&surface, &client.qh, ());
+        client.roundtrip();
+        let handle = client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+        let window = session
+            .wait_for(|snapshot| snapshot.titled("looked up parent").is_some())
+            .titled("looked up parent")
+            .expect("the parent window")
+            .id;
+
+        assert_eq!(
+            session.control.exported_window(&handle),
+            Some(Some(window)),
+            "the exported handle names the exporter's window"
+        );
+        assert_eq!(
+            session.control.exported_window("00000000000000000000000000000000"),
+            Some(None),
+            "a handle never minted names no window"
+        );
+
+        // Destroying the surface revokes the handle: the window is gone from the lookup.
+        toplevel.destroy();
+        xdg.destroy();
+        surface.destroy();
+        client.roundtrip();
+        assert_eq!(
+            session.control.exported_window(&handle),
+            Some(None),
+            "a revoked handle names no window"
+        );
+    });
+}

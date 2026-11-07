@@ -2,8 +2,10 @@
 //!
 //! Gnoblin's own implementation of xdg-foreign v2. One client names one of its toplevels by an
 //! unguessable handle; another client imports the handle and makes that toplevel the parent of one
-//! of its own toplevels. The compositor owns the handle table, so the portal `parent_window` lookup
-//! can resolve a handle to its surface through [`XdgForeign::exported_surface`].
+//! of its own toplevels. The compositor owns the handle table. [`XdgForeign::exported_surface`]
+//! resolves a handle to its surface, and `ControlHandle::exported_window` resolves it to the
+//! window that owns that surface. The portal side will call `exported_window` to map
+//! `wayland:<handle>` to a window; that wiring is the next lane and has no caller yet.
 //!
 //! The relation reaches the window manager the same way `xdg_toplevel.set_parent` does: the child's
 //! `XdgToplevelSurfaceData.parent` is set and [`State::sync_window_role`] sends a `WindowRoleChanged`,

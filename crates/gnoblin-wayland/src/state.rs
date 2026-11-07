@@ -1996,6 +1996,14 @@ impl State {
             .map(|(window, _)| *window)
     }
 
+    /// The window an xdg-foreign handle names: the window owning the exported surface.
+    /// `None` for a handle never minted, revoked, or whose surface has gone, and also when
+    /// the surface has no window (for example it was never mapped as a toplevel).
+    pub(crate) fn exported_window(&self, handle: &str) -> Option<WindowId> {
+        let surface = self.xdg_foreign.exported_surface(handle)?;
+        self.window_of(surface)
+    }
+
     /// Applies one event about the window a toplevel belongs to.
     pub(crate) fn window_event(&mut self, surface: &ToplevelSurface, event: impl FnOnce(WindowId) -> Event) {
         let Some(window) = self.window_of(surface.wl_surface()) else {
