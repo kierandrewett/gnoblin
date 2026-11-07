@@ -54,6 +54,7 @@ use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
+use smithay::wayland::xdg_system_bell::XdgSystemBellState;
 use smithay::wayland::xdg_toplevel_icon::{ToplevelIconCachedState, XdgToplevelIconManager};
 use smithay::wayland::xdg_toplevel_tag::{XdgToplevelTagManager, XdgToplevelTagSurfaceData};
 use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
@@ -354,6 +355,10 @@ pub struct State {
     /// [`crate::protocols::xdg_toplevel_tag_v1`].
     #[allow(dead_code)]
     pub(crate) xdg_toplevel_tag_manager: XdgToplevelTagManager,
+    /// Kept alive so `xdg_system_bell_v1` stays registered; the handler is in
+    /// [`crate::protocols::xdg_system_bell_v1`].
+    #[allow(dead_code)]
+    pub(crate) xdg_system_bell_state: XdgSystemBellState,
     /// Kept alive so `wp_fifo_manager_v1` stays registered; its barriers are released by
     /// [`crate::protocols::wp_fifo_v1`] on each frame tick.
     #[allow(dead_code)]
@@ -680,6 +685,7 @@ impl State {
         let xdg_dialog_state = crate::protocols::xdg_dialog_v1::global(&display_handle);
         let xdg_toplevel_icon_manager = crate::protocols::xdg_toplevel_icon_v1::global(&display_handle);
         let xdg_toplevel_tag_manager = crate::protocols::xdg_toplevel_tag_v1::global(&display_handle);
+        let xdg_system_bell_state = crate::protocols::xdg_system_bell_v1::global(&display_handle);
         let fifo_manager_state = crate::protocols::wp_fifo_v1::global(&display_handle);
         let alpha_modifier_state = crate::protocols::wp_alpha_modifier_v1::global(&display_handle);
         let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
@@ -734,6 +740,7 @@ impl State {
             xdg_dialog_state,
             xdg_toplevel_icon_manager,
             xdg_toplevel_tag_manager,
+            xdg_system_bell_state,
             fifo_manager_state,
             alpha_modifier_state,
             output_controls: OutputControlState::new(gamma_global, power_global),

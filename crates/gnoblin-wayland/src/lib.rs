@@ -89,6 +89,9 @@
 //! - **`wp_tearing_control_v1`** — the hint is kept per surface and read back through
 //!   [`State::tearing_hint`]. A headless output presents nothing, so there is no vsync for
 //!   it to lift and the hint has no visible effect.
+//! - **`xdg_system_bell_v1`** — a ring is counted on the session snapshot, and flashes the screen
+//!   when the visual bell is configured; the flash is suppressed while the session is locked.
+//!   The request may name the surface that rang, which attributes the ring to its window.
 //! - **`zwp_text_input_v3`** and **`zwp_input_method_v2`** — a text input is told it has
 //!   focus, the input method is told when one is enabled, and a `commit_string` reaches the
 //!   focused text input. A text input created on an already-focused surface is told it has

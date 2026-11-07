@@ -56,6 +56,7 @@
 //! | [`xdg_foreign`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
 //! | [`xdg_toplevel_icon_v1`] | `xdg_toplevel_icon_manager_v1` | the icon's name and buffer count are stored per window and exposed in the session snapshot; not drawn |
 //! | [`xdg_toplevel_tag_v1`] | `xdg_toplevel_tag_manager_v1` | the tag is stored per window and exposed in the session snapshot; placement does not read it |
+//! | [`xdg_system_bell_v1`] | `xdg_system_bell_v1` | a ring counts toward the bell and flashes the window's screen when the visual bell is on; the flash is suppressed while locked |
 
 /// Pixel path shared by the three capture protocols: frames, sources and sessions.
 pub mod capture_shared;
@@ -122,6 +123,8 @@ pub mod xdg_dialog_v1;
 pub mod xdg_foreign;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
+/// `xdg_system_bell_v1`: the system bell a client rings, optionally naming its surface.
+pub mod xdg_system_bell_v1;
 /// `xdg_toplevel_icon_v1`: toplevel icon names and buffers, stored but not drawn.
 pub mod xdg_toplevel_icon_v1;
 /// `xdg_toplevel_tag_v1`: toplevel tags, stored per window.

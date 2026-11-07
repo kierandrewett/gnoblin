@@ -11,6 +11,7 @@
 //! - `xdg_dialog_v1`: `a_dialog_is_set_and_unset_modal`
 //! - `xdg_toplevel_icon_v1`: `an_icon_is_set_by_name_on_a_toplevel`
 //! - `xdg_toplevel_tag_v1`: `a_toplevel_tag_is_set`
+//! - `xdg_system_bell_v1`: `a_ring_is_counted_with_and_without_a_surface`
 //! - `wp_fifo_v1`: `a_fifo_barrier_is_released_on_a_frame`
 //!
 //! `wp_alpha_modifier_v1`: `a_surface_has_one_alpha_modifier`; the factor's effect on pixels is
@@ -40,6 +41,7 @@ use wayland_protocols::xdg::foreign::zv2::client::{
     zxdg_exported_v2, zxdg_exporter_v2, zxdg_imported_v2, zxdg_importer_v2,
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::system_bell::v1::client::xdg_system_bell_v1;
 use wayland_protocols::xdg::toplevel_icon::v1::client::{xdg_toplevel_icon_manager_v1, xdg_toplevel_icon_v1};
 use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
 
@@ -503,6 +505,18 @@ impl Dispatch<xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1, ()> for App 
     }
 }
 
+impl Dispatch<xdg_system_bell_v1::XdgSystemBellV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &xdg_system_bell_v1::XdgSystemBellV1,
+        _: xdg_system_bell_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
 impl Dispatch<wp_fifo_manager_v1::WpFifoManagerV1, ()> for App {
     fn event(
         _: &mut Self,
@@ -689,6 +703,23 @@ fn a_toplevel_tag_is_set() {
                 .titled("tag window")
                 .is_some_and(|window| window.tag.as_deref() == Some("primary"))
         });
+    });
+}
+
+#[test]
+fn a_ring_is_counted_with_and_without_a_surface() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (surface, _, _) = client.titled_toplevel("bell window");
+        let bell: xdg_system_bell_v1::XdgSystemBellV1 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises xdg_system_bell_v1");
+        bell.ring(Some(&surface));
+        bell.ring(None);
+        client.roundtrip();
+
+        session.wait_for(|snapshot| snapshot.bells() == 2);
     });
 }
 
