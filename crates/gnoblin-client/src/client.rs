@@ -34,6 +34,25 @@ use crate::error::{ClientError, ConnectError, HandshakeError, WireError};
 use crate::transport::Transport;
 use crate::wire;
 
+/// A handle on one portal UI request, from [`Client::portal_ui`] until its outcome
+/// is taken. It is the wire correlation id, which the compositor echoes on the
+/// outcome, so it cannot be confused with another request on this connection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PortalTicket(u64);
+
+/// How the built-in portal UI settled a request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PortalOutcome {
+    /// The user answered; the detail is the grant the compositor recorded.
+    Handled(String),
+    /// The request was withdrawn or dismissed before an answer; the detail says why.
+    Cancelled(String),
+    /// The user declined the request.
+    Declined,
+    /// The compositor could not settle the request; the detail is its reason.
+    Error(String),
+}
+
 /// Something the compositor told this client.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
@@ -250,11 +269,74 @@ impl<T: Transport> Client<T> {
         }
         loop {
             let envelope = self.receive()?;
+            // A reply to a portal ticket nobody is awaiting yet is held for its
+            // `take_portal_outcome` call, not dropped as a stray reply.
+            if self.holds_for_ticket(&envelope) {
+                self.stashed.insert(envelope.request_id, envelope);
+                continue;
+            }
             self.deliver(&envelope)?;
             if let Some(event) = self.inbox.pop_front() {
                 return Ok(event);
             }
         }
+    }
+
+    /// Ask the built-in portal UI for a decision without waiting for it.
+    ///
+    /// The compositor settles the request later, under the same ticket. Collect the
+    /// outcome with [`Client::portal_outcome`] (blocking) or
+    /// [`Client::take_portal_outcome`] (only if it already arrived). Privileged: the
+    /// compositor refuses unless this connection holds `portal.ui`.
+    pub fn portal_ui(&mut self, request: &wire::PortalRequest) -> Result<PortalTicket, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::portal_ui(correlation, request);
+        self.send(&frame)?;
+        self.pending.insert(correlation);
+        Ok(PortalTicket(correlation))
+    }
+
+    /// Wait until the portal UI settles `ticket`, and say how it settled.
+    pub fn portal_outcome(&mut self, ticket: PortalTicket) -> Result<PortalOutcome, ClientError> {
+        let payload = self.await_reply(ticket.0)?;
+        Self::outcome_from(payload)
+    }
+
+    /// The outcome of `ticket` if it has already arrived, without reading the
+    /// transport. `None` means it is still pending.
+    pub fn take_portal_outcome(&mut self, ticket: PortalTicket) -> Option<Result<PortalOutcome, ClientError>> {
+        let envelope = self.stashed.remove(&ticket.0)?;
+        self.pending.remove(&ticket.0);
+        Some(Self::reply_payload(envelope).and_then(Self::outcome_from))
+    }
+
+    /// Withdraw a portal request. The compositor settles it as cancelled, and the
+    /// outcome then waits for [`Client::take_portal_outcome`] like any other.
+    pub fn portal_cancel(&mut self, ticket: PortalTicket) -> Result<(), ClientError> {
+        let frame = wire::portal_cancel(ticket.0);
+        self.send(&frame)
+    }
+
+    /// Decode a settled portal request. A refusal the compositor sent is an error
+    /// outcome, because the request did reach the compositor; a transport failure
+    /// stays an error of the call.
+    fn outcome_from(payload: Vec<u8>) -> Result<PortalOutcome, ClientError> {
+        let (kind, detail) = wire::read_portal_outcome(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::PORTAL_UI.to_owned(),
+            reason,
+        })?;
+        Ok(match kind.as_str() {
+            "handled" => PortalOutcome::Handled(detail),
+            "cancelled" => PortalOutcome::Cancelled(detail),
+            "declined" => PortalOutcome::Declined,
+            _ => PortalOutcome::Error(format!("unknown outcome `{kind}`")),
+        })
+    }
+
+    /// Whether `envelope` answers a portal ticket this client still holds.
+    fn holds_for_ticket(&self, envelope: &Envelope) -> bool {
+        matches!(&envelope.kind, Some(Kind::Reply(_)) | Some(Kind::Error(_)))
+            && self.pending.contains(&envelope.request_id)
     }
 
     /// Claim an offered request.
