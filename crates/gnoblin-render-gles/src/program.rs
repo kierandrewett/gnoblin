@@ -25,7 +25,7 @@ use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
-use crate::gl::{CompileFailure, Device, Program};
+use crate::gl::{CompileFailure, GlContext, Program};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::shader::sources as shaders;
 use gnoblin_render_frame::shader::uniforms::UniformLayout;
@@ -85,7 +85,7 @@ impl Shift {
 ///
 /// [`ShaderError`] with the line of the user's own source. The caller keeps drawing.
 pub(crate) fn compile(
-    device: &mut Device,
+    device: &mut GlContext,
     source: &str,
     schema: &gnoblin_render::UniformSchema,
 ) -> Result<Program, ShaderError> {
@@ -201,7 +201,7 @@ fn from_failure(shift: Shift, failure: CompileFailure) -> ShaderError {
 ///
 /// [`RenderError::Unavailable`] when a pass the compositor ships fails to compile, which is a
 /// bug in the tree rather than a caller's mistake: there is no frame to draw without it.
-pub(crate) fn link(device: &mut Device, vertex: &str, fragment: &str) -> Result<Program, RenderError> {
+pub(crate) fn link(device: &mut GlContext, vertex: &str, fragment: &str) -> Result<Program, RenderError> {
     let vertex_glsl = translate(vertex, "vertex stage", Stage::Vertex, Shift::NONE).map_err(|error| {
         log::debug!(area = "render", %error, "an effect pass does not compile");
         RenderError::Unavailable

@@ -5,7 +5,7 @@
 //! Smithay's `renderer_glow` feature hands out. `glow`'s calls are still `unsafe` —
 //! each one takes the caller's word that the GL state it is about to change is not in
 //! use elsewhere — so every one of them lives in this module, and the rest of the
-//! renderer is ordinary Rust that names [`Device`] and never a `glow` type.
+//! renderer is ordinary Rust that names [`GlContext`] and never a `glow` type.
 //!
 //! That split is what the workspace's unsafe policy asks for: one FFI shim module,
 //! opted out with `#[allow(unsafe_code)]`, a `// SAFETY:` comment per block, and no
@@ -81,7 +81,7 @@ pub(crate) enum Depth {
 
 /// Where a quad sits in a frame.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Placement {
+pub(crate) struct QuadPlacement {
     /// Columns 0, 1 and 3 of the output's clip matrix, applied to the unit quad point `(x, y, 0, 1)`.
     /// `None` draws the quad flat, in the output's logical pixels.
     pub(crate) clip: Option<[[f32; 4]; 3]>,
@@ -91,7 +91,7 @@ pub(crate) struct Placement {
     pub(crate) depth: Depth,
 }
 
-impl Placement {
+impl QuadPlacement {
     /// The flat path: painter's order, no depth test.
     pub(crate) const FLAT: Self = Self {
         clip: None,
@@ -111,7 +111,7 @@ impl Placement {
 }
 
 /// The GL context and the calls every pass is made of.
-pub(crate) struct Device {
+pub(crate) struct GlContext {
     /// The Smithay renderer that owns the EGL context and imports client buffers.
     renderer: GlowRenderer,
     /// The one-pixel white texture a pass binds when it has no layer texture.
@@ -124,7 +124,7 @@ pub(crate) struct Device {
     viewport: (i32, i32),
 }
 
-impl Device {
+impl GlContext {
     /// The device on a fresh surfaceless GLES context.
     ///
     /// # Errors
@@ -145,7 +145,7 @@ impl Device {
         let white = renderer
             .with_context(|gl| unsafe {
                 // SAFETY: the context is current (that is what `with_context` establishes)
-                // and the one name created here is stored in `Device`, which the context
+                // and the one name created here is stored in `GlContext`, which the context
                 // outlives.
                 let name = gl.create_texture().map_err(|error| {
                     log::debug!(area = "render", %error, "no white texture for the GLES renderer");
@@ -569,7 +569,7 @@ impl Device {
         bytes: &[u8],
         quad: Rect,
         texture: Option<Texture>,
-        placement: Placement,
+        placement: QuadPlacement,
     ) -> Result<(), RenderError> {
         let (width, height) = self.viewport;
         let texture = texture.unwrap_or(self.white);

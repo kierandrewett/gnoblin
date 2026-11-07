@@ -633,7 +633,7 @@ fn a_syntax_error_names_the_user_line() {
     // The compiler's own check: an error in the user's second line must be reported as that
     // line, which is what subtracting the preamble's lines is for.
     let schema = UniformSchema::default();
-    let mut device = match Device::new() {
+    let mut device = match GlContext::new() {
         Ok(device) => device,
         Err(error) => {
             println!("skipping the shader-compiler test: {error}");

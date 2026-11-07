@@ -90,7 +90,7 @@
 //!    registered schema does not declare is refused before a byte of it is uploaded:
 //!    `tests::a_user_shader_refuses_a_mistyped_uniform`.
 //! 7. **GL state leaks from one frame into the next.** Every frame begins from the state
-//!    [`Device::begin`] sets and every pass resets what it changes:
+//!    [`GlContext::begin`] sets and every pass resets what it changes:
 //!    `tests::a_frame_does_not_inherit_the_last_frames_state`.
 //! 8. **Damage is ignored and the whole output is repainted.** Only the damage is scissored
 //!    in, so an undamaged pixel keeps what it had:
@@ -114,7 +114,7 @@ use smithay::utils::{Physical, Rectangle};
 use gnoblin_render::{Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
-use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
+use gl::{Depth, Framebuffer, GlContext, Program, QuadPlacement, Texture};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, View};
 use gnoblin_render_frame::geometry::physical_rect;
@@ -156,7 +156,7 @@ pub struct UserShader {
 /// A GLES renderer and the offscreen target it draws into.
 pub struct Gles {
     /// The GL context and the pass machinery.
-    device: Device,
+    device: GlContext,
     /// The output-sized target, replaced by [`Gles::resize`].
     target: Framebuffer,
     /// The two scratch targets the blur passes need, made on first use.
@@ -254,7 +254,7 @@ impl Gles {
                 height: physical.height,
             });
         }
-        let mut device = Device::on(renderer)?;
+        let mut device = GlContext::on(renderer)?;
         let target = device.target(physical)?;
         let passes = Passes::new(&mut device)?;
         Ok(Self {
@@ -608,7 +608,7 @@ impl Gles {
                     continue;
                 }
                 let texture = textures.get(index).and_then(|texture| *texture);
-                painter.layer(layer, texture, Placement::FLAT)?;
+                painter.layer(layer, texture, QuadPlacement::FLAT)?;
             }
             if !order.is_empty() {
                 painter.device.clear_depth(painter.target);
@@ -619,7 +619,7 @@ impl Gles {
                 painter.layer(layer, texture, *placement)?;
             }
             if let Some(parts) = glass {
-                painter.draw_parts(parts, None, Placement::FLAT)?;
+                painter.draw_parts(parts, None, QuadPlacement::FLAT)?;
             }
             if let Some((overlay, texture)) = overlay {
                 if let Some(dst) = overlay_rect {
@@ -676,7 +676,7 @@ impl Gles {
         let mut bytes = Vec::new();
         self.passes.surface.pack_fixed(&uniforms, &mut bytes);
         self.device
-            .draw(&self.passes.surface, &bytes, quad, Some(texture), Placement::FLAT)?;
+            .draw(&self.passes.surface, &bytes, quad, Some(texture), QuadPlacement::FLAT)?;
         self.device.scissor(None);
         self.device.end()?;
         self.draws = self.draws.saturating_add(1);
@@ -742,7 +742,7 @@ struct LayerParts<'a> {
 
 /// One frame's mutable state, so a pass's parameters stay a method's arguments.
 struct Painter<'a> {
-    device: &'a mut Device,
+    device: &'a mut GlContext,
     target: &'a Framebuffer,
     scratch: &'a mut Option<[Framebuffer; 2]>,
     passes: &'a mut Passes,
@@ -772,7 +772,7 @@ impl Painter<'_> {
         } = self;
         let uniforms = Uniforms::solid(rect, *background, Color::WHITE, 1.0);
         passes.solid.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.solid, bytes, rect, None, Placement::FLAT)
+        device.draw(&passes.solid, bytes, rect, None, QuadPlacement::FLAT)
     }
 
     /// Draws a layer: its shadow, its backdrop effect, then its own pixels.
@@ -781,7 +781,7 @@ impl Painter<'_> {
     /// full opacity inside the group, and the finished group is faded over the frame by the
     /// layer's opacity, so the blur fades with the layer as a browser's `backdrop-filter` does
     /// under `opacity`.
-    fn layer(&mut self, layer: &Layer, texture: Option<Texture>, placement: Placement) -> Result<(), RenderError> {
+    fn layer(&mut self, layer: &Layer, texture: Option<Texture>, placement: QuadPlacement) -> Result<(), RenderError> {
         let (dst, corner_radius, effects, colour, tint, opacity, src) = match layer {
             Layer::Solid(solid) => (
                 solid.dst,
@@ -828,7 +828,7 @@ impl Painter<'_> {
         &mut self,
         parts: &LayerParts<'_>,
         texture: Option<Texture>,
-        placement: Placement,
+        placement: QuadPlacement,
     ) -> Result<(), RenderError> {
         let LayerParts {
             quad,
@@ -960,7 +960,7 @@ impl Painter<'_> {
         } = self;
         let uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], Color::WHITE, 1.0, 0.0);
         passes.surface.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.surface, bytes, quad, Some(texture), Placement::FLAT)
+        device.draw(&passes.surface, bytes, quad, Some(texture), QuadPlacement::FLAT)
     }
 
     /// Draws a shadow behind a layer.
@@ -990,7 +990,7 @@ impl Painter<'_> {
         uniforms.corner = radius;
         uniforms.params = [blur, blur, blur, 0.0];
         passes.shadow.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.shadow, bytes, quad, None, Placement::FLAT)
+        device.draw(&passes.shadow, bytes, quad, None, QuadPlacement::FLAT)
     }
 
     /// Blurs the pixels behind a layer into the layer's group, and reports whether it did.
@@ -1067,7 +1067,7 @@ impl Painter<'_> {
             device.begin(second)?;
             device.scissor(Some(region));
             passes.blur.pack_fixed(&uniforms, bytes);
-            device.draw(&passes.blur, bytes, region, Some(first.texture()), Placement::FLAT)?;
+            device.draw(&passes.blur, bytes, region, Some(first.texture()), QuadPlacement::FLAT)?;
             device.end()?;
             // The vertical sweep writes back into the group over the same region, so the next
             // pass reads a complete blur. Only the last sweep is scissored to the damage, which
@@ -1087,7 +1087,7 @@ impl Painter<'_> {
             device.begin(first)?;
             device.scissor(Some(write));
             passes.blur.pack_fixed(&uniforms, bytes);
-            device.draw(&passes.blur, bytes, region, Some(second.texture()), Placement::FLAT)?;
+            device.draw(&passes.blur, bytes, region, Some(second.texture()), QuadPlacement::FLAT)?;
         }
         // Back to the damage scissor, which the rest of this rectangle's passes expect.
         device.scissor(Some(*clip));
@@ -1131,7 +1131,7 @@ impl Painter<'_> {
         device.blend_group(opacity)?;
         let uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, 1.0, 0.0);
         passes.surface.pack_fixed(&uniforms, bytes);
-        let drawn = device.draw(&passes.surface, bytes, rect, Some(group.texture()), Placement::FLAT);
+        let drawn = device.draw(&passes.surface, bytes, rect, Some(group.texture()), QuadPlacement::FLAT);
         device.blend_premultiplied()?;
         drawn
     }
@@ -1194,7 +1194,7 @@ impl Painter<'_> {
         device.scissor(None);
         device.blend_replace()?;
         *bytes = view::ViewUniforms::new(view, matrix, physical.width, physical.height).bytes();
-        let drawn = device.draw(&passes.view, bytes, full, Some(first.texture()), Placement::FLAT);
+        let drawn = device.draw(&passes.view, bytes, full, Some(first.texture()), QuadPlacement::FLAT);
         device.blend_premultiplied()?;
         device.end()?;
         drawn
@@ -1231,7 +1231,7 @@ fn resolve<'a>(
 
 impl Passes {
     /// Compiles the effect programs.
-    fn new(device: &mut Device) -> Result<Self, RenderError> {
+    fn new(device: &mut GlContext) -> Result<Self, RenderError> {
         Ok(Self {
             solid: program::link(device, shaders::VERTEX, shaders::SOLID)?,
             surface: program::link(device, shaders::VERTEX, shaders::SURFACE)?,
@@ -1257,7 +1257,7 @@ fn layer_model(layer: &Layer) -> Option<&Model> {
 /// quad point `(x, y, 0, 1)` through the layer's model onto the output's device pixels, which
 /// are y-down as the flat path's are; the depth is the one the vertex stage writes for the quad's
 /// centre.
-fn spatial_order(layers: &[Layer], physical: Size, scale: Scale) -> Vec<(usize, Placement)> {
+fn spatial_order(layers: &[Layer], physical: Size, scale: Scale) -> Vec<(usize, QuadPlacement)> {
     let s = scale.as_f64();
     let (w, h) = (f64::from(physical.width), f64::from(physical.height));
     let screen = Mat4 {
@@ -1299,9 +1299,9 @@ fn spatial_order(layers: &[Layer], physical: Size, scale: Scale) -> Vec<(usize, 
         };
         bucket.push((
             index,
-            Placement {
+            QuadPlacement {
                 depth_value: depth,
-                ..Placement::projected(columns, kind)
+                ..QuadPlacement::projected(columns, kind)
             },
         ));
     }
