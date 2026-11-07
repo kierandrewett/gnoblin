@@ -310,23 +310,25 @@ pub(super) fn parent_owner_check(caller: &VerifiedCaller, owner: &WindowProcess)
     }
 }
 
-/// Where a portal dialog opens: on its verified parent window, or on the output.
+/// Where a portal dialog opens. Every request opens on the output: no path places a dialog
+/// on its parent window, because no trusted app-to-process binding exists yet (design
+/// `layers.md`, Needs Kieran 16, decided as output scope).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum PortalScope {
-    /// The parent is a Wayland handle that resolves to a window the caller's pid owns.
-    Parent,
-    /// The dialog opens on the output. `reason` says why the parent was not used; it is
-    /// empty when the request named no parent at all.
+    /// The dialog opens on the output. `reason` says what was found about the parent, or
+    /// why it was not used; it is empty when the request named no parent at all.
     Output { reason: String },
 }
 
 /// Resolves a request's `parent_window` to the scope its dialog opens on.
 ///
-/// This is the only place the parent is trusted, so it is a pure function over two
-/// lookups: `exported` maps a Wayland handle to its window (`None` while the compositor
-/// has not answered, `Some(None)` for an unknown or revoked handle), and `process` maps a
-/// window to its client process. Nothing here refuses a request. An unusable parent means
-/// the dialog opens on the output, so the app still gets its consent answer.
+/// The result is always an output scope. The parent is resolved only so the log line can
+/// say what was found: a parent whose process matches the caller is reported as resolved
+/// but not established, because a pid match is not a trusted binding (design `layers.md`,
+/// Needs Kieran 16). It is a pure function over two lookups: `exported` maps a Wayland
+/// handle to its window (`None` while the compositor has not answered, `Some(None)` for an
+/// unknown or revoked handle), and `process` maps a window to its client process. Nothing
+/// here refuses a request, so the app still gets its consent answer.
 ///
 /// An X11 parent is never proven, because the compositor cannot yet map an XID to a
 /// process. A malformed string is an output scope with the parse error as the reason.
@@ -356,7 +358,7 @@ pub(super) fn resolve_portal_scope<W>(
         Some(Some(owner)) => owner,
     };
     match parent_owner_check(caller, &owner) {
-        Ok(()) => PortalScope::Parent,
+        Ok(()) => output("the parent window resolved to the caller's process, but ownership is not established"),
         Err(reason) => output(reason),
     }
 }
@@ -706,8 +708,16 @@ mod tests {
     }
 
     #[test]
-    fn a_verified_wayland_parent_is_the_scope() {
-        assert_eq!(resolve("wayland:live", Some(process(1000)), 1000), PortalScope::Parent);
+    fn a_matching_wayland_parent_still_opens_on_the_output() {
+        // The pid matches the caller, but a pid match is not a trusted binding, so the
+        // dialog stays on the output and the reason says the ownership is not established.
+        assert_eq!(
+            resolve("wayland:live", Some(process(1000)), 1000),
+            PortalScope::Output {
+                reason: "the parent window resolved to the caller's process, but ownership is not established"
+                    .to_owned(),
+            }
+        );
     }
 
     #[test]

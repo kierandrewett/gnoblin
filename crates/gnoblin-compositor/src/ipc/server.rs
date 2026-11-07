@@ -820,9 +820,8 @@ impl Dispatcher {
             }
         };
         let now = self.now();
-        // The parent is resolved before the dialog opens. A parent that cannot be verified
-        // does not refuse the request: the dialog opens on the output instead, and the log
-        // line names the scope used and, when it is the output, why.
+        // Every portal dialog opens on the output. The parent is resolved only so the log
+        // line can say what was found; no path places a dialog on a parent window.
         let scope = resolve_portal_scope(
             &request.caller,
             &request.parent_window,
@@ -830,9 +829,8 @@ impl Dispatcher {
             |window| self.control.window_process(window),
         );
         match &scope {
-            PortalScope::Parent => log::info!(area = "ipc", "a portal dialog opens on its verified parent window"),
             PortalScope::Output { reason } => {
-                log::warn!(area = "ipc", %reason, "a portal dialog opens on its output scope; the parent window is not usable");
+                log::warn!(area = "ipc", %reason, "a portal dialog opens on its output scope; the parent window is not used");
             }
         }
         match self.portal.submit(client, envelope.request_id, &request, now) {
