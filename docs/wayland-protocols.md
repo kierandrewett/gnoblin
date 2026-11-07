@@ -72,7 +72,22 @@ It is served only on the privileged socket, never on the ordinary one. The
 session names that socket in `GNOBLIN_PRIVILEGED_DISPLAY`, so a capture tool
 runs as `WAYLAND_DISPLAY=$GNOBLIN_PRIVILEGED_DISPLAY grim`.
 
-The socket is owner-only (mode `0600`), and sandboxed clients never reach it.
+The privileged socket is owner-only (mode `0600`). That limits connections to
+your user, not to capture tools. Any process running as your user that can
+find the socket gets every privileged global, including screencopy, data-control
+(clipboard read and write), layer-shell and foreign-toplevel management.
+A same-user program can therefore read the screen and the clipboard.
+
+Sandboxed clients never see the privileged globals through the protocol. Whether
+a sandbox can reach the socket path depends on the files it exposes.
+
+Checked: a bubblewrap sandbox with a tmpfs over `$XDG_RUNTIME_DIR` hides the
+socket. Flatpak 1.16.6 with the default permissions of `app.drey.Warp` hides it.
+
+Not checked: other Flatpak apps, apps with `xdg-run` or a runtime-directory
+bind, and the session's own sandboxes. Any of these may reach the socket if it
+exposes `$XDG_RUNTIME_DIR`.
+
 The portal path depends on the selected backend. Disabling this global does not
 block screen sharing.
 

@@ -372,6 +372,10 @@ WAYLAND_DISPLAY=$GNOBLIN_PRIVILEGED_DISPLAY grim ~/screenshot.png
 that the session did not start does not have it set, so run the command from a
 shell the session started, such as a terminal opened from the launcher.
 
+The variable is a convenience, not a lock. The socket is owner-only, so any
+program you run as your user can reach it by its path, with or without the
+variable.
+
 ## The screen stays locked after the lock screen closes
 
 If the lock client crashes or is killed, Gnoblin keeps the session locked. This

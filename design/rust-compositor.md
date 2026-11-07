@@ -431,18 +431,28 @@ start and recover without any script.
 
 ### Safety model
 
-| Concern              | Rule                                                                                                                                                                                                                                                                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Memory safety        | `#![forbid(unsafe_code)]` in every crate except named FFI modules. Each `unsafe` block has a `SAFETY:` comment. CI lists every crate that contains `unsafe`.                                                                                                                                                            |
-| Compositor crashes   | No `unwrap` or `expect` in compositor crates (Clippy `unwrap_used` and `expect_used` denied). A protocol error disconnects the client, never the compositor.                                                                                                                                                            |
-| Script faults        | Lua runs in another process with instruction and memory limits. On a missed deadline the runtime restarts; the compositor keeps its accepted state.                                                                                                                                                                     |
-| Lock                 | Fail closed: opaque cover; input goes only to lock surfaces; no capture or clipboard. A locker crash keeps the cover.                                                                                                                                                                                                   |
-| Focus stealing       | Activation needs a valid token or a trusted context. A process ID or app ID alone never grants focus.                                                                                                                                                                                                                   |
-| Privileged protocols | Access is decided per client, not only per global. Sandboxed clients (`wp_security_context_v1`) do not see screencopy, data-control, layer-shell or foreign-toplevel management. Ordinary same-user clients on the main socket get the unprivileged set. Only the privileged socket (below) carries the privileged set. |
-| Untrusted input      | The wire codec, configuration parser and protocol handlers are fuzzed (`cargo fuzz`) before they ship.                                                                                                                                                                                                                  |
-| Secrets              | Prompt answers never enter logs, events for other clients, crash reports or the parity recorder.                                                                                                                                                                                                                        |
+| Concern              | Rule                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Memory safety        | `#![forbid(unsafe_code)]` in every crate except named FFI modules. Each `unsafe` block has a `SAFETY:` comment. CI lists every crate that contains `unsafe`. |
+| Compositor crashes   | No `unwrap` or `expect` in compositor crates (Clippy `unwrap_used` and `expect_used` denied). A protocol error disconnects the client, never the compositor. |
+| Script faults        | Lua runs in another process with instruction and memory limits. On a missed deadline the runtime restarts; the compositor keeps its accepted state.          |
+| Lock                 | Fail closed: opaque cover; input goes only to lock surfaces; no capture or clipboard. A locker crash keeps the cover.                                        |
+| Focus stealing       | Activation needs a valid token or a trusted context. A process ID or app ID alone never grants focus.                                                        |
+| Privileged protocols | Per client: sandboxes see no privileged global, the main socket sees the unprivileged set, and the privileged socket (below) sees all of it.                 |
+| Untrusted input      | The wire codec, configuration parser and protocol handlers are fuzzed (`cargo fuzz`) before they ship.                                                       |
+| Secrets              | Prompt answers never enter logs, events for other clients, crash reports or the parity recorder.                                                             |
 
-The privileged socket is a second Wayland socket, `$XDG_RUNTIME_DIR/gnoblin-wayland-privileged.sock`, created with mode `0600` so only this user can connect. Clients on it get the privileged protocols. The session exports its name as `GNOBLIN_PRIVILEGED_DISPLAY` to every child it starts, so a shell or tool the user declares in config autostart can use it. A user runs a tool with capture rights explicitly, for example `WAYLAND_DISPLAY=$GNOBLIN_PRIVILEGED_DISPLAY grim out.png`. Anything the session starts is user-declared, so the user has already chosen to trust it with this socket. Sandboxed clients never reach the privileged socket: security-context sockets are separate and carry no privileged globals. Nothing else is granted by name, process or same-uid check. Who should use the privileged socket and whether screenshot tools should get capture through a portal-style consent instead is an open question in `capture-protocols.md`.
+The privileged socket is `$XDG_RUNTIME_DIR/gnoblin-wayland-privileged.sock`, created with mode `0600`. That limits connections to this user's UID. It does not limit them to capture tools.
+
+Any process running as that user that finds the path gets every privileged global: screencopy, image copy capture, data-control, layer-shell, foreign-toplevel, output management and power, gamma control, and the gnoblin frame and session-host globals. Input-method, virtual-keyboard and background-effect are not privileged and are on the main socket.
+
+The session exports the socket name as `GNOBLIN_PRIVILEGED_DISPLAY` to every child it starts. The name is fixed, so the variable is a convenience, not a grant. Sandboxed clients never see the privileged globals through the protocol. Whether a sandbox can reach the path depends on the files it exposes:
+
+- A bubblewrap sandbox with a tmpfs over `$XDG_RUNTIME_DIR` hides the socket. Verified.
+- Flatpak 1.16.6 with the default permissions of `app.drey.Warp` hides it. Verified for that app only; see `docs/wayland-protocols.md`.
+- An app granted `xdg-run`, or a runtime-directory bind, may reach it. Not tested.
+
+Treat the privileged socket as a same-user boundary, not a capture-tool boundary. Two choices remain open in `capture-protocols.md`: the portal-style consent alternative, and the scope of the variable.
 
 ## Project structure
 
