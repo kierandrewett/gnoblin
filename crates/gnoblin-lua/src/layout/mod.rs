@@ -30,6 +30,7 @@
 //! - State persistence: `data` values persist across calls on one worker.
 
 mod data;
+mod encoding;
 mod engine;
 mod host;
 mod lua;
@@ -44,6 +45,7 @@ use std::collections::BTreeMap;
 use gnoblin_wm::layout::Arg;
 
 pub use data::{Data, DataError, LayoutKey};
+pub use encoding::MAX_ENCODED_LEN;
 pub use engine::LuaEngine;
 pub use host::{Host, HostConfig, HostFailure, WedgeHook, default_prefix, installed_module_dir};
 pub(crate) use reference::{LayoutModuleLoader, LayoutRef, is_layout_name};

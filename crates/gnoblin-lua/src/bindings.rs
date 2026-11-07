@@ -563,7 +563,7 @@ fn call_method<T: Transport + 'static>(
     }
     let mut fields = Fields::new();
     if takes_layout_reference(method) {
-        // One reference argument carries the three fields the wire needs. A string is
+        // One reference argument carries the four fields the wire needs. A string is
         // refused: the module it names would not be pinned by hash.
         let [value] = values.as_slice() else {
             return Err(Error::runtime(format!(
@@ -573,7 +573,7 @@ fn call_method<T: Transport + 'static>(
                 values.len()
             )));
         };
-        let Some((root, module, hash)) = layout_reference_fields(value) else {
+        let Some((root, module, hash, options)) = layout_reference_fields(value)? else {
             return Err(Error::runtime(format!(
                 "{}.{} takes a layout reference from require(), not {}",
                 spec.name,
@@ -584,6 +584,7 @@ fn call_method<T: Transport + 'static>(
         fields.insert("root".to_owned(), ModelValue::Text(root));
         fields.insert("module".to_owned(), ModelValue::Text(module));
         fields.insert("hash".to_owned(), ModelValue::Text(hash));
+        fields.insert("options".to_owned(), ModelValue::Bytes(options));
     } else {
         if values.len() != method.params.len() {
             return Err(Error::runtime(format!(
@@ -613,30 +614,42 @@ fn call_method<T: Transport + 'static>(
     })
 }
 
-/// Whether a method takes a layout reference in place of its three fields. Only
-/// `set_layout` on `workspace` and `output` does: the Lua call names the reference once,
-/// and the wire carries its `root`, `module` and `hash`.
+/// Whether a method takes a layout reference in place of its fields. Only `set_layout` on
+/// `workspace` and `output` does: the Lua call names the reference once, and the wire
+/// carries its `root`, `module`, `hash` and encoded `options`.
 fn takes_layout_reference(method: &MethodSpec) -> bool {
     method.name == "set_layout"
         && matches!(
             method.params,
-            [root, module, hash]
-                if root.name == "root" && module.name == "module" && hash.name == "hash"
+            [root, module, hash, options]
+                if root.name == "root"
+                    && module.name == "module"
+                    && hash.name == "hash"
+                    && options.name == "options"
         )
 }
 
-/// The `root`, `module` and `hash` of a layout reference, or `None` when the value is
-/// not one. The hash is spelled the way the reference's own `hash` field spells it.
-fn layout_reference_fields(value: &Value) -> Option<(String, String, String)> {
+/// The `root`, `module`, `hash` and encoded `options` of a layout reference, or `None` when
+/// the value is not one. The hash is spelled the way the reference's own `hash` field
+/// spells it. The options are refused here when they are too large to encode, so an
+/// oversize value fails in the configuration that made it, not on the wire.
+fn layout_reference_fields(value: &Value) -> mlua::Result<Option<(String, String, String, Vec<u8>)>> {
     let Value::UserData(data) = value else {
-        return None;
+        return Ok(None);
     };
-    let reference = data.borrow::<LayoutRef>().ok()?;
-    Some((
+    let Ok(reference) = data.borrow::<LayoutRef>() else {
+        return Ok(None);
+    };
+    let options = reference
+        .options
+        .encode()
+        .map_err(|error| Error::runtime(format!("layout `{}` options: {}", reference.module, error.0)))?;
+    Ok(Some((
         reference.root.to_owned(),
         reference.module.clone(),
         format!("{:016x}", reference.hash),
-    ))
+        options,
+    )))
 }
 
 /// One Lua argument as the typed value the schema declares.

@@ -167,9 +167,10 @@ type = "string"
 since = "0.2.0"
 
 # Set this output's default layout to a layout module, named by its reference: the root
-# (`shipped` or `user`), the module name and the source hash. Workspaces with no override
-# of their own move to it; the engines of workspaces that have one keep running. An
-# unknown module fails with `unknown-layout`.
+# (`shipped` or `user`), the module name, the source hash and the options (the canonical
+# encoding of the reference's options; see `gnoblin-lua`'s `Data::encode`, and empty for
+# none). Workspaces with no override of their own move to it; the engines of workspaces
+# that have one keep running. An unknown module fails with `unknown-layout`.
 [[object.method]]
 name = "set_layout"
 since = "0.2.0"
@@ -187,4 +188,9 @@ since = "0.2.0"
 [[object.method.param]]
 name = "hash"
 type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "options"
+type = "bytes"
 since = "0.2.0"
