@@ -342,6 +342,19 @@ pub enum ReloadOutcome {
     Rejected(String),
 }
 
+/// One signal to deliver to the handlers that watch it.
+///
+/// Grouped so that delivery takes the emission as one value: the signal's name is
+/// the `namespace.object.signal` triple, and it carries the payload as well.
+struct Emission<'a> {
+    object: ObjectId,
+    namespace: &'a str,
+    object_type: &'a str,
+    signal: &'a str,
+    arguments: LuaValue,
+    fields: &'a Fields,
+}
+
 /// The state a reload replaces, kept so a rejected reload can put it back.
 struct Previous {
     handlers: BTreeMap<u64, Watching>,
@@ -793,12 +806,14 @@ impl<T: Transport + 'static> Host<T> {
                     .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
                 match (arguments, kind) {
                     (Ok(arguments), Some((namespace, object_type))) => self.run_signal(
-                        object,
-                        &namespace,
-                        &object_type,
-                        &signal,
-                        LuaValue::Table(arguments),
-                        &fields,
+                        Emission {
+                            object,
+                            namespace: &namespace,
+                            object_type: &object_type,
+                            signal: &signal,
+                            arguments: LuaValue::Table(arguments),
+                            fields: &fields,
+                        },
                         handlers,
                     ),
                     (Err(error), _) => self.report(ScriptError::from_lua(&error)),
@@ -816,12 +831,14 @@ impl<T: Transport + 'static> Host<T> {
                     .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
                 if let Some((namespace, object_type)) = kind {
                     self.run_signal(
-                        object,
-                        &namespace,
-                        &object_type,
-                        "closed",
-                        LuaValue::Nil,
-                        &Fields::new(),
+                        Emission {
+                            object,
+                            namespace: &namespace,
+                            object_type: &object_type,
+                            signal: "closed",
+                            arguments: LuaValue::Nil,
+                            fields: &Fields::new(),
+                        },
                         handlers,
                     );
                 }
@@ -870,16 +887,15 @@ impl<T: Transport + 'static> Host<T> {
     }
 
     /// Run every handler watching one signal on one object.
-    fn run_signal(
-        &mut self,
-        object: ObjectId,
-        namespace: &str,
-        object_type: &str,
-        signal: &str,
-        arguments: LuaValue,
-        fields: &Fields,
-        handlers: &mut usize,
-    ) {
+    fn run_signal(&mut self, emission: Emission<'_>, handlers: &mut usize) {
+        let Emission {
+            object,
+            namespace,
+            object_type,
+            signal,
+            arguments,
+            fields,
+        } = emission;
         let (waiting, global) = {
             let shared = self.shared.borrow();
             (
