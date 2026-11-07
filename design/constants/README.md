@@ -222,18 +222,17 @@ Six batches touching disjoint files/crates, ordered by risk (lowest first). Each
 
 **Touches**: gnoblin-wayland, gnoblin-log, gnoblin-session, gnoblin-compat-core, gnoblin-compat-wayland-\*
 
-| Action                                                     | File                                    |
-| ---------------------------------------------------------- | --------------------------------------- |
-| Use `libc::CLOCK_MONOTONIC` instead of bare `1`            | `wp_presentation_time.rs:58`            |
-| Use `libc::ENOBUFS` instead of bare `105`                  | `journal.rs:56`                         |
-| Use `libc::SIGTERM` instead of bare `15`                   | `supervisor.rs:723`                     |
-| Derive `SHELL_VERSION` from vendored `gtk-shell.xml`       | `gtk-shell1 global.rs:47`               |
-| Derive `INTEROP_VERSION` from `mutter-x11-interop.xml`     | `mutter-x11-interop global.rs:23`       |
-| Replace stale font defaults with current GNOME values      | `settings.rs:191-193`                   |
-| Merge duplicate `BUSY_TIMEOUT` (5s) into one shared module | `kv.rs:42`, `store.rs:40`, `query.rs:9` |
-| Merge `CORE_NAMESPACE` duplicates                          | `generate.rs:36`, `wire.rs:54`          |
-| Make `state::SLOT` the single source for `prompt.secret`   | `agent.rs:21`, `state.rs:56`            |
-| Share `"lock"`, `"output"`, `"idle"` keys in one module    | four compat crates                      |
+| Action                                                   | File                              |
+| -------------------------------------------------------- | --------------------------------- |
+| Use `libc::CLOCK_MONOTONIC` instead of bare `1`          | `wp_presentation_time.rs:58`      |
+| Use `libc::ENOBUFS` instead of bare `105`                | `journal.rs:56`                   |
+| Use `libc::SIGTERM` instead of bare `15`                 | `supervisor.rs:723`               |
+| Derive `SHELL_VERSION` from vendored `gtk-shell.xml`     | `gtk-shell1 global.rs:47`         |
+| Derive `INTEROP_VERSION` from `mutter-x11-interop.xml`   | `mutter-x11-interop global.rs:23` |
+| Replace stale font defaults with current GNOME values    | `settings.rs:191-193`             |
+| Merge `CORE_NAMESPACE` duplicates                        | `generate.rs:36`, `wire.rs:54`    |
+| Make `state::SLOT` the single source for `prompt.secret` | `agent.rs:21`, `state.rs:56`      |
+| Share `"lock"`, `"output"`, `"idle"` keys in one module  | four compat crates                |
 
 **Tests**: add a test that each derived constant matches the upstream source (build-time XML diff for protocol versions, libc constant equality).
 

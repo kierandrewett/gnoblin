@@ -1029,7 +1029,7 @@ mod tests {
 
     #[test]
     fn a_library_may_not_enable_a_logging_feature() {
-        for feature in ["console", "store", "journal", "init"] {
+        for feature in ["console", "pipeline", "journal", "init"] {
             let found = library_enabling_logging(false, &[feature]);
             assert_eq!(found.len(), 1, "{found:?}");
             assert!(found[0].contains("[log-features]"), "{found:?}");
@@ -1039,7 +1039,7 @@ mod tests {
     #[test]
     fn a_binary_may_enable_the_logging_features() {
         assert_eq!(library_enabling_logging(true, &["init"]), Vec::<String>::new());
-        assert_eq!(library_enabling_logging(true, &["store"]), Vec::<String>::new());
+        assert_eq!(library_enabling_logging(true, &["pipeline"]), Vec::<String>::new());
     }
 
     #[test]
@@ -1051,7 +1051,7 @@ mod tests {
                 "dependencies": [{
                     "name": "gnoblin-log",
                     "kind": "dev",
-                    "features": ["store"],
+                    "features": ["pipeline"],
                 }],
             }],
         });

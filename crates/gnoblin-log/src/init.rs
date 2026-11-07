@@ -2,10 +2,10 @@
 //!
 //! [`init`] installs one `tracing` subscriber. Its console layer follows the resolved
 //! [`ConsoleOutput`]: the native journal (the `journal` module), the `<N>` stream format, the pretty or
-//! plain line format, JSON lines, or nothing. Its database layer, the `store` module, stores each
-//! event as a row in a SQLite file, so that a session can be inspected after the fact; it is on
-//! in every mode. All layers share one filter, taken from `GNOBLIN_LOG`, and the database location
-//! comes from `GNOBLIN_LOG_DB`; see [`LogOptions`].
+//! plain line format, JSON lines, or nothing. A sink, when the binary sets one in [`LogOptions`],
+//! receives every event as a batch through the `pipeline` module, so a storage crate can keep the log
+//! after the fact without this crate depending on it. All layers share one filter, taken from
+//! `GNOBLIN_LOG`; see [`LogOptions`].
 //!
 //! Only the binaries use this module: they enable the `init` feature. The crates that log use the
 //! macros of the facade.
@@ -18,9 +18,7 @@ use std::panic;
 use crate::ProcessRole;
 use crate::console::{ConsoleFormat, JsonFormat, StreamFormat};
 use crate::journal::{JournalLayer, SOCKET_PATH};
-#[cfg(feature = "pipeline")]
 use crate::pipeline::{Pipeline, PipelineLayer};
-use crate::store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::format::DefaultFields;
@@ -31,18 +29,13 @@ use tracing_subscriber::util::SubscriberInitExt;
 // The component this module's own warnings and panic reports log under.
 crate::logger!(log = "log");
 
-/// The retention policy the database is opened with, re-exported beside the options.
-pub use crate::store::Retention;
 /// The options a process sets up logging with, and the environment variables that name them.
-pub use options::{
-    Console, ConsoleOutput, DATABASE_VARIABLE, FILTER_VARIABLE, FORMAT_VARIABLE, LogOptions, LogSettings, Probe,
-};
+pub use options::{Console, ConsoleOutput, FILTER_VARIABLE, FORMAT_VARIABLE, LogOptions, LogSettings, Probe};
 
-/// Keeps the database writer alive. Dropping it waits, for a bounded time, for pending
-/// records to reach the database, so a process should hold it until it is done logging.
-#[must_use = "dropping the guard flushes the log database immediately"]
+/// Keeps the sink's writer thread alive. Dropping it waits, for a bounded time, for pending
+/// records to reach the sink, so a process should hold it until it is done logging.
+#[must_use = "dropping the guard flushes the log sink immediately"]
 pub struct LogGuard {
-    sink: Option<Sink>,
     pipeline: Option<Pipeline>,
 }
 
@@ -51,18 +44,15 @@ impl Drop for LogGuard {
         if let Some(pipeline) = &self.pipeline {
             pipeline.flush();
         }
-        if let Some(sink) = &self.sink {
-            sink.flush();
-        }
     }
 }
 
 /// Installs the process-wide subscriber for `role`, with `options`.
 ///
 /// Problems with the configuration do not stop the process: an invalid filter falls back to
-/// `info`, an unknown format is ignored, a database that cannot be opened leaves the console
-/// working, and a journal that cannot be reached writes to stderr instead. Each problem is
-/// reported as a warning once the subscriber is installed. A panic is logged as an error
+/// `info`, an unknown format is ignored, a sink whose writer thread cannot start leaves the
+/// console working, and a journal that cannot be reached writes to stderr instead. Each problem
+/// is reported as a warning once the subscriber is installed. A panic is logged as an error
 /// before the previous panic hook runs.
 ///
 /// Calling this after another subscriber is installed leaves that subscriber in place.
@@ -106,21 +96,10 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     if let Some(handle) = &options.sink {
         match Pipeline::start(handle.shared(), role) {
             Ok(started) => {
-                layers.push(PipelineLayer::new(started.clone()).with_filter(filter.clone()).boxed());
+                layers.push(PipelineLayer::new(started.clone()).with_filter(filter).boxed());
                 pipeline = Some(started);
             }
             Err(error) => problems.push(format!("no log sink thread: {error}")),
-        }
-    }
-
-    let mut sink = None;
-    if let Some(path) = &options.database {
-        match crate::store::open(path, role, options.retention) {
-            Ok(opened) => {
-                layers.push(DatabaseLayer::new(opened.clone(), role).with_filter(filter).boxed());
-                sink = Some(opened);
-            }
-            Err(error) => problems.push(format!("no log database: {error}")),
         }
     }
 
@@ -131,7 +110,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
             log::warn!("{problem}");
         }
     }
-    LogGuard { sink, pipeline }
+    LogGuard { pipeline }
 }
 
 /// A console layer that writes each event on stderr in `format`, filtered by `filter`.

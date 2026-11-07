@@ -32,10 +32,6 @@ pub mod filter;
 #[cfg(feature = "console")]
 pub mod console;
 
-/// The database sink: one SQLite row per event. Needs the `store` feature.
-#[cfg(feature = "store")]
-pub mod store;
-
 /// The record a logged event becomes, and the sink that stores batches of them. Always built: it
 /// has no dependencies, so a storage crate can implement [`record::RecordSink`].
 pub mod record;

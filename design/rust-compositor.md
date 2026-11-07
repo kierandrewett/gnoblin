@@ -2911,14 +2911,16 @@ New feature. Mutter has no equivalent, so there is no divergence ledger entry. R
 
 **Decided 2026-11-06: every crate logs through the `gnoblin-log` macros, and only a binary installs a sink.** `gnoblin-log` is the one logging crate. It holds the `error!`, `warn!`, `info!`, `debug!` and `trace!` macros and the component mapping and `Role`, and it depends on `tracing` alone.
 
-The features add the sinks, each in a module of the same name. `console` prints each event with ANSI colour and a per-component prefix, and redacts secrets. `store` writes the same fields to a SQLite database (`rusqlite` with `bundled`) on a writer thread. `journal` sends each event as a native systemd journal entry.
+The features add the sinks, each in a module of the same name. `console` prints each event with ANSI colour and a per-component prefix, and redacts secrets. `journal` sends each event as a native systemd journal entry. The SQLite store is not a feature of this crate: `gnoblin-store` owns it, and the binary attaches the store's log as the sink.
 
-`init` enables all three and composes them for one process: `init(role, options)` returns a guard and installs the panic hook. `GNOBLIN_LOG` takes an `EnvFilter` expression and defaults to `info`. `GNOBLIN_LOG_DB` names the database, and `off` keeps none. `GNOBLIN_LOG_FORMAT` chooses the console output. The default database is `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, falling back to `$HOME/.local/state`. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
+`init` enables all three and composes them for one process: `init(role, options)` returns a guard and installs the panic hook. `GNOBLIN_LOG` takes an `EnvFilter` expression and defaults to `info`. `GNOBLIN_LOG_FORMAT` chooses the console output.
+
+The store is not named by the environment. The binary opens it from the `[logging]` section and hands its log to `init` as the sink, so `gnoblin-log` never names `gnoblin-store`. The default store is `$XDG_STATE_HOME/gnoblin/store/log.sqlite3`, falling back to `$HOME/.local/state`. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
 
 Consequences:
 
-- `gnoblin-log` depends on `tracing` alone and names no workspace crate, so every crate may depend on it. A library takes it with no feature. Only a binary may enable `console`, `store`, `journal` or `init`, and `xtask deps` refuses any feature on a library.
-- A test that runs a binary sets `GNOBLIN_LOG_DB=off`, or points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's database.
+- `gnoblin-log` depends on `tracing` alone and names no workspace crate, so every crate may depend on it. A library takes it with no feature. Only a binary may enable `console`, `journal`, `pipeline` or `init`, and `xtask deps` refuses any feature on a library.
+- A test that runs a binary points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's store.
 - Each binary names its component once, at start, and every event carries that name.
 
 #### Amendment: `logger!` (moz_log style)
@@ -3145,7 +3147,7 @@ Needs Kieran:
 
 **Proposed 2026-11-06: a store is where Gnoblin keeps data. You open a store by name and use the same verbs on it: `put`, `get`, `delete`, `list`, `search`, `watch` and `batch`. The keyring (D27), logs and extension state are stores of different kinds.** The API and examples are in `design/store.md`.
 
-**Today.** Persisted state is small. The log store writes `$XDG_STATE_HOME/gnoblin/logs.sqlite3` (`gnoblin-log/src/store.rs:103-113`). Session recovery lives under `state_home` (`gnoblin-session/src/supervisor.rs:136`). The last accepted configuration is `last-good-config.json` (`gnoblin-config/src/last_good.rs:45`). Extensions have no storage, because the wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`).
+**Today.** Persisted state is small. The log store writes `$XDG_STATE_HOME/gnoblin/store/log.sqlite3` (`gnoblin-store/src/logs/`). Session recovery lives under `state_home` (`gnoblin-session/src/supervisor.rs:136`). The last accepted configuration is `last-good-config.json` (`gnoblin-config/src/last_good.rs:45`). Extensions have no storage, because the wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`).
 
 **Provider side.** Behind the API, each store has an identity, a lifecycle state, usage, a change signal, an export policy and access grants. The states are `opening`, `ready`, `locked`, `unavailable`, `quarantined` and `closing`. Only the registry moves a store between them.
 

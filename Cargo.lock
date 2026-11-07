@@ -1529,6 +1529,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-render-frame",
  "gnoblin-schema",
+ "gnoblin-store",
  "gnoblin-types",
  "gnoblin-wayland",
  "gnoblin-wm",
@@ -1616,7 +1617,6 @@ dependencies = [
 name = "gnoblin-log"
 version = "0.2.0-alpha.0"
 dependencies = [
- "rusqlite",
  "tracing",
  "tracing-subscriber",
 ]
@@ -4667,6 +4667,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-store",
  "gnoblin-types",
  "zbus",
 ]

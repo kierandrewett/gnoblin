@@ -2091,15 +2091,15 @@ key = "store"
 kind = "bool"
 accepted = "a boolean"
 default = { bool = true }
-doc = "Whether events are written to the log database."
+doc = "Whether events are written to the log store."
 since = "0.2.0"
 
 [[section.field]]
 key = "store-path"
 kind = "text"
-accepted = "a file path, or an empty string for the default"
+accepted = "a directory path, or an empty string for the default"
 default = { text = "" }
-doc = "The database file. Empty means the state directory's gnoblin/logs.sqlite3."
+doc = "The store directory, which holds log.sqlite3. Empty means the state directory's gnoblin/store."
 since = "0.2.0"
 
 [[section.field]]
@@ -2109,7 +2109,7 @@ min = 0
 max = 36500
 accepted = "an integer from 0 to 36500; 0 keeps every record"
 default = { int = 0 }
-doc = "Delete records older than this many days when the database opens."
+doc = "Delete records older than this many days when the store opens."
 since = "0.2.0"
 
 [[section.field]]

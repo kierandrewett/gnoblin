@@ -66,7 +66,7 @@ These add a graph node and no feature. They are flagged in the opposite directio
 
 ## Store duplication
 
-`gnoblin-store` (1393 lines) and `gnoblin-log/src/store/` both use `rusqlite` (25 crates, inference). `gnoblin-store` has no dependants: nothing in the workspace depends on it. It depends on `gnoblin-log` and `gnoblin-model`.
+`gnoblin-store` is the only crate that uses `rusqlite`. The old `gnoblin-log/src/store/` is gone, and `gnoblin-log` is a facade with no store. `gnoblin-store` depends on `gnoblin-log` and `gnoblin-model`, and the compositor and the portal depend on it.
 
 ## Ranked top ten
 
@@ -78,12 +78,12 @@ These add a graph node and no feature. They are flagged in the opposite directio
 6. `gnoblin-portal-core` UI to `gnoblin-portal-ui` (done).
 7. `gnoblinctl` logs to `gnoblinctl-logs`.
 8. `gnoblin-session` guardian to `gnoblin-session-guardian`.
-9. Store duplication: decide between `gnoblin-store` and `gnoblin-log/src/store/`.
+9. Store duplication: done. `gnoblin-log` no longer has a store, and `gnoblin-store` owns persistence.
 10. Tiny stub crates: remove or fold the three one-line compat stubs.
 
 ## Needs Kieran
 
-- Is `gnoblin-store` meant to be used? It has no dependants. Delete it, or wire it in and move the `rusqlite` store out of `gnoblin-log`.
+- Settled: `gnoblin-store` is wired in. The compositor and the portal open the log store through it.
 - Lua naming: `gnoblin-lua-layout` next to the existing `gnoblin-lua-sandbox`, or one crate?
 - Are the three one-line compat stubs placeholders to fill, or dead crates to delete?
 - Backend split: do you want `drm` and `vulkan` out now, or only `vulkan`, since `drm` has the weaker blast-radius gain?

@@ -1,6 +1,6 @@
 //! The shape of one logged event, read once and shared by every sink.
 //!
-//! The console, the database and the journal all read an event through [`Logged::from_event`],
+//! The console, the sink and the journal all read an event through [`Logged::from_event`],
 //! so a value that a type redacts through its `Debug` impl is redacted in every sink, and each
 //! sink agrees on which field names the component and the message.
 

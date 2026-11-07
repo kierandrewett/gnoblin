@@ -1022,7 +1022,7 @@ examples.
 
 ## Logs
 
-Run `gnoblinctl --json log` to print the stored records, oldest first. The compositor and the portal write them to `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, so the command works while the compositor is down.
+Run `gnoblinctl --json log` to print the stored records, oldest first. The compositor and the portal write them to `$XDG_STATE_HOME/gnoblin/store/log.sqlite3`, so the command works while the compositor is down.
 
 ```sh
 gnoblinctl log --level WARN --limit 50

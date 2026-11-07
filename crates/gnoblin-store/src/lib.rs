@@ -444,6 +444,33 @@ pub fn default_root(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
     Some(state_home.join("gnoblin").join("store"))
 }
 
+/// Opens the log store the `logging` settings name and returns its log. `store_path` is the
+/// directory, and an absent or empty one means the state directory's `gnoblin/store`. The two
+/// limits are the configured age in days and size in megabytes, where zero or absent means no
+/// limit. `lookup` reads the environment, so callers choose which variables count.
+pub fn open_logs_from_settings(
+    store_path: Option<&str>,
+    max_age_days: Option<i64>,
+    max_size_mb: Option<i64>,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<Logs, String> {
+    let root = match store_path.filter(|path| !path.is_empty()) {
+        Some(path) => PathBuf::from(path),
+        None => default_root(lookup)
+            .ok_or_else(|| "no state directory: neither HOME nor XDG_STATE_HOME is set".to_owned())?,
+    };
+    let retention = Retention {
+        max_age_days: max_age_days.and_then(|days| u32::try_from(days).ok()).unwrap_or(0),
+        max_bytes: max_size_mb
+            .and_then(|megabytes| u64::try_from(megabytes).ok())
+            .filter(|&megabytes| megabytes > 0)
+            .map(|megabytes| megabytes * 1024 * 1024),
+    };
+    Store::open(&root)
+        .and_then(|store| store.logs(retention))
+        .map_err(|error| format!("no log store at {}: {error}", root.display()))
+}
+
 /// The log file inside a store directory: the file the log kind reads and writes. A follower
 /// watches its identity to notice that the file was rotated or replaced.
 pub fn log_file(root: &Path) -> PathBuf {

@@ -49,11 +49,11 @@ Under systemd each record goes to the journal with `SYSLOG_IDENTIFIER=gnoblin-<r
 journalctl --user -t gnoblin-compositor GNOBLIN_COMPONENT=wayland -p warning -f
 ```
 
-This follows warnings and errors from the compositor's `wayland` component. The journal keeps only what the console sends. The database keeps every event that passes `GNOBLIN_LOG`, so it is the place to look after a crash or when the journal has rotated.
+This follows warnings and errors from the compositor's `wayland` component. The journal keeps only what the console sends. The store keeps every event that passes `GNOBLIN_LOG`, so it is the place to look after a crash or when the journal has rotated.
 
-## Reading the database
+## Reading the store
 
-The database defaults to `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, and `GNOBLIN_LOG_DB` names another file or `off`. `gnoblinctl log` prints its records, oldest first, without the compositor running:
+The store defaults to `$XDG_STATE_HOME/gnoblin/store/log.sqlite3`. The `store-path` key of the `[logging]` section names another directory, and `store = false` keeps no records. `gnoblinctl log` prints its records, oldest first, without the compositor running:
 
 ```sh
 gnoblinctl log --role compositor --level warn --limit 50

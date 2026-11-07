@@ -89,6 +89,7 @@ mod eis;
 mod extensions;
 mod ipc;
 mod layout;
+mod log_store;
 mod monitors;
 /// Portal negotiation, the pure decision layer behind the `org.freedesktop.impl.portal` services.
 pub mod portal;
@@ -125,6 +126,7 @@ pub use layout::{
     LayoutSettings, configure_from_environment as configure_layouts_from_environment,
     configure_from_store as configure_layouts_from_store,
 };
+pub use log_store::open_log_store;
 pub use monitors::{
     configure_from_environment as configure_monitors_from_environment,
     configure_from_store as configure_monitors_from_store,

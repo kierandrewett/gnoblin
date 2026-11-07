@@ -55,7 +55,7 @@ fn main() -> ExitCode {
         Ok(logging) => (logging, None),
         Err(problem) => (gnoblin_config::Logging::default(), Some(problem)),
     };
-    let options = gnoblin_log::init::LogOptions::from_environment(&log_settings(&logging));
+    let options = log_options(&logging);
     let _log = gnoblin_log::init::init(gnoblin_log::ProcessRole::Portal, &options);
     if let Some(problem) = problem {
         log::warn!(area = "logging", "{problem}; the default logging is used");
@@ -80,24 +80,27 @@ fn log_settings(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogSett
             Some(gnoblin_config::LogConsole::Off) => gnoblin_log::init::Console::Off,
         },
         level: logging.level.clone().unwrap_or(defaults.level),
-        store: logging.store.unwrap_or(defaults.store),
-        store_path: logging
-            .store_path
-            .as_deref()
-            .filter(|path| !path.is_empty())
-            .map(std::path::PathBuf::from),
-        retention: gnoblin_log::init::Retention {
-            max_age_days: logging
-                .store_max_age_days
-                .and_then(|days| u32::try_from(days).ok())
-                .unwrap_or(0),
-            max_bytes: logging
-                .store_max_size_mb
-                .and_then(|megabytes| u64::try_from(megabytes).ok())
-                .filter(|&megabytes| megabytes > 0)
-                .map(|megabytes| megabytes * 1024 * 1024),
-        },
     }
+}
+
+/// The log options for this process: the environment over the `logging` section. When the
+/// section keeps the log, the store receives every record. A store that cannot open is a
+/// problem the log reports once it is installed, and console logging still works.
+fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptions {
+    let mut options = gnoblin_log::init::LogOptions::from_environment(&log_settings(logging));
+    if logging.store.unwrap_or(true) {
+        let opened = gnoblin_store::open_logs_from_settings(
+            logging.store_path.as_deref(),
+            logging.store_max_age_days,
+            logging.store_max_size_mb,
+            |key| std::env::var(key).ok(),
+        );
+        match opened {
+            Ok(logs) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(logs))),
+            Err(problem) => options.problems.push(problem),
+        }
+    }
+    options
 }
 
 /// Connect if a shell is reachable, export, own the name and serve until the bus goes.
