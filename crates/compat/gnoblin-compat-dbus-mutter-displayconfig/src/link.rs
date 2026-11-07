@@ -145,6 +145,10 @@ impl<C: Transport> DisplayLink<C> {
         let outcome = self.client.await_operation(operation)?;
         match outcome {
             gnoblin_model::OperationOutcome::Done => Ok(()),
+            gnoblin_model::OperationOutcome::Value(_) => Err(DisplayError::ApplyFailed {
+                connector: connector.to_owned(),
+                reason: "the compositor answered apply with a value".to_owned(),
+            }),
             gnoblin_model::OperationOutcome::Failed(code) => Err(DisplayError::ApplyFailed {
                 connector: connector.to_owned(),
                 reason: code.to_string(),
