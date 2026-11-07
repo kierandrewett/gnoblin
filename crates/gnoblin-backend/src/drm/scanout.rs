@@ -23,8 +23,8 @@ use crate::drm::gpu::Gpu;
 use crate::drm::present::SLOTS;
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
-use crate::render::gles::egl;
-use crate::render::gles::{Gles, ScanBuffer};
+use gnoblin_render_gles::egl;
+use gnoblin_render_gles::{Gles, ScanBuffer};
 
 use crate::log;
 

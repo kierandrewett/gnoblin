@@ -1,0 +1,38 @@
+[package]
+name = "gnoblin-render-gles"
+description = "The GLES renderer: an OutputFrame drawn through glow on an EGL context, with Smithay's GLES path for the shared shaders."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The workspace table forbids `unsafe` outright. This crate is an FFI shim that restates the
+# level with `deny` and confines the exemption to the two modules that call the driver:
+# `egl.rs` (the EGL bootstrap) and `gl.rs` (every `glow` call). Each opens with
+# `#[allow(unsafe_code)]` and a `SAFETY:` comment per block. Nothing else may contain `unsafe`.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+# The EGL display and context, the GBM device the DRM path scans out through, and Smithay's
+# Glow renderer the shared shaders are wrapped in.
+smithay.workspace = true
+# The safe OpenGL ES API every GL call in `gl.rs` goes through; its calls are `unsafe`.
+glow.workspace = true
+# The shader sources are compiled to GLSL with naga's writer.
+naga.workspace = true
+# Colours, rectangles and sizes are stated in the shared primitives.
+gnoblin-types.workspace = true
+# The frame description every renderer draws, and the error vocabulary it reports with.
+gnoblin-render-frame = { path = "../gnoblin-render-frame" }
+# The scene vocabulary a frame's layers carry (effects, uniforms and the blur schema).
+gnoblin-render = { path = "../gnoblin-render" }
+# `[tag]` log lines for a failed compile, a refused frame and a lost device.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[dev-dependencies]
+# The pixman software renderer whose readbacks the parity tests compare with.
+gnoblin-backend = { path = "../gnoblin-backend" }

@@ -72,8 +72,6 @@
 
 /// The scene and the drawing of one output's frame from it. See [`compose::Composer`].
 pub mod compose;
-/// The GLES renderer, built on Smithay's glow renderer and EGL. Moves to its own crate in phase 3.
-pub mod gles;
 /// Which renderer draws an output, and the one type that holds it.
 pub mod renderer;
 /// The CPU renderer, built on Pixman. Moves to its own crate in phase 4.

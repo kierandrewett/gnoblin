@@ -69,6 +69,7 @@ use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::image::READBACK_FORMAT;
 
 use crate::log;
 
@@ -77,18 +78,6 @@ use crate::log;
 /// ARGB8888 is what Pixman composites fastest and what an `wl_shm` client hands
 /// over, so a client buffer needs no conversion.
 const TARGET_FORMAT: Fourcc = Fourcc::Argb8888;
-
-/// The format whose *bytes* are red, green, blue, alpha — what [`Image`] promises.
-///
-/// A DRM fourcc names the 32-bit word, so the byte order in memory is the reverse
-/// of its spelling on a little-endian machine: `ABGR8888` stores red first here and
-/// `RGBA8888` does on a big-endian one. Choosing per endianness means the readback
-/// needs no channel swap, which is the difference between a copy and a copy plus a
-/// pass over every pixel.
-#[cfg(target_endian = "little")]
-pub(crate) const READBACK_FORMAT: Fourcc = Fourcc::Abgr8888;
-#[cfg(target_endian = "big")]
-pub(crate) const READBACK_FORMAT: Fourcc = Fourcc::Rgba8888;
 
 /// A Pixman renderer and the offscreen buffer it draws into.
 pub struct Software {

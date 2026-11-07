@@ -6,21 +6,12 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# The workspace table forbids `unsafe` outright, which cannot be lifted, and this crate
-# needs two things it does not offer:
-#
-# - the EGL and GL calls a GLES context and its draws are made of. Smithay's
-#   `EGLDisplay::new` and `GlowRenderer::new` are `unsafe` because it cannot check a native
-#   display or that a context is idle on another thread, and `glow`'s calls are `unsafe`
-#   because a GL call changes process-wide state;
-# - the Vulkan calls the Vulkan renderer is made of: `ash` is a raw binding, so opening the
-#   loader and every call into a driver is `unsafe`.
-#
-# So the crate restates the workspace's levels with `deny` and confines the exemption to
-# named FFI shim modules, each opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment
-# per block: `render/gles/egl.rs` and `render/gles/gl.rs`. Nothing else in the crate may
-# contain `unsafe`, and a session on the software path reaches none of them. The Vulkan
-# renderer's `unsafe` lives in `gnoblin-render-vulkan`, which carries its own exemption.
+# The workspace table forbids `unsafe` outright, which cannot be lifted. This crate still
+# needs it for Smithay's `unsafe` constructors (`EGLDisplay::new`, the DRM and session
+# bootstrap) and for its nested-backend FFI, so it restates the workspace's levels with
+# `deny` and confines the exemption to the modules that make those calls, each opening with
+# `#[allow(unsafe_code)]` and a `SAFETY:` comment per block. The GLES and Vulkan calls live
+# in `gnoblin-render-gles` and `gnoblin-render-vulkan`, which carry their own exemptions.
 [lints.rust]
 unsafe_code = "deny"
 
@@ -84,16 +75,9 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 # the alternative was a second event enum in this crate and a translation in each
 # direction.
 gnoblin-wm = { path = "../gnoblin-wm" }
-# The GLES renderer's shader compiler (D12): effect and user shaders are written
-# once in WGSL, `naga` validates them and emits the GLSL ES 3.10 the GLES backend
-# links through `glow`. A refused shader is reported with its line and disables only
-# its own effect, so `naga` never decides whether a frame is drawn.
-naga.workspace = true
-# The safe OpenGL ES API layered over Smithay's GLES context by its
-# `renderer_glow` feature. Every draw the GLES renderer makes goes through it, so
-# no `gl::` call is written here by hand and the only `unsafe` in the crate is the
-# EGL bootstrap in `render/gles/egl.rs`.
-glow.workspace = true
+# The GLES renderer (its EGL bootstrap and every GL call are `unsafe` and confined to that
+# crate). Normal, not optional: the DRM scan-out path draws through it.
+gnoblin-render-gles = { path = "../gnoblin-render-gles" }
 # The Vulkan renderer (feature `vulkan`), whose calls into the driver are `unsafe` and
 # confined to that crate.
 gnoblin-render-vulkan = { path = "../gnoblin-render-vulkan", optional = true }

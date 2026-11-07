@@ -35,6 +35,19 @@
 //!    and `tests::a_point_outside_the_image_has_no_colour`.
 
 use gnoblin_types::{Point, Size};
+use smithay::backend::allocator::Fourcc;
+
+/// The format whose *bytes* are red, green, blue, alpha, which is what [`Image`] promises.
+///
+/// A DRM fourcc names the 32-bit word, so the byte order in memory is the reverse of its
+/// spelling on a little-endian machine: `ABGR8888` stores red first here and `RGBA8888` does
+/// on a big-endian one. Choosing per endianness means a readback needs no channel swap, which
+/// is the difference between a copy and a copy plus a pass over every pixel. Every renderer
+/// that reads a target back uses this one constant, so they all agree on the byte order.
+#[cfg(target_endian = "little")]
+pub const READBACK_FORMAT: Fourcc = Fourcc::Abgr8888;
+#[cfg(target_endian = "big")]
+pub const READBACK_FORMAT: Fourcc = Fourcc::Rgba8888;
 
 /// A frame's pixels in RGBA8, top left first.
 #[derive(Clone, PartialEq, Eq, Debug)]

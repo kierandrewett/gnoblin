@@ -62,7 +62,7 @@ pub(super) fn context() -> Result<GlowRenderer, RenderError> {
 /// # Errors
 ///
 /// [`RenderError::Unavailable`] when EGL cannot open the device. The reason is logged.
-pub(crate) fn gbm_display(device: &GbmDevice<DrmDeviceFd>) -> Result<EGLDisplay, RenderError> {
+pub fn gbm_display(device: &GbmDevice<DrmDeviceFd>) -> Result<EGLDisplay, RenderError> {
     // SAFETY: `GbmDevice` names the DRM node this process holds as master, which the seat
     // lent it and which outlives every context on this display because the backend holds
     // the device and the display together and drops the contexts first. Nothing else in the

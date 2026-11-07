@@ -25,7 +25,7 @@ use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
-use crate::render::gles::gl::{CompileFailure, Device, Program};
+use crate::gl::{CompileFailure, Device, Program};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::shader::sources as shaders;
 use gnoblin_render_frame::shader::uniforms::UniformLayout;

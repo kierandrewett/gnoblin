@@ -58,7 +58,6 @@ use gnoblin_output::DisplayMode;
 
 use gnoblin_config::RendererChoice;
 
-use crate::render::gles::Gles;
 use crate::render::renderer::{AnyRenderer, RendererKind};
 use crate::{
     Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
@@ -67,6 +66,7 @@ use crate::{
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
+use gnoblin_render_gles::Gles;
 
 /// The number of entries in each gamma table a headless output has.
 ///

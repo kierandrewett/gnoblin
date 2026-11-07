@@ -52,17 +52,18 @@
 //! The workspace forbids `unsafe`, and this crate opts out with the table `Cargo.toml`
 //! records. The `wl_shm` pool mapping that the frame writes through lives in
 //! `gnoblin-render-frame` (`shm.rs`), not here. The remaining reasons are the GLES and
-//! Vulkan renderers, which are FFI shims for the following reasons:
+//! Vulkan renderers in `gnoblin-render-gles` and `gnoblin-render-vulkan`, which are FFI
+//! shims for the following reasons:
 //!
 //! - **A GLES context cannot be created safely.** Smithay's `EGLDisplay::new`,
 //!   `EGLContext::new` and `GlowRenderer::new` are `unsafe` because Smithay cannot check
 //!   that a native display is valid or that a context is not in use on another thread, and
 //!   `glow`'s calls are `unsafe` because a GL call changes process-wide state. The context
-//!   lives in [`render::gles::egl`] and every `glow` call in `render/gles/gl.rs`.
+//!   lives in `gnoblin_render_gles::egl` and every `glow` call in `gnoblin-render-gles/src/gl.rs`.
 //!
 //! Each of those modules opens with `#[allow(unsafe_code)]` and a `SAFETY:` comment per
-//! block, and nothing else in the crate contains `unsafe`. A session that draws with the
-//! software path reaches neither the EGL shim nor the GL one.
+//! block, and nothing else in this crate contains `unsafe` for the renderers. A session that
+//! draws with the software path reaches neither the EGL shim nor the GL one.
 //!
 //! # Lifecycle of a frame
 //!

@@ -9,7 +9,7 @@
 //! [`gnoblin_render_frame::error::RenderError::Unavailable`] rather than failing the run.
 
 use super::*;
-use crate::render::software::Software;
+use gnoblin_backend::render::software::Software;
 use gnoblin_render::{BlurParams, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
 use gnoblin_render_frame::frame::{Model, Solid};
 

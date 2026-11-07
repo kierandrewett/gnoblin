@@ -98,6 +98,8 @@
 //! 9. **A resize keeps the old target.** [`Gles::resize`] replaces the target and the new one
 //!    holds no pixels: `tests::a_resize_replaces_the_target`.
 
+gnoblin_log::logger!(log = "render");
+
 pub mod egl;
 pub(crate) mod gl;
 pub(crate) mod program;
@@ -112,15 +114,14 @@ use smithay::utils::{Physical, Rectangle};
 use gnoblin_render::{Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
+use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Overlay, Surface};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
-use crate::render::software::READBACK_FORMAT;
-
+use gnoblin_render_frame::image::READBACK_FORMAT;
 use gnoblin_render_frame::shader::ShaderError;
 use gnoblin_render_frame::shader::uniforms::Uniforms;
-use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
 ///
@@ -210,7 +211,7 @@ struct Passes {
 
 /// One scan-out buffer of an output: the dmabuf imported as a GL texture and the framebuffer
 /// that draws into it. Both are GL objects of the output's context, dropped with it.
-pub(crate) struct ScanBuffer {
+pub struct ScanBuffer {
     /// The framebuffer the frame is drawn into.
     framebuffer: Framebuffer,
     /// The texture behind the framebuffer. Kept alive for as long as the framebuffer is used.
@@ -280,7 +281,7 @@ impl Gles {
     ///
     /// As [`Gles::on`], plus [`RenderError::Unavailable`] when no GLES 3 context can be made on
     /// `display`.
-    pub(crate) fn on_display(display: &smithay::backend::egl::EGLDisplay, physical: Size) -> Result<Self, RenderError> {
+    pub fn on_display(display: &smithay::backend::egl::EGLDisplay, physical: Size) -> Result<Self, RenderError> {
         Self::on(egl::context_on(display)?, physical)
     }
 
@@ -428,7 +429,7 @@ impl Gles {
     ///
     /// [`RenderError::Failed`] when the driver cannot import the buffer, and
     /// [`RenderError::Unavailable`] when the import has no GL name. The reason is logged.
-    pub(crate) fn import_scanout(
+    pub fn import_scanout(
         &mut self,
         dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
     ) -> Result<ScanBuffer, RenderError> {
@@ -453,7 +454,7 @@ impl Gles {
     /// # Errors
     ///
     /// [`RenderError::Failed`] when the driver refuses an operation.
-    pub(crate) fn draw_scanout(
+    pub fn draw_scanout(
         &mut self,
         buffer: &mut ScanBuffer,
         frame: &OutputFrame,
@@ -1343,5 +1344,3 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
 
 #[cfg(test)]
 mod tests;
-
-use crate::log;
