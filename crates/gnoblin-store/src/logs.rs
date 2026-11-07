@@ -20,8 +20,10 @@ use rusqlite::{Connection, params, params_from_iter};
 
 use crate::{StoreError, kv, log};
 
+mod migrate;
 mod retention;
 
+pub(crate) use migrate::legacy_path;
 pub use retention::Retention;
 
 /// The file name of the log kind, inside the store directory.
@@ -35,7 +37,9 @@ const TRIM_EVERY: Duration = Duration::from_secs(60);
 
 /// The migrations of the log file. Version 1 is the record table, with the columns gnoblin-log
 /// wrote before the store took the kind over, so a file migrated from it keeps its shape.
-pub(crate) const LOG_STEPS: &[&str] = &["CREATE TABLE log_records (
+/// Version 2 is the progress table of the one-off import of that old file (see `migrate`).
+pub(crate) const LOG_STEPS: &[&str] = &[
+    "CREATE TABLE log_records (
         id INTEGER PRIMARY KEY,
         time_ms INTEGER NOT NULL,
         level TEXT NOT NULL,
@@ -45,7 +49,13 @@ pub(crate) const LOG_STEPS: &[&str] = &["CREATE TABLE log_records (
         message TEXT NOT NULL,
         fields TEXT NOT NULL
     );
-    CREATE INDEX log_records_time ON log_records (time_ms);"];
+    CREATE INDEX log_records_time ON log_records (time_ms);",
+    "CREATE TABLE legacy_import (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        last_id INTEGER NOT NULL,
+        done INTEGER NOT NULL
+    );",
+];
 
 /// The insert every record uses. The statement is cached on the writer connection.
 const INSERT_SQL: &str = "INSERT INTO log_records (time_ms, level, component, role, target, message, fields)
@@ -158,7 +168,12 @@ impl Logs {
     /// `store-unavailable` when a read-only open finds no file. `corrupt` when a read-only open
     /// finds a damaged file, or a writable open still finds one after it was moved aside.
     /// `migration-failed` when a step fails or the file came from a newer store.
-    pub(crate) fn open(path: &Path, writable: bool, retention: Retention) -> Result<Logs, StoreError> {
+    pub(crate) fn open(
+        path: &Path,
+        writable: bool,
+        retention: Retention,
+        legacy: Option<&Path>,
+    ) -> Result<Logs, StoreError> {
         if !writable && !path.exists() {
             return Err(StoreError::StoreUnavailable(format!(
                 "{} does not exist and the store is read-only",
@@ -166,7 +181,15 @@ impl Logs {
             )));
         }
         let writer = if writable {
-            let connection = open_connection(path, true)?;
+            let mut connection = open_connection(path, true)?;
+            // The one-off import of the old gnoblin-log file runs before retention, so imported
+            // rows are trimmed by the same rules as the rest. A failure is named on stderr and
+            // never stops the store from starting; the next writable open tries again.
+            if let Some(legacy) = legacy
+                && let Err(error) = migrate::run(&mut connection, legacy)
+            {
+                eprintln!("gnoblin-store: legacy log import stopped ({}): {error}", error.code());
+            }
             // Retention is best effort at open: a failure is logged, and the file still serves.
             if let Err(error) = retention::apply(&connection, retention, kv::now_ms()) {
                 log::warn!("cannot apply log retention to {}: {error}", path.display());
@@ -454,7 +477,7 @@ mod tests {
     /// Opens a writable log file in a fresh scratch directory.
     fn open(label: &str, retention: Retention) -> (Logs, PathBuf) {
         let dir = scratch(label);
-        let logs = Logs::open(&dir.join(FILE_NAME), true, retention).expect("opens");
+        let logs = Logs::open(&dir.join(FILE_NAME), true, retention, None).expect("opens");
         (logs, dir)
     }
 
@@ -659,6 +682,7 @@ mod tests {
                 max_age_days: 30,
                 max_bytes: None,
             },
+            None,
         )
         .expect("reopens");
         assert_eq!(
@@ -685,6 +709,7 @@ mod tests {
                 max_age_days: 0,
                 max_bytes: Some(limit),
             },
+            None,
         )
         .expect("reopens");
         let remaining = kept.count(&LogQuery::default()).expect("counts");
@@ -709,7 +734,7 @@ mod tests {
         let (logs, dir) = seeded("read-only");
         drop(logs);
 
-        let reader = Logs::open(&dir.join(FILE_NAME), false, Retention::default()).expect("opens");
+        let reader = Logs::open(&dir.join(FILE_NAME), false, Retention::default(), None).expect("opens");
         reader.write_batch(&[record(9_000, "INFO", "compositor", "layout", "ignored")]);
         assert_eq!(reader.count(&LogQuery::default()).expect("counts"), 5);
     }
@@ -717,7 +742,7 @@ mod tests {
     #[test]
     fn a_read_only_open_needs_the_file() {
         let dir = scratch("missing");
-        let error = Logs::open(&dir.join(FILE_NAME), false, Retention::default())
+        let error = Logs::open(&dir.join(FILE_NAME), false, Retention::default(), None)
             .err()
             .expect("refused");
         assert!(matches!(error, StoreError::StoreUnavailable(_)), "{error:?}");
@@ -729,7 +754,7 @@ mod tests {
         let path = dir.join(FILE_NAME);
         std::fs::write(&path, b"this is not a database at all, just text").expect("writes");
 
-        let logs = Logs::open(&path, true, Retention::default()).expect("opens a fresh file");
+        let logs = Logs::open(&path, true, Retention::default(), None).expect("opens a fresh file");
         assert_eq!(logs.count(&LogQuery::default()).expect("counts"), 0);
 
         let moved: Vec<_> = std::fs::read_dir(&dir)

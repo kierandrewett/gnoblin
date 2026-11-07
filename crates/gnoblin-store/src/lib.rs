@@ -294,7 +294,13 @@ impl Store {
     /// when a migration step fails or the file came from a newer store. A damaged file is moved
     /// aside and a fresh one is opened, as for namespaces.
     pub fn logs(&self, retention: Retention) -> Result<Logs, StoreError> {
-        Logs::open(&self.root.join(logs::FILE_NAME), self.options.writable, retention)
+        let legacy = logs::legacy_path(&self.root);
+        Logs::open(
+            &self.root.join(logs::FILE_NAME),
+            self.options.writable,
+            retention,
+            Some(&legacy),
+        )
     }
 
     /// Moves every open namespace to `closing`. Their verbs are refused from then on, and their
