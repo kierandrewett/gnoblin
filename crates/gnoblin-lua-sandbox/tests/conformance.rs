@@ -92,7 +92,7 @@ const CASES: &[Case] = &[
         "__gc accepted",
         "return setmetatable({}, {__gc = function() end}) ~= nil",
         true,
-        true,
+        false,
     ),
     case(
         "closures",

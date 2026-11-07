@@ -404,6 +404,23 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     })?;
     string.set("format", format)?;
 
+    // `__gc` is withheld in Layout. A finaliser runs at some later allocation, possibly inside a
+    // different entry, so a looping one would be charged to whichever entry triggered the
+    // collection. Refusing the key at `setmetatable` keeps every metamethod inside its own
+    // entry's budget. Config keeps `__gc` because its budget is the host's own script budget.
+    let set_metatable: Function = globals.get("setmetatable")?;
+    let guarded = lua.create_function(move |_, args: MultiValue| {
+        if let Some(Value::Table(metatable)) = args.get(1) {
+            if !metatable.get::<Value>("__gc")?.is_nil() {
+                return Err(mlua::Error::RuntimeError(
+                    "__gc is not supported in the layout profile".into(),
+                ));
+            }
+        }
+        set_metatable.call::<Value>(args)
+    })?;
+    globals.set("setmetatable", guarded)?;
+
     let math: Table = globals.get("math")?;
     let randomseed: Function = math.get("randomseed")?;
     let guarded_randomseed = lua.create_function(move |_, args: MultiValue| {
@@ -653,7 +670,11 @@ mod tests {
             .load("local t = {3, 1, 2}; table.sort(t, function(a, b) while true do end end)")
             .exec();
         assert!(result.is_err(), "a looping comparator must hit the budget");
-        assert!(guard.aborted());
+        assert!(
+            guard.aborted(),
+            "the comparator loop must latch the budget ({} hook calls)",
+            guard.hook_calls().len()
+        );
         guard.begin(&limits);
         let sorted: String = lua
             .load("local t = {3, 1, 2}; table.sort(t, function(a, b) return a > b end); return table.concat(t, ',')")
@@ -1014,7 +1035,7 @@ mod tests {
             "the pre-exhaustion thread must resume after re-arming"
         );
         assert!(error.contains("instruction budget"), "{error}");
-        assert!(aborted);
+        assert!(aborted, "the budget must latch");
     }
 
     /// Run `first` and then `second` on one state, re-arming the guard between them, on a
@@ -1102,14 +1123,11 @@ mod tests {
         assert!(outcome.aborted, "{} hook calls", outcome.hook_calls);
     }
 
-    #[test]
-    fn coroutine_close_runs_an_endless_close_handler_and_the_budget_cuts_it() {
-        // `coroutine.close` of a suspended coroutine must run its pending `__close`
-        // handler, as stock Lua does. The handler sets a global flag first and then loops
-        // forever. The entry must end with the budget error, and the flag must be set,
-        // which proves the handler ran and the budget cut it. A missing flag is a separate
-        // failure: the close path skipped the handler. This runs under Config because the
-        // Layout profile drops `setmetatable`, so no Layout script can attach `__close`.
+    /// Runs the close-handler probe under `build`. The handler sets a global flag first and then
+    /// loops forever. The entry must end with the budget error, and the flag must be set, which
+    /// proves the handler ran and the budget cut it. A missing flag means the close path skipped
+    /// the handler. Both profiles run it, because Layout now keeps `setmetatable`.
+    fn close_handler_is_bounded(build: fn(&Limits) -> (Lua, Rc<Guard>)) {
         let script = "handler_started = false \
             local co = coroutine.create(function() \
                 local c <close> = setmetatable({}, {__close = function() \
@@ -1123,7 +1141,7 @@ mod tests {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let limits = small_budget();
-            let (lua, guard) = coroutine_state(&limits);
+            let (lua, guard) = build(&limits);
             let error = match lua.load(script).eval::<String>() {
                 Ok(text) => text,
                 Err(error) => error.to_string(),
@@ -1144,6 +1162,118 @@ mod tests {
             "the entry must end with the budget error, got: {error} ({calls} hook calls)"
         );
         assert!(aborted, "the budget must latch ({calls} hook calls)");
+    }
+
+    #[test]
+    fn coroutine_close_runs_an_endless_close_handler_and_the_budget_cuts_it() {
+        // Config keeps the full base library, so this is the plain close path.
+        close_handler_is_bounded(coroutine_state);
+    }
+
+    #[test]
+    fn layout_coroutine_close_runs_an_endless_close_handler_and_the_budget_cuts_it() {
+        close_handler_is_bounded(layout_state);
+    }
+
+    /// Runs `script` under the Layout profile with the small budget and asserts the budget cut it.
+    /// Every hostile metamethod must end this way, and the hook counts go into the message.
+    fn layout_metamethod_is_bounded(script: &'static str) {
+        let outcome = capped(layout_state, small_budget(), script);
+        assert!(
+            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            "{} ({} hook calls on {} threads)",
+            outcome.error,
+            outcome.hook_calls,
+            outcome.hook_threads
+        );
+        assert!(outcome.aborted, "{} hook calls", outcome.hook_calls);
+    }
+
+    #[test]
+    fn layout_looping_add_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__add = function() while true do end end}) return o + 1",
+        );
+    }
+
+    #[test]
+    fn layout_looping_index_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__index = function() while true do end end}) return o.x",
+        );
+    }
+
+    #[test]
+    fn layout_looping_newindex_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__newindex = function() while true do end end}) o.x = 1",
+        );
+    }
+
+    #[test]
+    fn layout_looping_eq_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local mt = {__eq = function() while true do end end} local a = setmetatable({}, mt) local b = setmetatable({}, mt) return a == b",
+        );
+    }
+
+    #[test]
+    fn layout_looping_lt_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local mt = {__lt = function() while true do end end} local a = setmetatable({}, mt) local b = setmetatable({}, mt) return a < b",
+        );
+    }
+
+    #[test]
+    fn layout_looping_concat_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__concat = function() while true do end end}) return o .. ''",
+        );
+    }
+
+    #[test]
+    fn layout_looping_len_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__len = function() while true do end end}) return #o",
+        );
+    }
+
+    #[test]
+    fn layout_looping_call_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__call = function() while true do end end}) return o()",
+        );
+    }
+
+    #[test]
+    fn layout_looping_tostring_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "local o = setmetatable({}, {__tostring = function() while true do end end}) return tostring(o)",
+        );
+    }
+
+    #[test]
+    fn layout_looping_close_metamethod_is_bounded() {
+        layout_metamethod_is_bounded(
+            "do local c <close> = setmetatable({}, {__close = function() while true do end end}) end",
+        );
+    }
+
+    #[test]
+    fn layout_refuses_gc_so_a_looping_finaliser_cannot_run_later() {
+        // Withheld on purpose: see `restrict_layout`. The entry must fail at `setmetatable`,
+        // not finish, and must not reach the budget at all.
+        let outcome = capped(
+            layout_state,
+            small_budget(),
+            "setmetatable({}, {__gc = function() while true do end end})",
+        );
+        assert!(outcome.error.contains("__gc is not supported"), "{}", outcome.error);
+        assert!(
+            !outcome.aborted,
+            "the refusal must not need the budget ({} hook calls)",
+            outcome.hook_calls
+        );
     }
 
     #[test]
@@ -1171,7 +1301,11 @@ mod tests {
         };
         let (lua, guard) = armed(Profile::Layout, &limits);
         assert!(lua.load("while true do end").exec().is_err());
-        assert!(guard.aborted());
+        assert!(
+            guard.aborted(),
+            "the loop must latch the budget ({} hook calls)",
+            guard.hook_calls().len()
+        );
         guard.begin(&limits);
         assert!(!guard.aborted());
         assert_eq!(lua.load("return 1 + 1").eval::<i64>().expect("a fresh entry runs"), 2);
