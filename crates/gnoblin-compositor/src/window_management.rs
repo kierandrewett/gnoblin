@@ -33,6 +33,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
                 "loaded from the last accepted configuration"
             );
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "window-management", %error, "no configuration file; the defaults are used")
+        }
         Err(error) => {
             log::warn!(area = "window-management", %error, "configuration not readable; the defaults are used")
         }

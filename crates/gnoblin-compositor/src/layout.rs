@@ -114,6 +114,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             log::debug!(area = "layout", default = %selector_key(&settings.default), "loaded from the last accepted configuration");
             config.layouts = settings;
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "layout", %error, "no configuration file; every workspace floats")
+        }
         Err(error) => log::warn!(area = "layout", %error, "configuration not readable; every workspace floats"),
     }
 }

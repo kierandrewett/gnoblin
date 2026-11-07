@@ -161,6 +161,10 @@ pub fn policy_from_environment() -> Policy {
 pub fn policy_from_store(store: &Store, source: &Path) -> Policy {
     match store.load(source) {
         Ok(stored) => policy(stored.config.location.as_ref()),
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "services", %error, "no configuration file; location is denied");
+            Policy::DENY
+        }
         Err(error) => {
             log::warn!(area = "services", %error, "configuration not readable; location is denied");
             Policy::DENY

@@ -45,6 +45,10 @@ pub fn enabled_from_environment() -> bool {
 pub fn enabled_from_store(store: &Store, source: &Path) -> bool {
     match store.load(source) {
         Ok(stored) => provider_is_gnoblin(&stored.config),
+        Err(error) if error.is_absent() => {
+            log::debug!(%error, "no configuration file; keyring provider is the default");
+            true
+        }
         Err(error) => {
             log::warn!(%error, "configuration not readable; keyring provider is the default");
             true

@@ -23,6 +23,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             log::debug!(area = "bell", enabled = settings.enabled, scope = ?settings.scope, "loaded from the last accepted configuration");
             config.wayland.visual_bell = settings;
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "bell", %error, "no configuration file; the visual bell stays off")
+        }
         Err(error) => log::warn!(area = "bell", %error, "configuration not readable; the visual bell stays off"),
     }
 }

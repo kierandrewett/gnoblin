@@ -29,6 +29,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             );
             log::debug!(area = "renderer", "loaded from the last accepted configuration");
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "renderer", %error, "no configuration file; the default is used")
+        }
         Err(error) => log::warn!(area = "renderer", %error, "configuration not readable; the default is used"),
     }
 }

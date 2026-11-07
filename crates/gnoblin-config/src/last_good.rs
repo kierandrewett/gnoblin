@@ -243,6 +243,15 @@ pub enum StoreError {
     },
 }
 
+impl StoreError {
+    /// True when there is no stored document at all: the state directory or the
+    /// file does not exist. That is the normal state of a first boot, not a fault.
+    #[must_use]
+    pub fn is_absent(&self) -> bool {
+        matches!(self, StoreError::Io { error, .. } if error.kind() == io::ErrorKind::NotFound)
+    }
+}
+
 impl fmt::Display for StoreError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

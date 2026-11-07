@@ -32,6 +32,10 @@ pub fn mode_from_environment() -> Mode {
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => mode(stored.config.compat.as_ref()),
+            Err(error) if error.is_absent() => {
+                log::debug!(area = "services", %error, "no configuration file; compat stays at its default");
+                Mode::default()
+            }
             Err(error) => {
                 log::warn!(area = "services", %error, "configuration not readable; compat stays at its default");
                 Mode::default()

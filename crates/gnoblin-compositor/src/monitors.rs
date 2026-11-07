@@ -28,6 +28,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             config.wayland.monitors = settings(&section);
             log::debug!(area = "monitors", "loaded from the last accepted configuration");
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "monitors", %error, "no configuration file; the defaults are used")
+        }
         Err(error) => log::warn!(area = "monitors", %error, "configuration not readable; the defaults are used"),
     }
 }

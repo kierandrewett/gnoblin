@@ -35,6 +35,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             );
             config.wayland.visual_accessibility = settings;
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "accessibility", %error, "no configuration file; the visual accessibility stays off")
+        }
         Err(error) => {
             log::warn!(area = "accessibility", %error, "configuration not readable; the visual accessibility stays off")
         }

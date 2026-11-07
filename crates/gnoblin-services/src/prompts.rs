@@ -35,6 +35,10 @@ pub fn enabled_from_store(store: &Store, source: &Path) -> bool {
             .as_ref()
             .and_then(|section| section.enabled)
             .unwrap_or(false),
+        Err(error) if error.is_absent() => {
+            log::debug!(%error, "no configuration file; prompts are off");
+            false
+        }
         Err(error) => {
             log::warn!(%error, "configuration not readable; prompts are off");
             false

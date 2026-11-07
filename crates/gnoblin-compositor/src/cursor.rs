@@ -25,6 +25,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             log::debug!(area = "cursor", theme = %settings.theme, size = settings.size, "loaded from the last accepted configuration");
             config.wayland.cursor = settings;
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(area = "cursor", %error, "no configuration file; the default cursor is used")
+        }
         Err(error) => log::warn!(area = "cursor", %error, "configuration not readable; the default cursor is used"),
     }
 }

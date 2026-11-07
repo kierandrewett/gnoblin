@@ -24,6 +24,7 @@ pub fn logging_from_environment() -> Result<Logging, String> {
     };
     match store.load(path.path()) {
         Ok(stored) => Ok(stored.config.logging.unwrap_or_default()),
+        Err(error) if error.is_absent() => Ok(Logging::default()),
         Err(error) => Err(format!("configuration not readable: {error}")),
     }
 }

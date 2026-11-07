@@ -252,3 +252,26 @@ fn a_save_that_cannot_write_keeps_the_document_and_reports_the_failure() {
         "the failure is reported so it can be logged"
     );
 }
+
+#[test]
+fn a_store_with_no_document_yet_is_absent_not_unreadable() {
+    let root = RuntimeDir::new("last-good-first-boot").expect("temp dir");
+    let store = Store::new(root.path());
+    let error = store.load(&source(&root)).expect_err("no document has been saved yet");
+    assert!(
+        error.is_absent(),
+        "a first boot has no document, which is not a read error: {error}"
+    );
+}
+
+#[test]
+fn a_document_that_exists_but_cannot_be_read_is_not_absent() {
+    let root = RuntimeDir::new("last-good-garbled").expect("temp dir");
+    let store = Store::new(root.path());
+    write_raw(&store, b"not an envelope");
+    let error = store.load(&source(&root)).expect_err("a garbled envelope is refused");
+    assert!(
+        !error.is_absent(),
+        "a present but malformed document is a real error: {error}"
+    );
+}
