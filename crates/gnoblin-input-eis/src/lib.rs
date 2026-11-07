@@ -103,6 +103,10 @@
 pub mod server;
 pub mod service;
 
+// The logger keeps the `input` target the module logged under before the move, so the
+// `[eis]` lines land in the same log stream.
+gnoblin_log::logger!(log = "input");
+
 pub use gnoblin_authority::Consent;
 pub use server::{Endpoint, Options};
 pub use service::{
