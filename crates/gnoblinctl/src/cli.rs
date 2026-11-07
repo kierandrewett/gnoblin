@@ -46,7 +46,7 @@ pub(crate) enum Invocation {
     /// Write a completion script.
     Completions { shell: Shell, output: Option<PathBuf> },
     /// Print the stored log records, or follow them.
-    Log { request: logs::LogRequest },
+    Log { request: Box<logs::LogRequest> },
 }
 
 /// The action taken on an object.
@@ -436,14 +436,14 @@ fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage>
         })
         .transpose()?;
     Ok(Invocation::Log {
-        request: logs::LogRequest {
+        request: Box::new(logs::LogRequest {
             store,
             query,
             since,
             until,
             follow,
             json,
-        },
+        }),
     })
 }
 
