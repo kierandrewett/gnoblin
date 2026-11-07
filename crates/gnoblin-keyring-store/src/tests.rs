@@ -427,3 +427,38 @@ fn deleting_a_missing_collection_removes_nothing() {
     assert!(!keyring.delete_collection(missing).expect("deletes"));
     assert_eq!(keyring.collections().expect("lists").len(), 1);
 }
+
+#[test]
+fn renaming_a_collection_changes_its_label_and_keeps_its_items() {
+    let path = fresh_path("rename-collection");
+    let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Old").expect("collection");
+    keyring
+        .put_item(collection, "kept", "text/plain", b"secret", &[("a", "1")])
+        .expect("puts");
+    assert!(keyring.rename_collection(collection, "New").expect("renames"));
+    assert_eq!(keyring.collections().expect("lists")[0].1, "New");
+    assert_eq!(keyring.items_in(collection).expect("items").len(), 1);
+}
+
+#[test]
+fn renaming_a_missing_collection_changes_nothing() {
+    let path = fresh_path("rename-collection-missing");
+    let keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Login").expect("collection");
+    let missing = CollectionId::from_raw(collection.raw() + 100);
+    assert!(!keyring.rename_collection(missing, "Other").expect("renames"));
+    assert_eq!(keyring.collections().expect("lists")[0].1, "Login");
+}
+
+#[test]
+fn clearing_an_alias_removes_it_and_leaves_the_collection() {
+    let path = fresh_path("clear-alias");
+    let keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Login").expect("collection");
+    keyring.set_alias("default", collection).expect("sets");
+    assert!(keyring.clear_alias("default").expect("clears"));
+    assert_eq!(keyring.alias("default").expect("reads"), None);
+    assert_eq!(keyring.collections().expect("lists").len(), 1);
+    assert!(!keyring.clear_alias("default").expect("clears again"));
+}

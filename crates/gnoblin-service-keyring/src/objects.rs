@@ -32,6 +32,8 @@ const DEFAULT_LABEL: &str = "Login";
 /// The property names `CreateItem` reads its label and attributes from.
 const ITEM_LABEL: &str = "org.freedesktop.Secret.Item.Label";
 const ITEM_ATTRIBUTES: &str = "org.freedesktop.Secret.Item.Attributes";
+/// The property name `CreateCollection` reads its label from.
+const COLLECTION_LABEL: &str = "org.freedesktop.Secret.Collection.Label";
 
 /// The path a method returns when there is no object to prompt for.
 const NO_OBJECT: &str = "/";
@@ -78,10 +80,6 @@ impl From<KeyringError> for SecretError {
 
 fn failed<E: std::fmt::Display>(error: E) -> SecretError {
     SecretError::Failed(error.to_string())
-}
-
-fn refused(what: &str) -> SecretError {
-    SecretError::NotSupported(format!("{what} is not offered over the bus"))
 }
 
 /// Make the shared state. A `None` store is a locked keyring.
@@ -155,6 +153,31 @@ fn collection_path(id: CollectionId) -> String {
 
 fn item_path(collection: CollectionId, id: ItemId) -> String {
     format!("{COLLECTION_PREFIX}{}/{}", collection.raw(), id.raw())
+}
+
+/// The collection a path names, if it is a collection path of this service.
+fn collection_id(path: &str) -> Option<CollectionId> {
+    let rest = path.strip_prefix(COLLECTION_PREFIX)?;
+    rest.parse::<i64>().ok().map(CollectionId::from_raw)
+}
+
+/// The collection an alias names. `/` names none and removes the alias. Any other path must be a
+/// collection path, so an item or session path is an argument error, not a silent removal.
+fn alias_target(path: &str) -> Result<Option<CollectionId>, SecretError> {
+    if path == NO_OBJECT {
+        return Ok(None);
+    }
+    collection_id(path)
+        .map(Some)
+        .ok_or_else(|| SecretError::InvalidArgs(format!("{path} is not a collection path")))
+}
+
+/// The label `CreateCollection` carries. A missing label is an argument error.
+fn collection_label(mut properties: HashMap<String, OwnedVariant>) -> Result<String, SecretError> {
+    let label = properties
+        .remove(COLLECTION_LABEL)
+        .ok_or_else(|| SecretError::InvalidArgs(format!("{COLLECTION_LABEL} is missing")))?;
+    String::try_from(label).map_err(|error| SecretError::InvalidArgs(error.to_string()))
 }
 
 /// The item a path names, if it is an item path of this service.
@@ -384,16 +407,69 @@ impl ServiceObject {
         }
     }
 
-    async fn set_alias(&self, _name: &str, _collection: OwnedObjectPath) -> Result<(), SecretError> {
-        Err(refused("SetAlias"))
+    /// Points `name` at `collection`, or removes the alias when `collection` is `/`. A locked
+    /// keyring answers `IsLocked`. A path that is not a collection is an argument error.
+    async fn set_alias(&self, name: &str, collection: OwnedObjectPath) -> Result<(), SecretError> {
+        let mut shared = lock(&self.state);
+        let keyring = shared.open_mut()?;
+        match alias_target(collection.as_str())? {
+            None => {
+                keyring.clear_alias(name)?;
+            }
+            Some(id) => {
+                if !keyring.collections()?.iter().any(|(known, _)| *known == id) {
+                    return Err(SecretError::NoSuchObject(collection.as_str().to_owned()));
+                }
+                keyring.set_alias(name, id)?;
+            }
+        }
+        Ok(())
     }
 
+    /// Creates a collection labelled by its `Label` property. When `alias` already names one, that
+    /// collection is returned and nothing is created, as the spec says. The prompt is `/`: creating
+    /// needs no unlock, because a locked keyring refuses with `IsLocked`.
     async fn create_collection(
         &self,
-        _properties: HashMap<String, OwnedVariant>,
-        _alias: &str,
+        properties: HashMap<String, OwnedVariant>,
+        alias: &str,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(OwnedObjectPath, OwnedObjectPath), SecretError> {
-        Err(refused("CreateCollection"))
+        let label = collection_label(properties)?;
+        let (id, created) = {
+            let mut shared = lock(&self.state);
+            let keyring = shared.open_mut()?;
+            let existing = if alias.is_empty() { None } else { keyring.alias(alias)? };
+            match existing {
+                Some(id) => (id, false),
+                None => {
+                    let id = keyring.create_collection(&label)?;
+                    if !alias.is_empty() {
+                        keyring.set_alias(alias, id)?;
+                    }
+                    (id, true)
+                }
+            }
+        };
+        let path = collection_path(id);
+        let collection = owned_path(&path)?;
+        if created {
+            server
+                .at(
+                    path.as_str(),
+                    CollectionObject {
+                        state: self.state.clone(),
+                        id,
+                    },
+                )
+                .await
+                .map_err(failed)?;
+            ServiceObject::collection_created(&emitter, &collection)
+                .await
+                .map_err(failed)?;
+        }
+        Ok((collection, owned_path(NO_OBJECT)?))
     }
 
     /// The collections of the open store, or none while it is locked.
@@ -413,6 +489,10 @@ impl ServiceObject {
     /// Sent on the service after a collection is deleted, so clients drop it from their lists.
     #[zbus(signal)]
     async fn collection_deleted(emitter: &SignalEmitter<'_>, collection: &OwnedObjectPath) -> zbus::Result<()>;
+
+    /// Sent on the service after `CreateCollection` makes a collection, so clients learn of it.
+    #[zbus(signal)]
+    async fn collection_created(emitter: &SignalEmitter<'_>, collection: &OwnedObjectPath) -> zbus::Result<()>;
 }
 
 /// Search a locked keyring. It answers nothing: the attributes sit inside the SQLCipher file, and
@@ -672,6 +752,18 @@ impl CollectionObject {
             .ok_or_else(|| SecretError::NoSuchObject(collection_path(self.id)))
     }
 
+    /// Renames the collection. A locked keyring answers `IsLocked`.
+    #[zbus(property)]
+    async fn set_label(&self, label: String) -> Result<(), SecretError> {
+        let mut shared = lock(&self.state);
+        let keyring = shared.open_mut()?;
+        if keyring.rename_collection(self.id, &label)? {
+            Ok(())
+        } else {
+            Err(SecretError::NoSuchObject(collection_path(self.id)))
+        }
+    }
+
     #[zbus(property)]
     fn locked(&self) -> bool {
         lock(&self.state).keyring.is_none()
@@ -762,6 +854,15 @@ impl ItemObject {
         Ok(item.attributes.into_iter().collect())
     }
 
+    /// Replaces the attributes, sorted by name as `CreateItem` stores them. The label and secret
+    /// are kept.
+    #[zbus(property)]
+    async fn set_attributes(&self, attributes: HashMap<String, String>) -> Result<(), SecretError> {
+        let mut pairs: Vec<(String, String)> = attributes.into_iter().collect();
+        pairs.sort();
+        self.rewrite(None, Some(pairs))
+    }
+
     #[zbus(property)]
     async fn label(&self) -> Result<String, SecretError> {
         let shared = lock(&self.state);
@@ -770,6 +871,12 @@ impl ItemObject {
             .item(self.id)?
             .ok_or_else(|| SecretError::NoSuchObject(format!("item {}", self.id.raw())))?;
         Ok(item.label)
+    }
+
+    /// Renames the item. The secret and attributes are kept.
+    #[zbus(property)]
+    async fn set_label(&self, label: String) -> Result<(), SecretError> {
+        self.rewrite(Some(label), None)
     }
 
     #[zbus(property)]
@@ -790,6 +897,27 @@ impl ItemObject {
             .item(self.id)?
             .ok_or_else(|| SecretError::NoSuchObject(format!("item {}", self.id.raw())))?;
         Ok(seconds(item.modified_ms))
+    }
+}
+
+impl ItemObject {
+    /// Rewrites the label and/or attributes, keeping the secret and its content type, which are
+    /// read back from the store, so a property write never touches the secret. A locked store
+    /// answers `IsLocked`; a missing item, `NoSuchObject`.
+    fn rewrite(&self, label: Option<String>, attributes: Option<Vec<(String, String)>>) -> Result<(), SecretError> {
+        let mut shared = lock(&self.state);
+        let keyring = shared.open_mut()?;
+        let item = keyring
+            .item(self.id)?
+            .ok_or_else(|| SecretError::NoSuchObject(format!("item {}", self.id.raw())))?;
+        let label = label.unwrap_or_else(|| item.label.clone());
+        let attributes = attributes.unwrap_or_else(|| item.attributes.clone());
+        let pairs: Vec<(&str, &str)> = attributes
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        keyring.update_item(self.id, &label, &item.content_type, &item.secret, &pairs)?;
+        Ok(())
     }
 }
 
@@ -1096,6 +1224,97 @@ mod tests {
         assert!(created);
         assert_ne!(second, first);
         drop(keyring);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn create_collection_without_a_label_is_an_argument_error() {
+        let refusal = collection_label(HashMap::new()).expect_err("no label");
+        assert!(matches!(refusal, SecretError::InvalidArgs(_)));
+    }
+
+    #[test]
+    fn set_alias_accepts_a_collection_path_or_the_empty_path_only() {
+        let collection = collection_path(CollectionId::from_raw(3));
+        assert_eq!(alias_target(NO_OBJECT).expect("clears"), None);
+        assert_eq!(
+            alias_target(&collection).expect("a collection"),
+            Some(CollectionId::from_raw(3))
+        );
+        let item = item_path(CollectionId::from_raw(3), ItemId::from_raw(5));
+        assert!(matches!(alias_target(&item), Err(SecretError::InvalidArgs(_))));
+    }
+
+    #[test]
+    fn a_property_write_on_a_locked_store_is_refused() {
+        let state = new_state(None);
+        let item = ItemObject {
+            state: state.clone(),
+            id: ItemId::from_raw(1),
+        };
+        assert!(matches!(
+            item.rewrite(Some("new".to_owned()), None),
+            Err(SecretError::IsLocked(_))
+        ));
+    }
+
+    #[test]
+    fn relabelling_an_item_keeps_its_secret_and_attributes() {
+        let (path, mut keyring) = open_store("relabel");
+        let collection = keyring.create_collection("Login").expect("collection");
+        let (id, _) = write_item(
+            &mut keyring,
+            collection,
+            "old",
+            "text/plain",
+            b"v1",
+            &attributes(&[("app", "mail")]),
+            false,
+        )
+        .expect("write");
+        let state = new_state(Some(keyring));
+        ItemObject {
+            state: state.clone(),
+            id,
+        }
+        .rewrite(Some("new".to_owned()), None)
+        .expect("relabels");
+        let shared = lock(&state);
+        let item = shared.open().expect("open").item(id).expect("reads").expect("present");
+        assert_eq!(item.label, "new");
+        assert_eq!(item.secret.as_slice(), b"v1");
+        assert_eq!(item.attributes, attributes(&[("app", "mail")]));
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn replacing_attributes_keeps_the_label_and_secret() {
+        let (path, mut keyring) = open_store("reattr");
+        let collection = keyring.create_collection("Login").expect("collection");
+        let (id, _) = write_item(
+            &mut keyring,
+            collection,
+            "keep",
+            "text/plain",
+            b"v1",
+            &attributes(&[("app", "mail")]),
+            false,
+        )
+        .expect("write");
+        let state = new_state(Some(keyring));
+        ItemObject {
+            state: state.clone(),
+            id,
+        }
+        .rewrite(None, Some(attributes(&[("zone", "9")])))
+        .expect("reattributes");
+        let shared = lock(&state);
+        let item = shared.open().expect("open").item(id).expect("reads").expect("present");
+        assert_eq!(item.label, "keep");
+        assert_eq!(item.secret.as_slice(), b"v1");
+        assert_eq!(item.attributes, attributes(&[("zone", "9")]));
+        drop(shared);
         let _ = std::fs::remove_file(&path);
     }
 }

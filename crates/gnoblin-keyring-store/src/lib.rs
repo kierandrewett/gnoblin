@@ -216,6 +216,15 @@ impl Keyring {
         Ok(CollectionId(self.conn.last_insert_rowid()))
     }
 
+    /// Changes the label of the collection `id`. Its items and aliases are untouched. Returns
+    /// `false`, and changes nothing, when no collection has that id.
+    pub fn rename_collection(&self, id: CollectionId, label: &str) -> Result<bool, KeyringError> {
+        let renamed = self
+            .conn
+            .execute("UPDATE collections SET label = ?2 WHERE id = ?1", params![id.0, label])?;
+        Ok(renamed > 0)
+    }
+
     /// Points the well-known `name` (such as `default`) at `collection`, replacing any earlier
     /// target.
     pub fn set_alias(&self, name: &str, collection: CollectionId) -> Result<(), KeyringError> {
@@ -237,6 +246,15 @@ impl Keyring {
             )
             .optional()?;
         Ok(id.map(CollectionId))
+    }
+
+    /// Removes the alias `name`, so no collection answers to it. The collection itself stays.
+    /// Returns whether an alias was removed.
+    pub fn clear_alias(&self, name: &str) -> Result<bool, KeyringError> {
+        let removed = self
+            .conn
+            .execute("DELETE FROM aliases WHERE name = ?1", params![name])?;
+        Ok(removed > 0)
     }
 
     /// Stores a new item in `collection`. The secret and every attribute are written in one

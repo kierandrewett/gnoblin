@@ -187,11 +187,13 @@ The service implements these methods on the session bus at
   the store's lock state is per collection. `Unlock` returns a `Prompt` path,
   or `/` when no prompt is needed.
 - `Service.ReadAlias`: the `default` alias points at one collection, created on
-  first run. `SetAlias` and `CreateCollection` are refused over the bus.
-- `Collection` and `Item` interfaces: read and search only. `SearchItems`,
-  `GetSecret` and property reads work. Create, update and delete are refused
-  over the bus. Attributes are stored in an indexed table, so `SearchItems`
-  does not decrypt every item.
+  first run. `Service.SetAlias` moves an alias to a collection; the empty object
+  path clears it. `Service.CreateCollection` creates a labelled collection.
+- `Collection` and `Item` interfaces: `SearchItems`, `GetSecret`, property reads
+  and property writes (`Label`, and `Attributes` on items), `CreateItem` with the
+  replace flag, `Item.SetSecret`, and `Delete` on both. Writes on a locked store
+  return `IsLocked`; they do not open the unlock prompt. Attributes are stored in
+  an indexed table, so `SearchItems` does not decrypt every item.
 - `Prompt` objects: `Prompt(window-id)` and `Dismiss`. The `Completed` signal
   carries the result. The shell answers `prompt.secret` requests; see
   `docs/shell-api/passphrase-prompts.md`.
