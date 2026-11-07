@@ -15,6 +15,8 @@ use zbus::object_server::SignalEmitter;
 use zbus::{OwnedObjectPath, OwnedVariant, Variant};
 
 use crate::dh::{self, DhSessionKey};
+use crate::log;
+use crate::unlock::UnlockKeySource;
 
 /// The service's object root. Every path below it is one object of this crate.
 pub const SERVICE_PATH: &str = "/org/freedesktop/secrets";
@@ -233,6 +235,8 @@ pub async fn export_tree(server: &ObjectServer, state: &State) -> Result<(), Sec
 /// The `org.freedesktop.Secret.Service` object at [`SERVICE_PATH`].
 pub struct ServiceObject {
     pub state: State,
+    /// The unlock path. `Unlock` hands the prompt object it creates to this source.
+    pub source: Arc<Mutex<UnlockKeySource>>,
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Service")]
@@ -305,8 +309,8 @@ impl ServiceObject {
         Ok((unlocked, Vec::new()))
     }
 
-    /// The store is opened by the unlock path, which is a later phase. Until then the answer is a
-    /// prompt that is dismissed at once, so the caller learns the keyring is still locked.
+    /// Asks for the login password. This only creates the prompt object: the request is offered
+    /// when the caller calls `Prompt` on it, so a caller that never prompts never asks.
     async fn unlock(
         &self,
         objects: Vec<OwnedObjectPath>,
@@ -317,10 +321,11 @@ impl ServiceObject {
         }
         let id = lock(&self.state).fresh_id();
         let path = format!("{PROMPT_PREFIX}{id}");
-        server
-            .at(path.as_str(), PromptObject { path: path.clone() })
-            .await
-            .map_err(failed)?;
+        let prompt = PromptObject {
+            path: path.clone(),
+            source: Arc::clone(&self.source),
+        };
+        server.at(path.as_str(), prompt).await.map_err(failed)?;
         Ok((Vec::new(), owned_path(&path)?))
     }
 
@@ -627,11 +632,14 @@ impl SecretSessionObject {
     }
 }
 
-/// A prompt the service raised. No prompt UI exists yet, so `Prompt` and `Dismiss` both finish
-/// at once as dismissed, with no result. Each finished prompt removes its own object, so repeated
-/// `Unlock` calls do not leak objects.
+/// A password prompt the keyring raised. `Prompt` offers the request to the shell that claims
+/// `prompt.secret`, and the answer reaches the prompt through [`crate::PromptAnswers`], which
+/// emits `Completed` and removes this object. `Dismiss`, or an offer nobody can draw, finishes
+/// it at once as dismissed. Each finished prompt removes its own object, so repeated `Unlock`
+/// calls do not leak objects.
 pub struct PromptObject {
     pub path: String,
+    pub source: Arc<Mutex<UnlockKeySource>>,
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Prompt")]
@@ -642,7 +650,14 @@ impl PromptObject {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(), SecretError> {
-        finish_prompt(&self.path, &emitter, server).await
+        let offered = lock_source(&self.source).offer_password(&self.path);
+        match offered {
+            Ok(()) => Ok(()),
+            Err(reason) => {
+                log::info!(%reason, "the password prompt could not be offered");
+                finish_prompt(&self.path, &emitter, server, true).await
+            }
+        }
     }
 
     async fn dismiss(
@@ -650,15 +665,40 @@ impl PromptObject {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(), SecretError> {
-        finish_prompt(&self.path, &emitter, server).await
+        lock_source(&self.source).dismiss_password(&self.path);
+        finish_prompt(&self.path, &emitter, server, true).await
     }
 
     #[zbus(signal)]
     async fn completed(emitter: &SignalEmitter<'_>, dismissed: bool, result: Variant<'_>) -> zbus::Result<()>;
 }
 
-async fn finish_prompt(path: &str, emitter: &SignalEmitter<'_>, server: &ObjectServer) -> Result<(), SecretError> {
-    PromptObject::completed(emitter, true, Variant::from("")).await?;
+fn lock_source(source: &Mutex<UnlockKeySource>) -> MutexGuard<'_, UnlockKeySource> {
+    // A panic in an earlier unlock poisons this lock. It must not stop every later prompt, so the
+    // poisoned guard is taken over.
+    source.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Emits `Completed` on the prompt at `path` from inside its own method, then removes it. That
+/// method already holds the emitter, so the object is not looked up again.
+async fn finish_prompt(
+    path: &str,
+    emitter: &SignalEmitter<'_>,
+    server: &ObjectServer,
+    dismissed: bool,
+) -> Result<(), SecretError> {
+    PromptObject::completed(emitter, dismissed, Variant::from("")).await?;
+    server.remove::<PromptObject, _>(path).await.map_err(failed)?;
+    Ok(())
+}
+
+/// Emits `Completed` on the prompt at `path` from outside its method, then removes it. `Completed`
+/// carries only whether the prompt was dismissed, never the password.
+pub(crate) async fn emit_completed(server: &ObjectServer, path: &str, dismissed: bool) -> Result<(), SecretError> {
+    {
+        let prompt = server.interface::<_, PromptObject>(path).await.map_err(failed)?;
+        PromptObject::completed(prompt.signal_emitter(), dismissed, Variant::from("")).await?;
+    }
     server.remove::<PromptObject, _>(path).await.map_err(failed)?;
     Ok(())
 }

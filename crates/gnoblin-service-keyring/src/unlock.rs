@@ -1,18 +1,25 @@
 //! The unlock path. The store key is the login password, as `design/keyring.md` "Key source"
-//! decides. The password reaches this module from the PAM hand-off, or from one prompt when the
-//! login had no password. The SQLCipher key derivation (PBKDF2 with an explicit `kdf_iter`) runs
-//! in the store crate, so this module only chooses between create, open and re-key.
+//! decides. The password reaches this module from the PAM hand-off, or from one request answered
+//! by the user when the login had no password. The SQLCipher key derivation (PBKDF2 with an
+//! explicit `kdf_iter`) runs in the store crate, so this module only chooses between create, open
+//! and re-key.
 //!
-//! Nothing here logs or keeps the password. A `Passphrase` wipes its text on drop, and the byte
-//! buffers the caller passes in are the caller's to wipe.
+//! The keyring never draws UI. A password prompt is an offer of a `prompt.secret` request to the
+//! compositor, and the answer comes back as a request outcome. Nothing here logs or keeps the
+//! password: a `Passphrase` wipes its text on drop, and the byte buffers the caller passes in are
+//! the caller's to wipe.
 
 use std::path::PathBuf;
 
 use gnoblin_keyring_store::{Keyring, KeyringError, Passphrase};
-use zeroize::Zeroizing;
+use gnoblin_model::{RequestId, RequestOutcome};
 
 use crate::log;
 use crate::objects::{self, State};
+
+/// The title and message of the password request. They name the keyring and never the password.
+pub const PROMPT_TITLE: &str = "Unlock the keyring";
+pub const PROMPT_MESSAGE: &str = "Enter your login password to unlock the keyring.";
 
 /// Why the store was not unlocked or re-keyed.
 #[derive(Debug, PartialEq, Eq)]
@@ -25,24 +32,26 @@ pub enum UnlockError {
     Failed(String),
 }
 
-/// Why a prompted unlock ended.
-#[derive(Debug, PartialEq, Eq)]
-pub enum PromptOutcome {
-    /// The store is open.
-    Unlocked,
-    /// The user dismissed the prompt. The store stays locked.
-    Cancelled,
-    /// The password the user typed does not open the store.
-    WrongKey,
-    /// The store could not be opened for another reason.
-    Failed(String),
-    /// The prompt was already shown in this login session. It is never shown twice.
-    AlreadyAsked,
+/// Offers the password request to whoever answers prompts. The answer returns through
+/// [`UnlockKeySource::answer_password`], keyed by the id this returns.
+pub trait PasswordOffer: Send {
+    /// Offer one request with `title` and `message`. The error says why nothing was offered.
+    fn offer(&mut self, title: &str, message: &str) -> Result<RequestId, String>;
 }
 
-/// Asks the user for the store password. `None` means the user cancelled.
-pub trait PasswordPrompt {
-    fn ask(&mut self) -> Option<Zeroizing<Vec<u8>>>;
+/// The password request this source offered and is still waiting on.
+struct Pending {
+    request: RequestId,
+    /// The bus object the caller is waiting on for the `Completed` signal.
+    path: String,
+}
+
+/// A prompt that has finished, and what its bus object must now report. `dismissed` is true when
+/// the store is still locked, so the caller is told it was cancelled.
+#[derive(Debug, PartialEq, Eq)]
+pub struct PromptEnd {
+    pub path: String,
+    pub dismissed: bool,
 }
 
 /// Opens or creates the keyring file for the shared `state`, and runs `on_unlock` once the store
@@ -50,18 +59,28 @@ pub trait PasswordPrompt {
 pub struct UnlockKeySource {
     path: PathBuf,
     state: State,
-    /// Set once the no-password prompt has been shown, so a login session is never asked twice.
-    asked: bool,
+    /// Set once the password has been offered, so a login session is never asked twice. A failed
+    /// offer does not set it, because nothing was asked.
+    offered: bool,
+    pending: Option<Pending>,
     on_unlock: Box<dyn FnMut() + Send>,
+    offers: Box<dyn PasswordOffer>,
 }
 
 impl UnlockKeySource {
-    pub fn new(path: PathBuf, state: State, on_unlock: Box<dyn FnMut() + Send>) -> UnlockKeySource {
+    pub fn new(
+        path: PathBuf,
+        state: State,
+        on_unlock: Box<dyn FnMut() + Send>,
+        offers: Box<dyn PasswordOffer>,
+    ) -> UnlockKeySource {
         UnlockKeySource {
             path,
             state,
-            asked: false,
+            offered: false,
+            pending: None,
             on_unlock,
+            offers,
         }
     }
 
@@ -104,24 +123,52 @@ impl UnlockKeySource {
         self.after_install()
     }
 
-    /// Unlock by asking the user, for a login that had no password (fingerprint or autologin).
-    /// The prompt is shown at most once per login session, whatever the answer.
-    pub fn unlock_by_prompt(&mut self, prompt: &mut dyn PasswordPrompt) -> PromptOutcome {
+    /// Ask for the login password through a request, for a login that had none (fingerprint or
+    /// autologin). The request is offered at most once per login session. `path` is the bus
+    /// object the caller waits on; it is handed back by [`UnlockKeySource::answer_password`].
+    pub fn offer_password(&mut self, path: &str) -> Result<(), String> {
         if objects::is_unlocked(&self.state) {
-            return PromptOutcome::Unlocked;
+            return Err("the keyring is already open".to_owned());
         }
-        if self.asked {
-            return PromptOutcome::AlreadyAsked;
+        if self.offered {
+            return Err("the password was already asked in this login session".to_owned());
         }
-        self.asked = true;
-        let Some(password) = prompt.ask() else {
-            log::info!("the unlock prompt was cancelled");
-            return PromptOutcome::Cancelled;
-        };
-        match self.unlock(&password) {
-            Ok(()) => PromptOutcome::Unlocked,
-            Err(UnlockError::WrongKey) => PromptOutcome::WrongKey,
-            Err(UnlockError::Refused(reason) | UnlockError::Failed(reason)) => PromptOutcome::Failed(reason),
+        let request = self.offers.offer(PROMPT_TITLE, PROMPT_MESSAGE)?;
+        self.offered = true;
+        self.pending = Some(Pending {
+            request,
+            path: path.to_owned(),
+        });
+        log::info!("asked for the keyring password");
+        Ok(())
+    }
+
+    /// The answer to the password request. An answer for any other request is refused and changes
+    /// nothing. An answer that opens the store finishes the prompt undismissed; any other ending
+    /// finishes it dismissed, and the store stays locked.
+    pub fn answer_password(&mut self, request: RequestId, outcome: &RequestOutcome) -> Option<PromptEnd> {
+        let pending = self.pending.take_if(|pending| pending.request == request)?;
+        match outcome {
+            RequestOutcome::Answered(password) => {
+                if let Err(error) = self.unlock(password) {
+                    log::info!(reason = ?error, "the password from the prompt did not unlock the keyring");
+                }
+            }
+            RequestOutcome::Ended => log::info!("the password prompt ended without an answer"),
+            RequestOutcome::Refused(reason) => log::info!(reason = ?reason, "the password prompt was declined"),
+            RequestOutcome::TimedOut => log::info!("the password prompt timed out"),
+        }
+        Some(PromptEnd {
+            path: pending.path,
+            dismissed: !objects::is_unlocked(&self.state),
+        })
+    }
+
+    /// The prompt object at `path` was dismissed by its caller. A later answer for that prompt is
+    /// then refused as unknown.
+    pub fn dismiss_password(&mut self, path: &str) {
+        if self.pending.as_ref().is_some_and(|pending| pending.path == path) {
+            self.pending = None;
         }
     }
 
@@ -156,6 +203,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use gnoblin_model::DeclineReason;
+
     /// A scratch directory unique to this process and test.
     fn scratch(label: &str) -> PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -167,7 +216,8 @@ mod tests {
         dir
     }
 
-    /// A key source over a fresh locked state, with a counter of how often the store opened.
+    /// A key source over a fresh locked state, with a counter of how often the store opened. Its
+    /// password offer has no provider, so an offer fails at once.
     fn source(dir: &std::path::Path) -> (UnlockKeySource, State, Arc<AtomicUsize>) {
         let state = objects::new_state(None);
         let unlocks = Arc::new(AtomicUsize::new(0));
@@ -178,25 +228,56 @@ mod tests {
             Box::new(move || {
                 counter.fetch_add(1, Ordering::SeqCst);
             }),
+            Box::new(FakeOffer::none()),
         );
         (source, state, unlocks)
+    }
+
+    /// A key source whose password offer answers `result`, with a counter of the offers made.
+    fn prompt_source(
+        dir: &std::path::Path,
+        result: Result<RequestId, String>,
+    ) -> (UnlockKeySource, State, Arc<AtomicUsize>) {
+        let state = objects::new_state(None);
+        let offers = Arc::new(AtomicUsize::new(0));
+        let offer = FakeOffer {
+            result,
+            offers: Arc::clone(&offers),
+        };
+        let source = UnlockKeySource::new(
+            dir.join("login.keyring"),
+            Arc::clone(&state),
+            Box::new(|| {}),
+            Box::new(offer),
+        );
+        (source, state, offers)
+    }
+
+    /// A password offer that counts its calls and returns a fixed result.
+    struct FakeOffer {
+        result: Result<RequestId, String>,
+        offers: Arc<AtomicUsize>,
+    }
+
+    impl FakeOffer {
+        fn none() -> FakeOffer {
+            FakeOffer {
+                result: Err("no provider".to_owned()),
+                offers: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    impl PasswordOffer for FakeOffer {
+        fn offer(&mut self, _title: &str, _message: &str) -> Result<RequestId, String> {
+            self.offers.fetch_add(1, Ordering::SeqCst);
+            self.result.clone()
+        }
     }
 
     /// Drop the open store, as a restart of the service would.
     fn lock_store(state: &State) {
         objects::install_keyring(state, None);
-    }
-
-    struct Scripted {
-        answer: Option<Vec<u8>>,
-        asks: usize,
-    }
-
-    impl PasswordPrompt for Scripted {
-        fn ask(&mut self) -> Option<Zeroizing<Vec<u8>>> {
-            self.asks += 1;
-            self.answer.clone().map(Zeroizing::new)
-        }
     }
 
     #[test]
@@ -240,49 +321,167 @@ mod tests {
     }
 
     #[test]
-    fn no_password_prompts_once_per_session() {
-        let dir = scratch("prompt-once");
-        let (mut source, state, _) = source(&dir);
-        source.unlock(b"pw").expect("create");
+    fn a_wrong_password_from_the_prompt_stays_locked_and_is_dismissed() {
+        let dir = scratch("prompt-wrong");
+        let (mut source, state, offers) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(b"right").expect("create");
         lock_store(&state);
-        let mut prompt = Scripted {
-            answer: Some(b"wrong".to_vec()),
-            asks: 0,
-        };
-        assert_eq!(source.unlock_by_prompt(&mut prompt), PromptOutcome::WrongKey);
-        assert_eq!(source.unlock_by_prompt(&mut prompt), PromptOutcome::AlreadyAsked);
-        assert_eq!(prompt.asks, 1, "a wrong answer is not asked again in the same session");
-        std::fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn a_prompt_with_the_right_password_unlocks_and_is_not_shown_again() {
-        let dir = scratch("prompt-right");
-        let (mut source, state, _) = source(&dir);
-        source.unlock(b"pw").expect("create");
-        lock_store(&state);
-        let mut prompt = Scripted {
-            answer: Some(b"pw".to_vec()),
-            asks: 0,
-        };
-        assert_eq!(source.unlock_by_prompt(&mut prompt), PromptOutcome::Unlocked);
-        lock_store(&state);
-        assert_eq!(source.unlock_by_prompt(&mut prompt), PromptOutcome::AlreadyAsked);
-        assert_eq!(prompt.asks, 1);
-        std::fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn cancelling_the_prompt_leaves_the_store_locked_and_is_not_repeated() {
-        let dir = scratch("prompt-cancel");
-        let (mut source, state, _) = source(&dir);
-        source.unlock(b"pw").expect("create");
-        lock_store(&state);
-        let mut prompt = Scripted { answer: None, asks: 0 };
-        assert_eq!(source.unlock_by_prompt(&mut prompt), PromptOutcome::Cancelled);
-        assert_eq!(source.unlock_by_prompt(&mut prompt), PromptOutcome::AlreadyAsked);
-        assert_eq!(prompt.asks, 1);
+        source.offer_password("/prompt/1").expect("the request is offered");
+        let end = source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"wrong".to_vec()));
+        assert_eq!(
+            end,
+            Some(PromptEnd {
+                path: "/prompt/1".to_owned(),
+                dismissed: true,
+            })
+        );
         assert!(!objects::is_unlocked(&state));
+        assert_eq!(offers.load(Ordering::SeqCst), 1);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn with_no_provider_the_offer_fails_at_once_and_nothing_is_pending() {
+        let dir = scratch("prompt-no-provider");
+        let (mut source, state, offers) = prompt_source(&dir, Err("no provider for prompt.secret".to_owned()));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        assert_eq!(
+            source.offer_password("/prompt/1"),
+            Err("no provider for prompt.secret".to_owned())
+        );
+        assert_eq!(
+            source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec())),
+            None
+        );
+        assert!(!objects::is_unlocked(&state));
+        assert_eq!(offers.load(Ordering::SeqCst), 1);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_prompt_that_ends_without_an_answer_is_dismissed_and_stays_locked() {
+        let replies = [
+            RequestOutcome::Ended,
+            RequestOutcome::Refused(DeclineReason::Denied),
+            RequestOutcome::TimedOut,
+        ];
+        for (index, reply) in replies.iter().enumerate() {
+            let dir = scratch(&format!("prompt-ended-{index}"));
+            let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+            source.unlock(b"right").expect("create");
+            lock_store(&state);
+            source.offer_password("/prompt/1").expect("the request is offered");
+            let end = source.answer_password(RequestId::new(7), reply);
+            assert_eq!(
+                end,
+                Some(PromptEnd {
+                    path: "/prompt/1".to_owned(),
+                    dismissed: true,
+                }),
+                "reply {index} dismisses the prompt"
+            );
+            assert!(!objects::is_unlocked(&state));
+            std::fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    #[test]
+    fn the_right_password_from_the_prompt_unlocks_and_is_not_dismissed() {
+        let dir = scratch("prompt-right");
+        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the request is offered");
+        let end = source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec()));
+        assert_eq!(
+            end,
+            Some(PromptEnd {
+                path: "/prompt/1".to_owned(),
+                dismissed: false,
+            })
+        );
+        assert!(objects::is_unlocked(&state));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn an_answer_for_another_request_is_refused_and_the_prompt_stays_pending() {
+        let dir = scratch("prompt-other-id");
+        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the request is offered");
+        assert_eq!(
+            source.answer_password(RequestId::new(8), &RequestOutcome::answered(b"right".to_vec())),
+            None
+        );
+        assert!(!objects::is_unlocked(&state), "a stranger's answer unlocks nothing");
+        let end = source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec()));
+        assert_eq!(
+            end,
+            Some(PromptEnd {
+                path: "/prompt/1".to_owned(),
+                dismissed: false,
+            })
+        );
+        assert!(objects::is_unlocked(&state));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_dismissed_prompt_refuses_a_late_answer() {
+        let dir = scratch("prompt-dismissed");
+        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the request is offered");
+        source.dismiss_password("/prompt/1");
+        assert_eq!(
+            source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec())),
+            None,
+            "the caller gave up, so the late answer is ignored"
+        );
+        assert!(!objects::is_unlocked(&state));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_prompt_is_offered_once_per_session() {
+        let dir = scratch("prompt-once");
+        let (mut source, state, offers) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the first offer");
+        source.answer_password(RequestId::new(7), &RequestOutcome::Ended);
+        assert!(source.offer_password("/prompt/2").is_err(), "a second offer is refused");
+        assert_eq!(offers.load(Ordering::SeqCst), 1);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn an_open_store_is_never_offered_a_password() {
+        let dir = scratch("prompt-open");
+        let (mut source, _, offers) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(b"right").expect("create");
+        assert!(source.offer_password("/prompt/1").is_err());
+        assert_eq!(offers.load(Ordering::SeqCst), 0);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_password_offer_that_fails_leaves_the_prompt_free_to_be_offered_again() {
+        let dir = scratch("prompt-retry");
+        let (mut source, state, offers) = prompt_source(&dir, Err("no provider".to_owned()));
+        source.unlock(b"right").expect("create");
+        lock_store(&state);
+        assert!(source.offer_password("/prompt/1").is_err());
+        assert!(source.offer_password("/prompt/2").is_err());
+        assert_eq!(
+            offers.load(Ordering::SeqCst),
+            2,
+            "a failed offer does not count as the one ask"
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 

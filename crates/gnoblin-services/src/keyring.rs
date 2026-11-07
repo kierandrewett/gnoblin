@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use gnoblin_model::CapabilitySlot;
-use gnoblin_service_keyring::Secrets;
+use gnoblin_service_keyring::{PasswordOffer, PromptAnswers, Secrets};
 
 use crate::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use crate::log;
@@ -69,6 +69,8 @@ pub struct KeyringAgent {
     connection: Option<zbus::Connection>,
     /// Reads the app secrets behind `secret.derive`. Absent until the store serves.
     secrets: Option<Secrets>,
+    /// Answers the password request the unlock prompt sent. Absent until the store serves.
+    prompt_answers: Option<PromptAnswers>,
 }
 
 impl KeyringAgent {
@@ -80,16 +82,43 @@ impl KeyringAgent {
             socket,
             connection: None,
             secrets: None,
+            prompt_answers: None,
         }
     }
 }
 
+/// How long the password prompt waits for its answer before the compositor times it out.
+const PROMPT_DEADLINE_MS: u64 = 120_000;
+
+/// Offers the unlock password as a `prompt.secret` request. The compositor routes it to the shell
+/// that claimed the slot. An unclaimed slot refuses the offer at once, so the keyring stays locked
+/// rather than waiting on a prompt nobody draws.
+struct HostOffer {
+    host: Host,
+}
+
+impl PasswordOffer for HostOffer {
+    fn offer(&mut self, title: &str, message: &str) -> Result<RequestId, String> {
+        self.host
+            .offer(
+                CapabilitySlot::PromptSecret.name(),
+                title,
+                message,
+                b"",
+                Tick::new(PROMPT_DEADLINE_MS),
+            )
+            .map_err(|error| format!("{error:?}"))
+    }
+}
+
 impl LinkedAgent for KeyringAgent {
-    fn start(&mut self, _host: &Host, _deadline: Tick) -> bool {
-        match futures_lite::future::block_on(gnoblin_service_keyring::serve(&self.store, &self.socket)) {
-            Ok((connection, secrets)) => {
+    fn start(&mut self, host: &Host, _deadline: Tick) -> bool {
+        let offers = Box::new(HostOffer { host: host.clone() });
+        match futures_lite::future::block_on(gnoblin_service_keyring::serve(&self.store, &self.socket, offers)) {
+            Ok((connection, secrets, prompt_answers)) => {
                 self.connection = Some(connection);
                 self.secrets = Some(secrets);
+                self.prompt_answers = Some(prompt_answers);
                 true
             }
             Err(error) => {
@@ -101,7 +130,11 @@ impl LinkedAgent for KeyringAgent {
         }
     }
 
-    fn answer(&self, _request: RequestId, _outcome: &RequestOutcome) {}
+    fn answer(&self, request: RequestId, outcome: &RequestOutcome) {
+        if let Some(prompt_answers) = &self.prompt_answers {
+            prompt_answers.answer(request, outcome);
+        }
+    }
 
     /// Derive the app secret for `secret.derive`. The subject is the app id, which the portal
     /// sends as the offer's subject. A locked store or a missing app id declines, because the

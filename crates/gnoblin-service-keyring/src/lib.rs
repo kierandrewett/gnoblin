@@ -19,45 +19,38 @@ pub mod secret;
 mod unlock;
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use futures_lite::future::block_on;
+use gnoblin_model::{RequestId, RequestOutcome};
 use zbus::Connection;
 use zbus::fdo::RequestNameFlags;
 
 pub use objects::SERVICE_PATH;
 pub use secret::{AppSecret, AppSecretError, Secrets};
-pub use unlock::{PasswordPrompt, PromptOutcome, UnlockError, UnlockKeySource};
+pub use unlock::{PasswordOffer, UnlockError, UnlockKeySource};
 
 gnoblin_log::logger!(log = "keyring-service");
 
 /// The well-known name the Secret Service is served on.
 pub const BUS_NAME: &str = "org.freedesktop.secrets";
 
-/// Serve the Secret Service over the session bus, with the store at `store_path` and the unlock
-/// hand-off on `socket`.
+/// Serve the Secret Service over the session bus, with the store at `store_path`, the unlock
+/// hand-off on `socket`, and `offers` asking for the password through a `prompt.secret` request.
 ///
 /// The store starts locked. The objects are registered before the name is requested, so the
 /// first call that reaches the name finds them all. The hand-off socket is bound only after the
 /// name is ours, so a service that lost the name never accepts a password. If the name is already
 /// taken, the error is returned and the connection is dropped, which removes the objects again.
-/// The returned connection serves until it is dropped, and the [`Secrets`] handle reads app
-/// secrets from the same store for as long as the connection serves.
-pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<(Connection, Secrets)> {
+/// The returned connection serves until it is dropped. The [`Secrets`] handle reads app secrets
+/// from the same store, and the [`PromptAnswers`] hands each answer to the prompt that asked.
+pub async fn serve(
+    store_path: &Path,
+    socket: &Path,
+    offers: Box<dyn PasswordOffer>,
+) -> zbus::Result<(Connection, Secrets, PromptAnswers)> {
     let state = objects::new_state(None);
     let connection = Connection::session().await?;
-    connection
-        .object_server()
-        .at(
-            SERVICE_PATH,
-            objects::ServiceObject {
-                state: Arc::clone(&state),
-            },
-        )
-        .await?;
-    connection
-        .request_name_with_flags(BUS_NAME, RequestNameFlags::DO_NOT_QUEUE)
-        .await?;
     let exporter = connection.clone();
     let exported = Arc::clone(&state);
     // Called on the hand-off thread once the store is open, so the collections appear on the bus.
@@ -66,13 +59,60 @@ pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<(Connection
             log::warn!("the collections could not be exported: {error:?}");
         }
     });
-    let secrets = Secrets::new(Arc::clone(&state));
     let source = Arc::new(Mutex::new(UnlockKeySource::new(
         store_path.to_path_buf(),
-        state,
+        Arc::clone(&state),
         on_unlock,
+        offers,
     )));
+    connection
+        .object_server()
+        .at(
+            SERVICE_PATH,
+            objects::ServiceObject {
+                state: Arc::clone(&state),
+                source: Arc::clone(&source),
+            },
+        )
+        .await?;
+    connection
+        .request_name_with_flags(BUS_NAME, RequestNameFlags::DO_NOT_QUEUE)
+        .await?;
+    let answers = PromptAnswers {
+        source: Arc::clone(&source),
+        connection: connection.clone(),
+    };
+    let secrets = Secrets::new(Arc::clone(&state));
     handoff::listen(socket, source).map_err(|error| zbus::Error::Failure(error.to_string()))?;
     log::info!(name = BUS_NAME, path = SERVICE_PATH, "serving the Secret Service");
-    Ok((connection, secrets))
+    Ok((connection, secrets, answers))
+}
+
+/// Hands the answer to a password request to the prompt that asked for it. The services role
+/// calls [`PromptAnswers::answer`] with each outcome it receives, and the prompt's `Completed`
+/// signal goes out from here. The password is read by the store and is never logged here.
+pub struct PromptAnswers {
+    source: Arc<Mutex<UnlockKeySource>>,
+    connection: Connection,
+}
+
+impl PromptAnswers {
+    /// Answer or end `request`. A request this source did not offer changes nothing.
+    pub fn answer(&self, request: RequestId, outcome: &RequestOutcome) {
+        let end = self
+            .source
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .answer_password(request, outcome);
+        let Some(end) = end else {
+            return;
+        };
+        if let Err(error) = block_on(objects::emit_completed(
+            self.connection.object_server(),
+            &end.path,
+            end.dismissed,
+        )) {
+            log::warn!("the prompt at {} could not be finished: {error:?}", end.path);
+        }
+    }
 }
