@@ -1045,17 +1045,47 @@ mod tests {
     }
 
     #[test]
-    fn layout_coroutine_close_running_an_endless_close_handler_is_bounded() {
-        // The `__close` handler of a suspended coroutine loops forever. The script must end
-        // within the cap. Either the handler ran and the budget aborted it, or Lua never
-        // ran the handler and the script ended cleanly. A hang is the only failure.
-        let (result, aborted, calls) = two_entries(
-            Profile::Layout,
-            small_budget(),
-            "",
-            "local flag = 'not-run' local co = coroutine.create(function() local c <close> = setmetatable({}, {__close = function() flag = 'entered' while true do end end}) coroutine.yield() end) coroutine.resume(co) coroutine.close(co) return flag",
+    fn coroutine_close_runs_an_endless_close_handler_and_the_budget_cuts_it() {
+        // `coroutine.close` of a suspended coroutine must run its pending `__close`
+        // handler, as stock Lua does. The handler sets a global flag first and then loops
+        // forever. The entry must end with the budget error, and the flag must be set,
+        // which proves the handler ran and the budget cut it. A missing flag is a separate
+        // failure: the close path skipped the handler. This runs under Config because the
+        // Layout profile drops `setmetatable`, so no Layout script can attach `__close`.
+        let script = "handler_started = false \
+            local co = coroutine.create(function() \
+                local c <close> = setmetatable({}, {__close = function() \
+                    handler_started = true \
+                    while true do end \
+                end}) \
+                coroutine.yield() \
+            end) \
+            coroutine.resume(co) \
+            local ok, err = coroutine.close(co) return tostring(ok) .. '|' .. tostring(err)";
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let limits = small_budget();
+            let (lua, guard) = coroutine_state(&limits);
+            let error = match lua.load(script).eval::<String>() {
+                Ok(text) => text,
+                Err(error) => error.to_string(),
+            };
+            let started = lua.globals().get::<bool>("handler_started").unwrap_or(false);
+            let calls: u64 = guard.hook_calls().iter().map(|(_, count)| count).sum();
+            let _ = sender.send((error, started, guard.aborted(), calls));
+        });
+        let (error, started, aborted, calls) = receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the close script must end within five seconds");
+        assert!(
+            started,
+            "coroutine.close did not run the pending __close handler (error: {error}, {calls} hook calls)"
         );
-        assert!(aborted || result == "not-run", "{result} ({calls} hook calls)");
+        assert!(
+            error.contains("instruction budget") || error.contains("handler deadline"),
+            "the entry must end with the budget error, got: {error} ({calls} hook calls)"
+        );
+        assert!(aborted, "the budget must latch ({calls} hook calls)");
     }
 
     #[test]
