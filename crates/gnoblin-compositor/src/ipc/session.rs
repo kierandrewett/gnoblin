@@ -791,6 +791,9 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
             Value::Text(observed.tag.clone().unwrap_or_default()),
         ),
         (member::MODAL.to_owned(), Value::Bool(observed.modal)),
+        // The schema requires `effects` on every window, so a window with no effects is
+        // created with an empty list rather than without the property.
+        (member::EFFECTS.to_owned(), Value::List(Vec::new())),
         (member::UNRESPONSIVE.to_owned(), Value::Bool(observed.unresponsive)),
     ])
 }
@@ -851,6 +854,23 @@ mod tests {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no `{ty}` opened in {observations:#?}"))
+    }
+
+    #[test]
+    fn a_new_window_publishes_an_empty_effects_list() {
+        // The schema requires `effects` on every window, so a window with no effects
+        // must still be created: without the property the graph refuses the object and
+        // the window never appears in a listing.
+        let mut store = store();
+        let subscription = store.subscribe(Filter::All);
+        let state = snapshot(
+            vec![window(1, "Editor", true, Rect::new(0, 0, 200, 150))],
+            Some(WindowId::new(1)),
+        );
+        store.apply(&state).expect("applied");
+        let observations = drained(&mut store, &subscription);
+        let view = opened(&observations, "gnoblin.window");
+        assert_eq!(view.property("effects"), Some(&Value::List(Vec::new())));
     }
 
     #[test]
