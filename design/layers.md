@@ -551,6 +551,15 @@ Each path below moves to the registry, with no shim.
     Implemented: `Wm::register_layer` attaches a window-scope layer above its target. The entry hides, shows and ends with the target, and `Broken::LayerEntryOrphan` reports one that no longer follows its window. A Windows-below-System paint test is deferred to the registry, because the stack orders only window-scope layers.
 
 3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy. The capture view masks or omits secure nodes (`capture.secure-treatment`) and replaces the pre-overlay readback (Capture paths).
+
+    Plan (step order, one slice per push):
+    (a) `gnoblin-render-frame/src/frame.rs`: `OutputFrame` takes one ordered `Vec` of entries. `Layer::Surface`, `Layer::Solid` and an overlay entry kind. The `overlay` field and `set_overlay` stay until (c).
+    (b) Callers build that list in bottom-to-top order from `Wm::layer_order` plus the built-in entries: `gnoblin-backend/src/render/compose.rs` (`push_layer`), `gnoblin-wayland/src/frame.rs` (`OutputFrame::new`), `gnoblin-wayland/src/state.rs` (`frame()`, the `set_overlay` call near L2716).
+    (c) Remove the `overlay` slot. The cursor stays a separate slot. Update `gnoblin-render-gles/src/lib.rs` (L545, L547, L952), `gnoblin-render-software/src/lib.rs` (L93, L258, L396, L442, L476, tests L972-1030), `gnoblin-render-vulkan/src/frame.rs` (L18, L599, L769, L888), `plan.rs` (L182-187), `tests.rs` (L373).
+    (d) `Modal` (`gnoblin-wayland/src/modal.rs`, `state.rs` L508, L2225, L2259, L2740, `server.rs` L929, L1113) becomes the `portals` input policy. The overlay it carries is built in `gnoblin-compositor/src/ipc/portal.rs` (L443-535), and `ipc/server.rs` L1757 and `gnoblin-wasm` bindings L604 move with it.
+    (e) Capture: `gnoblin-backend/src/lib.rs` readback (L463) and `gnoblin-render-software` readback masks or omits `secure` nodes, governed by `capture.secure-treatment`. Test: a secure node never appears in a capture, on every path.
+    Each slice compiles on Agent37 after rebase, then pushes. Stop at a green pushed slice.
+
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
 6. `gnoblin.window_frame`, built in, with its paint and input areas (see Window frames).
