@@ -21,6 +21,7 @@ Add `--json` to any command for machine-readable output.
 | Command                           | Use it to                                                                   |
 | --------------------------------- | --------------------------------------------------------------------------- |
 | `gnoblinctl config get`           | Print the configuration the compositor last accepted                        |
+| `gnoblinctl config reload`        | Re-read the configuration in place; a refused document is not applied       |
 | `gnoblinctl config validate FILE` | Check a configuration document with the runtime's parser, without a session |
 
 `config validate` does not connect to a session, so it works before Gnoblin is

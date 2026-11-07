@@ -365,10 +365,14 @@ fn verb_commands() -> Vec<Command> {
         Command::new("version").about("The Gnoblin version and the IPC version this connection speaks."),
         Command::new("capabilities").about("Every capability, and whether this connection holds it."),
         Command::new("config")
-            .about("Read the configuration, or check a file against the runtime's parser.")
+            .about("Read or reload the configuration, or check a file against the runtime's parser.")
             .subcommand_required(true)
             .arg_required_else_help(true)
             .subcommand(Command::new("get").about("Print the configuration the compositor last accepted."))
+            .subcommand(
+                Command::new("reload")
+                    .about("Re-read the configuration in the runtime; a refused document is not applied."),
+            )
             .subcommand(
                 Command::new("validate")
                     .about("Check a configuration file without connecting to a session.")
@@ -452,6 +456,7 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
     let (name, sub) = matches.subcommand().expect("a subcommand is required");
     let verb = match name {
         "get" => verbs::Verb::ConfigGet,
+        "reload" => verbs::Verb::ConfigReload,
         "validate" => verbs::Verb::ConfigValidate {
             path: sub.get_one::<PathBuf>("file").cloned().expect("clap requires the file"),
         },

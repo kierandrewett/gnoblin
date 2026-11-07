@@ -34,6 +34,8 @@ pub(crate) enum Verb {
     Capabilities,
     /// The configuration document the compositor last accepted.
     ConfigGet,
+    /// Ask the runtime to re-read the configuration in place.
+    ConfigReload,
     /// Check a configuration document on disk, without connecting.
     ConfigValidate { path: PathBuf },
 }
@@ -55,6 +57,7 @@ pub(crate) fn execute<T: Transport>(
         Verb::Version => version(client, json, out),
         Verb::Capabilities => capabilities(client, json, out),
         Verb::ConfigGet => config_get(client, json, out),
+        Verb::ConfigReload => config_reload(client, json, out),
         Verb::ConfigValidate { path } => validate(path, json, out),
     };
     match outcome {
@@ -218,6 +221,21 @@ fn config_get<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Wr
                 writeln!(out, "revision {revision}\n{pretty}")
             }
         }
+    };
+    result.map_err(Failure::Io)?;
+    Ok(0)
+}
+
+/// `config reload`: ask the runtime to re-read the document in place. A document it
+/// refuses leaves the last accepted one in force, and the refusal comes back as the
+/// compositor's `CONFIG_REJECTED` error with the diagnostic, so it reaches
+/// [`Failure::report`] like any other refused request.
+fn config_reload<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
+    let revision = client.reload_config().map_err(Failure::Client)?;
+    let result = if json {
+        writeln!(out, "{}", json!({"revision": revision}))
+    } else {
+        writeln!(out, "reloaded: revision {revision}")
     };
     result.map_err(Failure::Io)?;
     Ok(0)
