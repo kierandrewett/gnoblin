@@ -249,6 +249,109 @@ session:on("ready", function() gnoblin.window.by_id({window}):focus() end)
     assert_eq!(pending.len(), 1, "the second handler called focus");
     assert_eq!(server.graph().pending().next().expect("one call").object(), window);
 }
+#[test]
+fn global_signal_handlers_are_ordered_isolated_and_one_shot() {
+    let config = Config::new("global-events");
+    let (mut server, mut host) = pair();
+    let session_id = session(&mut server);
+    config.write(
+        "init.lua",
+        &format!(
+            r#"
+local calls = {{}}
+gnoblin.on("gnoblin.session.ready", function()
+    error("global handler failed")
+end)
+gnoblin.on("gnoblin.session.ready", function(event)
+    assert(event.name == "gnoblin.session.ready")
+    assert(event.object.version == "{VERSION}")
+    table.insert(calls, "first")
+end)
+gnoblin.once("gnoblin.session.ready", function()
+    table.insert(calls, "once")
+end)
+local removed = gnoblin.on("gnoblin.session.ready", function()
+    table.insert(calls, "removed")
+end)
+removed:unsubscribe()
+gnoblin.on("gnoblin.session.ready", function()
+    table.insert(calls, "last")
+    if #calls == 5 then
+        assert(table.concat(calls, ",") == "first,once,last,first,last")
+    end
+end)
+"#
+        ),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    for _ in 0..2 {
+        server
+            .signal(session_id, "ready", Fields::new())
+            .expect("ready is a signal");
+    }
+    let pumped = host.pump(Tick::new(1)).expect("the pump survives handler failures");
+    assert_eq!(pumped.handlers, 7, "one-shot and repeating callbacks are dispatched");
+    assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
+    assert!(
+        pumped.errors[0].message().contains("global handler failed"),
+        "{:?}",
+        pumped.errors[0]
+    );
+    assert_eq!(
+        pumped.errors[0].source(),
+        Some(config.root.join("init.lua").to_str().expect("test path is UTF-8"))
+    );
+}
+
+#[test]
+fn reloading_clears_global_signal_handlers() {
+    let config = Config::new("global-event-reload");
+    let path = config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.session.ready", function() error("stale global handler") end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let session_id = session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    fs::write(&path, "-- new configuration\n").expect("the config changes");
+    assert!(matches!(
+        host.reload_config(&config.paths()).expect("reload succeeds"),
+        ReloadOutcome::Accepted(_)
+    ));
+    server
+        .signal(session_id, "ready", Fields::new())
+        .expect("ready is a signal");
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert_eq!(pumped.handlers, 0);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn global_event_registration_rejects_unknown_names_and_excess_handlers() {
+    let config = Config::new("global-event-validation");
+    config.write(
+        "init.lua",
+        r#"
+assert(not pcall(gnoblin.on, "gnoblin.no_such_event", function() end))
+for _ = 1, 1025 do
+    gnoblin.on("gnoblin.session.ready", function() end)
+end
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert_eq!(report.errors.len(), 1, "{:#?}", report.errors);
+    assert!(
+        report.errors[0].message().contains("handler limit"),
+        "{:?}",
+        report.errors[0]
+    );
+}
 
 #[test]
 fn a_load_pattern_cannot_leave_the_configuration_directory() {
@@ -889,7 +992,7 @@ end)
 }
 
 #[test]
-fn a_handler_that_outlives_its_deadline_is_stopped() {
+fn a_global_event_handler_that_outlives_its_deadline_is_stopped() {
     // One millisecond: the hook sees the budget gone long before the instruction
     // count would run out.
     let limits = Limits {
@@ -900,17 +1003,20 @@ fn a_handler_that_outlives_its_deadline_is_stopped() {
     config.write(
         "init.lua",
         r#"
-gnoblin.timers.after(1, function() while true do end end)
-gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
+gnoblin.on("gnoblin.session.ready", function() while true do end end)
+gnoblin.on("gnoblin.session.ready", function() gnoblin.session.by_id(1) end)
 "#,
     );
     let (mut server, mut host) = pair_with(limits);
-    session(&mut server);
+    let session = session(&mut server);
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    let pumped = host.pump(Tick::new(1000)).expect("the pump survives the deadline");
-    assert_eq!(pumped.handlers, 2, "the second timer still ran");
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    let pumped = host.pump(Tick::new(1)).expect("the pump survives the deadline");
+    assert_eq!(pumped.handlers, 2, "the second event handler still ran");
     assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
     assert!(
         pumped.errors[0].message().contains("deadline"),

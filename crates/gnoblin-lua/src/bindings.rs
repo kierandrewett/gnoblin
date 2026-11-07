@@ -222,6 +222,24 @@ pub(super) fn install<T: Transport + 'static>(
             })?,
         )?;
     }
+    {
+        let shared = Rc::clone(&shared);
+        gnoblin.set(
+            "on",
+            lua.create_function(move |lua, (event, callback): (String, Function)| {
+                subscribe_global(lua, &shared, event, callback, false)
+            })?,
+        )?;
+    }
+    {
+        let shared = Rc::clone(&shared);
+        gnoblin.set(
+            "once",
+            lua.create_function(move |lua, (event, callback): (String, Function)| {
+                subscribe_global(lua, &shared, event, callback, true)
+            })?,
+        )?;
+    }
 
     let timers = lua.create_table()?;
     {
@@ -771,6 +789,88 @@ fn subscribe<T: Transport + 'static>(
         handler,
     })
 }
+/// Subscribe to one schema-declared signal name from every object of that type.
+fn subscribe_global<T: Transport + 'static>(
+    lua: &Lua,
+    shared: &Rc<RefCell<Shared<T>>>,
+    event: String,
+    callback: Function,
+    once: bool,
+) -> mlua::Result<AnyUserData> {
+    let Some((namespace, object, signal)) = global_signal_spec(&event) else {
+        return Err(Error::runtime(format!(
+            "no schema signal named `{event}`; expected `namespace.object.signal`"
+        )));
+    };
+    let active = shared
+        .borrow()
+        .handlers
+        .values()
+        .filter(|watching| matches!(watching, Watching::GlobalSignal { .. }))
+        .count();
+    if active >= MAX_GLOBAL_SIGNAL_HANDLERS {
+        return Err(Error::runtime(format!(
+            "global event handler limit is {MAX_GLOBAL_SIGNAL_HANDLERS}"
+        )));
+    }
+    let handler = shared.borrow_mut().allocate();
+    callbacks(lua)?.raw_set(handler, callback)?;
+    shared.borrow_mut().watch(
+        handler,
+        Watching::GlobalSignal {
+            namespace: namespace.name.to_owned(),
+            object_type: object.name.to_owned(),
+            signal: signal.name.to_owned(),
+            once,
+        },
+    );
+    lua.create_userdata(Subscription {
+        shared: Rc::clone(shared),
+        handler,
+    })
+}
+
+/// Find a canonical `namespace.object.signal` name in the generated schema.
+fn global_signal_spec(name: &str) -> Option<(&'static NamespaceSpec, &'static ObjectSpec, &'static SignalSpec)> {
+    NAMESPACES.iter().find_map(|namespace| {
+        let remainder = name.strip_prefix(namespace.name)?.strip_prefix('.')?;
+        let (object_name, signal_name) = remainder.split_once('.')?;
+        if signal_name.contains('.') {
+            return None;
+        }
+        let object = namespace.objects.iter().find(|object| object.name == object_name)?;
+        let signal = object.signals.iter().find(|signal| signal.name == signal_name)?;
+        Some((namespace, object, signal))
+    })
+}
+
+/// The longest accepted global handler set, matching the pending timer bound.
+const MAX_GLOBAL_SIGNAL_HANDLERS: usize = 1024;
+
+/// Add the object identity and canonical name to a schema signal's fields.
+pub(super) fn global_signal_table<T: Transport + 'static>(
+    lua: &Lua,
+    shared: &Rc<RefCell<Shared<T>>>,
+    namespace_name: &str,
+    object_name: &str,
+    signal_name: &str,
+    object_id: ObjectId,
+    fields: &Fields,
+) -> mlua::Result<Table> {
+    let namespace = find_namespace(namespace_name)
+        .ok_or_else(|| Error::runtime(format!("unknown signal namespace `{namespace_name}`")))?;
+    let spec = find_object(namespace, object_name)
+        .ok_or_else(|| Error::runtime(format!("unknown signal object `{object_name}`")))?;
+    let signal = spec
+        .signals
+        .iter()
+        .find(|signal| signal.name == signal_name)
+        .ok_or_else(|| Error::runtime(format!("unknown signal `{signal_name}`")))?;
+    let table = signal_table(lua, shared, Some(signal.fields), fields)?;
+    table.set("name", format!("{namespace_name}.{object_name}.{signal_name}"))?;
+    table.set("object", instance(lua, namespace.name, spec, object_id)?)?;
+    Ok(table)
+}
 
 /// The fields the schema declares for one signal on one live object.
 ///
@@ -1091,7 +1191,7 @@ pub(super) struct Subscription<T: Transport> {
 
 impl<T: Transport + 'static> UserData for Subscription<T> {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("off", |lua, this, ()| {
+        methods.add_method("unsubscribe", |lua, this, ()| {
             this.shared.borrow_mut().cancel_handler(this.handler);
             forget(lua, this.handler);
             Ok(())

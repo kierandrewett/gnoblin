@@ -28,6 +28,20 @@ params = [{ name = "path_or_glob", type = "string" }]
 returns = ["boolean"]
 
 [[member]]
+name = "on"
+kind = "function"
+doc = "Subscribe to a schema-declared signal by its `namespace.object.signal` name. The handler receives an event table; the returned subscription can be unsubscribed."
+params = [{ name = "event", type = "string" }, { name = "callback", type = "fun(table)" }]
+returns = ["gnoblin.Subscription"]
+
+[[member]]
+name = "once"
+kind = "function"
+doc = "Subscribe to a schema-declared signal once. The handler receives an event table."
+params = [{ name = "event", type = "string" }, { name = "callback", type = "fun(table)" }]
+returns = ["gnoblin.Subscription"]
+
+[[member]]
 name = "timers"
 kind = "table"
 doc = "Timers run on the caller's monotonic clock, measured in seconds."

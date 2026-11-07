@@ -497,8 +497,8 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text.push_str("--- One signal handler registration.\n");
     text.push_str("---@class gnoblin.Subscription\n");
     text.push_str("local Subscription = {}\n");
-    text.push_str("--- Stop delivering the signal.\n");
-    text.push_str("function Subscription:off() end\n\n");
+    text.push_str("--- Stop delivering the event.\n");
+    text.push_str("function Subscription:unsubscribe() end\n\n");
     text.push_str("--- One timer on the caller's clock.\n");
     text.push_str("---@class gnoblin.Timer\n");
     text.push_str("local Timer = {}\n");

@@ -63,6 +63,13 @@ pub(super) enum Status {
 pub(super) enum Watching {
     /// A signal on one object, delivered while the observation is dispatched.
     Signal { object: ObjectId, signal: String },
+    /// A schema signal matched by its global `gnoblin.<object>.<signal>` name.
+    GlobalSignal {
+        namespace: String,
+        object_type: String,
+        signal: String,
+        once: bool,
+    },
     /// An extension signal, matched by namespace and `Object.Signal` member.
     Extension { namespace: String, member: String },
     /// The single completion of one operation, delivered at the end of the pump.
@@ -194,6 +201,26 @@ impl<T: Transport> Shared<T> {
             .filter(|(_, watching)| {
                 matches!(watching, Watching::Signal { object: watched, signal: watched_signal }
                     if *watched == object && watched_signal == signal)
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    /// Global handlers for one schema signal, in registration order.
+    pub(super) fn global_signal_handlers(&self, namespace: &str, object_type: &str, signal: &str) -> Vec<u64> {
+        self.handlers
+            .iter()
+            .filter(|(_, watching)| {
+                matches!(
+                    watching,
+                    Watching::GlobalSignal {
+                        namespace: watched_namespace,
+                        object_type: watched_type,
+                        signal: watched_signal,
+                        ..
+                    } if watched_namespace == namespace
+                        && watched_type == object_type
+                        && watched_signal == signal
+                )
             })
             .map(|(id, _)| *id)
             .collect()
@@ -758,15 +785,46 @@ impl<T: Transport + 'static> Host<T> {
                 }
                 let declared = crate::bindings::signal_fields(&self.shared, object, &signal);
                 let arguments = crate::bindings::signal_table(&self.lua, &self.shared, declared, &fields);
-                match arguments {
-                    Ok(arguments) => self.run_signal(object, &signal, LuaValue::Table(arguments), handlers),
-                    Err(error) => self.report(ScriptError::from_lua(&error)),
+                let kind = self
+                    .shared
+                    .borrow()
+                    .mirror
+                    .get(&object)
+                    .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
+                match (arguments, kind) {
+                    (Ok(arguments), Some((namespace, object_type))) => self.run_signal(
+                        object,
+                        &namespace,
+                        &object_type,
+                        &signal,
+                        LuaValue::Table(arguments),
+                        &fields,
+                        handlers,
+                    ),
+                    (Err(error), _) => self.report(ScriptError::from_lua(&error)),
+                    _ => {}
                 }
             }
             Observation::Closed { object, .. } => {
                 // The handler still sees the object: the mirror entry is dropped
                 // after it runs, so a `closed` callback can read the last state.
-                self.run_signal(object, "closed", LuaValue::Nil, handlers);
+                let kind = self
+                    .shared
+                    .borrow()
+                    .mirror
+                    .get(&object)
+                    .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
+                if let Some((namespace, object_type)) = kind {
+                    self.run_signal(
+                        object,
+                        &namespace,
+                        &object_type,
+                        "closed",
+                        LuaValue::Nil,
+                        &Fields::new(),
+                        handlers,
+                    );
+                }
                 crate::bindings::forget_instance(&self.lua, object);
                 let stale: Vec<u64> = {
                     let mut shared = self.shared.borrow_mut();
@@ -812,12 +870,54 @@ impl<T: Transport + 'static> Host<T> {
     }
 
     /// Run every handler watching one signal on one object.
-    fn run_signal(&mut self, object: ObjectId, signal: &str, arguments: LuaValue, handlers: &mut usize) {
-        let waiting = self.shared.borrow().signal_handlers(object, signal);
+    fn run_signal(
+        &mut self,
+        object: ObjectId,
+        namespace: &str,
+        object_type: &str,
+        signal: &str,
+        arguments: LuaValue,
+        fields: &Fields,
+        handlers: &mut usize,
+    ) {
+        let (waiting, global) = {
+            let shared = self.shared.borrow();
+            (
+                shared.signal_handlers(object, signal),
+                shared.global_signal_handlers(namespace, object_type, signal),
+            )
+        };
         for id in waiting {
             // A handler that ran may have unsubscribed another one.
             if self.shared.borrow().handlers.contains_key(&id) {
                 self.run_handler(id, Some(arguments.clone()), handlers);
+            }
+        }
+        for id in global {
+            let once = matches!(
+                self.shared.borrow().handlers.get(&id),
+                Some(Watching::GlobalSignal { once: true, .. })
+            );
+            if once {
+                // Remove the watch before entering Lua so reentrant delivery cannot run it twice.
+                self.shared.borrow_mut().cancel_handler(id);
+            }
+            if self.shared.borrow().handlers.contains_key(&id) || once {
+                match crate::bindings::global_signal_table(
+                    &self.lua,
+                    &self.shared,
+                    namespace,
+                    object_type,
+                    signal,
+                    object,
+                    fields,
+                ) {
+                    Ok(event) => self.run_handler(id, Some(LuaValue::Table(event)), handlers),
+                    Err(error) => self.report(ScriptError::from_lua(&error)),
+                }
+            }
+            if once {
+                self.forget_callback(id);
             }
         }
     }
