@@ -1046,13 +1046,13 @@ kind = "same-shape"
 reason = "a slot name the model could not read versus a parity target that runs a step's program; both hold one name string and nothing else, and that string is all they share"
 
 [[allow]]
-left = "gnoblin-backend::PhysicalExtent"
+left = "gnoblin-backend-drm::PhysicalExtent"
 right = "gnoblin-types::Size"
 kind = "same-shape"
 reason = "a connector's panel size in millimetres versus a logical pixel size; both are a width and a height, and the units differ, so the shared shape is all they have in common"
 
 [[allow]]
-left = "gnoblin-backend::Power"
+left = "gnoblin-backend-drm::Power"
 right = "gnoblin-compat-core::Switch"
 kind = "same-shape"
 reason = "a connector's DPMS state (lit or dark) versus a publish toggle an application sets; both are an on/off pair and nothing else"
@@ -1076,13 +1076,13 @@ kind = "same-name"
 reason = "authority's Pending is a consent prompt waiting for the provider; the portal's Pending is what Guard::ask could do"
 
 [[allow]]
-left = "gnoblin-backend::Change"
+left = "gnoblin-backend-drm::Change"
 right = "xdg-desktop-portal-gnoblin::Change"
 kind = "same-name"
 reason = "backend's Change is one connector's part of a plan, its target state and operations; the portal's Change is one thing a settings subscriber is told"
 
 [[allow]]
-left = "gnoblin-backend::Setting"
+left = "gnoblin-backend-drm::Setting"
 right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
 reason = "backend's libinput Setting is one device setting in libinput's configuration terms; the portal's Setting is one published setting"
@@ -1695,13 +1695,13 @@ reason = "a capture target names what a screen-cast exports; a layer scope names
 # `Namespace`, `Query`, `Options`, `Entry`, `Change`); the same spellings in other
 # crates name different things, so each reviewed pair is waived here.
 [[allow]]
-left = "gnoblin-backend::Change"
+left = "gnoblin-backend-drm::Change"
 right = "gnoblin-store::Change"
 kind = "same-name"
 reason = "a DRM plan step versus a store write notification; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-backend::Op"
+left = "gnoblin-backend-drm::Op"
 right = "gnoblin-store::Op"
 kind = "same-name"
 reason = "a DRM plan operation versus a store batch operation; the name is shared, the meaning is not"
@@ -1711,6 +1711,36 @@ left = "gnoblin-client::Reader"
 right = "gnoblin-store::Reader"
 kind = "same-name"
 reason = "a Wayland wire reader versus the store's value decoding cursor; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-backend::Setting"
+right = "gnoblin-backend-drm::Setting"
+kind = "same-name"
+reason = "backend's X11 Setting is one XSETTINGS value; the DRM crate's Setting is one libinput device setting in libinput's configuration terms"
+
+[[allow]]
+left = "gnoblin-backend-drm::Setting"
+right = "gnoblin-config::Setting"
+kind = "same-name"
+reason = "a libinput device setting the DRM backend applies versus a configuration key's catalogue entry"
+
+[[allow]]
+left = "gnoblin-backend::GammaRamp"
+right = "gnoblin-backend-drm::GammaRamp"
+kind = "same-name"
+reason = "a borrowed gamma ramp a client hands the backend versus the owned, validated table the DRM crate programs into a CRTC"
+
+[[allow]]
+left = "gnoblin-backend::OutputState"
+right = "gnoblin-backend-drm::OutputState"
+kind = "same-name"
+reason = "whether a nested output is still wanted and what the backend has told it about closing, versus what one DRM output is doing in a plan"
+
+[[allow]]
+left = "gnoblin-backend::Seat"
+right = "gnoblin-backend-drm::Seat"
+kind = "same-name"
+reason = "the nested parent's pointer and queued events versus the libseat session seat this process holds"
 
 [[allow]]
 left = "gnoblin-config::Store"

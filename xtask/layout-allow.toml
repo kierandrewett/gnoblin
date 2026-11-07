@@ -11,10 +11,6 @@ path = "build.sh"
 reason = "the build script copies the C components out of src/ and reads the patch series from patches/"
 
 [[allow]]
-path = "Cargo.toml"
-reason = "the workspace manifest comment names the root src/libinput tree that the Rust backend mirrors"
-
-[[allow]]
 path = "CMakeLists.txt"
 reason = "the CMake build reads the C control headers and sources from src/ under PROJECT_SOURCE_DIR"
 
