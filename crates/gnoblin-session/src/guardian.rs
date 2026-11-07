@@ -8,7 +8,7 @@
 
 use crate::effect::{Effect, Level};
 use crate::environment::{EnvTarget, Environment, EnvironmentRules, InheritedEnvironment};
-use crate::event::{Event, EventKind, ExitStatus, ShutdownReason, Signal};
+use crate::event::{AutostartEntry, Event, EventKind, ExitStatus, ShutdownReason, Signal};
 use crate::ids::ChildId;
 use crate::plan::{ChildKind, ChildSpec, Plan, Restart};
 use crate::recovery::{ConfigStatus, Recovery};
@@ -76,6 +76,33 @@ struct Child {
     stop: Option<StopPending>,
 }
 
+impl Child {
+    /// A record for a child that has not been spawned.
+    fn new(spec: ChildSpec) -> Self {
+        Self {
+            spec,
+            state: ChildState::Pending,
+            generation: 0,
+            deadline: None,
+            ready_at: None,
+            restart_at: None,
+            restarts: 0,
+            last_exit: None,
+            stop: None,
+        }
+    }
+
+    /// An autostart application the session still means to run: one a configuration asked for
+    /// and that has not been stopped, failed or given up.
+    fn live_autostart(&self) -> bool {
+        self.spec.kind == ChildKind::Autostart
+            && matches!(
+                self.state,
+                ChildState::Pending | ChildState::Ready | ChildState::Running | ChildState::Backoff
+            )
+    }
+}
+
 /// The reverse-order stop in progress.
 struct Stop {
     /// Children to stop, grouped into contiguous runs of the same kind and
@@ -109,6 +136,8 @@ pub struct Guardian {
     reached_up: bool,
     /// The newest time any event carried.
     now: Tick,
+    /// The identifier the next autostart child added by a configuration takes.
+    next_id: u32,
 }
 
 impl Guardian {
@@ -121,21 +150,15 @@ impl Guardian {
     /// A guardian that continues from the recovery state the last session left.
     #[must_use]
     pub fn with_recovery(plan: Plan, rules: Rules, recovery: Recovery) -> Self {
-        let children = plan
+        // Autostart children are added while the session runs, so their identifiers continue
+        // above every declared one and no removed record is ever reused.
+        let next_id = plan
             .children()
             .iter()
-            .map(|spec| Child {
-                spec: spec.clone(),
-                state: ChildState::Pending,
-                generation: 0,
-                deadline: None,
-                ready_at: None,
-                restart_at: None,
-                restarts: 0,
-                last_exit: None,
-                stop: None,
-            })
-            .collect();
+            .map(|spec| spec.id.get())
+            .max()
+            .map_or(1, |max| max.saturating_add(1));
+        let children = plan.children().iter().map(|spec| Child::new(spec.clone())).collect();
         Self {
             plan,
             rules,
@@ -149,6 +172,7 @@ impl Guardian {
             stop_reason: None,
             reached_up: false,
             now: Tick::ZERO,
+            next_id,
         }
     }
 
@@ -180,7 +204,9 @@ impl Guardian {
                 status,
             } => self.exited(child, generation, status, now, &mut effects),
             EventKind::Shutdown { reason } => self.end(reason, now, &mut effects),
-            EventKind::ConfigAccepted { revision, .. } => self.config_accepted(revision, &mut effects),
+            EventKind::ConfigAccepted { revision, autostart } => {
+                self.config_accepted(revision, autostart, now, &mut effects);
+            }
             EventKind::ConfigRejected { revision, diagnostic } => {
                 self.config_rejected(revision, &diagnostic, &mut effects);
             }
@@ -243,7 +269,20 @@ impl Guardian {
     /// One child's status.
     #[must_use]
     pub fn status(&self, child: ChildId) -> Option<ChildStatus> {
-        self.plan.index(child).map(|index| self.status_at(index))
+        self.index(child).map(|index| self.status_at(index))
+    }
+
+    /// One child's declaration, as the guardian currently holds it: a child a configuration
+    /// added is declared here and nowhere in the plan.
+    #[must_use]
+    pub fn spec(&self, child: ChildId) -> Option<&ChildSpec> {
+        self.index(child).map(|index| &self.children[index].spec)
+    }
+
+    /// The position of a child in the record list. Records are never removed, so the
+    /// position stays valid for the whole session.
+    fn index(&self, child: ChildId) -> Option<usize> {
+        self.children.iter().position(|record| record.spec.id == child)
     }
 
     /// Every child's status, in start order.
@@ -393,7 +432,7 @@ impl Guardian {
         now: Tick,
         effects: &mut Vec<Effect>,
     ) {
-        let Some(index) = self.plan.index(child) else {
+        let Some(index) = self.index(child) else {
             note(
                 Level::Warning,
                 format!("[guardian] readiness from unknown child {}", child.get()),
@@ -497,7 +536,7 @@ impl Guardian {
     }
 
     fn exited(&mut self, child: ChildId, generation: u64, status: ExitStatus, now: Tick, effects: &mut Vec<Effect>) {
-        let Some(index) = self.plan.index(child) else {
+        let Some(index) = self.index(child) else {
             note(
                 Level::Warning,
                 format!("[guardian] exit from unknown child {}", child.get()),
@@ -537,6 +576,27 @@ impl Guardian {
             self.children[index].restart_at = None;
             note(Level::Debug, format!("[guardian] {name} stopped"), effects);
             self.stop_step(now, effects);
+            return;
+        }
+        if self.children[index].state == ChildState::Stopping
+            && self.children[index].stop.map(|stop| stop.cause) == Some(StopCause::Retired)
+        {
+            // The configuration dropped this application while the session keeps running. Its
+            // exit is what the retirement asked for, so it is not a failure and never restarts.
+            self.children[index].state = ChildState::Stopped;
+            self.children[index].stop = None;
+            self.children[index].deadline = None;
+            note(
+                Level::Info,
+                format!(
+                    "[guardian] {} stopped; the configuration no longer starts it",
+                    self.children[index].spec.name
+                ),
+                effects,
+            );
+            // A stopping child holds the start sequence and the Up transition back, so
+            // letting it go may let either proceed.
+            self.ladder(now, effects);
             return;
         }
         match self.children[index].state {
@@ -695,6 +755,46 @@ impl Guardian {
                 killed: true,
             });
             child.deadline = Some(now.saturating_add(grace.get()));
+        }
+
+        // A retired application that ignored its SIGTERM gets the same forced kill a session stop
+        // gives, so a wedged application cannot hold the start sequence open indefinitely.
+        for index in 0..self.children.len() {
+            let child = &mut self.children[index];
+            if child.state != ChildState::Stopping || child.stop.map(|stop| stop.cause) != Some(StopCause::Retired) {
+                continue;
+            }
+            let Some(deadline) = child.deadline else {
+                continue;
+            };
+            if deadline > now {
+                continue;
+            }
+            if child.stop.is_some_and(|stop| stop.killed) {
+                note(
+                    Level::Error,
+                    format!("[guardian] {} did not exit after the forced kill", child.spec.name),
+                    effects,
+                );
+                child.state = ChildState::Stopped;
+                child.stop = None;
+                child.deadline = None;
+            } else {
+                note(
+                    Level::Warning,
+                    format!(
+                        "[guardian] {} did not stop within {} ms; killing it",
+                        child.spec.name,
+                        grace.get()
+                    ),
+                    effects,
+                );
+                effects.push(Effect::Kill { child: child.spec.id });
+                if let Some(stop) = &mut child.stop {
+                    stop.killed = true;
+                }
+                child.deadline = Some(now.saturating_add(grace.get()));
+            }
         }
 
         // A killed child the caller never reported: the kernel guarantees the
@@ -951,7 +1051,7 @@ impl Guardian {
         }
     }
 
-    fn config_accepted(&mut self, revision: u64, effects: &mut Vec<Effect>) {
+    fn config_accepted(&mut self, revision: u64, autostart: Vec<AutostartEntry>, now: Tick, effects: &mut Vec<Effect>) {
         self.recovery.config.last_good = Some(revision);
         self.recovery.config.status = ConfigStatus::Accepted;
         note(
@@ -968,6 +1068,98 @@ impl Guardian {
             );
         }
         self.persist(effects);
+        self.reconcile_autostart(&autostart, now, effects);
+    }
+
+    /// Bring the autostart children in line with the configuration just accepted.
+    ///
+    /// A live record the configuration still lists keeps running untouched. A listed entry with no
+    /// record gets a new child. A live record the configuration dropped is retired: an unspawned one
+    /// is simply forgotten, and a running one is asked to exit, so it can save its state, with the
+    /// same grace period a session stop gives.
+    fn reconcile_autostart(&mut self, entries: &[AutostartEntry], now: Tick, effects: &mut Vec<Effect>) {
+        // A session that is stopping or has ended starts nothing new.
+        if matches!(self.session, SessionState::Stopping | SessionState::Ended) {
+            return;
+        }
+        let mut claimed = vec![false; entries.len()];
+        for index in 0..self.children.len() {
+            if !self.children[index].live_autostart() {
+                continue;
+            }
+            let spec = &self.children[index].spec;
+            let entry = entries.iter().enumerate().position(|(entry, wanted)| {
+                !claimed[entry] && wanted.name == spec.name && wanted.command == spec.command
+            });
+            match entry {
+                Some(entry) => claimed[entry] = true,
+                None => self.retire_autostart(index, now, effects),
+            }
+        }
+        for (entry, wanted) in entries.iter().enumerate() {
+            if claimed[entry] {
+                continue;
+            }
+            let id = ChildId::new(self.next_id);
+            self.next_id += 1;
+            self.children.push(Child::new(ChildSpec::autostart(
+                id,
+                wanted.name.clone(),
+                wanted.command.clone(),
+            )));
+            note(
+                Level::Info,
+                format!("[guardian] autostart {} added by the configuration", wanted.name),
+                effects,
+            );
+        }
+        if self.reached_up {
+            // The start sequence is over, so nothing else waits on a new application: start it now.
+            for index in 0..self.children.len() {
+                let child = &self.children[index];
+                if child.state == ChildState::Pending && child.spec.kind == ChildKind::Autostart {
+                    self.spawn(index, now, effects);
+                }
+            }
+        } else {
+            // Still starting: the start sequence reaches the new entries in order.
+            self.ladder(now, effects);
+        }
+    }
+
+    /// Stop one autostart child the configuration no longer starts.
+    fn retire_autostart(&mut self, index: usize, now: Tick, effects: &mut Vec<Effect>) {
+        let grace = self.rules.stop_grace;
+        let child = &mut self.children[index];
+        if matches!(child.state, ChildState::Pending | ChildState::Backoff) {
+            // Never spawned, or waiting for a restart: there is no process to stop.
+            child.state = ChildState::Stopped;
+            child.restart_at = None;
+            note(
+                Level::Info,
+                format!("[guardian] {} removed by the configuration", child.spec.name),
+                effects,
+            );
+            return;
+        }
+        child.state = ChildState::Stopping;
+        child.stop = Some(StopPending {
+            cause: StopCause::Retired,
+            killed: false,
+        });
+        child.deadline = Some(now.saturating_add(grace.get()));
+        effects.push(Effect::Signal {
+            child: child.spec.id,
+            signal: Signal::Term,
+        });
+        note(
+            Level::Info,
+            format!(
+                "[guardian] stopping {}; the configuration no longer starts it",
+                child.spec.name
+            ),
+            effects,
+        );
     }
 
     fn config_rejected(&mut self, revision: u64, diagnostic: &str, effects: &mut Vec<Effect>) {

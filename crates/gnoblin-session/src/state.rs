@@ -129,6 +129,9 @@ pub(crate) enum StopCause {
     Unready,
     /// The session is ending and its turn in reverse start order has come.
     Session,
+    /// The configuration no longer enables this autostart application, so it is stopped
+    /// while the session keeps running. Its exit is expected and is not restarted.
+    Retired,
 }
 
 /// A snapshot of one child, for diagnostics and tests.

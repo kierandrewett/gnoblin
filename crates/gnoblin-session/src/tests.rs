@@ -812,3 +812,125 @@ fn restart_policies_match_the_plan() {
     ]);
     assert_eq!(duplicate, Err(crate::PlanError::DuplicateId(ChildId::new(1))));
 }
+
+#[test]
+fn a_configuration_that_keeps_an_entry_leaves_its_application_running() {
+    let mut guardian = up();
+    let effects = guardian.apply(at(
+        100,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: vec![
+                crate::AutostartEntry {
+                    name: "first.desktop".to_owned(),
+                    command: Vec::new(),
+                },
+                crate::AutostartEntry {
+                    name: "second.desktop".to_owned(),
+                    command: Vec::new(),
+                },
+            ],
+        },
+    ));
+    assert!(signals(effects).is_empty(), "a kept entry is not signalled");
+    assert_eq!(state(&guardian, FIRST_APP), ChildState::Running);
+    assert_eq!(state(&guardian, SECOND_APP), ChildState::Running);
+}
+
+#[test]
+fn a_running_application_the_configuration_drops_is_asked_to_exit_and_never_restarts() {
+    let mut guardian = up();
+    let effects = guardian.apply(at(
+        100,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: Vec::new(),
+        },
+    ));
+    assert_eq!(signals(effects), vec![FIRST_APP, SECOND_APP]);
+    assert_eq!(state(&guardian, FIRST_APP), ChildState::Stopping);
+
+    let effects = exited(&mut guardian, FIRST_APP, ExitStatus::Exited(0), 110);
+    assert_eq!(state(&guardian, FIRST_APP), ChildState::Stopped);
+    assert!(spawns(effects).is_empty(), "a retired application is not restarted");
+    assert_eq!(
+        guardian.session(),
+        SessionState::Up,
+        "retiring one application ends nothing"
+    );
+}
+
+#[test]
+fn a_retired_application_that_ignores_its_grace_period_is_killed() {
+    let mut guardian = up();
+    guardian.apply(at(
+        100,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: Vec::new(),
+        },
+    ));
+    let effects = tick(&mut guardian, 10_000);
+    assert!(kills(effects).contains(&FIRST_APP));
+}
+
+#[test]
+fn a_pending_application_the_configuration_drops_is_forgotten() {
+    let mut guardian = guardian();
+    guardian.apply(at(0, EventKind::Start));
+    ready(&mut guardian, COMPOSITOR, 1);
+    assert_eq!(state(&guardian, FIRST_APP), ChildState::Pending);
+    let effects = guardian.apply(at(
+        2,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: Vec::new(),
+        },
+    ));
+    assert!(signals(effects).is_empty(), "nothing to signal before a spawn");
+    assert_eq!(state(&guardian, FIRST_APP), ChildState::Stopped);
+}
+
+#[test]
+fn a_new_autostart_entry_gets_a_fresh_child_while_the_session_is_up() {
+    let mut guardian = up();
+    let effects = guardian.apply(at(
+        100,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: vec![crate::AutostartEntry {
+                name: "third.desktop".to_owned(),
+                command: vec!["third".to_owned()],
+            }],
+        },
+    ));
+    let added = ChildId::new(7);
+    assert_eq!(guardian.status(added).expect("added child").name, "third.desktop");
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+#[test]
+fn a_configuration_accepted_during_shutdown_starts_nothing() {
+    let mut guardian = up();
+    guardian.apply(at(
+        100,
+        EventKind::Shutdown {
+            reason: crate::ShutdownReason::Logout,
+        },
+    ));
+    let effects = guardian.apply(at(
+        101,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: vec![crate::AutostartEntry {
+                name: "late.desktop".to_owned(),
+                command: vec!["late".to_owned()],
+            }],
+        },
+    ));
+    assert!(spawns(effects).is_empty());
+    assert!(
+        guardian.status(ChildId::new(7)).is_none(),
+        "no child is added while stopping"
+    );
+}

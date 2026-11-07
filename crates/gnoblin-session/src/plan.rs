@@ -135,6 +135,10 @@ pub struct ChildSpec {
     pub ready_within: Option<Tick>,
     /// What happens when its process ends.
     pub restart: Restart,
+    /// The program and arguments an autostart application runs, directly without a
+    /// shell. Empty for every other kind, whose process the runtime or the session
+    /// manager starts itself.
+    pub command: Vec<String>,
 }
 
 impl ChildSpec {
@@ -163,6 +167,17 @@ impl ChildSpec {
                 None
             },
             restart,
+            command: Vec::new(),
+        }
+    }
+
+    /// One autostart application: plain desktop programs with no readiness channel and no
+    /// restart, because a user application that dies is not the session's to raise.
+    #[must_use]
+    pub fn autostart(id: ChildId, name: impl Into<String>, command: Vec<String>) -> Self {
+        Self {
+            command,
+            ..Self::new(id, ChildKind::Autostart, name)
         }
     }
 }

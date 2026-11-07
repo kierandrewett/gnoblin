@@ -254,7 +254,7 @@ impl Supervisor {
 
     /// Start one child, with the descriptors its role needs.
     fn spawn(&mut self, child: ChildId, generation: u64, name: &str, environment: &Environment) {
-        let Some(spec) = self.guardian.plan().spec(child).cloned() else {
+        let Some(spec) = self.guardian.spec(child).cloned() else {
             log(
                 Level::Warning,
                 &format!(
@@ -433,7 +433,15 @@ impl Supervisor {
     /// The command that starts one child.
     fn command(&self, spec: &ChildSpec) -> Command {
         match spec.kind {
-            ChildKind::Autostart => Command::new(&spec.name),
+            ChildKind::Autostart => match spec.command.split_first() {
+                Some((program, args)) => {
+                    let mut command = Command::new(program);
+                    command.args(args);
+                    command
+                }
+                // A plan-declared entry without a command runs by name, as it always has.
+                None => Command::new(&spec.name),
+            },
             ChildKind::Compositor | ChildKind::Runtime | ChildKind::Services | ChildKind::Front => {
                 let mut command = Command::new(&self.config.program);
                 let role = self.role_name(spec).unwrap_or_else(|| "guardian".to_owned());
