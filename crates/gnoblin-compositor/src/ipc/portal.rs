@@ -30,8 +30,8 @@
 
 use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
-use gnoblin_portal::DialogScheme;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
+use gnoblin_portal_ui::ui::DialogScheme;
 use gnoblin_proto::Envelope;
 use gnoblin_types::{ClientId, KeyState, OutputId, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent, WindowProcess};

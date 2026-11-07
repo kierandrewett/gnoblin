@@ -6,7 +6,7 @@
 
 use egui::{Key, ScrollArea, TextEdit, Ui};
 use gnoblin_portal_core::model::{AppChooser, DialogError, Settled};
-use gnoblin_portal_core::ui::{DialogUi, error_text};
+use gnoblin_portal_ui::ui::{DialogUi, error_text};
 use gnoblin_types::Tick;
 
 /// An AppChooser on screen. Owns the model and the state only the view needs.

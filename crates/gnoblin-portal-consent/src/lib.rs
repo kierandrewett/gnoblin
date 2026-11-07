@@ -5,7 +5,7 @@
 
 use egui::{Button, Key, Ui};
 use gnoblin_portal_core::model::{Consent, ConsentDecision, ConsentInput, ConsentTarget, Settled};
-use gnoblin_portal_core::ui::DialogUi;
+use gnoblin_portal_ui::ui::DialogUi;
 use gnoblin_types::Tick;
 
 /// A consent request on screen. Owns the model, which owns the decision.

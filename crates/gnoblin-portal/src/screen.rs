@@ -5,9 +5,9 @@ use egui::Event;
 use gnoblin_portal_appchooser::AppChooserUi;
 use gnoblin_portal_consent::ConsentUi;
 use gnoblin_portal_core::model::{Dialog, DirectoryListing, ScreenKey, Settled};
-use gnoblin_portal_core::paint::Frame;
-use gnoblin_portal_core::ui::{DialogShell, DialogUi, Setup, key_events, press_events, release_events};
 use gnoblin_portal_filechooser::FileChooserUi;
+use gnoblin_portal_ui::paint::Frame;
+use gnoblin_portal_ui::ui::{DialogShell, DialogUi, Setup, key_events, press_events, release_events};
 use gnoblin_types::Tick;
 
 /// The one place that maps a dialog kind to its UI crate. A new dialog kind adds

@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 gnoblin-types.workspace = true
 gnoblin-portal-core.workspace = true
+gnoblin-portal-ui.workspace = true
 gnoblin-portal-consent.workspace = true
 gnoblin-portal-filechooser.workspace = true
 gnoblin-portal-appchooser.workspace = true

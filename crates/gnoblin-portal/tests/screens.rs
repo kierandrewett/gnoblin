@@ -1,9 +1,10 @@
 //! The portal screens driven by key events, through the same shell the compositor uses.
 
-use gnoblin_portal::{DialogScheme, PortalScreen, Setup};
+use gnoblin_portal::PortalScreen;
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, FileChooser, FileChooserMode, Grant, ScreenKey, Settled,
 };
+use gnoblin_portal_ui::ui::{DialogScheme, Setup};
 use gnoblin_types::Tick;
 
 const WIDTH: usize = 320;

@@ -10,6 +10,7 @@ publish.workspace = true
 egui.workspace = true
 gnoblin-types.workspace = true
 gnoblin-portal-core.workspace = true
+gnoblin-portal-ui.workspace = true
 
 [lints]
 workspace = true

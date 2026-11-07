@@ -14,12 +14,13 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
-use gnoblin_portal::{DialogScheme, PortalScreen, Setup};
+use gnoblin_portal::PortalScreen;
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, DirectoryListing, FileChooser, FileChooserMode, FileEntry,
     FileFilter, ScreenKey,
 };
-use gnoblin_portal_core::paint::Frame;
+use gnoblin_portal_ui::paint::Frame;
+use gnoblin_portal_ui::ui::{DialogScheme, Setup};
 use gnoblin_types::Tick;
 
 /// The frame size the compositor opens a portal dialog at (`ipc/portal.rs`).
