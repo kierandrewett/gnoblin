@@ -9,8 +9,8 @@ Counts cover the rows below, not every setting leaf. Leaf-level coverage of all 
 | Status  | Rows |
 | ------- | ---- |
 | BUILT   | 7    |
-| PARTIAL | 9    |
-| MISSING | 16   |
+| PARTIAL | 11   |
+| MISSING | 14   |
 | CHANGED | 1    |
 
 ## Lua functions
