@@ -194,9 +194,15 @@ The service implements these methods on the session bus at
   path clears it. `Service.CreateCollection` creates a labelled collection.
 - `Collection` and `Item` interfaces: `SearchItems`, `GetSecret`, property reads
   and property writes (`Label`, and `Attributes` on items), `CreateItem` with the
-  replace flag, `Item.SetSecret`, and `Delete` on both. Writes on a locked store
-  return `IsLocked`; they do not open the unlock prompt. Attributes are stored in
-  an indexed table, so `SearchItems` does not decrypt every item.
+  replace flag, `Item.SetSecret`, and `Delete` on both. `Collection.CreateItem`
+  on a locked store is deferred, as the specification says: it answers `/` for
+  the item and a `Prompt`, decrypts the secret at once, and holds the plain bytes
+  in a zeroing buffer. The write is applied once, when that prompt completes
+  undismissed, and `Completed` carries the new item. A dismissed prompt, a wrong
+  password, no claimed handler or a timeout drops the write. The other writes
+  (`Item.SetSecret`, `Delete`, property writes, `CreateCollection`) on a locked
+  store still return `IsLocked` and do not open the prompt. Attributes are stored
+  in an indexed table, so `SearchItems` does not decrypt every item.
 - `Prompt` objects: `Prompt(window-id)` and `Dismiss`. The `Completed` signal
   carries the result. The shell answers `prompt.secret` requests; see
   `docs/shell-api/passphrase-prompts.md`.

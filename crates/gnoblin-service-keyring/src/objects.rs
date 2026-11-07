@@ -7,7 +7,7 @@
 //! every method that needs the store answers `org.freedesktop.Secret.Error.IsLocked`.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use gnoblin_keyring_store::{CollectionId, ItemId, Keyring, KeyringError};
 use zbus::ObjectServer;
@@ -45,11 +45,40 @@ const NO_OBJECT: &str = "/";
 /// session `parameters` is the IV and `value` the AES-128-CBC ciphertext.
 pub type WireSecret = (OwnedObjectPath, Vec<u8>, Vec<u8>, String);
 
+/// A write a client made while the store was locked. It waits under the prompt that will unlock
+/// the store, and is applied once, when that prompt completes undismissed. The secret is
+/// decrypted when the call arrives, because the client may close its session before the user
+/// answers; only the plain bytes are kept, in a buffer that is zeroed when it is dropped.
+pub(crate) enum PendingWrite {
+    CreateItem {
+        target: CollectionTarget,
+        label: String,
+        content_type: String,
+        secret: Zeroizing<Vec<u8>>,
+        attributes: Vec<(String, String)>,
+        replace: bool,
+    },
+}
+
+/// One item a deferred write produced, so the async side can register its object and signal.
+#[derive(Debug)]
+struct AppliedItem {
+    collection: CollectionId,
+    client: String,
+    item: ItemId,
+    created: bool,
+}
+
 /// The state every object shares. `keyring` is `None` while the store is locked.
 pub struct SecretServiceState {
     keyring: Option<Keyring>,
     sessions: HashMap<u64, DhSessionKey>,
     next_id: u64,
+    /// Writes waiting for an unlock, keyed by the path of the prompt each one is waiting on.
+    pending: HashMap<String, Vec<PendingWrite>>,
+    /// The unlock source, so a collection can raise an unlock prompt. Weak, because the source
+    /// already holds this state.
+    source: Option<Weak<Mutex<UnlockKeySource>>>,
 }
 
 /// The shared state handle every object holds.
@@ -91,6 +120,8 @@ pub fn new_state(keyring: Option<Keyring>) -> State {
         keyring,
         sessions: HashMap::new(),
         next_id: 1,
+        pending: HashMap::new(),
+        source: None,
     }))
 }
 
@@ -421,13 +452,7 @@ impl ServiceObject {
         if lock(&self.state).keyring.is_some() {
             return Ok((objects, owned_path(NO_OBJECT)?));
         }
-        let id = lock(&self.state).fresh_id();
-        let path = format!("{PROMPT_PREFIX}{id}");
-        let prompt = PromptObject {
-            path: path.clone(),
-            source: Arc::clone(&self.source),
-        };
-        server.at(path.as_str(), prompt).await.map_err(failed)?;
+        let path = new_prompt(&self.state, Arc::clone(&self.source), server).await?;
         Ok((Vec::new(), owned_path(&path)?))
     }
 
@@ -604,6 +629,12 @@ fn encrypt_item(state: &State, session: &OwnedObjectPath, path: &str) -> Result<
 /// sent. A ciphertext that does not decrypt under its session is an argument error.
 fn plain_secret(shared: &SecretServiceState, secret: &WireSecret) -> Result<(Zeroizing<Vec<u8>>, String), SecretError> {
     shared.open()?;
+    decrypt_wire(shared, secret)
+}
+
+/// [`plain_secret`] without the lock check. A deferred write decrypts while the store is still
+/// locked, so the session key is used before the client can close its session.
+fn decrypt_wire(shared: &SecretServiceState, secret: &WireSecret) -> Result<(Zeroizing<Vec<u8>>, String), SecretError> {
     let (session, iv, cipher, content_type) = secret;
     let key = session_id(session.as_str())
         .and_then(|id| shared.sessions.get(&id))
@@ -785,6 +816,11 @@ impl CollectionObject {
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(OwnedObjectPath, OwnedObjectPath), SecretError> {
         let (label, attributes) = item_properties(properties)?;
+        if lock(&self.state).keyring.is_none() {
+            let prompt =
+                defer_create_item(&self.state, server, self.target, label, attributes, &secret, replace).await?;
+            return Ok((owned_path(NO_OBJECT)?, owned_path(&prompt)?));
+        }
         let (collection, id, created) = {
             let mut shared = lock(&self.state);
             let (plain, content_type) = plain_secret(&shared, &secret)?;
@@ -1064,6 +1100,7 @@ impl SecretSessionObject {
 pub struct PromptObject {
     pub path: String,
     pub source: Arc<Mutex<UnlockKeySource>>,
+    pub state: State,
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Prompt")]
@@ -1079,6 +1116,7 @@ impl PromptObject {
             Ok(()) => Ok(()),
             Err(reason) => {
                 log::info!(%reason, "the password prompt could not be offered");
+                drop_pending(&self.state, &self.path);
                 finish_prompt(&self.path, &emitter, server, true).await
             }
         }
@@ -1090,6 +1128,7 @@ impl PromptObject {
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(), SecretError> {
         lock_source(&self.source).dismiss_password(&self.path);
+        drop_pending(&self.state, &self.path);
         finish_prompt(&self.path, &emitter, server, true).await
     }
 
@@ -1116,15 +1155,195 @@ async fn finish_prompt(
     Ok(())
 }
 
-/// Emits `Completed` on the prompt at `path` from outside its method, then removes it. `Completed`
-/// carries only whether the prompt was dismissed, never the password.
+/// Emits `Completed` on the prompt at `path` from outside its method, then removes it. On an
+/// undismissed prompt it first applies the writes that waited on it, and `Completed` carries the
+/// first item they made. `Completed` never carries the password. A dismissed prompt, or a write
+/// that cannot be applied, drops the waiting writes and reports dismissed.
 pub(crate) async fn emit_completed(server: &ObjectServer, path: &str, dismissed: bool) -> Result<(), SecretError> {
+    let state = {
+        let prompt = server.interface::<_, PromptObject>(path).await.map_err(failed)?;
+        let prompt = prompt.get().await;
+        prompt.state.clone()
+    };
+    let (dismissed, result) = if dismissed {
+        drop_pending(&state, path);
+        (true, None)
+    } else {
+        match apply_pending(server, &state, path).await {
+            Ok(result) => (false, result),
+            Err(error) => {
+                log::warn!(?error, "a write that waited on the unlock could not be applied");
+                (true, None)
+            }
+        }
+    };
     {
         let prompt = server.interface::<_, PromptObject>(path).await.map_err(failed)?;
-        PromptObject::completed(prompt.signal_emitter(), dismissed, Variant::from("")).await?;
+        let result = match result {
+            Some(item) => Variant::from(item),
+            None => Variant::from(""),
+        };
+        PromptObject::completed(prompt.signal_emitter(), dismissed, result).await?;
     }
     server.remove::<PromptObject, _>(path).await.map_err(failed)?;
     Ok(())
+}
+
+/// Remember the unlock source, so a collection can raise an unlock prompt for a locked write.
+pub(crate) fn install_source(state: &State, source: &Arc<Mutex<UnlockKeySource>>) {
+    lock(state).source = Some(Arc::downgrade(source));
+}
+
+/// Create and register a prompt object that offers the unlock when its caller calls `Prompt`.
+async fn new_prompt(
+    state: &State,
+    source: Arc<Mutex<UnlockKeySource>>,
+    server: &ObjectServer,
+) -> Result<String, SecretError> {
+    let id = lock(state).fresh_id();
+    let path = format!("{PROMPT_PREFIX}{id}");
+    let prompt = PromptObject {
+        path: path.clone(),
+        source,
+        state: state.clone(),
+    };
+    server.at(path.as_str(), prompt).await.map_err(failed)?;
+    Ok(path)
+}
+
+/// `CreateItem` on a locked store. The secret is decrypted now and held until the user unlocks;
+/// the call answers `/` for the item and a prompt for the unlock, as the spec says.
+async fn defer_create_item(
+    state: &State,
+    server: &ObjectServer,
+    target: CollectionTarget,
+    label: String,
+    attributes: Vec<(String, String)>,
+    secret: &WireSecret,
+    replace: bool,
+) -> Result<String, SecretError> {
+    let source = lock(state)
+        .source
+        .as_ref()
+        .and_then(Weak::upgrade)
+        .ok_or_else(|| SecretError::Failed("the unlock is not available".to_owned()))?;
+    let path = new_prompt(state, source, server).await?;
+    if let Err(error) = queue_create_item(state, &path, target, label, attributes, secret, replace) {
+        server.remove::<PromptObject, _>(path.as_str()).await.map_err(failed)?;
+        return Err(error);
+    }
+    Ok(path)
+}
+
+/// Decrypt `secret` and park the write under `prompt`. Nothing is written to the store.
+fn queue_create_item(
+    state: &State,
+    prompt: &str,
+    target: CollectionTarget,
+    label: String,
+    attributes: Vec<(String, String)>,
+    secret: &WireSecret,
+    replace: bool,
+) -> Result<(), SecretError> {
+    let mut shared = lock(state);
+    let (secret, content_type) = decrypt_wire(&shared, secret)?;
+    shared
+        .pending
+        .entry(prompt.to_owned())
+        .or_default()
+        .push(PendingWrite::CreateItem {
+            target,
+            label,
+            content_type,
+            secret,
+            attributes,
+            replace,
+        });
+    Ok(())
+}
+
+/// Forget the writes that waited on `prompt`. Their secret buffers are zeroed as they drop.
+fn drop_pending(state: &State, prompt: &str) {
+    lock(state).pending.remove(prompt);
+}
+
+/// Write the items that waited on `prompt` into the now-open store. The waiting writes are taken
+/// out first, so a second call finds nothing and a write is never applied twice. A locked store
+/// answers `IsLocked` and the writes are gone.
+fn apply_pending_state(state: &State, prompt: &str) -> Result<Vec<AppliedItem>, SecretError> {
+    let mut shared = lock(state);
+    let writes = shared.pending.remove(prompt).unwrap_or_default();
+    let mut applied = Vec::new();
+    for write in writes {
+        let PendingWrite::CreateItem {
+            target,
+            label,
+            content_type,
+            secret,
+            attributes,
+            replace,
+        } = write;
+        let keyring = shared.open_mut()?;
+        let collection = match target {
+            CollectionTarget::Id(id) => id,
+            CollectionTarget::Default => default_collection(keyring)?,
+        };
+        let (item, created) = write_item(
+            keyring,
+            collection,
+            &label,
+            &content_type,
+            &secret,
+            &attributes,
+            replace,
+        )?;
+        applied.push(AppliedItem {
+            collection,
+            client: client_path(keyring, collection)?,
+            item,
+            created,
+        });
+    }
+    Ok(applied)
+}
+
+/// Apply the writes that waited on `prompt`, register the objects they made and tell their
+/// collections. Returns the path of the first item, for the prompt's `Completed` result.
+async fn apply_pending(
+    server: &ObjectServer,
+    state: &State,
+    prompt: &str,
+) -> Result<Option<OwnedObjectPath>, SecretError> {
+    let mut first = None;
+    for applied in apply_pending_state(state, prompt)? {
+        let path = item_path(applied.collection, applied.item);
+        let item = owned_path(&path)?;
+        let collection = server
+            .interface::<_, CollectionObject>(applied.client.as_str())
+            .await
+            .map_err(failed)?;
+        if applied.created {
+            server
+                .at(
+                    path.as_str(),
+                    ItemObject {
+                        state: state.clone(),
+                        id: applied.item,
+                    },
+                )
+                .await
+                .map_err(failed)?;
+            CollectionObject::item_created(collection.signal_emitter(), &item)
+                .await
+                .map_err(failed)?;
+        } else {
+            CollectionObject::item_changed(collection.signal_emitter(), &item)
+                .await
+                .map_err(failed)?;
+        }
+        first.get_or_insert(item);
+    }
+    Ok(first)
 }
 
 #[cfg(test)]
@@ -1486,5 +1705,194 @@ mod tests {
         let named = read_alias_in(Some(&keyring), DEFAULT_ALIAS).expect("alias");
         assert_eq!(named.as_str(), DEFAULT_COLLECTION_PATH);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A locked state with session `id`, and the client half of its DH pair.
+    fn locked_state_with_session(id: u64) -> (State, DhSessionKey) {
+        let (server, client) = dh::session_pair();
+        let state = new_state(None);
+        lock(&state).sessions.insert(id, server);
+        (state, client)
+    }
+
+    fn wire(client: &DhSessionKey, session: u64, plain: &[u8]) -> WireSecret {
+        let (iv, cipher) = dh::encrypt(client, plain).expect("encrypt");
+        (session_path(session), iv, cipher, "text/plain".to_owned())
+    }
+
+    /// Unlock `state` with a fresh store that holds the default collection, as the unlock path does.
+    fn unlock_into(state: &State, label: &str) -> std::path::PathBuf {
+        let (path, keyring) = open_store(label);
+        let collection = keyring.create_collection("Login").expect("collection");
+        keyring.set_alias(DEFAULT_ALIAS, collection).expect("alias");
+        install_keyring(state, Some(keyring));
+        path
+    }
+
+    fn queue(
+        state: &State,
+        prompt: &str,
+        client: &DhSessionKey,
+        plain: &[u8],
+        replace: bool,
+    ) -> Result<(), SecretError> {
+        queue_create_item(
+            state,
+            prompt,
+            CollectionTarget::Default,
+            "mail".to_owned(),
+            attributes(&[("app", "mail")]),
+            &wire(client, 1, plain),
+            replace,
+        )
+    }
+
+    #[test]
+    fn a_deferred_write_stores_nothing_until_it_is_applied() {
+        let (state, client) = locked_state_with_session(1);
+        queue(&state, "/prompt/1", &client, b"hunter2", false).expect("queued while locked");
+        assert_eq!(lock(&state).pending.get("/prompt/1").map(Vec::len), Some(1));
+        let path = unlock_into(&state, "defer-wait");
+        {
+            let shared = lock(&state);
+            let keyring = shared.open().expect("open");
+            let collection = default_collection(keyring).expect("default");
+            assert!(
+                keyring.items_in(collection).expect("list").is_empty(),
+                "nothing written yet"
+            );
+        }
+        let applied = apply_pending_state(&state, "/prompt/1").expect("applied");
+        assert_eq!(applied.len(), 1);
+        assert!(applied[0].created);
+        let shared = lock(&state);
+        let stored = shared
+            .open()
+            .expect("open")
+            .item(applied[0].item)
+            .expect("read")
+            .expect("present");
+        assert_eq!(*stored.secret, b"hunter2".to_vec());
+        assert_eq!(stored.content_type, "text/plain");
+        assert_eq!(stored.attributes, attributes(&[("app", "mail")]));
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_dropped_write_is_never_applied() {
+        let (state, client) = locked_state_with_session(1);
+        queue(&state, "/prompt/1", &client, b"hunter2", false).expect("queued");
+        drop_pending(&state, "/prompt/1");
+        let path = unlock_into(&state, "defer-drop");
+        assert!(
+            apply_pending_state(&state, "/prompt/1")
+                .expect("nothing to apply")
+                .is_empty()
+        );
+        let shared = lock(&state);
+        let keyring = shared.open().expect("open");
+        let collection = default_collection(keyring).expect("default");
+        assert!(keyring.items_in(collection).expect("list").is_empty());
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_deferred_write_is_applied_exactly_once() {
+        let (state, client) = locked_state_with_session(1);
+        queue(&state, "/prompt/1", &client, b"hunter2", false).expect("queued");
+        let path = unlock_into(&state, "defer-once");
+        assert_eq!(apply_pending_state(&state, "/prompt/1").expect("first").len(), 1);
+        assert!(apply_pending_state(&state, "/prompt/1").expect("second").is_empty());
+        let shared = lock(&state);
+        let keyring = shared.open().expect("open");
+        let collection = default_collection(keyring).expect("default");
+        assert_eq!(keyring.items_in(collection).expect("list").len(), 1);
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn writes_under_two_prompts_apply_independently() {
+        let (state, client) = locked_state_with_session(1);
+        queue(&state, "/prompt/1", &client, b"one", false).expect("queued");
+        queue(&state, "/prompt/2", &client, b"two", false).expect("queued");
+        let path = unlock_into(&state, "defer-two");
+        assert_eq!(apply_pending_state(&state, "/prompt/1").expect("first").len(), 1);
+        assert!(
+            lock(&state).pending.contains_key("/prompt/2"),
+            "the other write still waits"
+        );
+        assert_eq!(apply_pending_state(&state, "/prompt/2").expect("second").len(), 1);
+        let shared = lock(&state);
+        let keyring = shared.open().expect("open");
+        let collection = default_collection(keyring).expect("default");
+        assert_eq!(keyring.items_in(collection).expect("list").len(), 2);
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_deferred_replace_updates_the_item_with_the_same_attributes() {
+        let (state, client) = locked_state_with_session(1);
+        let path = unlock_into(&state, "defer-replace");
+        let first = {
+            let mut shared = lock(&state);
+            let keyring = shared.open_mut().expect("open");
+            let collection = default_collection(keyring).expect("default");
+            write_item(
+                keyring,
+                collection,
+                "mail",
+                "text/plain",
+                b"old",
+                &attributes(&[("app", "mail")]),
+                false,
+            )
+            .expect("existing item")
+            .0
+        };
+        queue(&state, "/prompt/1", &client, b"new", true).expect("queued");
+        let applied = apply_pending_state(&state, "/prompt/1").expect("applied");
+        assert_eq!(applied.len(), 1);
+        assert!(!applied[0].created, "an exact match is updated, not added");
+        assert_eq!(applied[0].item, first);
+        let shared = lock(&state);
+        let stored = shared
+            .open()
+            .expect("open")
+            .item(first)
+            .expect("read")
+            .expect("present");
+        assert_eq!(*stored.secret, b"new".to_vec());
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn applying_to_a_locked_store_is_refused_and_the_write_is_forgotten() {
+        let (state, client) = locked_state_with_session(1);
+        queue(&state, "/prompt/1", &client, b"hunter2", false).expect("queued");
+        let refusal = apply_pending_state(&state, "/prompt/1").expect_err("still locked");
+        assert!(matches!(refusal, SecretError::IsLocked(_)));
+        assert!(!lock(&state).pending.contains_key("/prompt/1"), "the write is gone");
+    }
+
+    #[test]
+    fn a_deferred_write_under_an_unknown_session_is_refused_and_queues_nothing() {
+        let (state, client) = locked_state_with_session(1);
+        let refusal = queue_create_item(
+            &state,
+            "/prompt/1",
+            CollectionTarget::Default,
+            "mail".to_owned(),
+            Vec::new(),
+            &wire(&client, 9, b"hunter2"),
+            false,
+        )
+        .expect_err("no such session");
+        assert!(matches!(refusal, SecretError::NoSession(_)));
+        assert!(lock(&state).pending.is_empty());
     }
 }

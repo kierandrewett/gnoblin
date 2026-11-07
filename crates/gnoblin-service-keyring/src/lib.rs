@@ -102,6 +102,7 @@ pub async fn serve_on(
         on_unlock,
         offers,
     )));
+    objects::install_source(&state, &source);
     connection
         .object_server()
         .at(
