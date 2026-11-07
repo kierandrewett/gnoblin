@@ -448,7 +448,7 @@ gnoblin/
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
     gnoblin-pipewire-export/  PipeWire video streams for granted capture sessions; the only crate that links `pipewire`
-    gnoblin-log/              the one logging crate (D23): macros, components and `Role`; `tracing` alone, plus the `console`, `store`, `journal` and `init` features, which only a binary enables
+    gnoblin-log/              the one logging crate (D23): macros, components and `Role`; `tracing` alone, plus the `console`, `journal`, `pipeline` and `init` features, which only a binary enables. The store is `gnoblin-store`, not a feature here.
     gnoblin-xwayland/         Xwayland startup and window management
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
@@ -1632,7 +1632,7 @@ Each section below records the choice, its consequences, and the options conside
 | D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-cursor` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
 | D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
-| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `store`, `journal`, `init`)                                                                              |
+| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `journal`, `pipeline`, `init`); the SQLite store is `gnoblin-store`, attached as the sink                |
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |

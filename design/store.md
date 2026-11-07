@@ -608,3 +608,9 @@ Decisions from Kieran. Each one stands unless he reopens it.
 - 2026-11-07: Phase 1 done. `gnoblin-store` ships the consumer API for the
   in-process `kv` provider: typed query layer, WAL, quotas, quarantine, watch
   and batch. Tests cover the failure modes listed under "Failure modes".
+- 2026-11-07: Phase 3 code landed. The `log` kind is in `gnoblin-store`, and
+  the log store opener moved there from `gnoblin-log`, which no longer depends
+  on the store. A one-off import copies an older `logs.sqlite3` into
+  `log.sqlite3`, once, and renames the old file. The phase 3 verify items (row
+  counts after migration, retention, and the single WAL reader) are not all run
+  yet.

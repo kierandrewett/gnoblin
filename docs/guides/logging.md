@@ -53,7 +53,13 @@ This follows warnings and errors from the compositor's `wayland` component. The 
 
 ## Reading the store
 
-The store defaults to `$XDG_STATE_HOME/gnoblin/store/log.sqlite3`. The `store-path` key of the `[logging]` section names another directory, and `store = false` keeps no records. `gnoblinctl log` prints its records, oldest first, without the compositor running:
+The store is a `log.sqlite3` file in `$XDG_STATE_HOME/gnoblin/store` by default. Three settings change it:
+
+- `store-path` in the `[logging]` section names another directory.
+- `store = false` keeps no records.
+- The first writable open copies rows from an older `logs.sqlite3` in the parent directory, then renames that file to `logs.sqlite3.migrated`.
+
+`gnoblinctl log` prints its records, oldest first, without the compositor running:
 
 ```sh
 gnoblinctl log --role compositor --level warn --limit 50
