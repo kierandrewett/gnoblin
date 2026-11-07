@@ -300,6 +300,40 @@ mod tests {
         assert_eq!(code, "invalid-document");
     }
 
+    /// Write `bytes` to a file unique to this test and run `validate` on it.
+    fn validate_bytes(name: &str, bytes: &[u8]) -> (Result<u8, Failure>, String) {
+        let path = std::env::temp_dir().join(format!("gnoblinctl-validate-{}-{name}.json", std::process::id()));
+        std::fs::write(&path, bytes).expect("write the test document");
+        let mut out = Vec::new();
+        let result = validate(&path, false, &mut out);
+        let _ = std::fs::remove_file(&path);
+        (result, String::from_utf8(out).expect("UTF-8 output"))
+    }
+
+    #[test]
+    fn a_valid_document_validates_with_no_warnings() {
+        let (result, out) = validate_bytes("valid", b"{}");
+        assert_eq!(result.expect("an empty document is valid"), 0);
+        assert_eq!(out, "valid\n");
+    }
+
+    #[test]
+    fn a_deprecated_spelling_warns_but_still_validates() {
+        let (result, out) = validate_bytes("deprecated", br#"{"window-management": {"focus-mode": "sloppy"}}"#);
+        assert_eq!(result.expect("a deprecated spelling is not a failure"), 0);
+        assert!(out.starts_with("valid\n"), "{out}");
+        assert!(out.contains("warning: window-management.focus-mode"), "{out}");
+    }
+
+    #[test]
+    fn a_document_that_does_not_parse_is_refused() {
+        let (result, _) = validate_bytes("invalid", b"not json");
+        let Err(Failure::Refusal { code, .. }) = result else {
+            panic!("an unparseable document is refused");
+        };
+        assert_eq!(code, "invalid-config");
+    }
+
     #[test]
     fn an_absent_lock_is_unavailable_not_unlocked() {
         let report = StatusReport {
