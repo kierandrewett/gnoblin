@@ -60,8 +60,8 @@ mod tests {
             "crates/gnoblin-parity-extra/src/lib.rs"
         ));
         assert!(!covers(
-            "crates/gnoblin/src/compat.rs",
-            "crates/gnoblin/src/compat_report.rs"
+            "crates/compat/gnoblin-compat-host/src/session/compat.rs",
+            "crates/compat/gnoblin-compat-host/src/session/compat_report.rs"
         ));
     }
 

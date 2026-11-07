@@ -20,7 +20,7 @@
 
 #![forbid(unsafe_code)]
 
-/// Client types the session binary links its compat adapters with. See the module docs.
+/// Client types the compat host links its compat adapters with. See the module docs.
 pub mod link;
 /// Passphrase and keyring prompt handling, gated by `prompts.enabled`.
 pub mod prompts;

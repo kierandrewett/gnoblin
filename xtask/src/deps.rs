@@ -115,13 +115,16 @@ const CLIENT_SIDE: &[&str] = &[
 /// `client-side-isolation`'s, not this one's.
 const SESSION_BINARY: &str = "gnoblin";
 
-/// The processes that link the compat adapters.
+/// The crate that wires the compat adapters into a process. It is a compat crate but not an
+/// adapter, and the session binary is the only process that links it.
+const COMPAT_HOST: &str = "gnoblin-compat-host";
+
+/// The processes that link the compat adapters: the host, and nothing else.
 ///
-/// Only the session binary links them: it is the composition root that hands the services
-/// role its linked agents, such as the gcr prompter. The services role itself names no
-/// adapter, so a library or role crate that did would leak one into a process that does not
-/// serve it. Nothing else may name one.
-const COMPAT_HOSTS: &[&str] = &["gnoblin"];
+/// The host is the one place that knows which adapters exist and how the session and services
+/// roles wire them. The services role itself names no adapter, so a library or role crate that
+/// did would leak one into a process that does not serve it. Nothing else may name one.
+const COMPAT_HOSTS: &[&str] = &[COMPAT_HOST];
 
 /// What the session binary itself may depend on.
 ///
@@ -278,6 +281,12 @@ fn is_compat(name: &str) -> bool {
     name.starts_with("gnoblin-compat-")
 }
 
+/// Whether a crate is a compat adapter: a `gnoblin-compat-*` crate other than the host that
+/// wires them. The host names every adapter, so it is exempt from the adapter rules.
+fn is_adapter(name: &str) -> bool {
+    is_compat(name) && name != COMPAT_HOST
+}
+
 /// Smithay, any `wayland-*` crate, a renderer, D-Bus or Lua.
 fn is_banned_external(name: &str) -> bool {
     name.starts_with("smithay") || name.starts_with("wayland-") || FOUNDATION_BANNED_EXTERNALS.contains(&name)
@@ -379,7 +388,7 @@ fn is_client_side(name: &str) -> bool {
 /// A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client` and
 /// its own transport, and never on another compat crate.
 fn compat_isolation(package: &Package, dep: &Dep) -> Option<String> {
-    if !is_compat(&package.name) {
+    if !is_adapter(&package.name) {
         return None;
     }
     if is_compat(&dep.name) && dep.name != COMPAT_CORE {
@@ -409,10 +418,19 @@ fn compat_isolation(package: &Package, dep: &Dep) -> Option<String> {
     None
 }
 
-/// Nothing outside `compat/` links a compat adapter except the processes that
-/// serve them.
+/// Only `gnoblin-compat-host` links a compat adapter, and only the session binary links the host.
+/// The adapters reach a process through the one crate that decides how each is wired, so nothing
+/// else names one and no library can pull an adapter in behind the composition root.
 fn compat_host(package: &Package, dep: &Dep) -> Option<String> {
-    if !is_compat(&dep.name) || is_compat(&package.name) || COMPAT_HOSTS.contains(&package.name.as_str()) {
+    if dep.name == COMPAT_HOST {
+        if package.name == SESSION_BINARY {
+            return None;
+        }
+        return Some(format!(
+            "only the session binary links `{COMPAT_HOST}`, the one place that wires the compat adapters into a process"
+        ));
+    }
+    if !is_adapter(&dep.name) || is_compat(&package.name) || COMPAT_HOSTS.contains(&package.name.as_str()) {
         return None;
     }
     Some(format!(
@@ -672,9 +690,48 @@ mod tests {
         assert_eq!(
             violations(&[(
                 "gnoblin",
-                &["gnoblin-compositor", "gnoblin-session", "gnoblin-compat-gtk-shell1"],
+                &["gnoblin-compositor", "gnoblin-session", "gnoblin-compat-host"],
             )]),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_session_binary_links_the_compat_host_and_no_adapter() {
+        let host_only = violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-compat-host"])]);
+        assert!(
+            !host_only.iter().any(|found| found.contains("[compat-host]")),
+            "{host_only:?}"
+        );
+        let adapter = violations(&[("gnoblin", &["gnoblin-compat-gtk-shell1"])]);
+        assert_eq!(
+            adapter.iter().filter(|found| found.contains("[compat-host]")).count(),
+            1,
+            "{adapter:?}"
+        );
+    }
+
+    #[test]
+    fn only_the_compat_host_links_an_adapter_and_only_the_binary_links_the_host() {
+        let through_host = violations(&[("gnoblin-compat-host", &["gnoblin-compat-gtk-shell1"])]);
+        assert!(
+            !through_host.iter().any(|found| found.contains("[compat-host]")),
+            "{through_host:?}"
+        );
+        let library = violations(&[("gnoblin-compositor", &["gnoblin-compat-gtk-shell1"])]);
+        assert_eq!(
+            library.iter().filter(|found| found.contains("[compat-host]")).count(),
+            1,
+            "{library:?}"
+        );
+        let other_host = violations(&[("gnoblin-compositor", &["gnoblin-compat-host"])]);
+        assert_eq!(
+            other_host
+                .iter()
+                .filter(|found| found.contains("[compat-host]"))
+                .count(),
+            1,
+            "{other_host:?}"
         );
     }
 

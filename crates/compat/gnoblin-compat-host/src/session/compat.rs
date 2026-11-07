@@ -1,7 +1,8 @@
 //! The compat adapters this session serves, built from their checked-in support matrices.
 //!
-//! Only this binary links the adapter crates. It hands the compositor `Extension` values and
-//! never names an adapter itself. The mode is passed in by the caller; the compositor role
+//! Only `gnoblin-compat-host` links the adapter crates. It hands the compositor `Extension`
+//! values and never names an adapter itself.
+//! The mode is passed in by the caller; the compositor role
 //! uses `Mode::default()` because no configuration key selects one yet. `Mode::Off` serves
 //! nothing, so the globals are not advertised at all rather than advertised and refused.
 
