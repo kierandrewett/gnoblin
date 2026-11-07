@@ -18,8 +18,8 @@
 //! document saved by this version never needs the "an older Gnoblin wrote this"
 //! check the C core performs on load.
 //!
-//! Seven sections are *carried*: `extensions`, `keybindings`, `portals`,
-//! `shortcuts`, `autostart`, `window-rules` and `animations`. Their values are callbacks and rule
+//! Six sections are *carried*: `extensions`, `keybindings`, `portals`,
+//! `autostart`, `window-rules` and `animations`. Their values are callbacks and rule
 //! declarations, which the Lua host and the window-management crate own; this
 //! layer keeps them in the document, rewrites nothing inside them, and validates
 //! nothing inside them. Carrying them is not the same as accepting them: a
@@ -31,11 +31,11 @@ use std::collections::BTreeMap;
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
     Appearance, Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, KeyringConfig,
-    LayerShell, Layout, Location, Logging, Monitors, Prompts, Protocols, VisualAccessibility, WindowManagement,
-    Workspace, Xwayland, parse_appearance, parse_auth, parse_compat, parse_compositor, parse_cursor,
+    LayerShell, Layout, Location, Logging, Monitors, Prompts, Protocols, Shortcuts, VisualAccessibility,
+    WindowManagement, Workspace, Xwayland, parse_appearance, parse_auth, parse_compat, parse_compositor, parse_cursor,
     parse_frame_renderers, parse_input, parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layout,
-    parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_touchpad_gestures,
-    parse_visual_accessibility, parse_window_management, parse_workspaces, parse_xwayland,
+    parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_shortcuts,
+    parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -90,6 +90,8 @@ pub struct Config {
     pub auth: Option<Auth>,
     /// `protocols`: the protocol toggles.
     pub protocols: Option<Protocols>,
+    /// `shortcuts`: the keyboard shortcuts that run a command, by name.
+    pub shortcuts: Option<Shortcuts>,
     /// `touchpad-gestures`: the gesture bindings, in declaration order.
     pub touchpad_gestures: Vec<Gesture>,
     /// `window-management`: stacking, focus and placement policy.
@@ -181,6 +183,8 @@ impl Config {
                     .map(|table| parse_auth(table, &root.key("auth"), &mut out));
                 config.protocols = section_table(entries, "protocols", &root, &mut out)
                     .map(|table| parse_protocols(table, &root.key("protocols"), &mut out));
+                config.shortcuts = section_table(entries, "shortcuts", &root, &mut out)
+                    .map(|table| parse_shortcuts(table, &root.key("shortcuts"), &mut out));
                 config.window_management = section_table(entries, "window-management", &root, &mut out)
                     .map(|table| parse_window_management(table, &root.key("window-management"), &mut out));
                 config.xwayland = section_table(entries, "xwayland", &root, &mut out)
@@ -267,6 +271,7 @@ impl Config {
             logging: None,
             auth: None,
             protocols: None,
+            shortcuts: None,
             touchpad_gestures: Vec::new(),
             window_management: None,
             workspaces: Vec::new(),

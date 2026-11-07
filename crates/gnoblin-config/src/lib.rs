@@ -50,8 +50,8 @@
 //!     names a current spelling, and the hooks the schema lists are the hooks that
 //!     exist.
 //!
-//! Seven sections are carried but not interpreted: `extensions`, `keybindings`,
-//! `portals`, `shortcuts`, `autostart`, `window-rules` and `animations`.
+//! Six sections are carried but not interpreted: `extensions`, `keybindings`,
+//! `portals`, `autostart`, `window-rules` and `animations`.
 
 /// Accent and colour rules for the `appearance` table.
 pub mod appearance;
@@ -96,9 +96,9 @@ pub use generated::{
     Handedness, Input, InputSource, InputSourceType, InputSources, Keyboard, KeyringConfig, LayerShell, Layout,
     LayoutOutput, LayoutWorkspace, Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys,
     NewWindowPlacement, PadButton, PadButtonAction, PointingStick, Prompts, Protocol, Protocols, RendererChoice,
-    ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap,
-    TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType,
-    WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode,
+    Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball,
+    VisualAccessibility, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};

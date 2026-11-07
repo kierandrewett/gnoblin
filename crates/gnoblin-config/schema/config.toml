@@ -314,6 +314,15 @@ variants = [
 ]
 
 [[enum]]
+name = "ShortcutTrigger"
+setting = "trigger"
+doc = "The key edge that starts a shortcut's command."
+variants = [
+    { spelling = "press", doc = "When the chord is pressed." },
+    { spelling = "release", doc = "When the chord is released." },
+]
+
+[[enum]]
 name = "XwaylandExtension"
 setting = "disable-extensions"
 doc = "An Xwayland extension Gnoblin can disable."
@@ -1404,6 +1413,44 @@ doc = "How closely the movement must match the path."
 since = "0.2.0"
 
 [[record]]
+name = "Shortcut"
+doc = "One keyboard shortcut that runs a command."
+
+[[record.field]]
+key = "binding"
+kind = "text"
+required = "a key chord such as <Super>Return"
+accepted = "one key chord in the chord syntax, such as <Super>Return"
+doc = "The chord that starts the command."
+since = "0.2.0"
+
+[[record.field]]
+key = "command"
+kind = "text-list"
+first_nonempty = true
+required = "a command argv"
+accepted = "a nonempty argv array whose first entry names the program"
+doc = "The program and its arguments, run directly with no shell."
+since = "0.2.0"
+
+[[record.field]]
+key = "trigger"
+kind = "enum"
+enum = "ShortcutTrigger"
+accepted = "one of press, release"
+default = { enum = "press" }
+doc = "Which key edge starts the command."
+since = "0.2.0"
+
+[[record.field]]
+key = "enable"
+kind = "bool"
+accepted = "true or false"
+default = { bool = true }
+doc = "Whether the shortcut is active. Set false to keep it in the document but unbound."
+since = "0.2.0"
+
+[[record]]
 name = "InputSource"
 doc = "One input source."
 
@@ -2204,8 +2251,16 @@ carried = true
 
 [[section]]
 key = "shortcuts"
-doc = "Named command shortcuts and built-in actions."
-carried = true
+type = "Shortcuts"
+doc = "The keyboard shortcuts that run a command, by name."
+
+[section.spread]
+field = "shortcuts"
+kind = "record-map"
+record = "Shortcut"
+id = "name"
+accepted = "a table of shortcut tables, keyed by a name of 1 to 64 letters, digits, underscores or dashes"
+doc = "Each shortcut, in name order."
 
 [[section]]
 key = "window-rules"

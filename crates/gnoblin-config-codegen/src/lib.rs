@@ -362,6 +362,7 @@ enum IdShape {
     HexPair,
     Serial,
     Renderer,
+    Name,
 }
 
 impl IdShape {
@@ -371,6 +372,7 @@ impl IdShape {
             "hex-pair" => IdShape::HexPair,
             "serial" => IdShape::Serial,
             "renderer" => IdShape::Renderer,
+            "name" => IdShape::Name,
             _ => return None,
         })
     }
@@ -381,6 +383,7 @@ impl IdShape {
             IdShape::HexPair => "IdShape::HexPair",
             IdShape::Serial => "IdShape::Serial",
             IdShape::Renderer => "IdShape::Renderer",
+            IdShape::Name => "IdShape::Name",
         }
     }
 }
@@ -535,6 +538,12 @@ fn check_table(
                 _ => {}
             },
             _ => {}
+        }
+        if field.first_nonempty && (kind != Kind::TextList || field.inherit) {
+            errors.push(format!(
+                "`{name}.{}` sets first_nonempty, which only a non-inheriting text-list takes",
+                field.key
+            ));
         }
         if !is_release(&field.since) {
             errors.push(format!("`{name}.{}` has since `{}`, not x.y.z", field.key, field.since));
@@ -709,6 +718,7 @@ fn read_call(field: &FieldDecl) -> String {
         }
         Kind::Enum => format!("{}(map, \"{key}\", \"{key}\", path, out)", base("setting")),
         Kind::EnumList => format!("{}(map, \"{key}\", \"{key}\", path, out)", base("settings")),
+        Kind::TextList if field.first_nonempty => format!("nonempty_argv(map, \"{key}\", path, out)"),
         Kind::TextList => format!("{}(map, \"{key}\", path, out)", base("strings")),
         Kind::FloatList => format!(
             "{}(map, \"{key}\", path, out, {}, {}, {}, {}, \"{}\")",
@@ -1057,6 +1067,7 @@ fn kind_literal_spread(spread: &SpreadDecl) -> String {
         ),
         Kind::TextListMap => "Kind::TextListMap".to_owned(),
         Kind::RecordList => format!("Kind::RecordList(\"{}\")", spread.record.clone().unwrap_or_default()),
+        Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", spread.record.clone().unwrap_or_default()),
         _ => "Kind::Bool".to_owned(),
     }
 }
@@ -1101,6 +1112,7 @@ fn render_table(text: &mut String, decl: &TableDecl, is_record: bool) {
             Kind::EnumBoolMap => format!("BTreeMap<{}, bool>", spread.variant_enum.clone().unwrap_or_default()),
             Kind::TextListMap => "BTreeMap<String, Vec<String>>".to_owned(),
             Kind::RecordList => format!("Vec<{}>", spread.record.clone().unwrap_or_default()),
+            Kind::RecordMap => format!("BTreeMap<String, {}>", spread.record.clone().unwrap_or_default()),
             _ => "bool".to_owned(),
         };
         let _ = writeln!(text, "    /// {}", spread.doc);
@@ -1172,6 +1184,12 @@ fn render_table(text: &mut String, decl: &TableDecl, is_record: bool) {
             Kind::RecordList => format!(
                 "section_records(value, path, out, \"{}\", parse_{})",
                 esc(&spread.accepted),
+                snake(&spread.record.clone().unwrap_or_default())
+            ),
+            Kind::RecordMap => format!(
+                "section_record_map(map, path, out, \"{}\", {}, parse_{})",
+                esc(&spread.accepted),
+                IdShape::parse(spread.id.as_deref().unwrap_or("any")).map_or("IdShape::Any", IdShape::rust),
                 snake(&spread.record.clone().unwrap_or_default())
             ),
             _ => "None".to_owned(),

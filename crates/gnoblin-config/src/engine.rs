@@ -384,6 +384,29 @@ pub(crate) fn strings(
     Some(written)
 }
 
+/// The argv at `key`: a list of strings whose first entry names the program.
+///
+/// An empty argv has nothing to run, and an empty first entry names no program,
+/// so both are refused here rather than at spawn time.
+pub(crate) fn nonempty_argv(
+    map: &mut BTreeMap<String, Value>,
+    key: &str,
+    path: &Path,
+    out: &mut Parser,
+) -> Option<Vec<String>> {
+    let words = strings(map, key, path, out)?;
+    if words.first().is_none_or(String::is_empty) {
+        out.problem(
+            &path.key(key),
+            Fault::UnsupportedValue {
+                expected: "a nonempty argv whose first entry names the program".to_owned(),
+            },
+        );
+        return None;
+    }
+    Some(words)
+}
+
 /// The list of enumerated values at `key`.
 pub(crate) fn settings<T: SettingEnum>(
     map: &mut BTreeMap<String, Value>,
@@ -500,6 +523,8 @@ pub enum IdShape {
     Serial,
     /// A frame renderer name: 1 to 64 letters, digits, `_` or `-`, not `native`.
     Renderer,
+    /// A name of 1 to 64 letters, digits, `_` or `-`, such as a shortcut's name.
+    Name,
 }
 
 impl IdShape {
@@ -517,6 +542,7 @@ impl IdShape {
                     && characters
                         .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
             }
+            IdShape::Name => id.len() <= 64 && !id.is_empty() && id.chars().all(name_character),
         }
     }
 
@@ -527,8 +553,14 @@ impl IdShape {
             IdShape::HexPair => "a device id of four hex digits, a colon, and four hex digits",
             IdShape::Serial => "a hex serial, or default- followed by four hex digits, a colon, and four hex digits",
             IdShape::Renderer => "a name of at most 64 letters, digits, underscores or dashes, other than native",
+            IdShape::Name => "a name of 1 to 64 letters, digits, underscores or dashes",
         }
     }
+}
+
+/// Whether `character` may appear in a name: a letter, a digit, `_` or `-`.
+fn name_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_' || character == '-'
 }
 
 /// Whether `text` is `vvvv:pppp` in hex.
@@ -810,7 +842,7 @@ fn is_module_path(path: &str) -> bool {
         })
 }
 
-/// The table at `key`, whose keys are device ids and whose values are records.
+/// The table at `key`, whose keys are ids and whose values are records.
 pub(crate) fn record_map<T>(
     map: &mut BTreeMap<String, Value>,
     key: &str,
@@ -822,6 +854,32 @@ pub(crate) fn record_map<T>(
 ) -> Option<BTreeMap<String, T>> {
     let entries = table(map, key, path, out, expected)?;
     let group_path = path.key(key);
+    Some(record_map_entries(entries, &group_path, out, expected, id_shape, parse))
+}
+
+/// A section whose own keys are ids and whose values are records. The section
+/// is the table, so there is no key to look up first.
+pub(crate) fn section_record_map<T>(
+    map: &mut BTreeMap<String, Value>,
+    path: &Path,
+    out: &mut Parser,
+    expected: &'static str,
+    id_shape: IdShape,
+    parse: fn(&mut BTreeMap<String, Value>, &Path, &mut Parser) -> Option<T>,
+) -> BTreeMap<String, T> {
+    record_map_entries(map, path, out, expected, id_shape, parse)
+}
+
+/// Parses each entry of `entries` as a record, reporting and dropping any entry
+/// whose id has the wrong shape or whose value is not a table.
+fn record_map_entries<T>(
+    entries: &mut BTreeMap<String, Value>,
+    group_path: &Path,
+    out: &mut Parser,
+    expected: &'static str,
+    id_shape: IdShape,
+    parse: fn(&mut BTreeMap<String, Value>, &Path, &mut Parser) -> Option<T>,
+) -> BTreeMap<String, T> {
     let mut records: BTreeMap<String, T> = BTreeMap::new();
     let ids: Vec<String> = entries.keys().cloned().collect();
     for id in ids {
@@ -835,14 +893,14 @@ pub(crate) fn record_map<T>(
             );
             continue;
         }
-        let Some(fields) = table(&mut *entries, &id, &group_path, out, expected) else {
+        let Some(fields) = table(&mut *entries, &id, group_path, out, expected) else {
             continue;
         };
         if let Some(record) = parse(fields, &device_path, out) {
             records.insert(id, record);
         }
     }
-    Some(records)
+    records
 }
 
 /// The table whose keys are names from an enumerated setting and whose values are
