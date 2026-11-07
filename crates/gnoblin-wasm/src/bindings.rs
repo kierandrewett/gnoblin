@@ -456,12 +456,14 @@ mod gnoblin_objects {
             root: String,
             module: String,
             hash: String,
+            options: Vec<u8>,
         ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             let object = self.object(&handle).expect("a handle this store issued");
             let mut arguments = gnoblin_model::Fields::new();
             arguments.insert("root".to_owned(), Value::Text(root));
             arguments.insert("module".to_owned(), Value::Text(module));
             arguments.insert("hash".to_owned(), Value::Text(hash));
+            arguments.insert("options".to_owned(), Value::Bytes(options));
             self.method(object, "workspace", "set_layout", arguments)
         }
 
@@ -1085,12 +1087,14 @@ mod gnoblin_objects {
             root: String,
             module: String,
             hash: String,
+            options: Vec<u8>,
         ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             let object = self.object(&handle).expect("a handle this store issued");
             let mut arguments = gnoblin_model::Fields::new();
             arguments.insert("root".to_owned(), Value::Text(root));
             arguments.insert("module".to_owned(), Value::Text(module));
             arguments.insert("hash".to_owned(), Value::Text(hash));
+            arguments.insert("options".to_owned(), Value::Bytes(options));
             self.method(object, "output", "set_layout", arguments)
         }
 

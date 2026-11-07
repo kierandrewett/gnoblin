@@ -256,6 +256,7 @@ fn set_layout_retiles_the_windows_on_the_workspace() {
             "root=shipped",
             "module=gnoblin.layouts.master_stack",
             &format!("hash={}", master_stack_hash()),
+            "options=",
         ])
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
@@ -308,6 +309,7 @@ fn set_layout_publishes_the_retiled_rectangles() {
             "root=shipped",
             "module=gnoblin.layouts.master_stack",
             &format!("hash={}", master_stack_hash()),
+            "options=",
         ])
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
@@ -361,6 +363,7 @@ return M
             "root=user",
             "module=layouts.probe",
             &format!("hash={}", source_hash(&layouts.join("probe.lua"))),
+            "options=",
         ])
         .ok();
     session
@@ -393,6 +396,7 @@ fn an_unknown_layout_name_is_refused_over_ipc() {
         "root=shipped",
         "module=gnoblin.layouts.no_such_layout",
         "hash=0000000000000000",
+        "options=",
     ]);
     assert_ne!(refusal.code, 0, "an unknown layout is refused");
     assert!(

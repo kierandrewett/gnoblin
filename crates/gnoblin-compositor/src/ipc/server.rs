@@ -1482,7 +1482,7 @@ impl Dispatcher {
         let selector = match layout_selector(arguments) {
             Ok(selector) => selector,
             Err(message) => {
-                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, message);
+                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, &message);
                 return;
             }
         };
@@ -1557,7 +1557,7 @@ impl Dispatcher {
         let selector = match layout_selector(arguments) {
             Ok(selector) => selector,
             Err(message) => {
-                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, message);
+                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, &message);
                 return;
             }
         };
@@ -1878,22 +1878,28 @@ fn text_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<String
     }
 }
 
-/// The layout a `set_layout` call names: a module by its root, dotted path and hash.
-/// The wire carries no options, so the layout starts with none.
-fn layout_selector(arguments: &gnoblin_model::Fields) -> Result<LayoutSelector, &'static str> {
+/// The layout a `set_layout` call names: a module by its root, dotted path and hash, with
+/// the options the Lua call passed. The options arrive as the encoded plain data that
+/// `ref:with()` produced, so anything the layout could not take as an option is refused.
+fn layout_selector(arguments: &gnoblin_model::Fields) -> Result<LayoutSelector, String> {
     let root = match text_argument(arguments, "root").as_deref() {
         Some("shipped") => LayoutRoot::Shipped,
         Some("user") => LayoutRoot::User,
-        _ => return Err("set_layout takes `root` as `shipped` or `user`"),
+        _ => return Err("set_layout takes `root` as `shipped` or `user`".to_owned()),
     };
     let (Some(module), Some(hash)) = (text_argument(arguments, "module"), text_argument(arguments, "hash")) else {
-        return Err("set_layout takes text `module` and `hash`");
+        return Err("set_layout takes text `module` and `hash`".to_owned());
     };
+    let Some(gnoblin_model::Value::Bytes(options)) = arguments.get("options") else {
+        return Err("set_layout takes bytes `options`".to_owned());
+    };
+    let options = crate::layout::reference_options(options)
+        .map_err(|reason| format!("set_layout takes valid `options`: {reason}"))?;
     Ok(LayoutSelector::Reference(LayoutReference {
         root,
         module,
         hash,
-        options: BTreeMap::new(),
+        options,
     }))
 }
 

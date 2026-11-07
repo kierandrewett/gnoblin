@@ -154,8 +154,8 @@ fn is_floating(selector: &LayoutSelector) -> bool {
 }
 
 /// The key a selector's layout is registered and looked up under. A name is its own
-/// key. A reference is keyed by its root, module and hash, so two references to the same
-/// module at different hashes are distinct layouts; the `root:` prefix keeps a reference
+/// key. A reference is keyed by its root, module, hash and options, so two references
+/// that differ in any of them are distinct layouts. The `root:` prefix keeps a reference
 /// key apart from a plain name.
 fn selector_key(selector: &LayoutSelector) -> String {
     match selector {
@@ -165,7 +165,14 @@ fn selector_key(selector: &LayoutSelector) -> String {
                 LayoutRoot::Shipped => "shipped",
                 LayoutRoot::User => "user",
             };
-            format!("{root}:{}#{}", reference.module, reference.hash)
+            // A reference without options keeps the key it always had. The options are
+            // spelled in with `Debug`, which is deterministic because the map is ordered.
+            let options = if reference.options.is_empty() {
+                String::new()
+            } else {
+                format!("{:?}", reference.options)
+            };
+            format!("{root}:{}#{}{options}", reference.module, reference.hash)
         }
     }
 }
@@ -202,6 +209,39 @@ fn option_data(value: &LayoutOptionValue) -> Data {
         LayoutOptionValue::Float(value) => Data::Number(*value),
         LayoutOptionValue::Text(value) => Data::String(value.clone()),
     }
+}
+
+/// The options a layout reference carries on the wire, in the form the configuration
+/// uses. The wire holds the plain data `ref:with()` encoded. Empty bytes mean no options.
+/// A layout option is a scalar, so a table or list is refused here, as the configuration
+/// refuses it.
+pub fn reference_options(bytes: &[u8]) -> Result<BTreeMap<String, LayoutOptionValue>, String> {
+    if bytes.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let Data::Table(entries) = Data::decode(bytes).map_err(|error| error.0)? else {
+        return Err("layout options must be a table".to_owned());
+    };
+    entries
+        .into_iter()
+        .map(|(key, value)| {
+            let LayoutKey::String(name) = key else {
+                return Err("layout option names must be text".to_owned());
+            };
+            let value = match value {
+                Data::Boolean(value) => LayoutOptionValue::Bool(value),
+                Data::Integer(value) => LayoutOptionValue::Integer(value),
+                Data::Number(value) if value.is_finite() => LayoutOptionValue::Float(value),
+                Data::String(value) => LayoutOptionValue::Text(value),
+                Data::Number(_) | Data::Table(_) => {
+                    return Err(format!(
+                        "layout option `{name}` must be a boolean, finite number or text"
+                    ));
+                }
+            };
+            Ok((name, value))
+        })
+        .collect()
 }
 
 impl WorkspaceLayouts {
@@ -299,9 +339,9 @@ impl WorkspaceLayouts {
             return Err(format!("layout `{key}` failed to load"));
         }
         let mut host = self.host.borrow_mut();
-        // A layout already registered keeps its registration. A runtime choice names a
-        // module by reference and carries no options, so reloading it here would replace
-        // the options the configuration gave every workspace that runs it.
+        // A layout already registered keeps its registration. The key names the options
+        // too, so a registered key is the same module at the same hash with the same
+        // options, and reloading it would only repeat the load.
         if host.is_registered(&key) {
             return Ok(key);
         }
@@ -410,14 +450,16 @@ impl LayoutEngine for FloatingEngine {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
-    use gnoblin_lua::layout::{Gaps, Host, HostConfig, LuaEngine, ModuleRoots};
+    use gnoblin_config::{LayoutOptionValue, LayoutRoot, LayoutSelector};
+    use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutKey, LuaEngine, MAX_ENCODED_LEN, ModuleRoots};
     use gnoblin_types::{OutputId, WindowId, WorkspaceId};
     use gnoblin_wm::layout::{Job, LayoutEngine, LayoutOutput, LayoutWindow, Params, Slot};
 
-    use super::FloatingEngine;
+    use super::{FloatingEngine, reference_options, selector_key};
 
     /// The repository's shipped Lua layouts, which `gnoblin.layouts.floating` lives in.
     fn shipped_modules() -> PathBuf {
@@ -482,5 +524,87 @@ mod tests {
         assert_eq!(native.effects, shipped.effects);
         assert!(native.placements.is_empty(), "floating places nothing");
         assert_eq!(native.effects.len(), 3, "every tiled window floats");
+    }
+
+    /// The options a reference carries survive the wire: what `ref:with()` encodes, the
+    /// compositor reads back as the same typed options the configuration would hold.
+    #[test]
+    fn reference_options_round_trip_through_the_wire() {
+        let table = Data::Table(
+            [
+                (LayoutKey::String("gap".to_owned()), Data::Integer(12)),
+                (LayoutKey::String("ratio".to_owned()), Data::Number(0.5)),
+                (LayoutKey::String("dense".to_owned()), Data::Boolean(true)),
+                (LayoutKey::String("name".to_owned()), Data::String("main".to_owned())),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let bytes = table.encode().expect("a small options table encodes");
+        let options = reference_options(&bytes).expect("the options decode");
+        assert_eq!(options.get("gap"), Some(&LayoutOptionValue::Integer(12)));
+        assert_eq!(options.get("ratio"), Some(&LayoutOptionValue::Float(0.5)));
+        assert_eq!(options.get("dense"), Some(&LayoutOptionValue::Bool(true)));
+        assert_eq!(options.get("name"), Some(&LayoutOptionValue::Text("main".to_owned())));
+        assert_eq!(options.len(), 4);
+    }
+
+    /// Empty bytes are the wire form of a reference without options.
+    #[test]
+    fn empty_options_bytes_mean_no_options() {
+        assert!(reference_options(&[]).expect("empty bytes are no options").is_empty());
+    }
+
+    /// A layout option is a scalar, so a nested table is refused, as the configuration
+    /// refuses it.
+    #[test]
+    fn a_table_option_is_refused_on_the_wire() {
+        let nested = Data::Table(
+            [(
+                LayoutKey::String("inner".to_owned()),
+                Data::Table([(LayoutKey::Integer(1), Data::Integer(2))].into_iter().collect()),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let bytes = nested.encode().expect("a nested table encodes");
+        let error = reference_options(&bytes).expect_err("a nested table is refused");
+        assert!(error.contains("inner"), "the refusal names the option: {error}");
+    }
+
+    /// The options are a table, so a bare scalar is refused rather than read as none.
+    #[test]
+    fn a_scalar_options_value_is_refused() {
+        let bytes = Data::Integer(3).encode().expect("a scalar encodes");
+        let error = reference_options(&bytes).expect_err("a scalar is refused");
+        assert_eq!(error, "layout options must be a table");
+    }
+
+    /// Bytes past the bound are refused before any option is read.
+    #[test]
+    fn oversize_options_bytes_are_refused() {
+        let bytes = vec![1u8; MAX_ENCODED_LEN + 1];
+        assert!(reference_options(&bytes).is_err(), "oversize options are refused");
+    }
+
+    /// Two references that differ only in options must not share a compiled layout.
+    #[test]
+    fn selector_key_separates_references_by_options() {
+        let reference = |options: BTreeMap<String, LayoutOptionValue>| {
+            LayoutSelector::Reference(gnoblin_config::LayoutReference {
+                root: LayoutRoot::Shipped,
+                module: "gnoblin.layouts.tile".to_owned(),
+                hash: "00".to_owned(),
+                options,
+            })
+        };
+        let plain = selector_key(&reference(BTreeMap::new()));
+        let mut gapped = BTreeMap::new();
+        gapped.insert("gap".to_owned(), LayoutOptionValue::Integer(4));
+        let with_gap = selector_key(&reference(gapped.clone()));
+        gapped.insert("gap".to_owned(), LayoutOptionValue::Integer(8));
+        let wider_gap = selector_key(&reference(gapped));
+        assert_ne!(plain, with_gap);
+        assert_ne!(with_gap, wider_gap);
     }
 }
