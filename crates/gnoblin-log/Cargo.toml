@@ -15,6 +15,7 @@ console = ["dep:tracing-subscriber"]
 journal = ["dep:tracing-subscriber"]
 pipeline = ["dep:tracing-subscriber"]
 init = ["console", "journal", "pipeline"]
+capture = []
 
 [lints]
 workspace = true

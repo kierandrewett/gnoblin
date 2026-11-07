@@ -155,9 +155,10 @@ impl Visit for Collector {
     }
 }
 
-/// Captures the events a closure logs, for the facade's own tests and the sinks' tests.
-#[cfg(test)]
-pub(crate) mod capture {
+/// Captures the events a closure logs, for the facade's own tests and for the tests of crates that
+/// log through it (the `capture` feature).
+#[cfg(any(test, feature = "capture"))]
+pub mod capture {
     use std::sync::{Arc, Mutex};
 
     use tracing::span::{Attributes, Id, Record};
@@ -192,7 +193,7 @@ pub(crate) mod capture {
     }
 
     /// The parts of the events `run` logs, in order.
-    pub(crate) fn logged(run: impl FnOnce()) -> Vec<Logged> {
+    pub fn logged(run: impl FnOnce()) -> Vec<Logged> {
         let recorder = Recorder::default();
         tracing::subscriber::with_default(recorder.clone(), run);
         let events = recorder.0.lock().expect("the capture lock");
