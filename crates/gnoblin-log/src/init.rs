@@ -3,8 +3,8 @@
 //! [`init`] installs one `tracing` subscriber. Its console layer follows the resolved
 //! [`ConsoleOutput`]: the native journal (the `journal` module), the `<N>` stream format, the pretty or
 //! plain line format, JSON lines, or nothing. A sink, when the binary sets one in [`LogOptions`],
-//! receives every event as a batch through the `pipeline` module, so a storage crate can keep the log
-//! after the fact without this crate depending on it. All layers share one filter, taken from
+//! receives every event as a batch through the `pipeline` module, so a file sink (or any other consumer) can keep
+//! the log after the fact without this crate depending on it. All layers share one filter, taken from
 //! `GNOBLIN_LOG`; see [`LogOptions`].
 //!
 //! Only the binaries use this module: they enable the `init` feature. The crates that log use the

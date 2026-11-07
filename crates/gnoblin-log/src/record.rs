@@ -2,8 +2,8 @@
 //!
 //! The layer turns each event into a [`LogRecord`] and queues it without blocking. A writer
 //! thread drains the queue in batches and hands each batch to a [`RecordSink`]. The sink does the
-//! storing, so this crate never depends on a storage crate: `gnoblin-store` implements the sink,
-//! and the binaries pass it to [`crate::init::init`] through [`SinkHandle`].
+//! storing: the file sink in [`crate::file`] writes JSON lines, and the binaries pass a sink to
+//! [`crate::init::init`] through [`SinkHandle`].
 
 use std::fmt;
 use std::sync::Arc;
@@ -18,10 +18,6 @@ pub struct LogRecord {
     /// The component that logged the event, as named by the `*_in!` call, or `ext` for a
     /// dependency's event.
     pub component: String,
-    /// The key the store indexes the record by: the area that logged it. The layer sets it to
-    /// the component, so a record's key and component agree today; the store keeps the two as
-    /// separate columns so the area can be named independently later.
-    pub key: String,
     /// The process role that logged the event, such as `compositor` or `portal`.
     pub role: &'static str,
     /// The event's target, which is `gnoblin::<component>` for a gnoblin event.

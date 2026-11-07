@@ -1,33 +1,32 @@
-//! `gnoblinctl log` end to end: records written by the logging facade are read back through
-//! the command, and the time bounds and follow flags are checked as the user types them.
+//! `gnoblinctl log` end to end: records written by the file sink are read back through the
+//! command, and the time bounds and follow flags are checked as the user types them.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use gnoblin_log::file::FileSink;
 use gnoblin_log::record::{LogRecord, RecordSink};
-use gnoblin_store::{Retention, Store};
 use gnoblinctl::SocketConnection;
 
+/// A fresh scratch directory, unique to this process and call.
 fn scratch(name: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let directory = std::env::temp_dir().join(format!(
-        "gnoblinctl-log-{}-{}",
+        "gnoblinctl-log-{}-{}-{name}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&directory).expect("a scratch directory");
-    directory.join(name)
+    directory
 }
 
-/// Writes `messages` at info into a fresh store directory, and returns its path. The records are
-/// written straight to the log kind, with the time now, so the time bounds see them as recent.
-fn store_with(messages: &[&str]) -> PathBuf {
-    let root = scratch("store");
-    let logs = Store::open(&root)
-        .and_then(|store| store.logs(Retention::default()))
-        .expect("the store opens");
+/// Writes `messages` at info into a fresh log directory, and returns its path. The records are
+/// written through the file sink with the time now, so the time bounds see them as recent.
+fn log_dir_with(messages: &[&str]) -> PathBuf {
+    let dir = scratch("log");
+    let sink = FileSink::open(&dir, None).expect("the log file opens");
     let time_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("the clock is after the epoch")
@@ -38,15 +37,14 @@ fn store_with(messages: &[&str]) -> PathBuf {
             time_ms,
             level: "INFO",
             component: "compositor".to_owned(),
-            key: "compositor".to_owned(),
             role: "compositor",
             target: "gnoblin::test".to_owned(),
             message: (*message).to_owned(),
             fields: String::new(),
         })
         .collect();
-    logs.write_batch(&records);
-    root
+    sink.write_batch(&records);
+    dir
 }
 
 /// A connection nothing listens at. The log command never connects, so it is never used.
@@ -73,8 +71,8 @@ fn run(args: &[&str]) -> (u8, String, String) {
 
 #[test]
 fn printing_once_shows_every_record_oldest_first() {
-    let path = store_with(&["first", "second"]);
-    let (code, out, err) = run(&["log", "--store", &path.display().to_string()]);
+    let dir = log_dir_with(&["first", "second"]);
+    let (code, out, err) = run(&["log", "--dir", &dir.display().to_string()]);
     assert_eq!(code, 0, "stderr: {err}");
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines.len(), 2, "{out}");
@@ -83,33 +81,41 @@ fn printing_once_shows_every_record_oldest_first() {
 
 #[test]
 fn since_and_until_bound_the_records_by_their_age() {
-    let path = store_with(&["recent"]);
-    let db = path.display().to_string();
+    let dir = log_dir_with(&["recent"]);
+    let db = dir.display().to_string();
 
-    let (code, out, err) = run(&["log", "--store", &db, "--since", "1d"]);
+    let (code, out, err) = run(&["log", "--dir", &db, "--since", "1d"]);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(
         out.contains("recent"),
         "a record from moments ago is within a day: {out}"
     );
 
-    let (code, out, err) = run(&["log", "--store", &db, "--until", "1d"]);
+    let (code, out, err) = run(&["log", "--dir", &db, "--until", "1d"]);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.is_empty(), "nothing is older than a day ago: {out}");
 }
 
 #[test]
 fn an_rfc3339_bound_is_accepted() {
-    let path = store_with(&["stamped"]);
+    let dir = log_dir_with(&["stamped"]);
     let (code, out, err) = run(&[
         "log",
-        "--store",
-        &path.display().to_string(),
+        "--dir",
+        &dir.display().to_string(),
         "--since",
         "2000-01-01T00:00:00Z",
     ]);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.contains("stamped"), "{out}");
+}
+
+#[test]
+fn the_removed_store_flag_is_a_usage_error() {
+    let (code, out, err) = run(&["log", "--store", "/tmp"]);
+    assert_eq!(code, 2, "stderr: {err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("--store"), "the flag is named: {err}");
 }
 
 #[test]

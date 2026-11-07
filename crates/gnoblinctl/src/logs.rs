@@ -1,27 +1,28 @@
-//! `log`: print the records the log store holds, oldest first.
+//! `log`: print the records the compositor, the portal and the other gnoblin processes wrote to
+//! `gnoblin.jsonl`, oldest first.
 //!
-//! The store is the one the compositor and the portal write (`gnoblin-store`'s log kind),
-//! read back through the query the store defines. It is opened read-only, and this
-//! command needs no compositor: it works while the session is down, which is when
-//! the log is most wanted.
+//! The file and its rotated copies are read directly, so this command needs no compositor and
+//! works while the session is down, which is when the log is most wanted. The file layout is the
+//! sink's own (`gnoblin_log::file`), so the reader and the writer agree on the names.
 //!
-//! `--follow` keeps printing new records as they are written. It polls the store every
-//! `--interval` and stops when the process is interrupted, or when the output pipe closes.
-//! Interruption is the default signal action, so no record is half-written: each record
-//! is one line, flushed with its batch.
+//! `--follow` keeps printing new records as they are written, polling every `--interval`. It
+//! stops when the process is interrupted, or when the output pipe closes. Interruption is the
+//! default signal action, so no record is half-written: each record is one line.
 
 mod bounds;
 mod follow;
+mod records;
 
 use std::io::{self, Write};
-use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gnoblin_cli_style::{ColorChoice, ColourToken, OutputEnvironment, OutputTheme};
-use gnoblin_store::{LogQuery, Logs, Options, Retention, Store, StoredRecord, default_root, log_file};
+use gnoblin_log::file::default_dir;
 
 pub(crate) use bounds::{TimeBound, parse_bound};
+pub(crate) use records::Filter;
+use records::Record;
 
 /// The default poll interval for `--follow`.
 pub(crate) const DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
@@ -29,11 +30,13 @@ pub(crate) const DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
 /// One `log` invocation, as parsed from the command line.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct LogRequest {
-    /// The store directory to read; `None` for the default one.
-    pub(crate) store: Option<PathBuf>,
-    /// The filters. The time bounds are not in it: they are resolved against the clock when
-    /// the command runs, from `since` and `until`.
-    pub(crate) query: LogQuery,
+    /// The log directory to read; `None` for the default one.
+    pub(crate) dir: Option<PathBuf>,
+    /// The level, role and target filters. The time bounds are not in it: they are resolved
+    /// against the clock when the command runs, from `since` and `until`.
+    pub(crate) filter: Filter,
+    /// How many of the newest matching records to print.
+    pub(crate) limit: usize,
     pub(crate) since: Option<TimeBound>,
     pub(crate) until: Option<TimeBound>,
     /// `Some(interval)` to keep following; `None` to print once and exit.
@@ -61,117 +64,65 @@ enum Failure {
 }
 
 fn execute(request: &LogRequest, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), Failure> {
-    let root = match &request.store {
+    let dir = match &request.dir {
         Some(path) => path.clone(),
-        None => default_root(|name| std::env::var(name).ok()).ok_or_else(|| {
-            Failure::Message("neither $XDG_STATE_HOME nor $HOME is set, so there is no default store".to_owned())
+        None => default_dir(|name| std::env::var(name).ok()).ok_or_else(|| {
+            Failure::Message(
+                "neither $XDG_STATE_HOME nor $HOME is set, so there is no default log directory".to_owned(),
+            )
         })?,
     };
     let (since_ms, until_ms) = bounds::resolve(request.since, request.until, now_ms()).map_err(Failure::Message)?;
-    let query = LogQuery {
+    let filter = Filter {
         since_ms,
         until_ms,
-        ..request.query.clone()
+        ..request.filter.clone()
     };
+    let live = records::live_path(&dir);
+    if request.follow.is_none() && !live.exists() {
+        // A mistyped `--dir` is reported rather than shown as an empty log. Following waits
+        // for the file instead, because the session may be about to start writing it.
+        return Err(Failure::Message(format!("no log file at {}", live.display())));
+    }
+
     let theme = OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect_stdout());
     let json = request.json;
-    let mut emit = |records: &[StoredRecord]| -> io::Result<()> {
-        for entry in records {
+    let mut emit = |records: &[Record]| -> io::Result<()> {
+        for record in records {
             let line = if json {
-                json_line(entry)
+                json_line(record)
             } else {
-                text_line(entry, &theme)
+                text_line(record, &theme)
             };
             writeln!(out, "{line}")?;
         }
         out.flush()
     };
-
-    let outcome = match request.follow {
-        None => read_records(&root, &query)
-            .map_err(FollowOutcome::Read)
-            .and_then(|records| emit(&records).map_err(FollowOutcome::Write)),
+    let mut follower = follow::Follower::new(dir.clone(), filter, request.limit);
+    match request.follow {
+        None => {
+            let records = follower.start().map_err(|error| read_failure(&dir, &error))?;
+            emit(&records).map_err(write_failure)
+        }
         Some(interval) => {
-            let mut follower = follow::Follower::new(FileSource { root: &root }, query);
             let mut report = |message: &str| {
                 let _ = writeln!(err, "gnoblinctl: log: {message}");
             };
-            follow::run(&mut follower, interval, &mut emit, &mut report, |wait| {
-                std::thread::sleep(wait);
-                true
-            })
-            .map_err(FollowOutcome::Write)
+            follow::follow(&mut follower, interval, &mut emit, &mut report).map_err(write_failure)
         }
-    };
-    match outcome {
-        Ok(()) => Ok(()),
-        Err(FollowOutcome::Write(error)) if error.kind() == io::ErrorKind::BrokenPipe => Err(Failure::Silent),
-        Err(FollowOutcome::Write(error)) => Err(Failure::Message(format!("cannot write the records: {error}"))),
-        Err(FollowOutcome::Read(message)) => Err(Failure::Message(message)),
     }
 }
 
-/// Either kind of failure from reading or writing, before it is turned into a [`Failure`].
-enum FollowOutcome {
-    Read(String),
-    Write(io::Error),
+fn read_failure(dir: &std::path::Path, error: &io::Error) -> Failure {
+    Failure::Message(format!("cannot read the log in {}: {error}", dir.display()))
 }
 
-/// The store directory a follower reads. The identity is the log file's device and inode, so a
-/// replaced file is noticed; a missing file has no identity and is simply waited for.
-struct FileSource<'a> {
-    root: &'a Path,
-}
-
-impl follow::Source for FileSource<'_> {
-    fn identity(&self) -> Option<(u64, u64)> {
-        std::fs::metadata(log_file(self.root))
-            .ok()
-            .map(|metadata| (metadata.dev(), metadata.ino()))
+fn write_failure(error: io::Error) -> Failure {
+    if error.kind() == io::ErrorKind::BrokenPipe {
+        Failure::Silent
+    } else {
+        Failure::Message(format!("cannot write the records: {error}"))
     }
-
-    fn newest_id(&self) -> Result<i64, String> {
-        open_logs(self.root)?
-            .newest_id()
-            .map_err(|error| format!("cannot read the log store at {}: {error}", self.root.display()))
-    }
-
-    fn read(&self, query: &LogQuery) -> Result<Vec<StoredRecord>, String> {
-        read_records(self.root, query)
-    }
-}
-
-/// Opens the log kind of the store at `root`, read-only. A directory with no log file is an
-/// error, so a mistyped `--store` is reported rather than shown as an empty log.
-fn open_logs(root: &Path) -> Result<Logs, String> {
-    if !log_file(root).exists() {
-        return Err(format!("no log store at {}", root.display()));
-    }
-    let options = Options {
-        writable: false,
-        ..Options::default()
-    };
-    Store::with_options(root, options)
-        .and_then(|store| store.logs(Retention::default()))
-        .map_err(|error| format!("cannot open the log store at {}: {error}", root.display()))
-}
-
-/// Reads the records `query` matches from the store at `root`, oldest first. With no `after_id`
-/// the query takes the newest `limit` records, which is the print-once case and a follower's
-/// first poll; with one it takes the records after it, in id order.
-fn read_records(root: &Path, query: &LogQuery) -> Result<Vec<StoredRecord>, String> {
-    let newest_first = query.after_id.is_none();
-    let search = LogQuery {
-        newest_first,
-        ..query.clone()
-    };
-    let mut records = open_logs(root)?
-        .search(&search)
-        .map_err(|error| format!("cannot read the log store at {}: {error}", root.display()))?;
-    if newest_first {
-        records.reverse();
-    }
-    Ok(records)
 }
 
 /// The current time in milliseconds since the epoch.
@@ -204,24 +155,23 @@ pub(crate) fn parse_interval(text: &str) -> Result<Duration, String> {
 }
 
 /// One record as a JSON object. `time_ms` is milliseconds since the epoch, for scripts.
-fn json_line(entry: &StoredRecord) -> String {
+fn json_line(record: &Record) -> String {
     serde_json::json!({
-        "id": entry.id,
-        "time_ms": entry.time_ms,
-        "level": entry.level,
-        "component": entry.component,
-        "role": entry.role,
-        "target": entry.target,
-        "message": entry.message,
-        "fields": entry.fields,
+        "time_ms": record.time_ms,
+        "level": record.level,
+        "component": record.component,
+        "role": record.role,
+        "target": record.target,
+        "message": record.message,
+        "fields": record.fields,
     })
     .to_string()
 }
 
 /// One record as text: UTC time, level, component, target, message, then the fields if any.
 /// The level is coloured by severity, and the colour is dropped when the theme says so.
-fn text_line(entry: &StoredRecord, theme: &OutputTheme) -> String {
-    let level = match entry.level.as_str() {
+fn text_line(record: &Record, theme: &OutputTheme) -> String {
+    let level = match record.level.as_str() {
         "ERROR" => ColourToken::Danger,
         "WARN" => ColourToken::Warning,
         "INFO" => ColourToken::Info,
@@ -229,15 +179,15 @@ fn text_line(entry: &StoredRecord, theme: &OutputTheme) -> String {
     };
     let mut line = format!(
         "{} {} {} {}: {}",
-        theme.paint(ColourToken::Muted, &iso8601_utc(entry.time_ms)),
-        theme.paint(level, &format!("{:<5}", entry.level)),
-        theme.paint(ColourToken::Accent, &entry.component),
-        entry.target,
-        entry.message,
+        theme.paint(ColourToken::Muted, &iso8601_utc(record.time_ms)),
+        theme.paint(level, &format!("{:<5}", record.level)),
+        theme.paint(ColourToken::Accent, &record.component),
+        record.target,
+        record.message,
     );
-    if !entry.fields.is_empty() {
+    if !record.fields.is_empty() {
         line.push(' ');
-        line.push_str(&theme.paint(ColourToken::Muted, &entry.fields));
+        line.push_str(&theme.paint(ColourToken::Muted, &record.fields));
     }
     line
 }
@@ -283,6 +233,18 @@ mod tests {
         OutputTheme::new(false, false, 80)
     }
 
+    fn record(level: &str, target: &str, message: &str, fields: &str) -> Record {
+        Record {
+            time_ms: 0,
+            level: level.to_owned(),
+            role: "compositor".to_owned(),
+            component: "wayland".to_owned(),
+            target: target.to_owned(),
+            message: message.to_owned(),
+            fields: fields.to_owned(),
+        }
+    }
+
     #[test]
     fn the_epoch_and_a_known_instant_format_as_utc() {
         assert_eq!(iso8601_utc(0), "1970-01-01T00:00:00.000Z");
@@ -291,16 +253,7 @@ mod tests {
 
     #[test]
     fn a_text_line_names_the_time_level_component_target_and_message_then_the_fields() {
-        let entry = StoredRecord {
-            id: 7,
-            time_ms: 0,
-            level: "WARN".to_owned(),
-            component: "wayland".to_owned(),
-            role: "compositor".to_owned(),
-            target: "gnoblin::log".to_owned(),
-            message: "disk full".to_owned(),
-            fields: "path=/x".to_owned(),
-        };
+        let entry = record("WARN", "gnoblin::log", "disk full", "path=/x");
         assert_eq!(
             text_line(&entry, &plain()),
             "1970-01-01T00:00:00.000Z WARN  wayland gnoblin::log: disk full path=/x"
@@ -309,19 +262,19 @@ mod tests {
 
     #[test]
     fn a_coloured_line_keeps_the_same_words_and_adds_escapes() {
-        let entry = StoredRecord {
-            id: 1,
-            time_ms: 0,
-            level: "ERROR".to_owned(),
-            component: "wayland".to_owned(),
-            role: "compositor".to_owned(),
-            target: "t".to_owned(),
-            message: "m".to_owned(),
-            fields: String::new(),
-        };
+        let entry = record("ERROR", "t", "m", "");
         let coloured = text_line(&entry, &OutputTheme::new(true, false, 80));
         assert!(coloured.contains("\x1b[31mERROR\x1b[0m"));
         assert_eq!(gnoblin_cli_style::strip_ansi(&coloured), text_line(&entry, &plain()));
+    }
+
+    #[test]
+    fn a_json_line_carries_the_record_fields_without_an_id() {
+        let entry = record("INFO", "t", "m", "k=v");
+        let value: serde_json::Value = serde_json::from_str(&json_line(&entry)).expect("valid JSON");
+        assert_eq!(value["level"], "INFO");
+        assert_eq!(value["fields"], "k=v");
+        assert!(value.get("id").is_none());
     }
 
     #[test]

@@ -6,5 +6,5 @@ path = "crates/gnoblin-parity"
 reason = "gnoblin-parity is a command-line tool: its stdout is the report it exists to print, and its stderr is its usage and error text"
 
 [[allow]]
-path = "crates/gnoblin-store/src/logs.rs"
+path = "crates/gnoblin-log/src/file.rs"
 reason = "the stderr report of a failed log write: it names the failure once per run of failures, and it must not go through the log pipeline it is reporting on, since the same write would fail again"

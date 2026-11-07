@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::__tracing::{Event, Level, Subscriber};
 use crate::event::Logged;
+use crate::json;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::registry::LookupSpan;
@@ -122,52 +123,26 @@ where
 /// keeps the last value.
 pub fn json_line(logged: &Logged, level: Level, role: &str) -> String {
     let mut line = String::from("{");
-    json_pair(&mut line, "level", level.as_str());
+    json::pair(&mut line, "level", level.as_str());
     line.push(',');
-    json_pair(&mut line, "role", role);
+    json::pair(&mut line, "role", role);
     line.push(',');
-    json_pair(&mut line, "component", &logged.component);
+    json::pair(&mut line, "component", &logged.component);
     line.push(',');
-    json_pair(&mut line, "target", &logged.target);
+    json::pair(&mut line, "target", &logged.target);
     line.push(',');
-    json_pair(&mut line, "message", &logged.message);
+    json::pair(&mut line, "message", &logged.message);
     line.push_str(",\"fields\":{");
     for (index, (name, value)) in logged.fields.iter().enumerate() {
         if index > 0 {
             line.push(',');
         }
-        json_string(&mut line, name);
+        json::string(&mut line, name);
         line.push(':');
-        json_string(&mut line, value);
+        json::string(&mut line, value);
     }
     line.push_str("}}");
     line
-}
-
-/// Writes `"key":"value"` with both sides escaped.
-fn json_pair(out: &mut String, key: &str, value: &str) {
-    json_string(out, key);
-    out.push(':');
-    json_string(out, value);
-}
-
-/// Writes `text` as a JSON string, escaping quotes, backslashes and control characters.
-fn json_string(out: &mut String, text: &str) {
-    out.push('"');
-    for character in text.chars() {
-        match character {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            control if u32::from(control) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(control));
-            }
-            other => out.push(other),
-        }
-    }
-    out.push('"');
 }
 
 /// Records `component` in the column width and returns the width to pad it to.

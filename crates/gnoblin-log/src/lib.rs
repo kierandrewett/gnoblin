@@ -33,8 +33,15 @@ pub mod filter;
 pub mod console;
 
 /// The record a logged event becomes, and the sink that stores batches of them. Always built: it
-/// has no dependencies, so a storage crate can implement [`record::RecordSink`].
+/// has no dependencies, so a sink in another crate can implement [`record::RecordSink`].
 pub mod record;
+
+/// The file sink: JSON lines in `gnoblin.jsonl`, shared by every gnoblin process. Always built,
+/// since it has no dependencies beyond the standard library.
+pub mod file;
+
+/// The JSON escaping the console and file sinks share.
+mod json;
 
 /// The queue between the logging call and a sink, and the layer that feeds it. Needs the
 /// `pipeline` feature.
