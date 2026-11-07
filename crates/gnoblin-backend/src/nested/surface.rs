@@ -59,6 +59,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use super::NestedError;
 use super::handler::{Handler, OutputKey, SlotKey};
 use crate::Present;
+use crate::render::renderer::capture_redacted;
 use crate::{Output, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
@@ -334,6 +335,8 @@ pub struct NestedTarget {
     output: Output,
     /// The software renderer that draws the output's pixels.
     software: Software,
+    /// The frame last drawn, kept only when it has a secure layer, so a capture can mask it.
+    display: Option<OutputFrame>,
     /// The parent's surface the output is presented on.
     surface: wl_surface::WlSurface,
     /// The viewport that scales the buffer to the surface's logical size, if the parent has one.
@@ -406,6 +409,7 @@ impl NestedTarget {
         let mut target = Self {
             output,
             software,
+            display: None,
             surface,
             viewport,
             shm: shm.clone(),
@@ -456,7 +460,16 @@ impl NestedTarget {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
-        self.software.capture(with_cursor)
+        let bounds = Rect::new(0, 0, self.size().width, self.size().height);
+        capture_redacted(
+            &mut self.software,
+            self.display.as_ref(),
+            bounds,
+            self.output.scale,
+            with_cursor,
+            Software::draw,
+            Software::capture,
+        )
     }
 
     /// Applies a new configure: the mode the output is in and the scale it composes at.
@@ -573,7 +586,9 @@ impl Target for NestedTarget {
     }
 
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
-        self.software.draw(frame, self.output.scale)
+        self.software.draw(frame, self.output.scale)?;
+        self.display = frame.has_secure().then(|| frame.clone());
+        Ok(())
     }
 
     fn present(&mut self, damage: &[Rect]) -> Present {

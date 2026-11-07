@@ -6,9 +6,13 @@
 //! so; `render/mod.rs` explains why it is an enum and not a trait.
 
 use gnoblin_config::RendererChoice;
-use gnoblin_types::{Scale, Size};
+use gnoblin_types::{Rect, Scale, Size};
 
-use gnoblin_render_frame::{error::RenderError, frame::OutputFrame, image::Image};
+use gnoblin_render_frame::{
+    error::RenderError,
+    frame::{OutputFrame, SecureTreatment},
+    image::Image,
+};
 use gnoblin_render_gles::Gles;
 use gnoblin_render_software::Software;
 #[cfg(feature = "vulkan")]
@@ -186,6 +190,32 @@ impl AnyRenderer {
             _ => None,
         }
     }
+}
+
+/// Reads a renderer back for a capture, with the secure layers of the frame it last drew masked.
+///
+/// `display` is that frame, or `None` when it has no secure layer, in which case the read is
+/// the plain one. Otherwise the masked frame is drawn and read, and the display is drawn
+/// again with full damage so the next present shows the real layers. The display is restored
+/// even when the read fails.
+pub(crate) fn capture_redacted<R>(
+    renderer: &mut R,
+    display: Option<&OutputFrame>,
+    bounds: Rect,
+    scale: Scale,
+    with_cursor: bool,
+    draw: fn(&mut R, &OutputFrame, Scale) -> Result<(), RenderError>,
+    read: fn(&mut R, bool) -> Result<Image, RenderError>,
+) -> Result<Image, RenderError> {
+    let Some(display) = display else {
+        return read(renderer, with_cursor);
+    };
+    let masked = display.redacted(SecureTreatment::Mask, bounds);
+    let image = draw(renderer, &masked, scale).and_then(|()| read(renderer, with_cursor));
+    let restored = draw(renderer, &display.fully_damaged(bounds), scale);
+    let image = image?;
+    restored?;
+    Ok(image)
 }
 
 #[cfg(test)]

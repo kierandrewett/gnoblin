@@ -58,7 +58,7 @@ use gnoblin_output::DisplayMode;
 
 use gnoblin_config::RendererChoice;
 
-use crate::render::renderer::{AnyRenderer, RendererKind};
+use crate::render::renderer::{AnyRenderer, RendererKind, capture_redacted};
 use crate::{
     Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
     Target,
@@ -158,6 +158,8 @@ pub struct HeadlessTarget {
     presents: u64,
     damage: Vec<Rect>,
     renderer: AnyRenderer,
+    /// The frame last drawn, kept only when it has a secure layer, so a capture can mask it.
+    display: Option<OutputFrame>,
 }
 
 impl std::fmt::Debug for HeadlessTarget {
@@ -202,6 +204,7 @@ impl HeadlessTarget {
             presents: 0,
             damage: Vec::new(),
             renderer: AnyRenderer::new(kind, physical)?,
+            display: None,
         })
     }
 
@@ -245,7 +248,16 @@ impl HeadlessTarget {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
-        self.renderer.capture(with_cursor)
+        let bounds = self.bounds();
+        capture_redacted(
+            &mut self.renderer,
+            self.display.as_ref(),
+            bounds,
+            self.scale,
+            with_cursor,
+            AnyRenderer::draw,
+            AnyRenderer::capture,
+        )
     }
 
     /// The target's whole extent as a rectangle, for clipping.
@@ -274,7 +286,9 @@ impl Target for HeadlessTarget {
     }
 
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
-        self.renderer.draw(frame, self.scale)
+        self.renderer.draw(frame, self.scale)?;
+        self.display = frame.has_secure().then(|| frame.clone());
+        Ok(())
     }
 
     fn present(&mut self, damage: &[Rect]) -> Present {
