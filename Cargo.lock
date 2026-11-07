@@ -1524,6 +1524,7 @@ dependencies = [
 name = "gnoblin-compositor"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-a11y",
  "gnoblin-backend",
  "gnoblin-client",
  "gnoblin-config",
@@ -1609,6 +1610,13 @@ dependencies = [
  "tempfile",
  "wayland-client",
  "wayland-protocols",
+]
+
+[[package]]
+name = "gnoblin-keyring-handoff"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "zeroize",
 ]
 
 [[package]]
@@ -1867,6 +1875,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-service-keyring"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "aes",
+ "cbc",
+ "futures-lite",
+ "getrandom",
+ "gnoblin-keyring-handoff",
+ "gnoblin-keyring-store",
+ "gnoblin-log",
+ "hkdf",
+ "num-bigint",
+ "rustix 1.1.6",
+ "sha2 0.11.1",
+ "zbus",
+ "zeroize",
+]
+
+[[package]]
 name = "gnoblin-service-location"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1918,16 +1945,19 @@ dependencies = [
  "futures-lite",
  "gnoblin-client",
  "gnoblin-config",
+ "gnoblin-keyring-handoff",
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-service-core",
+ "gnoblin-service-keyring",
  "gnoblin-service-location",
  "gnoblin-service-polkit",
  "gnoblin-service-screensaver",
  "gnoblin-service-testkit",
  "gnoblin-types",
+ "rustix 1.1.6",
  "zbus",
 ]
 
@@ -2752,6 +2782,15 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "pam-gnoblin-keyring"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-keyring-handoff",
+ "rustix 1.1.6",
+ "zeroize",
 ]
 
 [[package]]
