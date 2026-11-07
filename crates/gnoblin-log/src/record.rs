@@ -53,6 +53,7 @@ impl SinkHandle {
         Self(Arc::from(sink))
     }
 
+    #[cfg(feature = "init")]
     /// The shared sink, for the writer thread to own.
     pub(crate) fn shared(&self) -> Arc<dyn RecordSink> {
         Arc::clone(&self.0)
