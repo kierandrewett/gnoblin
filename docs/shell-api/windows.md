@@ -144,7 +144,9 @@ window:set_opacity(0.8)
   defaults.
 - While the session is locked, these methods fail.
 - An open, close, minimize or resize animation draws the window itself. A
-  change made while one plays can be overwritten when it ends.
+  change made while one plays can be overwritten when it ends. On the Rust compositor a minimize
+  fades the window's picture out over 200 ms and keeps it for restore, and a workspace switch slides
+  the window; see [animations](/guides/animations).
 
 ## Change what a window's rules give
 

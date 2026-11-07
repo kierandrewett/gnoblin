@@ -142,9 +142,9 @@ Workspace transitions, resize effects, and shadow changes expose `progress`
 from 0 to 1. For these events, animate `progress` and let the effect
 consume it; actor properties such as `x` and `scale` are not accepted.
 
-Workspace switches use the selected animation's `progress` to move the outgoing
-and incoming workspaces in Mutter's switch direction. Custom keyframes change
-the transition timing and progress curve.
+Workspace switches in the Mutter session use the selected animation's `progress` to move the outgoing
+and incoming workspaces in Mutter's switch direction. Custom keyframes change the transition timing and
+progress curve. The Rust compositor does not use this; see the paragraph below.
 
 Resize animations use `progress` to interpolate the window from its previous
 buffer geometry to its new geometry. Custom keyframes control how the window
@@ -158,6 +158,18 @@ toward a specific place.
 Hiding a window in the compositor, as minimizing it does, fades the window's last picture out over
 200 ms. The window keeps its content, so restoring it shows the last frame its client committed.
 Restoring it during that fade eases it back to opaque. With reduced motion the window is hidden at once.
+
+The Rust compositor (`gnoblin-backend`) does not read `gnoblin.animation` declarations for these two
+transitions yet. Its minimise fade and workspace slide use the built-in timing described here, and the selected
+animation's `progress` does not change them.
+
+A workspace switch on the Rust compositor has these rules:
+
+- The windows of the workspace being left slide off one side, and the new workspace's windows slide in from the same side.
+- Each window moves by one output width over 200 ms with ease-out cubic. The side follows the workspace order.
+- A second switch during a slide starts from where the windows are drawn, so it does not jump.
+- A window that leaves its workspace loses its node when the slide lands. A window on another workspace is not drawn after it lands.
+- With reduced motion the switch happens at once.
 
 ## Recreate a preset
 
