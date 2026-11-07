@@ -188,6 +188,7 @@ fn rank(size: u16, requested: u16) -> (u8, u16) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_types::Scale;
 
     fn theme(name: &str, xcursor: bool, hyprcursor: bool, sizes: &[u16]) -> InstalledTheme {
         InstalledTheme {

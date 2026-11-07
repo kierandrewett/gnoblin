@@ -1,5 +1,5 @@
-//! Pure scene graph, visual transforms, effects, damage, the tween player and
-//! cursor selection for the Gnoblin compositor.
+//! Pure scene graph, visual transforms, effects, damage and the tween player
+//! for the Gnoblin compositor.
 //!
 //! This crate is the scene-side half of the Renderer card in
 //! `design/rust-compositor.md` and contains no GPU code: no GL, no Smithay type,
@@ -9,7 +9,7 @@
 //!
 //! Every rectangle, point, transform, vector, compositing scale and output
 //! identity comes from `gnoblin-types`; this crate adds only what a scene needs
-//! (a node's visual properties, effects, damage, tracks and the cursor choice).
+//! (a node's visual properties, effects, damage and tracks).
 //!
 //! # What it guarantees
 //!
@@ -50,7 +50,6 @@
 //! | `property` | Typed visual property values and their kinds |
 //! | `camera`, `matrix` | Perspective and orthographic projection, 4x4 matrices |
 //! | `easing` | Timing curves for tracks |
-//! | `cursor` | Cursor image selection and loading |
 //!
 //! # Frame hand-off
 //!
@@ -103,22 +102,15 @@
 //!     `tween::tests::a_delayed_track_holds_its_start_value_until_the_delay_passes`.
 //! 13. A spring or Bezier curve jumps off its endpoints:
 //!     `easing::tests::every_easing_hits_both_endpoints`.
-//! 14. A missing cursor theme leaves no cursor:
-//!     `cursor::tests::a_missing_theme_falls_back_to_the_installed_default_theme`,
-//!     `cursor::tests::with_nothing_installed_the_built_in_pointer_is_used`.
-//! 15. A cursor size outside the documented range reaches the renderer, or the
-//!     output scale is applied twice:
-//!     `cursor::tests::the_size_is_clamped_to_the_documented_range`,
-//!     `cursor::tests::the_output_scale_multiplies_the_selected_size_once`.
-//! 16. A duplicate node replaces a live one:
+//! 14. A duplicate node replaces a live one:
 //!     `scene::tests::a_duplicate_node_and_a_missing_parent_are_refused`.
-//! 17. A non-finite value reaches geometry:
+//! 15. A non-finite value reaches geometry:
 //!     `scene::tests::a_non_finite_transform_is_refused`,
 //!     `property::tests::a_non_finite_value_is_refused`.
-//! 18. A hit test misses a transformed node:
+//! 16. A hit test misses a transformed node:
 //!     `scene::tests::hit_testing_goes_through_the_inverse_transform`,
 //!     `scene::tests::a_rotated_parent_is_hit_through_the_inverse_rotation`.
-//! 19. An undeclared or reserved shader uniform is accepted:
+//! 17. An undeclared or reserved shader uniform is accepted:
 //!     `effect::tests::an_undeclared_uniform_is_refused`,
 //!     `effect::tests::a_reserved_or_malformed_name_is_refused`.
 //!
@@ -148,13 +140,9 @@
 //!   progress, so a track's duration time-scales the same motion. The guide does
 //!   not define spring parameters; the formula is documented on
 //!   [`Easing::Spring`].
-//! - **Cursor theme sizes** are matched against the logical request, because a
-//!   theme declares its sizes at scale 1. The physical size is the chosen
-//!   nominal size times the output scale, rounded once in integer arithmetic.
 
 mod camera;
 mod color;
-pub mod cursor;
 mod damage;
 mod easing;
 mod effect;
@@ -172,11 +160,6 @@ mod model_test;
 pub use camera::{Camera, CameraError, Projection};
 /// The RGBA colour type used for backgrounds and tints.
 pub use color::Color;
-/// Cursor theme selection types and the size limits they share.
-pub use cursor::{
-    CursorBackend, CursorBuild, CursorSelection, DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, InstalledTheme,
-    MAX_CURSOR_SIZE, MIN_CURSOR_SIZE, select_cursor,
-};
 /// Damage rectangles per output and the merge helper.
 pub use damage::{Damage, OutputDamage, merge_rects};
 /// Timing curves for tracks and their validation error.

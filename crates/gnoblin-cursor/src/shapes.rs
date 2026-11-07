@@ -74,7 +74,7 @@ pub fn candidates(shape: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::candidates;
+    use crate::candidates;
 
     #[test]
     fn default_is_left_ptr_then_the_generic_names() {

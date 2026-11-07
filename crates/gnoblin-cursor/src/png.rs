@@ -11,7 +11,7 @@ use std::io::Cursor;
 
 use png::{BitDepth, ColorType, Decoder};
 
-use super::image::{CursorFrame, ImageError, MAX_IMAGE_EDGE, MAX_PHYSICAL_SIZE, premultiplied};
+use crate::image::{CursorFrame, ImageError, MAX_IMAGE_EDGE, MAX_PHYSICAL_SIZE, premultiplied};
 
 /// Why a PNG frame is refused.
 #[derive(Debug)]

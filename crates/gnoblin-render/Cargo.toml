@@ -11,17 +11,6 @@ publish.workspace = true
 # the output identity and the named `unsupported-3d` refusal are shared with
 # every other crate.
 gnoblin-types.workspace = true
-# Cursor providers (D20): Xcursor parsing, the SVG rasteriser (pure Rust; no
-# text, no raster-image decoders, which cursors do not use), the zip container
-# of compiled Hyprcursor themes, the `metadata.json` of `cursors_scalable`
-# themes, and the logging used for named provider failures.
-xcursor = "0.3.11"
-resvg = { version = "0.48.1", default-features = false }
-zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2"] }
-# PNG cursor frames: the decoder, with its default (zlib) features.
-png = "0.18.1"
-serde_json.workspace = true
-gnoblin-log = { path = "../gnoblin-log" }
 
 [lints]
 workspace = true

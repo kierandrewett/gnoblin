@@ -5,7 +5,7 @@
 //! size, so one unit is one pixel at the default size. Each pixel is averaged
 //! over a 4 by 4 supersample grid, which gives antialiased edges.
 
-use super::{CursorFrame, CursorImages, MAX_PHYSICAL_SIZE, premultiplied};
+use crate::{CursorFrame, CursorImages, MAX_PHYSICAL_SIZE, premultiplied};
 
 /// The edge of the design grid, in units.
 const DESIGN: f64 = 24.0;

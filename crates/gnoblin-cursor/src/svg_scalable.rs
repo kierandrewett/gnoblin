@@ -13,10 +13,10 @@
 
 use serde_json::Value;
 
-use super::files::{CursorFiles, FileError, SearchPath, is_contained};
-use super::image::{CursorFrame, CursorImages};
-use super::shapes;
-use super::{CursorProvider, CursorRequest, Lookup, MAX_FRAMES, ProviderKind, scale_hotspot, svg};
+use crate::files::{CursorFiles, FileError, SearchPath, is_contained};
+use crate::image::{CursorFrame, CursorImages};
+use crate::shapes;
+use crate::{CursorProvider, CursorRequest, Lookup, MAX_FRAMES, ProviderKind, scale_hotspot, svg};
 
 /// The `cursors_scalable` provider.
 pub struct KdeGnomeSvg;

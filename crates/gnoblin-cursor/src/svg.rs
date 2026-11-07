@@ -11,7 +11,7 @@
 //! - the canvas exceeds the frame limit (`Frame`).
 //!
 //! The time one SVG may take is bounded by the 1 MiB file cap in
-//! [`super::files`] and by the 512 pixel canvas cap in [`super::MAX_PHYSICAL_SIZE`];
+//! [`crate::files`] and by the 512 pixel canvas cap in [`crate::MAX_PHYSICAL_SIZE`];
 //! resvg's own filter limits bound the rest. A pathological SVG can still take
 //! noticeable time to render, which is why the chain caches every result.
 
@@ -19,7 +19,7 @@ use std::fmt;
 
 use resvg::{tiny_skia, usvg};
 
-use super::{CursorFrame, ImageError, MAX_PHYSICAL_SIZE, pack_argb};
+use crate::{CursorFrame, ImageError, MAX_PHYSICAL_SIZE, pack_argb};
 
 /// Why an SVG cursor frame could not be produced.
 #[derive(Clone, Debug, PartialEq, Eq)]

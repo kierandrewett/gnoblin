@@ -1,0 +1,25 @@
+[package]
+name = "gnoblin-cursor"
+description = "Cursor images: the ordered provider chain (Hyprcursor, kde-gnome-svg, Xcursor), theme lookup, image decoding, the built-in arrow and size selection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The selection scale and the shared primitives every crate passes around.
+gnoblin-types.workspace = true
+# Cursor providers (D20): Xcursor parsing, the SVG rasteriser (pure Rust; no
+# text, no raster-image decoders, which cursors do not use), the zip container
+# of compiled Hyprcursor themes, the `metadata.json` of `cursors_scalable`
+# themes, and the logging used for named provider failures.
+xcursor = "0.3.11"
+resvg = { version = "0.48.1", default-features = false }
+zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2"] }
+# PNG cursor frames: the decoder, with its default (zlib) features.
+png = "0.18.1"
+serde_json.workspace = true
+gnoblin-log = { path = "../gnoblin-log" }
+
+[lints]
+workspace = true

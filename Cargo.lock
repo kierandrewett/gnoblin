@@ -1509,6 +1509,7 @@ dependencies = [
  "gnoblin-backend",
  "gnoblin-client",
  "gnoblin-config",
+ "gnoblin-cursor",
  "gnoblin-input",
  "gnoblin-input-eis",
  "gnoblin-log",
@@ -1548,6 +1549,19 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+]
+
+[[package]]
+name = "gnoblin-cursor"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "png",
+ "resvg",
+ "serde_json",
+ "xcursor",
+ "zip",
 ]
 
 [[package]]
@@ -1733,13 +1747,7 @@ dependencies = [
 name = "gnoblin-render"
 version = "0.2.0-alpha.0"
 dependencies = [
- "gnoblin-log",
  "gnoblin-types",
- "png",
- "resvg",
- "serde_json",
- "xcursor",
- "zip",
 ]
 
 [[package]]
@@ -1886,6 +1894,7 @@ dependencies = [
  "gnoblin-backend",
  "gnoblin-capture",
  "gnoblin-config",
+ "gnoblin-cursor",
  "gnoblin-input",
  "gnoblin-lock",
  "gnoblin-log",

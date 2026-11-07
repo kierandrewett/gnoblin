@@ -28,9 +28,9 @@ use std::io::{Cursor, Read};
 
 use zip::ZipArchive;
 
-use super::files::{CursorFiles, FileError, MAX_FILE_BYTES, SearchPath, is_contained};
-use super::image::{CursorFrame, CursorImages};
-use super::{CursorProvider, CursorRequest, Lookup, MAX_FRAMES, ProviderKind, nominal_for, png, shapes, svg};
+use crate::files::{CursorFiles, FileError, MAX_FILE_BYTES, SearchPath, is_contained};
+use crate::image::{CursorFrame, CursorImages};
+use crate::{CursorProvider, CursorRequest, Lookup, MAX_FRAMES, ProviderKind, nominal_for, png, shapes, svg};
 
 /// The directory of shape archives when `manifest.hl` does not name one.
 const DEFAULT_DIRECTORY: &str = "hyprcursors";
@@ -228,7 +228,7 @@ fn file_failure(label: &str, error: &FileError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cursor::MemoryFiles;
+    use crate::MemoryFiles;
 
     #[test]
     fn the_manifest_names_the_cursor_directory() {
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn a_png_frame_decodes_with_its_hotspot() {
-        let frame = super::super::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
+        let frame = crate::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
         let files = png_theme(&frame);
         let request = CursorRequest {
             theme: "Test",
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn a_truncated_png_frame_fails_naming_the_file() {
-        let frame = super::super::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
+        let frame = crate::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
         let files = png_theme(&frame[..frame.len() / 2]);
         let request = CursorRequest {
             theme: "Test",

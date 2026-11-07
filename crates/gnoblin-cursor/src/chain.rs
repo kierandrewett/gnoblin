@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_types::Scale;
 
-use super::builtin;
-use super::selection;
-use super::{CursorFiles, CursorImages, CursorProvider, CursorRequest, Lookup, MAX_PHYSICAL_SIZE};
+use crate::builtin;
+use crate::selection;
+use crate::{CursorFiles, CursorImages, CursorProvider, CursorRequest, Lookup, MAX_PHYSICAL_SIZE};
 
 use crate::log;
 
@@ -178,7 +178,8 @@ impl CursorChain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cursor::{CursorFrame, MemoryFiles, ProviderKind, SearchPath};
+    use gnoblin_types::Scale;
+    use crate::{CursorFrame, MemoryFiles, ProviderKind, SearchPath};
 
     /// A provider whose answer is a plain function of the request.
     struct Scripted(fn(&CursorRequest<'_>) -> Lookup);
@@ -283,7 +284,7 @@ mod tests {
     #[test]
     fn the_physical_size_is_clamped_before_lookup() {
         let chain = CursorChain::new(files(), "default", Vec::new(), 4 << 20);
-        let max_logical = crate::cursor::selection::MAX_CURSOR_SIZE;
+        let max_logical = crate::selection::MAX_CURSOR_SIZE;
         let images = chain.lookup("arrow", max_logical, Scale::integral(4));
         assert_eq!(images.width(), MAX_PHYSICAL_SIZE);
     }

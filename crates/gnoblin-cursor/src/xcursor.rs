@@ -9,7 +9,7 @@
 
 use std::collections::VecDeque;
 
-use super::{
+use crate::{
     CursorFiles, CursorFrame, CursorImages, CursorProvider, CursorRequest, FileError, Lookup, MAX_FRAMES, ProviderKind,
     SearchPath, candidates, is_contained, nominal_for, premultiplied, scale_hotspot, scale_length,
 };
