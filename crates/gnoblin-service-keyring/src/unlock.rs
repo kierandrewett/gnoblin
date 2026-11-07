@@ -368,7 +368,7 @@ mod tests {
 
         fn event(&self, event: &tracing::Event<'_>) {
             let mut text = self.0.lock().expect("the capture lock");
-            event.record(&mut Fields(&mut *text));
+            event.record(&mut Fields(&mut text));
         }
 
         fn enter(&self, _: &tracing::span::Id) {}
