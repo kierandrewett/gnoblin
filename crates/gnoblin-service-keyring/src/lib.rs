@@ -113,6 +113,9 @@ pub async fn serve_on(
         )
         .await
         .map_err(ServeError::Bus)?;
+    objects::export_default_collection(connection.object_server(), &state)
+        .await
+        .map_err(ServeError::Bus)?;
     match connection
         .request_name_with_flags(BUS_NAME, RequestNameFlags::DO_NOT_QUEUE)
         .await

@@ -27,6 +27,9 @@ const SESSION_PREFIX: &str = "/org/freedesktop/secrets/session/";
 const PROMPT_PREFIX: &str = "/org/freedesktop/secrets/prompt/";
 /// The alias the default collection answers to. Clients read it with `ReadAlias`.
 pub const DEFAULT_ALIAS: &str = "default";
+/// The fixed path of the default collection. A client holds it across a lock and an unlock, and
+/// the collection behind it follows the `default` alias.
+pub const DEFAULT_COLLECTION_PATH: &str = "/org/freedesktop/secrets/collection/default";
 /// The label of the collection created on first run.
 const DEFAULT_LABEL: &str = "Login";
 /// The property names `CreateItem` reads its label and attributes from.
@@ -161,15 +164,66 @@ fn collection_id(path: &str) -> Option<CollectionId> {
     rest.parse::<i64>().ok().map(CollectionId::from_raw)
 }
 
-/// The collection an alias names. `/` names none and removes the alias. Any other path must be a
-/// collection path, so an item or session path is an argument error, not a silent removal.
-fn alias_target(path: &str) -> Result<Option<CollectionId>, SecretError> {
+/// The client-facing path of `id`. The default collection answers at [`DEFAULT_COLLECTION_PATH`]
+/// whatever its id is, so a client holds one path across a lock and an unlock. Every other
+/// collection keeps its numeric path.
+fn client_path(keyring: &Keyring, id: CollectionId) -> Result<String, SecretError> {
+    if keyring.alias(DEFAULT_ALIAS)? == Some(id) {
+        return Ok(DEFAULT_COLLECTION_PATH.to_owned());
+    }
+    Ok(collection_path(id))
+}
+
+/// The collection the `default` alias names. With no alias there is no default collection.
+fn default_collection(keyring: &Keyring) -> Result<CollectionId, SecretError> {
+    keyring
+        .alias(DEFAULT_ALIAS)?
+        .ok_or_else(|| SecretError::NoSuchObject(DEFAULT_COLLECTION_PATH.to_owned()))
+}
+
+/// The collection an alias names. `/` names none and removes the alias. The default path names
+/// whatever the `default` alias names now. Any other path must be a collection path, so an item
+/// or session path is an argument error, not a silent removal.
+fn alias_target(keyring: &Keyring, path: &str) -> Result<Option<CollectionId>, SecretError> {
     if path == NO_OBJECT {
         return Ok(None);
+    }
+    if path == DEFAULT_COLLECTION_PATH {
+        return default_collection(keyring).map(Some);
     }
     collection_id(path)
         .map(Some)
         .ok_or_else(|| SecretError::InvalidArgs(format!("{path} is not a collection path")))
+}
+
+/// The collections a client sees. While locked the store cannot be read, but the default
+/// collection is still listed at its fixed path, so a client can name it before the unlock.
+fn collection_paths(keyring: Option<&Keyring>) -> Result<Vec<OwnedObjectPath>, SecretError> {
+    let Some(keyring) = keyring else {
+        return Ok(vec![owned_path(DEFAULT_COLLECTION_PATH)?]);
+    };
+    let mut paths = Vec::new();
+    for (id, _) in keyring.collections()? {
+        paths.push(owned_path(&client_path(keyring, id)?)?);
+    }
+    Ok(paths)
+}
+
+/// The collection `name` names, or `/` when there is none. While locked only the `default` alias
+/// names a path: the fixed default path.
+fn read_alias_in(keyring: Option<&Keyring>, name: &str) -> Result<OwnedObjectPath, SecretError> {
+    let Some(keyring) = keyring else {
+        let path = if name == DEFAULT_ALIAS {
+            DEFAULT_COLLECTION_PATH
+        } else {
+            NO_OBJECT
+        };
+        return owned_path(path);
+    };
+    match keyring.alias(name)? {
+        Some(collection) => owned_path(&client_path(keyring, collection)?),
+        None => owned_path(NO_OBJECT),
+    }
 }
 
 /// The label `CreateCollection` carries. A missing label is an argument error.
@@ -241,7 +295,7 @@ pub async fn export_tree(server: &ObjectServer, state: &State) -> Result<(), Sec
                         path.as_str(),
                         CollectionObject {
                             state: state.clone(),
-                            id: collection,
+                            target: CollectionTarget::Id(collection),
                         },
                     )
                     .await
@@ -262,6 +316,21 @@ pub async fn export_tree(server: &ObjectServer, state: &State) -> Result<(), Sec
             }
         }
     }
+    Ok(())
+}
+
+/// Register the default collection's object at [`DEFAULT_COLLECTION_PATH`]. It is registered once
+/// at startup, locked or not, because a client holds that path across a lock and an unlock.
+pub async fn export_default_collection(server: &ObjectServer, state: &State) -> zbus::Result<()> {
+    server
+        .at(
+            DEFAULT_COLLECTION_PATH,
+            CollectionObject {
+                state: state.clone(),
+                target: CollectionTarget::Default,
+            },
+        )
+        .await?;
     Ok(())
 }
 
@@ -398,13 +467,7 @@ impl ServiceObject {
     /// The collection the alias names, or `/` when there is none or the keyring is locked.
     async fn read_alias(&self, name: &str) -> Result<OwnedObjectPath, SecretError> {
         let shared = lock(&self.state);
-        let Some(keyring) = shared.keyring.as_ref() else {
-            return owned_path(NO_OBJECT);
-        };
-        match keyring.alias(name)? {
-            Some(collection) => owned_path(&collection_path(collection)),
-            None => owned_path(NO_OBJECT),
-        }
+        read_alias_in(shared.keyring.as_ref(), name)
     }
 
     /// Points `name` at `collection`, or removes the alias when `collection` is `/`. A locked
@@ -412,7 +475,7 @@ impl ServiceObject {
     async fn set_alias(&self, name: &str, collection: OwnedObjectPath) -> Result<(), SecretError> {
         let mut shared = lock(&self.state);
         let keyring = shared.open_mut()?;
-        match alias_target(collection.as_str())? {
+        match alias_target(keyring, collection.as_str())? {
             None => {
                 keyring.clear_alias(name)?;
             }
@@ -437,11 +500,11 @@ impl ServiceObject {
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(OwnedObjectPath, OwnedObjectPath), SecretError> {
         let label = collection_label(properties)?;
-        let (id, created) = {
+        let (id, created, client) = {
             let mut shared = lock(&self.state);
             let keyring = shared.open_mut()?;
             let existing = if alias.is_empty() { None } else { keyring.alias(alias)? };
-            match existing {
+            let (id, created) = match existing {
                 Some(id) => (id, false),
                 None => {
                     let id = keyring.create_collection(&label)?;
@@ -450,17 +513,19 @@ impl ServiceObject {
                     }
                     (id, true)
                 }
-            }
+            };
+            let client = client_path(keyring, id)?;
+            (id, created, client)
         };
         let path = collection_path(id);
-        let collection = owned_path(&path)?;
+        let collection = owned_path(&client)?;
         if created {
             server
                 .at(
                     path.as_str(),
                     CollectionObject {
                         state: self.state.clone(),
-                        id,
+                        target: CollectionTarget::Id(id),
                     },
                 )
                 .await
@@ -476,14 +541,7 @@ impl ServiceObject {
     #[zbus(property)]
     async fn collections(&self) -> Result<Vec<OwnedObjectPath>, SecretError> {
         let shared = lock(&self.state);
-        let Some(keyring) = shared.keyring.as_ref() else {
-            return Ok(Vec::new());
-        };
-        keyring
-            .collections()?
-            .into_iter()
-            .map(|(id, _)| owned_path(&collection_path(id)))
-            .collect()
+        collection_paths(shared.keyring.as_ref())
     }
 
     /// Sent on the service after a collection is deleted, so clients drop it from their lists.
@@ -606,31 +664,65 @@ fn write_item(
     Ok((id, true))
 }
 
-/// One collection of the store.
+/// Which collection a [`CollectionObject`] answers for. The default object names whatever the
+/// `default` alias names when a method runs, so it follows the alias across changes.
+#[derive(Clone, Copy, Debug)]
+pub enum CollectionTarget {
+    /// A collection at its numeric path. Every collection has one while the store is open.
+    Id(CollectionId),
+    /// The collection the `default` alias names, at [`DEFAULT_COLLECTION_PATH`].
+    Default,
+}
+
+/// Reads a collection's answer while the store is locked. The default collection has a fixed
+/// label and no items to show, so it answers `fallback`. Any other collection is `IsLocked`.
+fn locked_read<T>(target: CollectionTarget, fallback: T) -> Result<T, SecretError> {
+    match target {
+        CollectionTarget::Default => Ok(fallback),
+        CollectionTarget::Id(_) => Err(SecretError::IsLocked("the keyring is locked".to_owned())),
+    }
+}
+
+/// One collection of the store, answering at its path.
 pub struct CollectionObject {
     pub state: State,
-    pub id: CollectionId,
+    pub target: CollectionTarget,
+}
+
+impl CollectionObject {
+    /// The collection this object names in the open store. A default object with no `default`
+    /// alias answers `NoSuchObject`.
+    fn id_in(&self, keyring: &Keyring) -> Result<CollectionId, SecretError> {
+        match self.target {
+            CollectionTarget::Id(id) => Ok(id),
+            CollectionTarget::Default => default_collection(keyring),
+        }
+    }
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Collection")]
 impl CollectionObject {
-    /// Deletes the collection and its items, then tells the service so clients drop it.
-    /// Removing the collection drops its alias too, since the store cascades to aliases.
+    /// Deletes the collection and its items, then tells the service so clients drop it. Removing
+    /// the collection drops its alias too, since the store cascades to aliases. The client path is
+    /// read before the delete, because the delete drops the alias that names the default path. The
+    /// default object stays registered, so the next unlock finds it.
     async fn delete(&self, #[zbus(object_server)] server: &ObjectServer) -> Result<OwnedObjectPath, SecretError> {
-        let items = {
+        let (id, client, items) = {
             let mut shared = lock(&self.state);
             let keyring = shared.open_mut()?;
-            let items = keyring.items_in(self.id)?;
-            if !keyring.delete_collection(self.id)? {
-                return Err(SecretError::NoSuchObject(collection_path(self.id)));
+            let id = self.id_in(keyring)?;
+            let client = client_path(keyring, id)?;
+            let items = keyring.items_in(id)?;
+            if !keyring.delete_collection(id)? {
+                return Err(SecretError::NoSuchObject(client));
             }
-            items
+            (id, client, items)
         };
-        for id in items {
-            let path = item_path(self.id, id);
+        for item in items {
+            let path = item_path(id, item);
             server.remove::<ItemObject, _>(path.as_str()).await.map_err(failed)?;
         }
-        let path = collection_path(self.id);
+        let path = collection_path(id);
         server
             .remove::<CollectionObject, _>(path.as_str())
             .await
@@ -639,7 +731,7 @@ impl CollectionObject {
             .interface::<_, ServiceObject>(SERVICE_PATH)
             .await
             .map_err(failed)?;
-        ServiceObject::collection_deleted(service.signal_emitter(), &owned_path(&path)?)
+        ServiceObject::collection_deleted(service.signal_emitter(), &owned_path(&client)?)
             .await
             .map_err(failed)?;
         owned_path(NO_OBJECT)
@@ -650,23 +742,25 @@ impl CollectionObject {
         attributes: HashMap<String, String>,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<Vec<OwnedObjectPath>, SecretError> {
-        let found: Vec<ItemId> = {
+        let (collection, found) = {
             let shared = lock(&self.state);
             let keyring = shared.open()?;
+            let collection = self.id_in(keyring)?;
             let pairs: Vec<(&str, &str)> = attributes
                 .iter()
                 .map(|(name, value)| (name.as_str(), value.as_str()))
                 .collect();
-            let mine = keyring.items_in(self.id)?;
-            keyring
+            let mine = keyring.items_in(collection)?;
+            let found: Vec<ItemId> = keyring
                 .search_items(&pairs)?
                 .into_iter()
                 .filter(|id| mine.contains(id))
-                .collect()
+                .collect();
+            (collection, found)
         };
         let mut paths = Vec::new();
         for id in found {
-            let path = item_path(self.id, id);
+            let path = item_path(collection, id);
             server
                 .at(
                     path.as_str(),
@@ -691,13 +785,15 @@ impl CollectionObject {
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(OwnedObjectPath, OwnedObjectPath), SecretError> {
         let (label, attributes) = item_properties(properties)?;
-        let (id, created) = {
+        let (collection, id, created) = {
             let mut shared = lock(&self.state);
             let (plain, content_type) = plain_secret(&shared, &secret)?;
             let keyring = shared.open_mut()?;
-            write_item(keyring, self.id, &label, &content_type, &plain, &attributes, replace)?
+            let collection = self.id_in(keyring)?;
+            let (id, created) = write_item(keyring, collection, &label, &content_type, &plain, &attributes, replace)?;
+            (collection, id, created)
         };
-        let path = item_path(self.id, id);
+        let path = item_path(collection, id);
         let item = owned_path(&path)?;
         if created {
             server
@@ -732,24 +828,31 @@ impl CollectionObject {
     #[zbus(property)]
     async fn items(&self) -> Result<Vec<OwnedObjectPath>, SecretError> {
         let shared = lock(&self.state);
-        let keyring = shared.open()?;
+        let Some(keyring) = shared.keyring.as_ref() else {
+            return locked_read(self.target, Vec::new());
+        };
+        let collection = self.id_in(keyring)?;
         keyring
-            .items_in(self.id)?
+            .items_in(collection)?
             .into_iter()
-            .map(|id| owned_path(&item_path(self.id, id)))
+            .map(|id| owned_path(&item_path(collection, id)))
             .collect()
     }
 
     #[zbus(property)]
     async fn label(&self) -> Result<String, SecretError> {
         let shared = lock(&self.state);
-        let keyring = shared.open()?;
+        let Some(keyring) = shared.keyring.as_ref() else {
+            return locked_read(self.target, DEFAULT_LABEL.to_owned());
+        };
+        let id = self.id_in(keyring)?;
+        let client = client_path(keyring, id)?;
         keyring
             .collections()?
             .into_iter()
-            .find(|(id, _)| *id == self.id)
+            .find(|(known, _)| *known == id)
             .map(|(_, label)| label)
-            .ok_or_else(|| SecretError::NoSuchObject(collection_path(self.id)))
+            .ok_or_else(|| SecretError::NoSuchObject(client))
     }
 
     /// Renames the collection. A locked keyring answers `IsLocked`.
@@ -757,10 +860,11 @@ impl CollectionObject {
     async fn set_label(&self, label: String) -> Result<(), SecretError> {
         let mut shared = lock(&self.state);
         let keyring = shared.open_mut()?;
-        if keyring.rename_collection(self.id, &label)? {
+        let id = self.id_in(keyring)?;
+        if keyring.rename_collection(id, &label)? {
             Ok(())
         } else {
-            Err(SecretError::NoSuchObject(collection_path(self.id)))
+            Err(SecretError::NoSuchObject(client_path(keyring, id)?))
         }
     }
 
@@ -781,19 +885,19 @@ pub struct ItemObject {
 impl ItemObject {
     /// Deletes the item and tells its collection, so clients drop it from their item lists.
     async fn delete(&self, #[zbus(object_server)] server: &ObjectServer) -> Result<OwnedObjectPath, SecretError> {
-        let collection = {
+        let (owner, path) = {
             let mut shared = lock(&self.state);
             let keyring = shared.open_mut()?;
             let item = keyring
                 .item(self.id)?
                 .ok_or_else(|| SecretError::NoSuchObject(format!("item {}", self.id.raw())))?;
             keyring.delete_item(self.id)?;
-            item.collection
+            let owner = client_path(keyring, item.collection)?;
+            (owner, item_path(item.collection, self.id))
         };
-        let path = item_path(collection, self.id);
         server.remove::<ItemObject, _>(path.as_str()).await.map_err(failed)?;
         let owner = server
-            .interface::<_, CollectionObject>(collection_path(collection).as_str())
+            .interface::<_, CollectionObject>(owner.as_str())
             .await
             .map_err(failed)?;
         CollectionObject::item_deleted(owner.signal_emitter(), &owned_path(&path)?)
@@ -814,7 +918,7 @@ impl ItemObject {
         secret: WireSecret,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(), SecretError> {
-        let collection = {
+        let (owner, path) = {
             let mut shared = lock(&self.state);
             let (plain, content_type) = plain_secret(&shared, &secret)?;
             let keyring = shared.open_mut()?;
@@ -827,11 +931,12 @@ impl ItemObject {
                 .map(|(name, value)| (name.as_str(), value.as_str()))
                 .collect();
             keyring.update_item(self.id, &item.label, &content_type, &plain, &pairs)?;
-            item.collection
+            let owner = client_path(keyring, item.collection)?;
+            (owner, item_path(item.collection, self.id))
         };
-        let path = owned_path(&item_path(collection, self.id))?;
+        let path = owned_path(&path)?;
         let owner = server
-            .interface::<_, CollectionObject>(collection_path(collection).as_str())
+            .interface::<_, CollectionObject>(owner.as_str())
             .await
             .map_err(failed)?;
         CollectionObject::item_changed(owner.signal_emitter(), &path)
@@ -1234,18 +1339,6 @@ mod tests {
     }
 
     #[test]
-    fn set_alias_accepts_a_collection_path_or_the_empty_path_only() {
-        let collection = collection_path(CollectionId::from_raw(3));
-        assert_eq!(alias_target(NO_OBJECT).expect("clears"), None);
-        assert_eq!(
-            alias_target(&collection).expect("a collection"),
-            Some(CollectionId::from_raw(3))
-        );
-        let item = item_path(CollectionId::from_raw(3), ItemId::from_raw(5));
-        assert!(matches!(alias_target(&item), Err(SecretError::InvalidArgs(_))));
-    }
-
-    #[test]
     fn a_property_write_on_a_locked_store_is_refused() {
         let state = new_state(None);
         let item = ItemObject {
@@ -1315,6 +1408,83 @@ mod tests {
         assert_eq!(item.secret.as_slice(), b"v1");
         assert_eq!(item.attributes, attributes(&[("zone", "9")]));
         drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_default_path_names_the_collection_the_default_alias_points_at() {
+        let (path, keyring) = open_store("default-path");
+        let login = keyring.create_collection("Login").expect("collection");
+        let other = keyring.create_collection("Work").expect("collection");
+        keyring.set_alias(DEFAULT_ALIAS, login).expect("alias");
+        assert_eq!(client_path(&keyring, login).expect("path"), DEFAULT_COLLECTION_PATH);
+        assert_eq!(client_path(&keyring, other).expect("path"), collection_path(other));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_default_object_with_no_default_alias_is_no_such_object() {
+        let (path, keyring) = open_store("no-default");
+        keyring.create_collection("Work").expect("collection");
+        assert!(matches!(
+            default_collection(&keyring),
+            Err(SecretError::NoSuchObject(named)) if named == DEFAULT_COLLECTION_PATH
+        ));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_default_path_follows_the_alias_when_it_moves() {
+        let (path, keyring) = open_store("moved-default");
+        let login = keyring.create_collection("Login").expect("collection");
+        let work = keyring.create_collection("Work").expect("collection");
+        keyring.set_alias(DEFAULT_ALIAS, login).expect("alias");
+        keyring.set_alias(DEFAULT_ALIAS, work).expect("alias");
+        assert_eq!(default_collection(&keyring).expect("default"), work);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn set_alias_accepts_the_default_path_and_still_refuses_other_objects() {
+        let (path, keyring) = open_store("alias-default");
+        let login = keyring.create_collection("Login").expect("collection");
+        keyring.set_alias(DEFAULT_ALIAS, login).expect("alias");
+        assert_eq!(
+            alias_target(&keyring, DEFAULT_COLLECTION_PATH).expect("target"),
+            Some(login)
+        );
+        assert_eq!(alias_target(&keyring, NO_OBJECT).expect("clear"), None);
+        assert!(matches!(
+            alias_target(&keyring, "/org/freedesktop/secrets/prompt/3"),
+            Err(SecretError::InvalidArgs(_))
+        ));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_locked_store_lists_only_the_default_path_and_names_it_for_the_default_alias() {
+        let listed = collection_paths(None).expect("paths");
+        assert_eq!(listed, vec![owned_path(DEFAULT_COLLECTION_PATH).expect("path")]);
+        let named = read_alias_in(None, DEFAULT_ALIAS).expect("alias");
+        assert_eq!(named.as_str(), DEFAULT_COLLECTION_PATH);
+        let other = read_alias_in(None, "session").expect("alias");
+        assert_eq!(other.as_str(), NO_OBJECT);
+    }
+
+    #[test]
+    fn an_open_store_lists_and_names_the_default_collection_at_the_same_path() {
+        let (path, keyring) = open_store("listed");
+        let login = keyring.create_collection("Login").expect("collection");
+        let work = keyring.create_collection("Work").expect("collection");
+        keyring.set_alias(DEFAULT_ALIAS, login).expect("alias");
+        let listed: Vec<String> = collection_paths(Some(&keyring))
+            .expect("paths")
+            .iter()
+            .map(|p| p.as_str().to_owned())
+            .collect();
+        assert_eq!(listed, vec![DEFAULT_COLLECTION_PATH.to_owned(), collection_path(work)]);
+        let named = read_alias_in(Some(&keyring), DEFAULT_ALIAS).expect("alias");
+        assert_eq!(named.as_str(), DEFAULT_COLLECTION_PATH);
         let _ = std::fs::remove_file(&path);
     }
 }
