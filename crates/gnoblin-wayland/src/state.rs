@@ -79,8 +79,8 @@ use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
-    LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, SessionSnapshot, WindowChange,
-    WindowChangeRefusal,
+    LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, PresentAnswer, SessionSnapshot,
+    WindowChange, WindowChangeRefusal,
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
@@ -115,6 +115,11 @@ const MENU_REQUESTS_KEPT: usize = 32;
 pub(crate) const KEY_REPEAT_DELAY: i32 = 200;
 /// The gap, in milliseconds, between repeats once a key repeat has started.
 pub(crate) const KEY_REPEAT_INTERVAL: i32 = 40;
+
+/// How long the session must be free of input before a window may be presented. A focus
+/// change while the user is typing moves their keystrokes to another window, so a present
+/// waits for this much quiet, in milliseconds.
+pub(crate) const PRESENT_QUIET_MS: u64 = 250;
 
 /// The protocol object behind a managed window.
 ///
@@ -2669,6 +2674,29 @@ impl State {
         self.apply(effects);
         self.publish();
         self.wm.focused() == Some(window)
+    }
+
+    /// Asks for a window to take focus on a shell's behalf, as `Window:present()` does.
+    ///
+    /// The first state that stops the request is the answer: a closed window, a covered
+    /// session, a window that is not on screen, or input within [`PRESENT_QUIET_MS`]. Only
+    /// when none holds is focus requested, through [`Self::focus_window`], so the focus policy
+    /// still decides. The quiet gate lives here because the input clock does; the caller
+    /// retries `Typing` and `NotShown` until its deadline rather than stealing focus mid-keystroke.
+    pub(crate) fn present_window(&mut self, window: WindowId) -> PresentAnswer {
+        if self.wm.window(window).is_none() {
+            return PresentAnswer::Gone;
+        }
+        if self.lock.state() != LockState::Unlocked {
+            return PresentAnswer::Locked;
+        }
+        if !self.wm.is_visible(window) {
+            return PresentAnswer::NotShown;
+        }
+        if self.activity.idle_ticks(self.clock) < PRESENT_QUIET_MS {
+            return PresentAnswer::Typing;
+        }
+        PresentAnswer::Focused(self.focus_window(window))
     }
 
     /// Asks the window manager to focus the window under the pointer.

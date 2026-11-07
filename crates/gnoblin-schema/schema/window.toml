@@ -79,6 +79,12 @@ since = "0.2.0"
 name = "focus"
 since = "0.2.0"
 
+# Focus a window a started program owns, once the session is quiet. The operation completes
+# `done` when the window holds focus, and fails `denied`, `busy` or `not-found` otherwise.
+[[object.method]]
+name = "present"
+since = "0.2.0"
+
 # The window is gone. A client drops its view of the object on this signal.
 [[object.signal]]
 name = "closed"

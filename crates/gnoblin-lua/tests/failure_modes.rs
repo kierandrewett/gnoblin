@@ -2256,3 +2256,90 @@ job:kill("kill")
     let pumped = pump_until_handled(&mut host, &mut tick);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
+
+#[test]
+fn present_on_a_window_with_no_started_process_is_denied_without_a_call() {
+    // The runtime refuses before the compositor is asked: a window the runtime did not
+    // start never reaches the focus path, so no other program's window can be raised.
+    let config = Config::new("present-no-process");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    gnoblin.window.by_id(1):present():on_complete(function(value, err)
+        assert(value == nil, "a refused present has no value")
+        assert(err ~= nil and err.code == "denied", "code was " .. tostring(err and err.code))
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "Foreign");
+    assert!(
+        host.run_config(&config.paths())
+            .expect("the run starts")
+            .errors
+            .is_empty()
+    );
+    // The timer calls present and the refusal reaches its callback in this one pump:
+    // two handlers (the timer, then the callback), no errors, and nothing sent.
+    let pumped = host.pump(Tick::new(0)).expect("the timer calls present");
+    assert_eq!(pumped.handlers, 2, "the timer and the denial callback");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert!(
+        server.graph().pending().next().is_none(),
+        "the compositor was never asked to present"
+    );
+}
+
+#[test]
+fn present_on_a_window_of_a_started_process_reaches_the_compositor() {
+    // The combined gate: the spawned child's pid is the window's client pid, so the
+    // runtime lets the call through, and the compositor's answer reaches the callback.
+    let config = Config::new("present-started");
+    config.write(
+        "init.lua",
+        r#"
+JOB = gnoblin.process.spawn({"sleep", "30"})
+error("PID=" .. JOB.pid)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Started");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    let pid = pid_reported_by(&report);
+    server
+        .set(window, "pid", ModelValue::Uint(pid.into()))
+        .expect("pid is a declared property");
+    host.pump(Tick::new(10)).expect("a pump applies the diff");
+    let check = config.write(
+        "check.lua",
+        r#"
+gnoblin.timers.after(0, function()
+    gnoblin.window.by_id(1):present():on_complete(function(value, err)
+        assert(err == nil, "a present of a started window succeeds, failed with " .. tostring(err and err.code))
+        assert(value == nil, "a successful present carries no value")
+    end)
+end)
+"#,
+    );
+    host.evaluate(&check).expect("the check starts");
+    server
+        .set(window, "focused", ModelValue::Bool(true))
+        .expect("focused is a declared property");
+    host.pump(Tick::new(20)).expect("the timer issues the present call");
+    let operation = server
+        .graph()
+        .pending()
+        .next()
+        .expect("the call reached the compositor")
+        .id();
+    server
+        .complete(operation, OperationOutcome::Done)
+        .expect("the completion is accepted");
+    let mut tick = 30;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    host.evaluate(&config.write("kill.lua", "JOB:kill()\n"))
+        .expect("the child is stopped");
+}

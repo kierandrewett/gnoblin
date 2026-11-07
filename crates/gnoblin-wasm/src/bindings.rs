@@ -753,6 +753,19 @@ mod gnoblin_objects {
             )
         }
 
+        fn present(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(
+                match self.invoke(object, "window", "present", gnoblin_model::Fields::new()) {
+                    Ok(operation) => match self.operation(operation) {
+                        Ok(handle) => Ok(handle),
+                        Err(refusal) => Err(gnoblin_error(refusal)),
+                    },
+                    Err(refusal) => Err(gnoblin_error(refusal)),
+                },
+            )
+        }
+
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
             Ok(match self.watch(&handle) {
                 Ok(()) => Ok(true),

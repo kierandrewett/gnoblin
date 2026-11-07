@@ -1516,8 +1516,11 @@ function Window:focus(grant) end
 
 ---Focus a window whose program the runtime started with gnoblin.process.spawn. No key press is
 ---needed. It waits until the window is shown and no key press or click reached a window for
----250 ms, at most 5 seconds, then succeeds when the window has focus.
----@return Operation<{id: string, focused: boolean}>
+---250 ms, retrying for up to 5 seconds, then succeeds once the window has focus. It fails with
+---when the window is not a started program's, the session is locked, or focus was refused;
+---`busy` when the window was not shown or the user kept typing for 5 seconds; and `not-found`
+---when the window closed first.
+---@return Operation<nil>
 function Window:present() end
 
 ---Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn

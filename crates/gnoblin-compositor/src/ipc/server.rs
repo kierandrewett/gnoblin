@@ -79,8 +79,8 @@ use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tic
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
-    ControlHandle, EffectSpec, Observer, ProcessIdentity, SessionSnapshot, WindowChange, WindowChangeRefusal,
-    WindowProcess,
+    ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, WindowChange,
+    WindowChangeRefusal, WindowProcess,
 };
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -1385,6 +1385,9 @@ impl Dispatcher {
             (Some(ty), Some(window), _, _) if ty == "window" && method == "focus" => {
                 self.focus(client, envelope, object, &method, &arguments, window);
             }
+            (Some(ty), Some(window), _, _) if ty == "window" && method == "present" => {
+                self.present_call(client, envelope, object, &method, &arguments, window);
+            }
             (Some(ty), Some(window), _, _) if ty == "window" && method == "request_menu" => {
                 self.request_menu_call(client, envelope, object, &method, &arguments, window);
             }
@@ -1497,6 +1500,61 @@ impl Dispatcher {
         if let Some(outcome) = outcome {
             let _ = self.store.graph_mut().complete(operation.id(), outcome);
         }
+    }
+
+    /// Serves `window.present`: the loop decides whether the window may take focus now, and
+    /// the operation completes `done` only once the window holds focus. A closed window fails
+    /// `not-found`, a refused or locked session `denied`, and a window that never became
+    /// shown or stayed under input before about [`PRESENT_DEADLINE`] fails `busy`. A single
+    /// ask may itself wait up to the control timeout, so the bound is a start deadline.
+    fn present_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        window: gnoblin_types::WindowId,
+    ) {
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let deadline = Instant::now() + PRESENT_DEADLINE;
+        let outcome = loop {
+            // Check before asking, not only after an answer: a slow ask must not start past
+            // the deadline and push the whole call past the advertised five seconds.
+            if Instant::now() >= deadline {
+                break OperationOutcome::Failed(BUSY);
+            }
+            let answer = self.control.present(window);
+            self.sync();
+            match answer {
+                // The window closed while the request waited, so there is nothing to focus.
+                Some(PresentAnswer::Gone) => break OperationOutcome::Failed(NOT_FOUND),
+                Some(PresentAnswer::Locked | PresentAnswer::Focused(false)) => {
+                    break OperationOutcome::Failed(DENIED);
+                }
+                Some(PresentAnswer::Focused(true)) => break OperationOutcome::Done,
+                // The window is not shown yet, or the user is typing: ask again until the
+                // deadline, then give up rather than steal focus mid-keystroke.
+                Some(PresentAnswer::NotShown | PresentAnswer::Typing) => {
+                    if Instant::now() >= deadline {
+                        break OperationOutcome::Failed(BUSY);
+                    }
+                    std::thread::sleep(PRESENT_RETRY);
+                }
+                // The loop did not answer, which means it is stopping; the operation stays
+                // pending rather than being given an outcome this server would invent.
+                None => return,
+            }
+        };
+        self.finish(object, &operation, Some(outcome));
     }
 
     /// Serves `lock.lock_session`: the loop locks the session, and the operation completes `done`
@@ -2399,6 +2457,24 @@ fn refusal_code(error: &ModelError) -> &'static str {
 
 /// The code a `lock` call completes with when the session is not confirmed locked.
 const NOT_LOCKED: ErrorCode = ErrorCode::from_static("not-locked");
+
+/// How long `window.present` keeps asking the loop before it gives up with `busy`. The doc
+/// promises five seconds, so the retry is bounded by the same number the caller was told.
+const PRESENT_DEADLINE: Duration = Duration::from_secs(5);
+
+/// The pause between asks while the loop reports the window not shown or under input.
+const PRESENT_RETRY: Duration = Duration::from_millis(25);
+
+/// The code a `window.present` call completes with when the window is not a started
+/// program's, the session is locked, or the focus policy declined.
+const DENIED: ErrorCode = ErrorCode::from_static("denied");
+
+/// The code a `window.present` call completes with when the window was not shown, or the user
+/// kept typing, for the whole deadline.
+const BUSY: ErrorCode = ErrorCode::from_static("busy");
+
+/// The code a `window.present` call completes with when the window closed first.
+const NOT_FOUND: ErrorCode = ErrorCode::from_static("not-found");
 
 /// The code an `idle.inhibit` call completes with when the holder cap is full.
 const TOO_MANY_INHIBITORS: ErrorCode = ErrorCode::from_static("too-many-inhibitors");

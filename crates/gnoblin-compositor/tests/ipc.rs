@@ -209,6 +209,33 @@ fn focus_on_a_closed_window_is_refused() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// `window.present` on a dead window is refused by the graph before the loop is asked, so a
+/// stale identity never reaches the focus policy, and the session keeps running.
+#[test]
+fn present_on_a_closed_window_is_refused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+    wayland.destroy(window);
+    wait_for("the window is gone", || {
+        let listed = session.ctl(&["window", "list"]).ok();
+        listed.out.is_empty().then_some(())
+    });
+
+    let mut client = ipc(&session);
+    let error = client
+        .call(ObjectId::new(id), "present", &Fields::new())
+        .expect_err("a closed window cannot be presented");
+    match error {
+        gnoblin_client::ClientError::Refused { code, .. } => {
+            assert_eq!(code, gnoblin_client::code::OBJECT_UNKNOWN);
+        }
+        other => panic!("expected object-unknown, got {other:?}"),
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
 /// The window-control methods refuse a dead identity the same way focus does: the
 /// object is unknown, and the session keeps running.
 #[test]

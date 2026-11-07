@@ -318,6 +318,25 @@ pub enum WindowChangeRefusal {
     Refused,
 }
 
+/// What the loop found when a window's `present` request reached it. The wait for a quiet
+/// session belongs to the caller, which asks again until the answer is final, so only
+/// `Focused` is a completed request and every other variant names why it is not yet, or
+/// no longer, possible.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PresentAnswer {
+    /// The window closed, so there is nothing to focus.
+    Gone,
+    /// The session is covered by a lock, so nothing is focused.
+    Locked,
+    /// The window is not on screen, so it cannot take focus yet.
+    NotShown,
+    /// Input reached a window within the quiet period, so the user may be typing.
+    Typing,
+    /// The focus request was carried out: `true` when the window holds focus now, `false`
+    /// when the focus policy declined it.
+    Focused(bool),
+}
+
 /// Who asked for a window menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuSource {

@@ -95,13 +95,13 @@ a new session with `setsid`, or a launcher that hands the window to an already r
 its window's client is not the process that was started.
 
 `present()` waits until the window is shown and no key press or click has reached a window for 250 ms, so the window
-does not take keystrokes the user is typing elsewhere. It gives up after five seconds. The Operation succeeds with
-`{id, focused = true}` once the window has focus, and fails with:
+does not take keystrokes the user is typing elsewhere. It gives up after five seconds. The Operation succeeds once the
+window holds focus, and fails with:
 
 - `denied` when the window does not belong to a started process, the session is locked, or the compositor refused
   focus;
 - `busy` when the window was not shown, or the user kept typing or clicking, for five seconds;
-- `not_found` when the window closed first.
+- `not-found` when the window closed first.
 
 Mutter's focus-stealing rules still apply to every other window.
 

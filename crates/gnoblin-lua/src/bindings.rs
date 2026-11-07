@@ -756,6 +756,32 @@ fn call_method<T: Transport + 'static>(
             );
         }
     }
+    if spec.name == "window" && method.name == "present" && matches!(window_process(shared, id)?, Value::Nil) {
+        // Only a window of a process this runtime started may be focused from a script.
+        // Refusing here keeps every other program's window from being raised, and the
+        // compositor is never asked, so nothing is left pending.
+        let operation = {
+            let mut shared = shared.borrow_mut();
+            let operation = shared.allocate_operation();
+            shared.operations.insert(
+                operation,
+                crate::host::Pending {
+                    outcome: Some(OperationOutcome::Done),
+                    local_error: Some((
+                        "denied".to_owned(),
+                        "the window is not one of this runtime's started processes".to_owned(),
+                    )),
+                    completions: Vec::new(),
+                },
+            );
+            operation
+        };
+        return lua.create_userdata(Operation {
+            shared: Rc::clone(shared),
+            operation,
+            method: method.name,
+        });
+    }
     let operation = shared
         .borrow_mut()
         .call(id, method.name, &fields)

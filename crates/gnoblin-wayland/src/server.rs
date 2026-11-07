@@ -57,7 +57,9 @@ use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
-use crate::observation::{MenuAnchor, MenuSource, Observer, SessionSnapshot, WindowChange, WindowChangeRefusal};
+use crate::observation::{
+    MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal,
+};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
@@ -478,6 +480,11 @@ impl Server {
                                 // the focus request did.
                                 let _ = reply.send(state.focus_window(window));
                             }
+                            Command::Present { window, reply } => {
+                                // The answer follows the publish inside the state, so a caller
+                                // that reads the observation on the strength of it sees the focus.
+                                let _ = reply.send(state.present_window(window));
+                            }
                             Command::RequestMenu { window, anchor, reply } => {
                                 // The source is the extension's: the window menu is asked
                                 // for by a client or script, not by the keyboard or a
@@ -753,6 +760,20 @@ impl ControlHandle {
     pub fn focus(&self, window: WindowId) -> Option<bool> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::Focus { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Asks the loop to present a window, as the IPC's `window.present` does, and returns
+    /// the loop's answer for the state it found.
+    ///
+    /// Unlike [`Self::focus`], this does not wait out the quiet period or the lock itself.
+    /// It answers at once, so the caller can retry `Typing` and `NotShown` on its own
+    /// schedule. [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`] because it
+    /// is stopping.
+    #[must_use]
+    pub fn present(&self, window: WindowId) -> Option<PresentAnswer> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::Present { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -1105,6 +1126,12 @@ enum Command {
     Focus {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// A present request, and the channel its answer goes back on. The loop answers from
+    /// the state it is in, so the caller decides whether to ask again.
+    Present {
+        window: WindowId,
+        reply: std::sync::mpsc::SyncSender<PresentAnswer>,
     },
     /// A window-menu request from the extension path, and the channel its answer goes
     /// back on: `Some(true)` when the menu was published, `Some(false)` when the window
