@@ -258,7 +258,7 @@ const RELOAD_REQUESTED: &str = "reload_requested";
 /// What a reload did. A rejected reload leaves the previous configuration in force.
 pub enum ReloadOutcome {
     /// The new document is in force, and this run is the one to commit.
-    Accepted(RunReport),
+    Accepted(Box<RunReport>),
     /// The new configuration failed, with each problem named by file and line.
     Rejected(String),
 }
@@ -510,7 +510,7 @@ impl<T: Transport + 'static> Host<T> {
             }
         };
         if run.errors.is_empty() && run.config.is_ok() {
-            return Ok(ReloadOutcome::Accepted(run));
+            return Ok(ReloadOutcome::Accepted(Box::new(run)));
         }
         let reason = refusal(&run);
         self.restore(previous)?;
