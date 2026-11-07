@@ -43,10 +43,6 @@ path = "design"
 reason = "the design notes describe where the C tree and the patch series live, so they name src/ and patches/"
 
 [[allow]]
-path = "docs/cli/index.md"
-reason = "the CLI reference points readers at the C command table in src/cli/"
-
-[[allow]]
 path = "docs/source-development.md"
 reason = "the source development guide documents the src/ tree and the patches/ series for contributors"
 
