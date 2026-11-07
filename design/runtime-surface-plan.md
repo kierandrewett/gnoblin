@@ -153,6 +153,10 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Tests first:** a socket client that did not receive the request cannot answer it; `finished` fires exactly once;
   a shell that dies mid-request ends it with a named code.
 - **Docs:** `docs/shell-api/authentication.md`, `docs/shell-api/grants.md`.
+- **Status:** IPC side done: owner check on claim, abandon on offerer departure, and failure tests for claim, answer,
+  decline, secret routing and relay departure. Not done: the Lua `request` surface (events are not delivered to Lua,
+  and claim, answer and decline have no object identity to call on). Blocked on S2 for the event path and on a schema
+  change for the offered fields. `authentication.md` and `requests.md` describe only what exists.
 
 ### S7. Visuals, tweens and named animations
 

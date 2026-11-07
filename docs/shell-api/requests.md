@@ -1,103 +1,55 @@
 # Requests
 
-A `Request` is something your config answers: a keyring or GPG prompt, a polkit
-authentication, a location authorization or a session-lock request. The event
-that offers it carries it as `event.request`. Follow-up events of the same
-request carry the same object.
+A request is how the compositor asks a provider to decide something: a
+passphrase or secret prompt, a polkit authentication, a portal consent dialog,
+a location request. The `request` object in the `gnoblin` schema defines the
+exchange. Every request follows one lifecycle and ends with one `finished`
+outcome.
 
-```lua
-gnoblin.on("gnoblin.prompt.requested", function(event)
-    local request = event.request
-    request:finished():on_complete(function(outcome)
-        print(request.kind, request.id, outcome)
-    end)
-    request:cancel()
-end)
-```
+## Lifecycle
 
-This handler cancels every keyring and GPG prompt and prints the outcome when
-each one ends.
+1. **Offered.** The compositor offers the request to the connections that hold
+   its slot. The `request.offered` signal names it by identity.
+2. **Claimed.** One connection claims it with `request.claim`. The first claim
+   wins. A second claimant is refused with `request-taken`, which names the
+   holder. A connection the request was not offered to is refused with
+   `request-unknown`.
+3. **Ended.** The claimant settles the request one of three ways:
+    - `request.answer` sends the provider's answer. Only the claimant may answer,
+      and an empty answer is still an answer.
+    - `request.decline` refuses it, with a reason. Declining is its own member so
+      that "refused" and "answered with nothing" stay distinct.
+    - No settlement before the deadline ends it as timed out.
 
-## Fields
+Whatever ends a request, the compositor emits `request.finished` once. Its
+completion is one of four kinds: answered, ended, refused (carrying the decline
+reason) or timed out. The answer value is never part of `finished`; only the
+connection that offered the request receives it.
 
-Every request has these fields. All fields are read-only.
+## Ownership
 
-| Field    | Type    | Meaning                                                             |
-| -------- | ------- | ------------------------------------------------------------------- |
-| `id`     | integer | Identifies the request among requests of the same kind.             |
-| `kind`   | string  | What the request asks for. See [Kinds](#kinds).                     |
-| `status` | string  | `"pending"`, `"claimed"`, `"answered"` or `"finished"`.             |
-| `result` | string  | The outcome after `status` becomes `"finished"`. `nil` before that. |
+A request belongs to the provider it was offered to and to the connection that
+offered it.
 
-A request also has the detail fields of the event that offered it, such as
-`title` for a prompt or `app_id` for location. The page for each kind lists
-them.
+- If the provider disconnects, its unclaimed and claimed requests end.
+- If the offering connection disconnects, the requests it offered are abandoned.
+- A late claim, answer or decline on a request that already finished is refused
+  with `request-finished`.
 
-`status` starts as `"pending"`. It becomes `"claimed"` after `claim()`,
-`"answered"` after `answer()` or `cancel()`, and `"finished"` when the request
-ends for any reason.
+## Secrets
 
-## Kinds
+`answer` carries a field marked `secret` in the schema. The compositor flags and
+redacts every frame that carries it, so `gnoblinctl ipc dump`, the parity
+recorder and logs never show the bytes.
 
-| `kind`             | Offered by                                 | Outcomes                            |
-| ------------------ | ------------------------------------------ | ----------------------------------- |
-| `"password"`       | `gnoblin.prompt.requested`                 | `answered`, `cancelled`, `timeout`  |
-| `"confirm"`        | `gnoblin.prompt.requested`                 | `answered`, `cancelled`, `timeout`  |
-| `"authentication"` | `gnoblin.auth.requested`                   | `authorized`, `denied`, `cancelled` |
-| `"location"`       | `gnoblin.location.authorization-requested` | `allowed`, `denied`, `timeout`      |
-| `"lock"`           | `gnoblin.session.lock-requested`           | `locked`, `timeout`                 |
+## Status
 
-- `"password"` asks for a password and `"confirm"` asks for a yes or no answer.
-  See [Keyring and GPG prompts](/shell-api/passphrase-prompts).
-- `"authentication"` asks for a polkit password. See
-  [Authentication prompts](/shell-api/authentication).
-- `"location"` asks whether an application may use location. See
-  [Privacy](/shell-api/privacy#location-requests).
-- `"lock"` asks the shell to start its locker. It takes no answer. It finishes
-  with `locked` when the session locks, or `timeout` after 30 seconds. See
-  [Session lock](/session-lock).
+The IPC lifecycle is implemented in `crates/gnoblin-compositor/src/ipc/requests.rs`.
+Lua is not wired to it:
 
-## Methods
+- Event handlers do not receive `request.offered` or `request.finished`.
+- The `request` class has no way to claim, answer or decline without an object
+  identity.
 
-A method exists only on the kinds that use it. Calling it on another kind
-raises an error that names the kind and the method.
-
-| Method                   | Kinds             | Effect                                            |
-| ------------------------ | ----------------- | ------------------------------------------------- |
-| `answer(value, option?)` | all except `lock` | Answer the request. Arguments depend on the kind. |
-| `cancel()`               | all except `lock` | Refuse the request.                               |
-| `claim(identity?)`       | `authentication`  | Start the check for one identity, counted from 1. |
-| `on(signal, fn)`         | all               | Listen to a signal; it returns a subscription.    |
-| `finished()`             | all               | An Operation that succeeds once with the outcome. |
-
-`on` takes these signals:
-
-- `"prompt"` and `"message"` of an `authentication` request call `fn(request)` for each.
-- `"closed"`, on every kind, calls `fn(request, reason)` when a config reload or the worker's shutdown takes the runtime
-  away before the request is finished. The reason is `"config_reloaded"` or `"runtime_stopped"`.
-
-A request that finishes does not raise `"closed"`; use `finished()` for that.
-
-`answer` takes these arguments:
-
-| Kind             | Arguments                  | Example                    |
-| ---------------- | -------------------------- | -------------------------- |
-| `password`       | password string, choice?   | `request:answer(password)` |
-| `confirm`        | confirmed boolean, choice? | `request:answer(true)`     |
-| `authentication` | response string            | `request:answer(password)` |
-| `location`       | allow boolean, accuracy?   | `request:answer(true, 4)`  |
-
-`choice` is the state of a prompt's optional checkbox. For location, `accuracy`
-defaults to the requested accuracy when `allow` is `true`. `cancel()` on a
-location request denies it.
-
-`answer`, `cancel` and `claim` return an Operation that succeeds with
-`{request_id = ..., submitted = true}` after Gnoblin accepts the answer. An
-answer with wrong values fails that Operation with a message that names the
-problem. A request takes one answer; a second answer fails.
-
-## Answer from a shell process
-
-A socket client does not get `Request` objects. It receives the same events
-with `request_id` and answers with the wire methods that each kind's page
-lists. Only the client that received the event can answer that request.
+With no provider holding a request's slot, the request is refused at once. A
+provider that claims it but never answers ends it as timed out.
