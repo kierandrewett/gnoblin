@@ -1,6 +1,6 @@
-//! `log`: print the records the log database holds, oldest first.
+//! `log`: print the records the log store holds, oldest first.
 //!
-//! The database is the one the compositor and the portal write (`gnoblin-log`'s `store`),
+//! The store is the one the compositor and the portal write (`gnoblin-store`'s log kind),
 //! read back through the query the store defines. It is opened read-only, and this
 //! command needs no compositor: it works while the session is down, which is when
 //! the log is most wanted.
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gnoblin_cli_style::{ColorChoice, ColourToken, OutputEnvironment, OutputTheme};
-use gnoblin_log::store::{LogRecord, Query, default_database_path, newest_id, read_entries};
+use gnoblin_store::{LogQuery, Logs, Options, Retention, Store, StoredRecord, default_root, log_file};
 
 pub(crate) use bounds::{TimeBound, parse_bound};
 
@@ -29,11 +29,11 @@ pub(crate) const DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
 /// One `log` invocation, as parsed from the command line.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct LogRequest {
-    /// The database to read; `None` for the default one.
-    pub(crate) database: Option<PathBuf>,
+    /// The store directory to read; `None` for the default one.
+    pub(crate) store: Option<PathBuf>,
     /// The filters. The time bounds are not in it: they are resolved against the clock when
     /// the command runs, from `since` and `until`.
-    pub(crate) query: Query,
+    pub(crate) query: LogQuery,
     pub(crate) since: Option<TimeBound>,
     pub(crate) until: Option<TimeBound>,
     /// `Some(interval)` to keep following; `None` to print once and exit.
@@ -61,21 +61,21 @@ enum Failure {
 }
 
 fn execute(request: &LogRequest, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), Failure> {
-    let path = match &request.database {
+    let root = match &request.store {
         Some(path) => path.clone(),
-        None => default_database_path(|name| std::env::var(name).ok()).ok_or_else(|| {
-            Failure::Message("neither $XDG_STATE_HOME nor $HOME is set, so there is no default database".to_owned())
+        None => default_root(|name| std::env::var(name).ok()).ok_or_else(|| {
+            Failure::Message("neither $XDG_STATE_HOME nor $HOME is set, so there is no default store".to_owned())
         })?,
     };
     let (since_ms, until_ms) = bounds::resolve(request.since, request.until, now_ms()).map_err(Failure::Message)?;
-    let query = Query {
+    let query = LogQuery {
         since_ms,
         until_ms,
         ..request.query.clone()
     };
     let theme = OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect_stdout());
     let json = request.json;
-    let mut emit = |records: &[LogRecord]| -> io::Result<()> {
+    let mut emit = |records: &[StoredRecord]| -> io::Result<()> {
         for entry in records {
             let line = if json {
                 json_line(entry)
@@ -88,11 +88,11 @@ fn execute(request: &LogRequest, out: &mut dyn Write, err: &mut dyn Write) -> Re
     };
 
     let outcome = match request.follow {
-        None => read_entries(&path, &query)
+        None => read_records(&root, &query)
             .map_err(FollowOutcome::Read)
             .and_then(|records| emit(&records).map_err(FollowOutcome::Write)),
         Some(interval) => {
-            let mut follower = follow::Follower::new(FileSource { path: &path }, query);
+            let mut follower = follow::Follower::new(FileSource { root: &root }, query);
             let mut report = |message: &str| {
                 let _ = writeln!(err, "gnoblinctl: log: {message}");
             };
@@ -117,26 +117,61 @@ enum FollowOutcome {
     Write(io::Error),
 }
 
-/// The store at a path, read by the follower. The identity is the file's device and inode, so a
-/// replaced database is noticed; a missing file has no identity and is simply waited for.
+/// The store directory a follower reads. The identity is the log file's device and inode, so a
+/// replaced file is noticed; a missing file has no identity and is simply waited for.
 struct FileSource<'a> {
-    path: &'a Path,
+    root: &'a Path,
 }
 
 impl follow::Source for FileSource<'_> {
     fn identity(&self) -> Option<(u64, u64)> {
-        std::fs::metadata(self.path)
+        std::fs::metadata(log_file(self.root))
             .ok()
             .map(|metadata| (metadata.dev(), metadata.ino()))
     }
 
     fn newest_id(&self) -> Result<i64, String> {
-        newest_id(self.path)
+        open_logs(self.root)?
+            .newest_id()
+            .map_err(|error| format!("cannot read the log store at {}: {error}", self.root.display()))
     }
 
-    fn read(&self, query: &Query) -> Result<Vec<LogRecord>, String> {
-        read_entries(self.path, query)
+    fn read(&self, query: &LogQuery) -> Result<Vec<StoredRecord>, String> {
+        read_records(self.root, query)
     }
+}
+
+/// Opens the log kind of the store at `root`, read-only. A directory with no log file is an
+/// error, so a mistyped `--store` is reported rather than shown as an empty log.
+fn open_logs(root: &Path) -> Result<Logs, String> {
+    if !log_file(root).exists() {
+        return Err(format!("no log store at {}", root.display()));
+    }
+    let options = Options {
+        writable: false,
+        ..Options::default()
+    };
+    Store::with_options(root, options)
+        .and_then(|store| store.logs(Retention::default()))
+        .map_err(|error| format!("cannot open the log store at {}: {error}", root.display()))
+}
+
+/// Reads the records `query` matches from the store at `root`, oldest first. With no `after_id`
+/// the query takes the newest `limit` records, which is the print-once case and a follower's
+/// first poll; with one it takes the records after it, in id order.
+fn read_records(root: &Path, query: &LogQuery) -> Result<Vec<StoredRecord>, String> {
+    let newest_first = query.after_id.is_none();
+    let search = LogQuery {
+        newest_first,
+        ..query.clone()
+    };
+    let mut records = open_logs(root)?
+        .search(&search)
+        .map_err(|error| format!("cannot read the log store at {}: {error}", root.display()))?;
+    if newest_first {
+        records.reverse();
+    }
+    Ok(records)
 }
 
 /// The current time in milliseconds since the epoch.
@@ -169,7 +204,7 @@ pub(crate) fn parse_interval(text: &str) -> Result<Duration, String> {
 }
 
 /// One record as a JSON object. `time_ms` is milliseconds since the epoch, for scripts.
-fn json_line(entry: &LogRecord) -> String {
+fn json_line(entry: &StoredRecord) -> String {
     serde_json::json!({
         "id": entry.id,
         "time_ms": entry.time_ms,
@@ -185,7 +220,7 @@ fn json_line(entry: &LogRecord) -> String {
 
 /// One record as text: UTC time, level, component, target, message, then the fields if any.
 /// The level is coloured by severity, and the colour is dropped when the theme says so.
-fn text_line(entry: &LogRecord, theme: &OutputTheme) -> String {
+fn text_line(entry: &StoredRecord, theme: &OutputTheme) -> String {
     let level = match entry.level.as_str() {
         "ERROR" => ColourToken::Danger,
         "WARN" => ColourToken::Warning,
@@ -256,7 +291,7 @@ mod tests {
 
     #[test]
     fn a_text_line_names_the_time_level_component_target_and_message_then_the_fields() {
-        let entry = LogRecord {
+        let entry = StoredRecord {
             id: 7,
             time_ms: 0,
             level: "WARN".to_owned(),
@@ -274,7 +309,7 @@ mod tests {
 
     #[test]
     fn a_coloured_line_keeps_the_same_words_and_adds_escapes() {
-        let entry = LogRecord {
+        let entry = StoredRecord {
             id: 1,
             time_ms: 0,
             level: "ERROR".to_owned(),

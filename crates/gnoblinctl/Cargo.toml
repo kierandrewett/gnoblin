@@ -12,9 +12,9 @@ clap_complete.workspace = true
 # The client half of the IPC: handshake, subscribe, call, await. gnoblinctl adds
 # only the socket under it and the presentation above it.
 gnoblin-client = { path = "../gnoblin-client" }
-# The log database's reader, for `gnoblinctl log`: the same query the writer's
-# schema defines, so the two cannot disagree about a column.
-gnoblin-log = { path = "../gnoblin-log", features = ["store"] }
+# The log store's reader, for `gnoblinctl log`: the same query the writer's
+# store defines, so the two cannot disagree about a column.
+gnoblin-store = { path = "../gnoblin-store" }
 gnoblin-cli-style = { path = "../gnoblin-cli-style" }
 # The vocabulary a caller sees: identities, values, observations, operations.
 gnoblin-model = { path = "../gnoblin-model" }
@@ -34,6 +34,8 @@ serde_json.workspace = true
 gnoblin-schema = { path = "../gnoblin-schema" }
 
 [dev-dependencies]
+# The log tests write records through the sink the store exposes.
+gnoblin-log = { path = "../gnoblin-log" }
 # The window fixture builds a window's full property set from the schema.
 gnoblin-testkit = { path = "../gnoblin-testkit" }
 

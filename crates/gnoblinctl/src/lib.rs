@@ -20,7 +20,7 @@
 //! gnoblinctl [--json] <object> call <ID> <METHOD> [NAME=VALUE ...]
 //! gnoblinctl ipc dump [FILE]
 //! gnoblinctl completions <bash|zsh|fish> [--output PATH]
-//! gnoblinctl log [--database PATH] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]
+//! gnoblinctl log [--store DIR] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]
 //!     [--since TIME] [--until TIME] [--follow [--interval DURATION]]
 //! ```
 //!

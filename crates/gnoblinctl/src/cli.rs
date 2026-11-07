@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use clap::builder::{PossibleValue, PossibleValuesParser};
 use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 
-use gnoblin_log::store::Query;
 use gnoblin_model::Fields;
+use gnoblin_store::LogQuery;
 
 use crate::args;
 use crate::logs;
@@ -289,13 +289,13 @@ fn completions_command() -> Command {
 /// `log` with its filters, time bounds and follow options.
 fn log_command() -> Command {
     Command::new("log")
-        .about("Print the stored log records, oldest first, from the log database.")
+        .about("Print the stored log records, oldest first, from the log store.")
         .arg(
-            Arg::new("database")
-                .long("database")
-                .value_name("PATH")
+            Arg::new("store")
+                .long("store")
+                .value_name("DIR")
                 .value_parser(value_parser!(PathBuf))
-                .help("The database to read; defaults to $XDG_STATE_HOME/gnoblin/logs.sqlite3."),
+                .help("The store directory to read; defaults to $XDG_STATE_HOME/gnoblin/store."),
         )
         .arg(
             Arg::new("level")
@@ -338,7 +338,7 @@ fn log_command() -> Command {
                 .long("interval")
                 .value_name("DURATION")
                 .requires("follow")
-                .help("How often --follow polls the database: 500ms or 2s. Defaults to 500ms."),
+                .help("How often --follow polls the store: 500ms or 2s. Defaults to 500ms."),
         )
         .arg(
             Arg::new("limit")
@@ -406,17 +406,19 @@ fn log_usage(message: String) -> Usage {
 
 /// The `log` subcommand.
 fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
-    let database = matches.get_one::<PathBuf>("database").cloned();
-    let query = Query {
+    let store = matches.get_one::<PathBuf>("store").cloned();
+    let query = LogQuery {
         min_level: matches
             .get_one::<String>("level")
             .map(|level| level.to_ascii_uppercase()),
         role: matches.get_one::<String>("role").cloned(),
         target: matches.get_one::<String>("target").cloned(),
-        limit: *matches
-            .get_one::<u32>("limit")
-            .expect("clap supplies the default limit"),
-        ..Query::default()
+        limit: Some(
+            *matches
+                .get_one::<u32>("limit")
+                .expect("clap supplies the default limit"),
+        ),
+        ..LogQuery::default()
     };
     let time = |name: &str| {
         matches
@@ -435,7 +437,7 @@ fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage>
         .transpose()?;
     Ok(Invocation::Log {
         request: logs::LogRequest {
-            database,
+            store,
             query,
             since,
             until,

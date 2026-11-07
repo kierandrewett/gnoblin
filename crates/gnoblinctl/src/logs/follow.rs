@@ -13,7 +13,7 @@
 use std::io;
 use std::time::Duration;
 
-use gnoblin_log::store::{LogRecord, Query};
+use gnoblin_store::{LogQuery, StoredRecord};
 
 /// The most rows one poll reads. A poll that reads a full batch is followed at once by the next,
 /// so a burst is drained without waiting for the interval.
@@ -26,14 +26,14 @@ pub(crate) trait Source {
     /// The id of the newest row, `0` when there is none.
     fn newest_id(&self) -> Result<i64, String>;
     /// The rows matching `query`, in id order.
-    fn read(&self, query: &Query) -> Result<Vec<LogRecord>, String>;
+    fn read(&self, query: &LogQuery) -> Result<Vec<StoredRecord>, String>;
 }
 
 /// The result of one poll.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Poll {
     /// The rows this poll found, oldest first.
-    pub(crate) records: Vec<LogRecord>,
+    pub(crate) records: Vec<StoredRecord>,
     /// Whether the batch was full, so another poll should follow without waiting.
     pub(crate) more: bool,
 }
@@ -41,7 +41,7 @@ pub(crate) struct Poll {
 /// Tracks the cursor and the file identity across polls.
 pub(crate) struct Follower<S> {
     source: S,
-    base: Query,
+    base: LogQuery,
     /// The id the next poll reads after. `None` before the first poll, or after a rotation.
     cursor: Option<i64>,
     identity: Option<(u64, u64)>,
@@ -49,7 +49,7 @@ pub(crate) struct Follower<S> {
 
 impl<S: Source> Follower<S> {
     /// A follower that starts with the records `base` matches, then follows the rest.
-    pub(crate) fn new(source: S, base: Query) -> Self {
+    pub(crate) fn new(source: S, base: LogQuery) -> Self {
         Self {
             source,
             base,
@@ -80,17 +80,17 @@ impl<S: Source> Follower<S> {
         }
         let (query, first) = match self.cursor {
             None => (
-                Query {
+                LogQuery {
                     up_to_id: Some(newest),
                     ..self.base.clone()
                 },
                 true,
             ),
             Some(cursor) => (
-                Query {
+                LogQuery {
                     after_id: Some(cursor),
                     up_to_id: Some(newest),
-                    limit: BATCH,
+                    limit: Some(BATCH),
                     ..self.base.clone()
                 },
                 false,
@@ -114,7 +114,7 @@ impl<S: Source> Follower<S> {
 pub(crate) fn run(
     follower: &mut Follower<impl Source>,
     interval: Duration,
-    mut emit: impl FnMut(&[LogRecord]) -> io::Result<()>,
+    mut emit: impl FnMut(&[StoredRecord]) -> io::Result<()>,
     mut report: impl FnMut(&str),
     mut wait: impl FnMut(Duration) -> bool,
 ) -> io::Result<()> {
@@ -153,7 +153,7 @@ mod tests {
     /// A store that answers from a script: each read returns the rows whose id is in the
     /// query's window, and the identity and failures are set by the test between polls.
     struct Fake {
-        rows: RefCell<Vec<LogRecord>>,
+        rows: RefCell<Vec<StoredRecord>>,
         identity: RefCell<Option<(u64, u64)>>,
         fail_next_read: RefCell<bool>,
     }
@@ -181,8 +181,8 @@ mod tests {
         }
     }
 
-    fn record(id: i64) -> LogRecord {
-        LogRecord {
+    fn record(id: i64) -> StoredRecord {
+        StoredRecord {
             id,
             time_ms: id * 10,
             level: "INFO".to_owned(),
@@ -203,37 +203,38 @@ mod tests {
             Ok(self.rows.borrow().last().map_or(0, |row| row.id))
         }
 
-        fn read(&self, query: &Query) -> Result<Vec<LogRecord>, String> {
+        fn read(&self, query: &LogQuery) -> Result<Vec<StoredRecord>, String> {
             if std::mem::take(&mut *self.fail_next_read.borrow_mut()) {
                 return Err("cannot read".to_owned());
             }
             let rows = self.rows.borrow();
             let after = query.after_id.unwrap_or(0);
             let up_to = query.up_to_id.unwrap_or(i64::MAX);
-            let mut matched: Vec<LogRecord> = rows
+            let mut matched: Vec<StoredRecord> = rows
                 .iter()
                 .filter(|row| row.id > after && row.id <= up_to)
                 .cloned()
                 .collect();
+            let limit = query.limit.map_or(usize::MAX, |limit| limit as usize);
             if query.after_id.is_none() {
                 // The base query reads the newest rows, as the store does.
-                let skip = matched.len().saturating_sub(query.limit as usize);
+                let skip = matched.len().saturating_sub(limit);
                 matched.drain(..skip);
             } else {
-                matched.truncate(query.limit as usize);
+                matched.truncate(limit);
             }
             Ok(matched)
         }
     }
 
-    fn ids(records: &[LogRecord]) -> Vec<i64> {
+    fn ids(records: &[StoredRecord]) -> Vec<i64> {
         records.iter().map(|row| row.id).collect()
     }
 
-    fn base(limit: u32) -> Query {
-        Query {
-            limit,
-            ..Query::default()
+    fn base(limit: u32) -> LogQuery {
+        LogQuery {
+            limit: Some(limit),
+            ..LogQuery::default()
         }
     }
 

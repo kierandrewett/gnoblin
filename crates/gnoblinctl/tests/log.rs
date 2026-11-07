@@ -4,9 +4,10 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use gnoblin_log::__tracing::info;
-use gnoblin_log::store::{self, Retention};
+use gnoblin_log::record::{LogRecord, RecordSink};
+use gnoblin_store::{Retention, Store};
 use gnoblinctl::SocketConnection;
 
 fn scratch(name: &str) -> PathBuf {
@@ -20,17 +21,31 @@ fn scratch(name: &str) -> PathBuf {
     directory.join(name)
 }
 
-/// Writes `messages` at info through the facade into a fresh database, and returns its path.
-fn database_with(messages: &[&str]) -> PathBuf {
-    let path = scratch("log.sqlite");
-    let sink = store::open(&path, "compositor", Retention::default()).expect("the database opens");
-    store::with_database(&sink, "compositor", || {
-        for message in messages {
-            info!(target: "gnoblin::test", "{message}");
-        }
-    });
-    sink.flush();
-    path
+/// Writes `messages` at info into a fresh store directory, and returns its path. The records are
+/// written straight to the log kind, with the time now, so the time bounds see them as recent.
+fn store_with(messages: &[&str]) -> PathBuf {
+    let root = scratch("store");
+    let logs = Store::open(&root)
+        .and_then(|store| store.logs(Retention::default()))
+        .expect("the store opens");
+    let time_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("the clock is after the epoch")
+        .as_millis() as i64;
+    let records: Vec<LogRecord> = messages
+        .iter()
+        .map(|message| LogRecord {
+            time_ms,
+            level: "INFO",
+            component: "compositor".to_owned(),
+            role: "compositor",
+            target: "gnoblin::test".to_owned(),
+            message: (*message).to_owned(),
+            fields: String::new(),
+        })
+        .collect();
+    logs.write_batch(&records);
+    root
 }
 
 /// A connection nothing listens at. The log command never connects, so it is never used.
@@ -57,8 +72,8 @@ fn run(args: &[&str]) -> (u8, String, String) {
 
 #[test]
 fn printing_once_shows_every_record_oldest_first() {
-    let path = database_with(&["first", "second"]);
-    let (code, out, err) = run(&["log", "--database", &path.display().to_string()]);
+    let path = store_with(&["first", "second"]);
+    let (code, out, err) = run(&["log", "--store", &path.display().to_string()]);
     assert_eq!(code, 0, "stderr: {err}");
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines.len(), 2, "{out}");
@@ -67,27 +82,27 @@ fn printing_once_shows_every_record_oldest_first() {
 
 #[test]
 fn since_and_until_bound_the_records_by_their_age() {
-    let path = database_with(&["recent"]);
+    let path = store_with(&["recent"]);
     let db = path.display().to_string();
 
-    let (code, out, err) = run(&["log", "--database", &db, "--since", "1d"]);
+    let (code, out, err) = run(&["log", "--store", &db, "--since", "1d"]);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(
         out.contains("recent"),
         "a record from moments ago is within a day: {out}"
     );
 
-    let (code, out, err) = run(&["log", "--database", &db, "--until", "1d"]);
+    let (code, out, err) = run(&["log", "--store", &db, "--until", "1d"]);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.is_empty(), "nothing is older than a day ago: {out}");
 }
 
 #[test]
 fn an_rfc3339_bound_is_accepted() {
-    let path = database_with(&["stamped"]);
+    let path = store_with(&["stamped"]);
     let (code, out, err) = run(&[
         "log",
-        "--database",
+        "--store",
         &path.display().to_string(),
         "--since",
         "2000-01-01T00:00:00Z",

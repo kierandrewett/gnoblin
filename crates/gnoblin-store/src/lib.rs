@@ -444,6 +444,12 @@ pub fn default_root(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
     Some(state_home.join("gnoblin").join("store"))
 }
 
+/// The log file inside a store directory: the file the log kind reads and writes. A follower
+/// watches its identity to notice that the file was rotated or replaced.
+pub fn log_file(root: &Path) -> PathBuf {
+    root.join(logs::FILE_NAME)
+}
+
 /// Locks `mutex`, ignoring poison. A panic elsewhere leaves the maps and connections in a state
 /// each caller already checks, so the store keeps serving rather than cascading the panic.
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

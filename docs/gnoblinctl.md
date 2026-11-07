@@ -1032,7 +1032,7 @@ gnoblinctl log --since 2026-11-05T09:00:00Z
 gnoblinctl log --follow --level WARN --interval 2s
 ```
 
-`--database PATH` reads another database. `--level` keeps records at that level or above. `--role` and `--target` match exactly. `--limit` caps the count and defaults to 100.
+`--store DIR` reads another store directory. `--level` keeps records at that level or above. `--role` and `--target` match exactly. `--limit` caps the count and defaults to 100.
 
 `--since` and `--until` bound the records by time. A bound is one of these forms:
 

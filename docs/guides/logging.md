@@ -59,7 +59,7 @@ The database defaults to `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, and `GNOBLIN_LO
 gnoblinctl log --role compositor --level warn --limit 50
 ```
 
-`--database PATH` reads another file, and `--json` prints one JSON object per line. The command opens the database read-only, so it works while the session is down.
+`--store DIR` reads another store directory, and `--json` prints one JSON object per line. The command opens the log read-only, so it works while the session is down.
 
 `--since` and `--until` bound the records by time, as an RFC 3339 timestamp or an age such as `2h`.
 
