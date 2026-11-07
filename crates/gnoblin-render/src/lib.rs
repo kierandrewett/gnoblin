@@ -183,8 +183,8 @@ pub use damage::{Damage, OutputDamage, merge_rects};
 pub use easing::{Easing, EasingError};
 /// Per-node visual effects (blur, shadow, custom shader) and their limits.
 pub use effect::{
-    Blur, EffectError, EffectExtent, Effects, MAX_BLUR_RADIUS, MAX_PASSES, MAX_UNIFORMS, Pass, ResolvedUniform, Shader,
-    Shadow, UniformSchema, UniformType, UniformValue,
+    BlurParams, EffectError, EffectExtent, Effects, MAX_BLUR_GRADE, MAX_BLUR_PASSES, MAX_BLUR_RADIUS, MAX_PASSES,
+    MAX_UNIFORMS, MIN_BLUR_DOWNSCALE, Pass, ResolvedUniform, Shader, Shadow, UniformSchema, UniformType, UniformValue,
 };
 /// Geometry and identity types re-exported from `gnoblin-types`.
 pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsupported3d, Unsupported3dField, Vec3};

@@ -965,13 +965,17 @@ impl Painter<'_> {
         } = self;
         let blur = (shadow.blur * scale.as_f64() as f32).clamp(1.0, MAX_RADIUS);
         let inset = blur.round() as i32;
+        // The shader insets the quad by `blur` on each side to find the shadow's shape, so
+        // growing the quad by `spread` grows that shape by `spread` before it is blurred.
+        let spread = (shadow.spread * scale.as_f64() as f32).round() as i32;
         let offset_x = (shadow.offset.x as f32 * scale.as_f64() as f32).round() as i32;
         let offset_y = (shadow.offset.y as f32 * scale.as_f64() as f32).round() as i32;
+        let grow = inset + spread;
         let quad = Rect::new(
-            dst.x + offset_x - inset,
-            dst.y + offset_y - inset,
-            dst.width + 2 * inset as u32,
-            dst.height + 2 * inset as u32,
+            dst.x + offset_x - grow,
+            dst.y + offset_y - grow,
+            (dst.width as i32 + 2 * grow).max(0) as u32,
+            (dst.height as i32 + 2 * grow).max(0) as u32,
         );
         let mut uniforms = Uniforms::solid(quad, shadow.color, Color::WHITE, shadow.opacity);
         uniforms.corner = radius;

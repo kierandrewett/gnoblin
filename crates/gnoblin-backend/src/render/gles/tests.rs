@@ -11,7 +11,15 @@
 use super::*;
 use crate::render::Software;
 use crate::render::frame::{Model, Solid};
-use gnoblin_render::{Blur, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
+use gnoblin_render::{BlurParams, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
+
+/// A blur with the given radius and the schema's other defaults.
+fn blur(radius: f32) -> BlurParams {
+    BlurParams {
+        radius,
+        ..BlurParams::default()
+    }
+}
 
 /// A renderer, or a printed reason when this machine cannot make a GLES context.
 fn gles(physical: Size) -> Option<Gles> {
@@ -247,6 +255,7 @@ fn a_shadow_darkens_next_to_the_edge_and_fades() {
         .push(Pass::Shadow(Shadow {
             offset: Vec3::new(0.0, 4.0, 0.0),
             blur: 8.0,
+            spread: 0.0,
             opacity: 0.5,
             color: Color::BLACK,
         }))
@@ -303,6 +312,7 @@ fn a_shadow_does_not_leave_the_damage() {
         .push(Pass::Shadow(Shadow {
             offset: Vec3::ZERO,
             blur: 12.0,
+            spread: 0.0,
             opacity: 1.0,
             color: Color::BLACK,
         }))
@@ -344,7 +354,7 @@ fn a_blur_blurs_a_sharp_edge_behind_the_layer() {
     )));
     let mut glass = Solid::new(Rect::new(0, 0, 64, 64), Color::TRANSPARENT);
     let mut effects = Effects::new();
-    effects.push(Pass::Blur(Blur { radius: 12.0 })).expect("a blur");
+    effects.push(Pass::Blur(blur(12.0))).expect("a blur");
     glass.effects = effects;
     frame.push_layer(Layer::Solid(glass));
     renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
@@ -383,7 +393,7 @@ fn a_blur_at_the_edge_repeats_the_edge() {
     )));
     let mut glass = Solid::new(Rect::new(0, 0, 16, 64), Color::TRANSPARENT);
     let mut effects = Effects::new();
-    effects.push(Pass::Blur(Blur { radius: 10.0 })).expect("a blur");
+    effects.push(Pass::Blur(blur(10.0))).expect("a blur");
     glass.effects = effects;
     frame.push_layer(Layer::Solid(glass));
     renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
@@ -947,11 +957,12 @@ fn an_effect_on_a_projected_layer_draws_nothing_extra() {
         .push(Pass::Shadow(Shadow {
             offset: Vec3::new(0.0, 4.0, 0.0),
             blur: 8.0,
+            spread: 0.0,
             opacity: 0.5,
             color: Color::BLACK,
         }))
         .expect("a shadow");
-    effects.push(Pass::Blur(Blur { radius: 6.0 })).expect("a blur");
+    effects.push(Pass::Blur(blur(6.0))).expect("a blur");
     solid.effects = effects;
     let effectful = layered_frame(Color::WHITE, size, vec![solid]);
 
@@ -1012,7 +1023,7 @@ fn glass_over_edge(quad: Rect, opacity: f32, alpha: u8) -> Option<Image> {
     frame.set_background(Color::BLACK);
     frame.push_layer(Layer::Solid(Solid::new(Rect::new(32, 0, 32, 64), Color::WHITE)));
     let mut effects = Effects::new();
-    effects.push(Pass::Blur(Blur { radius: 9.0 })).expect("a blur");
+    effects.push(Pass::Blur(blur(9.0))).expect("a blur");
     let glass = LayerParts {
         quad,
         radius: 0.0,

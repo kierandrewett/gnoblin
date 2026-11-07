@@ -896,7 +896,7 @@ fn sort_siblings(ids: &mut [NodeId], nodes: &BTreeMap<NodeId, Node>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::effect::{Blur, Pass, Shadow};
+    use crate::effect::{BlurParams, Pass, Shadow};
 
     fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
         Rect::new(x, y, width, height)
@@ -1147,6 +1147,7 @@ mod tests {
             .push(Pass::Shadow(Shadow {
                 offset: Vec3::new(20.0, 20.0, 0.0),
                 blur: 10.0,
+                spread: 0.0,
                 opacity: 0.5,
                 color: crate::color::Color::BLACK,
             }))
@@ -1227,7 +1228,12 @@ mod tests {
         let mut scene = Scene::new();
         let node = NodeId::new(1);
         let mut spec = NodeSpec::new(rect(30, 40, 100, 100));
-        spec.effects.push(Pass::Blur(Blur { radius: 24.0 })).expect("blur");
+        spec.effects
+            .push(Pass::Blur(BlurParams {
+                radius: 24.0,
+                ..BlurParams::default()
+            }))
+            .expect("blur");
         scene.insert(node, spec).expect("node");
         assert_eq!(scene.absolute_bounds(node), Some(rect(30, 40, 100, 100)));
     }

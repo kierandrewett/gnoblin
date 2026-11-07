@@ -120,7 +120,7 @@ pub use gles::Gles;
 /// Cursor types from the scene crate.
 pub use gnoblin_render::cursor;
 /// Colour and matrix types shared with the scene crate.
-pub use gnoblin_render::{Blur, Color, Effects, Mat4, Pass, Shadow};
+pub use gnoblin_render::{BlurParams, Color, Effects, MAX_PASSES, Mat4, Pass, Shadow};
 /// The readback pixels of a frame.
 pub use image::Image;
 /// The enum that dispatches to each backend, and its kind selector.

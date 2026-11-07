@@ -5,12 +5,12 @@
 //! place the two meet. It names only the scene's effect types, re-exported through
 //! `gnoblin_backend::render`, so `gnoblin-wayland` never depends on the scene crate.
 //!
-//! Lossy by design: the schema describes blur settings (downscale, kernel, grain,
-//! tint, colour grading) that the scene's [`Blur`] pass does not carry, and shadow
-//! spread that its [`Shadow`] pass does not carry. Those values are kept on the spec
-//! for the client to read back but do not reach the renderer.
+//! Each spec is turned into its pass once, by [`pass_for`], and the same check decides
+//! both whether the effect draws and the reason it does not: a value outside the scene's
+//! documented range is refused by [`Pass::validate`] and the refusal text becomes the
+//! spec's `reason`.
 
-use gnoblin_backend::render::{Blur, Color, Effects, Pass, Shadow};
+use gnoblin_backend::render::{BlurParams, Color, Effects, Pass, Shadow};
 use gnoblin_types::Vec3;
 
 use crate::observation::EffectSpec;
@@ -36,41 +36,69 @@ pub(crate) fn inactive_reason(spec: &EffectSpec) -> Option<String> {
         } else {
             "the renderer cannot run shader modules yet".to_owned()
         }),
-        "shadow" => match parse_colour(&spec.colour) {
-            Some(_) => None,
-            None => Some(format!("`{}` is not a #rrggbb or #rrggbbaa colour", spec.colour)),
-        },
-        "blur" => None,
+        "blur" | "shadow" => pass_for(spec).err(),
         other => Some(format!("unknown effect kind `{other}`")),
     }
 }
 
-/// The scene pass a spec draws as, or `None` when it has none.
+/// The scene pass a spec draws as.
 ///
-/// A shader has no pass; an invalid shadow colour has none either and is reported by
-/// [`inactive_reason`] first.
-pub(crate) fn pass_for(spec: &EffectSpec) -> Option<Pass> {
+/// `Ok(None)` for a shader, which has no pass yet. `Err` carries the reason the spec's
+/// values are refused, so [`inactive_reason`] and [`chain`] share one check.
+pub(crate) fn pass_for(spec: &EffectSpec) -> Result<Option<Pass>, String> {
     match spec.kind.as_str() {
-        "blur" => Some(Pass::Blur(Blur { radius: BLUR_RADIUS })),
-        "shadow" => {
-            let color = parse_colour(&spec.colour)?;
-            Some(Pass::Shadow(Shadow {
-                offset: Vec3 {
-                    x: spec.offset_x,
-                    y: spec.offset_y,
-                    z: 0.0,
-                },
-                // The schema's blur radius is in logical pixels; the scene stores f32.
-                // Narrowing is exact for every value a client can reasonably set.
-                blur: spec.blur_radius as f32,
-                // The scene multiplies the colour's alpha by this, so full opacity here
-                // leaves the colour's own alpha in control.
-                opacity: 1.0,
-                color,
-            }))
-        }
-        _ => None,
+        "blur" => blur_pass(spec).map(Some),
+        "shadow" => shadow_pass(spec).map(Some),
+        _ => Ok(None),
     }
+}
+
+/// The blur pass a spec asks for, validated against the scene's ranges.
+///
+/// `downscale` in the schema is the divisor (`1 / downscale` of full resolution), so the
+/// scene's fraction is its reciprocal. A divisor of zero gives a non-finite fraction and
+/// is refused by the scene's validation rather than here.
+fn blur_pass(spec: &EffectSpec) -> Result<Pass, String> {
+    let tint = if spec.tint.is_empty() {
+        Color::TRANSPARENT
+    } else {
+        parse_colour(&spec.tint).ok_or_else(|| format!("`{}` is not a #rrggbb or #rrggbbaa colour", spec.tint))?
+    };
+    let pass = Pass::Blur(BlurParams {
+        radius: BLUR_RADIUS,
+        passes: spec.passes,
+        downscale: 1.0 / spec.downscale as f32,
+        tint,
+        brightness: spec.brightness as f32,
+        contrast: spec.contrast as f32,
+        saturation: spec.saturation as f32,
+        noise: spec.noise as f32,
+    });
+    pass.validate().map_err(|error| error.to_string())?;
+    Ok(pass)
+}
+
+/// The shadow pass a spec asks for, validated against the scene's ranges.
+fn shadow_pass(spec: &EffectSpec) -> Result<Pass, String> {
+    let color =
+        parse_colour(&spec.colour).ok_or_else(|| format!("`{}` is not a #rrggbb or #rrggbbaa colour", spec.colour))?;
+    let pass = Pass::Shadow(Shadow {
+        offset: Vec3 {
+            x: spec.offset_x,
+            y: spec.offset_y,
+            z: 0.0,
+        },
+        // The schema's blur radius is in logical pixels; the scene stores f32.
+        // Narrowing is exact for every value a client can reasonably set.
+        blur: spec.blur_radius as f32,
+        spread: spec.spread as f32,
+        // The scene multiplies the colour's alpha by this, so full opacity here
+        // leaves the colour's own alpha in control.
+        opacity: 1.0,
+        color,
+    });
+    pass.validate().map_err(|error| error.to_string())?;
+    Ok(pass)
 }
 
 /// Builds the scene chain from a window's stack, in paint order.
@@ -82,7 +110,7 @@ pub(crate) fn pass_for(spec: &EffectSpec) -> Option<Pass> {
 pub(crate) fn chain(specs: &[EffectSpec]) -> Effects {
     let mut effects = Effects::new();
     for spec in specs.iter().filter(|spec| spec.enabled && spec.active) {
-        if let Some(pass) = pass_for(spec) {
+        if let Ok(Some(pass)) = pass_for(spec) {
             // A refused pass leaves the chain unchanged, so skipping it is the whole
             // recovery; the spec is already marked inactive by the caller.
             let _ = effects.push(pass);
@@ -159,6 +187,48 @@ mod tests {
     }
 
     #[test]
+    fn blur_carries_the_schema_values_into_the_scene() {
+        let mut blur = spec("blur");
+        blur.downscale = 4;
+        blur.passes = 5;
+        blur.tint = "#ff000080".to_owned();
+        blur.brightness = 1.5;
+        blur.noise = 0.25;
+        let Ok(Some(Pass::Blur(params))) = pass_for(&blur) else {
+            panic!("a valid blur maps to a blur pass");
+        };
+        assert_eq!(params.radius, BLUR_RADIUS);
+        assert_eq!(params.passes, 5);
+        assert_eq!(params.downscale, 0.25);
+        assert_eq!(params.tint, Color::from_rgba8(255, 0, 0, 128));
+        assert_eq!(params.brightness, 1.5);
+        assert_eq!(params.noise, 0.25);
+    }
+
+    #[test]
+    fn shadow_carries_its_spread_into_the_scene() {
+        let mut shadow = spec("shadow");
+        shadow.spread = 4.0;
+        let Ok(Some(Pass::Shadow(pass))) = pass_for(&shadow) else {
+            panic!("a valid shadow maps to a shadow pass");
+        };
+        assert_eq!(pass.spread, 4.0);
+    }
+
+    #[test]
+    fn out_of_range_values_are_inactive_with_the_scene_reason() {
+        let mut blur = spec("blur");
+        blur.passes = 0;
+        let reason = inactive_reason(&blur).expect("zero passes is refused");
+        assert!(reason.contains("blur.passes"), "{reason}");
+        assert!(chain(&[blur]).is_empty());
+
+        let mut tinted = spec("blur");
+        tinted.tint = "red".to_owned();
+        assert!(inactive_reason(&tinted).is_some_and(|reason| reason.contains("colour")));
+    }
+
+    #[test]
     fn disabled_and_inactive_effects_do_not_contribute() {
         let mut disabled = spec("blur");
         disabled.enabled = false;
@@ -177,7 +247,7 @@ mod tests {
             inactive_reason(&sourced).as_deref(),
             Some("the renderer cannot run shader modules yet")
         );
-        assert!(pass_for(&sourced).is_none());
+        assert!(matches!(pass_for(&sourced), Ok(None)));
     }
 
     #[test]
@@ -185,6 +255,6 @@ mod tests {
         let mut shadow = spec("shadow");
         shadow.colour = "red".to_owned();
         assert!(inactive_reason(&shadow).is_some());
-        assert!(pass_for(&shadow).is_none());
+        assert!(pass_for(&shadow).is_err());
     }
 }
