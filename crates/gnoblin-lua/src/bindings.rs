@@ -650,11 +650,14 @@ fn takes_layout_reference(method: &MethodSpec) -> bool {
         )
 }
 
+/// A layout reference as the `set_layout` binding reads it, before it is applied.
+type LayoutReferenceFields = (String, String, String, Vec<u8>);
+
 /// The `root`, `module`, `hash` and encoded `options` of a layout reference, or `None` when
 /// the value is not one. The hash is spelled the way the reference's own `hash` field
 /// spells it. The options are refused here when they are too large to encode, so an
 /// oversize value fails in the configuration that made it, not on the wire.
-fn layout_reference_fields(value: &Value) -> mlua::Result<Option<(String, String, String, Vec<u8>)>> {
+fn layout_reference_fields(value: &Value) -> mlua::Result<Option<LayoutReferenceFields>> {
     let Value::UserData(data) = value else {
         return Ok(None);
     };
