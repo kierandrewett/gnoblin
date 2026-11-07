@@ -11,6 +11,9 @@ publish.workspace = true
 # the output identity and the named `unsupported-3d` refusal are shared with
 # every other crate.
 gnoblin-types.workspace = true
+# The engine's named logger (`gnoblin_log::logger!`); the cursor code that
+# used to share it now lives in `gnoblin-cursor`.
+gnoblin-log = { path = "../gnoblin-log" }
 
 [lints]
 workspace = true
