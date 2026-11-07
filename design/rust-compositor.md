@@ -443,6 +443,7 @@ gnoblin/
     gnoblin-cursor/           pointer themes: the ordered D20 provider chain (Hyprcursor, SVG layout, Xcursor), theme lookup, image decoding, built-in arrow, shape names
     gnoblin-input/            libinput settings, xkb, chords, gestures, input policy routing, IME, idle activity
     gnoblin-input-eis/        EIS server (libei over reis): client requests to seat events and consent decisions
+    gnoblin-render-frame/     renderer-neutral frame seam: OutputFrame, layers, overlays, Image, RenderError, shared WGSL shader sources and the wl_shm writer; renderers depend on it, never on gnoblin-backend
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails

@@ -38,7 +38,7 @@ methods, and `render::AnyRenderer` is the one enum that names them together.
 
 ## The frame description
 
-`render/frame.rs` is the whole contract. An `OutputFrame` is a background colour,
+`crates/gnoblin-render-frame/src/frame.rs` is the whole contract. An `OutputFrame` is a background colour,
 damage rectangles, layers bottom first, an optional portal `Overlay` and an optional
 cursor `Overlay`. Rectangles are output-local logical pixels, and a renderer
 multiplies by the scale using `physical_rect` (both edges rounded).
@@ -58,7 +58,7 @@ multiplies by the scale using `physical_rect` (both edges rounded).
 node. `Blur` has a radius in logical pixels. `Shadow` has an offset, blur, opacity
 and colour. `Shader` is a user WGSL function with typed uniforms.
 
-The passes are WGSL files under `render/shader/wgsl/`, shared by both GPU renderers: a
+The passes are WGSL files under `crates/gnoblin-render-frame/src/shader/wgsl/`, shared by both GPU renderers: a
 shared vertex stage (`quad.wgsl`, written in Vulkan's y-down clip convention), a preamble with one
 96-byte uniform block and the rounded-box SDF, and the bodies `solid`, `surface`,
 `shadow` and `blur`. `naga` turns them into GLSL ES 3.10 for GLES and SPIR-V for

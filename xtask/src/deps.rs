@@ -60,6 +60,7 @@ const ENGINE: &[&str] = &[
     "gnoblin-input",
     "gnoblin-input-eis",
     "gnoblin-render",
+    "gnoblin-render-frame",
     "gnoblin-wayland",
     "gnoblin-xwayland",
 ];
@@ -94,6 +95,20 @@ const HUB_SCENE: &str = "gnoblin-render";
 /// policy crate in behind a caller, and it names no engine crate itself. That direction
 /// stays a violation, and so does every other engine-to-engine edge.
 const HUB_INPUT: &str = "gnoblin-input";
+
+/// The third engine crate a mechanism crate may depend on: the renderer-neutral frame.
+///
+/// `gnoblin-render-frame` holds the seam every renderer draws through: the frame a
+/// backend hands a renderer, the geometry and image types, the render error and the
+/// shared shader sources. The GLES, Vulkan and software renderers each depend on it, and
+/// the backend and the protocol engines name its types, so it is a hub in the same way
+/// the scene is.
+///
+/// The edge is safe because the frame crate may depend on the scene and on nothing else
+/// in the mechanism: it cannot name the backend, a renderer or a protocol engine, so a
+/// caller that names the seam never pulls a renderer or a backend in behind it. The
+/// direction back into the mechanism stays a violation (see [`engine_isolation`]).
+const HUB_FRAME: &str = "gnoblin-render-frame";
 
 /// Crates that talk to the compositor as clients, so they may not link it.
 ///
@@ -401,6 +416,15 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
             dep.name
         ));
     }
+    if package.name == HUB_FRAME && is_engine(&dep.name) && dep.name != HUB_SCENE {
+        // The seam is below every renderer and the backend, so an edge from it upward would
+        // make every crate that names a frame pull a renderer or a backend in behind it. Its
+        // one engine dependency is the pure scene it describes.
+        return Some(format!(
+            "the render frame crate depends on no engine crate but the pure scene crate; `{}` is an engine crate",
+            dep.name
+        ));
+    }
     if package.name == HUB_INPUT && is_engine(&dep.name) && dep.name != "gnoblin-backend" {
         // The same direction, for the same reason: `gnoblin-input` is the seat's rule book
         // and a leaf of the mechanism, so an edge from it into the mechanism would make
@@ -413,7 +437,7 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
         ));
     }
     if is_engine(&dep.name) && dep.name != "gnoblin-backend" {
-        if dep.name == HUB_SCENE || dep.name == HUB_INPUT {
+        if dep.name == HUB_SCENE || dep.name == HUB_INPUT || dep.name == HUB_FRAME {
             return None;
         }
         return Some(format!(
@@ -1299,6 +1323,33 @@ mod tests {
         assert_eq!(
             check(&graph).iter().map(Violation::to_string).collect::<Vec<_>>(),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_render_frame_may_depend_on_the_scene_and_nothing_upward() {
+        // Every renderer and the backend draw through the frame, so the frame must name
+        // only the scene it describes. An upward edge would drag a renderer in behind any
+        // crate that names the seam.
+        assert_eq!(
+            violations(&[
+                ("gnoblin-render-frame", &["gnoblin-render", "gnoblin-types"]),
+                ("gnoblin-render", &["gnoblin-types"]),
+                ("gnoblin-backend", &["gnoblin-render-frame", "gnoblin-render"]),
+                ("gnoblin-wayland", &["gnoblin-render-frame"]),
+            ]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            violations(&[
+                ("gnoblin-render-frame", &["gnoblin-backend"]),
+                ("gnoblin-backend", &["gnoblin-types"]),
+            ]),
+            vec![
+                "gnoblin-render-frame -> gnoblin-backend [engine-isolation]: the render frame crate depends on no \
+                 engine crate but the pure scene crate; `gnoblin-backend` is an engine crate"
+                    .to_owned()
+            ]
         );
     }
 

@@ -954,7 +954,7 @@ reason = "an authority gesture is a trusted input context for a token; gtk_surfa
 # The redirects' own vocabulary, and one settings writer's.
 
 [[allow]]
-left = "gnoblin-backend::Surface"
+left = "gnoblin-render-frame::Surface"
 right = "gnoblin-wayland::Surface"
 kind = "same-name"
 reason = "the backend's is a rendered surface with a buffer; the Wayland extension's is what a redirect learns about the surface it named (a window, or gone)"
@@ -1487,7 +1487,7 @@ kind = "same-name"
 reason = "a portal Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-backend::Stage"
+left = "gnoblin-render-frame::Stage"
 right = "gnoblin-compositor::Stage"
 kind = "same-name"
 reason = "a portal Stage is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
@@ -1715,7 +1715,7 @@ reason = "a layout request asks the Lua layout provider; a portal UI request is 
 
 [[allow]]
 left = "gnoblin-a11y::Model"
-right = "gnoblin-backend::Model"
+right = "gnoblin-render-frame::Model"
 kind = "same-name"
 reason = "a backend layer's 3D model matrix is a draw transform; the accessibility model is the tree of exposed objects"
 
@@ -1853,3 +1853,9 @@ left = "gnoblin-store::State"
 right = "xdg-desktop-portal-gnoblin::State"
 kind = "same-name"
 reason = "the store lifecycle state versus a portal consent state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-backend::PassKind"
+right = "gnoblin-render-frame::Layer"
+kind = "same-shape"
+reason = "a Vulkan pass kind is the renderer's draw-order tag; a frame layer is the renderer-neutral scene stratum, and the shared small variant set is not one type"

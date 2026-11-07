@@ -1,6 +1,6 @@
 # Crate boundaries
 
-Status: analysis, no code changed. Every number comes from reading the files at `origin/rust-compositor` (8793f0573). Line counts are non-test Rust lines under `src/`, with test files counted separately where named. Transitive counts are from `Cargo.lock` only where stated; other counts are inference.
+Status: analysis, with the renderer split in progress. Done: the renderer-neutral frame seam is `gnoblin-render-frame` (row `gnoblin-backend` `render/` below, phase 1). The Vulkan, GLES and software renderers are still in `gnoblin-backend` until their phases land. Every number comes from reading the files at `origin/rust-compositor` (8793f0573). Line counts are non-test Rust lines under `src/`, with test files counted separately where named. Transitive counts are from `Cargo.lock` only where stated; other counts are inference.
 
 ## The rule
 
