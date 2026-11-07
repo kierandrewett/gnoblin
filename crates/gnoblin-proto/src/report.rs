@@ -25,6 +25,10 @@
 //! for the same reason an unknown IPC member is: additions are compatible, and a
 //! guardian that dropped a child over one would be the failure.
 //!
+//! An `autostart` line carries one enabled entry of a configuration revision, and comes
+//! before that revision's `config-accepted`. Its name and arguments are percent-encoded,
+//! so a space or a newline in one cannot split the line.
+//!
 //! The descriptor is [`READY_VARIABLE`]. A child that never writes a ready report is
 //! unready, which is what the guardian's readiness deadline detects.
 
@@ -39,6 +43,9 @@ pub const CONFIG_ACCEPTED: &str = "config-accepted";
 
 /// The first word of a configuration-rejected report.
 pub const CONFIG_REJECTED: &str = "config-rejected";
+
+/// The first word of an autostart report, one per enabled entry of an accepted revision.
+pub const AUTOSTART: &str = "autostart";
 
 /// One line of a child's report stream.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,6 +75,16 @@ pub enum Line {
         revision: u64,
         /// The diagnostic, with the newline that would break the framing removed.
         diagnostic: String,
+    },
+    /// An enabled autostart entry of the configuration revision that follows it. The
+    /// runtime sends one per entry before that revision's `config-accepted`.
+    Autostart {
+        /// The revision the entry belongs to.
+        revision: u64,
+        /// The entry's name, the key of its table in the configuration.
+        name: String,
+        /// The program and its arguments, run directly without a shell.
+        command: Vec<String>,
     },
     /// A line this build does not know, which a later Gnoblin may have added.
     Unknown,
@@ -102,6 +119,21 @@ pub fn config_rejected(revision: u64, diagnostic: &str) -> String {
     format!("{CONFIG_REJECTED} {revision} {}\n", first_line(diagnostic))
 }
 
+/// The report of one enabled autostart entry of configuration `revision`.
+///
+/// The name and each argument are percent-encoded, so a space or a newline in an argument
+/// cannot change where the next field starts. `command` must not be empty: a report with
+/// no argument would not parse back.
+pub fn autostart(revision: u64, name: &str, command: &[String]) -> String {
+    let mut report = format!("{AUTOSTART} {revision} {}", encode_token(name));
+    for argument in command {
+        report.push(' ');
+        report.push_str(&encode_token(argument));
+    }
+    report.push('\n');
+    report
+}
+
 /// Read one line of the report stream.
 pub fn parse(line: &str) -> Line {
     let line = line.trim_end_matches(['\r', '\n']);
@@ -125,6 +157,7 @@ pub fn parse(line: &str) -> Line {
             let diagnostic = parts.next().unwrap_or_default().to_owned();
             Line::ConfigRejected { revision, diagnostic }
         }
+        AUTOSTART => parse_autostart(rest).unwrap_or(Line::Unknown),
         _ => match line.split_once('=') {
             Some((key, value)) if !key.is_empty() => Line::Environment {
                 key: key.to_owned(),
@@ -140,9 +173,66 @@ fn first_line(text: &str) -> &str {
     text.split('\n').next().unwrap_or_default()
 }
 
+/// Percent-encode `text` so it holds no space, percent sign or control character.
+fn encode_token(text: &str) -> String {
+    let mut encoded = Vec::with_capacity(text.len());
+    for &byte in text.as_bytes() {
+        if byte == b'%' || byte == b' ' || byte < 0x20 || byte == 0x7f {
+            encoded.extend_from_slice(format!("%{byte:02X}").as_bytes());
+        } else {
+            encoded.push(byte);
+        }
+    }
+    // Only ASCII bytes were replaced, so the result is still the UTF-8 it started as.
+    String::from_utf8_lossy(&encoded).into_owned()
+}
+
+/// Undo [`encode_token`]. `None` when an escape is malformed or the bytes are not UTF-8.
+fn decode_token(token: &str) -> Option<String> {
+    let mut decoded = Vec::with_capacity(token.len());
+    let mut bytes = token.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte != b'%' {
+            decoded.push(byte);
+            continue;
+        }
+        let high = bytes.next().and_then(hex_digit)?;
+        let low = bytes.next().and_then(hex_digit)?;
+        decoded.push((high << 4) | low);
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        _ => None,
+    }
+}
+
+/// The fields of an autostart report after its first word: the revision, the entry's
+/// name, then one argument per remaining field. `None` when a field is missing or
+/// malformed, so a truncated report is unknown rather than a shorter command.
+fn parse_autostart(rest: &str) -> Option<Line> {
+    let mut fields = rest.split(' ');
+    let revision = fields.next()?.parse().ok()?;
+    let name = decode_token(fields.next()?)?;
+    let command = fields.map(decode_token).collect::<Option<Vec<String>>>()?;
+    if name.is_empty() || command.is_empty() {
+        return None;
+    }
+    Some(Line::Autostart {
+        revision,
+        name,
+        command,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Line, config_accepted, config_rejected, parse, ready};
+    use super::{Line, autostart, config_accepted, config_rejected, parse, ready};
 
     #[test]
     fn a_ready_report_round_trips_its_environment() {
@@ -199,6 +289,45 @@ mod tests {
                 diagnostic: "bad setting".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn an_autostart_entry_keeps_its_arguments_exactly() {
+        // The failure this prevents: an argument with a space splits into two, or one with
+        // a newline ends the report early, so the guardian runs a different command.
+        let command = vec![
+            "/bin/sh".to_owned(),
+            "-c".to_owned(),
+            "echo 100% done\nnow".to_owned(),
+            String::new(),
+            "héllo".to_owned(),
+        ];
+        let report = autostart(3, "panel", &command);
+        assert_eq!(report.matches('\n').count(), 1, "one line per entry: {report:?}");
+        assert_eq!(
+            parse(&report),
+            Line::Autostart {
+                revision: 3,
+                name: "panel".to_owned(),
+                command,
+            }
+        );
+    }
+
+    #[test]
+    fn a_malformed_autostart_line_is_unknown() {
+        assert_eq!(parse("autostart 3 panel"), Line::Unknown, "an entry needs a command");
+        assert_eq!(
+            parse("autostart x panel waybar"),
+            Line::Unknown,
+            "the revision must parse"
+        );
+        assert_eq!(
+            parse("autostart 3 panel bad%zz"),
+            Line::Unknown,
+            "an escape must be hex"
+        );
+        assert_eq!(parse("autostart 3 panel %FF"), Line::Unknown, "arguments must be UTF-8");
     }
 
     #[test]

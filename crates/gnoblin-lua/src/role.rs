@@ -42,7 +42,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
 };
-use gnoblin_config::{SearchPaths, extensions::load_extensions};
+use gnoblin_config::{Config, SearchPaths, extensions::load_extensions};
 use gnoblin_proto::Version;
 use gnoblin_schema::Schema;
 use gnoblin_types::Tick;
@@ -192,24 +192,21 @@ impl RoleRunner {
 }
 
 /// Commit the validated document and tell the guardian the revision.
+///
+/// The enabled autostart entries go out as their own lines before `config-accepted`, so the
+/// guardian has them by the time it learns the revision was accepted. A rejected revision
+/// sends none, so the guardian keeps running what the last accepted revision started.
 fn commit<T: Transport + 'static>(
     host: &mut Host<T>,
     report: &RunReport,
     reporter: &mut Reporter,
 ) -> Result<u64, RoleError> {
-    let document = match &report.config {
-        Ok(_) => report.document.to_json().to_string().into_bytes(),
-        Err(problems) => {
-            let reason = format!(
-                "the configuration in {} was not committed, and the last accepted one stays in force: {problems}",
-                report.path.path().display()
-            );
-            // The guardian's log and the recovery state both need this: a runtime that exits
-            // saying nothing leaves the session degraded with no reason in it.
-            log::error!(area = "runtime", "{reason}");
-            reporter.write(&report::config_rejected(0, &reason));
-            return Err(RoleError::Invalid(reason));
-        }
+    let (document, autostart) = match &report.config {
+        Ok(config) => match enabled_autostart(config) {
+            Ok(entries) => (report.document.to_json().to_string().into_bytes(), entries),
+            Err(problem) => return Err(refuse(report, reporter, &problem)),
+        },
+        Err(problems) => return Err(refuse(report, reporter, &problems.to_string())),
     };
     let revision = match host.client_mut().commit_config(&document) {
         Ok(revision) => revision,
@@ -218,8 +215,45 @@ fn commit<T: Transport + 'static>(
             return Err(RoleError::Commit(error.to_string()));
         }
     };
+    for (name, command) in &autostart {
+        reporter.write(&report::autostart(revision, name, command));
+    }
     reporter.write(&report::config_accepted(revision));
     Ok(revision)
+}
+
+/// Refuse a configuration revision: log why, tell the guardian, and return the error.
+fn refuse(report: &RunReport, reporter: &mut Reporter, problems: &str) -> RoleError {
+    let reason = format!(
+        "the configuration in {} was not committed, and the last accepted one stays in force: {problems}",
+        report.path.path().display()
+    );
+    // The guardian's log and the recovery state both need this: a runtime that exits
+    // saying nothing leaves the session degraded with no reason in it.
+    log::error!(area = "runtime", "{reason}");
+    reporter.write(&report::config_rejected(0, &reason));
+    RoleError::Invalid(reason)
+}
+
+/// The enabled autostart entries of `config`, in name order, each with its argv.
+///
+/// The schema requires a command on every entry, so an entry without one is refused here
+/// rather than started with nothing.
+fn enabled_autostart(config: &Config) -> Result<Vec<(&str, &[String])>, String> {
+    let Some(autostart) = &config.autostart else {
+        return Ok(Vec::new());
+    };
+    let mut entries = Vec::new();
+    for (name, entry) in &autostart.autostart {
+        if !entry.enable.unwrap_or(true) {
+            continue;
+        }
+        match entry.command.as_deref() {
+            Some(command) if !command.is_empty() => entries.push((name.as_str(), command)),
+            _ => return Err(format!("autostart \"{name}\" has no command")),
+        }
+    }
+    Ok(entries)
 }
 
 /// Load the extensions the accepted configuration names, and bind the ones that pass.
