@@ -28,7 +28,7 @@ pub enum ChildKind {
     Runtime,
     /// The front a session manager starts in front of the session.
     Front,
-    /// One autostart application, whether from XDG or from configuration.
+    /// One autostart application, from the configuration's `autostart` table.
     Autostart,
 }
 

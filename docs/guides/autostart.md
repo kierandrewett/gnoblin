@@ -29,11 +29,15 @@ exited after 200 ms. Descendants that remain in the group are included. It
 starts the updated command if enabled. See the
 [autostart reference](/config/configure/autostart) for launch failures.
 
-Gnoblin starts configured commands after Mutter publishes the Wayland display.
-It also launches XDG autostart entries at this point, so graphical login apps
-do not start before the compositor is ready. When using Bingux, load its
-Gnoblin module to start its shell and layer clients through this same
-configuration path.
+Gnoblin starts configured commands after the Wayland display is published.
+
+- It does not read XDG autostart `.desktop` files. Add a program here instead.
+- It refuses an entry that starts gnome-keyring while `keyring.enabled` is on. That
+  daemon would take `org.freedesktop.secrets` from Gnoblin's keyring. See
+  [Apps reach gnome-keyring instead](/config/configure/keyring#apps-reach-gnome-keyring-instead).
+
+When using Bingux, load its Gnoblin module to start its shell and layer clients
+through this same configuration path.
 
 ## Override an imported command
 
