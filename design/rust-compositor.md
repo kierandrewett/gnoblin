@@ -279,8 +279,8 @@ starts without it, logs the error, and calls to its namespace fail with
   `sensitive` frame, so none of them needs the extension schema to keep a
   secret out. Gnoblin handles no other secret of an extension.
 - **Lua:** `require("<namespace>")` resolves an extension namespace that is
-  loaded and granted to the host's connection. `require` loads only these and
-  host-registered loaders such as layouts.
+  loaded and granted to the host's connection. Other names are modules from
+  the user or shipped root; layout names return a layout reference.
 - **Versioning:** an extension carries the full version of the project that
   ships it, with the same `since` and handshake rules as Gnoblin.
 
@@ -1066,7 +1066,7 @@ failure-mode list that must be complete before isolated tests or code.
 - **Owns:** the typed configuration document, validation, merge, salvage,
   last-good store; the Lua host with instruction and memory limits (the VM
   construction comes from `gnoblin-lua-sandbox`), the
-  `require` loader (host-registered loaders and granted extension namespaces),
+  `require` loader (extension namespaces, layouts and modules from the two roots),
   spawn, tweens compiled to native descriptions, input policy handlers with
   deadlines.
 - **Replaces:** `src/config`, `src/config/lua`,
@@ -2025,14 +2025,19 @@ D18, which is new scope and not a divergence from Mutter.
 - a table `{ arrange = fn, on_request = fn, command = { name = fn, ... },
 options = schema }` for a stateful or message-driven layout.
 
-Layouts live in modules. `require` in the configuration returns a layout reference for a layout module, not the module's code. Two roots are searched, and nothing else:
+Layouts are modules, and `require` is the one module mechanism. `require("a.b.c")` names `a/b/c.lua`; dots are directory separators everywhere, in the configuration VM and in layout VMs alike. Decided 2026-11-07 ("layout option A").
 
-- `shipped`: the installed `share/gnoblin/lua` directory. `require("gnoblin.layouts.grid")` names `gnoblin/layouts/grid.lua` there.
-- `user`: the directory of the configuration file being evaluated. `require("layouts.mine")` names `<config dir>/layouts/mine.lua`.
+Search order. A name whose first component is `gnoblin` is reserved: it is searched in `shipped` (the installed `share/gnoblin/lua`) only, so a user file cannot shadow it. Any other name is searched in `user` first, then in `shipped`; the first file found wins, as with Lua's `package.path`. `user` is the directory of the top-level `init.lua`, never the fragment that calls `require`, so one name means one file from every fragment. A name found in neither root fails with an error that names both directories searched.
 
-The root follows the name: a name with the `gnoblin.` prefix is `shipped`, any other name is `user`. The roots are fixed. They do not come from the document being built, so a module is found before the document is complete, and they do not come from the last accepted store. The compositor resolves a reference against the same two roots, by the same path logic `gnoblin.load` uses.
+Layout names. A name is a layout when it is `layouts.<rest>` or `gnoblin.layouts.<rest>`. `require` of a layout name returns a layout reference, not the module's value. Any other name returns the module's value. Within one evaluation, a module is run once and cached, as `package.loaded` is within one Lua state; a cycle is refused. The root that resolved a layout is recorded as the reference's `root` (`"shipped"` or `"user"`).
 
-A reference is an immutable table with four fields: `root` (`"shipped"` or `"user"`), `module` (the name as written), `hash` (the 64-bit FNV-1a hash of the module's source, as a decimal string) and `options` (the module's declared options, as plain data).
+`gnoblin.load` is the loader for configuration fragments only: a path or glob, relative to the calling file, run in place and never cached. A fragment is not a module and returns nothing.
+
+Migration. A configuration that wrote `require("layouts.mine")` in a fragment under `conf.d/` now names `<config dir>/layouts/mine.lua`, not `conf.d/layouts/mine.lua`: move the file or the call. A `gnoblin.load("parts/x.lua")` used as a module system becomes `require("parts.x")`, returning the table the file returns. Fragments loaded with `gnoblin.load` need no change.
+
+The roots are fixed for an evaluation. They do not come from the document being built, so a module is found before the document is complete, and not from the last accepted store. The compositor resolves a reference against the same two roots and the same resolver the configuration VM uses.
+
+A reference is an immutable table with four fields: `root` (`"shipped"` or `"user"`), `module` (the name as written), `hash` (the 64-bit FNV-1a hash of the module's source, as sixteen lowercase hex digits, the spelling `LayoutRef:hash` returns) and `options` (the module's declared options, as plain data).
 
 The hash pins the source. The compositor checks its own copy against it and refuses a mismatch as `invalid-layout`, so an edit made between configuration and run cannot take effect silently. Requiring a module runs its top-level chunk in the configuration VM; `arrange` and the other layout functions are never called there.
 
@@ -2215,8 +2220,7 @@ for a worker that still does not return is abandon-and-replace (see "Stuck worke
   Removed: `string.find`, `match`, `gmatch`, `gsub` and `rep`, which can run
   unbounded inside C; `pcall` and `xpcall`, which could catch the abort; `coroutine`;
   `utf8`; `load`, `loadfile` and `dofile`; `os`; `io`; `debug`; `collectgarbage`;
-  and the `package` loaders. `require` resolves only layout modules, from the
-  shipped and user module paths. Bytecode is never loaded.
+  and the `package` loaders. `require` resolves modules by the rule in the layout section above: user root first, then shipped, with `gnoblin.*` reserved to shipped. Bytecode is never loaded.
 - **Determinism.** Output never follows `pairs` order. The reply follows the input
   order of `ctx.windows`. `math.random` does not exist, so output depends only on
   the snapshot and `ctx.state`.
@@ -2312,7 +2316,7 @@ The Lua surface `workspace:set_layout(ref)`, `output:set_layout(ref)` and the ru
 
 **Lua surface.**
 
-- The configuration has no layout-registration call; `gnoblin.layout.register` is removed. A layout is a module: `require("layouts.mine")` returns its reference. A reload re-requires it, so a changed module is the one that runs. A name with the `gnoblin.` prefix always selects the shipped root; any other name selects the user root, so a user module cannot shadow a shipped one.
+- The configuration has no layout-registration call; `gnoblin.layout.register` is removed. A layout is a module: `require("layouts.mine")` returns its reference. A reload re-requires it, so a changed module is the one that runs. The search order is the one in the layout section: a `gnoblin.*` name is shipped only; any other name is user first, then shipped.
 - `require("gnoblin.layouts.<name>")`: the shipped modules, for copying and
   composing.
 - `layout.stack`, `layout.with_gaps` and `layout.per_output`: planned, not implemented (see Composition above).
@@ -2663,7 +2667,7 @@ Reported by theme authors, unverified against Mutter's cursor-loader source: the
 - **bsm ships:** the `bsm.greeter` schema, its provider, and the host kiosk configuration. Gnoblin's docs mention bsm's greeter only in this informational note, with no coupling.
 - **Host boundary (D4, unchanged):** the kiosk configuration is Lua. The greeter UI is an ordinary client. bsm's manager owns PAM and logind through `bsm-helper`, and session launch. Lua config code never becomes an auth broker. Gnoblin handles no auth secret beyond the generic `sensitive`-frame redaction.
 - **Grants:** extensions are granted per connection. The handshake's mandatory Grants frame lists them (Option B).
-- **Lua:** `require("<namespace>")` resolves only extension namespaces that are loaded and granted to the host's connection, and host-registered loaders such as layouts.
+- **Lua:** `require("<namespace>")` resolves only extension namespaces that are loaded and granted to the host's connection. Other names are modules from the user or shipped root; layout names return a layout reference.
 - **One ABI:** every extension uses one envelope (namespace, member, request id, flags, opaque payload) and one stock `extension` surface: `provide`, `call`, `event`, `provider-gone`, and the granted list in the handshake Grants frame. Stock crates (`gnoblin-proto`, `gnoblin-schema`, `gnoblin-client`, `gnoblin-lua`, the `gnoblin` binary) contain no per-extension generated code, enums or modules, and no `Role::Greeter` or `bsm_greeter` code. An extension's payload schema is used only by its own generated code outside the stock tree, and by the Lua host's dynamic classes built at load time.
 
 Failure modes:
