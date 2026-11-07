@@ -79,6 +79,10 @@ fn type_spelling(kind: gnoblin_render::UniformType) -> &'static str {
     }
 }
 
+/// The whole-output view pass: the magnifier and the colour matrix, applied to a copy of the
+/// finished output. It has its own uniform block, so no user shader's fields reach it.
+pub const VIEW: &str = include_str!("wgsl/view.wgsl");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,7 +118,3 @@ mod tests {
         assert!(USER_ENTRY.contains("fn gnoblin_entry("));
     }
 }
-
-/// The whole-output view pass: the magnifier and the colour matrix, applied to a copy of the
-/// finished output. It has its own uniform block, so no user shader's fields reach it.
-pub const VIEW: &str = include_str!("wgsl/view.wgsl");
