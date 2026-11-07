@@ -580,8 +580,8 @@ Each path below moves to the registry, with no shim.
 6. `gnoblin.window_frame`, built in, with its paint and input areas (see Window frames).
 7. `menu_requested` signal and `request_menu` on `window` (D29). The shipped `gnoblin.window_menu` extension follows, enabled by default. No core menu layer.
 8. `gnoblin.alerts`, with its content provider.
-9. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by full layer name, with a new `layer-name` id kind, and a `capture` section with `secure-treatment`.
-10. Extension `[powers.layers]` through D22.
+9. Trusted IPC for built-in providers: the layer schema object and server dispatch to `Wm::register_layer`. The provider is derived server-side from the connection, and a non-built-in caller is refused. Lua binding is blocked on per-extension Lua environments (one shared `gnoblin` global today, `bindings.rs:290`). `gnoblin.window_rule` gains `secure` in the WindowRules lane. The config schema gains a `layers` section and `capture.secure-treatment`.
+10. Lua `gnoblin.layers` and `[powers.layers]` through D22. This is the unblock for the phase 9 binding: per-extension Lua environments, and grants that name each extension namespace.
 
 Each phase names the tests that fail without its rule.
 
@@ -603,6 +603,8 @@ would refuse those requests. Until Kieran decides, the fallback stays.
 - (a) Keep output scope for every request until a real attribution source exists. Pro: no spoofing risk, nothing new to trust. Con: dialogs never centre on their window, and the parent-window code stays unused.
 - (b) Treat the xdg-foreign handle as a bearer capability: a secret known only to the exporter, honoured when it resolves, with the requesting app's label always shown in the dialog. Pro: works for host apps. Con: a leaked handle lets another app place a dialog over that window. Strength depends on the compositor's handle generator, which is not yet established. The pinned Smithay (rev `65aa86fa`, `Cargo.lock`) generates a 32-character alphanumeric string from `rand::rng()` (`src/wayland/xdg_foreign/mod.rs:58-62`, created per export at `src/wayland/xdg_foreign/handlers.rs:65`). That is random, not sequential, so it is not guessable by counting. Whether `rand`'s thread RNG meets the bar for a bearer secret is [INFERENCE] and is not yet verified. Until it is, output scope stays.
 - (c) Honour the parent only when the compositor can bind the request to the exporting Wayland client by a trusted process or sandbox binding (for example that client's pid or sandbox-engine metadata, checked by the compositor). The frontend does not supply that binding. A match between the portal's `app_id` and the exporting toplevel's Wayland `app_id` does NOT authenticate the window: `xdg_toplevel.set_app_id` is client-supplied, so any client can claim the same string. Without such a binding, (c) must not be used.
+
+**17.** Scoping note, not a question. The Lua `gnoblin.layers` binding (phase 9) waits on phase 10. Today one shared `gnoblin` global serves every script (`bindings.rs:290`), and the compositor cannot tell which extension a call came from. Phase 10 needs per-extension Lua environments and `[powers.layers]` grants. Until then only trusted built-in providers register, over IPC.
 
 ### Decided
 

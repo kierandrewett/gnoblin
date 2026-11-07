@@ -69,6 +69,17 @@ pub enum RegisterError {
     ProviderIdReserved,
     /// The extension id is outside the name grammar.
     BadProviderId(LayerNameError),
+    /// The requested name is outside the name grammar, so it cannot be a layer.
+    BadName(LayerNameError),
+    /// The requested full name names a namespace other than the provider's. The
+    /// provider comes from the authenticated connection, so the request cannot
+    /// choose another one; `attributed` is the namespace that was enforced.
+    ProviderMismatch {
+        /// The name the caller asked for.
+        requested: String,
+        /// The namespace the compositor attributed to the caller.
+        attributed: String,
+    },
     /// The band is not allowed for this provider's class. The `Band` says which.
     BandNotAllowed(Band),
     /// A window scope has no target window.
@@ -97,6 +108,11 @@ impl fmt::Display for RegisterError {
                 write!(f, "extension id `gnoblin` is reserved for the built-ins")
             }
             RegisterError::BadProviderId(e) => write!(f, "bad provider id: {e}"),
+            RegisterError::BadName(e) => write!(f, "bad layer name: {e}"),
+            RegisterError::ProviderMismatch { requested, attributed } => write!(
+                f,
+                "layer name {requested} is outside the attributed namespace {attributed}"
+            ),
             RegisterError::BandNotAllowed(band) => {
                 write!(f, "this provider may not register into {band:?}")
             }
