@@ -463,11 +463,19 @@ impl Server {
                                 let _ = reply.send(state.request_window_menu(window, anchor, MenuSource::Extension));
                             }
                             Command::Lock { reply } => state.request_lock(reply),
-                            Command::SetWorkspaceLayout { workspace, name, reply } => {
-                                let _ = reply.send(state.set_workspace_layout(workspace, &name));
+                            Command::SetWorkspaceLayout {
+                                workspace,
+                                selector,
+                                reply,
+                            } => {
+                                let _ = reply.send(state.set_workspace_layout(workspace, &selector));
                             }
-                            Command::SetOutputLayout { output, name, reply } => {
-                                let _ = reply.send(state.set_output_layout(&output, &name));
+                            Command::SetOutputLayout {
+                                output,
+                                selector,
+                                reply,
+                            } => {
+                                let _ = reply.send(state.set_output_layout(&output, &selector));
                             }
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
@@ -739,24 +747,32 @@ impl ControlHandle {
         answer.recv_timeout(std::time::Duration::from_secs(3)).ok()
     }
 
-    /// Sets a workspace's layout. `None` when the loop did not answer in time; otherwise
-    /// the refusal message when `name` is not a loadable layout.
-    pub fn set_workspace_layout(&self, workspace: WorkspaceId, name: &str) -> Option<Result<(), String>> {
+    /// Sets a workspace's layout to the module `selector` names. `None` when the loop did
+    /// not answer in time; otherwise the refusal message when the layout cannot load.
+    pub fn set_workspace_layout(
+        &self,
+        workspace: WorkspaceId,
+        selector: &gnoblin_config::LayoutSelector,
+    ) -> Option<Result<(), String>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::SetWorkspaceLayout {
             workspace,
-            name: name.to_owned(),
+            selector: selector.clone(),
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
     /// Sets an output's default layout; same answers as [`ControlHandle::set_workspace_layout`].
-    pub fn set_output_layout(&self, output: &str, name: &str) -> Option<Result<(), String>> {
+    pub fn set_output_layout(
+        &self,
+        output: &str,
+        selector: &gnoblin_config::LayoutSelector,
+    ) -> Option<Result<(), String>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::SetOutputLayout {
             output: output.to_owned(),
-            name: name.to_owned(),
+            selector: selector.clone(),
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1043,13 +1059,13 @@ enum Command {
     /// A workspace's layout choice; the answer is the refusal, if any.
     SetWorkspaceLayout {
         workspace: WorkspaceId,
-        name: String,
+        selector: gnoblin_config::LayoutSelector,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// An output's default layout choice; the answer is the refusal, if any.
     SetOutputLayout {
         output: String,
-        name: String,
+        selector: gnoblin_config::LayoutSelector,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Adds or removes one idle holder; see `ControlHandle::idle_hold`.

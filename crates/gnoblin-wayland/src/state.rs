@@ -214,17 +214,17 @@ pub trait LayoutControl {
     /// Builds a fresh engine for `workspace`, resolving its layout from the overrides.
     fn engine(&self, workspace: WorkspaceId, output: Option<&str>) -> Box<dyn LayoutEngine>;
 
-    /// Stores `name` as `workspace`'s layout override.
+    /// Stores `selector` as `workspace`'s layout override, loading its module if needed.
     ///
     /// # Errors
-    /// A refusal message when `name` is not a known layout.
-    fn set_workspace(&self, workspace: WorkspaceId, name: &str) -> Result<(), String>;
+    /// A refusal message when the layout cannot be loaded.
+    fn set_workspace(&self, workspace: WorkspaceId, selector: &gnoblin_config::LayoutSelector) -> Result<(), String>;
 
-    /// Stores `name` as `output`'s default layout.
+    /// Stores `selector` as `output`'s default layout, loading its module if needed.
     ///
     /// # Errors
-    /// A refusal message when `name` is not a known layout.
-    fn set_output(&self, output: &str, name: &str) -> Result<(), String>;
+    /// A refusal message when the layout cannot be loaded.
+    fn set_output(&self, output: &str, selector: &gnoblin_config::LayoutSelector) -> Result<(), String>;
 
     /// The layout name `workspace` runs now, as the engine would resolve it.
     fn layout_name(&self, workspace: WorkspaceId, output: Option<&str>) -> String;
@@ -1756,13 +1756,17 @@ impl State {
     /// old one is dropped with its run.
     ///
     /// # Errors
-    /// The control's refusal when `name` is not a known layout; nothing changes.
-    pub(crate) fn set_workspace_layout(&mut self, workspace: WorkspaceId, name: &str) -> Result<(), String> {
+    /// The control's refusal when the layout module cannot be loaded; nothing changes.
+    pub(crate) fn set_workspace_layout(
+        &mut self,
+        workspace: WorkspaceId,
+        selector: &gnoblin_config::LayoutSelector,
+    ) -> Result<(), String> {
         let control = self
             .layouts
             .clone()
             .ok_or_else(|| "no layouts are installed".to_owned())?;
-        control.set_workspace(workspace, name)?;
+        control.set_workspace(workspace, selector)?;
         let effects = self.wm.rebuild_layout(workspace);
         self.apply(effects);
         self.publish();
@@ -1833,14 +1837,18 @@ impl State {
     /// so a workspace with its own override gets a fresh engine for that override.
     ///
     /// # Errors
-    /// The control's refusal when `name` is not a known layout, or when no output has
+    /// The control's refusal when the layout module cannot be loaded, or when no output has
     /// that name; nothing changes.
-    pub(crate) fn set_output_layout(&mut self, output: &str, name: &str) -> Result<(), String> {
+    pub(crate) fn set_output_layout(
+        &mut self,
+        output: &str,
+        selector: &gnoblin_config::LayoutSelector,
+    ) -> Result<(), String> {
         let control = self
             .layouts
             .clone()
             .ok_or_else(|| "no layouts are installed".to_owned())?;
-        control.set_output(output, name)?;
+        control.set_output(output, selector)?;
         let effects = self.wm.rebuild_all_layouts();
         self.apply(effects);
         self.publish();

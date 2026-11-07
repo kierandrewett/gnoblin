@@ -24,6 +24,21 @@ fn shipped_modules() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/lua")
 }
 
+/// The FNV-1a hash of a module's source, which a layout reference pins. The Lua host
+/// computes the same function, but it is private to that crate, so the test writes it out.
+fn source_hash(path: &std::path::Path) -> String {
+    let source = std::fs::read(path).expect("the module source");
+    let hash = source.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    format!("{hash:016x}")
+}
+
+/// The hash of the shipped `master_stack` module, the reference a test names it by.
+fn master_stack_hash() -> String {
+    source_hash(&shipped_modules().join("gnoblin/layouts/master_stack.lua"))
+}
+
 /// A session configured with `settings`, which is every layout test's only difference.
 fn session_with(settings: LayoutSettings) -> Session {
     let (session, _ends) = Session::start_privileged_configured(&[], |config| config.layouts = settings);
@@ -238,7 +253,9 @@ fn set_layout_retiles_the_windows_on_the_workspace() {
             "call",
             &workspace.to_string(),
             "set_layout",
-            "name=gnoblin.layouts.master_stack",
+            "root=shipped",
+            "module=gnoblin.layouts.master_stack",
+            &format!("hash={}", master_stack_hash()),
         ])
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
@@ -288,7 +305,9 @@ fn set_layout_publishes_the_retiled_rectangles() {
             "call",
             &workspace.to_string(),
             "set_layout",
-            "name=gnoblin.layouts.master_stack",
+            "root=shipped",
+            "module=gnoblin.layouts.master_stack",
+            &format!("hash={}", master_stack_hash()),
         ])
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
@@ -334,7 +353,15 @@ return M
 
     let workspace = workspace_id(&session).to_string();
     session
-        .ctl(&["workspace", "call", &workspace, "set_layout", "name=layouts.probe"])
+        .ctl(&[
+            "workspace",
+            "call",
+            &workspace,
+            "set_layout",
+            "root=user",
+            "module=layouts.probe",
+            &format!("hash={}", source_hash(&layouts.join("probe.lua"))),
+        ])
         .ok();
     session
         .ctl(&[
@@ -363,7 +390,9 @@ fn an_unknown_layout_name_is_refused_over_ipc() {
         "call",
         &workspace,
         "set_layout",
-        "name=gnoblin.layouts.no_such_layout",
+        "root=shipped",
+        "module=gnoblin.layouts.no_such_layout",
+        "hash=0000000000000000",
     ]);
     assert_ne!(refusal.code, 0, "an unknown layout is refused");
     assert!(

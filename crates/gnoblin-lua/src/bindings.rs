@@ -45,6 +45,7 @@ use gnoblin_model::{Fields, ObjectId, OperationId, Value as ModelValue};
 use mlua::{AnyUserData, Error, Function, Lua, Table, UserData, UserDataFields, UserDataMethods, Value, Variadic};
 
 use crate::host::{Shared, Status, Watching};
+use crate::layout::LayoutRef;
 use gnoblin_lua_sandbox::{Guard, Limits};
 
 /// The registry table of handler and timer callbacks, keyed by identity.
@@ -560,22 +561,46 @@ fn call_method<T: Transport + 'static>(
     {
         values.remove(0);
     }
-    if values.len() != method.params.len() {
-        return Err(Error::runtime(format!(
-            "{}.{} expects {} argument(s) after the object, found {}",
-            spec.name,
-            method.name,
-            method.params.len(),
-            values.len()
-        )));
-    }
     let mut fields = Fields::new();
-    for (parameter, value) in method.params.iter().zip(values.iter()) {
-        let label = format!("{}.{} argument `{}`", spec.name, method.name, parameter.name);
-        fields.insert(
-            parameter.name.to_owned(),
-            convert_argument(lua, shared, parameter.ty, value, &label)?,
-        );
+    if takes_layout_reference(method) {
+        // One reference argument carries the three fields the wire needs. A string is
+        // refused: the module it names would not be pinned by hash.
+        let [value] = values.as_slice() else {
+            return Err(Error::runtime(format!(
+                "{}.{} expects one layout reference after the object, found {} argument(s)",
+                spec.name,
+                method.name,
+                values.len()
+            )));
+        };
+        let Some((root, module, hash)) = layout_reference_fields(value) else {
+            return Err(Error::runtime(format!(
+                "{}.{} takes a layout reference from require(), not {}",
+                spec.name,
+                method.name,
+                value.type_name()
+            )));
+        };
+        fields.insert("root".to_owned(), ModelValue::Text(root));
+        fields.insert("module".to_owned(), ModelValue::Text(module));
+        fields.insert("hash".to_owned(), ModelValue::Text(hash));
+    } else {
+        if values.len() != method.params.len() {
+            return Err(Error::runtime(format!(
+                "{}.{} expects {} argument(s) after the object, found {}",
+                spec.name,
+                method.name,
+                method.params.len(),
+                values.len()
+            )));
+        }
+        for (parameter, value) in method.params.iter().zip(values.iter()) {
+            let label = format!("{}.{} argument `{}`", spec.name, method.name, parameter.name);
+            fields.insert(
+                parameter.name.to_owned(),
+                convert_argument(lua, shared, parameter.ty, value, &label)?,
+            );
+        }
     }
     let operation = shared
         .borrow_mut()
@@ -586,6 +611,32 @@ fn call_method<T: Transport + 'static>(
         operation,
         method: method.name,
     })
+}
+
+/// Whether a method takes a layout reference in place of its three fields. Only
+/// `set_layout` on `workspace` and `output` does: the Lua call names the reference once,
+/// and the wire carries its `root`, `module` and `hash`.
+fn takes_layout_reference(method: &MethodSpec) -> bool {
+    method.name == "set_layout"
+        && matches!(
+            method.params,
+            [root, module, hash]
+                if root.name == "root" && module.name == "module" && hash.name == "hash"
+        )
+}
+
+/// The `root`, `module` and `hash` of a layout reference, or `None` when the value is
+/// not one. The hash is spelled the way the reference's own `hash` field spells it.
+fn layout_reference_fields(value: &Value) -> Option<(String, String, String)> {
+    let Value::UserData(data) = value else {
+        return None;
+    };
+    let reference = data.borrow::<LayoutRef>().ok()?;
+    Some((
+        reference.root.to_owned(),
+        reference.module.clone(),
+        format!("{:016x}", reference.hash),
+    ))
 }
 
 /// One Lua argument as the typed value the schema declares.

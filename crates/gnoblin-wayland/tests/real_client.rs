@@ -1258,11 +1258,11 @@ impl LayoutControl for ScriptedLayouts {
         })
     }
 
-    fn set_workspace(&self, _workspace: WorkspaceId, _name: &str) -> Result<(), String> {
+    fn set_workspace(&self, _workspace: WorkspaceId, _selector: &gnoblin_config::LayoutSelector) -> Result<(), String> {
         Err("the scripted layouts take no runtime choice".to_owned())
     }
 
-    fn set_output(&self, _output: &str, _name: &str) -> Result<(), String> {
+    fn set_output(&self, _output: &str, _selector: &gnoblin_config::LayoutSelector) -> Result<(), String> {
         Err("the scripted layouts take no runtime choice".to_owned())
     }
 

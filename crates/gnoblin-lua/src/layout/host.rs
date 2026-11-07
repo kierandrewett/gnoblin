@@ -134,6 +134,12 @@ impl Host {
         self.registered.get(name).map(|layout| &layout.manifest)
     }
 
+    /// Whether a layout is registered under `name`. A caller reuses that registration
+    /// rather than loading the module again, which would replace the options it carries.
+    pub fn is_registered(&self, name: &str) -> bool {
+        self.registered.contains_key(name)
+    }
+
     /// Loads `module` and registers it as layout `name` with the user's `options`. The
     /// load is waited for at most one hard limit. A failed load restores the previous
     /// registration of `name`.

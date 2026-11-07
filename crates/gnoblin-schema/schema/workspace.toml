@@ -22,15 +22,27 @@ name = "layout"
 type = "string"
 since = "0.2.0"
 
-# Set the workspace's own layout to one of the shipped or registered names. The
-# engine is replaced and its state is kept per layout name. An unknown name fails
+# Set the workspace's own layout to a layout module, named by its reference: the root it
+# resolves under (`shipped` or `user`), its module name and its source hash. The hash
+# pins the source, so an edit made after the configuration was checked is refused. The
+# engine is replaced and its state is kept per layout reference. An unknown module fails
 # with `unknown-layout`; the completion is the operation's one outcome.
 [[object.method]]
 name = "set_layout"
 since = "0.2.0"
 
 [[object.method.param]]
-name = "name"
+name = "root"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "module"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "hash"
 type = "string"
 since = "0.2.0"
 

@@ -287,25 +287,33 @@ impl WorkspaceLayouts {
         }
     }
 
-    /// Loads `name` into the host when it is not registered yet, so a runtime choice
-    /// names a real layout or is refused. A layout that fails to load is refused too.
-    fn ensure_layout(&self, name: &str) -> Result<(), String> {
-        if name == FLOATING {
-            return Ok(());
+    /// Loads the layout `selector` names into the host when it is not registered yet, so a
+    /// runtime choice names a real layout or is refused. Returns the key the layout runs
+    /// under. A layout that fails to load is refused too.
+    fn ensure_layout(&self, selector: &LayoutSelector) -> Result<String, String> {
+        if is_floating(selector) {
+            return Ok(FLOATING.to_owned());
         }
-        if self.failed.borrow().contains(name) {
-            return Err(format!("layout `{name}` failed to load"));
+        let key = selector_key(selector);
+        if self.failed.borrow().contains(&key) {
+            return Err(format!("layout `{key}` failed to load"));
         }
         let mut host = self.host.borrow_mut();
-        match host.register(name, name, Data::Table(BTreeMap::new())) {
-            Ok(()) => Ok(()),
+        // A layout already registered keeps its registration. A runtime choice names a
+        // module by reference and carries no options, so reloading it here would replace
+        // the options the configuration gave every workspace that runs it.
+        if host.is_registered(&key) {
+            return Ok(key);
+        }
+        match load_selector(&mut host, selector) {
+            Ok(_) => Ok(key),
             Err(failure) => {
-                log::warn!(area = "layout", layout = name, reason = ?failure.reason, message = %failure.message, "runtime layout cannot be loaded");
-                if failure.message.contains("not found") {
-                    return Err(format!("unknown layout: `{name}` has no layout module"));
+                log::warn!(area = "layout", layout = %key, reason = ?failure.reason, message = %failure.message, "runtime layout cannot be loaded");
+                if failure.reason == gnoblin_lua::layout::LayoutReason::UnknownModule {
+                    return Err(format!("unknown layout: `{key}` has no layout module"));
                 }
-                self.failed.borrow_mut().insert(name.to_owned());
-                Err(format!("layout `{name}` cannot be loaded: {}", failure.message))
+                self.failed.borrow_mut().insert(key.clone());
+                Err(format!("layout `{key}` cannot be loaded: {}", failure.message))
             }
         }
     }
@@ -316,15 +324,15 @@ impl LayoutControl for WorkspaceLayouts {
         self.engine_for(workspace, output)
     }
 
-    fn set_workspace(&self, workspace: WorkspaceId, name: &str) -> Result<(), String> {
-        self.ensure_layout(name)?;
-        self.workspaces.borrow_mut().insert(workspace, name.to_owned());
+    fn set_workspace(&self, workspace: WorkspaceId, selector: &LayoutSelector) -> Result<(), String> {
+        let key = self.ensure_layout(selector)?;
+        self.workspaces.borrow_mut().insert(workspace, key);
         Ok(())
     }
 
-    fn set_output(&self, output: &str, name: &str) -> Result<(), String> {
-        self.ensure_layout(name)?;
-        self.outputs.borrow_mut().insert(output.to_owned(), name.to_owned());
+    fn set_output(&self, output: &str, selector: &LayoutSelector) -> Result<(), String> {
+        let key = self.ensure_layout(selector)?;
+        self.outputs.borrow_mut().insert(output.to_owned(), key);
         Ok(())
     }
 

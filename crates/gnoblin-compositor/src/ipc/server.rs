@@ -70,6 +70,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use gnoblin_client::wire;
+use gnoblin_config::{LayoutReference, LayoutRoot, LayoutSelector};
 
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
@@ -1467,7 +1468,8 @@ impl Dispatcher {
     }
 
     /// Serves `workspace.set_layout`: the layout is swapped, and the completion says
-    /// whether it was. An unknown name is refused and the workspace keeps its layout.
+    /// whether it was. A layout that cannot be named or loaded is refused and the
+    /// workspace keeps its layout.
     fn set_workspace_layout(
         &mut self,
         client: ClientId,
@@ -1477,15 +1479,10 @@ impl Dispatcher {
         arguments: &gnoblin_model::Fields,
         workspace: WorkspaceId,
     ) {
-        let name = match text_argument(arguments, "name") {
-            Some(name) => name,
-            None => {
-                self.refuse(
-                    client,
-                    envelope,
-                    wire::code::UNKNOWN_MEMBER,
-                    "set_layout takes a text `name`",
-                );
+        let selector = match layout_selector(arguments) {
+            Ok(selector) => selector,
+            Err(message) => {
+                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, message);
                 return;
             }
         };
@@ -1498,7 +1495,7 @@ impl Dispatcher {
             }
         };
         self.reply_with_operation(client, envelope, &operation);
-        let answered = self.control.set_workspace_layout(workspace, &name);
+        let answered = self.control.set_workspace_layout(workspace, &selector);
         self.sync();
         self.finish_layout(object, &operation, answered);
     }
@@ -1557,15 +1554,10 @@ impl Dispatcher {
         arguments: &gnoblin_model::Fields,
         output: &str,
     ) {
-        let name = match text_argument(arguments, "name") {
-            Some(name) => name,
-            None => {
-                self.refuse(
-                    client,
-                    envelope,
-                    wire::code::UNKNOWN_MEMBER,
-                    "set_layout takes a text `name`",
-                );
+        let selector = match layout_selector(arguments) {
+            Ok(selector) => selector,
+            Err(message) => {
+                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, message);
                 return;
             }
         };
@@ -1578,7 +1570,7 @@ impl Dispatcher {
             }
         };
         self.reply_with_operation(client, envelope, &operation);
-        let answered = self.control.set_output_layout(output, &name);
+        let answered = self.control.set_output_layout(output, &selector);
         self.sync();
         self.finish_layout(object, &operation, answered);
     }
@@ -1884,6 +1876,25 @@ fn text_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<String
         Some(gnoblin_model::Value::Text(text)) => Some(text.clone()),
         _ => None,
     }
+}
+
+/// The layout a `set_layout` call names: a module by its root, dotted path and hash.
+/// The wire carries no options, so the layout starts with none.
+fn layout_selector(arguments: &gnoblin_model::Fields) -> Result<LayoutSelector, &'static str> {
+    let root = match text_argument(arguments, "root").as_deref() {
+        Some("shipped") => LayoutRoot::Shipped,
+        Some("user") => LayoutRoot::User,
+        _ => return Err("set_layout takes `root` as `shipped` or `user`"),
+    };
+    let (Some(module), Some(hash)) = (text_argument(arguments, "module"), text_argument(arguments, "hash")) else {
+        return Err("set_layout takes text `module` and `hash`");
+    };
+    Ok(LayoutSelector::Reference(LayoutReference {
+        root,
+        module,
+        hash,
+        options: BTreeMap::new(),
+    }))
 }
 
 /// Builds the effect a `window.add_effect` call asks for. A parameter the call leaves out
