@@ -51,6 +51,15 @@ fn take(ends: &mut Vec<(String, UnixStream)>, role: &str) -> Wire {
     wire
 }
 
+/// Takes a fresh `role` connection the way a restarted child is handed: the guardian sends a
+/// new stream over the control socket, and the test completes the handshake on its end. The
+/// session serves one connection per role, so a second requester is a successor, not a peer.
+fn take_child(session: &Session, role: &str) -> Wire {
+    let wire = Wire::over(session.spawn_child(role));
+    wire.set_read_timeout(REPLY_WAIT);
+    wire
+}
+
 /// The `(kind, detail)` a settled request replied with.
 fn outcome(envelope: &Envelope) -> (String, String) {
     read_portal_outcome(envelope.payload().unwrap_or(&[])).expect("a portal outcome reply")
@@ -166,19 +175,20 @@ fn a_second_request_queues_and_is_served_after_the_first() {
 
 #[test]
 fn requester_disconnect_tears_the_dialog_down_and_late_keys_do_nothing() {
-    let (session, mut ends) = Session::start_privileged(&["portal", "portal", "input"]);
+    let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
     let mut first = take(&mut ends, "portal");
-    let mut second = take(&mut ends, "portal");
     let mut input = take(&mut ends, "input");
 
     admit(&mut first, 7);
     drop(first);
 
     // The departed requester's dialog is torn down, so a key for it must not reach a
-    // reply to anyone. A fresh requester is still served by its own keys.
+    // reply to anyone. A fresh requester is still served by its own keys: the guardian
+    // hands a restarted child a fresh portal stream, which succeeds the departed one.
     key(&mut input, 7, "escape");
     // Departure has no reply to wait on, so give the server's tick time to tear the dialog down.
     thread::sleep(ARM_DELAY);
+    let mut second = take_child(&session, "portal");
     admit(&mut second, 8);
     key(&mut input, 8, "escape");
 
