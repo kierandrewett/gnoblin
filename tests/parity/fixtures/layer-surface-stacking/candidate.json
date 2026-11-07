@@ -4,6 +4,7 @@
     "layers.list": [
       {
         "id": 41,
+        "name": "gnoblin.surface_layer_shell:bar",
         "namespace": "bar",
         "layer": "top",
         "serial": 7,
@@ -12,6 +13,7 @@
       },
       {
         "id": 42,
+        "name": "gnoblin.surface_layer_shell:osd",
         "namespace": "osd",
         "layer": "overlay",
         "serial": 9,

@@ -85,7 +85,9 @@ fn the_recorded_scenario_reports_the_stacking_difference() {
         "the difference must name the field and both values:\n{text}"
     );
     assert!(
-        text.contains("layers.list [0].namespace: expected \"osd\", got \"bar\""),
+        text.contains(
+            "layers.list [0].name: expected \"gnoblin.surface_layer_shell:osd\", got \"gnoblin.surface_layer_shell:bar\"",
+        ),
         "the difference must name the surface that moved:\n{text}"
     );
 }

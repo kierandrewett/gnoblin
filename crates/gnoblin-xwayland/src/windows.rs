@@ -31,6 +31,7 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec, LocalName};
 use gnoblin_types::{Rect, WindowId};
 use gnoblin_wm::{ActivationDecision, Event, WindowKind, WindowProtocol, WindowSpec, Wm};
 
@@ -96,6 +97,25 @@ pub struct Xwm {
     allow_grabs: bool,
     /// The classes or instances allowed to take a grab.
     grab_access_rules: Vec<String>,
+}
+
+/// Registers the `gnoblin.surface_x11:<window id>` record for a managed X11 window.
+///
+/// Xwayland owns the record because only this crate knows the window is an X11 one. The
+/// record is scoped to the window, so `WindowClosed` ends it with the window and the close
+/// path needs no extra step.
+fn register_surface_record(wm: &mut Wm, window: WindowId) {
+    if wm.window(window).is_none() {
+        // The manager refused the window, and that refusal is already in the effects.
+        return;
+    }
+    let Ok(local) = LocalName::keyed("surface_x11", &window.get().to_string()) else {
+        debug_assert!(false, "a numeric window id always forms a valid local name");
+        return;
+    };
+    let spec = LayerSpec::new(local, LayerScope::Window(Some(window)), Band::Windows);
+    let result = wm.register_surface(&LayerProvider::Gnoblin("gnoblin-xwayland"), spec);
+    debug_assert!(result.is_ok(), "surface record for {window} refused: {result:?}");
 }
 
 impl Xwm {
@@ -197,6 +217,7 @@ impl Xwm {
             entry.managed = Some(window);
         }
         let mut effects = wm.apply(Event::WindowOpened(spec));
+        register_surface_record(wm, window);
         // Mapping is the X11 equivalent of a toplevel's first committed buffer: the
         // window is now a candidate for focus, and whether it takes it is the window
         // manager's answer.
@@ -466,6 +487,29 @@ mod tests {
         let geometry = configured(&outcome.effects, window).expect("the manager configures the window");
         assert_eq!(geometry, managed.geometry);
         assert_eq!(outcome.commands, vec![X11Request::SetMapped { window, mapped: true }]);
+    }
+
+    /// A managed X11 window is a surface record, so layer tooling sees it beside the Wayland
+    /// toplevels. Its record is scoped to the window, so unmapping it ends the record too.
+    #[test]
+    fn a_mapped_x11_window_registers_a_surface_record_that_unmapping_ends() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        let mut wm = session();
+        let window = window_id(3);
+        let name = format!("gnoblin.surface_x11:{}", window.get());
+
+        xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "kieran@fsociety")), &mut wm);
+
+        let record = wm
+            .layers()
+            .records()
+            .find(|record| record.name.to_string() == name)
+            .expect("the mapped window has a surface record");
+        assert_eq!(record.spec.band, Band::Windows);
+        assert_eq!(record.spec.scope, LayerScope::Window(Some(window)));
+
+        xwm.handle(WindowEvent::Unmapped(3), &mut wm);
+        assert!(wm.layers().records().all(|record| record.name.to_string() != name));
     }
 
     /// A client that exits sends no unmap, so a destroy leaves the manager the same way

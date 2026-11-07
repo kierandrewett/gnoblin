@@ -16,6 +16,8 @@ workspace = true
 gnoblin-backend = { path = "../gnoblin-backend" }
 # The policy the X11 windows become events for.
 gnoblin-wm = { path = "../gnoblin-wm" }
+# The layer records an X11 window registers as its surface kind.
+gnoblin-layers.workspace = true
 # Rectangles and identities.
 gnoblin-types.workspace = true
 # The `xwayland` section this crate applies, and its generated enum.
