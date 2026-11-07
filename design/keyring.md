@@ -141,9 +141,38 @@ section.
 - Without `ALLOW_REPLACEMENT`, nothing can replace Gnoblin's service once it
   owns the name.
 - Safe default: when another provider owns the name, Gnoblin's service does not
-  take it. The Secret portal still serves from Gnoblin's store, under a private
-  name. Secret Service clients keep talking to the other provider. The two
-  stores are then separate, and the consent text must say so.
+  take it, and it does not serve Secret Service clients from a private name either.
+  The Secret portal is refused too: `portals.conf` routes `Secret` to `gnoblin`
+  alone, with no fallback, so no keyring backend answers it (the portal test
+  `crates/xdg-desktop-portal-gnoblin/tests/portal_routing.rs` pins this). Clients
+  keep talking to the other provider.
+
+### Apps reach gnome-keyring instead
+
+With `keyring.enabled = true`, Gnoblin cannot stop every route by which another
+program takes `org.freedesktop.secrets`. What it does, and what it has tested:
+
+- Autostart entries that start `gnome-keyring-daemon` are refused at config load
+  while the keyring is on (`gnoblin-lua`, `role.rs`, unit tests).
+- A name already held by another program is refused with the owner named, the
+  hand-off socket is not bound, and the name is not taken back (`gnoblin-service-keyring`,
+  `crates/gnoblin-services/tests/keyring_name_taken.rs`, private bus). The services role logs a warning.
+- `Secret` portal requests are refused by routing (static test; live refusal not run).
+- Gap, unimplemented: `portals.conf` is static and nothing rewrites it from
+  `keyring.enabled`. With the keyring off the Secret route is still refused, so the
+  system keyring does not answer Secret portal requests in that mode. The pre-lane
+  route `Secret=gtk;*` did reach any installed backend. Closing the gap needs a
+  per-user portal override written when the keyring is off, through
+  `gnoblin.configure.portals`. Decide before building it.
+- Not in Gnoblin's control and not tested: PAM `pam_gnome_keyring`; the D-Bus
+  activation file `org.freedesktop.secrets.service` shipped by gnome-keyring, which
+  starts when a client calls the name before anything owns it; gnome-keyring's
+  systemd user units. Gnoblin ships no activation file that would override the
+  shipped one: that needs a live check of which services directory dbus-broker reads
+  first, which has not been done. The apps-facing table, with the status of each
+  route, is in `docs/config/configure/keyring.md`.
+- `ALLOW_REPLACEMENT` is never set. A replaced owner would let the new owner read
+  every secret sent to the name.
 
 Decided 2026-11-07 (item 35, revised): a config leaf, `keyring.enabled`, a bool that defaults to `true`, decides whether Gnoblin runs its built-in keyring. The doc line reads: "Run Gnoblin's built-in keyring. Turn it off to use a keyring from another program, or none." Gnoblin does not need to know which other keyring exists, so the earlier provider-name design (`keyring.provider`) is removed with no alias. With `keyring.enabled = false` the services role does not request `org.freedesktop.secrets`, creates no store file or directory, runs no keyring code, and the portal does not export the Secret object, so the system's keyring answers Secret requests. The unlock prompt is not a config switch: the keyring asks for its password through the `prompt.secret` slot. The config page is `docs/config/configure/keyring.md`.
 

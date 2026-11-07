@@ -400,6 +400,25 @@ WAYLAND_DISPLAY=wayland-0 swaylock
 Use the display name from the session, shown by `ls $XDG_RUNTIME_DIR | rg wayland`.
 After you unlock, `lock_state` reads `unlocked`.
 
+## Apps reach gnome-keyring instead
+
+Gnoblin cannot stop every route by which another program takes `org.freedesktop.secrets`.
+Check these first, in order:
+
+1. The services log names the owner. Look for `org.freedesktop.secrets is already owned by`
+   or `held by another program`: another keyring took the name before Gnoblin's started.
+   Stop that program, or set `keyring.enabled = false` and use it on purpose.
+2. An autostart entry that starts `gnome-keyring-daemon` is refused at load while the keyring
+   is on, with a message naming the entry. A shell string that hides the daemon in one word
+   is not caught.
+3. Not caught by Gnoblin: PAM `pam_gnome_keyring`, the D-Bus activation file that gnome-keyring
+   installs, and gnome-keyring's systemd user units. Remove or mask them yourself. The full
+   list, and what was tested, is in `docs/config/configure/keyring.md`.
+
+```sh
+journalctl -b --no-pager | rg 'held by another program|already owned by|gnome-keyring'
+```
+
 ## Read the logs
 
 ```sh
