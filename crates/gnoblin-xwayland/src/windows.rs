@@ -32,7 +32,7 @@
 use std::collections::BTreeMap;
 
 use gnoblin_types::{Rect, WindowId};
-use gnoblin_wm::{ActivationDecision, Event, WindowKind, WindowSpec, Wm};
+use gnoblin_wm::{ActivationDecision, Event, WindowKind, WindowProtocol, WindowSpec, Wm};
 
 use gnoblin_backend::x11::{EventOutcome, WindowEvent, WindowMeta, Windows, X11Request};
 
@@ -161,7 +161,12 @@ impl Xwm {
             },
             None => WindowSpec::normal(id, entry.app_id()),
         };
-        Some(spec.with_title(&entry.title).with_requested(entry.geometry))
+        // The window is an X11 window, so the manager records it as `surface_x11`
+        // rather than a Wayland toplevel.
+        Some(WindowSpec {
+            protocol: WindowProtocol::X11,
+            ..spec.with_title(&entry.title).with_requested(entry.geometry)
+        })
     }
 
     /// A client asked for its window to become visible.

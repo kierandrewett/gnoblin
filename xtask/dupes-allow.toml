@@ -1819,3 +1819,9 @@ left = "gnoblin-layers::LayerProvider"
 right = "gnoblin-wm::ClaimOrigin"
 kind = "same-shape"
 reason = "a provider names the party that registers a layer and owns a String for extensions; a claim origin only orders claims on one window in the stack, and it must stay Copy, so the stack cannot hold a provider"
+
+[[allow]]
+left = "gnoblin-wayland::Managed"
+right = "gnoblin-wm::WindowProtocol"
+kind = "same-shape"
+reason = "Managed holds the live protocol object behind a window (an xdg_toplevel or a boxed X11 surface); WindowProtocol is a Copy tag the manager reads to pick a surface record, and it cannot hold the object"

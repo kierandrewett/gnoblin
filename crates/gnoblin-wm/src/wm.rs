@@ -59,7 +59,8 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use gnoblin_layers::{
-    Band, LayerHandle, LayerProvider, LayerRegistry, LayerScope, LayerSpec, LocalName, RegisterError,
+    Band, EndReason, LayerHandle, LayerProvider, LayerRecord, LayerRegistry, LayerScope, LayerSpec, LocalName,
+    RegisterError,
 };
 use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
@@ -67,7 +68,7 @@ use crate::activation::{ActivationDecision, NewWindowFocus};
 use crate::arrange::{self, Layouts};
 use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
-use crate::event::{Event, Rejection, WindowSpec};
+use crate::event::{Event, Rejection, WindowProtocol, WindowSpec};
 use crate::geometry::clamp_to_i32;
 use crate::layout::{
     Layout, LayoutCommand, LayoutEffect, LayoutEngine, LayoutKind, Placement, RequestKind, Transform3, WindowPlacement,
@@ -200,6 +201,8 @@ pub enum LayerRegisterError {
     NotWindowScope,
     /// Only the [`Band::Windows`] band interleaves with windows.
     NotWindowBand(Band),
+    /// The output is not connected, so an output-scope surface has nowhere to go.
+    UnknownOutput(OutputId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -589,6 +592,41 @@ impl Wm {
         Ok(handle)
     }
 
+    /// Records a surface its protocol owns, such as a layer-shell surface or an X11
+    /// window.
+    ///
+    /// The record does not join the window stack. The protocol keeps the surface's
+    /// own stacking, so the record only says the surface exists, where it is and
+    /// which band it sits in.
+    ///
+    /// # Errors
+    ///
+    /// A window or output the manager does not hold, or the registry's own refusal.
+    pub fn register_surface(
+        &mut self,
+        provider: &LayerProvider,
+        spec: LayerSpec,
+    ) -> Result<LayerHandle, LayerRegisterError> {
+        match spec.scope {
+            LayerScope::Window(Some(target)) if !self.windows.contains_key(&target) => {
+                return Err(LayerRegisterError::UnknownTarget(target));
+            }
+            LayerScope::Output(output) if self.output(output).is_none() => {
+                return Err(LayerRegisterError::UnknownOutput(output));
+            }
+            LayerScope::Output(_) | LayerScope::Window(_) => {}
+        }
+        self.layers
+            .register(provider, spec)
+            .map_err(LayerRegisterError::Registry)
+    }
+
+    /// Ends a surface record its protocol registered, such as when a layer-shell
+    /// surface is destroyed. Returns the ended record, or `None` if it was not live.
+    pub fn end_surface(&mut self, handle: LayerHandle, reason: EndReason) -> Option<LayerRecord> {
+        self.layers.end(handle, reason)
+    }
+
     /// Brings every window's layers in line with whether the window is drawn now.
     ///
     /// A layer follows its window: a minimised window, or one on another
@@ -926,6 +964,9 @@ impl Wm {
         if self.output(id).is_none() {
             return vec![Effect::rejected(Rejection::UnknownOutput(id))];
         }
+        // Output-scope surfaces cannot outlive their output. Window-scope layers follow
+        // their window to the survivor, so they are left alone.
+        self.layers.end_output(id);
         self.outputs.retain(|output| output.id() != id);
         let survivor = self
             .outputs
@@ -1095,7 +1136,11 @@ impl Wm {
         self.windows.insert(window_id, window);
         let before = self.stack.order().to_vec();
         self.stack.insert(window_id, layer, anchor);
-        self.register_surface_record(window_id);
+        // An X11 window's record is `surface_x11`, registered by Xwayland, so only a
+        // Wayland window gets the toplevel record here.
+        if spec.protocol == WindowProtocol::Wayland {
+            self.register_surface_record(window_id);
+        }
         if let Some(effect) = self.configured(window_id) {
             effects.push(effect);
         }
@@ -2688,5 +2733,115 @@ mod tests {
         // Ending the target's layers directly, without an event, leaves the entry behind.
         wm.layers.end_target(WindowId::new(1));
         assert_eq!(wm.check_invariants(), Err(Broken::LayerEntryOrphan(chrome)));
+    }
+
+    /// How many live records name `id` as their window scope.
+    fn records_on(wm: &Wm, id: WindowId) -> usize {
+        wm.layers()
+            .records()
+            .filter(|record| record.spec.scope == LayerScope::Window(Some(id)))
+            .count()
+    }
+
+    #[test]
+    fn a_surface_record_does_not_join_the_stack() {
+        // A surface keeps its own stacking, so its record must not change where any
+        // window or layer sits.
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let order = wm.layer_order();
+        let stack = wm.stack.order().to_vec();
+        let spec = LayerSpec::new(
+            LocalName::keyed("surface_x11", "7").expect("a keyed name is valid"),
+            LayerScope::Window(Some(WindowId::new(1))),
+            Band::Windows,
+        );
+        let handle = wm
+            .register_surface(&LayerProvider::Gnoblin("gnoblin-xwayland"), spec)
+            .expect("the surface registers on a known window");
+        assert_eq!(
+            wm.layers().get(handle).map(|record| record.state),
+            Some(gnoblin_layers::LayerState::Mapped)
+        );
+        // The surface itself paints with its window, so it appears in the order. Every
+        // other layer must keep its place, and the window stack must be untouched.
+        let others: Vec<_> = wm.layer_order().into_iter().filter(|&h| h != handle).collect();
+        assert_eq!(others, order);
+        assert_eq!(wm.stack.order().to_vec(), stack);
+    }
+
+    #[test]
+    fn a_surface_is_refused_on_an_unknown_window_or_output() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let provider = LayerProvider::Gnoblin("gnoblin-wayland");
+        let on_window = LayerSpec::new(
+            LocalName::keyed("surface_x11", "9").expect("a keyed name is valid"),
+            LayerScope::Window(Some(WindowId::new(9))),
+            Band::Windows,
+        );
+        assert_eq!(
+            wm.register_surface(&provider, on_window),
+            Err(LayerRegisterError::UnknownTarget(WindowId::new(9)))
+        );
+        let on_output = LayerSpec::new(
+            LocalName::keyed("surface_layer_shell", "osd").expect("a keyed name is valid"),
+            LayerScope::Output(OutputId::new(5)),
+            Band::Overlay,
+        );
+        assert_eq!(
+            wm.register_surface(&provider, on_output),
+            Err(LayerRegisterError::UnknownOutput(OutputId::new(5)))
+        );
+    }
+
+    #[test]
+    fn an_output_surface_ends_with_its_output() {
+        let mut wm = wm_with_two_outputs();
+        let spec = LayerSpec::new(
+            LocalName::keyed("surface_layer_shell", "osd").expect("a keyed name is valid"),
+            LayerScope::Output(OutputId::new(1)),
+            Band::Overlay,
+        );
+        let handle = wm
+            .register_surface(&LayerProvider::Gnoblin("gnoblin-wayland"), spec)
+            .expect("the output is connected");
+        wm.apply(Event::OutputDisconnected {
+            output: OutputId::new(1),
+        });
+        assert!(wm.layers().get(handle).is_none());
+    }
+
+    #[test]
+    fn ending_a_surface_removes_only_its_record() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let spec = LayerSpec::new(
+            LocalName::keyed("surface_layer_shell", "osd").expect("a keyed name is valid"),
+            LayerScope::Output(OutputId::new(0)),
+            Band::Top,
+        );
+        let handle = wm
+            .register_surface(&LayerProvider::Gnoblin("gnoblin-wayland"), spec)
+            .expect("the output is connected");
+        let ended = wm.end_surface(handle, EndReason::Removed);
+        assert_eq!(
+            ended.map(|record| record.state),
+            Some(gnoblin_layers::LayerState::Ended(EndReason::Removed))
+        );
+        // The window's own toplevel record is untouched.
+        assert_eq!(records_on(&wm, WindowId::new(1)), 1);
+        assert!(wm.end_surface(handle, EndReason::Removed).is_none());
+    }
+
+    #[test]
+    fn an_x11_window_has_no_toplevel_record() {
+        // Xwayland registers an X11 window's own `surface_x11` record, so the window
+        // manager must not add a `surface_toplevel` beside it.
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec {
+            protocol: WindowProtocol::X11,
+            ..WindowSpec::normal(WindowId::new(2), "xterm")
+        }));
+        assert!(wm.window(WindowId::new(2)).is_some());
+        assert_eq!(records_on(&wm, WindowId::new(2)), 0);
+        assert_eq!(records_on(&wm, WindowId::new(1)), 1);
     }
 }

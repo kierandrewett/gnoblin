@@ -112,7 +112,7 @@ mod workspace;
 pub use activation::{ActivationDecision, NewWindowFocus};
 pub use drag::DragConstraint;
 pub use effect::{Effect, RuleRejection};
-pub use event::{Event, Rejection, WindowSpec};
+pub use event::{Event, Rejection, WindowProtocol, WindowSpec};
 pub use output::Output;
 pub use placement::PlacementMode;
 pub use pointer_focus::{FocusMode, POINTER_REST, PointerAction, PointerFocus};

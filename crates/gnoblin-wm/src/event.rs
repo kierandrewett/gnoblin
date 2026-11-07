@@ -17,6 +17,16 @@ use crate::rules::Rule;
 use crate::snapping::SnapZone;
 use crate::window::WindowKind;
 
+/// The protocol a window arrived on. It decides which surface record the window has.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum WindowProtocol {
+    /// An xdg_toplevel. The default, because most windows are Wayland windows.
+    #[default]
+    Wayland,
+    /// A managed Xwayland window.
+    X11,
+}
+
 /// A new window the caller wants managed.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct WindowSpec {
@@ -32,6 +42,10 @@ pub struct WindowSpec {
     pub transient_for: Option<WindowId>,
     /// The geometry the client asked for, if it asked for one.
     pub requested: Option<Rect>,
+    /// The protocol the window arrived on. A Wayland window gets a `surface_toplevel`
+    /// record here; an X11 window's record is `surface_x11`, registered by Xwayland,
+    /// so no window has two.
+    pub protocol: WindowProtocol,
 }
 
 impl WindowSpec {
@@ -45,6 +59,7 @@ impl WindowSpec {
             kind: WindowKind::Normal,
             transient_for: None,
             requested: None,
+            protocol: WindowProtocol::Wayland,
         }
     }
 
