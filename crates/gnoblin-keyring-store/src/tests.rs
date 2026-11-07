@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{ItemId, Keyring, KeyringError, Passphrase};
+use crate::{CollectionId, ItemId, Keyring, KeyringError, Passphrase};
 
 /// A fresh directory under the system temp dir, unique to this process and call.
 fn scratch(label: &str) -> PathBuf {
@@ -345,4 +345,85 @@ fn a_version_one_file_opens_and_its_items_read_as_text_plain() {
             .content_type,
         "text/plain"
     );
+}
+
+#[test]
+fn an_update_keeps_the_id_and_replaces_the_secret_label_and_attributes() {
+    let path = fresh_path("update");
+    let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Login").expect("collection");
+    let id = keyring
+        .put_item(collection, "old", "text/plain", b"old secret", &[("service", "old")])
+        .expect("stores");
+    let updated = keyring
+        .update_item(
+            id,
+            "new",
+            "application/octet-stream",
+            b"new secret",
+            &[("service", "new")],
+        )
+        .expect("updates");
+    assert!(updated);
+    let item = keyring.item(id).expect("reads").expect("present");
+    assert_eq!(item.label, "new");
+    assert_eq!(item.content_type, "application/octet-stream");
+    assert_eq!(item.secret.as_slice(), b"new secret");
+    assert_eq!(item.attributes, vec![("service".to_owned(), "new".to_owned())]);
+    assert!(
+        keyring
+            .search_items(&[("service", "old")])
+            .expect("searches")
+            .is_empty()
+    );
+    assert_eq!(keyring.search_items(&[("service", "new")]).expect("searches"), vec![id]);
+}
+
+#[test]
+fn an_update_of_a_missing_item_changes_nothing() {
+    let path = fresh_path("update-missing");
+    let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Login").expect("collection");
+    let kept = keyring
+        .put_item(collection, "kept", "text/plain", b"s", &[("service", "x")])
+        .expect("stores");
+    let missing = ItemId::from_raw(kept.raw() + 100);
+    assert!(
+        !keyring
+            .update_item(missing, "ghost", "text/plain", b"ghost", &[("service", "x")])
+            .expect("updates")
+    );
+    assert!(keyring.item(missing).expect("reads").is_none());
+    assert_eq!(keyring.search_items(&[("service", "x")]).expect("searches"), vec![kept]);
+}
+
+#[test]
+fn deleting_a_collection_removes_its_items_and_the_alias_that_named_it() {
+    let path = fresh_path("delete-collection");
+    let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let doomed = keyring.create_collection("Doomed").expect("collection");
+    let survivor = keyring.create_collection("Survivor").expect("collection");
+    let gone = keyring
+        .put_item(doomed, "gone", "text/plain", b"s", &[("service", "x")])
+        .expect("stores");
+    let kept = keyring
+        .put_item(survivor, "kept", "text/plain", b"s", &[("service", "y")])
+        .expect("stores");
+    keyring.set_alias("default", doomed).expect("sets");
+    assert!(keyring.delete_collection(doomed).expect("deletes"));
+    assert!(keyring.item(gone).expect("reads").is_none());
+    assert!(keyring.search_items(&[("service", "x")]).expect("searches").is_empty());
+    assert_eq!(keyring.alias("default").expect("reads"), None);
+    assert_eq!(keyring.collections().expect("lists").len(), 1);
+    assert!(keyring.item(kept).expect("reads").is_some());
+}
+
+#[test]
+fn deleting_a_missing_collection_removes_nothing() {
+    let path = fresh_path("delete-collection-missing");
+    let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Login").expect("collection");
+    let missing = CollectionId::from_raw(collection.raw() + 100);
+    assert!(!keyring.delete_collection(missing).expect("deletes"));
+    assert_eq!(keyring.collections().expect("lists").len(), 1);
 }

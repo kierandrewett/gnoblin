@@ -357,6 +357,47 @@ impl Keyring {
         let removed = self.conn.execute("DELETE FROM items WHERE id = ?1", params![id.0])?;
         Ok(removed > 0)
     }
+
+    /// Replaces the label, content type, secret and attributes of the item `id` in one
+    /// transaction, so a reader never sees the new secret with the old attributes. The item keeps
+    /// its id and creation time. Returns `false`, and changes nothing, when no item has that id.
+    pub fn update_item(
+        &mut self,
+        id: ItemId,
+        label: &str,
+        content_type: &str,
+        secret: &[u8],
+        attributes: &[(&str, &str)],
+    ) -> Result<bool, KeyringError> {
+        let now = now_ms();
+        let transaction = self.conn.transaction()?;
+        let updated = transaction.execute(
+            "UPDATE items SET label = ?2, content_type = ?3, secret = ?4, modified_ms = ?5 WHERE id = ?1",
+            params![id.0, label, content_type, secret, now],
+        )?;
+        if updated == 0 {
+            return Ok(false);
+        }
+        transaction.execute("DELETE FROM attributes WHERE item_id = ?1", params![id.0])?;
+        for (name, value) in attributes {
+            transaction.execute(
+                "INSERT INTO attributes (item_id, name, value) VALUES (?1, ?2, ?3)",
+                params![id.0, name, value],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(true)
+    }
+
+    /// Deletes the collection `id` with its items, their attributes and any alias that names it.
+    /// The schema cascades those; `foreign_keys` is on for every connection (see `connect`).
+    /// Returns whether a collection was removed.
+    pub fn delete_collection(&mut self, id: CollectionId) -> Result<bool, KeyringError> {
+        let removed = self
+            .conn
+            .execute("DELETE FROM collections WHERE id = ?1", params![id.0])?;
+        Ok(removed > 0)
+    }
 }
 
 /// Opens `path` and applies the key. The order matters: SQLCipher reads the key settings when
