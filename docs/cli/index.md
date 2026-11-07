@@ -53,9 +53,8 @@ Run `gnoblinctl --help` for the objects this build knows, and
 
 ## Logs and IPC
 
-- `gnoblinctl log` prints stored log records, oldest first. Filter them with
-  `--level`, `--role` and `--store`. The [logging guide](/guides/logging) covers
-  following a live store.
+- `gnoblinctl log` prints the records in `gnoblin.jsonl`, oldest first. Filter them with `--level` and `--role`. The
+  [logging guide](/guides/logging) covers following the file live.
 - `gnoblinctl ipc dump [FILE]` decodes recorded IPC frames into readable lines.
   Secret payloads are dropped. Without a file it reads standard input.
 - `gnoblinctl completions SHELL` writes a shell completion script. Use

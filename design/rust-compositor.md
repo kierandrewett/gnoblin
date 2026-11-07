@@ -490,7 +490,7 @@ gnoblin/
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
     gnoblin-pipewire-export/  PipeWire video streams for granted capture sessions; the only crate that links `pipewire`
-    gnoblin-log/              the one logging crate (D23): macros, components and `Role`; `tracing` alone, plus the `console`, `journal`, `pipeline` and `init` features, which only a binary enables. The store is `gnoblin-store`, not a feature here.
+    gnoblin-log/              the one logging crate (D23): macros, components and `Role`; `tracing` alone, plus the `console`, `journal`, `pipeline` and `init` features, which only a binary enables. The file sink, `gnoblin.jsonl`, is always compiled.
     gnoblin-xwayland/         Xwayland startup and window management
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
@@ -1660,14 +1660,14 @@ Each section below records the choice, its consequences, and the options conside
 | D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-cursor` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
 | D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
-| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `journal`, `pipeline`, `init`); the SQLite store is `gnoblin-store`, attached as the sink                |
+| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `journal`, `pipeline`, `init`); the file sink writes `gnoblin.jsonl`                                     |
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source is the login password via a PAM module, with one unlock prompt when there is none (`design/keyring.md`)                               |
 | D28 | Layer registry               | **Proposed 2026-11-06:** layer registry; full names `<provider>.<local>` (`gnoblin.`, `ext.<id>.`); closed bands. `secure` defaults off unless declared; config overrides. Captures mask secure nodes by default.               |
 | D29 | Window menu                  | **Decided 2026-11-07:** the core has a `menu_requested` signal and a `request_menu` method on `window`; any extension shows the menu. No menu model in core (see D29).                                                          |
-| D30 | Store                        | **Proposed 2026-11-06:** one store API: open by name, then put, get, delete, list, search, watch, batch (`design/store.md`).                                                                                                    |
+| D30 | Store                        | **Withdrawn 2026-11-07:** no generic store. `gnoblin-store`, `gnoblinctl store` and the store IPC are removed (see D30 below).                                                                                                  |
 
 ### D1: where scripts run
 
@@ -2943,16 +2943,16 @@ New feature. Mutter has no equivalent, so there is no divergence ledger entry. R
 
 **Decided 2026-11-06: every crate logs through the `gnoblin-log` macros, and only a binary installs a sink.** `gnoblin-log` is the one logging crate. It holds the `error!`, `warn!`, `info!`, `debug!` and `trace!` macros and the component mapping and `Role`, and it depends on `tracing` alone.
 
-The features add the sinks, each in a module of the same name. `console` prints each event with ANSI colour and a per-component prefix, and redacts secrets. `journal` sends each event as a native systemd journal entry. The SQLite store is not a feature of this crate: `gnoblin-store` owns it, and the binary attaches the store's log as the sink.
+The features add the `console` and `journal` sinks, each in a module of the same name. `console` prints each event with ANSI colour and a per-component prefix, and redacts secrets. `journal` sends each event as a native systemd journal entry. The file sink, `file`, appends each event to `gnoblin.jsonl` in the log directory. It is not a feature: the module is always compiled, so a library never enables anything to reach it.
 
 `init` enables all three and composes them for one process: `init(role, options)` returns a guard and installs the panic hook. `GNOBLIN_LOG` takes an `EnvFilter` expression and defaults to `info`. `GNOBLIN_LOG_FORMAT` chooses the console output.
 
-The store is not named by the environment. The binary opens it from the `[logging]` section and hands its log to `init` as the sink, so `gnoblin-log` never names `gnoblin-store`. The default store is `$XDG_STATE_HOME/gnoblin/store/log.sqlite3`, falling back to `$HOME/.local/state`. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
+The binary opens the file sink from the `[logging]` section (`file`, `dir`, `max-size-mb`) and hands it to `init` through `LogOptions`. The default directory is `$XDG_STATE_HOME/gnoblin/log`, falling back to `$HOME/.local/state`. Earlier builds wrote a SQLite file, which nothing reads now. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
 
 Consequences:
 
 - `gnoblin-log` depends on `tracing` alone and names no workspace crate, so every crate may depend on it. A library takes it with no feature. Only a binary may enable `console`, `journal`, `pipeline` or `init`, and `xtask deps` refuses any feature on a library.
-- A test that runs a binary points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's store.
+- A test that runs a binary points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's log.
 - Each binary names its component once, at start, and every event carries that name.
 
 #### Amendment: `logger!` (moz_log style)
@@ -3105,8 +3105,6 @@ Consequences:
 - Migration from gnome-keyring or KWallet is not offered, unless Kieran says yes (`design/keyring.md`, "Needs Kieran").
 - Decided 2026-11-06 (item 35), amended 2026-11-07: the built-in keyring is a config leaf, `keyring.enabled` (bool, default `true`). Turning it off means Gnoblin does not request `org.freedesktop.secrets`, creates no store, and does not answer the Secret portal. See `design/keyring.md`, "Coexistence", and `docs/config/configure/keyring.md`.
 
-**Store provider.** The keyring is a provider of kind `secret` in the store abstraction (D30). It speaks the provider interface, so `gnoblinctl store list` shows it. Its decisions here are unchanged.
-
 ### D28: layer registry
 
 **Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `design/layers.md`.
@@ -3125,7 +3123,6 @@ Consequences:
 - `layers.list` keeps its wlr record shape. Registered layers appear in the same list, with `band`, `scope`, `target`, `provider` and `state` properties.
 - Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, count limits, and the `secure` owner check. Per-layer options (scope, order, input, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
 - Names: a full name is `<provider>.<local>`. Built-ins use `gnoblin.`, extensions `ext.<id>.`, so two providers cannot collide. Within one provider a repeated local name is refused. Only the provider id `gnoblin` is reserved. `secure` defaults to off only where a layer declares no value. `gnoblin.portals` declares `secure = true`. The user overrides `secure` per layer name or window rule, in either direction, including built-ins. The lock surface is fixed secure.
-- Shape: stores (D30) use the same registry, provider, grant and lifecycle pattern. `design/store.md`, "Platform pattern", names it. Each decision stays in its own design file.
 - Secure content is never drawn into any capture. Under `capture.secure-treatment` (default `mask`) a secure node becomes a neutral silhouette in a capture, or nothing under `omit`. The capture paths and their gaps are in `design/layers.md`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
 - Tests (not run): band order; window-layer stacking and follow rules; one live `gnoblin.portals` per output; a repeated local name within one provider is refused; the same local name under two providers is fine; an extension with id `gnoblin` is refused; end on provider disconnect, target close and output removal; the lock; the capture filter under `mask` (a shaped window captures as its silhouette) and `omit` (underlay shows by design); a config override flips a layer both ways, including `gnoblin.portals`; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
@@ -3175,43 +3172,9 @@ Needs Kieran:
 
 1. Whether the menu layer declares `secure`, which keeps it out of captures (proposed: no; `design/layers.md`, Options).
 
-### D30: store
+### D30: store (withdrawn)
 
-**Proposed 2026-11-06: a store is where Gnoblin keeps data. You open a store by name and use the same verbs on it: `put`, `get`, `delete`, `list`, `search`, `watch` and `batch`. The keyring (D27), logs and extension state are stores of different kinds.** The API and examples are in `design/store.md`.
-
-**Today.** Persisted state is small. The log store writes `$XDG_STATE_HOME/gnoblin/store/log.sqlite3` (`gnoblin-store/src/logs/`). Session recovery lives under `state_home` (`gnoblin-session/src/supervisor.rs:136`). The last accepted configuration is `last-good-config.json` (`gnoblin-config/src/last_good.rs:45`). Extensions have no storage, because the wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`).
-
-**Provider side.** Behind the API, each store has an identity, a lifecycle state, usage, a change signal, an export policy and access grants. The states are `opening`, `ready`, `locked`, `unavailable`, `quarantined` and `closing`. Only the registry moves a store between them.
-
-**Kinds and capabilities.** A kind is a compiled-in set of rules: `kv`, `log` and `secret`. Extensions cannot add kinds. Providers report internal capabilities (`Items`, `Search`, `Append`, `Lock`, `Watch`, `Transact`), so a locked keyring or an append-only log can say so. Consumers never see or check them.
-
-**Item model.** Key-value and the Secret Service share one item: a key, attributes, a value and a revision. It breaks for logs, which are sequences and use `Append`, and for Secret Service collections, which are stores, not items.
-
-**Registration.** A provider registers a store the way a layer registers (D28). The compositor sets the provider, owns the name and enforces the bounds that the kind gives. Layers, stores and later registries share this shape, described in `design/store.md`, "Platform pattern".
-
-**Access.** Extensions get their own store through the `store` power (D22). Reads and writes of another owner's store need a named grant in host configuration. Crate stores are readable only under a grant, never written by an extension. Uninstalled data is kept until `gnoblinctl store purge`.
-
-**Surfaces.** One API serves Lua `gnoblin.store.open`, the IPC `store` object, wasm host imports and `gnoblinctl store`. The Secret Service and Secret portal are adapters over a `secret` store. Rust crates use the `gnoblin-store` library, which joins the foundation set in `xtask/src/deps.rs`.
-
-**Backends.** One SQLite file per store (decided). SQLCipher for `secret`. For `log`, a one-off migration moves the existing `logs.sqlite3` into its store (decided). The old file is renamed, not deleted, so a failed migration leaves it intact. The file layout is not a v1 contract.
-
-**Keyring.** The keyring stays a separate service with its own SQLCipher file (D27). It is a provider of kind `secret`. Its decisions are unchanged.
-
-**Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal, read-only boot and a locked `secret` read. A `secret` value read through each generic frontend, and a plaintext `secret` export, must both be refused.
-
-Decided 2026-11-06, from Kieran:
-
-- The API is the verbs in `design/store.md`. Callers never ask about capabilities.
-- A document is a value in a `kv` store.
-- `kv` ships first. Extensions do not define new kinds.
-- `writable` is a flag, not a lifecycle state. Each store is one file.
-- `kv` quotas are 64 KiB per value and 16 MiB per store. Host configuration can override the store quota.
-- Logs move onto the store now, as kind `log`, with a one-off migration of `logs.sqlite3`.
-- Query: equality, key prefix, time and number ranges, contains text (full-text where available), order, limit, count and group-by-count. Never raw SQL.
-- AppChooser's "remember this choice" persists in a `kv` store.
-- `secret` locked behaviour: follow what GNOME and KDE do. The KeyringResearch lane is verifying the exact behaviour.
-
-Still open: the `secret` unlock credential, and whether a D28 prompt layer supplies it.
+**Withdrawn 2026-11-07 by Kieran. Gnoblin has no generic store.** The `gnoblin-store` crate, the `store` and `log` IPC objects, `gnoblinctl store`, the Lua store API and the store power are removed. Logs are an append-only JSON Lines file, `gnoblin.jsonl`, written by `gnoblin-log` (`docs/guides/logging.md`). The keyring is Gnoblin's own service and holds its own data (D27, `design/keyring.md`); it is not a store kind. Extensions get no storage of their own.
 
 ## Phase 0 checklist
 

@@ -27,7 +27,7 @@ The real protection is the allowlist above:
 
 ## Console format
 
-`GNOBLIN_LOG_FORMAT` chooses what a process prints. The database records every event whatever the format. An unknown value is ignored, the configured format applies, and a warning names the valid values.
+`GNOBLIN_LOG_FORMAT` chooses what a process prints. The log file records every event whatever the format. An unknown value is ignored, the configured format applies, and a warning names the valid values.
 
 | Value            | What it prints                                                              |
 | ---------------- | --------------------------------------------------------------------------- |
@@ -37,7 +37,7 @@ The real protection is the allowlist above:
 | `pretty`         | Coloured `LEVEL  role/component  message  key=value` lines                  |
 | `plain`          | `LEVEL  role/component  message  key=value` lines, without colour           |
 | `json`           | One JSON object per line                                                    |
-| `off`            | Nothing; only the database records                                          |
+| `off`            | Nothing; only the log file records                                          |
 
 `auto` looks at the environment. It uses the native journal when systemd connects stderr to the journal and the journal socket exists. It uses `journal-stream` when only stderr reaches the journal. Otherwise it uses `pretty` on a terminal and `plain` elsewhere.
 
@@ -49,15 +49,27 @@ Under systemd each record goes to the journal with `SYSLOG_IDENTIFIER=gnoblin-<r
 journalctl --user -t gnoblin-compositor GNOBLIN_COMPONENT=wayland -p warning -f
 ```
 
-This follows warnings and errors from the compositor's `wayland` component. The journal keeps only what the console sends. The store keeps every event that passes `GNOBLIN_LOG`, so it is the place to look after a crash or when the journal has rotated.
+This follows warnings and errors from the compositor's `wayland` component. The journal keeps only what the console sends. The log file keeps every event that passes `GNOBLIN_LOG`, so it is the place to look after a crash or when the journal has rotated.
 
-## Reading the store
+## Reading the log file
 
-The store is a `log.sqlite3` file in `$XDG_STATE_HOME/gnoblin/store` by default. Three settings change it:
+Every record goes to `gnoblin.jsonl` in the log directory, one JSON object per line. The directory is `$XDG_STATE_HOME/gnoblin/log` by default. Three settings in the `[logging]` section change the file:
 
-- `store-path` in the `[logging]` section names another directory.
-- `store = false` keeps no records.
-- The first writable open copies rows from an older `logs.sqlite3` in the parent directory, then renames that file to `logs.sqlite3.migrated`.
+- `file = false` stops writing it. The console still prints.
+- `dir` names another directory.
+- `max-size-mb` rotates the file when a batch would take it past that size. The default, 0, never rotates. A rotated file is kept as `gnoblin.jsonl.1` (the most recent rotation) to `gnoblin.jsonl.3`, and the older copies are deleted.
+
+Each line has these keys. `time_ms` is a number; the rest are strings.
+
+- `time_ms`
+- `level`
+- `role`
+- `component`
+- `target`
+- `message`
+- `fields`
+
+Every process of the session appends to the same file under an advisory lock, so a record is never split across lines.
 
 `gnoblinctl log` prints its records, oldest first, without the compositor running:
 
@@ -65,11 +77,13 @@ The store is a `log.sqlite3` file in `$XDG_STATE_HOME/gnoblin/store` by default.
 gnoblinctl log --role compositor --level warn --limit 50
 ```
 
-`--store DIR` reads another store directory, and `--json` prints one JSON object per line. The command opens the log read-only, so it works while the session is down.
+`--dir DIR` reads another log directory, and `--json` prints one JSON object per line. The command reads the file directly, so it works while the session is down.
 
 `--since` and `--until` bound the records by time, as an RFC 3339 timestamp or an age such as `2h`.
 
 `--follow` keeps printing records as they are written, polling every `--interval` (default `500ms`) until interrupted. The full flag reference is in [gnoblinctl](../gnoblinctl.md#logs).
+
+The `log.sqlite3` file under `$XDG_STATE_HOME/gnoblin/store` is not read or written by any command. You can delete it by hand.
 
 ## Adding logging to a crate
 

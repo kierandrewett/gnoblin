@@ -23,6 +23,9 @@
 
 ### Changed
 
+- Log records are written to `gnoblin.jsonl` in the state directory, one JSON object per line. `gnoblinctl log` and
+  `gnoblinctl log --follow` read that file. The `gnoblin-store` crate, the SQLite log store, `gnoblinctl store`, the
+  store IPC verbs and the `--store` flag are removed. `gnoblin.jsonl` and the legacy `store` files are not deleted.
 - Log messages no longer start with a `[tag]` prefix. A crate's logger names its component, so a tag equal to
   that component is dropped, and any other tag becomes an `area = "tag"` field on the event. `xtask logging` fails a
   level macro whose message still starts with `[tag] `.

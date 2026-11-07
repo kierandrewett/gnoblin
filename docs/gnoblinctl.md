@@ -1022,7 +1022,7 @@ examples.
 
 ## Logs
 
-Run `gnoblinctl --json log` to print the stored records, oldest first. The compositor and the portal write them to `$XDG_STATE_HOME/gnoblin/store/log.sqlite3`, so the command works while the compositor is down.
+Run `gnoblinctl --json log` to print the logged records, oldest first. The compositor and the portal write them to `$XDG_STATE_HOME/gnoblin/log/gnoblin.jsonl`, and the command reads that file directly, so it works while the compositor is down.
 
 ```sh
 gnoblinctl log --level WARN --limit 50
@@ -1032,7 +1032,12 @@ gnoblinctl log --since 2026-11-05T09:00:00Z
 gnoblinctl log --follow --level WARN --interval 2s
 ```
 
-`--store DIR` reads another store directory. `--level` keeps records at that level or above. `--role` and `--target` match exactly. `--limit` caps the count and defaults to 100.
+- `--dir DIR` reads another log directory.
+- `--level` keeps records at that level or above.
+- `--role` and `--target` match exactly.
+- `--limit` caps the count and defaults to 100.
+
+A missing log file is an error that names the path, so a mistyped `--dir` is not shown as an empty log.
 
 `--since` and `--until` bound the records by time. A bound is one of these forms:
 
@@ -1041,7 +1046,11 @@ gnoblinctl log --follow --level WARN --interval 2s
 
 Any other bound is a usage error that names the value.
 
-`--follow` keeps printing new records as they are written, until interrupted. It polls the database every `--interval`, which is `500ms` or `2s` and defaults to `500ms`. `--interval` needs `--follow`, and `--follow` cannot be combined with `--until`, since a followed log has no end.
+- `--follow` keeps printing new records as they are written, until interrupted.
+- It checks `gnoblin.jsonl` every `--interval`, which is `500ms` or `2s` and defaults to `500ms`.
+- It follows the file across rotation.
+
+`--interval` needs `--follow`. `--follow` cannot be combined with `--until`, since a followed log has no end.
 
 ## Output for scripts
 
