@@ -56,6 +56,7 @@ gnoblin-output = { path = "../gnoblin-output" }
 # damage. This crate is the one place the engine's crates may meet, so the scene sits
 # on this side of the contract and `gnoblin-wayland` never names it.
 gnoblin-render = { path = "../gnoblin-render" }
+gnoblin-animation = { path = "../gnoblin-animation" }
 # The `input` section the libinput devices are configured from: acceleration profile,
 # natural scroll, tap-to-click and the rest. The types are the generated document's,
 # not copies, so a key that the configuration accepts and the driver does not know

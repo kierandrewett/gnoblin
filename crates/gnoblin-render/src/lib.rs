@@ -144,7 +144,6 @@
 mod camera;
 mod color;
 mod damage;
-mod easing;
 mod effect;
 mod id;
 mod matrix;
@@ -162,8 +161,6 @@ pub use camera::{Camera, CameraError, Projection};
 pub use color::Color;
 /// Damage rectangles per output and the merge helper.
 pub use damage::{Damage, OutputDamage, merge_rects};
-/// Timing curves for tracks and their validation error.
-pub use easing::{Easing, EasingError};
 /// Per-node visual effects (blur, shadow, custom shader) and their limits.
 pub use effect::{
     BlurParams, EffectError, EffectExtent, Effects, MAX_BLUR_GRADE, MAX_BLUR_PASSES, MAX_BLUR_RADIUS, MAX_PASSES,

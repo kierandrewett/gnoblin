@@ -60,9 +60,10 @@ use std::collections::BTreeMap;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
+use gnoblin_animation::Easing;
 use gnoblin_render::{
-    Color, Damage, Easing, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, PropertyValue, Scene, TrackId,
-    TrackSpec, TrackStart, TweenPlayer, VisualProperty, VisualTransform,
+    Color, Damage, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, PropertyValue, Scene, TrackId, TrackSpec,
+    TrackStart, TweenPlayer, VisualProperty, VisualTransform,
 };
 use gnoblin_types::{OutputId, Rect, RectF, Size, Vec3, WindowId};
 

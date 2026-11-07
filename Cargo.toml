@@ -31,6 +31,7 @@ members = [
     "crates/compat/gnoblin-compat-x11-xsettings",
     "crates/gnoblin",
     "crates/gnoblin-a11y",
+    "crates/gnoblin-animation",
     "crates/gnoblin-authority",
     "crates/gnoblin-backend",
     "crates/gnoblin-capture",

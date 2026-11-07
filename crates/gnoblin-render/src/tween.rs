@@ -36,7 +36,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::easing::{Easing, EasingError};
+use gnoblin_animation::{Easing, EasingError};
+
 use crate::id::{NodeId, TrackId};
 use crate::property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
 use crate::scene::{Scene, SceneError};
