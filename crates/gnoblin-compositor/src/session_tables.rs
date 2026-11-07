@@ -25,6 +25,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             config.wayland.shortcuts = stored.config.shortcuts;
             log::debug!("[session tables] loaded from the last accepted configuration");
         }
+        Err(error) if error.is_absent() => {
+            log::debug!(%error, "[session tables] no configuration file; the defaults are used");
+        }
         Err(error) => {
             log::warn!(%error, "[session tables] configuration not readable; the defaults are used");
         }
