@@ -189,6 +189,9 @@ Kieran called unplanned.
 4. **Secret Service writes.** Full create, update and delete (needed for libsecret), or read only.
 5. **Store verbs.** Keep only `open`, `put`, `get`, `delete`, `list` until a caller needs more, or keep the
    whole verb set in the design.
+6. **Who draws the unlock dialog.** The compositor (it then sees the typed unlock password, never an app secret), or
+   the services role as its own window (it must become a Wayland client). Lean: the compositor, as the portal
+   dialogs do today.
 
 ## Order of work if A is chosen
 
