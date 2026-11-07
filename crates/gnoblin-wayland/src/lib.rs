@@ -203,8 +203,8 @@ pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use modal::{Modal, ModalEvent};
 /// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
-    ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace,
-    Observer, SessionSnapshot,
+    ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
+    ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
 };
 /// Output configuration types a host reports and applies, and the host trait.
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
@@ -213,7 +213,7 @@ pub use output_control::{NoOutputControl, OutputControl};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     Config, ControlHandle, CursorSettings, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings,
-    Server, StartupError, VisualBellScope, VisualBellSettings,
+    Server, StartupError, VisualAccessibilitySettings, VisualBellScope, VisualBellSettings,
 };
 /// The dispatch glue a redirect implements.
 ///

@@ -43,9 +43,9 @@ use smithay::reexports::wayland_server::backend::InitError;
 
 use crate::clock::{Clock, SystemClock};
 use crate::modal::{Modal, ModalEvent};
-use gnoblin_render_frame::image::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
+use gnoblin_render_frame::image::Image;
 
 use crate::output_config::OutputConfigHost;
 use gnoblin_config::Protocols;
@@ -135,6 +135,20 @@ pub struct VisualBellSettings {
     pub scope: VisualBellScope,
 }
 
+/// The visual accessibility a session applies to every output.
+///
+/// The default is off: no magnification and no colour transform, so a frame is drawn as
+/// the clients painted it. Each output takes its own view, so a magnifier centred on one
+/// output never moves another.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VisualAccessibilitySettings {
+    /// The magnification factor, from 1 to 32, or `None` for no magnifier. A factor of 1
+    /// is the identity and is treated as no magnifier.
+    pub magnifier_zoom: Option<f32>,
+    /// The colour transform rows, or `None` for colours left unchanged.
+    pub colour_matrix: Option<[[f32; 5]; 4]>,
+}
+
 /// How a session is configured.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -199,6 +213,9 @@ pub struct Config {
     /// The visual bell the document declares: whether a bell flashes the screen, and where.
     /// Off unless the document asks for it.
     pub visual_bell: VisualBellSettings,
+    /// The visual accessibility the document declares: a magnifier and a colour filter,
+    /// both applied to every output. Off unless the document asks for it.
+    pub visual_accessibility: VisualAccessibilitySettings,
     /// The redirect adapters this session serves.
     ///
     /// Each one registers its globals before the loop runs. An empty list is a session
@@ -226,6 +243,7 @@ impl Default for Config {
             monitors: MonitorSettings::default(),
             extensions: Vec::new(),
             visual_bell: VisualBellSettings::default(),
+            visual_accessibility: VisualAccessibilitySettings::default(),
             window_process_override: None,
         }
     }
@@ -330,6 +348,7 @@ impl Server {
             config.titlebar_actions,
             config.cursor,
             config.visual_bell,
+            config.visual_accessibility,
             &config.extensions,
         )?;
         // The host's per-output controls are learnt before any client connects, so an

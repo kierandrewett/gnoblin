@@ -31,10 +31,11 @@ use std::collections::BTreeMap;
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
     Appearance, Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout,
-    Location, Logging, Monitors, Prompts, Protocols, WindowManagement, Workspace, Xwayland, parse_appearance,
-    parse_auth, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input, parse_input_sources,
-    parse_layer_shell, parse_layout, parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols,
-    parse_touchpad_gestures, parse_window_management, parse_workspaces, parse_xwayland,
+    Location, Logging, Monitors, Prompts, Protocols, VisualAccessibility, WindowManagement, Workspace, Xwayland,
+    parse_appearance, parse_auth, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input,
+    parse_input_sources, parse_layer_shell, parse_layout, parse_location, parse_logging, parse_monitors, parse_prompts,
+    parse_protocols, parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_workspaces,
+    parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -63,6 +64,8 @@ pub struct Config {
     pub cursor: Option<Cursor>,
     /// `frame-renderers`: the named frame renderer commands.
     pub frame_renderers: Option<FrameRenderers>,
+    /// `accessibility`: the visual accessibility section, a magnifier and a colour filter.
+    pub accessibility: Option<VisualAccessibility>,
     /// `input`: pointer, keyboard and tablet settings.
     pub input: Option<Input>,
     /// `input-sources`: the switchable layouts and input methods.
@@ -154,6 +157,8 @@ impl Config {
                     .map(|table| parse_input(table, &root.key("input"), &mut out));
                 config.input_sources = section_table(entries, "input-sources", &root, &mut out)
                     .map(|table| parse_input_sources(table, &root.key("input-sources"), &mut out));
+                config.accessibility = section_table(entries, "accessibility", &root, &mut out)
+                    .map(|table| parse_visual_accessibility(table, &root.key("accessibility"), &mut out));
                 config.layer_shell = section_table(entries, "layer-shell", &root, &mut out)
                     .map(|table| parse_layer_shell(table, &root.key("layer-shell"), &mut out));
                 config.layout = section_table(entries, "layout", &root, &mut out)
@@ -244,6 +249,7 @@ impl Config {
             appearance: None,
             compositor: None,
             cursor: None,
+            accessibility: None,
             frame_renderers: None,
             input: None,
             input_sources: None,

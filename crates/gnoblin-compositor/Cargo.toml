@@ -21,6 +21,8 @@ gnoblin-lua = { path = "../gnoblin-lua" }
 gnoblin-backend = { path = "../gnoblin-backend" }
 gnoblin-render = { path = "../gnoblin-render" }
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
+# The colour transform rows each named colour filter draws with.
+gnoblin-a11y = { path = "../gnoblin-a11y" }
 # The cursor providers and theme lookup the compositor reads its cursor settings from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The layer model. The portal dialogs name the input policy of their modal layer.

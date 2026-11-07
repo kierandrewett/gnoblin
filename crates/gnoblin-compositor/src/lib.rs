@@ -81,6 +81,7 @@
 //!   dispatcher owns: a privileged connection offers one, the slot registry routes it to
 //!   the connection that provides the slot, and both sides learn its one completion.
 
+mod accessibility;
 mod backend;
 mod bell;
 mod compat;
@@ -106,6 +107,10 @@ use std::thread::JoinHandle;
 
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 
+pub use accessibility::{
+    configure_from_environment as configure_accessibility_from_environment,
+    configure_from_store as configure_accessibility_from_store,
+};
 pub use backend::Backend;
 pub use bell::{
     configure_from_environment as configure_bell_from_environment, configure_from_store as configure_bell_from_store,

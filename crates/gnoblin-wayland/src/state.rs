@@ -69,7 +69,7 @@ use gnoblin_layers::InputPolicy;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
-use gnoblin_render_frame::frame::{Layer, OutputFrame};
+use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
@@ -425,6 +425,8 @@ pub struct State {
     /// The visual bell the document declares, read each time a bell rings. A session that
     /// declares none flashes nothing.
     pub(crate) visual_bell: crate::server::VisualBellSettings,
+    /// The visual accessibility applied to every output's frame, set at start-up.
+    pub(crate) visual_accessibility: crate::server::VisualAccessibilitySettings,
     /// The window menu requests made recently, oldest first. Bounded by
     /// `MENU_REQUESTS_KEPT`; the sequence number is what a reader publishes by.
     menu_requests: VecDeque<MenuRequest>,
@@ -582,6 +584,7 @@ impl State {
         titlebar_actions: TitlebarActions,
         cursor: crate::server::CursorSettings,
         visual_bell: crate::server::VisualBellSettings,
+        visual_accessibility: crate::server::VisualAccessibilitySettings,
         extensions: &[Arc<dyn Extension>],
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
@@ -774,6 +777,7 @@ impl State {
             titlebar_actions,
             bells: 0,
             visual_bell,
+            visual_accessibility,
             menu_requests: VecDeque::new(),
             menu_seq: 0,
             seat_name: seat_name.to_owned(),
@@ -2681,6 +2685,34 @@ pub(crate) fn x11_geometry(rect: Rect) -> Rectangle<i32, Logical> {
 ///
 /// The upper edges are exclusive, because a point on the right or bottom edge of a
 /// monitor is a point on the next one, and a point on the last one is outside it.
+/// Sets `frame`'s magnified view and colour transform from `settings`, for the output
+/// whose rectangle is `rect`.
+///
+/// A missing rectangle or a settings value the frame rejects leaves that part off, so an
+/// output the session no longer knows is drawn unmagnified rather than wrongly.
+fn apply_visual_accessibility(
+    settings: crate::server::VisualAccessibilitySettings,
+    rect: Option<Rect>,
+    frame: &mut OutputFrame,
+) {
+    let view = match (settings.magnifier_zoom, rect) {
+        (Some(zoom), Some(rect)) => magnifier_view(zoom, rect),
+        _ => None,
+    };
+    frame.set_view(view);
+    frame.set_colour_matrix(settings.colour_matrix.and_then(ColourMatrix::new));
+}
+
+/// The magnified view of an output of size `rect`: centred on the middle of the output, so
+/// each output is magnified about its own middle. `None` when the zoom is the identity or
+/// the frame rejects it.
+pub(crate) fn magnifier_view(zoom: f32, rect: Rect) -> Option<View> {
+    if zoom <= gnoblin_render_frame::frame::MIN_ZOOM {
+        return None;
+    }
+    View::new(zoom, rect.width as f32 / 2.0, rect.height as f32 / 2.0)
+}
+
 fn contains(rect: &Rect, point: SmithayPoint<f64, Logical>) -> bool {
     let right = f64::from(rect.x + i32::try_from(rect.width).unwrap_or(i32::MAX));
     let bottom = f64::from(rect.y + i32::try_from(rect.height).unwrap_or(i32::MAX));
@@ -2712,6 +2744,15 @@ impl Host for State {
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
+        // The accessibility is set before the frame is composed, so the composer draws this
+        // output's magnified view and colour transform. A locked session draws no
+        // accessibility, so the lock cover reads the same whatever the user has set.
+        let settings = if self.lock.state() == LockState::Unlocked {
+            self.visual_accessibility
+        } else {
+            crate::server::VisualAccessibilitySettings::default()
+        };
+        apply_visual_accessibility(settings, self.output_rect(output), frame);
         let changed = if self.lock.state() == LockState::Unlocked {
             self.composer.compose(output, frame)
         } else {
@@ -2864,5 +2905,106 @@ impl std::fmt::Debug for State {
             .field("windows", &self.windows.len())
             .field("outputs", &self.outputs.len())
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod visual_accessibility_tests {
+    //! The magnifier and colour filter reach each output's frame, and nowhere else.
+
+    use super::*;
+    use crate::server::VisualAccessibilitySettings;
+    use gnoblin_render_frame::frame::MIN_ZOOM;
+
+    /// A 1920 by 1080 output at the origin, and a second one to its right.
+    fn left_output() -> Rect {
+        Rect::new(0, 0, 1920, 1080)
+    }
+
+    fn right_output() -> Rect {
+        Rect::new(1920, 0, 1280, 720)
+    }
+
+    #[test]
+    fn the_default_settings_leave_the_frame_unchanged() {
+        let mut frame = OutputFrame::new();
+        apply_visual_accessibility(VisualAccessibilitySettings::default(), Some(left_output()), &mut frame);
+        assert!(frame.view().is_none(), "no magnifier by default");
+        assert!(frame.colour_matrix().is_none(), "no colour transform by default");
+    }
+
+    #[test]
+    fn a_zoom_of_one_is_the_identity() {
+        assert!(magnifier_view(MIN_ZOOM, left_output()).is_none());
+        let mut frame = OutputFrame::new();
+        let settings = VisualAccessibilitySettings {
+            magnifier_zoom: Some(1.0),
+            colour_matrix: None,
+        };
+        apply_visual_accessibility(settings, Some(left_output()), &mut frame);
+        assert!(frame.view().is_none());
+    }
+
+    #[test]
+    fn the_magnifier_is_centred_on_each_output_separately() {
+        let left = magnifier_view(2.0, left_output()).expect("a view for 2x");
+        assert_eq!((left.zoom, left.centre_x, left.centre_y), (2.0, 960.0, 540.0));
+        let right = magnifier_view(2.0, right_output()).expect("a view for 2x");
+        assert_eq!((right.zoom, right.centre_x, right.centre_y), (2.0, 640.0, 360.0));
+    }
+
+    #[test]
+    fn the_zoom_reaches_the_frame_of_its_own_output_only() {
+        let settings = VisualAccessibilitySettings {
+            magnifier_zoom: Some(2.0),
+            colour_matrix: None,
+        };
+        let mut left = OutputFrame::new();
+        apply_visual_accessibility(settings, Some(left_output()), &mut left);
+        let mut right = OutputFrame::new();
+        apply_visual_accessibility(settings, Some(right_output()), &mut right);
+        assert_eq!(left.view().map(|view| view.centre_x), Some(960.0));
+        assert_eq!(right.view().map(|view| view.centre_x), Some(640.0));
+    }
+
+    #[test]
+    fn an_unknown_output_is_drawn_unmagnified() {
+        let settings = VisualAccessibilitySettings {
+            magnifier_zoom: Some(2.0),
+            colour_matrix: None,
+        };
+        let mut frame = OutputFrame::new();
+        apply_visual_accessibility(settings, None, &mut frame);
+        assert!(frame.view().is_none());
+    }
+
+    #[test]
+    fn the_colour_filter_reaches_the_frame() {
+        let invert = [
+            [-1.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, -1.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, -1.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ];
+        let settings = VisualAccessibilitySettings {
+            magnifier_zoom: None,
+            colour_matrix: Some(invert),
+        };
+        let mut frame = OutputFrame::new();
+        apply_visual_accessibility(settings, Some(left_output()), &mut frame);
+        assert_eq!(frame.colour_matrix().map(|matrix| matrix.rows), Some(invert));
+    }
+
+    #[test]
+    fn a_rejected_colour_matrix_is_not_applied() {
+        let mut bad = [[0.0f32; 5]; 4];
+        bad[0][0] = f32::NAN;
+        let settings = VisualAccessibilitySettings {
+            magnifier_zoom: None,
+            colour_matrix: Some(bad),
+        };
+        let mut frame = OutputFrame::new();
+        apply_visual_accessibility(settings, Some(left_output()), &mut frame);
+        assert!(frame.colour_matrix().is_none());
     }
 }

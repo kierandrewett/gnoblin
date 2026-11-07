@@ -438,6 +438,7 @@ mod tests {
             TitlebarActions::default(),
             crate::server::CursorSettings::default(),
             crate::server::VisualBellSettings::default(),
+            crate::server::VisualAccessibilitySettings::default(),
             &[],
         )
         .expect("a state for the default output")

@@ -36,8 +36,8 @@ use std::time::{Duration, Instant};
 
 use smithay::reexports::calloop::ping::Ping;
 
-use gnoblin_render_frame::image::Image;
 use gnoblin_backend::{Backend, Host};
+use gnoblin_render_frame::image::Image;
 use gnoblin_types::{OutputId, Rect};
 
 use crate::state::State;
@@ -249,9 +249,9 @@ pub fn render(
 #[cfg(test)]
 mod tests {
     use gnoblin_backend::headless::Headless;
+    use gnoblin_backend::{BackendError, InputSource, Present};
     use gnoblin_render_frame::error::RenderError;
     use gnoblin_render_frame::frame::OutputFrame;
-    use gnoblin_backend::{BackendError, InputSource, Present};
     use smithay::reexports::calloop::LoopHandle;
     use smithay::reexports::wayland_server::Display;
 
@@ -278,6 +278,7 @@ mod tests {
             crate::protocols::extension::TitlebarActions::default(),
             crate::server::CursorSettings::default(),
             crate::server::VisualBellSettings::default(),
+            crate::server::VisualAccessibilitySettings::default(),
             &[],
         )
         .expect("a state for the default output");
@@ -532,6 +533,7 @@ mod tests {
             crate::protocols::extension::TitlebarActions::default(),
             crate::server::CursorSettings::default(),
             crate::server::VisualBellSettings::default(),
+            crate::server::VisualAccessibilitySettings::default(),
             &[],
         )
         .expect("a state for the default output");
