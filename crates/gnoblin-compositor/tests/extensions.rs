@@ -16,8 +16,8 @@ use support::{Session, Wire};
 
 const NAMESPACE: &str = "example.ext";
 const PROVIDER: &str = "services";
-const GRANTEE: &str = "viewer";
-const STRANGER: &str = "stranger";
+const GRANTEE: &str = "runtime";
+const STRANGER: &str = "portal";
 const DEADLINE: Duration = Duration::from_secs(5);
 
 fn grant() -> Grant {
@@ -46,8 +46,8 @@ fn take(ends: &mut Vec<(String, UnixStream)>, role: &str) -> Wire {
     wire
 }
 
-/// A session where `services` provides `example.ext`, `viewer` is granted it, and
-/// `stranger` is not granted anything.
+/// A session where `services` provides `example.ext`, `runtime` is granted it, and
+/// `portal` is not granted anything.
 fn session() -> (Session, Vec<(String, UnixStream)>) {
     Session::start_privileged_extensions(
         &[(PROVIDER, Vec::new()), (GRANTEE, vec![grant()]), (STRANGER, Vec::new())],

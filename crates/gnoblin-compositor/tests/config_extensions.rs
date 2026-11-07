@@ -27,7 +27,11 @@ const SECOND_NAMESPACE: &str = "example.second";
 const MISSING_NAMESPACE: &str = "example.missing";
 const PROVIDER: &str = "services";
 const GRANTEE: &str = "runtime";
-const STRANGER: &str = "stranger";
+/// A role the configuration grants nothing. It must be one the compositor serves — a real
+/// role from the capability table — so the test observes its empty grants frame, not a
+/// dropped handover. `portal` is the natural choice: it is privileged, yet the document
+/// grants it no extension.
+const STRANGER: &str = "portal";
 const DEADLINE: Duration = Duration::from_secs(5);
 
 fn grant() -> Grant {
@@ -85,7 +89,8 @@ fn accept(state: &Path, source: &Path) -> Store {
 }
 
 /// Starts a session whose privileged connections are the provider, the grantee and a
-/// stranger, and loads the accepted configuration into it the way the binary does.
+/// role the configuration grants nothing, and loads the accepted configuration into it
+/// the way the binary does.
 fn start(root: &Path) -> (Session, Vec<(String, UnixStream)>) {
     let source = root.join("config.toml");
     let store = accept(&root.join("state"), &source);

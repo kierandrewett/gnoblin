@@ -28,8 +28,8 @@ use support::{Session, Wire};
 const FIXTURE: &str = include_str!("../../gnoblin-schema/tests/fixtures/extensions/example-ext.toml");
 const NAMESPACE: &str = "example.ext";
 const PROVIDER: &str = "services";
-const GRANTEE: &str = "viewer";
-const STRANGER: &str = "stranger";
+const GRANTEE: &str = "runtime";
+const STRANGER: &str = "portal";
 const DEADLINE: Duration = Duration::from_secs(5);
 /// The read deadline a role's client carries while its host pumps: the one `gnoblin-lua`'s
 /// role uses.
@@ -62,7 +62,7 @@ fn route() -> ExtensionRoute {
     }
 }
 
-/// `services` provides `example.ext`, `viewer` is granted it, and `stranger` holds nothing.
+/// `services` provides `example.ext`, `runtime` is granted it, and `portal` holds nothing.
 fn session() -> (Session, Vec<(String, UnixStream)>) {
     Session::start_privileged_extensions(
         &[(PROVIDER, Vec::new()), (GRANTEE, vec![grant()]), (STRANGER, Vec::new())],
