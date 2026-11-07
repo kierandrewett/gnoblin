@@ -616,9 +616,12 @@ gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
 
 #[test]
 fn a_script_that_exceeds_the_memory_limit_is_stopped() {
+    // The deadline is wide so the allocation, not the wall clock, is what stops the script. At 16 ms
+    // the default deadline races a debug build's 1 MiB fill when the suite runs in parallel.
     let limits = Limits {
         memory_bytes: 1 << 20,
         instructions: 1_000_000_000,
+        handler_ticks: 10_000,
         ..Limits::default()
     };
     let config = Config::new("memory");
