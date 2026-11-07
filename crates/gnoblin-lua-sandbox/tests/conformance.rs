@@ -298,11 +298,31 @@ fn render_page() -> String {
          `os.exit` in both profiles. This is the only deliberate exception to full Lua: \
          those functions reach the host system, which is the sandbox boundary.\n\n",
     );
-    page.push_str("| Feature | Config | Layout |\n|---|---|---|\n");
+    // Rows are padded to a common width so the committed page is already prettier-formatted,
+    // which keeps `prettier --check` clean on the docs.
+    let mut rows: Vec<[String; 3]> = vec![["Feature".into(), "Config".into(), "Layout".into()]];
     for case in CASES {
         let config = outcome(Profile::Config, case.snippet);
         let layout = outcome(Profile::Layout, case.snippet);
-        page.push_str(&format!("| {} | {} | {} |\n", case.feature, mark(config), mark(layout)));
+        rows.push([case.feature.into(), mark(config).into(), mark(layout).into()]);
+    }
+    let mut widths = [0usize; 3];
+    for row in &rows {
+        for (width, cell) in widths.iter_mut().zip(row) {
+            *width = (*width).max(cell.chars().count());
+        }
+    }
+    for (index, row) in rows.iter().enumerate() {
+        let cells: Vec<String> = row
+            .iter()
+            .zip(widths)
+            .map(|(cell, width)| format!("{cell:<width$}"))
+            .collect();
+        page.push_str(&format!("| {} |\n", cells.join(" | ")));
+        if index == 0 {
+            let rule: Vec<String> = widths.iter().map(|width| "-".repeat(*width)).collect();
+            page.push_str(&format!("| {} |\n", rule.join(" | ")));
+        }
     }
     page
 }
