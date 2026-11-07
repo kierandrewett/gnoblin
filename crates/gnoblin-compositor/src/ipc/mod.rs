@@ -28,6 +28,7 @@ mod extension;
 mod path;
 mod portal;
 mod privileged;
+mod reload;
 mod requests;
 mod server;
 mod session;

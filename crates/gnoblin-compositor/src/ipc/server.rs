@@ -79,6 +79,7 @@ use gnoblin_wayland::{ControlHandle, EffectSpec, Observer, ProcessIdentity, Sess
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
+use super::reload::{Outcome, Reload};
 use super::requests::{FrameDelivery, Requests};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
@@ -248,6 +249,7 @@ impl IpcServer {
             control,
             pending,
             requests: Requests::new(),
+            reload: Reload::default(),
             portal: PortalService::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
@@ -687,6 +689,8 @@ struct Dispatcher {
     /// The request layer: the broker, the slot registry and the last accepted
     /// configuration.
     requests: Requests,
+    /// The `config.reload` requests waiting for the runtime to answer them.
+    reload: Reload,
     /// The portal UI: admitted requests, their owners, and the open dialog.
     portal: PortalService,
     /// Every connection that reached the socket, keyed by client.
@@ -714,6 +718,8 @@ impl Dispatcher {
                     // loop when every client goes quiet.
                     let now = self.now();
                     let expired = self.requests.tick(now);
+                    let reloads = self.reload.expire(now);
+                    self.deliver_replies(reloads);
                     let replies = self.portal.tick(now);
                     self.deliver_replies(replies);
                     self.pump_portal();
@@ -793,6 +799,8 @@ impl Dispatcher {
             wire::member::SLOT_RELEASE => self.release_slot(client, envelope),
             wire::member::CONFIG_COMMIT => self.commit(client, envelope),
             wire::member::CONFIG_CURRENT => self.configuration(client, envelope),
+            wire::member::CONFIG_RELOAD => self.reload(client, envelope),
+            wire::member::CONFIG_REJECT => self.reject(client, envelope),
             wire::member::PORTAL_UI => self.portal_ui(client, envelope),
             wire::member::PORTAL_CANCEL => self.portal_cancel(client, envelope),
             wire::member::PORTAL_KEY => self.portal_key(client, envelope),
@@ -1132,6 +1140,71 @@ impl Dispatcher {
                 wire::member::CONFIG_COMMIT,
                 envelope.request_id,
                 revision.to_be_bytes().to_vec(),
+            ));
+        }
+        // A commit made while a reload waits is the runtime's answer to that reload.
+        let answers = self.reload.finish(&Outcome::Accepted { revision });
+        self.deliver_replies(answers);
+    }
+
+    /// `config.reload`: a privileged caller asks the runtime to re-read its document.
+    ///
+    /// The compositor does not parse the document, so the answer waits on the runtime,
+    /// which replies with `config.commit` or `config.reject` on its own connection. With
+    /// no runtime connected nothing can answer, so the request is refused now rather than
+    /// held until its deadline.
+    fn reload(&mut self, client: ClientId, envelope: &Envelope) {
+        let runtime_connected = self
+            .connections
+            .iter()
+            .any(|(other, connection)| *other != client && connection.capabilities.contains(Capability::CommitConfig));
+        if !runtime_connected {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::NO_RUNTIME,
+                "no runtime role is connected, so nothing can reload the configuration",
+            );
+            return;
+        }
+        let now = self.now();
+        if let Some(generation) = self.reload.request(client, envelope.request_id, now) {
+            self.store.request_reload(generation);
+        }
+    }
+
+    /// `config.reject`: the runtime refused the document it was asked to reload.
+    ///
+    /// Every caller waiting on that reload is answered with the runtime's diagnostic. The
+    /// last accepted document stays in force, because nothing here replaces it.
+    fn reject(&mut self, client: ClientId, envelope: &Envelope) {
+        let message = match wire::read_config_reject(envelope.payload().unwrap_or(&[])) {
+            Ok(message) => message,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the rejection did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        log::warn!(
+            area = "ipc",
+            %message,
+            "the runtime refused the configuration reload; the last accepted document stays in force"
+        );
+        let answers = self.reload.finish(&Outcome::Rejected {
+            message: message.clone(),
+        });
+        self.deliver_replies(answers);
+        if let Some(connection) = self.connections.get_mut(&client) {
+            connection.send(&Envelope::reply(
+                wire::NAMESPACE,
+                wire::member::CONFIG_REJECT,
+                envelope.request_id,
+                Vec::new(),
             ));
         }
     }
@@ -1865,7 +1938,10 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> Envelope {
 fn required_capability(member: &str) -> Option<Capability> {
     match member {
         wire::member::OFFER => Some(Capability::OfferRequest),
-        wire::member::CONFIG_COMMIT | wire::member::CONFIG_CURRENT => Some(Capability::CommitConfig),
+        wire::member::CONFIG_COMMIT
+        | wire::member::CONFIG_CURRENT
+        | wire::member::CONFIG_RELOAD
+        | wire::member::CONFIG_REJECT => Some(Capability::CommitConfig),
         wire::member::PORTAL_UI | wire::member::PORTAL_CANCEL => Some(Capability::PortalUi),
         wire::member::PORTAL_KEY => Some(Capability::PortalInput),
         _ => None,

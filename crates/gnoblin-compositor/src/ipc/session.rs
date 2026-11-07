@@ -58,6 +58,10 @@ mod member {
     pub const BELL: &str = "bell";
     /// The bell signal's field: how many times the bell has rung.
     pub const COUNT: &str = "count";
+    /// The `session` object's reload_requested signal.
+    pub const RELOAD_REQUESTED: &str = "reload_requested";
+    /// The reload signal's field: which request this is, counted by the compositor.
+    pub const GENERATION: &str = "generation";
     /// The `window` object's menu_requested signal, and its fields.
     pub const MENU_REQUESTED: &str = "menu_requested";
     /// The menu signal's source field: client, keyboard or extension.
@@ -234,6 +238,19 @@ impl SessionSync {
     #[must_use]
     pub fn bells(&self) -> u64 {
         self.bells
+    }
+
+    /// Raises `session.reload_requested` for the runtime to act on.
+    ///
+    /// The runtime owns the document, so this only says that a reload was asked for. A
+    /// failed raise is logged rather than returned: the request then waits for an answer
+    /// that never comes, and the caller sees that through its own deadline.
+    pub fn request_reload(&mut self, generation: u64) {
+        let mut fields = Fields::new();
+        fields.insert(member::GENERATION.to_owned(), Value::Uint(generation));
+        if let Err(error) = self.graph.signal(self.session, member::RELOAD_REQUESTED, fields) {
+            log::error!(area = "ipc", %error, "the session object declares no reload_requested signal");
+        }
     }
 
     /// Raises `session.ready`, once, when the IPC server is about to accept.

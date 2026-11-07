@@ -444,6 +444,35 @@ impl<T: Transport> Client<T> {
         })
     }
 
+    /// Ask the runtime to re-read the configuration, returning the revision it committed.
+    ///
+    /// Privileged. The compositor answers when the runtime has answered: with the
+    /// revision when the reload was accepted, or [`crate::code::CONFIG_REJECTED`] with
+    /// the runtime's diagnostic when the document is wrong, which leaves the last
+    /// accepted document in force. Requests made while one is outstanding share its
+    /// answer.
+    pub fn reload_config(&mut self) -> Result<u64, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::config_reload(correlation);
+        self.send(&frame)?;
+        let payload = self.await_reply(correlation)?;
+        wire::read_revision(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::CONFIG_RELOAD.to_owned(),
+            reason,
+        })
+    }
+
+    /// Tell the compositor the runtime refused the reload, with the diagnostic that
+    /// says where the document is wrong. Privileged, and the runtime's half of
+    /// [`Client::reload_config`].
+    pub fn reject_config(&mut self, message: &str) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::config_reject(correlation, message);
+        self.send(&frame)?;
+        let _ = self.await_reply(correlation)?;
+        Ok(())
+    }
+
     /// The last configuration the compositor accepted, or `None` when it has accepted
     /// none.
     ///

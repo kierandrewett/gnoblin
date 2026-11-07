@@ -92,6 +92,12 @@ pub mod member {
     pub const CONFIG_COMMIT: &str = "config.commit";
     /// Privileged client to compositor: the last document the compositor accepted.
     pub const CONFIG_CURRENT: &str = "config.current";
+    /// Privileged client to compositor: re-read the configuration. The compositor
+    /// asks the runtime to do it and answers with the revision the runtime commits.
+    pub const CONFIG_RELOAD: &str = "config.reload";
+    /// Privileged runtime to compositor: the reload it was asked for was refused. The
+    /// message says where the document is wrong.
+    pub const CONFIG_REJECT: &str = "config.reject";
     /// Privileged client to compositor: ask the built-in portal UI to decide a
     /// request. The answer comes later, as the reply to this request.
     pub const PORTAL_UI: &str = "portal.ui";
@@ -125,6 +131,12 @@ pub mod code {
     pub const DENIED: &str = "denied";
     /// The slot name is not one this build has.
     pub const UNKNOWN_SLOT: &str = "unknown-slot";
+    /// A reload was refused by the runtime, which kept the last accepted document.
+    pub const CONFIG_REJECTED: &str = "config-rejected";
+    /// No runtime role is connected, so nothing can reload the configuration.
+    pub const NO_RUNTIME: &str = "no-runtime";
+    /// The runtime did not answer the reload within its deadline.
+    pub const RELOAD_TIMEOUT: &str = "reload-timeout";
     /// No provider claims the slot, so the request was not offered.
     ///
     /// Fail closed: a request nobody will answer ends here instead of waiting out its
@@ -298,6 +310,20 @@ pub fn config_commit(request_id: u64, document: &[u8]) -> Envelope {
     let mut writer = Writer::new();
     writer.bytes(document);
     Envelope::request(NAMESPACE, member::CONFIG_COMMIT, request_id, writer.finish())
+}
+
+/// A request asking the runtime to re-read the configuration. Privileged, and empty:
+/// the runtime owns the document, so the request names nothing to load.
+pub fn config_reload(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::CONFIG_RELOAD, request_id, Vec::new())
+}
+
+/// A request telling the compositor the runtime refused the reload, with the reason.
+/// Privileged.
+pub fn config_reject(request_id: u64, message: &str) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(message);
+    Envelope::request(NAMESPACE, member::CONFIG_REJECT, request_id, writer.finish())
 }
 
 /// A request for a decision from the built-in portal UI. Privileged.
@@ -637,6 +663,14 @@ pub fn read_config_commit(payload: &[u8]) -> Result<Vec<u8>, WireError> {
     let document = reader.bytes()?;
     reader.done()?;
     Ok(document)
+}
+
+/// Decode the refusal message a `config.reject` request carries.
+pub fn read_config_reject(payload: &[u8]) -> Result<String, WireError> {
+    let mut reader = Reader::new(payload);
+    let message = reader.text()?;
+    reader.done()?;
+    Ok(message)
 }
 
 /// Decode the revision a `config.commit` reply names.

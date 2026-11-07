@@ -41,6 +41,22 @@ name = "count"
 type = "uint"
 since = "0.2.0"
 
+# The operator asked for the configuration to be reloaded (`gnoblinctl config reload`).
+#
+# The runtime role owns configuration, so it is the one that re-reads the document and
+# answers. The compositor does not parse the document: it raises this signal and the
+# runtime's `config.commit` or `config.reject` completes the request. `generation` counts
+# the requests the compositor has forwarded, so a runtime that missed one still sees that
+# it must reload.
+[[object.signal]]
+name = "reload_requested"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "generation"
+type = "uint"
+since = "0.2.0"
+
 # The provider of one slot, one property per slot ("Providers and slots").
 #
 # The value is `none`, `services` or `shell`. `none` means the slot has no
