@@ -50,13 +50,14 @@ const FOUNDATION: &[&str] = &[
 /// The shared primitives: the root of every other crate's dependency graph.
 const TYPES: &str = "gnoblin-types";
 
-/// The mechanism layer: Smithay glue, renderer, input, backends and Xwayland. These
-/// reach the policy core through `gnoblin-model` and `gnoblin-output` types and each
-/// other through `gnoblin-backend` traits. Capture is not here: it is pure policy, and
-/// [`FOUNDATION`] says why.
+/// The mechanism layer: Smithay glue, renderer, input, the EIS server, backends and
+/// Xwayland. These reach the policy core through `gnoblin-model` and `gnoblin-output`
+/// types and each other through `gnoblin-backend` traits. Capture is not here: it is
+/// pure policy, and [`FOUNDATION`] says why.
 const ENGINE: &[&str] = &[
     "gnoblin-backend",
     "gnoblin-input",
+    "gnoblin-input-eis",
     "gnoblin-render",
     "gnoblin-wayland",
     "gnoblin-xwayland",
@@ -1153,6 +1154,33 @@ mod tests {
                 ("gnoblin-wayland", &["gnoblin-input"]),
             ]),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_eis_server_may_name_the_backend_and_the_input_hub_only() {
+        // The EIS server turns libei requests into seat events, so it needs the input hub's
+        // event types and the backend's device names. Any other mechanism crate would pull a
+        // compositor in behind a client-facing server.
+        assert_eq!(
+            violations(&[
+                (
+                    "gnoblin-input-eis",
+                    &["gnoblin-backend", "gnoblin-input", "gnoblin-types"]
+                ),
+                ("gnoblin-input", &["gnoblin-types"]),
+            ]),
+            Vec::<String>::new()
+        );
+        let reported = violations(&[
+            ("gnoblin-input-eis", &["gnoblin-wayland"]),
+            ("gnoblin-wayland", &["gnoblin-backend"]),
+        ]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-input-eis -> gnoblin-wayland [engine-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
         );
     }
 

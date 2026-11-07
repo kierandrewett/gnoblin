@@ -440,7 +440,8 @@ gnoblin/
     gnoblin-authority/        pure attribution, activation and capability grant rules (D22)
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol; dynamic globals from provider XML at run time (D22)
     gnoblin-render/           scene graph, effects, user shaders, animation and tween player, damage
-    gnoblin-input/            libinput settings, xkb, chords, gestures, input policy routing, IME, EIS server
+    gnoblin-input/            libinput settings, xkb, chords, gestures, input policy routing, IME, idle activity
+    gnoblin-input-eis/        EIS server (libei over reis): client requests to seat events and consent decisions
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
@@ -528,8 +529,8 @@ edge, so a violation names the edge and the rule:
 - `gnoblin-types` is the root of the graph, and the only home of a value two
   crates pass to each other: geometry, scale, transform, identity, tick,
   revision, version and error code.
-- **Engine crates** are `gnoblin-backend`, `gnoblin-input`, `gnoblin-render`,
-  `gnoblin-wayland`, `gnoblin-capture` and `gnoblin-xwayland`.
+- **Engine crates** are `gnoblin-backend`, `gnoblin-input`, `gnoblin-input-eis`,
+  `gnoblin-render`, `gnoblin-wayland`, `gnoblin-capture` and `gnoblin-xwayland`.
 - `gnoblin-output` sits in the foundation set although the mechanism layer
   performs the mode sets: an output arrives as a descriptor and a configuration
   becomes a layout of rectangles, so the crate is pure policy.
@@ -1131,7 +1132,8 @@ failure-mode list that must be complete before isolated tests or code.
 
 - **Owns:** libinput device settings, xkb keymaps and layouts, IBus bridge,
   chord grammar for bindings, gestures and the touchpad router, input policy
-  routing to the runtime with deadlines, the EIS server, idle activity.
+  routing to the runtime with deadlines, idle activity. The EIS server lives in
+  `gnoblin-input-eis`, which depends on `gnoblin-input` for its event types.
 - **Replaces:** `src/input`, `68-gnoblin-input`, `70-config-preferences` input
   parts, `75`, `78`, `85`, `25-wayland-keyboard`, `82-wayland-keymap`.
 - **Failure modes first:** a key release is lost after a grab ends; a consumed

@@ -21,7 +21,7 @@ Cursor (`gnoblin-render/src/cursor/`, 2014 lines) is owned by the CursorCrate la
 | Crate               | Module                                       | Lines                   | Heavy deps it alone pulls       | Rule   | Proposed crate           |
 | ------------------- | -------------------------------------------- | ----------------------- | ------------------------------- | ------ | ------------------------ |
 | gnoblin-wayland     | `pipewire_export.rs` + tests                 | 509 + 621               | pipewire (61 crates, inference) | i, ii  | gnoblin-pipewire-export  |
-| gnoblin-input       | `eis/`                                       | 2297                    | reis (26 crates, inference)     | i, ii  | gnoblin-input-eis        |
+| gnoblin-input       | `eis/` (done)                                | 2297                    | reis (26 crates, inference)     | i, ii  | gnoblin-input-eis        |
 | gnoblin-lua         | `layout/`                                    | 2054                    | mlua, in 5 of 10 files          | i, ii  | gnoblin-lua-layout       |
 | gnoblin-backend     | `render/vulkan/`                             | about 4,600 incl. tests | ash, naga (optional)            | i      | gnoblin-backend-vulkan   |
 | gnoblin-backend     | `drm/`, `libinput/`, `udev.rs`, `session.rs` | about 5,300             | smithay hardware features       | i, iii | gnoblin-backend-drm      |
@@ -71,7 +71,7 @@ These add a graph node and no feature. They are flagged in the opposite directio
 ## Ranked top ten
 
 1. `gnoblin-wayland` pipewire export to `gnoblin-pipewire-export`. Done: the module moved with its tests, and `xtask deps` rule `pipewire-export-isolation` holds it.
-2. `gnoblin-input` EIS to `gnoblin-input-eis`.
+2. `gnoblin-input` EIS to `gnoblin-input-eis`. Done.
 3. `gnoblin-backend` Vulkan to `gnoblin-backend-vulkan`.
 4. `gnoblin-backend` hardware to `gnoblin-backend-drm`.
 5. `gnoblin-lua` layout to `gnoblin-lua-layout`.
