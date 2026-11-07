@@ -49,7 +49,7 @@ use gnoblin_types::Tick;
 
 use crate::error::HostError;
 use crate::extensions::ExtensionRegistry;
-use crate::host::{Host, RunReport};
+use crate::host::{Host, ReloadOutcome, RunReport};
 use gnoblin_lua_sandbox::Limits;
 
 use crate::log;
@@ -187,7 +187,7 @@ impl RoleRunner {
         // anything that reads the document.
         reporter.ready(&[("GNOBLIN_CONFIG_REVISION".to_owned(), revision.to_string())]);
 
-        serve(&mut host, &stop)
+        serve(&mut host, &stop, &self.paths, &self.stock, &mut reporter)
     }
 }
 
@@ -252,9 +252,21 @@ fn bind_configured_extensions<T: Transport + 'static>(
 }
 
 /// Serve the handlers until the guardian asks the role to stop or the connection ends.
-fn serve<T: Transport + 'static>(host: &mut Host<T>, stop: &impl Fn() -> bool) -> Result<(), RoleError> {
+///
+/// A reload the compositor asked for is acted on before the next pump, so no handler runs
+/// against a document that is about to be replaced.
+fn serve<T: Transport + 'static>(
+    host: &mut Host<T>,
+    stop: &impl Fn() -> bool,
+    paths: &SearchPaths,
+    stock: &[Schema],
+    reporter: &mut Reporter,
+) -> Result<(), RoleError> {
     let start = Instant::now();
     while !stop() {
+        if host.take_reload_request() {
+            reload(host, paths, stock, reporter)?;
+        }
         let now = Tick::new(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
         match host.pump(now) {
             Ok(report) => {
@@ -270,6 +282,42 @@ fn serve<T: Transport + 'static>(host: &mut Host<T>, stop: &impl Fn() -> bool) -
             Err(HostError::Client(ClientError::Idle)) => {}
             Err(HostError::Client(ClientError::Disconnected)) => return Ok(()),
             Err(error) => return Err(RoleError::Serving(error.to_string())),
+        }
+    }
+    Ok(())
+}
+
+/// Run the configuration again and commit it, or refuse it and keep the last accepted one.
+///
+/// A refusal is reported to the compositor, which answers the caller of `config reload`. The
+/// role keeps serving either way: a bad edit must not take down the runtime that holds the
+/// last good document.
+fn reload<T: Transport + 'static>(
+    host: &mut Host<T>,
+    paths: &SearchPaths,
+    stock: &[Schema],
+    reporter: &mut Reporter,
+) -> Result<(), RoleError> {
+    // A reload that cannot even run, such as the file having been removed, is still a
+    // refusal: the compositor is waiting on an answer, and the runtime keeps its last good document.
+    let outcome = match host.reload_config(paths) {
+        Ok(outcome) => outcome,
+        Err(error) => ReloadOutcome::Rejected(format!(
+            "the reload could not run, and the last accepted configuration stays in force: {error}"
+        )),
+    };
+    match outcome {
+        ReloadOutcome::Accepted(loaded) => {
+            bind_configured_extensions(host, &loaded, stock)?;
+            let revision = commit(host, &loaded, reporter)?;
+            log::info!(area = "runtime", path = %loaded.path.path().display(), revision, "configuration reloaded");
+        }
+        ReloadOutcome::Rejected(reason) => {
+            log::error!(area = "runtime", "{reason}");
+            reporter.write(&report::config_rejected(0, &reason));
+            host.client_mut()
+                .reject_config(&reason)
+                .map_err(|error| RoleError::Commit(error.to_string()))?;
         }
     }
     Ok(())

@@ -22,7 +22,7 @@ use gnoblin_model::{Fields, Graph, ObjectId, OperationId, OperationOutcome, Tick
 use gnoblin_proto::Version;
 use gnoblin_schema::Catalog;
 
-use gnoblin_lua::{Host, Limits};
+use gnoblin_lua::{Host, Limits, ReloadOutcome};
 
 const VERSION: Version = Version::new(0, 2, 0);
 
@@ -859,4 +859,167 @@ fn a_reload_cancels_the_timers_of_the_previous_run() {
     let pumped = host.pump(Tick::new(1000)).expect("a pump");
     assert_eq!(pumped.handlers, 0, "the reload cleared the old timer");
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn a_reload_with_a_syntax_error_keeps_the_last_good_document_and_names_the_line() {
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let window = open_window(&mut server, "Kept");
+    let config = Config::new("reload-syntax");
+    let init = config.write(
+        "init.lua",
+        &format!(
+            r#"
+gnoblin.configure {{ cursor = {{ size = 24 }} }}
+local session = gnoblin.session.by_id({session})
+session:on("ready", function() gnoblin.window.by_id({window}):focus() end)
+"#,
+            session = session.get(),
+            window = window.get()
+        ),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    fs::write(
+        &init,
+        "gnoblin.configure { cursor = { size = 12 } }\nlocal broken = = 1\n",
+    )
+    .expect("a test can rewrite its file");
+    let ReloadOutcome::Rejected(reason) = host.reload_config(&config.paths()).expect("the reload runs") else {
+        panic!("a reload with a syntax error was accepted");
+    };
+    assert!(reason.contains("init.lua:2:"), "the line is named: {reason}");
+
+    // The refused file was never put in force, so the handler of the last good one still answers.
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert_eq!(pumped.handlers, 1, "the last good handler still runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert_eq!(
+        server.graph().pending().next().expect("the focus call").object(),
+        window
+    );
+}
+
+#[test]
+fn a_rejected_reload_leaves_an_operation_that_was_pending_with_its_callback() {
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let window = open_window(&mut server, "Pending");
+    let config = Config::new("reload-pending");
+    let init = config.write(
+        "init.lua",
+        &format!(
+            r#"
+local session = gnoblin.session.by_id({session})
+session:on("ready", function()
+    local operation = gnoblin.window.by_id({window}):focus()
+    operation:on_complete(function() gnoblin.window.by_id({window}):focus() end)
+end)
+"#,
+            session = session.get(),
+            window = window.get()
+        ),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    host.pump(Tick::new(1)).expect("the handler calls focus");
+    let first = server.graph().pending().next().expect("one call").id();
+
+    fs::write(&init, "local broken = = 1\n").expect("a test can rewrite its file");
+    assert!(matches!(
+        host.reload_config(&config.paths()).expect("the reload runs"),
+        ReloadOutcome::Rejected(_)
+    ));
+
+    // The rejected reload restored the callbacks, so the completion still reaches its handler,
+    // which calls focus once more.
+    server
+        .complete(first, OperationOutcome::Done)
+        .expect("the first completion is accepted");
+    let pumped = host.pump(Tick::new(1)).expect("the completion is delivered");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    let pending: Vec<OperationId> = server.graph().pending().map(|operation| operation.id()).collect();
+    assert_eq!(pending.len(), 1, "the completion callback ran once and called focus");
+    assert_ne!(pending[0], first);
+}
+
+#[test]
+fn an_accepted_reload_replaces_the_handlers_and_drops_the_callbacks_of_the_old_run() {
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let window = open_window(&mut server, "Replaced");
+    let config = Config::new("reload-accepted");
+    let init = config.write(
+        "init.lua",
+        &format!(
+            r#"
+local session = gnoblin.session.by_id({session})
+session:on("ready", function()
+    local operation = gnoblin.window.by_id({window}):focus()
+    operation:on_complete(function() gnoblin.window.by_id({window}):focus() end)
+end)
+"#,
+            session = session.get(),
+            window = window.get()
+        ),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    host.pump(Tick::new(1)).expect("the handler calls focus");
+    let old = server.graph().pending().next().expect("one call").id();
+
+    fs::write(&init, "gnoblin.configure { cursor = { size = 12 } }\n").expect("a test can rewrite its file");
+    let ReloadOutcome::Accepted(run) = host.reload_config(&config.paths()).expect("the reload runs") else {
+        panic!("a valid file was refused");
+    };
+    assert!(run.errors.is_empty(), "{:#?}", run.errors);
+
+    // The new run registers no handler, so the old callback has nothing left to run.
+    server
+        .complete(old, OperationOutcome::Done)
+        .expect("the completion is accepted");
+    let pumped = host.pump(Tick::new(1)).expect("the completion is delivered");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert_eq!(
+        server.graph().pending().count(),
+        0,
+        "the old callback did not call focus again"
+    );
+}
+
+#[test]
+fn two_reload_requests_before_one_pump_coalesce_into_one_reload() {
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    host.pump(Tick::new(1)).expect("the session reaches the mirror");
+
+    // The compositor numbers each forwarded request, so the second signal carries the next one.
+    let mut first_request = Fields::new();
+    first_request.insert("generation".to_owned(), ModelValue::Uint(1));
+    server
+        .signal(session, "reload_requested", first_request)
+        .expect("reload_requested is a signal");
+    let mut second_request = Fields::new();
+    second_request.insert("generation".to_owned(), ModelValue::Uint(2));
+    server
+        .signal(session, "reload_requested", second_request)
+        .expect("reload_requested is a signal");
+    host.pump(Tick::new(2)).expect("the pump delivers both requests");
+
+    assert!(host.take_reload_request(), "the request reached the runtime");
+    assert!(
+        !host.take_reload_request(),
+        "the second request was folded into the first"
+    );
 }

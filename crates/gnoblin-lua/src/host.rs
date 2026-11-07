@@ -123,6 +123,10 @@ pub(super) struct Shared<T: Transport> {
     /// The configuration VM's modules for one evaluation, so a plain `require` runs each
     /// module once. `None` outside an evaluation.
     pub(super) modules: Option<Rc<crate::layout::Modules>>,
+    /// Set when the compositor asks for a reload, and cleared by [`Host::take_reload_request`].
+    /// The request arrives as a signal while the pump observes the graph, so the caller acts on
+    /// it once the pump returns.
+    pub(super) reload_requested: bool,
 }
 
 impl<T: Transport> Shared<T> {
@@ -247,6 +251,40 @@ pub struct RunReport {
     pub errors: Vec<ScriptError>,
 }
 
+/// The signal the compositor raises on `session` when `gnoblinctl config reload` asks for a
+/// reload. The name is the one `session.toml` declares.
+const RELOAD_REQUESTED: &str = "reload_requested";
+
+/// What a reload did. A rejected reload leaves the previous configuration in force.
+pub enum ReloadOutcome {
+    /// The new document is in force, and this run is the one to commit.
+    Accepted(RunReport),
+    /// The new configuration failed, with each problem named by file and line.
+    Rejected(String),
+}
+
+/// The state a reload replaces, kept so a rejected reload can put it back.
+struct Previous {
+    handlers: BTreeMap<u64, Watching>,
+    timers: BTreeMap<u64, Tick>,
+    deferred: Vec<u64>,
+    document: Value,
+    callbacks: mlua::Table,
+}
+
+/// Why a reload was refused: every script error and the configuration problems, in one line.
+fn refusal(report: &RunReport) -> String {
+    let mut problems: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
+    if let Err(invalid) = &report.config {
+        problems.push(invalid.to_string());
+    }
+    format!(
+        "the reload of {} was refused, and the last accepted configuration stays in force: {}",
+        report.path.path().display(),
+        problems.join("; ")
+    )
+}
+
 /// The host's receiver for script `print` and `warn` output: routine output at debug level,
 /// deliberate warnings at warn level, both under the `lua` component.
 pub(crate) fn script_sink() -> gnoblin_lua_sandbox::Sink {
@@ -311,6 +349,7 @@ impl<T: Transport + 'static> Host<T> {
             extensions: ExtensionRegistry::new(),
             layouts: crate::layout::LayoutModuleLoader::new(limits),
             modules: None,
+            reload_requested: false,
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {
@@ -432,6 +471,77 @@ impl<T: Transport + 'static> Host<T> {
             document,
             config,
             errors,
+        })
+    }
+
+    /// Evaluate the configuration again while the host keeps running, so a reload does not
+    /// restart the runtime.
+    ///
+    /// The previous handlers, timers and document are set aside while the new file runs. A
+    /// run that reports any failure puts them back, so the last accepted configuration keeps
+    /// answering signals. A clean run replaces them.
+    pub fn reload_config(&mut self, paths: &SearchPaths) -> Result<ReloadOutcome, HostError> {
+        let callbacks: mlua::Table = self
+            .lua
+            .named_registry_value(crate::bindings::CALLBACKS)
+            .map_err(HostError::Sandbox)?;
+        let previous = {
+            let mut shared = self.shared.borrow_mut();
+            // A failure the last run already reported must show again on this run, or a reload
+            // that fails the same way looks like one that succeeded.
+            shared.reported.clear();
+            Previous {
+                handlers: std::mem::take(&mut shared.handlers),
+                timers: std::mem::take(&mut shared.timers),
+                deferred: std::mem::take(&mut shared.deferred),
+                document: shared.document.clone(),
+                callbacks,
+            }
+        };
+        let run = self.run_config(paths);
+        // The drain inside `run_config` may have seen reload requests already queued. This
+        // reload answers them, so they must not start a second one.
+        self.shared.borrow_mut().reload_requested = false;
+        let run = match run {
+            Ok(run) => run,
+            Err(error) => {
+                self.restore(previous)?;
+                return Err(error);
+            }
+        };
+        if run.errors.is_empty() && run.config.is_ok() {
+            return Ok(ReloadOutcome::Accepted(run));
+        }
+        let reason = refusal(&run);
+        self.restore(previous)?;
+        Ok(ReloadOutcome::Rejected(reason))
+    }
+
+    /// Put back the state a rejected reload replaced.
+    fn restore(&mut self, previous: Previous) -> Result<(), HostError> {
+        {
+            let mut shared = self.shared.borrow_mut();
+            shared.handlers = previous.handlers;
+            shared.timers = previous.timers;
+            shared.deferred = previous.deferred;
+            shared.document = previous.document;
+        }
+        self.lua
+            .set_named_registry_value(crate::bindings::CALLBACKS, previous.callbacks)
+            .map_err(HostError::Sandbox)
+    }
+
+    /// Whether the compositor has asked for a reload since the last call. Taking the request
+    /// clears it, so one request runs one reload.
+    pub fn take_reload_request(&self) -> bool {
+        std::mem::take(&mut self.shared.borrow_mut().reload_requested)
+    }
+
+    /// Whether `object` is the `session` object, the only one whose reload request the runtime acts on.
+    fn is_session(&self, object: ObjectId) -> bool {
+        self.shared.borrow().mirror.get(&object).is_some_and(|view| {
+            let ty = view.ty();
+            ty.namespace() == "gnoblin" && ty.name() == "session"
         })
     }
 
@@ -590,6 +700,9 @@ impl<T: Transport + 'static> Host<T> {
             Observation::Signalled {
                 object, signal, fields, ..
             } => {
+                if signal == RELOAD_REQUESTED && self.is_session(object) {
+                    self.shared.borrow_mut().reload_requested = true;
+                }
                 let declared = crate::bindings::signal_fields(&self.shared, object, &signal);
                 let arguments = crate::bindings::signal_table(&self.lua, &self.shared, declared, &fields);
                 match arguments {
