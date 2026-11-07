@@ -1,18 +1,12 @@
-//! The shared pieces of the portal dialogs (design/rust-compositor.md, D19).
+//! The portal dialog models (design/rust-compositor.md, D19).
 //!
 //! - [`model`]: interface names, typed payloads, and the dialog models. Plain data,
 //!   no drawing, no clock, no D-Bus. The compositor links this module for its
-//!   negotiation types.
-//! - [`ui`]: the [`ui::DialogUi`] trait each dialog kind implements, and the
-//!   [`ui::DialogShell`] that runs egui frames for it.
-//! - [`paint`]: the headless CPU painter for egui output.
+//!   negotiation types, and the dialog UI crates build their screens on it.
 //!
-//! The crate names no engine crate. It may name egui and the primitive and schema
-//! crates only; the UI crates depend on it, never the other way round.
+//! The crate names no engine crate: no egui and no renderer. It names the primitive
+//! and schema crates only. The egui shell and the `DialogUi` trait live in
+//! `gnoblin-portal-ui`, which depends on this crate; the dialog screens depend on that.
 
 /// The dialog models and their state, independent of any renderer.
 pub mod model;
-/// Painting helpers that turn a model into egui draw calls.
-pub mod paint;
-/// The egui dialog UIs for each portal dialog kind.
-pub mod ui;

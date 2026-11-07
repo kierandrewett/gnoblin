@@ -10,9 +10,9 @@ use egui::{
     Context, Event, Frame as EguiFrame, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, Theme, ThemePreference,
     Ui, Vec2, Visuals,
 };
+use gnoblin_portal_core::model::{DialogError, DirectoryListing, ScreenKey, Settled};
 use gnoblin_types::Tick;
 
-use crate::model::{DialogError, DirectoryListing, ScreenKey, Settled};
 use crate::paint::{Frame, Textures, rasterise};
 
 /// One egui point is one frame pixel. The headless renderer does not scale.

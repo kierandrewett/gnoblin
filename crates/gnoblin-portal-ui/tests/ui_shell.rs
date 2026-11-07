@@ -2,7 +2,7 @@
 
 use egui::{Key, Ui};
 use gnoblin_portal_core::model::{ScreenKey, Settled};
-use gnoblin_portal_core::ui::{DialogScheme, DialogShell, DialogUi, Setup, key_events};
+use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, DialogUi, Setup, key_events};
 use gnoblin_types::Tick;
 
 /// A dialog kind the shell has never heard of: it settles as denied on Escape.

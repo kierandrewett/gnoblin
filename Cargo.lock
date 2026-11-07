@@ -1517,6 +1517,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-portal",
  "gnoblin-portal-core",
+ "gnoblin-portal-ui",
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-types",
@@ -1690,6 +1691,7 @@ dependencies = [
  "gnoblin-portal-consent",
  "gnoblin-portal-core",
  "gnoblin-portal-filechooser",
+ "gnoblin-portal-ui",
  "gnoblin-types",
  "png",
 ]
@@ -1700,6 +1702,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
+ "gnoblin-portal-ui",
  "gnoblin-types",
 ]
 
@@ -1709,6 +1712,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
+ "gnoblin-portal-ui",
  "gnoblin-types",
 ]
 
@@ -1716,13 +1720,22 @@ dependencies = [
 name = "gnoblin-portal-core"
 version = "0.2.0-alpha.0"
 dependencies = [
- "egui",
  "gnoblin-schema",
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-portal-filechooser"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+ "gnoblin-portal-core",
+ "gnoblin-portal-ui",
+ "gnoblin-types",
+]
+
+[[package]]
+name = "gnoblin-portal-ui"
 version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
