@@ -15,6 +15,12 @@ doc = "Declare configuration. Validated immediately; every problem is raised."
 params = [{ name = "settings", type = "table" }]
 
 [[member]]
+name = "window_rule"
+kind = "function"
+doc = "Append one window rule to the configured list. Load time only; later rules override the fields they set. Unknown keys and refused fields are raised by name."
+params = [{ name = "rule", type = "table" }]
+
+[[member]]
 name = "load"
 kind = "function"
 doc = "Load configuration fragments matching a path or glob, relative to the calling file. Use `require` for a module that returns a value."

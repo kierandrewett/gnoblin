@@ -49,13 +49,50 @@ pub(super) fn declare<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, settings: &
         ));
     }
     let candidate = merge(state.document.clone(), layer);
+    accept(&mut state, candidate, "gnoblin.configure")
+}
+
+/// Append one rule to the `window-rules` list, the way `gnoblin.window_rule` does.
+///
+/// Lists replace whole when layers merge, so appending cannot go through
+/// [`merge`]: the existing list is read, the rule is pushed onto it, and the
+/// whole list is validated. The rule is the last entry, so a problem names
+/// `window-rules[N]` for the index the rule was given.
+pub(super) fn append_rule<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, rule: &Table) -> Result<(), Error> {
+    let rule = value_from_table(rule).map_err(|reason| Error::runtime(format!("gnoblin.window_rule: {reason}")))?;
+    let mut state = shared.borrow_mut();
+    if !state.configuring {
+        return Err(Error::runtime(
+            "gnoblin.window_rule is only available while the configuration loads",
+        ));
+    }
+    let mut candidate = state.document.clone();
+    let Value::Map(root) = &mut candidate else {
+        return Err(Error::runtime("gnoblin.window_rule: the document is not a table"));
+    };
+    match root
+        .entry("window-rules".to_owned())
+        .or_insert_with(|| Value::List(Vec::new()))
+    {
+        Value::List(rules) => rules.push(rule),
+        _ => {
+            return Err(Error::runtime(
+                "gnoblin.window_rule: window-rules is not a list in the document",
+            ));
+        }
+    }
+    accept(&mut state, candidate, "gnoblin.window_rule")
+}
+
+/// Validate a candidate document and make it the document, or refuse it whole.
+fn accept<T: Transport>(state: &mut Shared<T>, candidate: Value, call: &str) -> Result<(), Error> {
     match Config::from_value(candidate) {
         Ok(config) => {
             state.document = config.document().clone();
             Ok(())
         }
         Err(report) => {
-            let mut message = String::from("gnoblin.configure: the settings were not accepted:");
+            let mut message = format!("{call}: the settings were not accepted:");
             for problem in report.problems() {
                 message.push_str("\n  ");
                 message.push_str(&problem.to_string());

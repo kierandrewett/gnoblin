@@ -1023,3 +1023,161 @@ fn two_reload_requests_before_one_pump_coalesce_into_one_reload() {
         "the second request was folded into the first"
     );
 }
+
+/// The `window-rules` list of a run's document, as the `app-id` each rule matches.
+fn window_rule_app_ids(document: &Value) -> Vec<String> {
+    let Some(Value::List(rules)) = document.as_table().and_then(|root| root.get("window-rules")) else {
+        return Vec::new();
+    };
+    rules
+        .iter()
+        .map(|rule| {
+            rule.as_table()
+                .and_then(|rule| rule.get("match"))
+                .and_then(Value::as_table)
+                .and_then(|matcher| matcher.get("app-id"))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn window_rule_appends_after_the_configured_rules_in_call_order() {
+    let config = Config::new("window-rule-append");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.configure { ["window-rules"] = { { match = { ["app-id"] = "^first$" }, maximise = true } } }
+gnoblin.window_rule { match = { ["app-id"] = "^second$" }, maximise = false }
+gnoblin.window_rule { match = { ["app-id"] = "^third$" } }
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(
+        window_rule_app_ids(&report.document),
+        ["^first$", "^second$", "^third$"]
+    );
+}
+
+#[test]
+fn window_rule_without_a_configured_list_starts_one() {
+    let config = Config::new("window-rule-first");
+    config.write(
+        "init.lua",
+        "gnoblin.window_rule { match = { [\"app-id\"] = \"^only$\" }, maximise = true }\n",
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(window_rule_app_ids(&report.document), ["^only$"]);
+}
+
+#[test]
+fn window_rule_refuses_an_unknown_key_by_name_and_changes_nothing() {
+    let config = Config::new("window-rule-unknown-key");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.window_rule { match = { ["app-id"] = "^kept$" } }
+local ok, message = pcall(function()
+    gnoblin.window_rule { sise = 4 }
+end)
+assert(not ok, "an unknown key was accepted")
+assert(string.find(tostring(message), "window-rules[2].sise", 1, true), tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(window_rule_app_ids(&report.document), ["^kept$"]);
+}
+
+#[test]
+fn window_rule_refuses_an_effect_this_build_cannot_draw_by_name() {
+    let config = Config::new("window-rule-refused-field");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(function()
+    gnoblin.window_rule { match = { ["app-id"] = "^x$" }, blur = 4 }
+end)
+assert(not ok, "a refused field was accepted")
+assert(string.find(tostring(message), "window-rules[1].blur", 1, true), tostring(message))
+assert(string.find(tostring(message), "not yet built", 1, true) or string.find(tostring(message), "blur pass", 1, true), tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert!(window_rule_app_ids(&report.document).is_empty());
+}
+
+#[test]
+fn window_rule_refuses_a_pattern_that_is_not_lua_pattern_syntax() {
+    let config = Config::new("window-rule-bad-pattern");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(function()
+    gnoblin.window_rule { match = { title = "(unclosed" } }
+end)
+assert(not ok, "a broken pattern was accepted")
+assert(string.find(tostring(message), "title", 1, true), tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn window_rule_is_refused_after_the_configuration_loads() {
+    let config = Config::new("window-rule-runtime");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.timers.after(1, function()
+    local ok, message = pcall(function() gnoblin.window_rule { match = { ["app-id"] = "^late$" } } end)
+    assert(not ok, "a runtime window_rule was accepted")
+    assert(string.find(tostring(message), "configuration loads", 1, true) ~= nil, tostring(message))
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let pumped = host.pump(Tick::new(1000)).expect("the timer runs");
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn window_rule_refuses_the_257th_rule_and_keeps_the_256_it_had() {
+    let config = Config::new("window-rule-cap");
+    config.write(
+        "init.lua",
+        r#"
+for index = 1, 256 do
+    gnoblin.window_rule { match = { ["app-id"] = "^rule" .. index .. "$" } }
+end
+local ok, message = pcall(function()
+    gnoblin.window_rule { match = { ["app-id"] = "^overflow$" } }
+end)
+assert(not ok, "a 257th rule was accepted")
+assert(string.find(tostring(message), "at most 256 window rules", 1, true), tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair_with(Limits {
+        handler_ticks: 600_000,
+        ..Limits::default()
+    });
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let ids = window_rule_app_ids(&report.document);
+    assert_eq!(ids.len(), 256);
+    assert_eq!(ids.last().map(String::as_str), Some("^rule256$"));
+}

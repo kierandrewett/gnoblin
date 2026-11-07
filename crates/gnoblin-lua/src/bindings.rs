@@ -207,6 +207,13 @@ pub(super) fn install<T: Transport + 'static>(
     }
     {
         let shared = Rc::clone(&shared);
+        gnoblin.set(
+            "window_rule",
+            lua.create_function(move |_, rule: Table| crate::configure::append_rule(&shared, &rule))?,
+        )?;
+    }
+    {
+        let shared = Rc::clone(&shared);
         let guard = Rc::clone(&guard);
         gnoblin.set(
             "load",
