@@ -148,6 +148,9 @@ fn run_session(theme: &str, body: impl FnOnce(&Handle) + Send + 'static) {
         control: server.control(),
         observation: server.observation(),
     };
+    // The screencopy reads what the cursor and window look like once landed, so the open
+    // fade is off here; the fade is covered by the renderer's own tests.
+    handle.control.set_reduced_motion(true);
     let worker = thread::spawn({
         let handle = handle.clone();
         move || {

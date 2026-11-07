@@ -170,6 +170,10 @@ impl Session {
             control: server.control(),
             observation: server.observation(),
         };
+        // Capture tests read the pixels a window has once it has landed, not the fade it
+        // starts with; motion runs on real elapsed time, so the fade is off for them. The
+        // renderer's own tests cover the fade.
+        handle.control.set_reduced_motion(true);
         Self {
             directory,
             server,

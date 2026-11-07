@@ -161,6 +161,11 @@ impl Session {
             observation: server.observation(),
             frames: server.frames(),
         };
+        // Pixel tests read what a window looks like once it has landed, not how it gets
+        // there. The loop's motion runs on real elapsed time, so without this a window that
+        // maps would still be fading in when the probe reads it. Motion has its own tests in
+        // the renderer.
+        handle.control.set_reduced_motion(true);
         Self {
             directory,
             server,
