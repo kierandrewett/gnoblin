@@ -87,10 +87,33 @@ pub fn new_state(keyring: Option<Keyring>) -> State {
     }))
 }
 
-fn lock(state: &State) -> MutexGuard<'_, SecretServiceState> {
+pub(crate) fn lock(state: &State) -> MutexGuard<'_, SecretServiceState> {
     // A poisoned lock means a method panicked while holding the store. The store itself is
     // transactional, so the state is still usable and refusing every later call would be worse.
     state.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Whether the store is open. The unlock path checks this before it prompts.
+pub(crate) fn is_unlocked(state: &State) -> bool {
+    lock(state).keyring.is_some()
+}
+
+/// Install an open store, or drop it with `None`. Dropping the handle leaves the file on disk.
+pub(crate) fn install_keyring(state: &State, keyring: Option<Keyring>) {
+    lock(state).keyring = keyring;
+}
+
+/// Re-key `keyring` to `new` and install it, all under one lock. No other call sees the file
+/// between the re-key and the install, and a failed re-key leaves the old handle in place.
+pub(crate) fn rekey_and_install(
+    state: &State,
+    mut keyring: Keyring,
+    new: &gnoblin_keyring_store::Passphrase,
+) -> Result<(), KeyringError> {
+    let mut shared = lock(state);
+    keyring.rekey(new)?;
+    shared.keyring = Some(keyring);
+    Ok(())
 }
 
 impl SecretServiceState {

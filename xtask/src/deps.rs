@@ -268,6 +268,14 @@ const RULES: &[Rule] = &[
         id: "service-keyring-isolation",
         check: service_keyring_isolation,
     },
+    Rule {
+        id: "keyring-handoff-isolation",
+        check: keyring_handoff_isolation,
+    },
+    Rule {
+        id: "pam-gnoblin-keyring-isolation",
+        check: pam_gnoblin_keyring_isolation,
+    },
 ];
 
 /// One broken edge.
@@ -861,22 +869,50 @@ fn keyring_store_isolation(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The Secret Service face is a thin layer over the keyring store. It may name only the store and
-/// the logging facade among workspace crates, so the bus code cannot reach the compositor's graph.
+/// The Secret Service face is a thin layer over the keyring store. It may name only the store, the
+/// hand-off protocol and the logging facade among workspace crates, so the bus code cannot reach
+/// the compositor's graph.
 fn service_keyring_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if package.name != SERVICE_KEYRING_CRATE || !is_workspace_crate(&dep.name) {
         return None;
     }
-    if dep.name == LOG_CRATE || dep.name == KEYRING_STORE_CRATE {
+    if dep.name == LOG_CRATE || dep.name == KEYRING_STORE_CRATE || dep.name == KEYRING_HANDOFF_CRATE {
         return None;
     }
     Some(format!(
-        "`{SERVICE_KEYRING_CRATE}` may depend only on `{KEYRING_STORE_CRATE}` and `{LOG_CRATE}` among workspace crates, not `{}`",
+        "`{SERVICE_KEYRING_CRATE}` may depend only on `{KEYRING_STORE_CRATE}`, `{KEYRING_HANDOFF_CRATE}` and `{LOG_CRATE}` among workspace crates, not `{}`",
         dep.name
     ))
 }
 
 const SERVICE_KEYRING_CRATE: &str = "gnoblin-service-keyring";
+
+/// The hand-off protocol is a leaf: the PAM module and the service both name it, so it may name no
+/// workspace crate itself.
+fn keyring_handoff_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != KEYRING_HANDOFF_CRATE || !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    Some(format!(
+        "`{KEYRING_HANDOFF_CRATE}` may not depend on workspace crates, but depends on `{}`",
+        dep.name
+    ))
+}
+
+/// The PAM module runs inside every login's PAM stack, so it names only the hand-off protocol among
+/// workspace crates: the store and the compositor's graph stay out of `login`.
+fn pam_gnoblin_keyring_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != PAM_KEYRING_CRATE || !is_workspace_crate(&dep.name) || dep.name == KEYRING_HANDOFF_CRATE {
+        return None;
+    }
+    Some(format!(
+        "`{PAM_KEYRING_CRATE}` may depend only on `{KEYRING_HANDOFF_CRATE}` among workspace crates, not `{}`",
+        dep.name
+    ))
+}
+
+const KEYRING_HANDOFF_CRATE: &str = "gnoblin-keyring-handoff";
+const PAM_KEYRING_CRATE: &str = "pam-gnoblin-keyring";
 
 /// The test kit and the parity harness are development dependencies only.
 fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {

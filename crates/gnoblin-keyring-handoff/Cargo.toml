@@ -1,0 +1,14 @@
+[package]
+name = "gnoblin-keyring-handoff"
+description = "The framed unix-socket protocol that hands the login password from PAM to the keyring service."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The password crosses this crate in buffers that are wiped on drop, so no copy outlives a frame.
+zeroize.workspace = true
+
+[lints]
+workspace = true

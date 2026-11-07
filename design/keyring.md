@@ -40,9 +40,16 @@ the default. It is an optional later add-on, with the facts in the appendix.
 How it works:
 
 1. A PAM module, `pam_gnoblin_keyring`, runs in the login stack of each
-   greeter. It reads `PAM_AUTHTOK` and passes the password to the keyring
-   service on stdin, as `pam_gnome_keyring` does. The service derives the
-   SQLCipher key from it and unlocks the store.
+   greeter. In the auth stage it reads `PAM_AUTHTOK` and holds the password in
+   a zeroizing buffer. In the session stage, once `XDG_RUNTIME_DIR` exists, it
+   sends the password to the keyring service over the unix socket
+   `$XDG_RUNTIME_DIR/gnoblin/keyring-unlock.sock`. The service derives the
+   SQLCipher key from it and unlocks the store. The service is a long-lived
+   process, not a child of the PAM caller, so stdin cannot carry the password.
+   The password is passed to SQLCipher as the database key. SQLCipher stretches
+   it at `kdf_iter` 256000, set explicitly in `gnoblin-keyring-store` (not left
+   to the library default). [INFERENCE] The hash is PBKDF2-HMAC-SHA512, from the
+   SQLCipher 4 defaults; confirm on Agent37 before relying on it.
 2. **No password (fingerprint login, autologin).** The PAM module gets no
    password, so it cannot unlock. The service then shows **one** unlock prompt
    per login session, through the portals prompt UI (D28), or the built-in egui
@@ -210,7 +217,9 @@ written to disk.
 - The master secret and the SQLCipher key live in the service process only.
   They are never logged, never sent to the compositor, and never put in argv or
   the environment.
-- The PAM module hands the password over once, on stdin, and does not keep it.
+- The PAM module hands the password over once, on the unlock socket, and does
+  not keep it. The socket is `0600` in a per-login directory (see
+  `gnoblin-keyring-handoff`).
 - The compositor and the portal relay see only per-app secrets, and only after
   consent.
 - Buffers holding a key or a secret are cleared after use. [INFERENCE] Confirm

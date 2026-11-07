@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 gnoblin-keyring-store = { path = "../gnoblin-keyring-store" }
 gnoblin-log = { path = "../gnoblin-log" }
+gnoblin-keyring-handoff = { path = "../gnoblin-keyring-handoff" }
 # The bus face: the Service, Collection, Item, Session and Prompt interfaces are zbus objects.
 zbus.workspace = true
 # The `dh-ietf1024-sha256-aes128-cbc-pkcs7` session: the same arithmetic as the gcr adapter, on the
@@ -21,6 +22,10 @@ num-bigint.workspace = true
 getrandom.workspace = true
 # The session key and the exponent are wiped on drop.
 zeroize.workspace = true
+# The hand-off listener is `block_on` for the one async call the unlock path makes, and checks
+# the peer's uid with `SO_PEERCRED`.
+futures-lite.workspace = true
+rustix = { workspace = true, features = ["net"] }
 
 [lints]
 workspace = true
