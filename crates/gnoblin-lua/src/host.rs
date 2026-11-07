@@ -248,8 +248,8 @@ pub struct RunReport {
 /// deliberate warnings at warn level, both under the `lua` component.
 pub(crate) fn script_sink() -> gnoblin_lua_sandbox::Sink {
     Rc::new(|level, text| match level {
-        gnoblin_lua_sandbox::LogLevel::Debug => crate::log::debug!("[script] {text}"),
-        gnoblin_lua_sandbox::LogLevel::Warn => crate::log::warn!("[script] {text}"),
+        gnoblin_lua_sandbox::LogLevel::Debug => crate::log::debug!(area = "script", "{text}"),
+        gnoblin_lua_sandbox::LogLevel::Warn => crate::log::warn!(area = "script", "{text}"),
     })
 }
 
