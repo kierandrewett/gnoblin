@@ -28,6 +28,10 @@
 //!    `tests/session_idle.rs::a_duplicate_observation_emits_nothing`.
 //! 6. **The compositor cannot be read at start**: the interface is not served rather than
 //!    answering an idle state nobody observed: `tests/session_idle.rs::an_unreadable_compositor_is_not_served`.
+//! 7. **The service restarts**: the new instance reseeds from the compositor, and an unchanged state announces nothing:
+//!    `tests/session_idle.rs::a_restarted_service_reseeds_without_replaying_the_old_state`.
+//! 8. **A caller the service has never seen** gets the folded state, since `GetActivity` is not gated on the caller:
+//!    `tests/session_idle.rs::a_caller_the_service_has_never_seen_gets_the_folded_state`.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -60,7 +64,7 @@ pub struct Reading {
 
 /// The four values the interface reports, and the signal carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Activity {
+pub struct ActivityState {
     /// Whether the compositor publishes an idle object.
     pub available: bool,
     /// Whether the idle time has reached the threshold.
@@ -71,11 +75,11 @@ pub struct Activity {
     pub idle_for_ms: u64,
 }
 
-impl Activity {
+impl ActivityState {
     /// The activity a reading describes. No reading means nothing is available.
-    fn of(reading: Option<Reading>) -> Activity {
+    fn of(reading: Option<Reading>) -> ActivityState {
         match reading {
-            None => Activity {
+            None => ActivityState {
                 available: false,
                 idle: false,
                 threshold_ms: THRESHOLD_MS,
@@ -83,7 +87,7 @@ impl Activity {
             },
             Some(reading) => {
                 let idle = reading.idle_ms >= THRESHOLD_MS;
-                Activity {
+                ActivityState {
                     available: true,
                     idle,
                     threshold_ms: THRESHOLD_MS,
@@ -106,7 +110,7 @@ struct Tracking {
     published: Option<(bool, bool)>,
 }
 
-struct Core {
+struct SessionIdleCore {
     connection: Connection,
     tracking: Mutex<Tracking>,
 }
@@ -115,18 +119,18 @@ struct Core {
 /// role that folds the compositor's observations into it.
 #[derive(Clone)]
 pub struct SessionIdle {
-    inner: Arc<Core>,
+    shared: Arc<SessionIdleCore>,
 }
 
 impl SessionIdle {
     fn tracking(&self) -> MutexGuard<'_, Tracking> {
-        self.inner.tracking.lock().unwrap_or_else(PoisonError::into_inner)
+        self.shared.tracking.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Fold one compositor observation. `Some` means the `(available, idle)` pair changed
     /// since the last emission, and the caller must publish the returned activity; `None`
     /// means nothing the signal reports changed.
-    pub fn observe(&self, observation: &Observation) -> Option<Activity> {
+    pub fn observe(&self, observation: &Observation) -> Option<ActivityState> {
         let mut tracking = self.tracking();
         match observation {
             Observation::Opened { view, .. } if view.ty() == &TypeKey::gnoblin("idle") => {
@@ -152,7 +156,7 @@ impl SessionIdle {
             }
             _ => return None,
         }
-        let activity = Activity::of(tracking.current);
+        let activity = ActivityState::of(tracking.current);
         if tracking.published == Some(activity.state()) {
             return None;
         }
@@ -162,9 +166,9 @@ impl SessionIdle {
 
     /// Emit `ActivityChanged` with `activity` on the connection. A refused emit is logged;
     /// `GetActivity` still answers the folded state, so the next change re-reports it.
-    pub fn publish(&self, activity: Activity) {
+    pub fn publish(&self, activity: ActivityState) {
         let result = futures_lite::future::block_on(async {
-            let emitter = SignalEmitter::new(&self.inner.connection, PATH)?;
+            let emitter = SignalEmitter::new(&self.shared.connection, PATH)?;
             SessionIdle::activity_changed(
                 &emitter,
                 activity.available,
@@ -180,8 +184,8 @@ impl SessionIdle {
     }
 
     /// The activity the folded state describes now.
-    fn activity(&self) -> Activity {
-        Activity::of(self.tracking().current)
+    fn activity(&self) -> ActivityState {
+        ActivityState::of(self.tracking().current)
     }
 }
 
@@ -197,11 +201,11 @@ pub fn serve(compositor: &dyn Compositor, connection: &Connection) -> Option<Ses
         }
     };
     let service = SessionIdle {
-        inner: Arc::new(Core {
+        shared: Arc::new(SessionIdleCore {
             connection: connection.clone(),
             tracking: Mutex::new(Tracking {
                 current: reading,
-                published: Some(Activity::of(reading).state()),
+                published: Some(ActivityState::of(reading).state()),
             }),
         }),
     };

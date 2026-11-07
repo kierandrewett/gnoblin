@@ -201,13 +201,17 @@ Foundations first, then the window and process surface, then animation, input, C
 
 ### S11. `org.gnoblin.SessionIdle`
 
-- **Goal:** a D-Bus service exposing the idle state and inhibitors from the existing idle object, implemented against
-  the existing spec.
+- **Goal:** a D-Bus service exposing the idle state from the existing idle object, implemented against the existing
+  spec: `GetActivity` and the `ActivityChanged` signal, nothing else.
 - **Files:** new crate beside `gnoblin-service-screensaver`; reads `gnoblin-input/src/idle.rs`; registers in
   `gnoblin-services`.
-- **Schema:** reuses `idle.toml` (`idle_ms`, `inhibitors`, `inhibit`, `uninhibit`).
-- **Tests first:** an inhibit cookie is released when its client disappears; idle state changes emit signals; a second
-  inhibit with the same cookie is refused.
+- **Schema:** reuses `idle.toml` (`idle_ms` and the idle state). `docs/dbus/session-idle.md` defines no inhibit method,
+  so the `inhibit`, `uninhibit` and `inhibitors` fields are not exposed here.
+- **Tests first:** `ActivityChanged` fires once per state change and not on repeats; an unknown caller gets the folded
+  state; a restarted service reseeds from the compositor and does not replay the old state.
+- **Not in S11:** inhibit cookies and their release. Inhibit belongs to `org.freedesktop.ScreenSaver` (the screensaver
+  crate, S13) and to the runtime idle object. The plan had listed inhibit tests here by mistake; the spec does not
+  define them on `org.gnoblin.SessionIdle`, and Main decided against adding them.
 - **Docs:** `docs/dbus/session-idle.md` (spec exists; update status only).
 
 ### S12. `org.gnoblin.Compositor` and CheckPermission
