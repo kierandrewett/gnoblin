@@ -76,6 +76,7 @@ use gnoblin_authority::{Answer, Authority, Decision, Denial, Effect, Event, Requ
 pub use gnoblin_authority::{Consent, PortalCapability};
 use gnoblin_model::Value;
 use gnoblin_types::{ClientId, RequestId, Tick};
+use zeroize::Zeroizing;
 
 use crate::backends::StreamId;
 
@@ -83,6 +84,10 @@ use crate::log;
 
 /// The slot a consent prompt is offered to, as the plan's table names it.
 pub const PORTAL_UI: &str = "portal.ui";
+
+/// The slot a secret read is offered to. Only the services role claims it, so the relay
+/// that asked never answers its own request.
+pub const SECRET_DERIVE: &str = "secret.derive";
 
 /// The identity the authority records for the provider of an IPC offer.
 ///
@@ -115,6 +120,8 @@ pub enum Interface {
     GlobalShortcuts,
     /// `Inhibit`, the monitoring session.
     Inhibit,
+    /// `Secret`, which hands an app its per-app secret once the user allows it.
+    Secret,
 }
 
 impl Interface {
@@ -128,6 +135,7 @@ impl Interface {
             Self::InputCapture => "InputCapture",
             Self::GlobalShortcuts => "GlobalShortcuts",
             Self::Inhibit => "Inhibit",
+            Self::Secret => "Secret",
         }
     }
 
@@ -145,6 +153,7 @@ impl Interface {
         match self {
             Self::ScreenCast | Self::Screenshot => &[PortalCapability::Capture],
             Self::RemoteDesktop | Self::InputCapture => &[PortalCapability::Capture, PortalCapability::InputInjection],
+            Self::Secret => &[PortalCapability::Secret],
             Self::GlobalShortcuts | Self::Inhibit => &[],
         }
     }
@@ -263,6 +272,7 @@ impl Prompt {
         let what = match capability {
             PortalCapability::Capture => "share your screen",
             PortalCapability::InputInjection => "control your pointer and keyboard",
+            PortalCapability::Secret => "read its secret from your keyring",
         };
         let app = if requester.app_id.is_empty() {
             "An unidentified application"
@@ -313,6 +323,17 @@ pub trait Host: Send {
 
     /// Withdraw an offer that can no longer be answered.
     fn withdraw(&mut self, request: RequestId);
+
+    /// Offer a secret read for `app_id` to the `secret.derive` provider.
+    ///
+    /// The receiver yields the provider's answer, or `None` when the request ends without
+    /// one: refused, expired, or its provider left. The bytes are the app's secret, so
+    /// nothing here logs them and the caller wipes them once written.
+    fn offer_secret(
+        &mut self,
+        app_id: &str,
+        timeout: std::time::Duration,
+    ) -> Result<oneshot::Receiver<Option<Zeroizing<Vec<u8>>>>, Refusal>;
 }
 
 /// Why something was refused before it could wait for an answer.
@@ -796,6 +817,16 @@ impl Guard {
             request: offer.request,
             answered,
         })
+    }
+
+    /// Offer the app's secret read to the `secret.derive` provider.
+    ///
+    /// The consent for the read was recorded by [`Guard::ask`] against the session; this
+    /// only hands the provider the request. The answer comes back on the returned
+    /// channel, not through [`Guard::answer`], because the provider answers the read, not
+    /// the consent prompt that the caller is waiting on.
+    pub fn offer_secret(&mut self, app_id: &str) -> Result<oneshot::Receiver<Option<Zeroizing<Vec<u8>>>>, Refusal> {
+        self.host.offer_secret(app_id, self.timeout())
     }
 
     /// Report how a prompt the provider held ended.

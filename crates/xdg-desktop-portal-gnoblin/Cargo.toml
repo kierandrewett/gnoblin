@@ -37,6 +37,8 @@ gnoblin-config = { path = "../gnoblin-config" }
 # The IPC version the handshake advertises is the schema's, and the wire crate is where
 # both sides of a handshake read it from.
 gnoblin-proto = { path = "../gnoblin-proto" }
+# A secret read's bytes are wiped once written to the caller's descriptor.
+zeroize.workspace = true
 # One blocking wait per consent prompt: the D-Bus call waits on a one-shot channel while
 # the IPC loop, on another thread, delivers the answer.
 futures-channel.workspace = true

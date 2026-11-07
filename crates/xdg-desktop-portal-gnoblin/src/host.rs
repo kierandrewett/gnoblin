@@ -45,13 +45,18 @@ use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, Event, PortalOutcome, PortalTicket, Transport};
 use gnoblin_model::{Fields, Filter};
 use gnoblin_types::{RequestId, Version};
+use zeroize::Zeroizing;
 
-use crate::consent::{Host, OFFERER, Offer, PortalCapability, Prompt, Refusal};
+use crate::consent::{Host, OFFERER, Offer, PortalCapability, Prompt, Refusal, SECRET_DERIVE};
 
 use crate::log;
 
 /// The slot consent prompts are offered to.
 const SLOT: &str = crate::consent::PORTAL_UI;
+
+/// The title a secret read is offered under. The services role answers without drawing it,
+/// so it is what a provider that does draw would show.
+const SECRET_TITLE: &str = "Application secret";
 
 /// How long one socket read waits before the loop looks at its queue.
 ///
@@ -67,6 +72,14 @@ enum Command {
         prompt: Prompt,
         timeout: Duration,
         reply: oneshot::Sender<Result<Offer, Refusal>>,
+    },
+    /// Offer a secret read to the `secret.derive` provider. `reply` says whether it was
+    /// offered; `answer` then carries the provider's bytes, or nothing if it never came.
+    OfferSecret {
+        app_id: String,
+        timeout: Duration,
+        answer: oneshot::Sender<Option<Zeroizing<Vec<u8>>>>,
+        reply: oneshot::Sender<Result<(), Refusal>>,
     },
     /// Withdraw an offer that can no longer be answered.
     Decline(RequestId),
@@ -99,6 +112,7 @@ impl IpcHost {
                 queue,
                 pending: HashMap::new(),
                 next_request: 0,
+                secrets: HashMap::new(),
             },
         )
     }
@@ -130,6 +144,29 @@ impl Host for IpcHost {
         // nothing waits on it.
         let _ = self.commands.unbounded_send(Command::Decline(request));
     }
+
+    fn offer_secret(
+        &mut self,
+        app_id: &str,
+        timeout: Duration,
+    ) -> Result<oneshot::Receiver<Option<Zeroizing<Vec<u8>>>>, Refusal> {
+        let (answer, received) = oneshot::channel();
+        let (reply, offered) = oneshot::channel();
+        let command = Command::OfferSecret {
+            app_id: app_id.to_owned(),
+            timeout,
+            answer,
+            reply,
+        };
+        if self.commands.unbounded_send(command).is_err() {
+            return Err(Refusal::NoProvider { slot: SECRET_DERIVE });
+        }
+        match futures_lite::future::block_on(offered) {
+            Ok(Ok(())) => Ok(received),
+            Ok(Err(refusal)) => Err(refusal),
+            Err(_) => Err(Refusal::NoProvider { slot: SECRET_DERIVE }),
+        }
+    }
 }
 
 /// The host of a session with no compositor IPC: no shell can draw a prompt.
@@ -146,6 +183,14 @@ impl Host for NoShell {
     }
 
     fn withdraw(&mut self, _request: RequestId) {}
+
+    fn offer_secret(
+        &mut self,
+        _app_id: &str,
+        _timeout: Duration,
+    ) -> Result<oneshot::Receiver<Option<Zeroizing<Vec<u8>>>>, Refusal> {
+        Err(Refusal::NoProvider { slot: SECRET_DERIVE })
+    }
 }
 
 /// Build the `portal.ui` request that carries one consent prompt.
@@ -158,6 +203,7 @@ fn portal_request(prompt: &Prompt, timeout: Duration) -> PortalRequest {
     let interface = match prompt.capability {
         PortalCapability::Capture => "org.freedesktop.impl.portal.ScreenCast",
         PortalCapability::InputInjection => "org.freedesktop.impl.portal.RemoteDesktop",
+        PortalCapability::Secret => "org.freedesktop.impl.portal.Secret",
     };
     PortalRequest {
         interface: interface.to_owned(),
@@ -177,6 +223,9 @@ pub struct IpcLoop<T: Transport> {
     pending: HashMap<PortalTicket, RequestId>,
     /// The last request number this loop handed out.
     next_request: u64,
+    /// Where each offered secret read delivers its answer, keyed by the request the
+    /// compositor gave it. Only the offering connection receives the answer.
+    secrets: HashMap<RequestId, oneshot::Sender<Option<Zeroizing<Vec<u8>>>>>,
 }
 
 impl<T: Transport> std::fmt::Debug for IpcLoop<T> {
@@ -242,6 +291,38 @@ impl<T: Transport> IpcLoop<T> {
                         };
                         let _ = sender.send(answered);
                     }
+                    Command::OfferSecret {
+                        app_id,
+                        timeout,
+                        answer,
+                        reply,
+                    } => {
+                        let offered = self.client.offer(
+                            SECRET_DERIVE,
+                            SECRET_TITLE,
+                            &format!("{app_id} asks for its secret."),
+                            app_id.as_bytes(),
+                            timeout,
+                        );
+                        match offered {
+                            Ok(request) => {
+                                self.secrets.insert(request, answer);
+                                let _ = reply.send(Ok(()));
+                            }
+                            Err(ClientError::Refused { code, message, .. })
+                                if code == gnoblin_client::code::NO_PROVIDER =>
+                            {
+                                // Nobody claims the internal slot, so the read is refused here
+                                // rather than left to wait for a deadline.
+                                log::warn!(%message, slot = SECRET_DERIVE, "nobody claims the secret slot");
+                                let _ = reply.send(Err(Refusal::NoProvider { slot: SECRET_DERIVE }));
+                            }
+                            Err(error) => {
+                                log::warn!(%error, "a secret read could not be offered");
+                                let _ = reply.send(Err(Refusal::NoProvider { slot: SECRET_DERIVE }));
+                            }
+                        }
+                    }
                     Command::Decline(request) => {
                         let held = self
                             .pending
@@ -261,9 +342,20 @@ impl<T: Transport> IpcLoop<T> {
                 Ok(Event::Model(observation)) => {
                     futures_lite::future::block_on(portal.observe(&observation));
                 }
-                Ok(Event::RequestAnswered { .. } | Event::RequestFinished { .. }) => {
-                    // A portal.ui prompt settles through its ticket, read by `settle_outcomes`,
-                    // so the request events for it carry nothing this loop needs.
+                Ok(Event::RequestAnswered { request, answer }) => {
+                    // Only the connection that offered a request receives its answer. A
+                    // portal.ui prompt settles through its ticket, so its answer is not in
+                    // `secrets` and is dropped here.
+                    if let Some(answer_to) = self.secrets.remove(&request) {
+                        let value = if answer.is_empty() { None } else { Some(answer) };
+                        let _ = answer_to.send(value);
+                    }
+                }
+                Ok(Event::RequestFinished { request, .. }) => {
+                    // Dropping the sender tells a read still waiting that it ended without an
+                    // answer, which the caller turns into a refusal. An answered read was
+                    // already removed, so this does nothing for it.
+                    self.secrets.remove(&request);
                 }
                 Ok(Event::RequestOffered { .. } | Event::Extension { .. }) => {
                     // A request this connection could claim is not its business: the portal

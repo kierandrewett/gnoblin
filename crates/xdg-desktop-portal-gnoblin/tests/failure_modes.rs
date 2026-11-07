@@ -40,6 +40,14 @@ impl Host for FakeHost {
         })
     }
 
+    fn offer_secret(
+        &mut self,
+        _app_id: &str,
+        _timeout: std::time::Duration,
+    ) -> Result<futures_channel::oneshot::Receiver<Option<zeroize::Zeroizing<Vec<u8>>>>, Refusal> {
+        Err(Refusal::NoProvider { slot: "secret.derive" })
+    }
+
     fn withdraw(&mut self, request: RequestId) {
         self.withdrawn.push(request);
     }

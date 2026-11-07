@@ -35,6 +35,14 @@ impl Host for NoProvider {
         Err(Refusal::NoProvider { slot: "portal.ui" })
     }
 
+    fn offer_secret(
+        &mut self,
+        _app_id: &str,
+        _timeout: Duration,
+    ) -> Result<futures_channel::oneshot::Receiver<Option<zeroize::Zeroizing<Vec<u8>>>>, Refusal> {
+        Err(Refusal::NoProvider { slot: "secret.derive" })
+    }
+
     fn withdraw(&mut self, _request: RequestId) {}
 }
 

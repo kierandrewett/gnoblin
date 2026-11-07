@@ -31,6 +31,8 @@ pub mod capture;
 pub mod inhibit;
 /// RemoteDesktop and InputCapture: input injection, delivered over EIS.
 pub mod remote;
+/// Secret: hands an app its per-app secret, once the user allows it.
+pub mod secret;
 /// Settings: the read-only settings object, fed from the compositor's `settings` graph.
 pub mod settings;
 /// GlobalShortcuts and Clipboard: session state machines whose compositor calls are seams.
@@ -224,6 +226,10 @@ impl Portal {
                 PATH,
                 inhibit::Inhibit::new(self.shared.clone(), self.connection.clone()),
             )
+            .await
+            .map_err(bus)?;
+        object_server
+            .at(PATH, secret::Secret::new(self.shared.clone(), self.connection.clone()))
             .await
             .map_err(bus)?;
         Ok(())
