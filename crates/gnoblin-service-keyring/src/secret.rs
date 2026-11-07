@@ -130,6 +130,35 @@ pub fn retrieve(master: &[u8], app_id: &str, granted: bool) -> Result<AppSecret,
     Ok(derive(master, app_id))
 }
 
+/// Why an app's secret was not given.
+#[derive(Debug)]
+pub enum AppSecretError {
+    /// The master could not be read, most often because the store is locked.
+    Master(MasterError),
+    /// The request named no app, so there is no secret to give.
+    Refused(SecretRefusal),
+}
+
+/// The app secrets of the store behind a Secret Service. It shares the store's lock with the bus
+/// methods, so a secret is never derived while the store is being re-keyed.
+#[derive(Clone)]
+pub struct Secrets {
+    state: State,
+}
+
+impl Secrets {
+    pub(crate) fn new(state: State) -> Secrets {
+        Secrets { state }
+    }
+
+    /// The secret for `app_id`. The compositor asks the user before it offers the read here, so the
+    /// grant is taken as given; an empty app id is still refused by `retrieve`.
+    pub fn app_secret(&self, app_id: &str) -> Result<AppSecret, AppSecretError> {
+        let master = master(&self.state).map_err(AppSecretError::Master)?;
+        retrieve(&master, app_id, true).map_err(AppSecretError::Refused)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

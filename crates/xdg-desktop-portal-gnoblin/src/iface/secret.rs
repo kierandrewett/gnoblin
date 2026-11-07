@@ -27,22 +27,22 @@ const SECRET_VERSION: u32 = 1;
 
 /// `org.freedesktop.impl.portal.Secret`.
 #[derive(Debug)]
-pub struct Secret {
+pub struct SecretPortal {
     portal: Portal,
 }
 
-impl Secret {
+impl SecretPortal {
     /// The interface sharing the portal's state.
     #[must_use]
-    pub fn new(shared: std::sync::Arc<std::sync::Mutex<super::Shared>>, connection: Connection) -> Secret {
-        Secret {
+    pub fn new(shared: std::sync::Arc<std::sync::Mutex<super::Shared>>, connection: Connection) -> SecretPortal {
+        SecretPortal {
             portal: Portal { shared, connection },
         }
     }
 }
 
 #[zbus::interface(name = "org.freedesktop.impl.portal.Secret")]
-impl Secret {
+impl SecretPortal {
     /// The interface version, so a frontend can tell what this build serves.
     #[zbus(property)]
     fn version(&self) -> u32 {
@@ -96,7 +96,7 @@ impl Secret {
     }
 }
 
-impl Secret {
+impl SecretPortal {
     /// Ask the keyring for the app's secret and write it to `fd`.
     ///
     /// The read is offered to the keyring service, which answers with the bytes or with

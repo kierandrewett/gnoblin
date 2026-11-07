@@ -7,6 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use gnoblin_config::{Config, SearchPaths, Store};
+use gnoblin_model::CapabilitySlot;
+use gnoblin_service_keyring::Secrets;
 
 use crate::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use crate::log;
@@ -87,6 +89,8 @@ pub struct KeyringAgent {
     socket: PathBuf,
     /// Held so the bus name stays ours for as long as the role runs.
     connection: Option<zbus::Connection>,
+    /// Reads the app secrets behind `secret.derive`. Absent until the store serves.
+    secrets: Option<Secrets>,
 }
 
 impl KeyringAgent {
@@ -97,6 +101,7 @@ impl KeyringAgent {
             store,
             socket,
             connection: None,
+            secrets: None,
         }
     }
 }
@@ -104,8 +109,9 @@ impl KeyringAgent {
 impl LinkedAgent for KeyringAgent {
     fn start(&mut self, _host: &Host, _deadline: Tick) -> bool {
         match futures_lite::future::block_on(gnoblin_service_keyring::serve(&self.store, &self.socket)) {
-            Ok(connection) => {
+            Ok((connection, secrets)) => {
                 self.connection = Some(connection);
+                self.secrets = Some(secrets);
                 true
             }
             Err(error) => {
@@ -118,6 +124,31 @@ impl LinkedAgent for KeyringAgent {
     }
 
     fn answer(&self, _request: RequestId, _outcome: &RequestOutcome) {}
+
+    /// Derive the app secret for `secret.derive`. The subject is the app id, which the portal
+    /// sends as the offer's subject. A locked store or a missing app id declines, because the
+    /// caller is left with nothing it can use and must not wait for the deadline.
+    fn offer(&self, host: &Host, request: RequestId, slot: &str, subject: &[u8]) -> bool {
+        if slot != CapabilitySlot::SecretDerive.name() {
+            return false;
+        }
+        let secret = self
+            .secrets
+            .as_ref()
+            .ok_or_else(|| "the store is not serving".to_owned())
+            .and_then(|secrets| {
+                let app_id = std::str::from_utf8(subject).map_err(|error| error.to_string())?;
+                secrets.app_secret(app_id).map_err(|error| format!("{error:?}"))
+            });
+        match secret {
+            Ok(secret) => host.answer(request, &secret[..]),
+            Err(reason) => {
+                log::info!(area = "services", request = request.get(), %reason, "declining a secret offer");
+                host.decline(request);
+            }
+        }
+        true
+    }
 }
 
 #[cfg(test)]

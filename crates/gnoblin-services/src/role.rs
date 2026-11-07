@@ -242,12 +242,17 @@ impl Agents {
                     ScreenSaver::publish(connection, active);
                 }
             }
-            gnoblin_client::Event::RequestOffered { request, slot, .. } => {
-                // This role provides the slot and draws nothing, so the offer ends here
-                // rather than waiting for a deadline nobody will meet.
-                log::info!(request = request.get(), %slot, "declining an offer this role cannot draw");
+            gnoblin_client::Event::RequestOffered {
+                request, slot, subject, ..
+            } => {
+                // The offer is claimed before any agent looks at it, so the agent can answer
+                // it. One that does not provide the slot leaves it to the next, and when none
+                // does the offer is declined now rather than at a deadline nobody will meet.
                 host.claim(request);
-                host.decline(request);
+                if !self.offer(host, request, &slot, &subject) {
+                    log::info!(request = request.get(), %slot, "declining an offer this role cannot draw");
+                    host.decline(request);
+                }
             }
             gnoblin_client::Event::RequestAnswered { request, mut answer } => {
                 // The outcome takes the bytes over, so the client's wrapper is left empty.
@@ -283,6 +288,14 @@ impl Agents {
         for agent in &self.linked {
             agent.answer(request, outcome);
         }
+    }
+
+    /// Offer a claimed request to the linked agents in turn. The first that provides the slot
+    /// answers or declines it and returns `true`; `false` means none does.
+    fn offer(&self, host: &Host, request: RequestId, slot: &str, subject: &[u8]) -> bool {
+        self.linked
+            .iter()
+            .any(|agent| agent.offer(host, request, slot, subject))
     }
 
     /// Give the agents back: polkitd stops calling this process only once it is told.

@@ -26,6 +26,7 @@ use zbus::Connection;
 use zbus::fdo::RequestNameFlags;
 
 pub use objects::SERVICE_PATH;
+pub use secret::{AppSecret, AppSecretError, Secrets};
 pub use unlock::{PasswordPrompt, PromptOutcome, UnlockError, UnlockKeySource};
 
 gnoblin_log::logger!(log = "keyring-service");
@@ -40,8 +41,9 @@ pub const BUS_NAME: &str = "org.freedesktop.secrets";
 /// first call that reaches the name finds them all. The hand-off socket is bound only after the
 /// name is ours, so a service that lost the name never accepts a password. If the name is already
 /// taken, the error is returned and the connection is dropped, which removes the objects again.
-/// The returned connection serves until it is dropped.
-pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<Connection> {
+/// The returned connection serves until it is dropped, and the [`Secrets`] handle reads app
+/// secrets from the same store for as long as the connection serves.
+pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<(Connection, Secrets)> {
     let state = objects::new_state(None);
     let connection = Connection::session().await?;
     connection
@@ -64,6 +66,7 @@ pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<Connection>
             log::warn!("the collections could not be exported: {error:?}");
         }
     });
+    let secrets = Secrets::new(Arc::clone(&state));
     let source = Arc::new(Mutex::new(UnlockKeySource::new(
         store_path.to_path_buf(),
         state,
@@ -71,5 +74,5 @@ pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<Connection>
     )));
     handoff::listen(socket, source).map_err(|error| zbus::Error::Failure(error.to_string()))?;
     log::info!(name = BUS_NAME, path = SERVICE_PATH, "serving the Secret Service");
-    Ok(connection)
+    Ok((connection, secrets))
 }

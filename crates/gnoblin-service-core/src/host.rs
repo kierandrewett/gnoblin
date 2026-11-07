@@ -89,6 +89,14 @@ impl Host {
         }
     }
 
+    /// Answer a request this role claimed, with the bytes its slot calls for. The bytes may be a
+    /// secret, so nothing here logs them.
+    pub fn answer(&self, request: RequestId, answer: &[u8]) {
+        if let Err(error) = self.lock().answer(request, answer) {
+            log::warn!(area = "services", %error, request = request.get(), "cannot answer an offer");
+        }
+    }
+
     /// Offer one request on `slot` to whoever provides it. `subject` is carried to the
     /// provider unread; see [`Proposition::subject`].
     pub fn offer(
@@ -165,4 +173,11 @@ pub trait LinkedAgent {
 
     /// Report how a request this agent offered ended. Other requests are not its own.
     fn answer(&self, request: RequestId, outcome: &RequestOutcome);
+
+    /// Take an offer on a slot this agent provides. The role has already claimed `request`; the
+    /// agent answers or declines it and returns `true`. Offers the agent does not provide return
+    /// `false`, and the role offers them to the next agent, then declines what none takes.
+    fn offer(&self, _host: &Host, _request: RequestId, _slot: &str, _subject: &[u8]) -> bool {
+        false
+    }
 }

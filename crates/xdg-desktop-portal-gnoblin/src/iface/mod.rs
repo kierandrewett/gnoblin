@@ -229,7 +229,10 @@ impl Portal {
             .await
             .map_err(bus)?;
         object_server
-            .at(PATH, secret::Secret::new(self.shared.clone(), self.connection.clone()))
+            .at(
+                PATH,
+                secret::SecretPortal::new(self.shared.clone(), self.connection.clone()),
+            )
             .await
             .map_err(bus)?;
         Ok(())
