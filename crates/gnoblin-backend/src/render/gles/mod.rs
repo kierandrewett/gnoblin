@@ -1007,6 +1007,17 @@ impl Painter<'_> {
         let Some(rect) = dst.intersection(Rect::new(0, 0, self.physical.width, self.physical.height)) else {
             return Ok(false);
         };
+        // The blur runs at full resolution here, so `downscale` is not honoured yet. A blur is
+        // drawn every frame, so the notice is given once rather than per frame.
+        static DOWNSCALE_IGNORED: std::sync::Once = std::sync::Once::new();
+        if blur.downscale != 1.0 {
+            DOWNSCALE_IGNORED.call_once(|| {
+                warn_in!(
+                    "backend",
+                    "unsupported-effect: blur downscale is not honoured on GLES; the blur runs at full resolution"
+                );
+            });
+        }
         let sweeps = blur.passes.clamp(1, gnoblin_render::MAX_BLUR_PASSES);
         let reach = sweeps * ((radius / 3.0 * 4.0).ceil() as u32 + 1);
         let region = Rect::new(

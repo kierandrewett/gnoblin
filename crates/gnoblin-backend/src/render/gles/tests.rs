@@ -13,10 +13,13 @@ use crate::render::Software;
 use crate::render::frame::{Model, Solid};
 use gnoblin_render::{BlurParams, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
 
-/// A blur with the given radius and the schema's other defaults.
+/// A blur with the given radius and one pass, which is one horizontal and one vertical sweep.
+/// The reference formulas in these tests describe that single sweep, so the schema's default
+/// of three passes is pinned off here and tested where a pass count is the point.
 fn blur(radius: f32) -> BlurParams {
     BlurParams {
         radius,
+        passes: 1,
         ..BlurParams::default()
     }
 }
@@ -333,12 +336,11 @@ fn a_shadow_does_not_leave_the_damage() {
     );
 }
 
-#[test]
-fn a_blur_blurs_a_sharp_edge_behind_the_layer() {
+/// The sharp black and white edge of the blur tests, with a layer of `blur` over it, read back
+/// from a fresh renderer. `None` where this machine has no GLES context.
+fn blurred_edge(blur: BlurParams) -> Option<Image> {
     let size = Size::new(64, 64);
-    let Some(mut renderer) = gles(size) else {
-        return;
-    };
+    let mut renderer = gles(size)?;
     let mut frame = OutputFrame::new();
     frame.set_background(Color::BLACK);
     frame.push_damage(Rect::new(0, 0, 64, 64));
@@ -354,12 +356,18 @@ fn a_blur_blurs_a_sharp_edge_behind_the_layer() {
     )));
     let mut glass = Solid::new(Rect::new(0, 0, 64, 64), Color::TRANSPARENT);
     let mut effects = Effects::new();
-    effects.push(Pass::Blur(blur(12.0))).expect("a blur");
+    effects.push(Pass::Blur(blur)).expect("a blur");
     glass.effects = effects;
     frame.push_layer(Layer::Solid(glass));
     renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
-    let image = renderer.screenshot().expect("a readback");
+    Some(renderer.screenshot().expect("a readback"))
+}
 
+#[test]
+fn a_blur_blurs_a_sharp_edge_behind_the_layer() {
+    let Some(image) = blurred_edge(blur(12.0)) else {
+        return;
+    };
     let edge = u32::from(probe(&image, 32, 32)[0]);
     let close = u32::from(probe(&image, 28, 32)[0]);
     let far = u32::from(probe(&image, 12, 32)[0]);
@@ -374,6 +382,52 @@ fn a_blur_blurs_a_sharp_edge_behind_the_layer() {
     );
     assert!(far <= 4, "the far side of the blur is still black: {far}");
     assert!(beyond >= 251, "and the white side is still white: {beyond}");
+}
+
+/// Each pass is a further sweep over the last, so more passes spread the same edge wider: a
+/// point eight pixels into the black side is lighter after four passes than after one.
+#[test]
+fn more_blur_passes_spread_the_edge_further() {
+    let (Some(one), Some(four)) = (
+        blurred_edge(BlurParams {
+            radius: 12.0,
+            passes: 1,
+            ..BlurParams::default()
+        }),
+        blurred_edge(BlurParams {
+            radius: 12.0,
+            passes: 4,
+            ..BlurParams::default()
+        }),
+    ) else {
+        return;
+    };
+    let near_one = u32::from(probe(&one, 24, 32)[0]);
+    let near_four = u32::from(probe(&four, 24, 32)[0]);
+    assert!(
+        near_four > near_one + 4,
+        "four passes reach further from the edge than one: {near_four} against {near_one}"
+    );
+}
+
+/// The tint is mixed over the blurred backdrop after the last sweep. A half red tint over the
+/// white side keeps the red and takes half of the green and blue away.
+#[test]
+fn a_blur_tint_grades_the_blurred_backdrop() {
+    let Some(image) = blurred_edge(BlurParams {
+        radius: 12.0,
+        tint: Color::from_rgba8(255, 0, 0, 128),
+        ..BlurParams::default()
+    }) else {
+        return;
+    };
+    let [red, green, blue, _] = probe(&image, 52, 32);
+    assert!(red >= 240, "the red tint keeps the red of the white side: {red}");
+    assert!((110..=145).contains(&green), "half of the green is mixed away: {green}");
+    assert!(
+        green.abs_diff(blue) <= 4,
+        "green and blue take the same share: {green} against {blue}"
+    );
 }
 
 #[test]
