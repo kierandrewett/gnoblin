@@ -201,7 +201,7 @@ gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    let pumped = host.pump(Tick::new(1)).expect("the pump survives a loop");
+    let pumped = host.pump(Tick::new(1000)).expect("the pump survives a loop");
     assert_eq!(pumped.handlers, 2, "the second timer must still run");
     assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
     assert!(
@@ -211,7 +211,7 @@ gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
     );
 
     // The host is still usable: the state survived the aborted entry.
-    let again = host.pump(Tick::new(2)).expect("the host still pumps");
+    let again = host.pump(Tick::new(2000)).expect("the host still pumps");
     assert_eq!(again.errors.len(), 0);
 }
 
@@ -349,7 +349,7 @@ end)
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    let pumped = host.pump(Tick::new(1)).expect("the timer calls focus");
+    let pumped = host.pump(Tick::new(1000)).expect("the timer calls focus");
     assert_eq!(pumped.handlers, 1);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 
@@ -361,7 +361,7 @@ end)
     // compositor owns.
     assert!(server.complete(operation, OperationOutcome::Done).is_err());
 
-    let pumped = host.pump(Tick::new(2)).expect("the completion arrives");
+    let pumped = host.pump(Tick::new(2000)).expect("the completion arrives");
     assert_eq!(pumped.handlers, 1, "exactly one completion callback");
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
     let pending: Vec<OperationId> = server.graph().pending().map(|operation| operation.id()).collect();
@@ -389,7 +389,7 @@ gnoblin.timers.after(1, function() error("other") end)
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    let pumped = host.pump(Tick::new(1)).expect("the pump runs the timers");
+    let pumped = host.pump(Tick::new(1000)).expect("the pump runs the timers");
     assert_eq!(pumped.handlers, 3);
     assert_eq!(pumped.errors.len(), 2, "one site reported twice: {:#?}", pumped.errors);
     let messages: Vec<&str> = pumped.errors.iter().map(gnoblin_lua::ScriptError::message).collect();
@@ -403,10 +403,10 @@ fn a_timer_fires_on_its_tick_and_never_after_cancel() {
     config.write(
         "init.lua",
         r#"
-gnoblin.timers.after(10, function()
-    assert(gnoblin.timers.now() == 10, "the timer sees the caller's tick, saw " .. gnoblin.timers.now())
+gnoblin.timers.after(1, function()
+    assert(gnoblin.timers.now() == 1, "the timer sees the caller's tick, saw " .. gnoblin.timers.now())
 end)
-local cancelled = gnoblin.timers.after(5, function() error("a cancelled timer fired") end)
+local cancelled = gnoblin.timers.after(0.5, function() error("a cancelled timer fired") end)
 cancelled:cancel()
 "#,
     );
@@ -414,13 +414,17 @@ cancelled:cancel()
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    assert_eq!(host.pump(Tick::new(4)).expect("a pump").handlers, 0);
-    assert_eq!(host.pump(Tick::new(5)).expect("a pump").handlers, 0, "cancelled at 5");
-    let due = host.pump(Tick::new(10)).expect("a pump");
+    assert_eq!(host.pump(Tick::new(400)).expect("a pump").handlers, 0);
+    assert_eq!(
+        host.pump(Tick::new(500)).expect("a pump").handlers,
+        0,
+        "cancelled at 0.5 s"
+    );
+    let due = host.pump(Tick::new(1000)).expect("a pump");
     assert_eq!(due.handlers, 1);
     assert!(due.errors.is_empty(), "{:#?}", due.errors);
     assert_eq!(
-        host.pump(Tick::new(11)).expect("a pump").handlers,
+        host.pump(Tick::new(1001)).expect("a pump").handlers,
         0,
         "a one-shot timer fires once"
     );
@@ -515,7 +519,7 @@ end)
     let mut host = host;
     let report = host.run_config(&config.paths()).expect("the run restarts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
-    let pumped = host.pump(Tick::new(1)).expect("a pump applies the diff");
+    let pumped = host.pump(Tick::new(1000)).expect("a pump applies the diff");
     assert_eq!(pumped.handlers, 1);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
@@ -552,13 +556,13 @@ end)
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
     assert!(server.graph().object(window).is_none());
 
-    let pumped = host.pump(Tick::new(2)).expect("the timer checks the mirror");
+    let pumped = host.pump(Tick::new(2000)).expect("the timer checks the mirror");
     assert_eq!(pumped.handlers, 1);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 
     // The handler is gone with its object: a second close signal is impossible,
     // and a fresh pump has nothing left to run.
-    let pumped = host.pump(Tick::new(3)).expect("nothing left");
+    let pumped = host.pump(Tick::new(3000)).expect("nothing left");
     assert_eq!(pumped.handlers, 0);
 }
 
@@ -578,7 +582,7 @@ end)
     let (_server, mut host) = pair();
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
-    let pumped = host.pump(Tick::new(1)).expect("the timer runs");
+    let pumped = host.pump(Tick::new(1000)).expect("the timer runs");
     assert_eq!(pumped.handlers, 1);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
@@ -604,7 +608,7 @@ gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    let pumped = host.pump(Tick::new(1)).expect("the pump survives the deadline");
+    let pumped = host.pump(Tick::new(1000)).expect("the pump survives the deadline");
     assert_eq!(pumped.handlers, 2, "the second timer still ran");
     assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
     assert!(
@@ -638,14 +642,14 @@ end)
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 
-    let pumped = host.pump(Tick::new(1)).expect("the pump survives the allocation");
+    let pumped = host.pump(Tick::new(1000)).expect("the pump survives the allocation");
     assert_eq!(pumped.handlers, 1);
     assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
     let message = pumped.errors[0].message().to_lowercase();
     assert!(message.contains("memory"), "{message}");
 
     // The host is still usable after a refused allocation.
-    let again = host.pump(Tick::new(2)).expect("the host still pumps");
+    let again = host.pump(Tick::new(2000)).expect("the host still pumps");
     assert_eq!(again.errors.len(), 0);
 }
 
@@ -794,4 +798,65 @@ assert(string.match(tostring(message), "unknown module `layouts.nothing`") ~= ni
     let (_server, mut host) = pair();
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_timer_delay_outside_one_day_or_not_a_number_is_refused() {
+    let config = Config::new("timer-range");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(gnoblin.timers.after, 86401, function() end)
+assert(not ok, "a delay past one day was accepted")
+assert(string.find(tostring(message), "86400", 1, true), "the range is missing from: " .. tostring(message))
+assert(not pcall(gnoblin.timers.after, -1, function() end), "a negative delay was accepted")
+assert(not pcall(gnoblin.timers.after, 0 / 0, function() end), "a NaN delay was accepted")
+gnoblin.timers.after(86400, function() end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(host.pump(Tick::new(86_399_999)).expect("a pump").handlers, 0);
+    assert_eq!(host.pump(Tick::new(86_400_000)).expect("a pump").handlers, 1);
+}
+
+#[test]
+fn the_pending_timer_count_is_capped_at_1024() {
+    let config = Config::new("timer-cap");
+    config.write(
+        "init.lua",
+        r#"
+local refused = 0
+for _ = 1, 1025 do
+    if not pcall(gnoblin.timers.after, 1, function() end) then
+        refused = refused + 1
+    end
+end
+assert(refused == 1, "expected one refusal past 1024, saw " .. refused)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(host.pump(Tick::new(1000)).expect("a pump").handlers, 1024);
+}
+
+#[test]
+fn a_reload_cancels_the_timers_of_the_previous_run() {
+    let config = Config::new("timer-reload");
+    config.write(
+        "init.lua",
+        "gnoblin.timers.after(1, function() error(\"a timer from before the reload fired\") end)\n",
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    config.write("init.lua", "");
+    let report = host.run_config(&config.paths()).expect("the run restarts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let pumped = host.pump(Tick::new(1000)).expect("a pump");
+    assert_eq!(pumped.handlers, 0, "the reload cleared the old timer");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }

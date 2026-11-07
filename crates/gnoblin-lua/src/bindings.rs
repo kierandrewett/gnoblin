@@ -221,8 +221,22 @@ pub(super) fn install<T: Transport + 'static>(
         let shared = Rc::clone(&shared);
         timers.set(
             "after",
-            lua.create_function(move |lua, (ticks, callback): (u64, Function)| {
-                let due = shared.borrow().clock.saturating_add(ticks);
+            lua.create_function(move |lua, (seconds, callback): (f64, Function)| {
+                // The Lua surface counts seconds; the clock counts milliseconds. A
+                // non-finite or out-of-range delay is refused here, not clamped, so a
+                // typo in a config fails at load instead of firing at the wrong time.
+                if !seconds.is_finite() || !(0.0..=MAX_TIMER_SECONDS).contains(&seconds) {
+                    return Err(Error::runtime(format!(
+                        "gnoblin.timers.after takes 0 to {MAX_TIMER_SECONDS} seconds, found {seconds}"
+                    )));
+                }
+                if shared.borrow().timers.len() >= MAX_PENDING_TIMERS {
+                    return Err(Error::runtime(format!(
+                        "gnoblin.timers.after has {MAX_PENDING_TIMERS} timers pending; cancel some first"
+                    )));
+                }
+                let milliseconds = (seconds * 1000.0).round() as u64;
+                let due = shared.borrow().clock.saturating_add(milliseconds);
                 let id = shared.borrow_mut().allocate();
                 callbacks(lua)?.raw_set(id, callback)?;
                 shared.borrow_mut().timers.insert(id, due);
@@ -237,7 +251,7 @@ pub(super) fn install<T: Transport + 'static>(
         let shared = Rc::clone(&shared);
         timers.set(
             "now",
-            lua.create_function(move |_, ()| Ok(shared.borrow().clock.get()))?,
+            lua.create_function(move |_, ()| Ok(shared.borrow().clock.get() as f64 / 1000.0))?,
         )?;
     }
     gnoblin.set("timers", timers)?;
@@ -853,6 +867,13 @@ fn find_namespace(name: &str) -> Option<&'static NamespaceSpec> {
 fn find_object(namespace: &'static NamespaceSpec, name: &str) -> Option<&'static ObjectSpec> {
     namespace.objects.iter().find(|object| object.name == name)
 }
+
+/// The longest delay `gnoblin.timers.after` accepts: one day, in seconds.
+const MAX_TIMER_SECONDS: f64 = 86_400.0;
+
+/// Timers that may be pending at once. A config that schedules more than this is almost
+/// certainly rescheduling in a loop, so the call is refused rather than queued.
+const MAX_PENDING_TIMERS: usize = 1024;
 
 /// The `Operation` a method call returns.
 ///
