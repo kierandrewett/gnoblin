@@ -115,6 +115,7 @@
 #![forbid(unsafe_code)]
 
 mod a11y;
+mod colour;
 mod config;
 mod effect;
 mod event;
@@ -135,6 +136,8 @@ mod tests;
 /// The accessibility state machines: feed them [`Event`]s, apply their [`Effect`]s.
 pub use a11y::A11y;
 /// Settings under `accessibility`, one struct per feature, read from configuration.
+/// Named colour filters and the colour matrix rows each one applies.
+pub use colour::{ColourFilter, Rows};
 pub use config::{
     BounceKeysConfig, Config, Follow, MagnifierConfig, Mode, MouseKeysConfig, SlowKeysConfig, StickyKeysConfig,
 };
