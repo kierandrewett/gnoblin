@@ -1259,6 +1259,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-backend-drm"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-backend",
+ "gnoblin-config",
+ "gnoblin-log",
+ "gnoblin-output",
+ "gnoblin-render-frame",
+ "gnoblin-render-gles",
+ "gnoblin-types",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-capture"
 version = "0.2.0-alpha.0"
 dependencies = [

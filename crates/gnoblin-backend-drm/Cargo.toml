@@ -1,0 +1,37 @@
+[package]
+name = "gnoblin-backend-drm"
+description = "The hardware backend: DRM and KMS through udev and libseat, libinput for input, and a GLES scan-out path."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# This crate has no `unsafe` of its own. Smithay's DRM, libinput, libseat and udev bindings
+# are safe to call, so it keeps the workspace table's `forbid` rather than restating it with
+# an exemption. The GLES calls it scans out through are `unsafe` and live in
+# `gnoblin-render-gles`, which carries its own exemption.
+[lints]
+workspace = true
+
+[dependencies]
+# The DRM, libinput, libseat, udev and GBM bindings, and the event-loop handle the sources
+# register with. Pinned workspace-wide (D7) with the hardware features enabled, because they
+# are choices the whole workspace has to make together.
+smithay.workspace = true
+# Outputs, events and targets are stated in the shared primitives.
+gnoblin-types.workspace = true
+# A hardware output's EDID becomes the descriptor the layout engine and the mode list read.
+gnoblin-output = { path = "../gnoblin-output" }
+# The frame description each output renders and the scan-out buffers it is drawn into.
+gnoblin-render-frame = { path = "../gnoblin-render-frame" }
+# The GLES renderer the scan-out path draws through; its calls are `unsafe` and confined there.
+gnoblin-render-gles = { path = "../gnoblin-render-gles" }
+# The `input` section the libinput devices are configured from. The types are the generated
+# document's, so a key the configuration accepts and the driver does not know cannot exist.
+gnoblin-config = { path = "../gnoblin-config" }
+# Log lines for a refused modeset, a lost device or a gamma table that does not fit.
+gnoblin-log = { path = "../gnoblin-log" }
+# The backend contract this crate implements, and the vocabulary (events, outputs, targets)
+# the compositor receives. This direction is the only one allowed: the contract never names
+# a hardware backend.
+gnoblin-backend = { path = "../gnoblin-backend" }

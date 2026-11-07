@@ -44,7 +44,7 @@ use std::collections::BTreeSet;
 
 use gnoblin_types::{OutputId, Point, Size};
 
-use crate::{InputEvent, TouchPhase};
+use gnoblin_backend::{InputEvent, TouchPhase};
 
 /// How many millionths of a scroll step make one step.
 ///

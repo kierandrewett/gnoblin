@@ -39,25 +39,7 @@
 
 use gnoblin_config::{AccelProfile, ClickMethod, Handedness, Inherit, Input, TapButtonMap};
 
-/// What kind of device a setting applies to.
-///
-/// It is libinput's capability set collapsed to the kinds the configuration has a section for,
-/// so one rule decides which section a device reads.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DeviceKind {
-    /// A touchpad, which has every setting the configuration offers.
-    Touchpad,
-    /// A mouse: acceleration, handedness, scroll direction.
-    Mouse,
-    /// A trackball: acceleration, middle-click emulation, scroll emulation.
-    Trackball,
-    /// A pointing stick: acceleration, scroll method.
-    PointingStick,
-    /// A touch screen: no settings, because its calibration belongs to the seat.
-    Touch,
-    /// A keyboard: repeat and delay are the keymap's, not libinput's.
-    Keyboard,
-}
+use gnoblin_backend::DeviceKind;
 
 /// The acceleration profile a pointer uses.
 #[derive(Clone, PartialEq, Debug)]

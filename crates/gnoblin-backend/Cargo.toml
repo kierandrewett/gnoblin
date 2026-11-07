@@ -1,22 +1,17 @@
 [package]
 name = "gnoblin-backend"
-description = "Backends (DRM, nested, headless) and the extension traits the engine crates share."
+description = "Backends (nested, headless) and the extension traits the engine crates share. The DRM/KMS backend is `gnoblin-backend-drm`."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# The workspace table forbids `unsafe` outright, which cannot be lifted. This crate still
-# needs it for Smithay's `unsafe` constructors (`EGLDisplay::new`, the DRM and session
-# bootstrap) and for its nested-backend FFI, so it restates the workspace's levels with
-# `deny` and confines the exemption to the modules that make those calls, each opening with
-# `#[allow(unsafe_code)]` and a `SAFETY:` comment per block. The GLES and Vulkan calls live
-# in `gnoblin-render-gles` and `gnoblin-render-vulkan`, which carry their own exemptions.
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = { level = "deny", priority = -1 }
+# This crate has no `unsafe` of its own: the GLES and Vulkan calls live in
+# `gnoblin-render-gles` and `gnoblin-render-vulkan`, and the DRM bootstrap lives in
+# `gnoblin-backend-drm`. So it inherits the workspace lint levels (`unsafe_code = "forbid"`)
+# rather than restating them.
+[lints]
+workspace = true
 
 [features]
 # The Vulkan renderer lives in `gnoblin-render-vulkan`. On by default because the Vulkan
@@ -26,14 +21,13 @@ default = ["vulkan"]
 vulkan = ["dep:gnoblin-render-vulkan"]
 
 [dependencies]
-# The event-loop handle the backend contract registers its sources with, and the
-# library the DRM and nested backends will drive. Pinned workspace-wide (D7) with the
-# `renderer_pixman` feature, which is the software path of the Frame card and the
-# reference renderer the headless backend uses. The hardware features (`backend_drm`,
-# `backend_gbm`, `backend_udev`, `backend_session_libseat`, `backend_libinput`) come
-# with the workspace pin too, because they are choices the whole workspace has to make
-# together; the modules that use them are `drm`, `session`, `udev` and `libinput`, and
-# every other backend here links no DRM code at all.
+# The event-loop handle the backend contract registers its sources with. Pinned
+# workspace-wide (D7) with the `renderer_pixman` feature, which is the software path of the
+# Frame card and the reference renderer the headless backend uses. The hardware features
+# (`backend_drm`, `backend_gbm`, `backend_udev`, `backend_session_libseat`,
+# `backend_libinput`) come with the workspace pin too, because they are choices the whole
+# workspace has to make together. This crate links none of them: they belong to
+# `gnoblin-backend-drm`, and the nested and headless backends link no DRM code at all.
 smithay.workspace = true
 # Outputs, events and targets are stated in the shared primitives.
 gnoblin-types.workspace = true
@@ -46,13 +40,12 @@ gnoblin-output = { path = "../gnoblin-output" }
 gnoblin-render = { path = "../gnoblin-render" }
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 gnoblin-animation = { path = "../gnoblin-animation" }
-# The `input` section the libinput devices are configured from: acceleration profile,
-# natural scroll, tap-to-click and the rest. The types are the generated document's,
-# not copies, so a key that the configuration accepts and the driver does not know
-# cannot exist. It is a foundation crate, so this direction is the allowed one.
+# The renderer and capture choices the renderer selection reads (`RendererChoice`,
+# `CaptureSecureTreatment`). They are the generated document's types, not copies, so a
+# value the configuration accepts and the selection does not know cannot exist.
 gnoblin-config = { path = "../gnoblin-config" }
-# `[tag]` log lines for a refused frame or a client buffer that went away. Smithay
-# The logging facade is a path dependency and adds no crate beyond `tracing`, which Smithay already brings in.
+# Log lines for a refused frame or a client buffer that went away. The logging facade is
+# a path dependency and adds no crate beyond `tracing`, which Smithay already brings in.
 gnoblin-log = { path = "../gnoblin-log" }
 # The nested backend is a Wayland *client* of the compositor that hosts the session,
 # so this crate depends on the client library as well as the server one Smithay
@@ -62,8 +55,7 @@ gnoblin-log = { path = "../gnoblin-log" }
 # The client side needs no `unsafe`: a shared-memory buffer is filled through
 # `File::write_all_at` rather than an `mmap`, one copy per frame more than a real client
 # would make, which is why `nested/mod.rs` states the dmabuf path as a follow-up rather
-# than a second code path here. The crate's `unsafe` opt-out (see the `[lints]` table) is
-# for the GLES renderer's EGL and GL calls, not for this backend.
+# than a second code path here.
 wayland-client = "0.31.14"
 # The client side of `xdg_shell` and of the scale protocols. `staging` is the
 # feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
@@ -76,7 +68,7 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 # direction.
 gnoblin-wm = { path = "../gnoblin-wm" }
 # The GLES renderer (its EGL bootstrap and every GL call are `unsafe` and confined to that
-# crate). Normal, not optional: the DRM scan-out path draws through it.
+# crate). Normal, not optional: the headless backend and the renderer selection name it.
 gnoblin-render-gles = { path = "../gnoblin-render-gles" }
 # The software renderer (Pixman): the offscreen target the nested backend and the headless
 # backend draw through. Normal, not optional, because the nested compositor needs it.

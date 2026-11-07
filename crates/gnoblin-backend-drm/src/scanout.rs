@@ -2,7 +2,7 @@
 //!
 //! An output owns two buffers, allocated on the device's GBM node with the plane's XRGB8888
 //! modifiers. Each buffer is exported as a dmabuf, imported into the output's GLES renderer as a
-//! render target, and registered as a KMS framebuffer. [`crate::drm::frame::present`] chooses the
+//! render target, and registered as a KMS framebuffer. [`crate::frame::present`] chooses the
 //! slot; this module draws into it and queues its flip.
 
 use gnoblin_types::{Scale, Size};
@@ -18,9 +18,9 @@ use smithay::backend::egl::EGLDisplay;
 use smithay::reexports::drm::control::crtc;
 use smithay::utils::{Physical, Size as PhysicalSize};
 
-use crate::drm::frame::Scanout;
-use crate::drm::gpu::Gpu;
-use crate::drm::present::SLOTS;
+use crate::frame::Scanout;
+use crate::gpu::Gpu;
+use crate::present::SLOTS;
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_gles::egl;
@@ -226,7 +226,7 @@ fn allocate(
     })
 }
 
-/// The scan-out of one output for one [`crate::drm::frame::present`] call: draws into the
+/// The scan-out of one output for one [`crate::frame::present`] call: draws into the
 /// buffers and queues flips on the CRTC.
 ///
 /// Built fresh for each present, so it borrows the output's buffers and the GPU only for that

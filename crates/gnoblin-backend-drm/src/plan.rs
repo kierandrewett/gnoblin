@@ -60,7 +60,7 @@ use std::collections::BTreeMap;
 use gnoblin_output::{DisplayMode, Edid, Layout, OutputDescriptor, VrrSupport};
 use gnoblin_types::{Orientation, OutputId, Scale};
 
-use crate::drm::gamma::{GammaError, GammaRamp};
+use crate::gamma::{GammaError, GammaRamp};
 
 /// Whether an output is lit.
 ///

@@ -29,9 +29,9 @@ use smithay::reexports::drm::control::{
 };
 use smithay::utils::{Buffer, DeviceFd, Physical, Rectangle, Size, Transform};
 
-use crate::drm::DrmError;
-use crate::drm::gamma::{GammaError, GammaRamp, crtc_length};
-use crate::drm::plan::{
+use crate::DrmError;
+use crate::gamma::{GammaError, GammaRamp, crtc_length};
+use crate::plan::{
     Applied, Change, Connector, Hotplug, LayoutPlan, Op, OutputState, PhysicalExtent, Power, Seen, hotplug,
 };
 use crate::session::Seat;
@@ -1001,7 +1001,7 @@ mod tests {
     use gnoblin_types::Scale;
 
     use super::*;
-    use crate::drm::plan;
+    use crate::plan;
 
     #[test]
     fn a_lost_gpu_has_no_live_hardware_and_names_its_node() {

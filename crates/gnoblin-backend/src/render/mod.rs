@@ -38,7 +38,7 @@
 //! | -------- | ------------------------------------------------------------------------------ |
 //! | headless | `HeadlessConfig::renderer`, any kind, built by `AnyRenderer::new`              |
 //! | nested   | Pixman, hard-wired in `nested/surface.rs`; the compositor refuses others       |
-//! | DRM      | GLES, hard-wired in `drm/scanout.rs` on the device's EGL display               |
+//! | DRM      | GLES, hard-wired in `gnoblin-backend-drm` on the device's EGL display          |
 //!
 //! Nested and DRM do not go through `AnyRenderer` yet: DRM needs to draw into a scan-out
 //! buffer the device owns, which the offscreen constructor does not offer (see "Target

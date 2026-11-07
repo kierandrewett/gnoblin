@@ -7,7 +7,7 @@
 //! | ------------ | ------------------------------------------------------------------- | ----------------------- |
 //! | [`plan`]     | the output state, the ordered kernel operations, the rollback record | yes                     |
 //! | [`gamma`]    | the lookup table and the length check before the ioctl               | yes                     |
-//! | `mod` (here) | the [`Backend`] implementation: devices, outputs, dispatch           | no                      |
+//! | crate root (here) | the [`Backend`] implementation: devices, outputs, dispatch         | no                      |
 //!
 //! # One device, several connectors
 //!
@@ -45,12 +45,18 @@ pub mod frame;
 pub mod gamma;
 /// The GPU behind the hardware backend: the primary node, its connectors and KMS surfaces.
 pub mod gpu;
+/// The libinput devices: the seat's pointers, touch and keyboards, and how their events map.
+pub mod libinput;
 /// The pure planning of output state and kernel operations.
 pub mod plan;
 /// The per-output swapchain state machine: which buffer is drawn and when a flip may queue.
 pub mod present;
 /// The GBM scan-out buffers of one output and the adapter that draws into them.
 pub(crate) mod scanout;
+/// The libseat session the GPU and the input devices are opened through.
+pub mod session;
+/// The udev discovery of GPUs and the connectors they carry.
+pub mod udev;
 
 use std::fmt;
 use std::io;
@@ -59,18 +65,18 @@ use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::crtc;
 
-use crate::drm::frame::{Presented, present};
-use crate::drm::present::{OutputPresenter, Presenter, complete_flips};
-use crate::drm::scanout::{Buffers, Device as ScanoutDevice, Flip};
+use crate::frame::{Presented, present};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
+use crate::present::{OutputPresenter, Presenter, complete_flips};
+use crate::scanout::{Buffers, Device as ScanoutDevice, Flip};
 use crate::session::{SeatEvent, SeatState, Transition};
-use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
+use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
 use std::collections::HashMap;
 
-use crate::log;
+gnoblin_log::logger!(log = "backend");
 
 /// Why the hardware backend could not start.
 ///
@@ -423,8 +429,8 @@ impl<S: Host + 'static> Backend<S> for Drm {
         None
     }
 
-    fn output_controls(&self) -> crate::OutputControls {
-        crate::OutputControls {
+    fn output_controls(&self) -> gnoblin_backend::OutputControls {
+        gnoblin_backend::OutputControls {
             gamma: true,
             power: true,
         }
@@ -436,7 +442,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
             .and_then(|length| u32::try_from(length).ok())
     }
 
-    fn set_gamma(&mut self, output: OutputId, ramp: crate::GammaRamp<'_>) -> Result<(), BackendError> {
+    fn set_gamma(&mut self, output: OutputId, ramp: gnoblin_backend::GammaRamp<'_>) -> Result<(), BackendError> {
         let ramp = gamma::GammaRamp::from_channels(ramp.red, ramp.green, ramp.blue)
             .map_err(|_| BackendError::InvalidGamma(output))?;
         self.gpu
@@ -538,7 +544,7 @@ pub enum RawGestureKind {
 #[cfg(test)]
 mod tests {
     use super::{InputRefusal, Refused};
-    use crate::InputSource;
+    use gnoblin_backend::InputSource;
 
     #[test]
     fn a_refused_input_source_never_yields_an_event() {

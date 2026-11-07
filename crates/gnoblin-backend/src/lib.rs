@@ -1,4 +1,5 @@
-//! Backends (DRM, nested, headless) and the extension traits the engine crates share.
+//! Backends (nested, headless) and the extension traits the engine crates share. The DRM/KMS
+//! backend is `gnoblin-backend-drm`.
 //!
 //! This crate is the "Backends and outputs" mechanism layer of
 //! `design/rust-compositor.md`, and the one place the engine's crates are allowed
@@ -28,7 +29,8 @@
 //!
 //! # Why the traits look like this
 //!
-//! The nested and DRM backends have to arrive without a trait change, so the
+//! The nested and DRM (`gnoblin-backend-drm`) backends have to arrive without a trait change,
+//! so the
 //! contract is stated in the terms all three share rather than in the terms the
 //! headless one happens to need:
 //!
@@ -47,23 +49,15 @@
 //!   accumulated once and consumed per output: taking it per output would clear the
 //!   other outputs' damage and leave them stale.
 //!
-//! # Where this crate has to use unsafe
+//! # Where this crate uses unsafe
 //!
-//! The workspace forbids `unsafe`, and this crate opts out with the table `Cargo.toml`
-//! records. The `wl_shm` pool mapping that the frame writes through lives in
-//! `gnoblin-render-frame` (`shm.rs`), not here. The remaining reasons are the GLES and
-//! Vulkan renderers in `gnoblin-render-gles` and `gnoblin-render-vulkan`, which are FFI
-//! shims for the following reasons:
-//!
-//! - **A GLES context cannot be created safely.** Smithay's `EGLDisplay::new`,
-//!   `EGLContext::new` and `GlowRenderer::new` are `unsafe` because Smithay cannot check
-//!   that a native display is valid or that a context is not in use on another thread, and
-//!   `glow`'s calls are `unsafe` because a GL call changes process-wide state. The context
-//!   lives in `gnoblin_render_gles::egl` and every `glow` call in `gnoblin-render-gles/src/gl.rs`.
-//!
-//! Each of those modules opens with `#[allow(unsafe_code)]` and a `SAFETY:` comment per
-//! block, and nothing else in this crate contains `unsafe` for the renderers. A session that
-//! draws with the software path reaches neither the EGL shim nor the GL one.
+//! It does not, and the workspace's `unsafe_code = "forbid"` applies to it unchanged. The
+//! unsafe calls live in the crates that own them: the GLES renderer's EGL and GL calls in
+//! `gnoblin-render-gles` and the Vulkan driver calls in `gnoblin-render-vulkan`, each
+//! opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment per block. The `wl_shm`
+//! pool mapping the frame writes through lives in `gnoblin-render-frame` (`shm.rs`).
+//! `gnoblin-backend-drm` has none, and a session that draws with the software path
+//! reaches none of the others.
 //!
 //! # Lifecycle of a frame
 //!
@@ -158,13 +152,9 @@
 //!     [`nested`]'s own list, because that backend's failure modes are about the wire
 //!     rather than about the contract.
 
-pub mod drm;
 pub mod headless;
-pub mod libinput;
 pub mod nested;
 pub mod render;
-pub mod session;
-pub mod udev;
 pub mod x11;
 
 use std::fmt;
@@ -359,7 +349,7 @@ pub enum InputEvent {
         /// The backend's number for the device.
         id: u64,
         /// The kind of device.
-        kind: crate::libinput::DeviceKind,
+        kind: DeviceKind,
     },
     /// A device left the seat.
     ///
@@ -369,6 +359,26 @@ pub enum InputEvent {
         /// The backend's number for the device, as the matching [`InputEvent::DeviceAdded`] stated.
         id: u64,
     },
+}
+
+/// What kind of device a setting applies to.
+///
+/// It is libinput's capability set collapsed to the kinds the configuration has a section for,
+/// so one rule decides which section a device reads.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DeviceKind {
+    /// A touchpad, which has every setting the configuration offers.
+    Touchpad,
+    /// A mouse: acceleration, handedness, scroll direction.
+    Mouse,
+    /// A trackball: acceleration, middle-click emulation, scroll emulation.
+    Trackball,
+    /// A pointing stick: acceleration, scroll method.
+    PointingStick,
+    /// A touch screen: no settings, because its calibration belongs to the seat.
+    Touch,
+    /// A keyboard: repeat and delay are the keymap's, not libinput's.
+    Keyboard,
 }
 
 /// What happened to a touch point.

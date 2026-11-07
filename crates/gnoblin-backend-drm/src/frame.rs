@@ -75,7 +75,7 @@ pub(crate) fn present<S: Scanout>(presenter: &mut Presenter, scanout: &mut S, fr
 #[cfg(test)]
 mod tests {
     use super::{Presented, Scanout, present};
-    use crate::drm::present::Presenter;
+    use crate::present::Presenter;
 
     /// Records every call in order, and refuses the calls listed in `fail`.
     #[derive(Default)]

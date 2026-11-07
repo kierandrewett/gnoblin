@@ -55,11 +55,11 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
 
-use crate::drm::{RawEvent, RawGestureKind};
-use crate::{InputEvent, InputSource, TouchPhase};
+use crate::{RawEvent, RawGestureKind};
+use gnoblin_backend::{DeviceKind, InputEvent, InputSource, TouchPhase};
 
 pub use map::{DeviceEvent, Mapper, Screen};
-pub use settings::{Accel, Applier, ButtonMap, Click, DeviceKind, DeviceSettings, Scroll, Setting};
+pub use settings::{Accel, Applier, ButtonMap, Click, DeviceSettings, Scroll, Setting};
 
 use crate::log;
 

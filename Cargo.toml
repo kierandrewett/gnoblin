@@ -34,6 +34,7 @@ members = [
     "crates/gnoblin-animation",
     "crates/gnoblin-authority",
     "crates/gnoblin-backend",
+    "crates/gnoblin-backend-drm",
     "crates/gnoblin-capture",
     "crates/gnoblin-cli-style",
     "crates/gnoblin-client",
@@ -194,7 +195,7 @@ toml = "1.2.0"
 # surface), `backend_gbm` (buffer allocation for scan-out), `backend_udev` (device
 # discovery and hotplug), `backend_session_libseat` (device access through the
 # seat) and `backend_libinput` (the seat's input devices) are what
-# `crates/gnoblin-backend/src/drm` and `src/libinput` are made of. They are named
+# `crates/gnoblin-backend-drm/src` are made of. They are named
 # here rather than in one member's manifest for the reason this table exists: a
 # feature chosen per member would let two members resolve Smithay's `input`, `drm`
 # and `gbm` crates to different builds of the same C library.

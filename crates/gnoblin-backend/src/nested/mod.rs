@@ -34,8 +34,8 @@
 //!    format it picks.
 //! 3. **An unsafe opt-out.** Handing a buffer to `EGL` or `gbm` is FFI, and this crate
 //!    inherits the workspace's `unsafe_code = "forbid"`. The dmabuf path therefore
-//!    arrives with an explicit `#[allow(unsafe_code)]` shim module, as the root
-//!    `Cargo.toml` describes for the DRM backend, and not before.
+//!    arrives in a crate of its own that carries an explicit `#[allow(unsafe_code)]` shim,
+//!    as `gnoblin-render-gles` does, and not before.
 //!
 //! The trait does not change when it does: a GLES target replaces `NestedTarget`'s
 //! renderer and the pool becomes a dmabuf pool, and [`Backend`] sees
