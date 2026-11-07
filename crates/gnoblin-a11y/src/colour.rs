@@ -179,6 +179,65 @@ mod colour_tests {
         }
     }
 
+    /// Non-neutral samples: the colours that catch swapped or wrong coefficients,
+    /// which white-to-white and the row sums cannot. The expected outputs are
+    /// worked out by hand from the nine verified severity-1.0 digits, not by the
+    /// code under test. For pure red the output is column 0 of the matrix, for
+    /// pure green column 1, for pure blue column 2. For the mixed colour
+    /// (0.8, 0.2, 0.5) each output is row `dot` (0.8, 0.2, 0.5), rounded to six
+    /// places. The offsets and alpha are zero, so they add nothing.
+    #[test]
+    fn colour_blindness_filters_map_sample_colours() {
+        let cases: [(ColourFilter, [[f32; 3]; 4]); 3] = [
+            (
+                // Protanopia digits: rows [0.152286, 1.052583, -0.204868],
+                // [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998].
+                ColourFilter::Protanopia,
+                [
+                    [0.152286, 0.114503, -0.003882],
+                    [1.052583, 0.786281, -0.048116],
+                    [-0.204868, 0.099216, 1.051998],
+                    [0.229911, 0.298467, 0.513270],
+                ],
+            ),
+            (
+                // Deuteranopia digits: rows [0.367322, 0.860646, -0.227968],
+                // [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881].
+                ColourFilter::Deuteranopia,
+                [
+                    [0.367322, 0.280085, -0.011820],
+                    [0.860646, 0.672501, 0.042940],
+                    [-0.227968, 0.047413, 0.968881],
+                    [0.352003, 0.382275, 0.483573],
+                ],
+            ),
+            (
+                // Tritanopia digits: rows [1.255528, -0.076749, -0.178779],
+                // [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.303900].
+                ColourFilter::Tritanopia,
+                [
+                    [1.255528, -0.078411, 0.004733],
+                    [-0.076749, 0.930809, 0.691367],
+                    [-0.178779, 0.147602, 0.303900],
+                    [0.899683, 0.197234, 0.294010],
+                ],
+            ),
+        ];
+        // Input colours in order: pure red, pure green, pure blue, mixed.
+        let inputs = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.8, 0.2, 0.5]];
+        for (filter, expected) in cases {
+            for (input, want) in inputs.iter().zip(expected.iter()) {
+                let got = apply(filter.matrix(), *input);
+                for (channel, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+                    assert!(
+                        (g - w).abs() < 1e-5,
+                        "{filter:?} input {input:?} channel {channel}: got {g}, want {w}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn greyscale_maps_every_channel_to_rec709_luma() {
         let m = ColourFilter::Greyscale.matrix();
