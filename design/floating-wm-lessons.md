@@ -6,6 +6,8 @@ Citations are `path:line`. Gnoblin paths are in this repository. COSMIC paths ar
 
 Sanctum's source is closed. `github.com/marc2332/sanctum` returns 404 [INFERENCE: private or renamed]. Its section rests on the author's blog post only.
 
+Related: [tiling-client-hints.md](tiling-client-hints.md) covers the states and bounds a tiled or floating window sends to its client.
+
 ## Summary
 
 - COSMIC is the useful reference for floating behaviour. Its source is public and specific.

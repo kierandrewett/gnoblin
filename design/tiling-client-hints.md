@@ -12,6 +12,8 @@ Citations are `path:line` in this repository, or a primary source named in
 [Sources](#sources). `[INFERENCE]` marks a claim not checked against code or a
 primary source.
 
+Related: [floating-wm-lessons.md](floating-wm-lessons.md) covers how COSMIC and Sanctum handle floating windows.
+
 ## Short answer
 
 Hyprland, sway and niri all send the four `tiled_*` states to a tiled window.
@@ -123,6 +125,23 @@ Per-row notes:
   and frees windows the layout took out of tiling.
 - Visibility changes come from `Effect::SetVisible`, emitted on workspace
   switch and minimise (`wm.rs:1210`, `:1234`, `:1397`).
+
+## Where it lives
+
+Each hint is either protocol mechanism, which core must send, or per-app policy, which belongs in user Lua. Shell packages can ship default lists, but matching and enforcement stay in core. Lua has no window-rule type yet: `gnoblin-config/src/lib.rs:54` names `window-rules` as a callback only, so the rule-driven rows are planned.
+
+| Feature                | Layer                   | Reason                                                                            |
+| ---------------------- | ----------------------- | --------------------------------------------------------------------------------- |
+| tiled_* states         | core                    | Derived from placed geometry against the work area; clients cannot see it.        |
+| configure_bounds       | core                    | Caps client sizes to the output and placement, which only the compositor knows.   |
+| suspended              | core                    | Follows workspace and minimise state, which only the compositor holds.            |
+| atomic transactions    | core                    | Holds the configure and commit pipeline; no user code can delay a frame.          |
+| decoration negotiation | core, plus user Lua     | The mode is protocol; which apps prefer no CSD is per-app policy.                 |
+| csd-squash             | user Lua rule           | Per-app workaround keyed on app id. Needs a window-rule API that Lua lacks today. |
+| clip-to-geometry       | core renderer, user Lua | Renderer must clip; which windows get it is per-app look policy.                  |
+| corner radius          | core renderer, user Lua | Renderer draws the mask; the radius is a per-app or global look setting.          |
+
+Layouts do not supply the tiled edges. Core derives them from placed geometry in `tiled_edges`, so a Lua layout cannot send states that disagree with its own rectangles. A manifest override can come later if a layout needs one; nothing needs it now.
 
 ## Proposed next
 
