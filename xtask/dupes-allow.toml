@@ -645,12 +645,6 @@ kind = "same-name"
 reason = "authority grants permission to launch a process; a backend launch is the parameters of one Xwayland start"
 
 [[allow]]
-left = "gnoblin-backend::Command"
-right = "gnoblin-wayland::Command"
-kind = "same-name"
-reason = "an X11 request the compositor performs on an X11 window versus a control command queued for the session loop"
-
-[[allow]]
 left = "gnoblin-backend::Restart"
 right = "gnoblin-session::Restart"
 kind = "same-name"
@@ -870,44 +864,10 @@ kind = "same-name"
 reason = "the authority's grant is a private record of a consent decision and its expiry; the input grant is that decision plus the capabilities an EI client's seat is built from"
 
 [[allow]]
-left = "gnoblin-backend::Command"
-right = "gnoblin-input::Command"
-kind = "same-name"
-reason = "the backend's command is an X11 request for the window manager; the input command is an EI request from a client"
-
-[[allow]]
 left = "gnoblin-config::Origin"
 right = "gnoblin-input-eis::Origin"
 kind = "same-name"
 reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
-
-[[allow]]
-left = "gnoblin-input::Action"
-right = "gnoblinctl::Action"
-kind = "same-name"
-reason = "an action in gnoblinctl is a command-line verb; an action in gnoblin-input is what the EIS state machine asks the protocol layer to do"
-
-[[allow]]
-left = "gnoblin-input::Command"
-right = "gnoblin-wayland::Command"
-kind = "same-name"
-reason = "the Wayland engine's command is a queued instruction for its loop; the input command is an EI request from a client"
-
-[[allow]]
-left = "gnoblin-input::Violation"
-right = "xtask::Violation"
-kind = "same-name"
-reason = "a violation in xtask is a broken dependency rule; a violation in gnoblin-input is a rule an EI client broke"
-
-[[allow]]
-left = "gnoblin-backend::Device"
-right = "gnoblin-input::Device"
-kind = "same-name"
-reason = "the backend's device is a GLES resource handle; the input device is what an EI client binds, with its capabilities, regions and held edges"
-# The compat frame's own vocabulary: every adapter declares a `Call` per member it maps
-# and an `Admission` that applies the frame's matrix to it. The names are the frame's, the
-# members are the adapter's, and two adapters that shared one enum would be a single
-# adapter. `gnoblin-compat-dbus-gnome-keyring-prompter` was the first to declare them.
 
 [[allow]]
 left = "gnoblin-compat-dbus-gnome-keyring-prompter::Call"
@@ -1128,12 +1088,6 @@ kind = "same-name"
 reason = "backend's Change is one connector's part of a plan, its target state and operations; the portal's Change is one thing a settings subscriber is told"
 
 [[allow]]
-left = "gnoblin-backend::Command"
-right = "xdg-desktop-portal-gnoblin::Command"
-kind = "same-name"
-reason = "backend's Command is an X11 request the compositor sends and the policy cannot; the portal's Command is one thing its connection thread has to do"
-
-[[allow]]
 left = "gnoblin-backend::Setting"
 right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
@@ -1216,12 +1170,6 @@ left = "gnoblin-config::Setting"
 right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
 reason = "config's Setting is one declared setting; the portal's Setting is one published setting"
-
-[[allow]]
-left = "gnoblin-input::Command"
-right = "xdg-desktop-portal-gnoblin::Command"
-kind = "same-name"
-reason = "input's Command is one EI request as the state machine sees it; the portal's Command is one thing its connection thread has to do"
 
 [[allow]]
 left = "gnoblin-input::Key"
@@ -1855,7 +1803,37 @@ kind = "same-name"
 reason = "the store lifecycle state versus a portal consent state; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-backend::PassKind"
-right = "gnoblin-render-frame::Layer"
+left = "gnoblin-render-frame::Layer"
+right = "gnoblin-render-vulkan::PassKind"
 kind = "same-shape"
 reason = "a Vulkan pass kind is the renderer's draw-order tag; a frame layer is the renderer-neutral scene stratum, and the shared small variant set is not one type"
+
+[[allow]]
+left = "gnoblin-types::Rect"
+right = "gnoblin-wayland::MenuAnchor"
+kind = "same-shape"
+reason = "a menu anchor is a point or a button rectangle in output coordinates; types::Rect is the general geometry type with a signed origin, and the anchor is a wire-side value that must not depend on it"
+
+[[allow]]
+left = "gnoblin-client::PortalOutcome"
+right = "gnoblin-compositor::Verdict"
+kind = "same-shape"
+reason = "both record how one portal request was settled; the client crate cannot depend on the compositor, so each keeps its own copy of the same small answer set"
+
+[[allow]]
+left = "gnoblin-compat-dbus-mutter-displayconfig::MutterDisplayConfig"
+right = "gnoblin-compat-dbus-mutter-idlemonitor::MutterIdleMonitor"
+kind = "same-shape"
+reason = "each compat adapter is a one-field agent holding its own mode gate; the shape is the frame's, the adapters are separate services"
+
+[[allow]]
+left = "gnoblin-compat-dbus-mutter-displayconfig::MutterDisplayConfig"
+right = "gnoblin-compat-gtk-dconf-settings::DconfLayer"
+kind = "same-shape"
+reason = "each compat adapter is a one-field agent holding its own mode gate; the shape is the frame's, the adapters are separate services"
+
+[[allow]]
+left = "gnoblin-compat-dbus-mutter-idlemonitor::MutterIdleMonitor"
+right = "gnoblin-compat-gtk-dconf-settings::DconfLayer"
+kind = "same-shape"
+reason = "each compat adapter is a one-field agent holding its own mode gate; the shape is the frame's, the adapters are separate services"
