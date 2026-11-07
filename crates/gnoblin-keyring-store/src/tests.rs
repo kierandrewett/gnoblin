@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{Keyring, KeyringError, Passphrase};
+use crate::{ItemId, Keyring, KeyringError, Passphrase};
 
 /// A fresh directory under the system temp dir, unique to this process and call.
 fn scratch(label: &str) -> PathBuf {
@@ -53,7 +53,13 @@ fn an_item_round_trips_through_reopen_with_the_right_key() {
     let mut keyring = Keyring::create(&path, &pass("correct horse")).expect("creates");
     let login = keyring.create_collection("Login").expect("collection");
     let id = keyring
-        .put_item(login, "wifi", b"hunter2", &[("service", "wifi"), ("user", "kieran")])
+        .put_item(
+            login,
+            "wifi",
+            "text/plain",
+            b"hunter2",
+            &[("service", "wifi"), ("user", "kieran")],
+        )
         .expect("stores");
     drop(keyring);
 
@@ -61,6 +67,7 @@ fn an_item_round_trips_through_reopen_with_the_right_key() {
     let item = reopened.item(id).expect("reads").expect("present");
     assert_eq!(item.label, "wifi");
     assert_eq!(item.collection, login);
+    assert_eq!(item.content_type, "text/plain");
     assert_eq!(item.secret.as_slice(), b"hunter2");
     assert_eq!(
         item.attributes,
@@ -122,7 +129,9 @@ fn rekey_makes_the_old_key_fail_and_the_new_key_open() {
     let path = fresh_path("rekey");
     let mut keyring = Keyring::create(&path, &pass("old")).expect("creates");
     let collection = keyring.create_collection("Login").expect("collection");
-    let id = keyring.put_item(collection, "kept", b"secret", &[]).expect("stores");
+    let id = keyring
+        .put_item(collection, "kept", "text/plain", b"secret", &[])
+        .expect("stores");
     keyring.rekey(&pass("new")).expect("rekeys");
     drop(keyring);
 
@@ -147,6 +156,7 @@ fn a_truncated_file_is_refused_rather_than_read_as_empty() {
             .put_item(
                 collection,
                 &format!("item {n}"),
+                "text/plain",
                 &[7u8; 512],
                 &[("n", n.to_string().as_str())],
             )
@@ -175,7 +185,7 @@ fn a_damaged_later_page_is_reported_as_corruption() {
     let collection = keyring.create_collection("Login").expect("collection");
     for n in 0..64 {
         keyring
-            .put_item(collection, &format!("item {n}"), &[9u8; 512], &[])
+            .put_item(collection, &format!("item {n}"), "text/plain", &[9u8; 512], &[])
             .expect("stores");
     }
     drop(keyring);
@@ -196,7 +206,9 @@ fn two_handles_on_one_file_see_each_others_writes() {
     let mut writer = Keyring::create(&path, &pass("key")).expect("creates");
     let collection = writer.create_collection("Login").expect("collection");
     let reader = Keyring::open(&path, &pass("key")).expect("second handle opens");
-    let id = writer.put_item(collection, "seen", b"x", &[]).expect("stores");
+    let id = writer
+        .put_item(collection, "seen", "text/plain", b"x", &[])
+        .expect("stores");
     assert!(reader.item(id).expect("reads").is_some());
 }
 
@@ -206,10 +218,22 @@ fn search_matches_every_attribute_and_nothing_else() {
     let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
     let collection = keyring.create_collection("Login").expect("collection");
     let wifi = keyring
-        .put_item(collection, "a", b"1", &[("service", "wifi"), ("user", "kieran")])
+        .put_item(
+            collection,
+            "a",
+            "text/plain",
+            b"1",
+            &[("service", "wifi"), ("user", "kieran")],
+        )
         .expect("stores");
     let mail = keyring
-        .put_item(collection, "b", b"2", &[("service", "mail"), ("user", "kieran")])
+        .put_item(
+            collection,
+            "b",
+            "text/plain",
+            b"2",
+            &[("service", "mail"), ("user", "kieran")],
+        )
         .expect("stores");
     assert_eq!(
         keyring.search_items(&[("user", "kieran")]).expect("searches"),
@@ -236,7 +260,7 @@ fn a_deleted_item_is_gone_and_its_attributes_go_with_it() {
     let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
     let collection = keyring.create_collection("Login").expect("collection");
     let id = keyring
-        .put_item(collection, "gone", b"s", &[("service", "x")])
+        .put_item(collection, "gone", "text/plain", b"s", &[("service", "x")])
         .expect("stores");
     assert!(keyring.delete_item(id).expect("deletes"));
     assert!(keyring.item(id).expect("reads").is_none());
@@ -266,4 +290,59 @@ fn overwrite(path: &Path, offset: u64, bytes: &[u8]) {
         .expect("opens for damage");
     file.seek(SeekFrom::Start(offset)).expect("seeks");
     file.write_all(bytes).expect("damages");
+}
+
+#[test]
+fn the_content_type_round_trips_through_reopen() {
+    let path = fresh_path("content-type");
+    let mut keyring = Keyring::create(&path, &pass("key")).expect("creates");
+    let collection = keyring.create_collection("Login").expect("collection");
+    let id = keyring
+        .put_item(collection, "cert", "application/x-pem-file", b"-----", &[])
+        .expect("stores");
+    drop(keyring);
+
+    let reopened = Keyring::open(&path, &pass("key")).expect("opens");
+    let item = reopened.item(id).expect("reads").expect("present");
+    assert_eq!(item.content_type, "application/x-pem-file");
+}
+
+#[test]
+fn a_version_one_file_opens_and_its_items_read_as_text_plain() {
+    let path = fresh_path("upgrade");
+    // Write the schema that shipped as version 1 by hand, so the upgrade is what runs on open.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .expect("creates the file");
+    let conn = crate::connect(&path, &pass("key"), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).expect("connects");
+    conn.execute_batch(crate::schema::V1).expect("writes version 1");
+    conn.pragma_update(None, "user_version", 1).expect("stamps version 1");
+    conn.execute("INSERT INTO collections (label) VALUES ('Login')", [])
+        .expect("collection");
+    conn.execute(
+        "INSERT INTO items (collection_id, label, secret, created_ms, modified_ms)
+         VALUES (1, 'old', x'0102', 0, 0)",
+        [],
+    )
+    .expect("version 1 item");
+    drop(conn);
+
+    let keyring = Keyring::open(&path, &pass("key")).expect("a version 1 file opens and upgrades");
+    let item = keyring.item(ItemId::from_raw(1)).expect("reads").expect("present");
+    assert_eq!(item.content_type, "text/plain");
+    assert_eq!(item.secret.as_slice(), &[1, 2]);
+    drop(keyring);
+
+    // The upgrade is stamped, so the next open takes the current-version path.
+    let keyring = Keyring::open(&path, &pass("key")).expect("reopens after the upgrade");
+    assert_eq!(
+        keyring
+            .item(ItemId::from_raw(1))
+            .expect("reads")
+            .expect("present")
+            .content_type,
+        "text/plain"
+    );
 }

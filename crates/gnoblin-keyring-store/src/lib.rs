@@ -86,6 +86,9 @@ pub struct Item {
     pub id: ItemId,
     pub collection: CollectionId,
     pub label: String,
+    /// The MIME type the secret was written as, such as `text/plain`. The keyring stores it and
+    /// does not interpret it, so a client reads the secret back with the type it wrote.
+    pub content_type: String,
     pub secret: Zeroizing<Vec<u8>>,
     /// The attributes in name order, each a name and its value.
     pub attributes: Vec<(String, String)>,
@@ -187,13 +190,13 @@ impl Keyring {
             }
             Err(error) => return Err(KeyringError::Io(error)),
         }
-        let conn = connect(path, passphrase, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        let mut conn = connect(path, passphrase, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
         let verdict: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
         if verdict != "ok" {
             log::warn!("the keyring file failed its integrity check: {verdict}");
             return Err(KeyringError::Corrupt(verdict));
         }
-        schema::check(&conn)?;
+        schema::check(&mut conn)?;
         Ok(Keyring { conn })
     }
 
@@ -238,20 +241,21 @@ impl Keyring {
 
     /// Stores a new item in `collection`. The secret and every attribute are written in one
     /// transaction, so an item is never seen without its attributes. Attribute names must be
-    /// unique within the item.
+    /// unique within the item. `content_type` is the MIME type the secret was written as.
     pub fn put_item(
         &mut self,
         collection: CollectionId,
         label: &str,
+        content_type: &str,
         secret: &[u8],
         attributes: &[(&str, &str)],
     ) -> Result<ItemId, KeyringError> {
         let now = now_ms();
         let transaction = self.conn.transaction()?;
         transaction.execute(
-            "INSERT INTO items (collection_id, label, secret, created_ms, modified_ms)
-             VALUES (?1, ?2, ?3, ?4, ?4)",
-            params![collection.0, label, secret, now],
+            "INSERT INTO items (collection_id, label, content_type, secret, created_ms, modified_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![collection.0, label, content_type, secret, now],
         )?;
         let id = transaction.last_insert_rowid();
         for (name, value) in attributes {
@@ -269,20 +273,21 @@ impl Keyring {
         let row = self
             .conn
             .query_row(
-                "SELECT collection_id, label, secret, created_ms, modified_ms FROM items WHERE id = ?1",
+                "SELECT collection_id, label, content_type, secret, created_ms, modified_ms FROM items WHERE id = ?1",
                 params![id.0],
                 |row| {
                     Ok((
                         row.get::<_, i64>(0)?,
                         row.get::<_, String>(1)?,
-                        row.get::<_, Vec<u8>>(2)?,
-                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Vec<u8>>(3)?,
                         row.get::<_, i64>(4)?,
+                        row.get::<_, i64>(5)?,
                     ))
                 },
             )
             .optional()?;
-        let Some((collection, label, secret, created_ms, modified_ms)) = row else {
+        let Some((collection, label, content_type, secret, created_ms, modified_ms)) = row else {
             return Ok(None);
         };
         let mut statement = self
@@ -297,6 +302,7 @@ impl Keyring {
             id,
             collection: CollectionId(collection),
             label,
+            content_type,
             secret: Zeroizing::new(secret),
             attributes,
             created_ms,

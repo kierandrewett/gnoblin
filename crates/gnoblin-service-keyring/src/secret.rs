@@ -71,7 +71,13 @@ pub fn master_in(keyring: &mut Keyring) -> Result<Zeroizing<Vec<u8>>, MasterErro
     let collection = keyring.alias(DEFAULT_ALIAS)?.ok_or(MasterError::NoDefault)?;
     let mut bytes = Zeroizing::new(vec![0u8; MASTER_LEN]);
     getrandom::fill(&mut bytes).map_err(|_| MasterError::Random)?;
-    keyring.put_item(collection, MASTER_LABEL, &bytes, &[MASTER_ATTRIBUTE])?;
+    keyring.put_item(
+        collection,
+        MASTER_LABEL,
+        "application/octet-stream",
+        &bytes,
+        &[MASTER_ATTRIBUTE],
+    )?;
     Ok(bytes)
 }
 
