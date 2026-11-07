@@ -1,6 +1,6 @@
 # Processes
 
-> **Status:** done: `gnoblin.process.spawn` with every option in the table below, `wait()` with its result fields, `kill(signal?)`, and the `id` field. Not done yet: the `pid`, `alive`, `argv`, `status`, `exit_code` and `signal` fields, `on`, `watch` and `revision`, `gnoblin.process.list` and `by_id`, and `Window.process`. Sections describing those are the target, not current behaviour.
+> **Status:** done: `gnoblin.process.spawn` with every option in the table below, `wait()` with its result fields, `kill(signal?)`, and the `id` and `pid` fields. Not done yet: the `alive`, `argv`, `status`, `exit_code` and `signal` fields, `on`, `watch` and `revision`, `gnoblin.process.list` and `by_id`, and `Window.process`. Sections describing those are the target, not current behaviour.
 
 `gnoblin.process.spawn(argv, options?)` starts a program from an event handler or an operation callback and returns a
 `Process`. Use it to start an application, run a helper and read its output, or ask a prompt program for an answer.

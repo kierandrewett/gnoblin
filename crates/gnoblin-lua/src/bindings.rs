@@ -293,11 +293,12 @@ pub(super) fn install<T: Transport + 'static>(
             "spawn",
             lua.create_function(move |lua, (argv, options): (Table, Option<Table>)| {
                 let spec = crate::process::parse(argv, options)?;
-                let (id, wait) = crate::process::spawn(&shared, spec)?;
+                let (id, wait, pid) = crate::process::spawn(&shared, spec)?;
                 lua.create_userdata(Process {
                     shared: Rc::clone(&shared),
                     id,
                     wait,
+                    pid,
                 })
             })?,
         )?;
@@ -1255,11 +1256,14 @@ struct Process<T: Transport> {
     shared: Rc<RefCell<Shared<T>>>,
     id: u64,
     wait: OperationId,
+    /// Nil when the program could not start, so there is no process to name.
+    pid: Option<u32>,
 }
 
 impl<T: Transport + 'static> UserData for Process<T> {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("id", |_, this| Ok(this.id));
+        fields.add_field_method_get("pid", |_, this| Ok(this.pid));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {

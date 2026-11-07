@@ -339,11 +339,11 @@ fn signal_error_code(error: &io::Error) -> &'static str {
     }
 }
 
-/// Start a process from a checked spec and hand its waiter back.
+/// Start a process from a checked spec and hand back its pid and its waiter's requests.
 ///
 /// Takes the spec by value, so the spec's buffers move into the threads that use them.
 /// The waiter reports its end on `events`, tagged with `id`.
-fn start(id: u64, spec: SpawnSpec, events: Sender<ProcessEvent>) -> io::Result<Sender<ProcessRequest>> {
+fn start(id: u64, spec: SpawnSpec, events: Sender<ProcessEvent>) -> io::Result<(u32, Sender<ProcessRequest>)> {
     let mut command = Command::new(&spec.argv[0]);
     command.args(&spec.argv[1..]);
     if let Some(cwd) = &spec.cwd {
@@ -362,6 +362,8 @@ fn start(id: u64, spec: SpawnSpec, events: Sender<ProcessEvent>) -> io::Result<S
     command.stdout(stdio(spec.stdout));
     command.stderr(stdio(spec.stderr));
     let mut child = command.spawn()?;
+    // Read before the child moves into its waiter, which owns the handle from here on.
+    let pid = child.id();
 
     if let Some(stdin) = child.stdin.take() {
         let bytes = spec.stdin;
@@ -389,7 +391,7 @@ fn start(id: u64, spec: SpawnSpec, events: Sender<ProcessEvent>) -> io::Result<S
         let ended = wait_for(child, stdout, stderr, timeout, &requests_rx, &events);
         let _ = events.send(ProcessEvent::Ended { id, ended });
     });
-    Ok(requests)
+    Ok((pid, requests))
 }
 
 fn stdio(mode: StreamMode) -> Stdio {
@@ -501,7 +503,7 @@ fn send_to_group(group: Option<Pid>, signal: Signal) -> io::Result<()> {
 pub(crate) fn spawn<T: Transport + 'static>(
     shared: &Rc<RefCell<Shared<T>>>,
     spec: SpawnSpec,
-) -> mlua::Result<(u64, OperationId)> {
+) -> mlua::Result<(u64, OperationId, Option<u32>)> {
     let (id, wait, events) = {
         let mut shared = shared.borrow_mut();
         if shared.processes.records.len() >= MAX_RUNNING {
@@ -523,8 +525,8 @@ pub(crate) fn spawn<T: Transport + 'static>(
     };
     let started = start(id, spec, events);
     let mut shared = shared.borrow_mut();
-    match started {
-        Ok(requests) => {
+    let pid = match started {
+        Ok((pid, requests)) => {
             shared.processes.records.insert(
                 id,
                 ProcessRecord {
@@ -533,15 +535,17 @@ pub(crate) fn spawn<T: Transport + 'static>(
                     requests,
                 },
             );
+            Some(pid)
         }
         Err(error) => {
             if let Some(pending) = shared.operations.get_mut(&wait) {
                 pending.outcome = Some(OperationOutcome::Done);
                 pending.local_error = Some((start_error_code(error.kind()).to_owned(), error.to_string()));
             }
+            None
         }
-    }
-    Ok((id, wait))
+    };
+    Ok((id, wait, pid))
 }
 
 /// Ask a running process for a signal. The answer is the returned operation.

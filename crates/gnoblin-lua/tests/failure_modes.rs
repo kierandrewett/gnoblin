@@ -1870,6 +1870,30 @@ end)
 }
 
 #[test]
+fn a_started_process_names_its_pid_and_a_missing_one_has_none() {
+    let config = Config::new("process-pid");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"true"})
+assert(type(job.pid) == "number" and job.pid > 0, "a started process has a pid")
+local missing = gnoblin.process.spawn({"/nonexistent/gnoblin-test-program"})
+assert(missing.pid == nil, "a program that did not start has no pid")
+job:wait():on_complete(function(_, err)
+    assert(err == nil, "true ran")
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
 fn captured_output_is_cut_at_output_limit_and_says_so() {
     let config = Config::new("process-capture");
     config.write(

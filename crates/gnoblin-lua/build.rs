@@ -507,6 +507,7 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text.push_str("--- A child process the runtime started.\n");
     text.push_str("---@class gnoblin.Process\n");
     text.push_str("---@field id integer\n");
+    text.push_str("---@field pid integer|nil\n");
     text.push_str("local Process = {}\n");
     text.push_str("--- The exit of the child, answered as an operation.\n");
     text.push_str("---@return gnoblin.Operation\n");
