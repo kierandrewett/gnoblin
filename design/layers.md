@@ -35,11 +35,18 @@ marks a claim not checked against code or a primary source.
 - **Done:** `gnoblin_types::ParentWindow` parses the string into `None`, `X11(u32)` or
   `Wayland(String)`, and refuses the rest with a reason
   (`crates/gnoblin-types/src/parent_window.rs`).
-- **Done:** `wire::VerifiedCaller` carries the caller's pid and app id.
-  `xdg-desktop-portal-gnoblin/src/iface/mod.rs` `verified_caller` builds it from the bus
-  (`GetConnectionUnixProcessID` on the sender), never from the request. `PortalRequest.caller`
-  carries it through `portal.ui`. The compositor trusts that frame only because the privileged
-  IPC peer is the portal role; that boundary is what the frame's pid rests on.
+- **Parent verification is not established yet.** The relay cannot supply a trustworthy caller
+  identity: the D-Bus sender of an `org.freedesktop.impl.portal.*` call is the portal frontend,
+  not the app, so the bus pid names the frontend. `wire::VerifiedCaller` (pid and app id) and
+  `verified_caller` in `iface/mod.rs` remain as written and are not yet a basis for ownership.
+  Every request therefore uses output scope today; ownership design pending (Needs Kieran 16).
+  Sources: the frontend passes `app_id` but it is empty for unsandboxed host apps
+  ([xdg-desktop-portal#579](https://github.com/flatpak/xdg-desktop-portal/issues/579)), and some
+  interfaces historically omitted it
+  ([#963](https://github.com/flatpak/xdg-desktop-portal/issues/963)). The impl docs do not state
+  `app_id` as a security attribution
+  ([design considerations](https://flatpak.github.io/xdg-desktop-portal/docs/design-considerations.html)).
+  [INFERENCE: no attribution source exists that the compositor can trust for host apps.]
 - **Done:** the compositor resolves a parent before the dialog opens. `ipc/server.rs` `portal_ui`
   calls `resolve_portal_scope` (`ipc/portal.rs`), which resolves `wayland:` through
   `exported_window` and `window_process`, then `parent_owner_check` compares that pid with the
@@ -47,8 +54,9 @@ marks a claim not checked against code or a primary source.
   logs the scope used. A parent that fails any check (no parent, X11, unknown or revoked handle,
   another process) does not refuse the request: the dialog opens on the output. The test
   `a_payload_claiming_another_pid_is_checked_against_the_bus_pid` covers a forged pid.
-- **Scope today:** output-scope fallback is permitted and is NOT end-to-end parent-window support
-  until the relay sends the verified caller and parent, and modal-to-parent lands (Needs Kieran 15).
+- **Scope today:** every request uses output scope. The compositor code that resolves a parent
+  exists, but it is not end-to-end parent-window support: parent verification is not established
+  (above), the relay does not send the parent, and modal-to-parent has not landed (Needs Kieran 15).
 - **Not built:** portal.ui claimants are ignored, built-in only. Claimant-first routing (D19) is
   unbuilt.
 - **Gaps, in order:**
@@ -562,6 +570,11 @@ Open items only. Numbers are stable, so cross-references still hold. Each open i
 **15.** (A) Is output-scope fallback acceptable for unverified parents, or deny? Today a dialog whose parent
 cannot be verified opens on the output and the app still gets its consent answer. Denying instead
 would refuse those requests. Until Kieran decides, the fallback stays.
+
+**16.** (A) How a portal dialog may be placed over a parent window when the app cannot be verified. Today every request uses output scope. Options:
+- (a) Keep output scope for every request until a real attribution source exists. Pro: no spoofing risk, nothing new to trust. Con: dialogs never centre on their window, and the parent-window code stays unused.
+- (b) Treat the xdg-foreign handle as a bearer capability: random, unguessable, known only to the exporter. Honour it when it resolves, and always show the requesting app's label in the dialog. Pro: works for host apps. Con: a leaked handle lets another app place a dialog over that window. Risk: the label is the only signal, and the app id it shows may be empty.
+- (c) Honour the parent only when `app_id` is non-empty and matches the exporter's toplevel `app_id` (sandboxed apps only). Pro: a real identity check where Flatpak supplies one. Con: host apps (empty `app_id`) get output scope, and the check trusts `app_id`, which the docs do not name as an attribution.
 
 ### Decided
 
