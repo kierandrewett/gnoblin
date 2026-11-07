@@ -20,6 +20,8 @@
 
 #![forbid(unsafe_code)]
 
+/// The Secret Service agent, served when `keyring.provider` names Gnoblin.
+pub mod keyring;
 /// Client types the compat host links its compat adapters with. See the module docs.
 pub mod link;
 /// Passphrase and keyring prompt handling, gated by `prompts.enabled`.
@@ -31,6 +33,23 @@ pub mod role;
 pub use role::{Buses, Role, RoleError};
 
 gnoblin_log::logger!(log = "services");
+
+/// The Secret Service agent over Gnoblin's own store, at the paths the environment names. `None`
+/// when `keyring.provider` names another program, which then keeps the name.
+#[must_use]
+pub fn keyring_agent() -> Option<Box<dyn link::LinkedAgent>> {
+    if !keyring::enabled_from_environment() {
+        return None;
+    }
+    let Some(store) = keyring::store_path_from_environment() else {
+        log::warn!("no keyring store path: neither XDG_DATA_HOME nor HOME is absolute");
+        return None;
+    };
+    Some(Box::new(keyring::KeyringAgent::new(
+        store,
+        keyring::socket_path_from_environment(),
+    )))
+}
 
 /// The GeoClue agent, with the `location` table of the configuration as its policy. The
 /// services role links it as a linked agent; the session binary reaches it only through here.

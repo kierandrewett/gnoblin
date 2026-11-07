@@ -82,6 +82,11 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the logging section: the log store and retention settings, loaded by gnoblin_config::logging",
     ),
+    (
+        "keyring",
+        "0.2.0",
+        "the keyring section: which provider owns org.freedesktop.secrets, read by the services role at start",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.

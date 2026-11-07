@@ -1925,6 +1925,20 @@ doc = "Take the prompter role on the session bus."
 since = "0.2.0"
 
 [[section]]
+key = "keyring"
+type = "KeyringConfig"
+doc = "Which program provides the org.freedesktop.secrets keyring."
+
+[[section.field]]
+key = "provider"
+kind = "text"
+nonempty = true
+accepted = "a nonempty program name"
+default = { text = "gnoblin" }
+doc = "`gnoblin` serves the Secret Service from Gnoblin's own store. Any other name leaves the name to that program."
+since = "0.2.0"
+
+[[section]]
 key = "auth"
 type = "Auth"
 doc = "Whether Gnoblin is the session's polkit authentication agent."

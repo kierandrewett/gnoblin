@@ -30,12 +30,12 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Appearance, Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout,
-    Location, Logging, Monitors, Prompts, Protocols, VisualAccessibility, WindowManagement, Workspace, Xwayland,
-    parse_appearance, parse_auth, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input,
-    parse_input_sources, parse_layer_shell, parse_layout, parse_location, parse_logging, parse_monitors, parse_prompts,
-    parse_protocols, parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_workspaces,
-    parse_xwayland,
+    Appearance, Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, KeyringConfig,
+    LayerShell, Layout, Location, Logging, Monitors, Prompts, Protocols, VisualAccessibility, WindowManagement,
+    Workspace, Xwayland, parse_appearance, parse_auth, parse_compat, parse_compositor, parse_cursor,
+    parse_frame_renderers, parse_input, parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layout,
+    parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_touchpad_gestures,
+    parse_visual_accessibility, parse_window_management, parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -80,6 +80,8 @@ pub struct Config {
     pub monitors: Option<Monitors>,
     /// `prompts`: whether Gnoblin serves passphrase prompts.
     pub prompts: Option<Prompts>,
+    /// `keyring`: which program provides the Secret Service on the session bus.
+    pub keyring: Option<KeyringConfig>,
     /// `compat`: which compatibility adapters Gnoblin serves.
     pub compat: Option<Compat>,
     /// `logging`: what is logged, where the database is and how long it is kept.
@@ -169,6 +171,8 @@ impl Config {
                     .map(|table| parse_monitors(table, &root.key("monitors"), &mut out));
                 config.prompts = section_table(entries, "prompts", &root, &mut out)
                     .map(|table| parse_prompts(table, &root.key("prompts"), &mut out));
+                config.keyring = section_table(entries, "keyring", &root, &mut out)
+                    .map(|table| parse_keyring_config(table, &root.key("keyring"), &mut out));
                 config.compat = section_table(entries, "compat", &root, &mut out)
                     .map(|table| parse_compat(table, &root.key("compat"), &mut out));
                 config.logging = section_table(entries, "logging", &root, &mut out)
@@ -258,6 +262,7 @@ impl Config {
             location: None,
             monitors: None,
             prompts: None,
+            keyring: None,
             compat: None,
             logging: None,
             auth: None,

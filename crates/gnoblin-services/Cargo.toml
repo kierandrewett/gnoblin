@@ -30,6 +30,12 @@ gnoblin-service-polkit = { path = "../gnoblin-service-polkit" }
 gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
 # The GeoClue agent: the services role links it, and the session binary reaches it through there.
 gnoblin-service-location = { path = "../gnoblin-service-location" }
+# The Secret Service agent: the role serves it when `keyring.provider` names Gnoblin.
+gnoblin-service-keyring = { path = "../gnoblin-service-keyring" }
+# The hand-off socket the Secret Service listens on sits under the runtime directory the role finds.
+gnoblin-keyring-handoff = { path = "../gnoblin-keyring-handoff" }
+# The uid the runtime directory falls back to when `XDG_RUNTIME_DIR` is unset.
+rustix.workspace = true
 # The D-Bus agents are objects on the system bus, served through zbus.
 zbus.workspace = true
 # One blocking wait per bus registration: the role has no async runtime of its own, and
