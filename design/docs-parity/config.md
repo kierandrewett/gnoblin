@@ -56,11 +56,11 @@ Counts cover the rows below, not every setting leaf. Leaf-level coverage of all 
 
 ## Configure: input
 
-| Item                      | Doc path:line                  | Status  | Evidence / gap                                                                        | Owner   | Effort |
-| ------------------------- | ------------------------------ | ------- | ------------------------------------------------------------------------------------- | ------- | ------ |
-| `input.tablets` routing   | docs/config/configure/input.md | PARTIAL | Tablet tool events are dropped at crates/gnoblin-backend/src/libinput/mod.rs:405-412. | Unowned | M      |
-| Tablet `orientation_lock` | docs/config/configure/input    | PARTIAL | Always None in the Rust tree.                                                         | Unowned | S      |
-| Stylus settings           | docs/config/configure/input    | MISSING | No hits [INFERENCE].                                                                  | Unowned | M      |
+| Item                      | Doc path:line                  | Status  | Evidence / gap                                                                            | Owner   | Effort |
+| ------------------------- | ------------------------------ | ------- | ----------------------------------------------------------------------------------------- | ------- | ------ |
+| `input.tablets` routing   | docs/config/configure/input.md | PARTIAL | Tablet tool events are dropped at crates/gnoblin-backend-drm/src/libinput/mod.rs:405-412. | Unowned | M      |
+| Tablet `orientation_lock` | docs/config/configure/input    | PARTIAL | Always None in the Rust tree.                                                             | Unowned | S      |
+| Stylus settings           | docs/config/configure/input    | MISSING | No hits [INFERENCE].                                                                      | Unowned | M      |
 
 ## Animation and shortcuts
 

@@ -58,6 +58,7 @@ const TYPES: &str = "gnoblin-types";
 /// pure policy, and [`FOUNDATION`] says why.
 const ENGINE: &[&str] = &[
     "gnoblin-backend",
+    "gnoblin-backend-drm",
     "gnoblin-input",
     "gnoblin-input-eis",
     "gnoblin-render-gles",
@@ -460,15 +461,15 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
             dep.name
         ));
     }
-    if package.name == "gnoblin-backend"
+    // The backend and the DRM backend name the renderers by crate, not through a trait: the
+    // Vulkan renderer under the `vulkan` feature, the GLES renderer for the DRM path, and the
+    // software renderer for the nested and headless paths. Each is a leaf of the renderer half,
+    // so the edge cannot pull a policy or protocol crate in behind the backend.
+    if (package.name == "gnoblin-backend" || package.name == "gnoblin-backend-drm")
         && (dep.name == "gnoblin-render-vulkan"
             || dep.name == "gnoblin-render-gles"
             || dep.name == "gnoblin-render-software")
     {
-        // The backend names its renderers by crate, not through a trait: the Vulkan renderer under
-        // the `vulkan` feature, the GLES renderer for the DRM path, and the software renderer for
-        // the nested and headless paths. Each is a leaf of the renderer half, so the edge cannot
-        // pull a policy or protocol crate in behind the backend.
         return None;
     }
     if is_engine(&dep.name) && dep.name != "gnoblin-backend" {
@@ -1372,6 +1373,31 @@ mod tests {
         assert_eq!(
             violations(&[
                 ("gnoblin-backend", &["gnoblin-render", "gnoblin-types"]),
+                ("gnoblin-render", &["gnoblin-types"]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    /// The DRM backend is an engine crate of the hardware half. It names the contract it
+    /// implements, the GLES renderer it scans out through and the frame it draws, and no
+    /// other engine crate: a renderer or the nested backend behind it would make the
+    /// hardware path pull the other backends in.
+    #[test]
+    fn the_drm_backend_names_only_the_contract_the_renderer_and_the_frame() {
+        assert_eq!(
+            violations(&[
+                (
+                    "gnoblin-backend-drm",
+                    &[
+                        "gnoblin-backend",
+                        "gnoblin-render-frame",
+                        "gnoblin-render-gles",
+                        "gnoblin-types",
+                    ]
+                ),
+                ("gnoblin-backend", &["gnoblin-types"]),
+                ("gnoblin-render-frame", &["gnoblin-render", "gnoblin-types"]),
                 ("gnoblin-render", &["gnoblin-types"]),
             ]),
             Vec::<String>::new()

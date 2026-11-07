@@ -25,9 +25,10 @@ methods, and `render::AnyRenderer` is the one enum that names them together.
 - `headless.rs` stores a `RendererKind` in `HeadlessConfig` and an `AnyRenderer` in
   each `HeadlessTarget`. `Headless::new()` is `Software`, and `HeadlessConfig::gles()`
   selects GLES.
-- The DRM scan-out path (`drm/scanout.rs`) builds a `Gles` directly on the device's
-  EGL display and calls `Gles::draw_scanout`. The nested backend builds a `Software`
-  directly (`nested/surface.rs`). Neither goes through `AnyRenderer`.
+- The DRM scan-out path (`crates/gnoblin-backend-drm/src/scanout.rs`) builds a
+  `Gles` directly on the device's EGL display and calls `Gles::draw_scanout`. The
+  nested backend builds a `Software` directly (`nested/surface.rs`). Neither goes
+  through `AnyRenderer`.
 - The compositor never names a renderer. `gnoblin-compositor/src/backend.rs` builds
   `Headless::with_config(HeadlessConfig::from_setting(..))` or `Nested::connect`, refuses a
   non-software renderer for nested, and refuses `Drm` by name. The wayland
@@ -218,7 +219,7 @@ What is missing:
 Where KMS plugs in: the split is `Vulkan::on_context(context, size)` for the device
 half plus a scan-out target type for the target half, with `RenderTarget` becoming
 "offscreen image" or "imported dmabuf". It mirrors `Gles::on_display` and
-`ScanBuffer`, and `drm/scanout.rs` is where it is called, next to the `Gles` it would
+`ScanBuffer`, and `gnoblin-backend-drm`'s `scanout.rs` is where it is called, next to the `Gles` it would
 replace for a session that selects Vulkan. At that point `AnyRenderer` gains a way to
 build a scan-out variant, or DRM keeps naming the renderer directly as it does today.
 Deciding which is part of that slice, because it depends on whether `draw_scanout`

@@ -445,7 +445,8 @@ gnoblin/
     gnoblin-input/            libinput settings, xkb, chords, gestures, input policy routing, IME, idle activity
     gnoblin-input-eis/        EIS server (libei over reis): client requests to seat events and consent decisions
     gnoblin-render-frame/     renderer-neutral frame seam: OutputFrame, layers, overlays, Image, RenderError, shared WGSL shader sources and the wl_shm writer; renderers depend on it, never on gnoblin-backend
-    gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
+    gnoblin-backend/          backends: the contract, nested (Wayland client), headless
+    gnoblin-backend-drm/      DRM backend: udev, libseat, gbm, libinput, the hardware frame plan; implements the gnoblin-backend contract, the only crate with smithay's hardware features
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
     gnoblin-pipewire-export/  PipeWire video streams for granted capture sessions; the only crate that links `pipewire`

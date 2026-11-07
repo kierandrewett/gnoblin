@@ -1,6 +1,6 @@
 # Crate boundaries
 
-Status: analysis, with the renderer split in progress. Done: the renderer-neutral frame seam is `gnoblin-render-frame` (row `gnoblin-backend` `render/` below, phase 1). The Vulkan, GLES and software renderers are still in `gnoblin-backend` until their phases land. Every number comes from reading the files at `origin/rust-compositor` (8793f0573). Line counts are non-test Rust lines under `src/`, with test files counted separately where named. Transitive counts are from `Cargo.lock` only where stated; other counts are inference.
+Status: analysis, with the renderer and hardware splits in progress. Done: the renderer-neutral frame seam is `gnoblin-render-frame` (row `gnoblin-backend` `render/` below, phase 1), and the hardware backend is `gnoblin-backend-drm` (row below). The Vulkan, GLES and software renderers are still in `gnoblin-backend` until their phases land. Every number comes from reading the files at `origin/rust-compositor` (8793f0573). Line counts are non-test Rust lines under `src/`, with test files counted separately where named. Transitive counts are from `Cargo.lock` only where stated; other counts are inference.
 
 ## The rule
 
@@ -51,7 +51,7 @@ Rows are read from the files named below. `gnoblin-lua/src/layout/` has ten file
 
 **backend vulkan.** The Vulkan renderer is opt-in in practice: `vulkan` is a default feature, and `ash` is a raw binding. Splitting it removes `ash` and its `unsafe` shims from the GLES and DRM builds. Blast radius is the backend's 10 transitive dependants.
 
-**backend drm.** Hardware code (`drm/gpu.rs` 1292 lines, `drm/plan.rs` 913, `libinput`, `udev`, `session`) needs smithay's hardware features. Nested and headless paths need none of them. Blast radius is 10 transitive dependants, so the split helps only if hardware-only changes stop rebuilding the nested and headless paths (inference).
+**backend drm.** Hardware code (`gpu.rs` 1294 lines, `plan.rs` 913, `libinput`, `udev`, `session`) needs smithay's hardware features. Nested and headless paths need none of them. Blast radius is 10 transitive dependants, so the split helps only if hardware-only changes stop rebuilding the nested and headless paths (inference). Done: the code moved to `gnoblin-backend-drm`, which implements the backend contract and names no other backend. `gnoblin-backend` keeps the contract, the nested and headless paths, and the renderer-neutral frame, and no longer carries `smithay`'s hardware features.
 
 **portal ui.** `ui.rs` and `paint.rs` were the only `egui` users in `gnoblin-portal-core`; `model/` is not (grep inference from the file list). Dependants are 4 transitively. Done: they moved to `gnoblin-portal-ui`, which holds the `DialogUi` trait, the shell and the painter. `gnoblin-portal-core` now holds the models only and drops the egui dependency.
 
@@ -83,7 +83,7 @@ These add a graph node and no feature. They are flagged in the opposite directio
 1. `gnoblin-wayland` pipewire export to `gnoblin-pipewire-export`. Done: the module moved with its tests, and `xtask deps` rule `pipewire-export-isolation` holds it.
 2. `gnoblin-input` EIS to `gnoblin-input-eis`. Done.
 3. `gnoblin-backend` Vulkan to `gnoblin-backend-vulkan`.
-4. `gnoblin-backend` hardware to `gnoblin-backend-drm`.
+4. `gnoblin-backend` hardware to `gnoblin-backend-drm`. Done: the module moved with its tests, and `xtask deps` rule `engine-isolation` names the new crate as a backend and the renderer leaves it may use.
 5. `gnoblin-lua` layout to `gnoblin-lua-layout`.
 6. `gnoblin-portal-core` UI to `gnoblin-portal-ui` (done).
 7. `gnoblinctl` logs to `gnoblinctl-logs`.
@@ -96,5 +96,5 @@ These add a graph node and no feature. They are flagged in the opposite directio
 - Settled: `gnoblin-store` is wired in. The compositor and the portal open the log store through it.
 - Lua naming: `gnoblin-lua-layout` next to the existing `gnoblin-lua-sandbox`, or one crate?
 - Are the three one-line compat stubs placeholders to fill, or dead crates to delete?
-- Backend split: do you want `drm` and `vulkan` out now, or only `vulkan`, since `drm` has the weaker blast-radius gain?
+- Backend split: `drm` is done as `gnoblin-backend-drm`. `vulkan` remains open: do you want it out now, given the weaker blast-radius gain of `drm`?
 - Compat `Extension` seam: `gnoblin-compat-host` keeps the compositor-side `Extension` registry (`compat`, Redirect and Interop adapters) for now. Should that registration move behind a seam trait implemented by `gnoblin-wayland`, or should the adapters link `gnoblin-wayland` as the two protocol adapters already do? Services-role adapters now own their glue in an `agent` module and depend on `gnoblin-service-core`.
