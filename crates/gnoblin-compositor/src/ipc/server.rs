@@ -1061,6 +1061,14 @@ impl Dispatcher {
             Ok(config) => {
                 self.store.publish_settings(&config);
                 self.portal.configure(&config);
+                // Reduced motion turns animations off in the compositor loop. A document that
+                // does not name the key is not reduced, so it animates as before.
+                let reduced_motion = config
+                    .appearance
+                    .as_ref()
+                    .and_then(|appearance| appearance.reduced_motion)
+                    .unwrap_or(false);
+                self.control.set_reduced_motion(reduced_motion);
             }
             Err(reason) => {
                 log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")
