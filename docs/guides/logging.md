@@ -34,8 +34,8 @@ The real protection is the allowlist above:
 | `auto` (default) | Journal, `<N>` lines, pretty or plain, chosen as described below            |
 | `journal`        | Native journal entries; `<N>` lines on stderr if the journal is unreachable |
 | `journal-stream` | `<N>component: message` lines, with the priority read by systemd            |
-| `pretty`         | Coloured `LEVEL [role] component: message` lines                            |
-| `plain`          | `LEVEL [role] component: message` lines, without colour                     |
+| `pretty`         | Coloured `LEVEL  role/component  message  key=value` lines                  |
+| `plain`          | `LEVEL  role/component  message  key=value` lines, without colour           |
 | `json`           | One JSON object per line                                                    |
 | `off`            | Nothing; only the database records                                          |
 

@@ -41,11 +41,11 @@ pub enum Console {
     Journal,
     /// `<N>component: message` lines, which systemd reads the priority from.
     JournalStream,
-    /// `LEVEL [role] component: message` lines, with the component in colour on a terminal.
+    /// `LEVEL  role/component  message  key=value` lines, with the component in colour on a terminal.
     Pretty,
     /// One JSON object per line.
     Json,
-    /// `LEVEL [role] component: message` lines without colour.
+    /// `LEVEL  role/component  message  key=value` lines without colour.
     Plain,
 }
 

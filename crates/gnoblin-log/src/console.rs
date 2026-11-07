@@ -1,6 +1,6 @@
 //! The console sink of the log: one line per event on stderr, in one of three formats.
 //!
-//! [`ConsoleFormat`] is the human format, `LEVEL [role] component: message field=value`. The
+//! [`ConsoleFormat`] is the human format, `LEVEL  role/component  message  key=value`. The
 //! component column is as wide as the longest component printed so far, up to
 //! [`MAX_COMPONENT_WIDTH`]. With colour, each component has the same colour in every run, so a
 //! crate is easy to spot.
@@ -27,7 +27,7 @@ pub const MAX_COMPONENT_WIDTH: usize = 16;
 /// The widest component printed so far, which the column keeps as its width.
 static COMPONENT_WIDTH: AtomicUsize = AtomicUsize::new(0);
 
-/// Formats `LEVEL [role] component: message field=value`, with the component in colour when
+/// Formats `LEVEL  role/component  message  key=value`, with the component in colour when
 /// `colour` is set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConsoleFormat {
@@ -45,24 +45,41 @@ where
     fn format_event(&self, _context: &FmtContext<'_, S, N>, mut writer: Writer<'_>, event: &Event<'_>) -> fmt::Result {
         let logged = Logged::from_event(event);
         let width = widen(&logged.component);
-        write!(writer, "{:<5} [{}] ", event.metadata().level().as_str(), self.role)?;
-        if self.colour {
-            write!(
-                writer,
-                "\x1b[{}m{:<width$}\x1b[0m: ",
-                colour(&logged.component),
-                logged.component
-            )?;
-        } else {
-            write!(writer, "{:<width$}: ", logged.component)?;
-        }
-        write!(writer, "{}", logged.message)?;
-        let fields = logged.fields_line();
-        if !fields.is_empty() {
-            write!(writer, " {fields}")?;
-        }
-        writeln!(writer)
+        writeln!(
+            writer,
+            "{}",
+            pretty_line(&logged, *event.metadata().level(), self.role, self.colour, width)
+        )
     }
+}
+
+/// Formats one human line: `LEVEL  role/component  message  key=value`. The level is padded to
+/// five columns and the component to `width`. With `coloured` set, the role and the fields are
+/// dim and the component takes its stable colour. The line never has square brackets, so a
+/// component name is not repeated in a tag before the message.
+pub fn pretty_line(logged: &Logged, level: Level, role: &str, coloured: bool, width: usize) -> String {
+    let mut line = format!("{:<5}  ", level.as_str());
+    if coloured {
+        let _ = write!(
+            line,
+            "\x1b[2m{role}\x1b[0m/\x1b[{}m{:<width$}\x1b[0m  ",
+            colour(&logged.component),
+            logged.component
+        );
+    } else {
+        let _ = write!(line, "{role}/{:<width$}  ", logged.component);
+    }
+    line.push_str(&logged.message);
+    let fields = logged.fields_line();
+    if !fields.is_empty() {
+        line.push_str("  ");
+        if coloured {
+            let _ = write!(line, "\x1b[2m{fields}\x1b[0m");
+        } else {
+            line.push_str(&fields);
+        }
+    }
+    line
 }
 
 /// Formats one line for stderr that systemd reads a priority from: `<N>component: message
@@ -197,6 +214,21 @@ mod tests {
         let longest = "compat-displayconfig-extra-long-name";
         assert!(widen(longest) <= MAX_COMPONENT_WIDTH);
         assert!(widen("x") <= MAX_COMPONENT_WIDTH);
+    }
+
+    #[test]
+    fn a_pretty_line_has_no_brackets_and_pads_level_and_component() {
+        // "wayland" pads to the width 8, then two spaces precede the message.
+        assert_eq!(
+            pretty_line(&sample("ready"), Level::INFO, "compositor", false, 8),
+            "INFO   compositor/wayland   ready  output=\"DP-1\""
+        );
+        let coloured = pretty_line(&sample("ready"), Level::INFO, "compositor", true, 8);
+        assert!(coloured.starts_with("INFO   \x1b[2mcompositor\x1b[0m/\x1b["));
+        assert!(coloured.contains("\x1b[0m  ready  \x1b[2moutput=\"DP-1\"\x1b[0m"));
+        // Escape codes contain '[', so strip them before checking that no bracket is printed.
+        assert!(!"INFO   compositor/wayland   ready".contains(['[', ']']));
+        assert!(!coloured.replace("\x1b[", "").contains(['[', ']']));
     }
 
     #[test]
