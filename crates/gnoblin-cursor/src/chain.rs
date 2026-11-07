@@ -6,6 +6,7 @@
 //! cached only when no provider failed on the way, so a broken theme entry is
 //! retried rather than remembered.
 
+use std::collections::HashSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -45,6 +46,8 @@ pub struct CursorChain {
     providers: Vec<Box<dyn CursorProvider>>,
     byte_cap: usize,
     cache: Mutex<Cache>,
+    /// The (provider, reason) pairs already logged, so a broken file is reported once.
+    reported: Mutex<HashSet<(&'static str, String)>>,
 }
 
 impl CursorChain {
@@ -74,6 +77,7 @@ impl CursorChain {
             providers,
             byte_cap,
             cache: Mutex::new(Cache::default()),
+            reported: Mutex::new(HashSet::new()),
         }
     }
 
@@ -109,7 +113,7 @@ impl CursorChain {
                 Ok(Lookup::Miss) => {}
                 Ok(Lookup::Failed(reason)) => {
                     clean = false;
-                    crate::log::warn!(provider = kind, shape, reason = %reason, "cursor provider failed");
+                    self.report_failure(kind, shape, &reason);
                 }
                 Err(_) => {
                     clean = false;
@@ -118,6 +122,27 @@ impl CursorChain {
             }
         }
         (Arc::new(builtin::arrow(physical)), clean)
+    }
+
+    /// Logs a provider failure the first time its reason is seen. The reason
+    /// names the file, so a broken theme file logs once for the whole chain,
+    /// not once per shape; the lookup still falls through to the next provider.
+    fn report_failure(&self, provider: &'static str, shape: &str, reason: &str) {
+        let mut reported = self.reported.lock().unwrap_or_else(PoisonError::into_inner);
+        if reported.insert((provider, reason.to_owned())) {
+            crate::log::warn!(
+                provider,
+                shape,
+                reason,
+                "cursor provider failed; repeats for this path are not logged"
+            );
+        }
+    }
+
+    /// How many distinct provider failures have been reported.
+    #[cfg(test)]
+    fn reported_failures(&self) -> usize {
+        self.reported.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
     /// The cached answer for a key, moved to the most recently used end.
@@ -190,6 +215,29 @@ mod tests {
         fn lookup(&self, request: &CursorRequest<'_>, _files: &dyn CursorFiles) -> Lookup {
             (self.0)(request)
         }
+    }
+
+    #[test]
+    fn a_failing_path_is_reported_once_and_the_next_provider_still_answers() {
+        let chain = CursorChain::new(
+            files(),
+            "default",
+            vec![
+                Box::new(Scripted(|_| {
+                    Lookup::Failed("default/manifest.hl: unreadable: Permission denied (os error 13)".to_owned())
+                })),
+                Box::new(Scripted(|_| Lookup::Found(marked(5)))),
+            ],
+            BIG_CAP,
+        );
+        for shape in ["arrow", "pointer", "text", "wait"] {
+            assert_eq!(chain.lookup(shape, 24, Scale::IDENTITY).width(), 5);
+        }
+        assert_eq!(
+            chain.reported_failures(),
+            1,
+            "one report for the path, not one per shape"
+        );
     }
 
     /// A solid square of `edge` pixels, so a test can tell which provider answered.
