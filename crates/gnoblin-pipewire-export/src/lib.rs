@@ -2,7 +2,7 @@
 //!
 //! A portal ScreenCast client reads a PipeWire node. That node exists only for a session the
 //! capture table holds with its consent grant ([`CaptureStream::Granted`]) and that has not
-//! stopped. Three rules follow, and each has a failure-mode test in `pipewire_export/tests.rs`:
+//! stopped. Three rules follow, and each has a failure-mode test in `tests.rs`:
 //!
 //! - **No grant, no stream.** [`PipewireExport::start`] refuses a session without a grant before
 //!   it connects to PipeWire, so no stream is created and no node id exists.
@@ -55,7 +55,7 @@ const BUFFER: u64 = 1;
 
 /// Why a PipeWire stream was not started, or why a node id was not given.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExportError {
+pub enum ExportError {
     /// The session is not in the table.
     Unknown,
     /// The session holds no consent grant, so no stream may exist for it.
@@ -85,7 +85,7 @@ impl std::fmt::Display for ExportError {
 
 /// Where a PipeWire frame's pixels come from. The compositor implements it over the same
 /// targets the capture protocols copy from, so a stream and a screencopy agree on pixels.
-pub(crate) trait PlaneSource {
+pub trait PlaneSource {
     /// What `target` covers now, or [`None`] when it is gone.
     fn bounds(&self, target: Target) -> Option<Rect>;
 
@@ -113,7 +113,7 @@ impl CaptureSource for Plane<'_> {
 /// Writes `region` of `image` into `plane` as the packed 32-bit layout `format` names, from the
 /// plane's top-left corner. A pixel the image does not hold is written black, so no byte of an
 /// earlier frame survives into a later one.
-pub(crate) fn write_region(image: &Image, region: Rect, format: Format, plane: &mut [u8]) -> Copied {
+pub fn write_region(image: &Image, region: Rect, format: Format, plane: &mut [u8]) -> Copied {
     let Some(length) = format.bytes() else {
         return Copied::Nothing;
     };
@@ -255,7 +255,7 @@ impl PipewireExportStream {
 ///
 /// It has no connection until the first stream starts, and it holds none once the last stream
 /// has ended. Field order matters: the streams drop before the connection they belong to.
-pub(crate) struct PipewireExport {
+pub struct PipewireExport {
     /// The streams, by the session each serves.
     exports: BTreeMap<SessionId, PipewireExportStream>,
     /// The connection the streams share, if any stream is live.
@@ -266,7 +266,7 @@ pub(crate) struct PipewireExport {
 
 impl PipewireExport {
     /// An export that connects to the daemon the environment names.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             exports: BTreeMap::new(),
             connection: None,
@@ -289,7 +289,7 @@ impl PipewireExport {
     /// The session must hold [`CaptureStream::Granted`] and must not have stopped. Any other
     /// session is refused before PipeWire is touched, so no stream and no node id come into
     /// being for it. Starting an already-exported session answers its existing node.
-    pub(crate) fn start(&mut self, table: &Table, session: SessionId, caller: ClientId) -> Result<u32, ExportError> {
+    pub fn start(&mut self, table: &Table, session: SessionId, caller: ClientId) -> Result<u32, ExportError> {
         let entry = table.get(session).ok_or(ExportError::Unknown)?;
         if entry.owner() != caller {
             return Err(ExportError::NotOwner);
@@ -375,7 +375,7 @@ impl PipewireExport {
     }
 
     /// The node id of `session`, if `caller` opened it and it has a stream.
-    pub(crate) fn node_id(&self, table: &Table, session: SessionId, caller: ClientId) -> Result<u32, ExportError> {
+    pub fn node_id(&self, table: &Table, session: SessionId, caller: ClientId) -> Result<u32, ExportError> {
         let entry = table.get(session).ok_or(ExportError::Unknown)?;
         if entry.owner() != caller {
             return Err(ExportError::NotOwner);
@@ -386,13 +386,13 @@ impl PipewireExport {
             .ok_or(ExportError::NotExported)
     }
     /// Whether any stream is live, so the compositor only pumps when one is.
-    pub(crate) fn is_live(&self) -> bool {
+    pub fn is_live(&self) -> bool {
         !self.exports.is_empty()
     }
 
     /// Advances every live stream by one iteration of the connection, ends the streams whose
     /// authority has gone, and produces a frame for each streaming session the table allows.
-    pub(crate) fn pump(&mut self, table: &mut Table, tick: Tick, capture: Capture, source: &mut dyn PlaneSource) {
+    pub fn pump(&mut self, table: &mut Table, tick: Tick, capture: Capture, source: &mut dyn PlaneSource) {
         self.reap(table);
         if let Some(connection) = &self.connection {
             connection.mainloop.loop_().iterate(Timeout::Finite(Duration::ZERO));

@@ -1643,6 +1643,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-pipewire-export"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-backend",
+ "gnoblin-capture",
+ "gnoblin-lock",
+ "gnoblin-types",
+ "pipewire",
+]
+
+[[package]]
 name = "gnoblin-portal"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1857,10 +1868,10 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-output",
+ "gnoblin-pipewire-export",
  "gnoblin-render",
  "gnoblin-types",
  "gnoblin-wm",
- "pipewire",
  "smithay",
  "tempfile",
  "wayland-client",

@@ -84,7 +84,7 @@ use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
 use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
-use crate::pipewire_export::{ExportError, PipewireExport, PlaneSource, write_region};
+use gnoblin_pipewire_export::{ExportError, PipewireExport, PlaneSource, write_region};
 
 use crate::log;
 

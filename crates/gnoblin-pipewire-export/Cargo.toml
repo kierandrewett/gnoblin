@@ -1,0 +1,25 @@
+[package]
+name = "gnoblin-pipewire-export"
+description = "PipeWire video streams for the capture sessions the table has granted."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Rectangles, points, sizes, client identities and ticks: the same values every crate names.
+gnoblin-types.workspace = true
+# The capture table, its formats, pixel layouts and the frame pull the stream drives.
+gnoblin-capture = { path = "../gnoblin-capture" }
+# The session lock's consent answer (`CaptureStream`, `Capture`) that gates each stream.
+gnoblin-lock = { path = "../gnoblin-lock" }
+# `render::Image`, the frame a plane is written from. The backend is the one engine crate
+# a mechanism crate may name (design/rust-compositor.md, "Dependency rules").
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The PipeWire client library. The `v0_3_34` feature adds the trigger call a DRIVER stream
+# needs to produce a frame on its own schedule (design/pipewire-capture-spike.md).
+# Only this crate links PipeWire.
+pipewire = { version = "0.10", features = ["v0_3_34"] }
+
+[lints]
+workspace = true

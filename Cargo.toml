@@ -52,6 +52,7 @@ members = [
     "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
+    "crates/gnoblin-pipewire-export",
     "crates/gnoblin-parity",
     "crates/gnoblin-proto",
     "crates/gnoblin-render",
