@@ -354,9 +354,21 @@ fn convert(property: &str, value: &Value) -> Option<Setting> {
 
 #[cfg(test)]
 mod tests {
-    use gnoblin_model::{ObjectId, Observation, Revision, Value};
+    use gnoblin_model::{ObjectId, ObjectView, Observation, Revision, TypeKey, Value};
 
     use super::{Setting, Table};
+
+    /// A snapshot of the settings object carrying the given properties.
+    fn opened(properties: Vec<(&str, Value)>) -> Observation {
+        let properties = properties
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value))
+            .collect();
+        Observation::Opened {
+            view: ObjectView::new(ObjectId::new(1), TypeKey::new("gnoblin", "settings"), properties),
+            revision: Revision::ZERO,
+        }
+    }
 
     fn changed(property: &str, value: Value) -> Observation {
         Observation::Changed {
@@ -380,6 +392,58 @@ mod tests {
 
         let next = table.apply(&changed("color_scheme", Value::Uint(2)));
         assert_eq!(next.len(), 1, "a different value is announced");
+    }
+
+    #[test]
+    fn reduced_motion_and_contrast_read_back_as_u32() {
+        // The snapshot is what a subscriber starts from: both preferences are published as
+        // the `u` the spec names, `1` meaning the preference is set, and a `false` motion
+        // flag is published as the toolkit's `enable-animations` boolean.
+        let mut table = Table::new();
+        let changes = table.apply(&opened(vec![
+            ("reduced_motion", Value::Uint(1)),
+            ("contrast", Value::Uint(1)),
+            ("enable_animations", Value::Bool(false)),
+        ]));
+        assert_eq!(
+            changes.len(),
+            3,
+            "every published preference is announced from the snapshot"
+        );
+        assert_eq!(
+            table.read("org.freedesktop.appearance", "reduced-motion"),
+            Some(&Setting::Uint(1))
+        );
+        assert_eq!(
+            table.read("org.freedesktop.appearance", "contrast"),
+            Some(&Setting::Uint(1))
+        );
+        assert_eq!(
+            table.read("org.gnome.desktop.interface", "enable-animations"),
+            Some(&Setting::Bool(false))
+        );
+    }
+
+    #[test]
+    fn a_reduced_motion_toggle_is_announced_and_read_back() {
+        let mut table = Table::new();
+        table.apply(&changed("reduced_motion", Value::Uint(0)));
+        let changes = table.apply(&changed("reduced_motion", Value::Uint(1)));
+        assert_eq!(changes.len(), 1, "turning the preference on is one change");
+        assert_eq!(changes[0].namespace, "org.freedesktop.appearance");
+        assert_eq!(changes[0].key, "reduced-motion");
+        assert_eq!(changes[0].value, Setting::Uint(1));
+        assert_eq!(
+            table.read("org.freedesktop.appearance", "reduced-motion"),
+            Some(&Setting::Uint(1))
+        );
+
+        let off = table.apply(&changed("reduced_motion", Value::Uint(0)));
+        assert_eq!(off.len(), 1, "turning it off is announced too");
+        assert_eq!(
+            table.read("org.freedesktop.appearance", "reduced-motion"),
+            Some(&Setting::Uint(0))
+        );
     }
 
     #[test]
