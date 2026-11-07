@@ -13,6 +13,42 @@ Sanctum's source is closed. `github.com/marc2332/sanctum` returns 404 [INFERENCE
 - Gnoblin has the policy skeleton: placement modes, a work-area constraint, snap zones and a frame protocol. It lacks the interactive grab that feeds them, and it does not read client size limits.
 - COSMIC is `GPL-3.0-only`. Gnoblin is `GPL-2.0-or-later`. Take ideas from COSMIC, not code.
 
+## Where each idea lives
+
+Layer key: **A** is Gnoblin core, a compositor mechanism. **B** is user Lua, a layout or config the user writes. **C** is a shell config or package, for presentation and policy. **D** is a mix, and the cell names the split.
+
+Rule applied: Gnoblin owns compositor and session services. Shell presentation belongs to a shell integration (`AGENTS.md:30-31`). Each idea takes the lowest layer that works. Lua gaps are checked against `crates/gnoblin-schema/schema/` and `crates/gnoblin-lua/host_members.toml`.
+
+| Rank | Idea                                                  | Layer | Why                                                                         | Minimal core hook                                                                                        | Lua API (gaps marked)                                                                                                                                                        |
+| ---- | ----------------------------------------------------- | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Resize edges and cursor                               | C     | The frame renderer draws edges and cursors; core only receives actions.     | None new. Frame protocol reports actions (`gnoblin_window_frame_v1.rs:124-149`).                         | GAP: no Lua frame hook.                                                                                                                                                      |
+| 2    | Stacks and tabs                                       | D     | Grouping is layout (B); the tab bar is shell drawing (C).                   | Hidden members use placement `visible` (`crates/gnoblin-lua/src/layout/reply.rs`).                       | Layout can hide members. GAP: no tab bar hook.                                                                                                                               |
+| 3    | Sticky flag                                           | A     | Sticky changes workspace membership, so the model must hold it [INFERENCE]. | Sticky flag on the workspace model.                                                                      | GAP: no `sticky` property or method in `window.toml`.                                                                                                                        |
+| 4    | Client min and max size                               | A     | Clamping needs client hints, which only core receives.                      | Store hints on `Window`; clamp in placement and `move_resize`.                                           | GAP: no `min_size` or `max_size`.                                                                                                                                            |
+| 5    | Anchored placement (and the anchored cascade gap row) | D     | Core knows the parent; the placement rule is a user choice.                 | Pass the parent as an anchor into placement.                                                             | `new_window_placement` is config. GAP: no anchor field.                                                                                                                      |
+| 6    | Urgency instead of deny                               | D     | Core records the request; the shell draws the badge.                        | `urgent` flag, set where `Prevent` denies (`wm.rs:1253-1259`).                                           | GAP: no `urgent` in `window.toml`.                                                                                                                                           |
+| 7    | Window animation through transforms                   | D     | Lua picks transforms; core plays them; curves are shell style.              | Per-frame driver applies transform and opacity. [INFERENCE]                                              | Placements set `transform` and `opacity` per arrange (`reply.rs:81-101`). GAP: no per-window setter or tween. Effects are blur, shadow, shader only (`window.toml:116-120`). |
+| 8    | Move and resize grab                                  | A     | Pointer deltas come from the input path, which core owns.                   | New pointer grab in `gnoblin-input` (today chords only, `chord.rs:30`) feeds `MoveResize` (`wm.rs:429`). | GAP: no grab API; no `move` or `resize` on `window`.                                                                                                                         |
+| 9    | Edge snapping during drag                             | D     | Zones are shell policy; feeding them during a drag is core.                 | Grab emits `SnapRequested` (`wm.rs:426`), gated by `edge_tiling` (`wm.rs:1476`).                         | GAP: snap is event-only. Zones are shell config.                                                                                                                             |
+| 10   | Frame composition                                     | D     | Core composes surfaces; the shell owns look and policy.                     | Compose frame surfaces in the compositor. Not done (`gnoblin_window_frame_v1.rs:33`).                    | GAP: no Lua frame API.                                                                                                                                                       |
+| -    | Float toggle in tiling (gap row)                      | A     | Floating is layout state; D25 removed the per-window flag.                  | `allows_toggle_float` (`layout/kind.rs:46-48`) decides.                                                  | `ToggleFloat` event (`wm.rs:427`); no Lua method.                                                                                                                            |
+| -    | Click to raise (gap row)                              | A     | Stacking is core state, so the click must reach core [INFERENCE].           | `raise_on_click` config (`wm.rs:108-109`).                                                               | GAP: no `raise` method; only `focus`.                                                                                                                                        |
+
+Verified facts behind the gaps: `window.toml` has no move, resize, sticky or urgent property or method. Layouts see `Place` and `Move` requests for tiled windows only (`crates/gnoblin-wm/src/layout/placement.rs:203-215`). `host_members.toml` has `configure`, `load` and `timers`, and no input or animation member.
+
+## What this means for Gnoblin core
+
+Core must add only these mechanisms:
+
+- A pointer grab in `gnoblin-input`, feeding `MoveResize` and `SnapRequested` (rows 8 and 9). Input routing is core.
+- Client size hints on `Window`, used by placement and `move_resize` (row 4).
+- An anchor field on the new-window request, passed to placement (row 5).
+- Urgent and sticky state on the window model, exposed in `window.toml` (rows 3 and 6).
+- A per-frame driver that applies Lua-set transform and opacity (row 7). [INFERENCE: layout replies already set these per arrange; the per-frame feed is new.]
+- Frame composition in the compositor (row 10). The protocol does not compose yet (`gnoblin_window_frame_v1.rs:33`).
+
+Not core: snap zones, animation curves, tab bars, resize cursor shapes and window menus. The menu stays a signal (`menu_requested`, `window.toml:206`; D29 in `design/rust-compositor.md:1630`). The float toggle needs no new core: D25 decides it.
+
 ## Sanctum
 
 ### What it is
@@ -73,7 +109,7 @@ Sanctum's source is closed. `github.com/marc2332/sanctum` returns 404 [INFERENCE
 | New-window placement            | Not public  | Anchored cascade, two-thirds sizing   | `FreeSpace`, `Center`, `Cascade` (`crates/gnoblin-wm/src/placement.rs:22-28`)                   |
 | Move grab and snapping          | Not public  | Snap zones (`moving.rs:292-307`)      | No pointer grab. `move_window` is a test seam (`crates/gnoblin-wayland/src/state.rs:2184-2194`) |
 | Resize grab and edges           | Not public  | Edge snap in `floating/grabs`         | `MoveResize` event only (`crates/gnoblin-wm/src/event.rs`)                                      |
-| Resize border and cursor        | Not public  | 10 px border                          | Not implemented; frame reports nine actions (`gnoblin_window_frame_v1.rs:80-84`)                |
+| Resize border and cursor        | Not public  | 10 px border                          | Not implemented; frame reports twelve actions (`gnoblin_window_frame_v1.rs:124-149`)            |
 | Client min and max size         | Not public  | Read at placement (`mod.rs:467-481`)  | Not read. No `min_size` or `max_size` in `gnoblin-wm` or `gnoblin-wayland` (grep)               |
 | Click to raise                  | Not public  | Not checked                           | `raise_on_click` default true (`crates/gnoblin-wm/src/wm.rs:127`)                               |
 | Focus follows pointer           | Not public  | Not checked                           | `focus_mode` and `pointer_moved` (`crates/gnoblin-wm/src/wm.rs:1273`)                           |
@@ -96,7 +132,7 @@ Effort: S is a few days, M a week or two, L longer. Home says whether the work b
 | Interactive resize grab    | Not public  | Resize grab in `floating/grabs` | Missing. `MoveResize` only                                                                               | Core, input layer       | M      |
 | Edge snapping during drag  | Not public  | Snap zones                      | Zones exist (`snapping.rs:14`). Snap needs `edge_tiling` (`wm.rs:1476`)                                  | Core policy, Lua option | S-M    |
 | Client min and max size    | Not public  | Read at placement               | Not read                                                                                                 | Core, geometry clamp    | S      |
-| Resize edge detection      | Not public  | 10 px border                    | Frame renderer reports actions (`gnoblin_window_frame_v1.rs:80-84`)                                      | External frame renderer | M      |
+| Resize edge detection      | Not public  | 10 px border                    | Frame renderer reports actions (`gnoblin_window_frame_v1.rs:124-149`)                                    | External frame renderer | M      |
 | Anchored cascade           | Not public  | `map_anchored`                  | `Cascade` exists (`placement.rs:28`), different rule                                                     | Core, small change      | S      |
 | Urgency for focus requests | Not public  | Activation token                | Deny only (`wm.rs:1247-1259`)                                                                            | Core plus shell signal  | S-M    |
 | Server-side frames         | Freya shell | Config preference               | Frame protocol exists; not composed (`gnoblin_window_frame_v1.rs:30-40`)                                 | Shell renderer card     | L      |
@@ -109,31 +145,32 @@ Two facts shape the table. `floating.lua` leaves `on_request` nil, so it keeps w
 
 ## Ideas worth taking
 
-Ranked. Each one is independent unless noted.
+Ranked by core effort, least first. Each one is independent unless noted.
 
-1. **Wire a pointer grab to `MoveResize`.** Feed `drag::constrain` (`crates/gnoblin-wm/src/drag.rs:34`) from real pointer deltas. Everything else depends on this. Core, M.
-2. **Read client min and max size.** COSMIC reads both at placement (`mod.rs:467-481`). Gnoblin reads neither. Store them on the window model and clamp in `move_resize` and placement. Core, S.
-3. **Edge snapping during drag.** Reuse `SnapZone` (`snapping.rs:14`) inside the new grab. Use COSMIC's ranges as a starting point. Keep zone rules in Lua. S-M after 1.
-4. **Keep resize edges in the frame renderer.** The frame protocol already reports nine actions. Detection and cursor shape belong there, not in core. M.
-5. **Anchored placement as a mode.** COSMIC centres a child on its anchor (`mod.rs:520`). Gnoblin has no anchor concept. S.
-6. **Urgency instead of silent deny.** `Prevent` should mark the window urgent, not only refuse focus. The shell draws the signal. S-M.
-7. **Sticky flag on the stack.** A layer-level sticky state is a smaller change than COSMIC's workspace model. S.
-8. **Window animation through transforms.** Animate geometry in Lua, as Kieran's object-model note suggests, with a 200 ms default as COSMIC uses. Keeps animation out of core. S-M.
-9. **Stacks as a Lua layout.** A tabbed group is a layout concern with a frame. Do it after frame composition. L.
-10. **Frame composition.** Finish the renderer card so server-side frames work. This is in progress already. L.
+1. **Resize edges and cursor.** Detection and cursor shape stay in the frame renderer. Core already receives the actions. Core, none.
+2. **Stacks and tabs.** A tabbed group is a Lua layout with a shell tab bar. Core needs only placement `visible`, which exists. Drawing needs idea 10. Core, S.
+3. **Sticky flag.** Hold sticky in the workspace model, not as a stack layer. Core, S.
+4. **Read client min and max size.** COSMIC reads both at placement (`mod.rs:467-481`). Store them on `Window` and clamp in placement and `move_resize`. Core, S.
+5. **Anchored placement as a mode.** COSMIC centres a child on its anchor (`mod.rs:520`). Gnoblin needs an anchor field on the new-window request. Core, S.
+6. **Urgency instead of silent deny.** `Prevent` marks the window urgent and still refuses focus. The shell draws the signal. Core, S-M.
+7. **Window animation through transforms.** Lua animates transform and opacity, with 200 ms as COSMIC uses. Core needs a per-frame driver. Core, M [INFERENCE].
+8. **Move and resize grab.** Feed `drag::constrain` (`crates/gnoblin-wm/src/drag.rs:34`) from pointer deltas in `gnoblin-input`. Idea 9 depends on this. Core, M.
+9. **Edge snapping during drag.** Reuse `SnapZone` (`snapping.rs:14`) inside the grab from idea 8. Zone rules stay in Lua or shell config. Core, S-M after 8.
+10. **Frame composition.** Compose server-side frames, which the protocol does not do yet (`gnoblin_window_frame_v1.rs:33`). Core, L.
 
 ## Ideas to avoid
 
 - **Copying COSMIC code.** COSMIC is `GPL-3.0-only` (`Cargo.toml`). Gnoblin is `GPL-2.0-or-later` (`Cargo.toml:84`). [INFERENCE] These do not combine cleanly. Take ideas, not code.
 - **A toolkit inside the compositor.** COSMIC draws chrome with a UI toolkit inside the compositor. Gnoblin keeps its shell outside it (`design/native-ui-removal.md`). Keep it that way.
-- **A per-window floating flag.** D25 removed it (`design/rust-compositor.md:2936`). COSMIC's per-window toggle would undo that decision.
+- **A per-window floating flag.** D25 removed it (`design/rust-compositor.md:1626`). COSMIC's per-window toggle would undo that decision.
 - **Copying Sanctum.** Its source is closed, so there is nothing to copy. Its one-process model also conflicts with Gnoblin's shell split.
 - **COSMIC's config stack.** `cosmic_config` ties config to libcosmic. Gnoblin uses Lua. Do not add a second config system.
 
 ## Needs Kieran
 
 - **Float toggle in tiling.** Keep D25 (no float flag, toggle refused outside tiling), or allow a per-window float inside tiling as COSMIC does?
-- **Owner of the move grab.** Should the compositor input layer own the grab (idea 1), or should the frame renderer own it?
-- **Default placement.** Keep `FreeSpace` as the default (`wm.rs:121`), or switch to an anchored cascade?
-- **Urgency signal.** Add an urgent state to the window events, or keep deny-only?
-- **Licence.** Confirm that Gnoblin will not take COSMIC code, and that ideas-only is the rule.
+- **Owner of the move grab.** Core input (`gnoblin-input`) or the frame renderer? The table assumes core.
+- **Anchored placement.** Should layouts receive the parent anchor, or should core place transients only?
+- **Urgency.** Add an urgent state and signal, or keep deny-only?
+- **Animation API.** `crates/gnoblin-config/src/document.rs:142` names `gnoblin.animation`, but no animation object appears in `window.toml` or the Lua host (grep). Add per-window transform and opacity setters with tweens in Lua, or keep motion in the shell?
+- **Default placement.** Keep `FreeSpace` (`wm.rs:121`), or switch to an anchored cascade?
