@@ -1150,3 +1150,126 @@ fn a_blurred_node_fades_monotonically_with_group_opacity() {
         "the white side rises as the group fades to the backdrop: {reds:?}"
     );
 }
+
+#[test]
+fn an_identity_view_and_matrix_are_skipped() {
+    // The skip rule: a zoom of one and the identity matrix change no pixel, so the view pass does
+    // not run and an identity frame draws bit-identically to a frame with no view at all.
+    assert!(!view::is_active(None, None));
+    assert!(!view::is_active(View::new(1.0, 10.0, 20.0), None));
+    assert!(!view::is_active(None, Some(ColourMatrix::IDENTITY)));
+    assert!(view::is_active(View::new(2.0, 10.0, 20.0), None));
+    assert!(view::is_active(
+        None,
+        ColourMatrix::new([
+            [0.5, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0]
+        ])
+    ));
+}
+
+#[test]
+fn the_view_block_packs_to_the_shader_layout() {
+    // The block is eight vec4s: centre, size, four matrix rows, offsets, flags. The shader reads
+    // it at these offsets, so a reordered field would silently swap the zoom and the tint.
+    let view = View::new(2.0, 100.0, 50.0);
+    let matrix = ColourMatrix::new([
+        [0.1, 0.2, 0.3, 0.4, 0.5],
+        [0.6, 0.7, 0.8, 0.9, 1.0],
+        [1.0, 0.0, 0.0, 0.0, 0.25],
+        [0.0, 0.0, 0.0, 1.0, 0.0],
+    ]);
+    let uniforms = view::ViewUniforms::new(view, matrix, 1920, 1080);
+    let bytes = uniforms.bytes();
+    assert_eq!(bytes.len(), view::VIEW_BYTES);
+    let float = |index: usize| f32::from_ne_bytes(bytes[index * 4..index * 4 + 4].try_into().unwrap());
+    assert_eq!((float(0), float(1), float(2)), (100.0, 50.0, 2.0), "centre and zoom");
+    assert_eq!((float(4), float(5)), (1920.0, 1080.0), "output size");
+    assert_eq!(
+        (float(8), float(9), float(10), float(11)),
+        (0.1, 0.2, 0.3, 0.4),
+        "first matrix row"
+    );
+    assert_eq!(float(26), 0.25, "the third channel's offset sits in the offsets vector");
+    assert_eq!(
+        float(28),
+        1.0,
+        "the matrix flag is the first component of the flags vector"
+    );
+    let idle = view::ViewUniforms::new(None, None, 1920, 1080).bytes();
+    assert_eq!(
+        f32::from_ne_bytes(idle[28 * 4..28 * 4 + 4].try_into().unwrap()),
+        0.0,
+        "no matrix clears the flag"
+    );
+}
+
+/// A frame of two solid layers over a background, the same shape the parity test draws, so the
+/// view and matrix are the only difference between the frames a test compares.
+fn view_scene(view: Option<View>, matrix: Option<ColourMatrix>) -> OutputFrame {
+    let mut frame = OutputFrame::new();
+    frame.set_background(Color::from_rgba8(16, 32, 48, 255));
+    frame.push_damage(Rect::new(0, 0, 64, 64));
+    frame.push_layer(Layer::Solid(Solid::new(
+        Rect::new(0, 0, 32, 32),
+        Color::from_rgba8(200, 40, 10, 255),
+    )));
+    frame.push_layer(Layer::Solid(Solid::new(
+        Rect::new(16, 16, 32, 32),
+        Color::from_rgba8(0, 0, 0, 128),
+    )));
+    frame.set_view(view);
+    frame.set_colour_matrix(matrix);
+    frame
+}
+
+#[test]
+fn an_identity_view_draws_the_same_pixels_as_no_view() {
+    // The identity path must stay bit-identical: a zoom of one and the identity matrix skip the
+    // view pass, so the frame equals the one drawn without any view or matrix.
+    let size = Size::new(64, 64);
+    let Some(mut plain) = gles(size) else {
+        return;
+    };
+    plain.draw(&view_scene(None, None), Scale::IDENTITY).expect("drawn");
+    let plain = plain.screenshot().expect("a readback");
+
+    let Some(mut identity) = gles(size) else {
+        return;
+    };
+    let frame = view_scene(View::new(1.0, 20.0, 20.0), Some(ColourMatrix::IDENTITY));
+    identity.draw(&frame, Scale::IDENTITY).expect("drawn");
+    let identity = identity.screenshot().expect("a readback");
+
+    assert_eq!(
+        plain.data(),
+        identity.data(),
+        "an identity view must draw bit-identically"
+    );
+}
+
+#[test]
+fn a_magnified_view_matches_the_software_reference() {
+    // The view pass is nearest-neighbour, so the GLES magnifier must agree with the software
+    // path pixel for pixel, the same way the software tests pin its magnifier.
+    let size = Size::new(64, 64);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let view = View::new(2.0, 32.0, 32.0);
+    let frame = view_scene(view, None);
+    renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
+    let gl = renderer.screenshot().expect("a readback");
+
+    let mut software = Software::new(size).expect("a software renderer");
+    software.draw(&frame, Scale::IDENTITY).expect("drawn");
+    let reference = software.screenshot().expect("a readback");
+
+    assert_eq!(
+        gl.data(),
+        reference.data(),
+        "the GLES view must match the software view"
+    );
+}

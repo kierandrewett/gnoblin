@@ -454,6 +454,18 @@ impl Device {
             .map_err(context_lost)
     }
 
+    /// Replaces the destination rather than blending over it: the next pass writes its colour and
+    /// alpha as they are. [`Self::blend_premultiplied`] restores the blend every pass expects.
+    pub(crate) fn blend_replace(&mut self) -> Result<(), RenderError> {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: the blend state belongs to this context; the caller restores it with
+                // `blend_premultiplied` before the next pass.
+                gl.blend_func_separate(glow::ONE, glow::ZERO, glow::ONE, glow::ZERO);
+            })
+            .map_err(context_lost)
+    }
+
     /// Restores the premultiplied blend every pass expects after [`Self::blend_group`].
     pub(crate) fn blend_premultiplied(&mut self) -> Result<(), RenderError> {
         self.renderer

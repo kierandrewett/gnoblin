@@ -116,7 +116,7 @@ use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
 use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Overlay, Surface};
+use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
@@ -207,6 +207,8 @@ struct Passes {
     surface: Program,
     shadow: Program,
     blur: Program,
+    /// The whole-output view pass, run only when the frame has a view or a matrix.
+    view: Program,
 }
 
 /// One scan-out buffer of an output: the dmabuf imported as a GL texture and the framebuffer
@@ -640,7 +642,16 @@ impl Gles {
                 painter.overlay(cursor, texture)?;
             }
         }
-        painter.finish()
+        painter.finish()?;
+        // The view and the colour matrix act on the finished output, so they run after every
+        // layer is drawn: the output is copied into scratch, then the view pass samples that copy
+        // over the whole output. A frame with neither is skipped and draws as it always did.
+        let view = frame.view();
+        let matrix = frame.colour_matrix();
+        if view::is_active(view, matrix) {
+            painter.draw_view(view, matrix)?;
+        }
+        Ok(())
     }
 
     /// Draws a texture the test made, through the surface pass.
@@ -1152,6 +1163,42 @@ impl Painter<'_> {
         device.scissor(None);
         device.end()
     }
+
+    /// Applies the magnified view and colour matrix to the whole output.
+    ///
+    /// The output is copied to the first scratch target, then the view pass draws over the whole
+    /// output with blending replaced, so each pixel is the copy's pixel at its source position
+    /// rather than a blend over the pixel already there.
+    fn draw_view(&mut self, view: Option<View>, matrix: Option<ColourMatrix>) -> Result<(), RenderError> {
+        let Self {
+            device,
+            target,
+            scratch,
+            passes,
+            bytes,
+            physical,
+            ..
+        } = self;
+        // The scratch targets are the output's size; a resize drops them, so make them again here.
+        if scratch.as_ref().map(|[first, _]| first.size()) != Some(*physical) {
+            let first = device.target(*physical)?;
+            let second = device.target(*physical)?;
+            **scratch = Some([first, second]);
+        }
+        let Some([first, _]) = scratch.as_mut() else {
+            return Err(RenderError::Failed);
+        };
+        let full = Rect::new(0, 0, physical.width, physical.height);
+        device.copy(target, first, full)?;
+        device.begin(target)?;
+        device.scissor(None);
+        device.blend_replace()?;
+        *bytes = view::ViewUniforms::new(view, matrix, physical.width, physical.height).bytes();
+        let drawn = device.draw(&passes.view, bytes, full, Some(first.texture()), Placement::FLAT);
+        device.blend_premultiplied()?;
+        device.end()?;
+        drawn
+    }
 }
 
 /// The program and uniform values a layer's shader pass runs with.
@@ -1190,6 +1237,7 @@ impl Passes {
             surface: program::link(device, shaders::VERTEX, shaders::SURFACE)?,
             shadow: program::link(device, shaders::VERTEX, shaders::SHADOW)?,
             blur: program::link(device, shaders::VERTEX, shaders::BLUR)?,
+            view: program::link(device, shaders::VERTEX, shaders::VIEW)?,
         })
     }
 }
@@ -1341,6 +1389,8 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
         bytes[second..second + stride].copy_from_slice(&buffer);
     }
 }
+
+mod view;
 
 #[cfg(test)]
 mod tests;
