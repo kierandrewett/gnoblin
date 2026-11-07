@@ -275,3 +275,45 @@ fn a_document_that_exists_but_cannot_be_read_is_not_absent() {
         "a present but malformed document is a real error: {error}"
     );
 }
+
+#[test]
+fn a_keyring_off_commit_saved_as_last_good_is_read_by_the_services_reader() {
+    // The compositor saves each accepted commit; the services role reads keyring.enabled from the
+    // same store at start, before any runtime is attached.
+    let root = RuntimeDir::new("last-good-keyring-off").expect("temp dir");
+    let store = Store::new(root.path());
+    let path = source(&root);
+    let committed = config(table([("keyring", table([("enabled", flag(false))]))]));
+    store.save(&path, &committed).expect("save the commit");
+
+    assert_eq!(
+        gnoblin_config::keyring_enabled_from_store(&store, &path),
+        Ok(false),
+        "the services role must see keyring.enabled = false from the saved commit"
+    );
+}
+
+#[test]
+fn a_commit_that_cannot_be_saved_leaves_no_partial_file_and_the_reader_keeps_its_default() {
+    let root = RuntimeDir::new("last-good-commit-blocked").expect("temp dir");
+    let store = Store::new(root.path());
+    // A regular file where the state directory belongs: the save fails before any write.
+    fs::write(store.directory(), b"not a directory").expect("block the state directory");
+    let error = store
+        .save(
+            &source(&root),
+            &config(table([("keyring", table([("enabled", flag(false))]))])),
+        )
+        .expect_err("a blocked state directory refuses the save");
+    assert!(
+        matches!(error, StoreError::Io { .. }),
+        "the failure is a named filesystem error, not a silent success: {error}"
+    );
+    assert!(!store.path().exists(), "a failed save must not leave a document behind");
+    // The state path exists but is not a usable store, so the reader reports it rather than
+    // guessing; the caller then keeps the built-in keyring on, as its default says.
+    assert!(
+        gnoblin_config::keyring_enabled_from_store(&store, &source(&root)).is_err(),
+        "an unusable state path is reported, not read as a stored choice"
+    );
+}

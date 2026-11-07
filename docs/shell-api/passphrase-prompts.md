@@ -1,5 +1,11 @@
 # Answer keyring and GPG prompts
 
+> **Status: not implemented yet.** The Lua handler below has no runtime behind it.
+> `gnoblin.prompt.requested`, `request:answer` and `request:cancel` are not delivered
+> to Lua, because `crates/gnoblin-lua` drops request events. No shell claims the
+> `prompt.secret` slot, so with `prompts.enabled = true` a prompt is refused at once
+> with "no provider" and is not drawn. See `design/e2e-prompts.md`.
+
 `gnome-keyring` and `pinentry-gnome3` ask a prompter service on the session bus
 for passphrases and confirmations. Gnoblin can serve them and publish each one as an event.
 Your config or shell shows the prompt and returns the answer.

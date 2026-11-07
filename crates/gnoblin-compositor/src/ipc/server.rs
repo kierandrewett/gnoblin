@@ -1200,6 +1200,7 @@ impl Dispatcher {
         let revision = self.requests.commit(document);
         match config {
             Ok(config) => {
+                Self::persist_last_good(&config);
                 self.store.publish_settings(&config);
                 self.portal.configure(&config);
                 // Reduced motion turns animations off in the compositor loop. A document that
@@ -1234,6 +1235,26 @@ impl Dispatcher {
         // A commit made while a reload waits is the runtime's answer to that reload.
         let answers = self.reload.finish(&ReloadVerdict::Accepted { revision });
         self.deliver_replies(answers);
+    }
+
+    /// Save the accepted document where the services role reads it at start. The services role
+    /// decides `keyring.enabled` and `prompts.enabled` from that file before the runtime has
+    /// committed anything, so a commit that is not saved is invisible to them. A failed save only
+    /// means a restart cannot recover this document; the session keeps running on it.
+    fn persist_last_good(config: &gnoblin_config::Config) {
+        let Some(store) = gnoblin_config::Store::from_env() else {
+            return;
+        };
+        let path = match gnoblin_config::locate(&gnoblin_config::SearchPaths::from_env()) {
+            Ok(path) => path,
+            Err(error) => {
+                log::debug!(area = "ipc", %error, "no configuration file to record as last good");
+                return;
+            }
+        };
+        if let Err(error) = store.save(path.path(), config) {
+            log::warn!(area = "ipc", %error, "the accepted configuration could not be saved as last good");
+        }
     }
 
     /// `config.reload`: a privileged caller asks the runtime to re-read its document.

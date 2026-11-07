@@ -765,8 +765,8 @@ impl<T: Transport + 'static> Host<T> {
                 fields,
             } => self.run_extension_signal(&namespace, &member, &fields, handlers),
             // The runtime offers no requests in this slice and answers none: prompts and
-            // input policy are later lanes, and a request nobody answers fails closed at
-            // its deadline in the broker.
+            // input policy are later lanes. With no claimant the broker refuses an offer at
+            // once (`NO_PROVIDER`); a claimed offer that nobody answers fails at its deadline.
             Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
         }
     }
