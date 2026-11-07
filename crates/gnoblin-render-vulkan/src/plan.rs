@@ -174,6 +174,7 @@ pub(super) fn plan(frame: &OutputFrame, scale: Scale, physical: Size, sizes: &Te
                         &uniforms,
                     );
                 }
+                Layer::Overlay(_) => continue,
             }
         }
     }

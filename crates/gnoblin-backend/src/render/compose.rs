@@ -1219,6 +1219,7 @@ mod tests {
             .filter_map(|layer| match layer {
                 Layer::Solid(solid) => Some((solid.dst, solid.colour.a)),
                 Layer::Surface(_) => None,
+                Layer::Overlay(_) => None,
             })
             .collect()
     }

@@ -364,6 +364,7 @@ impl Software {
             let dst = match layer {
                 Layer::Surface(surface) => physical_rect(surface.dst, scale),
                 Layer::Solid(solid) => physical_rect(solid.dst, scale),
+                Layer::Overlay(_) => continue,
             };
             layer_damage(damage, dst, clipped);
             if clipped.is_empty() {
@@ -382,6 +383,7 @@ impl Software {
                         .render_texture_from_to(texture, source(surface), dst, clipped, &[], surface.transform, alpha)
                         .map_err(failed)?;
                 }
+                Layer::Overlay(_) => continue,
             }
         }
         // Pixman signals nothing: its sync point is already signalled, and the
@@ -434,7 +436,7 @@ impl Software {
         textures.clear();
         for layer in frame.layers() {
             match layer {
-                Layer::Solid(_) => textures.push(None),
+                Layer::Solid(_) | Layer::Overlay(_) => textures.push(None),
                 Layer::Surface(surface) => textures.push(import(renderer, surface, scratch)),
             }
         }

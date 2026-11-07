@@ -537,7 +537,7 @@ impl Gles {
         let mut textures: Vec<Option<Texture>> = Vec::with_capacity(frame.layers().len());
         for layer in frame.layers() {
             textures.push(match layer {
-                Layer::Solid(_) => None,
+                Layer::Solid(_) | Layer::Overlay(_) => None,
                 Layer::Surface(surface) => self.import(surface),
             });
         }
@@ -801,6 +801,8 @@ impl Painter<'_> {
                 surface.opacity,
                 texture.map_or([0.0, 0.0, 1.0, 1.0], |texture| texture_mapping(surface, texture)),
             ),
+            // The overlay has its own pass, so no layer loop draws it.
+            Layer::Overlay(_) => return Ok(()),
         };
         let dst = physical_rect(dst, self.scale);
         let quad = Rect::new(dst.loc.x, dst.loc.y, dst.size.w.max(0) as u32, dst.size.h.max(0) as u32);
@@ -1247,6 +1249,7 @@ fn layer_model(layer: &Layer) -> Option<&Model> {
     match layer {
         Layer::Solid(solid) => solid.model.as_ref(),
         Layer::Surface(surface) => surface.model.as_ref(),
+        Layer::Overlay(_) => None,
     }
 }
 
@@ -1274,6 +1277,7 @@ fn spatial_order(layers: &[Layer], physical: Size, scale: Scale) -> Vec<(usize, 
         let (dst, model) = match layer {
             Layer::Solid(solid) => (solid.dst, solid.model.as_ref()),
             Layer::Surface(surface) => (surface.dst, surface.model.as_ref()),
+            Layer::Overlay(_) => continue,
         };
         let Some(model) = model else {
             continue;
@@ -1319,6 +1323,8 @@ fn intersects(layer: &Layer, damage: Rect, scale: Scale) -> bool {
     let (dst, effects) = match layer {
         Layer::Solid(solid) => (solid.dst, &solid.effects),
         Layer::Surface(surface) => (surface.dst, &surface.effects),
+        // The overlay has its own pass, so no layer loop reaches it.
+        Layer::Overlay(_) => return false,
     };
     let padded = effects.expand(RectF::new(
         f64::from(dst.x),

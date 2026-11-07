@@ -62,6 +62,10 @@ pub enum Layer {
     /// A rectangle of one colour, for the desktop background, an overlay flash or
     /// the built-in pointer.
     Solid(Solid),
+    /// The screen overlay, above the layers before it and below the cursor. It is one
+    /// entry in the list, so paint order is a single sequence. [`OutputFrame::set_overlay`]
+    /// keeps at most one.
+    Overlay(Overlay),
 }
 
 /// A client buffer on the output.
@@ -306,7 +310,6 @@ pub struct OutputFrame {
     background: Color,
     damage: Vec<Rect>,
     layers: Vec<Layer>,
-    overlay: Option<Overlay>,
     cursor: Option<Overlay>,
     /// The magnified view, `None` for the whole frame at its own scale.
     view: Option<View>,
@@ -326,7 +329,6 @@ impl OutputFrame {
             background: Color::BLACK,
             damage: Vec::new(),
             layers: Vec::new(),
-            overlay: None,
             cursor: None,
             view: None,
             colour_matrix: None,
@@ -338,7 +340,6 @@ impl OutputFrame {
         self.background = Color::BLACK;
         self.damage.clear();
         self.layers.clear();
-        self.overlay = None;
         self.cursor = None;
         self.view = None;
         self.colour_matrix = None;
@@ -412,6 +413,11 @@ impl OutputFrame {
                     return;
                 }
             }
+            Layer::Overlay(overlay) => {
+                if overlay.dst().is_empty() {
+                    return;
+                }
+            }
             Layer::Solid(solid) => {
                 if solid.dst.is_empty() || !solid.colour.is_finite() || !solid.tint.is_finite() {
                     return;
@@ -432,12 +438,19 @@ impl OutputFrame {
     /// The overlay, drawn above every layer and below the cursor.
     #[must_use]
     pub fn overlay(&self) -> Option<&Overlay> {
-        self.overlay.as_ref()
+        self.layers.iter().find_map(|layer| match layer {
+            Layer::Overlay(overlay) => Some(overlay),
+            Layer::Surface(_) | Layer::Solid(_) => None,
+        })
     }
 
-    /// Sets the overlay, or removes it with [`None`].
+    /// Sets the overlay, or removes it with [`None`]. The overlay is placed last, above
+    /// every layer already pushed, so call this after the layers.
     pub fn set_overlay(&mut self, overlay: Option<Overlay>) {
-        self.overlay = overlay.filter(|overlay| !overlay.dst().is_empty());
+        self.layers.retain(|layer| !matches!(layer, Layer::Overlay(_)));
+        if let Some(overlay) = overlay.filter(|overlay| !overlay.dst().is_empty()) {
+            self.layers.push(Layer::Overlay(overlay));
+        }
     }
 
     /// The cursor image, drawn above every layer and above the overlay.
