@@ -679,6 +679,7 @@ fn the_command_tree_matches_the_schema() {
                 && name != "ipc"
                 && name != "completions"
                 && name != "log"
+                && name != "store"
                 && name != "help"
         })
         .collect();

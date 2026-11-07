@@ -24,6 +24,7 @@ use gnoblin_store::LogQuery;
 
 use crate::args;
 use crate::logs;
+use crate::store;
 use crate::tree::{self, CliObject};
 use crate::verbs;
 
@@ -48,6 +49,8 @@ pub(crate) enum Invocation {
     Completions { shell: Shell, output: Option<PathBuf> },
     /// Print the stored log records, or follow them.
     Log { request: Box<logs::LogRequest> },
+    /// Read the key-value namespaces in the store directory.
+    Store { request: Box<store::StoreRequest> },
     /// A hand-written verb: the session's state, the version, or a config check.
     Verb { verb: verbs::Verb, json: bool },
 }
@@ -153,6 +156,7 @@ pub(crate) fn command_tree() -> Command {
     root.subcommand(ipc_command())
         .subcommand(completions_command())
         .subcommand(log_command())
+        .subcommand(store_command())
 }
 
 /// One object's subcommands.
@@ -292,6 +296,67 @@ fn completions_command() -> Command {
         )
 }
 
+/// `store` with its read-only verbs. `--store` is global so it can follow the verb.
+fn store_command() -> Command {
+    Command::new("store")
+        .about("Read the key-value namespaces in the store directory. Read-only.")
+        .arg(
+            Arg::new("store")
+                .long("store")
+                .value_name("DIR")
+                .global(true)
+                .value_parser(value_parser!(PathBuf))
+                .help("The store directory to read; defaults to $XDG_STATE_HOME/gnoblin/store."),
+        )
+        .subcommand_required(true)
+        .subcommand(Command::new("list").about("List the namespaces with their state and bytes in use."))
+        .subcommand(
+            Command::new("usage")
+                .about("Show bytes in use against the quota, for one namespace or all of them.")
+                .arg(
+                    Arg::new("name")
+                        .value_name("STORE")
+                        .help("The namespace to show; omit for all."),
+                ),
+        )
+        .subcommand(
+            Command::new("get")
+                .about("Print the value stored under a key, with its revision and write time.")
+                .arg(
+                    Arg::new("name")
+                        .value_name("STORE")
+                        .required(true)
+                        .help("The namespace to read."),
+                )
+                .arg(
+                    Arg::new("key")
+                        .value_name("KEY")
+                        .required(true)
+                        .help("The key to read."),
+                ),
+        )
+}
+
+/// The `store` subcommand: the verb and the directory it reads.
+fn store_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
+    let root = matches.get_one::<PathBuf>("store").cloned();
+    let (name, sub) = matches.subcommand().expect("clap requires a store verb");
+    let action = match name {
+        "list" => store::StoreAction::List,
+        "usage" => store::StoreAction::Usage {
+            store: sub.get_one::<String>("name").cloned(),
+        },
+        "get" => store::StoreAction::Get {
+            store: sub.get_one::<String>("name").cloned().expect("clap requires the store"),
+            key: sub.get_one::<String>("key").cloned().expect("clap requires the key"),
+        },
+        other => unreachable!("clap refuses the unknown store verb {other}"),
+    };
+    Ok(Invocation::Store {
+        request: Box::new(store::StoreRequest { root, action, json }),
+    })
+}
+
 /// `log` with its filters, time bounds and follow options.
 fn log_command() -> Command {
     Command::new("log")
@@ -407,6 +472,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         "ipc" => ipc_invocation(sub)?,
         "completions" => completions_invocation(sub)?,
         "log" => log_invocation(sub, json)?,
+        "store" => store_invocation(sub, json)?,
         "ping" => Invocation::Verb {
             verb: verbs::Verb::Ping,
             json,

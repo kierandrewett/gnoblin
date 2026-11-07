@@ -407,8 +407,12 @@ properties `name`, `kind`, `provider`, `state`, `writable` and `usage`.
   Opening another owner's store needs a grant.
 - **IPC: `store` object.** The same verbs, gated by grant. The verb `list` is `keys`
   on the wire, because `list` is a WIT keyword. The signal `changed` carries keys and revisions.
-- **`gnoblinctl store`.** Subcommands `list`, `usage`, `get`, `put`, `delete`,
-  `search`, `export` and `purge`. Writes need the compositor.
+- **`gnoblinctl store`.** Ships `list`, `usage` and `get`, read-only. They open
+  the store file directly and refuse a store whose file does not exist, so the
+  read verbs never create one. `put`, `delete`, `search`, `export` and `purge`
+  are not offered. `put` and `delete` are blocked on the grant design (Needs
+  Kieran): while the compositor holds a store, a second writer would break the
+  one-writer WAL rule, so writes go through IPC once grants exist.
 - **WASM.** A host import in the extension world (D22, `gnoblin:ext@0.2.0`,
   `rust-compositor.md:2700`). The same functions, with values as WIT variants.
 - **Secret Service adapter.** The D-Bus Secret Service API (keyring, D27) is an
@@ -425,11 +429,11 @@ Secret Service API keeps its own D-Bus surface.
 A backend is an implementation detail of a provider. The contract is the store
 and its name, not the file.
 
-| Kind     | Default backend                                                                   |
-| -------- | --------------------------------------------------------------------------------- |
-| `kv`     | SQLite, one file per store: `$XDG_DATA_HOME/gnoblin/store/<name>.sqlite3`         |
-| `log`    | SQLite, one file per store: `<root>/<name>.log.sqlite3`. Replaces `logs.sqlite3`. |
-| `secret` | SQLCipher file owned by the keyring service (D27, `design/keyring.md:13`)         |
+| Kind     | Default backend                                                                                                   |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `kv`     | SQLite, one file per store: `$XDG_DATA_HOME/gnoblin/store/<name>.sqlite3`                                         |
+| `log`    | SQLite, `<root>/log.sqlite3` for the kind, `<root>/<name>.log.sqlite3` for named stores. Replaces `logs.sqlite3`. |
+| `secret` | SQLCipher file owned by the keyring service (D27, `design/keyring.md:13`)                                         |
 
 One file per store is decided. A failure stays local to one store.
 
@@ -556,11 +560,14 @@ Each phase is one reviewable commit. Its tests are named here but not run.
 4. **IPC `store` object.** The verbs for `kv` and `log`, gated by grant. Verify:
    a round trip over IPC. Regenerate `gnoblin-proto`, `gnoblin-model` and
    `gnoblin-client`.
-5. **`gnoblinctl store`.** `list`, `usage` and `get` first, then `put` and `delete`
-   through IPC. Verify: golden output from `gnoblin-cli-style`.
-6. **Lua `gnoblin.store.open`.** `kv` and `log`, behind power `store`. Verify: a
-   missing grant is refused, and a verb that does not apply to a kind returns
-   `not-allowed`.
+5. **`gnoblinctl store`.** `list`, `usage` and `get` are shipped, read-only.
+   Golden output from `gnoblin-cli-style` is not yet checked in. `put` and
+   `delete` are blocked on the grant design (Needs Kieran).
+6. **Lua `gnoblin.store.open`.** Deferred with phase 9. Today one shared
+   `gnoblin` global serves every script, so the compositor cannot attribute a
+   store call to an extension (`design/layers.md`, scoping note 17). It
+   returns `not-allowed` for any verb that does not apply to a kind once
+   attribution exists.
 7. **`search`, `batch` and `watch` for `kv`.** `search` takes the operators under
    "Query". Verify: commit-order delivery, batch coalescing per key, query operators
    against a fixture, and no raw SQL path.

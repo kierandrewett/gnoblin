@@ -424,6 +424,18 @@ impl Kv {
         raw.map(decode_entry).transpose()
     }
 
+    /// The bytes the namespace holds, from the same `meta` counter the writes keep. A quarantined
+    /// namespace holds nothing it can serve, so it reports zero.
+    pub(crate) fn bytes(&self) -> Result<u64, StoreError> {
+        let Some(reader) = self.reader()? else {
+            return Ok(0);
+        };
+        let value: i64 = reader
+            .query_row("SELECT value FROM meta WHERE name = 'bytes'", [], |row| row.get(0))
+            .map_err(map_sqlite)?;
+        Ok(value as u64)
+    }
+
     /// Lists keys under `prefix` after `after`, in key order, at most `limit` (clamped to 1–1000).
     pub(crate) fn list(&self, prefix: &str, after: Option<&str>, limit: usize) -> Result<Vec<String>, StoreError> {
         validate_prefix(prefix)?;

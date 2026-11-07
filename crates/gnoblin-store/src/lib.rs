@@ -370,6 +370,16 @@ impl Namespace {
         self.kv.writable()
     }
 
+    /// The bytes the namespace holds now, counting each key and its encoded value. The quota
+    /// is [`Options::quota`].
+    ///
+    /// # Errors
+    ///
+    /// The errors a read returns, such as `store-unavailable` when the file cannot be read.
+    pub fn bytes_used(&self) -> Result<u64, StoreError> {
+        self.kv.bytes()
+    }
+
     /// Stores `value` under `key` and returns its revision. Replaces any previous value.
     ///
     /// # Errors
@@ -477,6 +487,31 @@ pub fn default_root(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
         _ => PathBuf::from(non_empty(lookup("HOME"))?).join(".local/state"),
     };
     Some(state_home.join("gnoblin").join("store"))
+}
+
+/// The names of the key-value namespaces in the store directory `root`, in name order. A
+/// namespace is a `<name>.sqlite3` file whose name is valid; the log file is not one. A missing
+/// directory has no namespaces, so it is not an error. The files are listed, not opened, so a
+/// damaged file still appears.
+pub fn namespace_names(root: &Path) -> std::io::Result<Vec<String>> {
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut names = Vec::new();
+    for entry in entries {
+        let file_name = entry?.file_name();
+        let Some(stem) = file_name.to_str().and_then(|name| name.strip_suffix(".sqlite3")) else {
+            continue;
+        };
+        if stem == logs::RESERVED_NAME || name::validate_name(stem).is_err() {
+            continue;
+        }
+        names.push(stem.to_owned());
+    }
+    names.sort();
+    Ok(names)
 }
 
 /// Opens the log store the `logging` settings name and returns its log. `store_path` is the

@@ -93,6 +93,7 @@ mod connection;
 mod dump;
 mod logs;
 mod output;
+mod store;
 mod tree;
 mod value;
 mod verbs;
@@ -134,6 +135,7 @@ pub fn run(
         cli::Invocation::IpcDump { source } => dump::run(&source, out, err),
         cli::Invocation::Completions { shell, output } => completions(shell, output, out, err),
         cli::Invocation::Log { request } => logs::run(&request, out, err),
+        cli::Invocation::Store { request } => store::run(&request, out, err),
         cli::Invocation::Verb {
             verb: verbs::Verb::ConfigValidate { path },
             json,
