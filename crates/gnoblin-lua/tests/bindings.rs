@@ -232,7 +232,7 @@ fn the_installed_tables_match_the_schema() {
         }
     }
     script.push_str(
-    "local ok, message = pcall(function() return gnoblin.no_such_member end)\nassert(not ok)\nassert(string.match(tostring(message), \"members: capture, configure, effect, eis, idle, load, lock, output, portal_outcome, portal_ui, request, session, settings, store, timers, window, window_rule, workspace\") ~= nil, \"gnoblin members: \" .. tostring(message))\nassert(string.match(tostring(message), \"extensions\") == nil, \"gnoblin still lists extensions\")\n",
+    "local ok, message = pcall(function() return gnoblin.no_such_member end)\nassert(not ok)\nassert(string.match(tostring(message), \"members: capture, configure, effect, eis, idle, layers, load, lock, log, output, portal_outcome, portal_ui, request, session, settings, store, timers, window, window_rule, workspace\") ~= nil, \"gnoblin members: \" .. tostring(message))\nassert(string.match(tostring(message), \"extensions\") == nil, \"gnoblin still lists extensions\")\n",
     );
 
     let config = Config::new("installed");
