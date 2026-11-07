@@ -19,7 +19,6 @@ use zeroize::{Zeroize, Zeroizing};
 pub const ALGORITHM: &str = "dh-ietf1024-sha256-aes128-cbc-pkcs7";
 
 /// The 1024-bit MODP group of RFC 2409, section 6.2 (the second Oakley group). Its generator is 2.
-/// The gcr adapter uses a different, larger prime; the two are not interchangeable.
 const PRIME_HEX: &str = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74\
 020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245\
 E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE6\

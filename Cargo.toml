@@ -12,7 +12,6 @@ members = [
     "crates/compat/gnoblin-compat-dbus-a11y-keyboard-monitor",
     "crates/compat/gnoblin-compat-core",
     "crates/compat/gnoblin-compat-host",
-    "crates/compat/gnoblin-compat-dbus-gnome-keyring-prompter",
     "crates/compat/gnoblin-compat-dbus-gnome-session-manager",
     "crates/compat/gnoblin-compat-dbus-gnome-shell-introspect",
     "crates/compat/gnoblin-compat-dbus-gnome-shell-screenshot",
@@ -328,19 +327,14 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # SQLCipher opens a file exactly as SQLite does, so the store's plain files are unchanged.
 rusqlite = { version = "0.41.1", features = ["bundled-sqlcipher"] }
 
-# The gcr prompter's `prompt.secret` transport: `GcrSecretExchange` protocol 1 is
-# DH over the 1536-bit MODP group with HKDF-SHA256 and AES-128-CBC, so the adapter
-# can serve the interface without linking libgcr.
-#
-# The crate names below are the RustCrypto primitives that protocol is defined in
-# terms of, plus a bignum for the modular exponentiation: every one is MIT or
-# Apache-2.0, which is on the licence allow-list in deny.toml.
+# The primitives of the keyring's `dh-ietf1024-sha256-aes128-cbc-pkcs7` session (see
+# gnoblin-service-keyring/src/dh.rs): DH over the 1024-bit IETF group with HKDF-SHA256 and
+# AES-128-CBC. The names below are RustCrypto crates, plus a bignum for the modular exponentiation:
+# every one is MIT or Apache-2.0, which is on the licence allow-list in deny.toml.
 sha2 = "0.11.1"
 hkdf = "0.13.0"
 aes = "0.9.4"
 cbc = { version = "0.2.1", features = ["alloc", "block-padding"] }
-# The key file the exchange string is: GLib's `GKeyFile` with base64 fields.
-base64 = "0.23.1"
 num-bigint = "0.5.1"
 # Randomness for the DH private key and the AES IV. `getrandom` is the same crate
 # `rand` uses underneath, and it needs no trait plumbing in a crate with no

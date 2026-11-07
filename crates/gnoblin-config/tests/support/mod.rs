@@ -81,7 +81,7 @@ pub fn kitchen_sink() -> Value {
             table([("enabled", flag(true)), ("max-accuracy", text("city"))]),
         ),
         ("monitors", table([("privacy-screen", text("inherit"))])),
-        ("prompts", table([("enabled", flag(true))])),
+        ("keyring", table([("enabled", flag(true))])),
         ("protocols", table([("wlr-screencopy", flag(false))])),
         (
             "touchpad-gestures",

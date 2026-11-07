@@ -39,12 +39,37 @@ fn the_document_accepts_exactly_the_recorded_top_level_keys() {
         assert!(!reason.is_empty(), "{key} has no reason");
         recorded.insert(*key);
     }
+    let retired: BTreeSet<&str> = RETIRED_KEYS.iter().map(|(key, _)| *key).collect();
+    for (key, reason) in RETIRED_KEYS {
+        assert!(
+            recorded.contains(key),
+            "{key} is retired but the C reference does not record it"
+        );
+        assert!(!reason.is_empty(), "{key} has no reason");
+    }
+    let expected: BTreeSet<&str> = recorded.difference(&retired).copied().collect();
     let ours: BTreeSet<&str> = TOP_LEVEL_KEYS.iter().copied().collect();
+    for key in &retired {
+        assert!(
+            !ours.contains(key),
+            "{key} is retired but the document still accepts it"
+        );
+    }
     assert_eq!(
-        ours, recorded,
+        ours, expected,
         "every recorded top-level key is accepted, and nothing else"
     );
 }
+
+/// Top-level keys the C reference records that the rewrite removed on purpose, with the reason.
+///
+/// `prompts` drove the gcr `SystemPrompter` adapter, which is gone: the keyring asks for
+/// its unlock password over its own IPC, configured by `keyring`. Keeping the key would
+/// let a stale configuration load silently and do nothing.
+const RETIRED_KEYS: &[(&str, &str)] = &[(
+    "prompts",
+    "the gcr SystemPrompter adapter was removed; the keyring unlock prompt is configured by `keyring`",
+)];
 
 /// Top-level keys the rewrite added, which the C reference cannot list.
 ///

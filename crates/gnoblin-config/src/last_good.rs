@@ -15,7 +15,7 @@
 //!
 //! *Private.* The state directory is set to `0700` and the file to `0600`, and
 //! the load refuses a file or directory that is readable by another user. The
-//! document can name an autostart command or a prompter policy, which is not
+//! document can name an autostart command or a keyring setting, which is not
 //! something another account should be able to read or rewrite.
 //!
 //! *Distrustful.* The stored document is re-validated on load and tagged with the

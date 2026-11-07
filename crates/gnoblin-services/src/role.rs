@@ -64,7 +64,7 @@ pub const PUMP_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// How long a prompt or an authentication stands before it fails as timed out.
 ///
-/// Two minutes is `gcr-prompter`'s own deadline and polkit's default; the compositor owns
+/// Two minutes is polkit's default deadline; the compositor owns
 /// the deadline, so this is the number the offer asks for.
 pub const PROMPT_DEADLINE: Duration = Duration::from_secs(120);
 

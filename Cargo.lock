@@ -155,12 +155,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "base64"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
-
-[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1321,30 +1315,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-dbus-gnome-keyring-prompter"
-version = "0.2.0-alpha.0"
-dependencies = [
- "aes",
- "base64",
- "cbc",
- "futures-channel",
- "futures-lite",
- "getrandom",
- "gnoblin-client",
- "gnoblin-compat-core",
- "gnoblin-log",
- "gnoblin-model",
- "gnoblin-proto",
- "gnoblin-schema",
- "gnoblin-service-core",
- "gnoblin-types",
- "hkdf",
- "num-bigint",
- "sha2 0.11.1",
- "zbus",
-]
-
-[[package]]
 name = "gnoblin-compat-dbus-gnome-session-manager"
 version = "0.2.0-alpha.0"
 
@@ -1465,7 +1435,6 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-compat-core",
- "gnoblin-compat-dbus-gnome-keyring-prompter",
  "gnoblin-compat-dbus-gnome-shell-introspect",
  "gnoblin-compat-dbus-mutter-displayconfig",
  "gnoblin-compat-dbus-mutter-idlemonitor",
@@ -4821,6 +4790,7 @@ dependencies = [
  "gnoblin-store",
  "gnoblin-types",
  "zbus",
+ "zeroize",
 ]
 
 [[package]]

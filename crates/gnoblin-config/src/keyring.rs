@@ -81,41 +81,4 @@ mod tests {
         assert!(config_with(enabled(true)).keyring_enabled());
         assert!(!config_with(enabled(false)).keyring_enabled());
     }
-
-    /// The four rows of the `keyring.enabled` x `prompts.enabled` matrix the docs describe. Each
-    /// flag is independent: the built-in keyring and the prompter are separate choices.
-    fn both(keyring: bool, prompts: bool) -> Value {
-        Value::table([
-            ("keyring", Value::table([("enabled", Value::Bool(keyring))])),
-            ("prompts", Value::table([("enabled", Value::Bool(prompts))])),
-        ])
-    }
-
-    #[test]
-    fn matrix_built_in_keyring_on_prompts_off() {
-        let config = config_with(both(true, false));
-        assert!(config.keyring_enabled());
-        assert_eq!(config.prompts.and_then(|p| p.enabled), Some(false));
-    }
-
-    #[test]
-    fn matrix_built_in_keyring_on_prompts_on() {
-        let config = config_with(both(true, true));
-        assert!(config.keyring_enabled());
-        assert_eq!(config.prompts.and_then(|p| p.enabled), Some(true));
-    }
-
-    #[test]
-    fn matrix_built_in_keyring_off_prompts_off() {
-        let config = config_with(both(false, false));
-        assert!(!config.keyring_enabled());
-        assert_eq!(config.prompts.and_then(|p| p.enabled), Some(false));
-    }
-
-    #[test]
-    fn matrix_built_in_keyring_off_prompts_on() {
-        let config = config_with(both(false, true));
-        assert!(!config.keyring_enabled());
-        assert_eq!(config.prompts.and_then(|p| p.enabled), Some(true));
-    }
 }

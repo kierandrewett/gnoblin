@@ -662,33 +662,11 @@ right = "gnoblin-xwayland::Status"
 kind = "same-name"
 reason = "a script's load status versus where an Xwayland instance is in its start and restart cycle"
 
-# The services role and the gcr prompter adapter (crates/gnoblin-services,
-# crates/compat/gnoblin-compat-dbus-gnome-keyring-prompter). Every entry is a homonym:
-# the words are each crate's own domain vocabulary and the types cannot be
-# substituted for one another.
-[[allow]]
-left = "gnoblin-a11y::Effect"
-right = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-kind = "same-name"
-reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
-
-[[allow]]
-left = "gnoblin-a11y::Pending"
-right = "gnoblin-compat-dbus-gnome-keyring-prompter::Pending"
-kind = "same-name"
-reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
 [[allow]]
 left = "gnoblin-a11y::Pending"
 right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-[[allow]]
-left = "gnoblin-authority::Decision"
-right = "gnoblin-compat-dbus-gnome-keyring-prompter::Decision"
-kind = "same-name"
-reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
 [[allow]]
 left = "gnoblin-authority::Decision"
@@ -697,28 +675,10 @@ kind = "same-name"
 reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
 [[allow]]
-left = "gnoblin-authority::Effect"
-right = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-kind = "same-name"
-reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
-
-[[allow]]
-left = "gnoblin-authority::Pending"
-right = "gnoblin-compat-dbus-gnome-keyring-prompter::Pending"
-kind = "same-name"
-reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-[[allow]]
 left = "gnoblin-authority::Pending"
 right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-[[allow]]
-left = "gnoblin-compat-core::Decision"
-right = "gnoblin-compat-dbus-gnome-keyring-prompter::Decision"
-kind = "same-name"
-reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
 [[allow]]
 left = "gnoblin-compat-core::Decision"
@@ -733,60 +693,6 @@ kind = "same-name"
 reason = "why a slot request could not be offered or answered versus the compat frame's rule refusal; the compat one names a rule and this one names a slot or a request"
 
 [[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Decision"
-right = "gnoblin-input::Decision"
-kind = "same-name"
-reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Decision"
-right = "gnoblin-service-core::Decision"
-kind = "same-name"
-reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-right = "gnoblin-lock::Effect"
-kind = "same-name"
-reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-right = "gnoblin-output::Effect"
-kind = "same-name"
-reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-right = "gnoblin-session::Effect"
-kind = "same-name"
-reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Pending"
-right = "gnoblin-lua::Pending"
-kind = "same-name"
-reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Pending"
-right = "gnoblin-service-core::Pending"
-kind = "same-name"
-reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Waiting"
-right = "gnoblin-input::Waiting"
-kind = "same-name"
-reason = "a prompt waiting for an answer versus another crate's wait record; the two never meet and carry different identities"
-
-[[allow]]
 left = "gnoblin-input::Decision"
 right = "gnoblin-service-core::Decision"
 kind = "same-name"
@@ -797,12 +703,6 @@ left = "gnoblin-lua::Pending"
 right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::EndedPrompt"
-right = "gnoblin-service-core::Finished"
-kind = "same-shape"
-reason = "one request that ended with a decision: the two crates' decisions are different types, so the records are separate vocabulary rather than one type"
 
 # The pairs below were found once the module host landed and every crate had a
 # schema to serve. Each is a homonym: the name is the obvious word for two
@@ -864,34 +764,10 @@ kind = "same-name"
 reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
 
 [[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Call"
-right = "gnoblin-compat-wayland-gtk-shell1::Call"
-kind = "same-name"
-reason = "each adapter declares the members it maps; the frame is shared and the calls are not"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Call"
-right = "gnoblin-compat-wayland-mutter-x11-interop::Call"
-kind = "same-name"
-reason = "each adapter declares the members it maps; the frame is shared and the calls are not"
-
-[[allow]]
 left = "gnoblin-compat-wayland-gtk-shell1::Call"
 right = "gnoblin-compat-wayland-mutter-x11-interop::Call"
 kind = "same-name"
 reason = "each adapter declares the members it maps; the frame is shared and the calls are not"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-wayland-gtk-shell1::Admission"
-kind = "same-name"
-reason = "each adapter's admission holds its own declaration and gate; the name is the frame's"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-wayland-mutter-x11-interop::Admission"
-kind = "same-name"
-reason = "each adapter's admission holds its own declaration and gate; the name is the frame's"
 
 [[allow]]
 left = "gnoblin-compat-wayland-gtk-shell1::Admission"
@@ -932,32 +808,8 @@ kind = "same-name"
 reason = "a DisplayConfig logical monitor is one entry of the D-Bus argument list as a caller sent it; the output crate's is the layout record the compositor resolves it into"
 
 [[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
 left = "gnoblin-compat-dbus-mutter-displayconfig::DisplayConfigAdmission"
 right = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
-kind = "same-shape"
-reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
 kind = "same-shape"
 reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
 
@@ -1008,12 +860,6 @@ left = "gnoblin::Role"
 right = "gnoblin-services::Role"
 kind = "same-name"
 reason = "the session binary's role versus the services role's own settings"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-mutter-screencast::ScreenCastAdmission"
-kind = "same-shape"
-reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
 
 [[allow]]
 left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
@@ -1130,30 +976,6 @@ kind = "same-name"
 reason = "compat-core's Refusal is one refused call; the portal's Refusal is why something was refused before it could wait for an answer"
 
 [[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Pending"
-right = "xdg-desktop-portal-gnoblin::Pending"
-kind = "same-name"
-reason = "the keyring prompter's Pending is one prompt waiting for an answer; the portal's Pending is what Guard::ask could do"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Prompt"
-right = "xdg-desktop-portal-gnoblin::Prompt"
-kind = "same-name"
-reason = "the keyring prompter's Prompt is one gcr prompt as the caller described it with gcr's properties; the portal's Prompt is a prompt for the portal.ui provider"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Unavailable"
-right = "xdg-desktop-portal-gnoblin::Unavailable"
-kind = "same-name"
-reason = "the keyring prompter's Unavailable is why a prompt could not be started, answered or finished; the portal's Unavailable is why a compositor call could not be made"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Waiting"
-right = "xdg-desktop-portal-gnoblin::Waiting"
-kind = "same-name"
-reason = "the keyring prompter's Waiting is the live half of one waiting request, kept out of Pending; the portal's Waiting is one prompt waiting for the provider"
-
-[[allow]]
 left = "gnoblin-compositor::Offer"
 right = "xdg-desktop-portal-gnoblin::Offer"
 kind = "same-name"
@@ -1263,24 +1085,6 @@ left = "gnoblin-proto::Capabilities"
 right = "gnoblin-xwayland::Capabilities"
 kind = "same-name"
 reason = "a connection's held capability set versus one Xwayland binary's feature record read from its help text; the name is shared, the values are not"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-mutter-clipboard::ClipboardAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-mutter-inputcapture::InputCaptureAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compat-dbus-mutter-remotedesktop::RemoteDesktopAdmission"
-kind = "same-shape"
-reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
 
 [[allow]]
 left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
@@ -1457,18 +1261,6 @@ left = "gnoblin-compat-core::Refusal"
 right = "gnoblin-compositor::Refusal"
 kind = "same-name"
 reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Admission"
-right = "gnoblin-compositor::Admission"
-kind = "same-name"
-reason = "a portal Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
-
-[[allow]]
-left = "gnoblin-compat-dbus-gnome-keyring-prompter::Effect"
-right = "gnoblin-compositor::Effect"
-kind = "same-name"
-reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-wayland-gtk-shell1::Admission"

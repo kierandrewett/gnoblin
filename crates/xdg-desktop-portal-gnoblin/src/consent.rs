@@ -31,8 +31,8 @@
 //! A prompt is offered to the `portal.ui` slot. When nobody claims the slot the offer
 //! is refused before it is made, with [`Refusal::NoProvider`] naming `portal.ui`, and
 //! nothing waits out a deadline: the caller learns what is missing rather than seeing a
-//! share that never appears. That is D14's fail-closed answer, and it is the same shape
-//! `gnoblin-compat-dbus-gnome-keyring-prompter` uses for `prompt.secret`.
+//! share that never appears. That is D14's fail-closed answer, and it is the same shape the
+//! keyring's `prompt.secret` request takes when nothing claims it.
 //!
 //! # Expiry
 //!

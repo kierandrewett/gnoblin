@@ -27,7 +27,7 @@ use core::fmt;
 pub enum Capability {
     /// Offer a request to the slot that owns it (`request.offer`).
     ///
-    /// This is the services role: polkit, the passphrase prompter and the location
+    /// This is the services role: polkit, the keyring's unlock prompt and the location
     /// agent all ask a provider to decide something, and only the host that needs
     /// the decision may create it.
     OfferRequest,

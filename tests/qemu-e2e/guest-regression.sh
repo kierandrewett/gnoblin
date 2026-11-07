@@ -70,11 +70,11 @@ check "auth events" "$(cat /tmp/doc-events.log)" "authorized"
 disable_config 99-test-doc.lua
 check "capability auth-agent off after disable" "$(auth_caps)" "auth-agent False"
 
-echo "-- prompt broker"
+echo "-- keyring prompt"
 install_config 99-test-prompts.lua
 sleep 3
 : >/tmp/prompt-events.log
-check "broker owns names" "$(busctl --user list --no-pager 2>/dev/null | grep -i 'keyring.*SystemPrompter')" "gnoblin"
+check "keyring owns its name" "$(busctl --user list --no-pager 2>/dev/null | grep -i 'org.freedesktop.secrets')" "gnoblin"
 python3 - <<'PY' >/dev/null 2>&1
 from gi.repository import Gio, GLib
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -85,15 +85,11 @@ def call(method, args):
 collection = call("ReadAlias", GLib.Variant("(s)", ("default",))).unpack()[0]
 call("Lock", GLib.Variant("(ao)", ([collection],)))
 PY
-check "keyring unlock through broker" "$(timeout 40 secret-tool lookup app prompt-e2e 2>&1)" "secret-value"
-export GNUPGHOME="$HOME/.gnupg-e2e"
-gpgconf --kill gpg-agent 2>/dev/null
-signed="$(echo hello | timeout 90 gpg --batch --yes --pinentry-mode ask --clearsign -u gnoblin-e2e@example.com 2>&1)"
-check "gpg passphrase through broker" "$signed" "BEGIN PGP SIGNED MESSAGE"
+check "keyring unlock prompt answered" "$(timeout 40 secret-tool lookup app prompt-e2e 2>&1)" "secret-value"
 check "prompt events" "$(cat /tmp/prompt-events.log)" "Unlock Keyring"
 disable_config 99-test-prompts.lua
 sleep 2
-check "broker released names" "$(busctl --user list --no-pager 2>/dev/null | grep -i 'keyring.*SystemPrompter')" "activatable"
+check "keyring name released" "$(busctl --user list --no-pager 2>/dev/null | grep -i 'org.freedesktop.secrets')" "activatable"
 
 echo "-- input sources"
 # Gnoblin lists only the sources in its own config and never reads the GNOME input-sources key (see

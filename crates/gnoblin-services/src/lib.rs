@@ -1,4 +1,4 @@
-//! D-Bus agents: polkit, prompter, PipeWire privacy, inhibit and idle. ScreenSaver is
+//! D-Bus agents: polkit, the built-in Secret Service, PipeWire privacy, inhibit and idle. ScreenSaver is
 //! `gnoblin-service-screensaver` and GeoClue is `gnoblin-service-location`.
 //!
 //! This is the services role of `design/rust-compositor.md` ("Providers and slots")
@@ -11,9 +11,9 @@
 //! here is the role and the agents it serves:
 //!
 //! - [`role`], the role itself: it adopts the privileged connection the guardian passed,
-//!   claims the slots the plan gives it a default for, serves the polkit agent and the gcr
-//!   prompter when their buses and names are available, and declines an offer it cannot draw
-//!   instead of letting it wait for a deadline.
+//!   claims the slots the plan gives it a default for, serves the polkit agent when its bus and
+//!   name are available, and declines an offer it cannot draw instead of letting it wait for a
+//!   deadline.
 //! - The polkit agent is `gnoblin-service-polkit`, which [`role`] serves: each
 //!   `BeginAuthentication` becomes a `gnoblin_service_core::Proposition` offered through the
 //!   IPC, and the provider's `gnoblin_service_core::Decision` is the reply polkitd gets.
@@ -24,8 +24,6 @@
 pub mod keyring;
 /// Client types the compat host links its compat adapters with. See the module docs.
 pub mod link;
-/// Passphrase and keyring prompt handling, gated by `prompts.enabled`.
-pub mod prompts;
 /// The services role: adopts the privileged connection, claims slots and serves agents.
 pub mod role;
 

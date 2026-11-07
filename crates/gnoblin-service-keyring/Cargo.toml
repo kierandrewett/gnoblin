@@ -12,7 +12,7 @@ gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-keyring-handoff = { path = "../gnoblin-keyring-handoff" }
 # The bus face: the Service, Collection, Item, Session and Prompt interfaces are zbus objects.
 zbus.workspace = true
-# The `dh-ietf1024-sha256-aes128-cbc-pkcs7` session: the same arithmetic as the gcr adapter, on the
+# The `dh-ietf1024-sha256-aes128-cbc-pkcs7` session: Diffie-Hellman on the
 # RFC 2409 group, with HKDF-SHA256 and AES-128-CBC.
 sha2.workspace = true
 hkdf.workspace = true

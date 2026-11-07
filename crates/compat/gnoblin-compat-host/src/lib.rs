@@ -14,7 +14,7 @@
 //!   The `Extension` registry (`compat`, the Redirect and Interop adapters) is compositor-side and
 //!   stays in this crate until the `Extension` seam is decided; it is split out later.
 //! - [`services`] is the services role's side. It holds the D-Bus agents that serve the compat
-//!   interfaces (dconf layer, DisplayConfig, IdleMonitor, introspection, the gcr prompter), and the
+//!   interfaces (dconf layer, DisplayConfig, IdleMonitor, introspection), and the
 //!   list of linked agents the role starts.
 //!
 //! # Why the services glue is here and not in `gnoblin-services`

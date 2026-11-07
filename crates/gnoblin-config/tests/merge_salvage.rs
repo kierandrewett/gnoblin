@@ -116,7 +116,7 @@ fn salvage_reports_every_section_it_drops() {
     let document = table([
         ("compositor", table([("blur", text("maybe"))])),
         ("cursor", table([("size", int(0))])),
-        ("prompts", table([("enabled", flag(true))])),
+        ("keyring", table([("enabled", flag(true))])),
     ]);
     let salvaged = salvage(document);
     let report = salvaged.report.expect("two sections were dropped");
@@ -126,7 +126,7 @@ fn salvage_reports_every_section_it_drops() {
         .map(|problem| problem.path.to_string())
         .collect();
     assert_eq!(paths, vec!["compositor.blur", "cursor.size"]);
-    assert_eq!(salvaged.config.prompts.as_ref().expect("prompts").enabled, Some(true));
+    assert_eq!(salvaged.config.keyring.as_ref().expect("keyring").enabled, Some(true));
 }
 
 #[test]

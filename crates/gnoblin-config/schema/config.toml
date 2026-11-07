@@ -2169,19 +2169,6 @@ accepted = "a table keyed by full layer name, such as gnoblin.portals"
 doc = "Each layer's overrides, keyed by its full name."
 
 [[section]]
-key = "prompts"
-type = "Prompts"
-doc = "Whether Gnoblin serves keyring and GPG passphrase prompts."
-
-[[section.field]]
-key = "enabled"
-kind = "bool"
-accepted = "a boolean"
-default = { bool = false }
-doc = "Take the prompter role on the session bus."
-since = "0.2.0"
-
-[[section]]
 key = "keyring"
 type = "KeyringConfig"
 doc = "Whether Gnoblin runs its built-in keyring: the org.freedesktop.secrets service and the Secret portal."

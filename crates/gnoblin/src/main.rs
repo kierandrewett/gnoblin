@@ -11,7 +11,7 @@
 //! | none (the guardian)   | supervises the session: starts, restarts and stops every child      |
 //! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
 //! | `--role runtime`      | runs the Lua host: loads the configuration and serves its handlers |
-//! | `--role services`     | runs the D-Bus agents: polkit, the passphrase prompter and slots   |
+//! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots               |
 //!
 //! The guardian is the default because that is the process a session manager starts: it is
 //! the one that lives for the login, and every other role is a child of it.

@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-services"
-description = "The services role: polkit, prompter, PipeWire privacy, ScreenSaver, inhibit and idle agents."
+description = "The services role: polkit, the keyring, PipeWire privacy, ScreenSaver, inhibit and idle agents."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

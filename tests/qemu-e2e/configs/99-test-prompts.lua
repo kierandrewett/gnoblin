@@ -1,5 +1,3 @@
-gnoblin.configure({ prompts = { enabled = true } })
-
 local function log(text)
     gnoblin.process.spawn({ "sh", "-c", "echo \"$1\" >> /tmp/prompt-events.log", "sh", text })
 end

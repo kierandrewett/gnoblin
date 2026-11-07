@@ -150,7 +150,7 @@ fn a_document_stored_for_another_path_is_refused() {
     store
         .save(
             &root.join("one").join("init.lua"),
-            &config(table([("prompts", table([("enabled", flag(true))]))])),
+            &config(table([("keyring", table([("enabled", flag(true))]))])),
         )
         .expect("save");
     match store.load(&root.join("two").join("init.lua")) {

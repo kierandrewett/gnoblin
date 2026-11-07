@@ -13,7 +13,6 @@ workspace = true
 # crate and no adapter, so the binary stays dispatch and nothing else. See `xtask/src/deps.rs`.
 [dependencies]
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
-gnoblin-compat-dbus-gnome-keyring-prompter = { path = "../gnoblin-compat-dbus-gnome-keyring-prompter" }
 gnoblin-compat-dbus-gnome-shell-introspect = { path = "../gnoblin-compat-dbus-gnome-shell-introspect" }
 gnoblin-compat-gtk-dconf-settings = { path = "../gnoblin-compat-gtk-dconf-settings" }
 gnoblin-compat-wayland-gtk-shell1 = { path = "../gnoblin-compat-wayland-gtk-shell1" }

@@ -30,13 +30,12 @@ use std::collections::BTreeMap;
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
     Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input,
-    InputSources, KeyringConfig, LayerShell, Layers, Layout, Location, Logging, Monitors, Prompts, Protocols,
-    Shortcuts, VisualAccessibility, WindowManagement, WindowRule, Workspace, Xwayland, parse_appearance, parse_auth,
+    InputSources, KeyringConfig, LayerShell, Layers, Layout, Location, Logging, Monitors, Protocols, Shortcuts,
+    VisualAccessibility, WindowManagement, WindowRule, Workspace, Xwayland, parse_appearance, parse_auth,
     parse_autostart, parse_capture_settings, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers,
     parse_input, parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layers, parse_layout,
-    parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_shortcuts,
-    parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspaces,
-    parse_xwayland,
+    parse_location, parse_logging, parse_monitors, parse_protocols, parse_shortcuts, parse_touchpad_gestures,
+    parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -81,9 +80,7 @@ pub struct Config {
     pub location: Option<Location>,
     /// `monitors`: preferences that apply to connected monitors.
     pub monitors: Option<Monitors>,
-    /// `prompts`: whether Gnoblin serves passphrase prompts.
-    pub prompts: Option<Prompts>,
-    /// `keyring`: which program provides the Secret Service on the session bus.
+    /// `keyring`: whether Gnoblin runs its built-in keyring, the Secret Service and the Secret portal.
     pub keyring: Option<KeyringConfig>,
     /// `compat`: which compatibility adapters Gnoblin serves.
     pub compat: Option<Compat>,
@@ -182,8 +179,6 @@ impl Config {
                     .map(|table| parse_location(table, &root.key("location"), &mut out));
                 config.monitors = section_table(entries, "monitors", &root, &mut out)
                     .map(|table| parse_monitors(table, &root.key("monitors"), &mut out));
-                config.prompts = section_table(entries, "prompts", &root, &mut out)
-                    .map(|table| parse_prompts(table, &root.key("prompts"), &mut out));
                 config.keyring = section_table(entries, "keyring", &root, &mut out)
                     .map(|table| parse_keyring_config(table, &root.key("keyring"), &mut out));
                 config.compat = section_table(entries, "compat", &root, &mut out)
@@ -285,7 +280,6 @@ impl Config {
             layout: None,
             location: None,
             monitors: None,
-            prompts: None,
             keyring: None,
             compat: None,
             capture: None,
