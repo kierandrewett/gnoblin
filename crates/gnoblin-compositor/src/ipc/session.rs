@@ -296,10 +296,13 @@ impl SessionSync {
             fields.insert(member::Y.to_owned(), Value::Int(i64::from(anchor.y())));
             fields.insert(member::WIDTH.to_owned(), Value::Uint(u64::from(anchor.width())));
             fields.insert(member::HEIGHT.to_owned(), Value::Uint(u64::from(anchor.height())));
-            fields.insert(member::SOURCE.to_owned(), Value::Text(request.source().as_str().to_owned()));
+            fields.insert(
+                member::SOURCE.to_owned(),
+                Value::Text(request.source().as_str().to_owned()),
+            );
             fields.insert(member::SEAT.to_owned(), Value::Text(request.seat().to_owned()));
             if let Err(error) = self.graph.signal(published.object, member::MENU_REQUESTED, fields) {
-                error_in!("compositor", %error, "[ipc] the window object declares no menu_requested signal");
+                log::error!(area = "ipc", %error, "the window object declares no menu_requested signal");
             }
         }
     }

@@ -432,21 +432,28 @@ fn a_request_menu_call_reaches_a_subscriber_with_its_anchor() {
     // The signal may arrive after other model changes, so read a bounded run of events
     // and stop at the first `menu_requested` on this window.
     let mut seen = None;
+    let mut trace: Vec<String> = Vec::new();
     for _ in 0..200 {
-        match client.next_event().expect("the next event") {
-            Event::Model(Observation::Signalled { object, signal, fields, .. })
-                if object == ObjectId::new(id) && signal == "menu_requested" =>
-            {
+        let event = client.next_event().expect("the next event");
+        trace.push(format!("{event:?}"));
+        match event {
+            Event::Model(Observation::Signalled {
+                object, signal, fields, ..
+            }) if object == ObjectId::new(id) && signal == "menu_requested" => {
                 seen = Some(fields);
                 break;
             }
             _ => {}
         }
     }
-    let fields = seen.expect("menu_requested reached the subscriber");
+    let fields = seen.unwrap_or_else(|| panic!("menu_requested did not reach the subscriber; events read: {trace:#?}"));
     assert_eq!(fields.get("x"), Some(&Value::Int(40)), "{fields:?}");
     assert_eq!(fields.get("y"), Some(&Value::Int(50)), "{fields:?}");
-    assert_eq!(fields.get("source"), Some(&Value::Text("extension".to_owned())), "{fields:?}");
+    assert_eq!(
+        fields.get("source"),
+        Some(&Value::Text("extension".to_owned())),
+        "{fields:?}"
+    );
     assert!(matches!(fields.get("seat"), Some(Value::Text(_))), "{fields:?}");
 
     wayland.destroy(window);

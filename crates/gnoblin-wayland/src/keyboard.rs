@@ -69,8 +69,8 @@ use gnoblin_input::{
 };
 use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, WindowId};
 
-use crate::observation::{MenuAnchor, MenuSource};
 use crate::State;
+use crate::observation::{MenuAnchor, MenuSource};
 
 use crate::log;
 
@@ -144,7 +144,10 @@ impl Default for KeyboardTables {
         let chord = Chord::parse(WINDOW_MENU_CHORD, ChordKind::Key, &SeatKeysyms)
             .expect("the default window-menu chord parses against the seat's keysyms");
         let inserted = router.bind(&name, chord, Trigger::Press, false);
-        debug_assert!(inserted.is_ok(), "the default window-menu binding conflicts with nothing");
+        debug_assert!(
+            inserted.is_ok(),
+            "the default window-menu binding conflicts with nothing"
+        );
         Self {
             sources: Vec::new(),
             active: 0,
@@ -438,11 +441,18 @@ impl State {
     /// default places the menu.
     fn open_focused_window_menu(&mut self) {
         let Some(window) = self.wm.focused() else {
-            debug_in!("wayland", "[menu] the window-menu key was pressed with no focused window");
+            log::debug!(
+                area = "menu",
+                "[menu] the window-menu key was pressed with no focused window"
+            );
             return;
         };
         let Some(geometry) = self.geometry_of(window) else {
-            debug_in!("wayland", ?window, "[menu] the focused window has no geometry for its menu");
+            log::debug!(
+                area = "menu",
+                ?window,
+                "[menu] the focused window has no geometry for its menu"
+            );
             return;
         };
         let anchor = MenuAnchor::point(geometry.x, geometry.y);

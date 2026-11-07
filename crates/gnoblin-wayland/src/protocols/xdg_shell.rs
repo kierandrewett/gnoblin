@@ -36,8 +36,8 @@ use smithay::wayland::shell::xdg::{
 
 use gnoblin_wm::Event;
 
-use crate::observation::{MenuAnchor, MenuSource};
 use crate::State;
+use crate::observation::{MenuAnchor, MenuSource};
 
 use crate::log;
 
@@ -61,15 +61,23 @@ impl XdgShellHandler for State {
         location: Point<i32, Logical>,
     ) {
         if !self.serial_issued(u32::from(serial)) {
-            debug_in!("wayland", serial = u32::from(serial), "[xdg] a window menu with an unissued serial was ignored");
+            log::debug!(
+                area = "xdg",
+                serial = u32::from(serial),
+                "[xdg] a window menu with an unissued serial was ignored"
+            );
             return;
         }
         let Some(window) = self.window_of(surface.wl_surface()) else {
-            debug_in!("wayland", "[xdg] a window menu for an unmanaged surface was ignored");
+            log::debug!(area = "xdg", "[xdg] a window menu for an unmanaged surface was ignored");
             return;
         };
         let Some(origin) = self.geometry_of(window) else {
-            debug_in!("wayland", ?window, "[xdg] a window menu for a closed window was ignored");
+            log::debug!(
+                area = "xdg",
+                ?window,
+                "[xdg] a window menu for a closed window was ignored"
+            );
             return;
         };
         let anchor = MenuAnchor::point(origin.x + location.x, origin.y + location.y);
