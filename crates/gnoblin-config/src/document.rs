@@ -18,8 +18,8 @@
 //! document saved by this version never needs the "an older Gnoblin wrote this"
 //! check the C core performs on load.
 //!
-//! Five sections are *carried*: `extensions`, `keybindings`, `portals`,
-//! `autostart` and `animations`. Their values are callbacks and declarations the
+//! Four sections are *carried*: `extensions`, `keybindings`, `portals` and
+//! `animations`. Their values are callbacks and declarations the
 //! Lua host and the window-management crate own; this layer keeps them in the
 //! document, rewrites nothing inside them, and validates nothing inside them.
 //! Carrying them is not the same as accepting them: a consumer that cannot use a
@@ -29,13 +29,14 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Appearance, Auth, CaptureSettings, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources,
-    KeyringConfig, LayerShell, Layers, Layout, Location, Logging, Monitors, Prompts, Protocols, Shortcuts,
-    VisualAccessibility, WindowManagement, WindowRule, Workspace, Xwayland, parse_appearance, parse_auth,
-    parse_capture_settings, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input,
-    parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layers, parse_layout, parse_location,
-    parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_shortcuts, parse_touchpad_gestures,
-    parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspaces, parse_xwayland,
+    Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input,
+    InputSources, KeyringConfig, LayerShell, Layers, Layout, Location, Logging, Monitors, Prompts, Protocols,
+    Shortcuts, VisualAccessibility, WindowManagement, WindowRule, Workspace, Xwayland, parse_appearance, parse_auth,
+    parse_autostart, parse_capture_settings, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers,
+    parse_input, parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layers, parse_layout,
+    parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols, parse_shortcuts,
+    parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspaces,
+    parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -96,6 +97,8 @@ pub struct Config {
     pub protocols: Option<Protocols>,
     /// `shortcuts`: the keyboard shortcuts that run a command, by name.
     pub shortcuts: Option<Shortcuts>,
+    /// `autostart`: the programs Gnoblin starts with the session, by name.
+    pub autostart: Option<Autostart>,
     /// `touchpad-gestures`: the gesture bindings, in declaration order.
     pub touchpad_gestures: Vec<Gesture>,
     /// `window-management`: stacking, focus and placement policy.
@@ -195,6 +198,8 @@ impl Config {
                     .map(|table| parse_protocols(table, &root.key("protocols"), &mut out));
                 config.shortcuts = section_table(entries, "shortcuts", &root, &mut out)
                     .map(|table| parse_shortcuts(table, &root.key("shortcuts"), &mut out));
+                config.autostart = section_table(entries, "autostart", &root, &mut out)
+                    .map(|table| parse_autostart(table, &root.key("autostart"), &mut out));
                 config.window_management = section_table(entries, "window-management", &root, &mut out)
                     .map(|table| parse_window_management(table, &root.key("window-management"), &mut out));
                 config.xwayland = section_table(entries, "xwayland", &root, &mut out)
@@ -288,6 +293,7 @@ impl Config {
             auth: None,
             protocols: None,
             shortcuts: None,
+            autostart: None,
             touchpad_gestures: Vec::new(),
             window_management: None,
             window_rules: Vec::new(),
