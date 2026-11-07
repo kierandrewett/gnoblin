@@ -115,10 +115,6 @@ pub mod code {
     /// The window's process is no longer the one that connected: it exited, or its pid
     /// names another process, so nothing is signalled.
     pub const PROCESS_CHANGED: &str = "process-changed";
-    /// The request's `parent_window` cannot be shown to belong to its caller: it names no
-    /// window, an X11 window (not resolvable yet), or a window owned by another process.
-    /// The request is refused, not sent to the dialog with the parent dropped.
-    pub const PARENT_REFUSED: &str = "parent-refused";
     /// The member is not one this layer serves.
     pub const UNKNOWN_MEMBER: &str = gnoblin_proto::UNKNOWN_MEMBER;
     /// This connection does not hold the capability the member needs.

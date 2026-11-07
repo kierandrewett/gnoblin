@@ -753,12 +753,11 @@ impl Dispatcher {
             }
         };
         let now = self.now();
-        // The parent is checked before the dialog opens, so a refused parent never shows a
-        // dialog the user could answer for a window that is not the caller's.
+        // The parent is checked before the dialog opens. A parent that cannot be verified
+        // does not refuse the request: the dialog opens on the output scope instead, and
+        // one log line names why, so the app still gets its consent answer.
         if let Err(message) = self.check_portal_parent(&request) {
-            log::warn!(%message, "[ipc] a portal request's parent window was refused");
-            self.refuse(client, envelope, wire::code::PARENT_REFUSED, &message);
-            return;
+            log::warn!(%message, "[ipc] a portal request's parent window is not usable; the dialog opens on its output");
         }
         match self.portal.submit(client, envelope.request_id, &request, now) {
             Ok(replies) => self.deliver_replies(replies),
@@ -768,11 +767,12 @@ impl Dispatcher {
 
     /// Resolves a portal request's `parent_window` and checks that the caller owns it.
     ///
-    /// No parent has nothing to check. An X11 parent is refused, because the compositor
+    /// No parent has nothing to check. An X11 parent is not checked, because the compositor
     /// cannot yet map an XID to a process. A Wayland parent resolves through its exported
     /// handle to a window, and that window's client process must be the caller's bus pid.
     /// The caller is the relay's verified value, so the payload cannot name the pid that is
-    /// checked. Every failure is returned as a message for `parent-refused`.
+    /// checked. A failure is returned as a message: the caller logs it and opens the dialog
+    /// on the output instead, it never refuses the request.
     fn check_portal_parent(&self, request: &wire::PortalRequest) -> Result<(), String> {
         let parent = ParentWindow::parse(&request.parent_window).map_err(|error| error.to_string())?;
         let handle = match parent {
