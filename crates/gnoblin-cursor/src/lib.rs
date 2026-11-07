@@ -48,6 +48,9 @@ mod svg;
 mod svg_scalable;
 mod xcursor;
 
+// The crate's named logger: providers log failures through `log::warn!`.
+gnoblin_log::logger!(log = "cursor");
+
 /// The built-in arrow, used when no provider has a shape.
 pub use builtin::arrow;
 /// The ordered provider chain and the physical size helper.
