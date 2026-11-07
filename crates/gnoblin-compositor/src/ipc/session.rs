@@ -225,6 +225,9 @@ impl SessionSync {
         // connection. Nothing here needs their ids, so they are not kept.
         graph.create(TypeKey::gnoblin("store"), Fields::new())?;
         graph.create(TypeKey::gnoblin("log"), Fields::new())?;
+        // The `layers` object carries no properties either: its one verb registers a layer
+        // under the caller's own provider, which the compositor derives from the connection.
+        graph.create(TypeKey::gnoblin("layers"), Fields::new())?;
         Ok(SessionSync {
             graph,
             session,

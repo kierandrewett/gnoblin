@@ -618,6 +618,7 @@ mod tests {
                 "effect",
                 "eis",
                 "idle",
+                "layers",
                 "lock",
                 "log",
                 "output",

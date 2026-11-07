@@ -581,6 +581,11 @@ Each path below moves to the registry, with no shim.
 7. `menu_requested` signal and `request_menu` on `window` (D29). The shipped `gnoblin.window_menu` extension follows, enabled by default. No core menu layer.
 8. `gnoblin.alerts`, with its content provider.
 9. Trusted IPC for built-in providers: the layer schema object and server dispatch to `Wm::register_layer`. The provider is derived server-side from the connection, and a non-built-in caller is refused. Lua binding is blocked on per-extension Lua environments (one shared `gnoblin` global today, `bindings.rs:290`). `gnoblin.window_rule` gains `secure` in the WindowRules lane. The config schema gains a `layers` section and `capture.secure-treatment`.
+
+    Implemented (IPC part only): the `layers` object (`crates/gnoblin-schema/schema/layers.toml`) has one verb, `register(local, target)`. The compositor derives the provider from the connection, as `LayerProvider::Gnoblin(COMPOSITOR_CRATE)`, and a connection without the `register-layer` capability is refused `power-missing` before the graph sees the call (`crates/gnoblin-compositor/tests/layers.rs`).
+
+    The `services` role holds `register-layer` in `privileged.rs`. Not yet done from this phase: the `secure` field on `gnoblin.window_rule` and the `layers` config section, which need the WindowRules and config lanes.
+
 10. Lua `gnoblin.layers` and `[powers.layers]` through D22. This is the unblock for the phase 9 binding: per-extension Lua environments, and grants that name each extension namespace.
 
 Each phase names the tests that fail without its rule.

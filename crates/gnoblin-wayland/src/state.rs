@@ -65,7 +65,7 @@ use gnoblin_backend::render::compose::{Composer, Content};
 use gnoblin_backend::{Host, InputEvent};
 use gnoblin_config::Protocols;
 use gnoblin_input::Activity;
-use gnoblin_layers::InputPolicy;
+use gnoblin_layers::{InputPolicy, LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
@@ -1910,6 +1910,14 @@ impl State {
             .set_window_effects(window, crate::effects::chain(&entry.effects));
         self.publish();
         Ok(())
+    }
+
+    /// Adds a layer above a window to the window manager's registry, under `provider`. The
+    /// error is the registry's or the stack's refusal, in its debug form.
+    pub(crate) fn register_layer(&mut self, provider: &LayerProvider, spec: LayerSpec) -> Result<LayerHandle, String> {
+        self.wm
+            .register_layer(provider, spec)
+            .map_err(|error| format!("{error:?}"))
     }
 
     /// What is known about the process behind a window's client. `None` when no such

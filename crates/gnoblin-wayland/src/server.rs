@@ -49,6 +49,7 @@ use gnoblin_render_frame::image::Image;
 
 use crate::output_config::OutputConfigHost;
 use gnoblin_config::Protocols;
+use gnoblin_layers::{LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_output::LayoutError;
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::WmOptions;
@@ -486,6 +487,9 @@ impl Server {
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
                             }
+                            Command::RegisterLayer { provider, spec, reply } => {
+                                let _ = reply.send(state.register_layer(&provider, spec));
+                            }
                             Command::WindowProcess { window, reply } => {
                                 let process = state.window_process(window);
                                 let process = match (process, window_process_override) {
@@ -797,6 +801,18 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Registers a layer above a window under `provider`. `None` when the loop did not answer
+    /// in time; otherwise `Err` carries the registry's or the stack's refusal.
+    pub fn register_layer(&self, provider: &LayerProvider, spec: LayerSpec) -> Option<Result<LayerHandle, String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::RegisterLayer {
+            provider: provider.clone(),
+            spec,
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// The process behind a window's client. `None` when the loop did not answer in time;
     /// otherwise `None` when no such window exists, and the window's process otherwise.
     pub fn window_process(&self, window: WindowId) -> Option<Option<crate::WindowProcess>> {
@@ -1079,6 +1095,12 @@ enum Command {
         holder: String,
         held: bool,
         reply: std::sync::mpsc::SyncSender<Result<bool, String>>,
+    },
+    /// Registers a layer above a window; see `ControlHandle::register_layer`.
+    RegisterLayer {
+        provider: LayerProvider,
+        spec: LayerSpec,
+        reply: std::sync::mpsc::SyncSender<Result<LayerHandle, String>>,
     },
     /// The process behind a window's client; see `ControlHandle::window_process`.
     WindowProcess {

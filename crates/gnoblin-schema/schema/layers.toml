@@ -1,0 +1,45 @@
+# The `layers` object: how a trusted built-in provider registers a layer above a window.
+#
+# It carries no properties and no identity worth keeping: its one verb registers a layer
+# under the caller's own provider, which the compositor derives from the connection. A
+# caller without the `register-layer` capability is refused `power-missing` before the
+# graph sees the call, so the schema never admits a provider name from the wire.
+#
+# Lua does not reach this object yet. Extensions need per-extension Lua environments
+# first (design/layers.md, phase 10), so only built-in providers may call it.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "layers"
+since = "0.2.0"
+
+# Register a window-scope layer named `local` above the window `target`. The full name is
+# the provider's namespace plus `local`, so a built-in cannot name a layer another provider
+# owns. The layer takes the window band, default order and passive input. The operation is
+# `done` once the layer is in the registry, or fails with `layer-refused` when the registry
+# or the stack refuses it, such as a duplicate name or a window the stack does not hold.
+[[object.method]]
+name = "register"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "local"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "target"
+type = "uint"
+since = "0.2.0"
+
+# The connection does not hold the `register-layer` capability. Only built-in providers
+# registered by the compositor may create layers over the IPC.
+[[error]]
+name = "power-missing"
+since = "0.2.0"
+
+# The registry or the stack refused the layer. The reason names the rule that refused it.
+[[error]]
+name = "layer-refused"
+since = "0.2.0"

@@ -50,16 +50,23 @@ pub enum Capability {
     ///
     /// This is the input relay. While a dialog is open, keys go only to it.
     PortalInput,
+    /// Register a layer above a window through the `layers` object (`layers.register`).
+    ///
+    /// This is a trusted built-in provider's connection. The layer it makes is drawn
+    /// on screen above a window, so only a built-in may create one until extensions
+    /// get their own Lua environments (design/layers.md, phase 10).
+    RegisterLayer,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 5] = [
+    pub const ALL: [Capability; 6] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
         Capability::PortalUi,
         Capability::PortalInput,
+        Capability::RegisterLayer,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -70,6 +77,7 @@ impl Capability {
             Capability::InputPolicy => "input-policy",
             Capability::PortalUi => "portal-ui",
             Capability::PortalInput => "portal-input",
+            Capability::RegisterLayer => "register-layer",
         }
     }
 
@@ -81,6 +89,7 @@ impl Capability {
             Capability::InputPolicy => 1 << 2,
             Capability::PortalUi => 1 << 3,
             Capability::PortalInput => 1 << 4,
+            Capability::RegisterLayer => 1 << 5,
         }
     }
 

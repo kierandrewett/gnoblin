@@ -76,7 +76,7 @@ impl Privileged {
 pub fn grants(role: &str) -> Capabilities {
     match role {
         "runtime" => Capabilities::of(&[Capability::CommitConfig, Capability::InputPolicy]),
-        "services" => Capabilities::of(&[Capability::OfferRequest]),
+        "services" => Capabilities::of(&[Capability::OfferRequest, Capability::RegisterLayer]),
         "portal" => Capabilities::of(&[Capability::PortalUi]),
         "input" => Capabilities::of(&[Capability::PortalInput]),
         _ => Capabilities::NONE,
