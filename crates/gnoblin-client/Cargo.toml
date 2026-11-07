@@ -14,6 +14,8 @@ gnoblin-model = { path = "../gnoblin-model" }
 # The wire: the envelope, its four kinds, the fixed-layout handshake and the
 # version rule.
 gnoblin-proto = { path = "../gnoblin-proto" }
+# Secret answers are wiped on drop, the same policy the wire and the model apply.
+zeroize.workspace = true
 
 [dev-dependencies]
 # The tests build a graph from the checked-in schema, so the loopback pair is

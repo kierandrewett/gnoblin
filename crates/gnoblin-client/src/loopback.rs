@@ -190,7 +190,8 @@ impl Inner {
                 )),
             },
             wire::member::ANSWER => match wire::read_answer(payload) {
-                Ok((request, answer)) => match self.broker.answer(request, owner, answer) {
+                // The broker owns the bytes now, so the move leaves nothing behind to wipe.
+                Ok((request, mut answer)) => match self.broker.answer(request, owner, std::mem::take(&mut *answer)) {
                     Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::ANSWER,

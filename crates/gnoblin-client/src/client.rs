@@ -54,7 +54,7 @@ pub enum PortalOutcome {
 }
 
 /// Something the compositor told this client.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Event {
     /// A change to the object graph, in revision order.
     Model(Observation),
@@ -80,7 +80,7 @@ pub enum Event {
         request: RequestId,
         /// The provider's answer, in the slot's own encoding. The bytes may be a
         /// passphrase, so nothing here logs them.
-        answer: Vec<u8>,
+        answer: zeroize::Zeroizing<Vec<u8>>,
     },
     /// A request ended. The completion carries no answer value, because an answer
     /// may be secret and only the host that offered the request reads it.
@@ -100,6 +100,51 @@ pub enum Event {
         /// The signal's fields, decoded with the core value codec.
         fields: Fields,
     },
+}
+
+// The answer is a secret, so a log or a panic shows its length, never its bytes.
+impl std::fmt::Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::Model(observation) => f.debug_tuple("Model").field(observation).finish(),
+            Event::RequestOffered {
+                request,
+                deadline,
+                slot,
+                title,
+                message,
+                subject,
+            } => f
+                .debug_struct("RequestOffered")
+                .field("request", request)
+                .field("deadline", deadline)
+                .field("slot", slot)
+                .field("title", title)
+                .field("message", message)
+                .field("subject", subject)
+                .finish(),
+            Event::RequestAnswered { request, answer } => f
+                .debug_struct("RequestAnswered")
+                .field("request", request)
+                .field("answer", &format_args!("{} bytes redacted", answer.len()))
+                .finish(),
+            Event::RequestFinished { request, completion } => f
+                .debug_struct("RequestFinished")
+                .field("request", request)
+                .field("completion", completion)
+                .finish(),
+            Event::Extension {
+                namespace,
+                member,
+                fields,
+            } => f
+                .debug_struct("Extension")
+                .field("namespace", namespace)
+                .field("member", member)
+                .field("fields", fields)
+                .finish(),
+        }
+    }
 }
 
 /// One connection to the compositor.

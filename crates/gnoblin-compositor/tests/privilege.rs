@@ -229,7 +229,7 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
         }
     }
     assert_eq!(
-        answered.as_deref(),
+        answered.as_ref().map(|answer| answer.as_slice()),
         Some(&b"alice"[..]),
         "only the host reads the answer"
     );

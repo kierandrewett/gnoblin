@@ -984,7 +984,7 @@ impl Dispatcher {
 
     /// `request.answer`: the provider decided, and here is what it decided.
     fn answer(&mut self, client: ClientId, envelope: &Envelope) {
-        let (request, answer) = match wire::read_answer(envelope.payload().unwrap_or(&[])) {
+        let (request, mut answer) = match wire::read_answer(envelope.payload().unwrap_or(&[])) {
             Ok(answer) => answer,
             Err(reason) => {
                 self.refuse(
@@ -996,7 +996,8 @@ impl Dispatcher {
                 return;
             }
         };
-        match self.requests.answer(client, request, answer) {
+        // The store takes the bytes over, so the decoded wrapper is left empty.
+        match self.requests.answer(client, request, std::mem::take(&mut *answer)) {
             Ok(deliveries) => {
                 self.reply(client, envelope);
                 self.deliver(deliveries);

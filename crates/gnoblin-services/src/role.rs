@@ -249,8 +249,9 @@ impl Agents {
                 host.claim(request);
                 host.decline(request);
             }
-            gnoblin_client::Event::RequestAnswered { request, answer } => {
-                self.answer(request, &RequestOutcome::answered(answer));
+            gnoblin_client::Event::RequestAnswered { request, mut answer } => {
+                // The outcome takes the bytes over, so the client's wrapper is left empty.
+                self.answer(request, &RequestOutcome::answered(std::mem::take(&mut *answer)));
             }
             gnoblin_client::Event::RequestFinished { request, completion } => {
                 // An answered request already delivered its value; only the ends without

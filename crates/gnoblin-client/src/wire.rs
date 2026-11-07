@@ -47,6 +47,7 @@ use gnoblin_model::{
     Provider, RequestCompletion, RequestId, Revision, Snapshot, Tick, TypeKey, Value,
 };
 use gnoblin_proto::Envelope;
+use zeroize::Zeroizing;
 
 use crate::error::WireError;
 
@@ -145,7 +146,7 @@ pub mod code {
 }
 
 /// One decoded frame from the compositor.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Incoming {
     /// A change to the object graph.
     Observation(Observation),
@@ -173,7 +174,7 @@ pub enum Incoming {
         /// The request.
         request: RequestId,
         /// The provider's answer, in the slot's own encoding.
-        answer: Vec<u8>,
+        answer: Zeroizing<Vec<u8>>,
     },
     /// A request ended. The outcome carries no answer value: only the host that
     /// offered the request reads that.
@@ -183,6 +184,41 @@ pub enum Incoming {
         /// How it ended.
         completion: RequestCompletion,
     },
+}
+
+// The answer is a secret, so a log or a panic shows its length, never its bytes.
+impl std::fmt::Debug for Incoming {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Incoming::Observation(observation) => f.debug_tuple("Observation").field(observation).finish(),
+            Incoming::Offered {
+                request,
+                deadline,
+                slot,
+                title,
+                message,
+                subject,
+            } => f
+                .debug_struct("Offered")
+                .field("request", request)
+                .field("deadline", deadline)
+                .field("slot", slot)
+                .field("title", title)
+                .field("message", message)
+                .field("subject", subject)
+                .finish(),
+            Incoming::Answered { request, answer } => f
+                .debug_struct("Answered")
+                .field("request", request)
+                .field("answer", &format_args!("{} bytes redacted", answer.len()))
+                .finish(),
+            Incoming::Finished { request, completion } => f
+                .debug_struct("Finished")
+                .field("request", request)
+                .field("completion", completion)
+                .finish(),
+        }
+    }
 }
 
 /// A request asking for a subscription's snapshot first.
@@ -545,10 +581,10 @@ pub fn read_claim(payload: &[u8]) -> Result<RequestId, WireError> {
 }
 
 /// Decode a `request.answer` request.
-pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Vec<u8>), WireError> {
+pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Zeroizing<Vec<u8>>), WireError> {
     let mut reader = FrameReader::new(payload);
     let request = RequestId::new(reader.u64()?);
-    let answer = reader.bytes()?;
+    let answer = Zeroizing::new(reader.bytes()?);
     reader.done()?;
     Ok((request, answer))
 }
@@ -849,7 +885,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
         member::ANSWER => {
             let mut reader = FrameReader::new(payload);
             let request = RequestId::new(reader.u64()?);
-            let answer = reader.bytes()?;
+            let answer = Zeroizing::new(reader.bytes()?);
             reader.done()?;
             Incoming::Answered { request, answer }
         }
@@ -877,6 +913,13 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
 /// fallible path: everything here is a value the model already validated.
 struct Writer {
     bytes: Vec<u8>,
+}
+
+impl Drop for Writer {
+    // A payload can carry an answer, so the buffer is wiped even when the frame was never sent.
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.bytes);
+    }
 }
 
 impl Writer {
@@ -960,8 +1003,9 @@ impl Writer {
         }
     }
 
-    fn finish(self) -> Vec<u8> {
-        self.bytes
+    fn finish(mut self) -> Vec<u8> {
+        // `Writer` wipes on drop, so the buffer is moved out rather than moved from.
+        std::mem::take(&mut self.bytes)
     }
 }
 
@@ -1302,7 +1346,7 @@ mod tests {
             let frame = self::answer(6, RequestId::new(2), &answer);
             assert_eq!(
                 read_answer(frame.payload().expect("payload")),
-                Ok((RequestId::new(2), answer))
+                Ok((RequestId::new(2), Zeroizing::new(answer)))
             );
         }
 
@@ -1433,8 +1477,46 @@ mod tests {
             decode(&frame).expect("decodes"),
             Some(Incoming::Answered {
                 request: RequestId::new(2),
-                answer: SECRET.to_vec()
+                answer: Zeroizing::new(SECRET.to_vec())
             })
+        );
+    }
+
+    const SECRET: &[u8] = b"hunter2";
+
+    #[test]
+    fn the_writer_wipes_its_buffer_and_finish_moves_it_out() {
+        // `finish` moves the bytes out with `mem::take`, so the writer keeps an empty
+        // buffer and its drop wipes nothing it no longer owns.
+        let mut writer = Writer::new();
+        writer.bytes.extend_from_slice(SECRET);
+        let out = writer.finish();
+        assert_eq!(out, SECRET, "finish returns what was written");
+    }
+
+    #[test]
+    fn zeroizing_an_answer_buffer_clears_the_secret() {
+        // The wipe the `Writer` drop relies on: a zeroized buffer holds no secret bytes.
+        let mut buffer = SECRET.to_vec();
+        zeroize::Zeroize::zeroize(&mut buffer);
+        assert!(buffer.iter().all(|byte| *byte == 0), "every byte is cleared");
+    }
+
+    #[test]
+    fn an_answer_is_not_printed_by_debug() {
+        let answer = Incoming::Answered {
+            request: RequestId::new(2),
+            answer: Zeroizing::new(SECRET.to_vec()),
+        };
+        let rendered = format!("{answer:?}");
+        // A derived `Debug` on the bytes prints them as decimal, which is what must not appear.
+        assert!(
+            !rendered.contains("104, 117"),
+            "Debug must not print the answer bytes: {rendered}"
+        );
+        assert!(
+            rendered.contains("7 bytes redacted"),
+            "Debug shows the length: {rendered}"
         );
     }
 
@@ -1481,7 +1563,7 @@ mod tests {
         assert!(frame.is_sensitive(), "the member is still the secret one");
         assert_eq!(
             read_answer(frame.payload().expect("payload")),
-            Ok((request, Vec::new()))
+            Ok((request, Zeroizing::new(Vec::new())))
         );
         assert_eq!(
             read_decline(decline(1, request, None).payload().expect("payload")),
