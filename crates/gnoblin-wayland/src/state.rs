@@ -407,6 +407,9 @@ pub struct State {
     /// see that it happened; the visual bell is `gnoblin-a11y`'s and the audible one
     /// is the shell's.
     bells: u64,
+    /// The visual bell the document declares, read each time a bell rings. A session that
+    /// declares none flashes nothing.
+    pub(crate) visual_bell: crate::server::VisualBellSettings,
     /// The current clipboard and primary selections.
     pub(crate) selections: WlDataDeviceManagerSelections,
     /// Sandbox listeners waiting for the event loop to watch them.
@@ -556,6 +559,7 @@ impl State {
         protocols: &Protocols,
         titlebar_actions: TitlebarActions,
         cursor: crate::server::CursorSettings,
+        visual_bell: crate::server::VisualBellSettings,
         extensions: &[Arc<dyn Extension>],
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
@@ -745,6 +749,7 @@ impl State {
             activation: XdgActivationV1::default(),
             titlebar_actions,
             bells: 0,
+            visual_bell,
             selections: WlDataDeviceManagerSelections::default(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
@@ -2240,15 +2245,36 @@ impl State {
         self.composer.set_window_opacity(window, opacity);
     }
 
-    /// Rings the session bell, counting it for the published snapshot.
+    /// Rings the session bell: counts it for the published snapshot and, when the document
+    /// asks for a visual bell, flashes the screen.
     ///
-    /// The window is the one that asked, when the protocol named one: a shell that
-    /// wanted to say *which* application is asking reads it from the snapshot, and the
-    /// bell itself is the count.
+    /// The window is the one that asked, when the protocol named one. A shell that wanted to
+    /// say *which* application is asking reads it from the snapshot; the flash itself does
+    /// not depend on it, since a frame flash covers the focused window.
     pub(crate) fn ring_bell(&mut self, window: Option<WindowId>) {
         self.bells = self.bells.saturating_add(1);
         log::debug!(area = "bell", ?window, bells = self.bells, "rung");
+        self.flash_bell();
         self.publish();
+    }
+
+    /// Flashes the screen for a rung bell, when the document declares a visual bell and the
+    /// session is unlocked.
+    ///
+    /// A locked session shows nothing, so a bell cannot reveal what the lock hides. A frame
+    /// flash covers the focused window; with no focused window there is nothing to flash.
+    fn flash_bell(&mut self) {
+        if !self.visual_bell.enabled || self.lock.state() != LockState::Unlocked {
+            return;
+        }
+        let target = match self.visual_bell.scope {
+            crate::server::VisualBellScope::Fullscreen => None,
+            crate::server::VisualBellScope::Frame => match self.wm.focused() {
+                Some(window) => Some(window),
+                None => return,
+            },
+        };
+        self.composer.flash_window(target);
     }
 
     /// The managed window an X11 window id names, when Xwayland has one.

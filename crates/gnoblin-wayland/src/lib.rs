@@ -210,7 +210,7 @@ pub use output_control::{NoOutputControl, OutputControl};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     Config, ControlHandle, CursorSettings, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings,
-    Server, StartupError,
+    Server, StartupError, VisualBellScope, VisualBellSettings,
 };
 /// The dispatch glue a redirect implements.
 ///

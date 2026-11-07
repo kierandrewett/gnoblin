@@ -82,6 +82,7 @@
 //!   the connection that provides the slot, and both sides learn its one completion.
 
 mod backend;
+mod bell;
 mod compat;
 mod cursor;
 mod eis;
@@ -105,6 +106,9 @@ use std::thread::JoinHandle;
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 
 pub use backend::Backend;
+pub use bell::{
+    configure_from_environment as configure_bell_from_environment, configure_from_store as configure_bell_from_store,
+};
 pub use compat::configure_compat_extensions;
 pub use cursor::{
     configure_from_environment as configure_cursor_from_environment,

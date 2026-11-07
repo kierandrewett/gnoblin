@@ -114,6 +114,27 @@ pub struct MonitorSettings {
     pub global_scale: Option<u32>,
 }
 
+/// Where a visual bell flashes: the whole screen, or the focused window alone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VisualBellScope {
+    /// Flash every output the session draws.
+    #[default]
+    Fullscreen,
+    /// Flash the window the window manager has focused.
+    Frame,
+}
+
+/// The visual bell the document declares: whether a bell flashes the screen, and where.
+///
+/// The default is off, so a session flashes nothing until the document asks for it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct VisualBellSettings {
+    /// Whether a rung bell flashes at all.
+    pub enabled: bool,
+    /// The part of the screen a flash covers.
+    pub scope: VisualBellScope,
+}
+
 /// How a session is configured.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -175,6 +196,9 @@ pub struct Config {
     pub cursor: CursorSettings,
     /// The `monitors` table: the privacy-screen request and the global integer scale.
     pub monitors: MonitorSettings,
+    /// The visual bell the document declares: whether a bell flashes the screen, and where.
+    /// Off unless the document asks for it.
+    pub visual_bell: VisualBellSettings,
     /// The redirect adapters this session serves.
     ///
     /// Each one registers its globals before the loop runs. An empty list is a session
@@ -201,6 +225,7 @@ impl Default for Config {
             cursor: CursorSettings::default(),
             monitors: MonitorSettings::default(),
             extensions: Vec::new(),
+            visual_bell: VisualBellSettings::default(),
             window_process_override: None,
         }
     }
@@ -304,6 +329,7 @@ impl Server {
             &config.protocols,
             config.titlebar_actions,
             config.cursor,
+            config.visual_bell,
             &config.extensions,
         )?;
         // The host's per-output controls are learnt before any client connects, so an
