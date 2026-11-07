@@ -10,13 +10,13 @@ Citations are `path:line`, or `egui 0.37.0` and `accesskit_unix 0.24.1` source p
 
 Gnoblin's own UI is drawn by egui on the CPU. Its accessibility tree is never built, so no assistive technology can see it.
 
-- **The dialog shell never enables AccessKit.** `DialogShell` owns a `Context::default()` (`crates/gnoblin-portal-core/src/ui.rs:82`). Nothing calls `enable_accesskit` in any Gnoblin crate. egui leaves it off by default (`egui 0.37.0` `src/context.rs:451`).
+- **The dialog shell never enables AccessKit.** `DialogShell` owns a `Context::default()` (`crates/gnoblin-portal-ui/src/ui.rs:82`). Nothing calls `enable_accesskit` in any Gnoblin crate. egui leaves it off by default (`egui 0.37.0` `src/context.rs:451`).
 - **No tree is produced.** With the flag off, egui emits no `accesskit_update`. `run_frame` keeps only `output.shapes` (`ui.rs:185-212`) and nothing else from the platform output is read.
 - **No AccessKit crate is in the tree.** No `Cargo.toml` under `crates/` names `accesskit` or any AT-SPI crate. The lock resolves `accesskit` 0.25.2 only as a transitive dependency of egui.
 - **The spec claims otherwise.** `rust-compositor.md:2558` says the egui tree is "exposed through AccessKit, as D5 requires". The code does not do this. The table at `rust-compositor.md:1237` marks the same claim `[INFERENCE: check on Linux]`. This document is the check.
 - **There is no Rust window menu.** The window menu is Lua-side only (`rust-compositor.md:3068`), so it has no egui tree to expose.
 - **`gnoblin-a11y` has no AT-SPI code.** It holds the keyboard-monitor grab table and the policy flags (`crates/gnoblin-a11y/src/lib.rs:1-8`). `monitor.rs` implements `org.freedesktop.a11y.KeyboardMonitor` as state only. Its D-Bus server is outside this crate.
-- **Two crate names in the spec are stale.** `gnoblin-diag` (`rust-compositor.md:1237`) is not in this branch's `crates/`. The recovery overlay lives in the portal-core dialog shell.
+- **Two crate names in the spec are stale.** `gnoblin-diag` (`rust-compositor.md:1237`) is not in this branch's `crates/`. The recovery overlay lives in the portal dialog shell (`gnoblin-portal-ui`).
 
 ## What egui gives us
 

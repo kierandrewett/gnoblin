@@ -482,7 +482,8 @@ gnoblin/
     gnoblin-service-location/ GeoClue agent and location policy
     gnoblin-diag/             recovery and console overlay (see D5)
     gnoblin-portal/           built-in portal dialog screens (egui, D19)
-    gnoblin-portal-core/      portal dialog models, the `DialogUi` trait and the shell that runs it, CPU painter; pure models and egui only (D19)
+    gnoblin-portal-core/      portal dialog models only; plain data, no egui (D19)
+    gnoblin-portal-ui/        the `DialogUi` trait, the shell that runs it and the CPU painter; egui and the core only (D19)
     gnoblin-portal-consent/   consent dialog screen (D19)
     gnoblin-portal-filechooser/  file chooser dialog screen (D19)
     gnoblin-portal-appchooser/   app chooser dialog screen (D19)
@@ -552,7 +553,7 @@ edge, so a violation names the edge and the rule:
 - `gnoblin-services`, every `gnoblin-compat-*` D-Bus crate and
   `xdg-desktop-portal-gnoblin` depend on `gnoblin-client` and `zbus`, not on
   compositor crates.
-- `gnoblin-portal-core::model` (dialog models) depends on `gnoblin-types` and `gnoblin-schema` only. `gnoblin-portal` (the egui screens) draws them, and nothing else draws dialogs.
+- `gnoblin-portal-core` (dialog models) depends on `gnoblin-types` and `gnoblin-schema` only, with no egui. `gnoblin-portal-ui` (the `DialogUi` trait, the shell and the painter) depends on egui and the core, and only `gnoblin-portal`, the dialog crates and `gnoblin-compositor` (for `paint::Frame`) may depend on it. `gnoblin-portal` (the egui screens) draws the dialogs, and nothing else draws dialogs.
 - `gnoblin-compositor::portal` (negotiation, queue, validation, outcomes) depends on `gnoblin-portal-core::model` (payload and result types only), `gnoblin-types` and `gnoblin-schema`. Only `gnoblin-compositor` may depend on `gnoblin-portal` and the dialog crates. Nothing depends on `xdg-desktop-portal-gnoblin`.
   `xdg-desktop-portal-gnoblin` depends on neither: it speaks `portal-call` over
   the privileged IPC.
@@ -1156,9 +1157,12 @@ failure-mode list that must be complete before isolated tests or code.
 - **UI:** the relay has no UI dependency. Every dialog is drawn with stock egui
   widgets and egui's default look; no theme or hand-drawn widgets. Each dialog kind is one
   crate (`gnoblin-portal-consent`, `-filechooser`, `-appchooser`) that implements
-  `gnoblin-portal-core::DialogUi` and names only egui and the core. `gnoblin-portal`
-  holds the one constructor map from `Dialog` to UI crate and wraps the chosen UI in the
-  shell. A new dialog kind is a new crate, its `DialogUi` impl and one line in that map.
+  `gnoblin-portal-ui::ui::DialogUi` and names only egui, the core (`gnoblin-portal-core`,
+  the models) and the egui layer (`gnoblin-portal-ui`). The egui layer holds the trait,
+  the `DialogShell` that runs it and the CPU painter. `gnoblin-portal` holds the one
+  constructor map from `Dialog` to UI crate and wraps the chosen UI in the shell. A new
+  dialog kind is a new crate, its `DialogUi` impl and one line in that map; it adds a
+  `gnoblin-portal-ui` dependency and nothing else to the core.
   The compositor's `portal` module does the negotiation (D19).
 - **Replaces:** `src/session`, `src/agents`, `src/idle.c`, `src/portal`,
   `subprojects/xdg-desktop-portal-gnome` and its patches.
@@ -2587,7 +2591,7 @@ Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts).
 
 - `xdg-desktop-portal-gnoblin` (relay): depends on `gnoblin-client`, `gnoblin-schema` and `zbus`. Names no compositor, UI or services crate. Optional; nothing depends on it.
 - `gnoblin-compositor::portal` (negotiation, queue, validation, outcomes): depends on `gnoblin-portal-core::model` (payload and result types only), `gnoblin-types` and `gnoblin-schema`. Nothing depends on `xdg-desktop-portal-gnoblin`.
-- `gnoblin-portal-core::model` (dialog models): depends on `gnoblin-types` and `gnoblin-schema` only. `gnoblin-portal` (the egui screens) and the dialog crates depend on it; only `gnoblin-compositor` may depend on `gnoblin-portal`.
+- `gnoblin-portal-core` (dialog models): depends on `gnoblin-types` and `gnoblin-schema` only. `gnoblin-portal-ui` (egui layer), `gnoblin-portal` (the egui screens) and the dialog crates depend on it; only `gnoblin-compositor` may depend on `gnoblin-portal`, and only the compositor, the screens and the dialog crates may depend on `gnoblin-portal-ui`.
 - `gnoblin-portal` (compositor side): draws the dialogs with egui, with the consent, file chooser and app chooser crates.
 
 #### Parity and ledger

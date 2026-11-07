@@ -25,7 +25,7 @@ Cursor (`gnoblin-render/src/cursor/`, 2014 lines) is owned by the CursorCrate la
 | gnoblin-lua         | `layout/`                                    | 2054                    | mlua, in 5 of 10 files          | i, ii  | gnoblin-lua-layout       |
 | gnoblin-backend     | `render/vulkan/`                             | about 4,600 incl. tests | ash, naga (optional)            | i      | gnoblin-backend-vulkan   |
 | gnoblin-backend     | `drm/`, `libinput/`, `udev.rs`, `session.rs` | about 5,300             | smithay hardware features       | i, iii | gnoblin-backend-drm      |
-| gnoblin-portal-core | `ui.rs`, `paint.rs`                          | 377 + 349               | egui (82 crates, inference)     | i      | gnoblin-portal-ui        |
+| gnoblin-portal-core | `ui.rs`, `paint.rs`                          | 377 + 349               | egui (82 crates, inference)     | i      | gnoblin-portal-ui (done) |
 | gnoblinctl          | `logs/`, `logs.rs`                           | 1117                    | none beyond clap                | ii     | gnoblinctl-logs          |
 | gnoblin-session     | `guardian.rs`                                | 1007                    | none                            | ii     | gnoblin-session-guardian |
 
@@ -43,7 +43,7 @@ Rows are read from the files named below. `gnoblin-lua/src/layout/` has ten file
 
 **backend drm.** Hardware code (`drm/gpu.rs` 1292 lines, `drm/plan.rs` 913, `libinput`, `udev`, `session`) needs smithay's hardware features. Nested and headless paths need none of them. Blast radius is 10 transitive dependants, so the split helps only if hardware-only changes stop rebuilding the nested and headless paths (inference).
 
-**portal ui.** `ui.rs` and `paint.rs` are the only `egui` users in `gnoblin-portal-core`; `model/` is not (grep inference from the file list). Dependants are 4 transitively.
+**portal ui.** `ui.rs` and `paint.rs` were the only `egui` users in `gnoblin-portal-core`; `model/` is not (grep inference from the file list). Dependants are 4 transitively. Done: they moved to `gnoblin-portal-ui`, which holds the `DialogUi` trait, the shell and the painter. `gnoblin-portal-core` now holds the models only and drops the egui dependency.
 
 **gnoblinctl logs.** `gnoblinctl` is a binary, yet its library holds 1117 lines of log logic (`logs/follow.rs` 460, `logs/bounds.rs` 338, `logs.rs` 319). That breaks the dispatch-only rule. Dependants: 1.
 
@@ -75,7 +75,7 @@ These add a graph node and no feature. They are flagged in the opposite directio
 3. `gnoblin-backend` Vulkan to `gnoblin-backend-vulkan`.
 4. `gnoblin-backend` hardware to `gnoblin-backend-drm`.
 5. `gnoblin-lua` layout to `gnoblin-lua-layout`.
-6. `gnoblin-portal-core` UI to `gnoblin-portal-ui`.
+6. `gnoblin-portal-core` UI to `gnoblin-portal-ui` (done).
 7. `gnoblinctl` logs to `gnoblinctl-logs`.
 8. `gnoblin-session` guardian to `gnoblin-session-guardian`.
 9. Store duplication: decide between `gnoblin-store` and `gnoblin-log/src/store/`.
