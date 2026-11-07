@@ -1,6 +1,6 @@
 //! Which components log, and at what level.
 //!
-//! Every [`info_in!`](crate::info_in) call site owns one [`Component`]. The component holds one
+//! Every level call owns one [`Component`]. The component holds one
 //! atomic level, so a disabled call costs a single relaxed load and formats nothing. The level
 //! comes from a [`Spec`], the text `GNOBLIN_LOG` or the `logging` configuration supplies:
 //!
@@ -197,7 +197,7 @@ const fn call_code(level: Level) -> u8 {
 
 /// One logging call site's component: its name, its level and whether it has registered.
 ///
-/// Each [`info_in!`](crate::info_in) call expands to a `static` of this type, so the level check
+/// Each level call expands to a `static` of this type, so the level check
 /// reads a field of that static and never a lock. The first check registers it.
 #[doc(hidden)]
 pub struct Component {

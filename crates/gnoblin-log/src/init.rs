@@ -26,6 +26,9 @@ use tracing_subscriber::fmt::{self, FormatEvent};
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
+// The component this module's own warnings and panic reports log under.
+crate::logger!(log = "log");
+
 /// The retention policy the database is opened with, re-exported beside the options.
 pub use crate::store::Retention;
 /// The options a process sets up logging with, and the environment variables that name them.
@@ -108,7 +111,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     if installed.is_ok() {
         install_panic_hook();
         for problem in &problems {
-            crate::warn_in!("log", "{problem}");
+            log::warn!("{problem}");
         }
     }
     LogGuard { sink }
@@ -130,7 +133,7 @@ where
 fn install_panic_hook() {
     let previous = panic::take_hook();
     panic::set_hook(Box::new(move |information| {
-        crate::error_in!("log", panic = %information, "a thread panicked");
+        log::error!(panic = %information, "a thread panicked");
         previous(information);
     }));
 }

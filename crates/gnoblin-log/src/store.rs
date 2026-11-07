@@ -1,7 +1,7 @@
 //! The database half of the log: one row per event, written by a thread that batches inserts
 //! so that the call which logs never waits on the disk.
 //!
-//! Each row keeps the component that logged the event (as named by the `*_in!` call)
+//! Each row keeps the component that logged the event (as named by its `logger!`)
 //! and the process role (`compositor`, `services`, ...) in separate columns.
 
 use std::fs;

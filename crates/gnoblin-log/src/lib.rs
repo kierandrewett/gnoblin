@@ -127,7 +127,7 @@ impl ProcessRole {
 /// `EnvFilter` built from the specification selects it, and it carries a `component` field that
 /// the sinks read.
 ///
-/// This is an internal entry point; call the level macros below instead.
+/// This is an internal entry point; a [`logger!`] module's level macros call it instead.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __emit {
@@ -143,39 +143,6 @@ macro_rules! __emit {
             );
         }
     }};
-}
-
-/// Logs at `ERROR` for a component: `error_in!("wayland", surfaces = n, "mapped")`.
-///
-/// The first argument is the component literal, checked at compile time: 1 to 24 bytes of
-/// `a-z`, `0-9` and `-`, with no leading or trailing `-`. The rest are the `tracing` arguments.
-#[macro_export]
-macro_rules! error_in {
-    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, ERROR, $($rest)+) };
-}
-
-/// Logs at `WARN` for a component. See [`error_in!`] for the argument shape.
-#[macro_export]
-macro_rules! warn_in {
-    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, WARN, $($rest)+) };
-}
-
-/// Logs at `INFO` for a component. See [`error_in!`] for the argument shape.
-#[macro_export]
-macro_rules! info_in {
-    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, INFO, $($rest)+) };
-}
-
-/// Logs at `DEBUG` for a component. See [`error_in!`] for the argument shape.
-#[macro_export]
-macro_rules! debug_in {
-    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, DEBUG, $($rest)+) };
-}
-
-/// Logs at `TRACE` for a component. See [`error_in!`] for the argument shape.
-#[macro_export]
-macro_rules! trace_in {
-    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, TRACE, $($rest)+) };
 }
 
 /// Defines a logger: a module named `name` whose `error!`, `warn!`, `info!`, `debug!` and
@@ -256,6 +223,13 @@ mod tests {
     use super::event::capture::logged;
     use super::*;
 
+    /// One logger per component the tests below check, so each assertion names its own tag.
+    mod sample {
+        crate::logger!(pub(crate) log = "log");
+        crate::logger!(pub(crate) xdg = "xdg-shell");
+        crate::logger!(pub(crate) testing = "logger-test");
+    }
+
     #[test]
     fn a_lowercase_name_with_digits_and_inner_dashes_is_valid() {
         for name in ["wayland", "a", "compat-gtk", "x11-2", "a-b-c"] {
@@ -275,11 +249,11 @@ mod tests {
     #[test]
     fn every_level_macro_tags_the_event_with_its_named_component() {
         let events = logged(|| {
-            error_in!("log", "e");
-            warn_in!("log", "w");
-            info_in!("log", count = 3, "i {}", 4);
-            debug_in!("log", "d");
-            trace_in!("log", "t");
+            sample::log::error!("e");
+            sample::log::warn!("w");
+            sample::log::info!(count = 3, "i {}", 4);
+            sample::log::debug!("d");
+            sample::log::trace!("t");
         });
         let components: Vec<_> = events.iter().map(|event| event.component.as_str()).collect();
         // `debug` and `trace` are below the default `info` filter, so only three events arrive.
@@ -288,7 +262,7 @@ mod tests {
 
     #[test]
     fn a_sub_area_names_its_own_component() {
-        let events = logged(|| warn_in!("xdg-shell", "unknown request {}", 7));
+        let events = logged(|| sample::xdg::warn!("unknown request {}", 7));
         assert_eq!(events[0].component, "xdg-shell");
         assert_eq!(events[0].message, "unknown request 7");
     }
@@ -311,7 +285,7 @@ mod tests {
     #[test]
     fn logger_macros_tag_events_with_their_component_and_target() {
         let events = logged(|| {
-            info_in!("logger-test", "hello {}", 1);
+            sample::testing::info!("hello {}", 1);
         });
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].component, "logger-test");
