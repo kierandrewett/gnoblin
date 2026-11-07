@@ -1296,6 +1296,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-testkit",
+ "zeroize",
 ]
 
 [[package]]
@@ -1568,6 +1569,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "x11rb",
+ "zeroize",
 ]
 
 [[package]]
@@ -1706,6 +1708,7 @@ dependencies = [
  "gnoblin-schema",
  "gnoblin-testkit",
  "gnoblin-types",
+ "zeroize",
 ]
 
 [[package]]
@@ -1813,6 +1816,7 @@ dependencies = [
  "prost-types",
  "protox",
  "rustix 1.1.6",
+ "zeroize",
 ]
 
 [[package]]
