@@ -58,7 +58,9 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use gnoblin_layers::{Band, LayerHandle, LayerProvider, LayerRegistry, LayerScope, LayerSpec, LocalName};
+use gnoblin_layers::{
+    Band, LayerHandle, LayerProvider, LayerRegistry, LayerScope, LayerSpec, LocalName, RegisterError,
+};
 use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
 use crate::activation::{ActivationDecision, NewWindowFocus};
@@ -75,7 +77,7 @@ use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
 use crate::rules::{Rule, RuleAction};
 use crate::snapping::SnapZone;
-use crate::stack::{Stack, StackLayer};
+use crate::stack::{EntryOwner, Stack, StackItem, StackLayer};
 use crate::tiled::{TiledEdges, tiled_edges};
 use crate::window::{Window, WindowKind, WindowState};
 use crate::workspace::Workspaces;
@@ -187,6 +189,19 @@ pub enum CommandError {
     Refused,
 }
 
+/// Why [`Wm::register_layer`] refused a layer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LayerRegisterError {
+    /// The layer registry refused the spec. Its own rule applies.
+    Registry(RegisterError),
+    /// The target window is not in the stack, so there is nothing to sit above.
+    UnknownTarget(WindowId),
+    /// Only a layer scoped to one window can sit above that window.
+    NotWindowScope,
+    /// Only the [`Band::Windows`] band interleaves with windows.
+    NotWindowBand(Band),
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Broken {
     /// A workspace is declared but none is active.
@@ -218,6 +233,8 @@ pub enum Broken {
         /// The window that should be higher.
         lower: WindowId,
     },
+    /// A layer is attached above a window it no longer follows, or has already ended.
+    LayerEntryOrphan(LayerHandle),
     /// A window belongs to a workspace that is not declared.
     WindowWorkspaceUnknown {
         /// The window.
@@ -507,28 +524,69 @@ impl Wm {
             .is_some_and(|window| window.is_visible(self.active_workspace))
     }
 
-    /// Returns the live window-scope layers, bottom to top, grouped by the window
-    /// they follow in stacking order.
+    /// Returns the live layers in paint order, bottom to top.
     ///
-    /// The registry orders layers within one window through `paint_order`, but it
-    /// does not know where the window sits in the stack. This walks the stack from
-    /// the bottom and emits each window's layers in the registry's order, so a
-    /// layer always paints with the window it follows. Layers that follow no
-    /// window are left out.
+    /// A window's own layers paint with the window, in the registry's order. A layer
+    /// attached above a window (see [`Self::register_layer`]) paints directly above
+    /// it, so the walk follows the stack from the bottom and emits each window, then
+    /// the layers that sit on it. Layers that follow no window are left out.
     #[must_use]
     pub fn layer_order(&self) -> Vec<LayerHandle> {
         let painted = gnoblin_layers::paint_order(&self.layers);
         let mut order = Vec::with_capacity(painted.len());
-        for &window in self.stack.order().iter().rev() {
-            let scope = LayerScope::Window(Some(window));
-            order.extend(
-                painted
-                    .iter()
-                    .copied()
-                    .filter(|&handle| self.layers.get(handle).is_some_and(|record| record.spec.scope == scope)),
-            );
+        for item in self.stack.items().into_iter().rev() {
+            match item {
+                StackItem::Layer(handle) if self.layers.get(handle).is_some() => order.push(handle),
+                StackItem::Layer(_) => {}
+                StackItem::Window(window) => {
+                    let scope = LayerScope::Window(Some(window));
+                    order.extend(painted.iter().copied().filter(|&handle| {
+                        !self.stack.is_attached(handle)
+                            && self.layers.get(handle).is_some_and(|record| record.spec.scope == scope)
+                    }));
+                }
+            }
         }
         order
+    }
+
+    /// Registers a window-scope layer that sits directly above its target in the stack.
+    ///
+    /// Only a layer in [`Band::Windows`] can be attached, and its target has to be
+    /// stacked. The provider decides who owns the entry: a compositor layer stays
+    /// above extension layers on the same window, whatever order they arrive in. The
+    /// layer then hides and shows with its window, like the window's own record.
+    ///
+    /// # Errors
+    ///
+    /// The first rule the spec breaks, or the registry's own refusal.
+    pub fn register_layer(
+        &mut self,
+        provider: &LayerProvider,
+        spec: LayerSpec,
+    ) -> Result<LayerHandle, LayerRegisterError> {
+        let LayerScope::Window(Some(target)) = spec.scope else {
+            return Err(LayerRegisterError::NotWindowScope);
+        };
+        if spec.band != Band::Windows {
+            return Err(LayerRegisterError::NotWindowBand(spec.band));
+        }
+        if self.stack.layer_of(target).is_none() {
+            return Err(LayerRegisterError::UnknownTarget(target));
+        }
+        let owner = if provider.is_compositor() {
+            EntryOwner::Gnoblin
+        } else {
+            EntryOwner::Extension
+        };
+        let handle = self
+            .layers
+            .register(provider, spec)
+            .map_err(LayerRegisterError::Registry)?;
+        let attached = self.stack.attach(handle, target, owner);
+        debug_assert!(attached, "a fresh layer attaches to a stacked window");
+        self.sync_layer_visibility();
+        Ok(handle)
     }
 
     /// Brings every window's layers in line with whether the window is drawn now.
@@ -538,6 +596,8 @@ impl Wm {
     /// layers are not touched, and layers already in the right state are left
     /// alone, so running this after every event never repeats a change.
     fn sync_layer_visibility(&mut self) {
+        // An ended layer leaves the stack with its record, so no entry outlives its layer.
+        self.stack.retain_layers(|layer| self.layers.get(layer).is_some());
         let windows: Vec<WindowId> = self.windows.keys().copied().collect();
         for id in windows {
             let visible = self.is_visible(id);
@@ -598,6 +658,19 @@ impl Wm {
             };
             if upper_layer < lower_layer {
                 return Err(Broken::LayerOrder { upper, lower });
+            }
+        }
+
+        // A layer attached to the stack must still be live, and must still follow the
+        // window it sits above. Otherwise the stack would paint a ghost.
+        for (layer, target) in self.stack.attached() {
+            checks += 1;
+            let follows = self
+                .layers
+                .get(layer)
+                .is_some_and(|record| record.spec.scope == LayerScope::Window(Some(target)));
+            if !follows {
+                return Err(Broken::LayerEntryOrphan(layer));
             }
         }
 
@@ -1805,7 +1878,7 @@ impl Wm {
             };
             effects.push(Effect::PlacementTarget {
                 workspace,
-                placement: placement.clone(),
+                placement: *placement,
                 tiled,
                 work_area,
             });
@@ -2444,5 +2517,176 @@ mod tests {
             surface_state(&wm, WindowId::new(1)),
             Some(gnoblin_layers::LayerState::Mapped)
         );
+    }
+
+    /// Registers a compositor-owned window-scope layer directly above `target`.
+    fn register_above(wm: &mut Wm, name: &str, target: WindowId) -> gnoblin_layers::LayerHandle {
+        let spec = LayerSpec::new(
+            LocalName::new(name).expect("a plain local name is valid"),
+            LayerScope::Window(Some(target)),
+            Band::Windows,
+        );
+        wm.register_layer(&LayerProvider::Gnoblin("gnoblin-wm"), spec)
+            .expect("the layer registers above a stacked window")
+    }
+
+    /// The state of one layer, or `None` once it has ended and left the registry.
+    fn entry_state(wm: &Wm, handle: gnoblin_layers::LayerHandle) -> Option<gnoblin_layers::LayerState> {
+        wm.layers().get(handle).map(|record| record.state)
+    }
+
+    #[test]
+    fn a_layer_above_a_window_sits_directly_above_its_window() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        // Window 2 is above window 1, so the chrome paints between the two windows.
+        assert_eq!(
+            layer_windows(&wm),
+            vec![WindowId::new(1), WindowId::new(1), WindowId::new(2)]
+        );
+        assert_eq!(wm.layer_order().get(1), Some(&chrome));
+    }
+
+    #[test]
+    fn a_layer_above_a_window_follows_it_through_a_raise() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        wm.apply(Event::Raise {
+            window: WindowId::new(1),
+        });
+        // Window 1 is now on top, and its chrome stays directly above it.
+        assert_eq!(
+            layer_windows(&wm),
+            vec![WindowId::new(2), WindowId::new(1), WindowId::new(1)]
+        );
+        assert_eq!(wm.layer_order().last(), Some(&chrome));
+    }
+
+    #[test]
+    fn a_layer_above_a_window_hides_and_shows_with_its_workspace() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(2),
+        });
+        wm.apply(Event::WorkspaceActivated {
+            workspace: WorkspaceId::new(2),
+        });
+        assert_eq!(entry_state(&wm, chrome), Some(gnoblin_layers::LayerState::Hidden));
+        wm.apply(Event::WorkspaceActivated {
+            workspace: WorkspaceId::new(1),
+        });
+        assert_eq!(entry_state(&wm, chrome), Some(gnoblin_layers::LayerState::Mapped));
+    }
+
+    #[test]
+    fn closing_a_window_takes_its_layers_out_of_the_order() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        wm.apply(Event::WindowClosed {
+            window: WindowId::new(1),
+        });
+        assert!(!wm.layer_order().contains(&chrome));
+        assert_eq!(entry_state(&wm, chrome), None);
+        wm.check_invariants()
+            .expect("closing the window leaves the invariants intact");
+    }
+
+    #[test]
+    fn two_layers_above_one_window_put_the_newest_on_top() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let first = register_above(&mut wm, "first", WindowId::new(1));
+        let second = register_above(&mut wm, "second", WindowId::new(1));
+        let order = wm.layer_order();
+        assert_eq!(layer_windows(&wm), vec![WindowId::new(1); 3]);
+        assert_eq!(order[1..].to_vec(), vec![first, second]);
+    }
+
+    #[test]
+    fn a_fullscreen_window_keeps_its_layers_above_it() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        wm.apply(Event::ToggleFullscreen {
+            window: WindowId::new(1),
+        });
+        // Window 1 moves to the fullscreen layer, above window 2, and takes its chrome with it.
+        assert_eq!(
+            layer_windows(&wm),
+            vec![WindowId::new(2), WindowId::new(1), WindowId::new(1)]
+        );
+        assert_eq!(wm.layer_order().last(), Some(&chrome));
+    }
+
+    #[test]
+    fn a_layer_above_a_normal_window_stays_under_a_fullscreen_window() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        wm.apply(Event::ToggleFullscreen {
+            window: WindowId::new(2),
+        });
+        assert_eq!(
+            layer_windows(&wm),
+            vec![WindowId::new(1), WindowId::new(1), WindowId::new(2)]
+        );
+        assert_eq!(wm.layer_order().get(1), Some(&chrome));
+    }
+
+    #[test]
+    fn a_layer_is_refused_unless_it_is_a_window_layer_on_a_stacked_window() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let provider = LayerProvider::Gnoblin("gnoblin-wm");
+        let output_scope = LayerSpec::new(
+            LocalName::new("bar").expect("a plain local name is valid"),
+            LayerScope::Output(OutputId::new(0)),
+            Band::Windows,
+        );
+        assert_eq!(
+            wm.register_layer(&provider, output_scope),
+            Err(LayerRegisterError::NotWindowScope)
+        );
+        let wrong_band = LayerSpec::new(
+            LocalName::new("bar").expect("a plain local name is valid"),
+            LayerScope::Window(Some(WindowId::new(1))),
+            Band::Top,
+        );
+        assert_eq!(
+            wm.register_layer(&provider, wrong_band),
+            Err(LayerRegisterError::NotWindowBand(Band::Top))
+        );
+        let missing = LayerSpec::new(
+            LocalName::new("bar").expect("a plain local name is valid"),
+            LayerScope::Window(Some(WindowId::new(9))),
+            Band::Windows,
+        );
+        assert_eq!(
+            wm.register_layer(&provider, missing),
+            Err(LayerRegisterError::UnknownTarget(WindowId::new(9)))
+        );
+        assert_eq!(layer_windows(&wm), vec![WindowId::new(1)]);
+    }
+
+    #[test]
+    fn a_layer_that_ended_but_stayed_on_the_stack_is_reported() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let chrome = register_above(&mut wm, "chrome", WindowId::new(1));
+        // Ending the target's layers directly, without an event, leaves the entry behind.
+        wm.layers.end_target(WindowId::new(1));
+        assert_eq!(wm.check_invariants(), Err(Broken::LayerEntryOrphan(chrome)));
     }
 }

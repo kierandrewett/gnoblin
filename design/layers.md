@@ -2,7 +2,7 @@
 
 Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers `gnoblin.portals` and `gnoblin.alerts`, and a Wayland provider registers the client surfaces (`gnoblin.surface_*`). Extensions register under `ext.<id>.`, and the window menu is one of them (D29). Decisions live in the main document; this file holds the detail.
 
-Status: proposed. Phase 1 (the `gnoblin-layers` crate: names, bands, scopes, registry, paint order, lifecycle, owner-only secure flag) is implemented and unit-tested. Wiring into the compositor and Lua is not started.
+Status: proposed. Phases 1 and 2 are implemented and unit-tested: the `gnoblin-layers` crate (names, bands, scopes, registry, paint order, lifecycle, owner-only secure flag), and window-scope stack entries in `gnoblin-wm`. Wiring into the compositor and Lua is not started.
 
 Citations are `path:line`, checked in this lane on 2026-11-06. `[INFERENCE]`
 marks a claim not checked against code or a primary source.
@@ -547,6 +547,9 @@ Each path below moves to the registry, with no shim.
 
 1. `gnoblin-layers` crate: the registry, bands, ordering and follow rules, the `secure` field (default `false`) and its owner check, and their tests. No behaviour change.
 2. `gnoblin-wm` stack gains window-scope entries above their targets. `StackLayer` keeps `Normal` and `Fullscreen`. Follow rules and stack tests.
+
+    Implemented: `Wm::register_layer` attaches a window-scope layer above its target. The entry hides, shows and ends with the target, and `Broken::LayerEntryOrphan` reports one that no longer follows its window. A Windows-below-System paint test is deferred to the registry, because the stack orders only window-scope layers.
+
 3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy. The capture view masks or omits secure nodes (`capture.secure-treatment`) and replaces the pre-overlay readback (Capture paths).
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
