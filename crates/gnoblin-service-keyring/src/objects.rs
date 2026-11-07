@@ -13,6 +13,7 @@ use gnoblin_keyring_store::{CollectionId, ItemId, Keyring, KeyringError};
 use zbus::ObjectServer;
 use zbus::object_server::SignalEmitter;
 use zbus::{OwnedObjectPath, OwnedVariant, Variant};
+use zeroize::Zeroizing;
 
 use crate::dh::{self, DhSessionKey};
 use crate::log;
@@ -28,6 +29,9 @@ const PROMPT_PREFIX: &str = "/org/freedesktop/secrets/prompt/";
 pub const DEFAULT_ALIAS: &str = "default";
 /// The label of the collection created on first run.
 const DEFAULT_LABEL: &str = "Login";
+/// The property names `CreateItem` reads its label and attributes from.
+const ITEM_LABEL: &str = "org.freedesktop.Secret.Item.Label";
+const ITEM_ATTRIBUTES: &str = "org.freedesktop.Secret.Item.Attributes";
 
 /// The path a method returns when there is no object to prompt for.
 const NO_OBJECT: &str = "/";
@@ -135,6 +139,12 @@ impl SecretServiceState {
     fn open(&self) -> Result<&Keyring, SecretError> {
         self.keyring
             .as_ref()
+            .ok_or_else(|| SecretError::IsLocked("the keyring is locked".to_owned()))
+    }
+
+    fn open_mut(&mut self) -> Result<&mut Keyring, SecretError> {
+        self.keyring
+            .as_mut()
             .ok_or_else(|| SecretError::IsLocked("the keyring is locked".to_owned()))
     }
 }
@@ -399,6 +409,10 @@ impl ServiceObject {
             .map(|(id, _)| owned_path(&collection_path(id)))
             .collect()
     }
+
+    /// Sent on the service after a collection is deleted, so clients drop it from their lists.
+    #[zbus(signal)]
+    async fn collection_deleted(emitter: &SignalEmitter<'_>, collection: &OwnedObjectPath) -> zbus::Result<()>;
 }
 
 /// Search a locked keyring. It answers nothing: the attributes sit inside the SQLCipher file, and
@@ -444,7 +458,72 @@ fn encrypt_item(state: &State, session: &OwnedObjectPath, path: &str) -> Result<
         return Ok(None);
     };
     let (iv, value) = dh::encrypt(session_key, &item.secret).map_err(failed)?;
-    Ok(Some((session.clone(), iv, value, "text/plain".to_owned())))
+    Ok(Some((session.clone(), iv, value, item.content_type.clone())))
+}
+
+/// Decrypt a secret a client sent over its DH session, with the content type the client sent it
+/// under. The store is checked first, so a locked keyring answers `IsLocked` whatever the client
+/// sent. A ciphertext that does not decrypt under its session is an argument error.
+fn plain_secret(shared: &SecretServiceState, secret: &WireSecret) -> Result<(Zeroizing<Vec<u8>>, String), SecretError> {
+    shared.open()?;
+    let (session, iv, cipher, content_type) = secret;
+    let key = session_id(session.as_str())
+        .and_then(|id| shared.sessions.get(&id))
+        .ok_or_else(|| SecretError::NoSession(session.to_string()))?;
+    let plain = dh::decrypt(key, iv, cipher)
+        .map_err(|_| SecretError::InvalidArgs("the secret does not decrypt under its session".to_owned()))?;
+    Ok((plain, content_type.clone()))
+}
+
+/// The label and attributes `CreateItem` carries. A missing label is an argument error. Missing
+/// attributes are an empty set, which the spec allows. The attributes come back sorted by name,
+/// the order the store keeps them in, so an exact match can compare them directly.
+fn item_properties(
+    mut properties: HashMap<String, OwnedVariant>,
+) -> Result<(String, Vec<(String, String)>), SecretError> {
+    let label = properties
+        .remove(ITEM_LABEL)
+        .ok_or_else(|| SecretError::InvalidArgs(format!("{ITEM_LABEL} is missing")))?;
+    let label = String::try_from(label).map_err(|error| SecretError::InvalidArgs(error.to_string()))?;
+    let mut attributes: Vec<(String, String)> = match properties.remove(ITEM_ATTRIBUTES) {
+        Some(value) => HashMap::<String, String>::try_from(value)
+            .map_err(|error| SecretError::InvalidArgs(error.to_string()))?
+            .into_iter()
+            .collect(),
+        None => Vec::new(),
+    };
+    attributes.sort();
+    Ok((label, attributes))
+}
+
+/// Write one item into `collection`. With `replace`, an item of that collection whose attributes
+/// are exactly `attributes` is updated in place and keeps its id. Otherwise a new item is added,
+/// so a search that matches only a superset never overwrites anything. Returns the id and whether
+/// the item was created. `attributes` must be sorted by name, as [`item_properties`] sorts them.
+fn write_item(
+    keyring: &mut Keyring,
+    collection: CollectionId,
+    label: &str,
+    content_type: &str,
+    secret: &[u8],
+    attributes: &[(String, String)],
+    replace: bool,
+) -> Result<(ItemId, bool), SecretError> {
+    let pairs: Vec<(&str, &str)> = attributes
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+    if replace {
+        for id in keyring.search_items(&pairs)? {
+            let existing = keyring.item(id)?;
+            if existing.is_some_and(|item| item.collection == collection && item.attributes == attributes) {
+                keyring.update_item(id, label, content_type, secret, &pairs)?;
+                return Ok((id, false));
+            }
+        }
+    }
+    let id = keyring.put_item(collection, label, content_type, secret, &pairs)?;
+    Ok((id, true))
 }
 
 /// One collection of the store.
@@ -455,8 +534,35 @@ pub struct CollectionObject {
 
 #[zbus::interface(name = "org.freedesktop.Secret.Collection")]
 impl CollectionObject {
-    async fn delete(&self) -> Result<OwnedObjectPath, SecretError> {
-        Err(refused("Delete"))
+    /// Deletes the collection and its items, then tells the service so clients drop it.
+    /// Removing the collection drops its alias too, since the store cascades to aliases.
+    async fn delete(&self, #[zbus(object_server)] server: &ObjectServer) -> Result<OwnedObjectPath, SecretError> {
+        let items = {
+            let mut shared = lock(&self.state);
+            let keyring = shared.open_mut()?;
+            let items = keyring.items_in(self.id)?;
+            if !keyring.delete_collection(self.id)? {
+                return Err(SecretError::NoSuchObject(collection_path(self.id)));
+            }
+            items
+        };
+        for id in items {
+            let path = item_path(self.id, id);
+            server.remove::<ItemObject, _>(path.as_str()).await.map_err(failed)?;
+        }
+        let path = collection_path(self.id);
+        server
+            .remove::<CollectionObject, _>(path.as_str())
+            .await
+            .map_err(failed)?;
+        let service = server
+            .interface::<_, ServiceObject>(SERVICE_PATH)
+            .await
+            .map_err(failed)?;
+        ServiceObject::collection_deleted(service.signal_emitter(), &owned_path(&path)?)
+            .await
+            .map_err(failed)?;
+        owned_path(NO_OBJECT)
     }
 
     async fn search_items(
@@ -498,12 +604,50 @@ impl CollectionObject {
 
     async fn create_item(
         &self,
-        _properties: HashMap<String, OwnedVariant>,
-        _secret: WireSecret,
-        _replace: bool,
+        properties: HashMap<String, OwnedVariant>,
+        secret: WireSecret,
+        replace: bool,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        #[zbus(object_server)] server: &ObjectServer,
     ) -> Result<(OwnedObjectPath, OwnedObjectPath), SecretError> {
-        Err(refused("CreateItem"))
+        let (label, attributes) = item_properties(properties)?;
+        let (id, created) = {
+            let mut shared = lock(&self.state);
+            let (plain, content_type) = plain_secret(&shared, &secret)?;
+            let keyring = shared.open_mut()?;
+            write_item(keyring, self.id, &label, &content_type, &plain, &attributes, replace)?
+        };
+        let path = item_path(self.id, id);
+        let item = owned_path(&path)?;
+        if created {
+            server
+                .at(
+                    path.as_str(),
+                    ItemObject {
+                        state: self.state.clone(),
+                        id,
+                    },
+                )
+                .await
+                .map_err(failed)?;
+            CollectionObject::item_created(&emitter, &item).await.map_err(failed)?;
+        } else {
+            CollectionObject::item_changed(&emitter, &item).await.map_err(failed)?;
+        }
+        Ok((item, owned_path(NO_OBJECT)?))
     }
+
+    /// Sent on this collection after `CreateItem` adds an item.
+    #[zbus(signal)]
+    async fn item_created(emitter: &SignalEmitter<'_>, item: &OwnedObjectPath) -> zbus::Result<()>;
+
+    /// Sent on this collection after `CreateItem` or `SetSecret` changes an item.
+    #[zbus(signal)]
+    async fn item_changed(emitter: &SignalEmitter<'_>, item: &OwnedObjectPath) -> zbus::Result<()>;
+
+    /// Sent on this collection after an item is deleted.
+    #[zbus(signal)]
+    async fn item_deleted(emitter: &SignalEmitter<'_>, item: &OwnedObjectPath) -> zbus::Result<()>;
 
     #[zbus(property)]
     async fn items(&self) -> Result<Vec<OwnedObjectPath>, SecretError> {
@@ -543,8 +687,27 @@ pub struct ItemObject {
 
 #[zbus::interface(name = "org.freedesktop.Secret.Item")]
 impl ItemObject {
-    async fn delete(&self) -> Result<OwnedObjectPath, SecretError> {
-        Err(refused("Delete"))
+    /// Deletes the item and tells its collection, so clients drop it from their item lists.
+    async fn delete(&self, #[zbus(object_server)] server: &ObjectServer) -> Result<OwnedObjectPath, SecretError> {
+        let collection = {
+            let mut shared = lock(&self.state);
+            let keyring = shared.open_mut()?;
+            let item = keyring
+                .item(self.id)?
+                .ok_or_else(|| SecretError::NoSuchObject(format!("item {}", self.id.raw())))?;
+            keyring.delete_item(self.id)?;
+            item.collection
+        };
+        let path = item_path(collection, self.id);
+        server.remove::<ItemObject, _>(path.as_str()).await.map_err(failed)?;
+        let owner = server
+            .interface::<_, CollectionObject>(collection_path(collection).as_str())
+            .await
+            .map_err(failed)?;
+        CollectionObject::item_deleted(owner.signal_emitter(), &owned_path(&path)?)
+            .await
+            .map_err(failed)?;
+        owned_path(NO_OBJECT)
     }
 
     async fn get_secret(&self, session: OwnedObjectPath) -> Result<WireSecret, SecretError> {
@@ -552,8 +715,36 @@ impl ItemObject {
         encrypt_item(&self.state, &session, &path)?.ok_or_else(|| SecretError::NoSuchObject(path))
     }
 
-    async fn set_secret(&self, _secret: WireSecret) -> Result<(), SecretError> {
-        Err(refused("SetSecret"))
+    /// Replaces the secret, keeping the label and attributes. The new secret arrives over the
+    /// session the client opened, like `GetSecret` answers over it.
+    async fn set_secret(
+        &self,
+        secret: WireSecret,
+        #[zbus(object_server)] server: &ObjectServer,
+    ) -> Result<(), SecretError> {
+        let collection = {
+            let mut shared = lock(&self.state);
+            let (plain, content_type) = plain_secret(&shared, &secret)?;
+            let keyring = shared.open_mut()?;
+            let item = keyring
+                .item(self.id)?
+                .ok_or_else(|| SecretError::NoSuchObject(format!("item {}", self.id.raw())))?;
+            let pairs: Vec<(&str, &str)> = item
+                .attributes
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect();
+            keyring.update_item(self.id, &item.label, &content_type, &plain, &pairs)?;
+            item.collection
+        };
+        let path = owned_path(&item_path(collection, self.id))?;
+        let owner = server
+            .interface::<_, CollectionObject>(collection_path(collection).as_str())
+            .await
+            .map_err(failed)?;
+        CollectionObject::item_changed(owner.signal_emitter(), &path)
+            .await
+            .map_err(failed)
     }
 
     #[zbus(property)]
@@ -701,4 +892,210 @@ pub(crate) async fn emit_completed(server: &ObjectServer, path: &str, dismissed:
     }
     server.remove::<PromptObject, _>(path).await.map_err(failed)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gnoblin_keyring_store::Passphrase;
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        std::env::temp_dir().join(format!("gnoblin-objects-{label}-{}-{nanos}.db", std::process::id()))
+    }
+
+    fn open_store(label: &str) -> (std::path::PathBuf, Keyring) {
+        let path = scratch(label);
+        let pass = Passphrase::new("correct horse".to_owned()).expect("a passphrase");
+        let keyring = Keyring::create(&path, &pass).expect("create the store");
+        (path, keyring)
+    }
+
+    fn session_path(id: u64) -> OwnedObjectPath {
+        owned_path(&format!("{SESSION_PREFIX}{id}")).expect("a session path")
+    }
+
+    /// A state with an open store and session `id` holding the server half of a DH pair. The
+    /// client half is returned, to encrypt what a client would send.
+    fn state_with_session(keyring: Keyring, id: u64) -> (State, DhSessionKey) {
+        let (server, client) = dh::session_pair();
+        let state = new_state(Some(keyring));
+        lock(&state).sessions.insert(id, server);
+        (state, client)
+    }
+
+    fn attributes(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn a_locked_store_refuses_a_secret_before_anything_else() {
+        let state = new_state(None);
+        let wire: WireSecret = (session_path(1), vec![0; 16], vec![0; 16], "text/plain".to_owned());
+        let shared = lock(&state);
+        assert!(matches!(plain_secret(&shared, &wire), Err(SecretError::IsLocked(_))));
+    }
+
+    #[test]
+    fn a_secret_under_an_unknown_session_is_refused() {
+        let (path, keyring) = open_store("no-session");
+        let state = new_state(Some(keyring));
+        let wire: WireSecret = (session_path(9), vec![0; 16], vec![0; 16], "text/plain".to_owned());
+        let shared = lock(&state);
+        assert!(matches!(plain_secret(&shared, &wire), Err(SecretError::NoSession(_))));
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_ciphertext_that_is_not_whole_blocks_is_an_argument_error() {
+        let (path, keyring) = open_store("bad-cipher");
+        let (state, client) = state_with_session(keyring, 1);
+        let (iv, _) = dh::encrypt(&client, b"hunter2").expect("encrypt");
+        let wire: WireSecret = (session_path(1), iv, vec![7; 15], "text/plain".to_owned());
+        let shared = lock(&state);
+        assert!(matches!(plain_secret(&shared, &wire), Err(SecretError::InvalidArgs(_))));
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_secret_under_its_session_decrypts_with_its_content_type() {
+        let (path, keyring) = open_store("round-trip");
+        let (state, client) = state_with_session(keyring, 1);
+        let (iv, cipher) = dh::encrypt(&client, b"hunter2").expect("encrypt");
+        let wire: WireSecret = (session_path(1), iv, cipher, "text/plain".to_owned());
+        let shared = lock(&state);
+        let (plain, content_type) = plain_secret(&shared, &wire).expect("decrypts");
+        assert_eq!(*plain, b"hunter2".to_vec());
+        assert_eq!(content_type, "text/plain");
+        drop(shared);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn create_item_without_a_label_is_an_argument_error() {
+        let refusal = item_properties(HashMap::new()).expect_err("no label");
+        assert!(matches!(refusal, SecretError::InvalidArgs(_)));
+    }
+
+    #[test]
+    fn create_item_reads_the_label_and_sorts_the_attributes() {
+        let properties = HashMap::from([
+            (
+                ITEM_LABEL.to_owned(),
+                OwnedVariant::try_from(Variant::from("mail")).expect("a string"),
+            ),
+            (
+                ITEM_ATTRIBUTES.to_owned(),
+                OwnedVariant::from(HashMap::from([
+                    ("b".to_owned(), "2".to_owned()),
+                    ("a".to_owned(), "1".to_owned()),
+                ])),
+            ),
+        ]);
+        let (label, attrs) = item_properties(properties).expect("reads");
+        assert_eq!(label, "mail");
+        assert_eq!(attrs, attributes(&[("a", "1"), ("b", "2")]));
+    }
+
+    #[test]
+    fn replace_updates_the_item_with_exactly_the_same_attributes() {
+        let (path, mut keyring) = open_store("replace-exact");
+        let collection = keyring.create_collection("Login").expect("collection");
+        let (first, created) = write_item(
+            &mut keyring,
+            collection,
+            "one",
+            "text/plain",
+            b"v1",
+            &attributes(&[("app", "mail")]),
+            true,
+        )
+        .expect("write");
+        assert!(created);
+        let (again, created) = write_item(
+            &mut keyring,
+            collection,
+            "one",
+            "text/plain",
+            b"v2",
+            &attributes(&[("app", "mail")]),
+            true,
+        )
+        .expect("write");
+        assert!(!created, "an exact match is updated, not added");
+        assert_eq!(again, first);
+        let stored = keyring.item(first).expect("read").expect("present");
+        assert_eq!(*stored.secret, b"v2".to_vec());
+        assert_eq!(stored.content_type, "text/plain");
+        drop(keyring);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn replace_never_overwrites_an_item_with_extra_attributes() {
+        let (path, mut keyring) = open_store("replace-superset");
+        let collection = keyring.create_collection("Login").expect("collection");
+        let (wide, _) = write_item(
+            &mut keyring,
+            collection,
+            "wide",
+            "text/plain",
+            b"wide",
+            &attributes(&[("app", "mail"), ("host", "x")]),
+            true,
+        )
+        .expect("write");
+        let (narrow, created) = write_item(
+            &mut keyring,
+            collection,
+            "narrow",
+            "text/plain",
+            b"narrow",
+            &attributes(&[("app", "mail")]),
+            true,
+        )
+        .expect("write");
+        assert!(created, "a superset match is not an exact match");
+        assert_ne!(narrow, wide);
+        assert_eq!(keyring.items_in(collection).expect("list").len(), 2);
+        drop(keyring);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn without_replace_an_identical_item_is_added_alongside() {
+        let (path, mut keyring) = open_store("no-replace");
+        let collection = keyring.create_collection("Login").expect("collection");
+        let (first, _) = write_item(
+            &mut keyring,
+            collection,
+            "one",
+            "text/plain",
+            b"v1",
+            &attributes(&[("app", "mail")]),
+            false,
+        )
+        .expect("write");
+        let (second, created) = write_item(
+            &mut keyring,
+            collection,
+            "one",
+            "text/plain",
+            b"v2",
+            &attributes(&[("app", "mail")]),
+            false,
+        )
+        .expect("write");
+        assert!(created);
+        assert_ne!(second, first);
+        drop(keyring);
+        let _ = std::fs::remove_file(&path);
+    }
 }

@@ -122,22 +122,34 @@ pub fn decrypt(key: &DhSessionKey, iv: &[u8], cipher: &[u8]) -> Result<Zeroizing
     Ok(buffer)
 }
 
+/// The client's half, written from the specification rather than from `accept`, so the tests
+/// check that both sides derive the same key.
+#[cfg(test)]
+fn client_key(server_public: &[u8], private: &BigUint) -> (Vec<u8>, DhSessionKey) {
+    let prime = prime();
+    let public = BigUint::from(GENERATOR).modpow(private, &prime);
+    let shared = BigUint::from_bytes_be(server_public)
+        .modpow(private, &prime)
+        .to_bytes_be();
+    (public.to_bytes_be(), derive_key(&shared))
+}
+
+/// The server's session key and the client's, derived independently; they must agree. Other
+/// modules' tests use it to encrypt what a client sends and to read what the server returns.
+#[cfg(test)]
+pub(crate) fn session_pair() -> (DhSessionKey, DhSessionKey) {
+    let client_private = BigUint::from(0x0fed_cba9_8765_4321u64);
+    let client_public = BigUint::from(GENERATOR).modpow(&client_private, &prime()).to_bytes_be();
+    let (server_public, server_key) = accept(&client_public).expect("a valid public value");
+    let (_, client) = client_key(&server_public, &client_private);
+    (server_key, client)
+}
+
 #[cfg(test)]
 mod tests {
     use cbc::cipher::block_padding::NoPadding;
 
     use super::*;
-
-    /// The client's half, written from the specification rather than from `accept`, so the test
-    /// checks that both sides derive the same key.
-    fn client_key(server_public: &[u8], private: &BigUint) -> (Vec<u8>, DhSessionKey) {
-        let prime = prime();
-        let public = BigUint::from(GENERATOR).modpow(private, &prime);
-        let shared = BigUint::from_bytes_be(server_public)
-            .modpow(private, &prime)
-            .to_bytes_be();
-        (public.to_bytes_be(), derive_key(&shared))
-    }
 
     #[test]
     fn prime_is_the_rfc2409_group() {
@@ -172,18 +184,9 @@ mod tests {
         assert_eq!(accept(&prime_bytes).err(), Some(DhError::BadPeerKey));
     }
 
-    /// The server's session key and the client's, derived independently; they must agree.
-    fn session_keys() -> (DhSessionKey, DhSessionKey) {
-        let client_private = BigUint::from(0x0fed_cba9_8765_4321u64);
-        let client_public = BigUint::from(GENERATOR).modpow(&client_private, &prime()).to_bytes_be();
-        let (server_public, server_key) = accept(&client_public).expect("a valid public value");
-        let (_, client) = client_key(&server_public, &client_private);
-        (server_key, client)
-    }
-
     #[test]
     fn decrypt_round_trips_with_the_peers_key() {
-        let (server, client) = session_keys();
+        let (server, client) = session_pair();
         let (iv, cipher) = encrypt(&server, b"hunter2").expect("encrypts");
         let plain = decrypt(&client, &iv, &cipher).expect("the peer's key decrypts");
         assert_eq!(plain.as_slice(), b"hunter2");
@@ -191,7 +194,7 @@ mod tests {
 
     #[test]
     fn decrypt_refuses_a_truncated_empty_or_misaligned_input() {
-        let (server, client) = session_keys();
+        let (server, client) = session_pair();
         let (iv, cipher) = encrypt(&server, b"hunter2").expect("encrypts");
         assert_eq!(
             decrypt(&client, &iv, &cipher[..cipher.len() - 1]).err(),
@@ -206,7 +209,7 @@ mod tests {
 
     #[test]
     fn decrypt_refuses_bad_padding() {
-        let (_, client) = session_keys();
+        let (_, client) = session_pair();
         // A block of zeros has a final byte of 0, which is never valid PKCS#7 padding.
         let iv = [7u8; IV_LEN];
         let key_array: &[u8; KEY_LEN] = &client.0;
@@ -217,7 +220,7 @@ mod tests {
 
     #[test]
     fn decrypt_does_not_recover_the_secret_under_another_key() {
-        let (server, _) = session_keys();
+        let (server, _) = session_pair();
         let stranger_public = BigUint::from(GENERATOR)
             .modpow(&BigUint::from(42u8), &prime())
             .to_bytes_be();
