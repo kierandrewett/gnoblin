@@ -1706,11 +1706,6 @@ right = "gnoblin-store::Op"
 kind = "same-name"
 reason = "a DRM plan operation versus a store batch operation; the name is shared, the meaning is not"
 
-[[allow]]
-left = "gnoblin-client::Reader"
-right = "gnoblin-store::Reader"
-kind = "same-name"
-reason = "a Wayland wire reader versus the store's value decoding cursor; the name is shared, the meaning is not"
 
 [[allow]]
 left = "gnoblin-backend::Setting"

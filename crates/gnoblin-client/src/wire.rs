@@ -218,7 +218,7 @@ pub fn encode_fields(fields: &Fields) -> Vec<u8> {
 /// Decode an extension payload written by [`encode_fields`]. Trailing bytes are a
 /// refusal, as for any other payload.
 pub fn decode_fields(payload: &[u8]) -> Result<Fields, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let fields = reader.fields()?;
     reader.done()?;
     Ok(fields)
@@ -495,7 +495,7 @@ pub fn snapshot_payload(snapshot: &Snapshot) -> Vec<u8> {
 
 /// Decode a snapshot.
 pub fn read_snapshot(payload: &[u8]) -> Result<Snapshot, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let revision = Revision::new(reader.u64()?);
     let count = reader.length()?;
     let mut objects = Vec::new();
@@ -508,7 +508,7 @@ pub fn read_snapshot(payload: &[u8]) -> Result<Snapshot, WireError> {
 
 /// Decode the operation id a `object.call` reply names.
 pub fn read_operation(payload: &[u8]) -> Result<OperationId, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let operation = OperationId::new(reader.u64()?);
     reader.done()?;
     Ok(operation)
@@ -516,7 +516,7 @@ pub fn read_operation(payload: &[u8]) -> Result<OperationId, WireError> {
 
 /// Decode a `object.subscribe` request.
 pub fn read_subscribe(payload: &[u8]) -> Result<Filter, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let filter = match reader.u8()? {
         0 => Filter::All,
         1 => Filter::Object(ObjectId::new(reader.u64()?)),
@@ -528,7 +528,7 @@ pub fn read_subscribe(payload: &[u8]) -> Result<Filter, WireError> {
 
 /// Decode a `object.call` request.
 pub fn read_call(payload: &[u8]) -> Result<(ObjectId, String, Fields), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let object = ObjectId::new(reader.u64()?);
     let method = reader.text()?;
     let arguments = reader.fields()?;
@@ -538,7 +538,7 @@ pub fn read_call(payload: &[u8]) -> Result<(ObjectId, String, Fields), WireError
 
 /// Decode a `request.claim` request.
 pub fn read_claim(payload: &[u8]) -> Result<RequestId, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let request = RequestId::new(reader.u64()?);
     reader.done()?;
     Ok(request)
@@ -546,7 +546,7 @@ pub fn read_claim(payload: &[u8]) -> Result<RequestId, WireError> {
 
 /// Decode a `request.answer` request.
 pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Vec<u8>), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let request = RequestId::new(reader.u64()?);
     let answer = reader.bytes()?;
     reader.done()?;
@@ -556,7 +556,7 @@ pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Vec<u8>), WireError> {
 /// Decode a `request.decline` request. The reason trails the id and is absent from
 /// a decline sent before reasons existed.
 pub fn read_decline(payload: &[u8]) -> Result<(RequestId, Option<DeclineReason>), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let request = RequestId::new(reader.u64()?);
     let reason = if reader.at_end() {
         None
@@ -569,7 +569,7 @@ pub fn read_decline(payload: &[u8]) -> Result<(RequestId, Option<DeclineReason>)
 
 /// Decode a `request.offer` request. Privileged.
 pub fn read_offer(payload: &[u8]) -> Result<(String, String, String, Vec<u8>, u64), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let slot = reader.text()?;
     let title = reader.text()?;
     let message = reader.text()?;
@@ -646,7 +646,7 @@ pub struct PortalRequest {
 
 /// Decode a `portal.ui` request.
 pub fn read_portal_ui(payload: &[u8]) -> Result<PortalRequest, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let interface = reader.text()?;
     let app_id = reader.text()?;
     let prompt = reader.text()?;
@@ -667,7 +667,7 @@ pub fn read_portal_ui(payload: &[u8]) -> Result<PortalRequest, WireError> {
 
 /// Decode a `portal.key` request: the key's name and whether it is a repeat.
 pub fn read_portal_key(payload: &[u8]) -> Result<(String, bool), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let key = reader.text()?;
     let repeat = reader.u8()? != 0;
     reader.done()?;
@@ -677,7 +677,7 @@ pub fn read_portal_key(payload: &[u8]) -> Result<(String, bool), WireError> {
 /// Decode a `portal.ui` reply: how the request settled (`handled`, `cancelled` or
 /// `error`) and the grant, reason or error code that says why.
 pub fn read_portal_outcome(payload: &[u8]) -> Result<(String, String), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let kind = reader.text()?;
     let detail = reader.text()?;
     reader.done()?;
@@ -696,7 +696,7 @@ pub fn portal_outcome_payload(kind: &str, detail: &str) -> Vec<u8> {
 
 /// Decode a `slot.claim` request.
 pub fn read_slot_claim(payload: &[u8]) -> Result<(String, Provider), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let slot = reader.text()?;
     let provider = Provider::parse(&reader.text()?).ok_or(WireError::Code)?;
     reader.done()?;
@@ -705,7 +705,7 @@ pub fn read_slot_claim(payload: &[u8]) -> Result<(String, Provider), WireError> 
 
 /// Decode a `slot.release` request.
 pub fn read_slot_release(payload: &[u8]) -> Result<String, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let slot = reader.text()?;
     reader.done()?;
     Ok(slot)
@@ -713,7 +713,7 @@ pub fn read_slot_release(payload: &[u8]) -> Result<String, WireError> {
 
 /// Decode a `config.commit` request: the document, as the runtime encoded it.
 pub fn read_config_commit(payload: &[u8]) -> Result<Vec<u8>, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let document = reader.bytes()?;
     reader.done()?;
     Ok(document)
@@ -721,7 +721,7 @@ pub fn read_config_commit(payload: &[u8]) -> Result<Vec<u8>, WireError> {
 
 /// Decode the refusal message a `config.reject` request carries.
 pub fn read_config_reject(payload: &[u8]) -> Result<String, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let message = reader.text()?;
     reader.done()?;
     Ok(message)
@@ -729,7 +729,7 @@ pub fn read_config_reject(payload: &[u8]) -> Result<String, WireError> {
 
 /// Decode the revision a `config.commit` reply names.
 pub fn read_revision(payload: &[u8]) -> Result<u64, WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let revision = reader.u64()?;
     reader.done()?;
     Ok(revision)
@@ -738,7 +738,7 @@ pub fn read_revision(payload: &[u8]) -> Result<u64, WireError> {
 /// Decode the `config.current` reply: the revision and the document, or zeros for
 /// "nothing accepted yet".
 pub fn read_configuration(payload: &[u8]) -> Result<(u64, Vec<u8>), WireError> {
-    let mut reader = Reader::new(payload);
+    let mut reader = FrameReader::new(payload);
     let revision = reader.u64()?;
     let document = reader.bytes()?;
     reader.done()?;
@@ -765,14 +765,14 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
     let payload = envelope.payload().unwrap_or(&[]);
     let incoming = match envelope.member.as_str() {
         member::OPENED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let revision = Revision::new(reader.u64()?);
             let view = reader.view()?;
             reader.done()?;
             Incoming::Observation(Observation::Opened { view, revision })
         }
         member::CHANGED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let revision = Revision::new(reader.u64()?);
             let object = ObjectId::new(reader.u64()?);
             let property = reader.text()?;
@@ -786,7 +786,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
             })
         }
         member::SIGNALLED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let revision = Revision::new(reader.u64()?);
             let object = ObjectId::new(reader.u64()?);
             let signal = reader.text()?;
@@ -800,14 +800,14 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
             })
         }
         member::CLOSED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let revision = Revision::new(reader.u64()?);
             let object = ObjectId::new(reader.u64()?);
             reader.done()?;
             Incoming::Observation(Observation::Closed { object, revision })
         }
         member::OPERATION_FINISHED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let revision = Revision::new(reader.u64()?);
             let operation = OperationId::new(reader.u64()?);
             let object = ObjectId::new(reader.u64()?);
@@ -829,7 +829,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
             })
         }
         member::REQUEST_OFFERED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let request = RequestId::new(reader.u64()?);
             let deadline = Tick::new(reader.u64()?);
             let slot = reader.text()?;
@@ -847,14 +847,14 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
             }
         }
         member::ANSWER => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let request = RequestId::new(reader.u64()?);
             let answer = reader.bytes()?;
             reader.done()?;
             Incoming::Answered { request, answer }
         }
         member::REQUEST_FINISHED => {
-            let mut reader = Reader::new(payload);
+            let mut reader = FrameReader::new(payload);
             let request = RequestId::new(reader.u64()?);
             let completion = match reader.u8()? {
                 0 => RequestCompletion::Answered,
@@ -970,14 +970,14 @@ impl Writer {
 /// Every read is bounds-checked, a count never preallocates, and a decode that
 /// leaves bytes behind is a refusal: a half-understood payload would silently break
 /// the model's delivery rule.
-struct Reader<'a> {
+struct FrameReader<'a> {
     bytes: &'a [u8],
     at: usize,
 }
 
-impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Reader<'a> {
-        Reader { bytes, at: 0 }
+impl<'a> FrameReader<'a> {
+    fn new(bytes: &'a [u8]) -> FrameReader<'a> {
+        FrameReader { bytes, at: 0 }
     }
 
     fn take(&mut self, count: usize) -> Result<&'a [u8], WireError> {
@@ -1131,7 +1131,7 @@ mod tests {
         let mut writer = Writer::new();
         writer.fields(&encoded);
         let payload = writer.finish();
-        let mut reader = Reader::new(&payload);
+        let mut reader = FrameReader::new(&payload);
         assert_eq!(reader.fields().expect("decodes"), encoded);
         reader.done().expect("nothing left over");
     }
@@ -1281,7 +1281,7 @@ mod tests {
     #[test]
     fn an_unknown_value_tag_is_refused() {
         let payload = [9_u8];
-        let mut reader = Reader::new(&payload);
+        let mut reader = FrameReader::new(&payload);
         assert_eq!(reader.value(), Err(WireError::Tag(9)));
     }
 
