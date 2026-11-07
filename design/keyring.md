@@ -264,6 +264,13 @@ Phase 1 facts, measured on Agent37 (rusqlite 0.41.1, libsqlite3-sys 0.39.1):
   The runtime dependency is `libcrypto.so.3`, which `gnoblin` must declare (see
   `distribution.md`). `bundled-sqlcipher-vendored-openssl` would vendor it instead; not used.
 
+Phase 3 facts, for `pam_gnoblin_keyring`:
+
+- The module sits in the login stack after `pam_systemd`, so `XDG_RUNTIME_DIR` exists by the session stage. Without it, the module uses `/run/user/<uid>`.
+- It never fails a login and never grants one. Every auth entry point returns `PAM_IGNORE`, and the session and password stages return `PAM_SUCCESS`.
+- A hand-off that fails leaves the service to prompt once, as the no-password case does.
+- The password-change stage re-keys the store only when both old and new passwords are present. If the service is down, the store stays locked with the old password.
+
 Acceptance is compatibility with existing software:
 
 - `secret-tool store` and `secret-tool lookup` (libsecret) round trip a value

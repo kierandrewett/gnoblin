@@ -51,6 +51,7 @@ members = [
     "crates/gnoblin-input-eis",
     "crates/gnoblin-keyring-store",
     "crates/gnoblin-keyring-handoff",
+    "crates/pam-gnoblin-keyring",
     "crates/gnoblin-service-keyring",
     "crates/gnoblin-layers",
     "crates/gnoblin-lock",

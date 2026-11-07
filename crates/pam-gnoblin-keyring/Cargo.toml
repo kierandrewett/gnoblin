@@ -1,0 +1,26 @@
+[package]
+name = "pam-gnoblin-keyring"
+description = "The PAM module that hands the login password to the Gnoblin keyring service."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# A PAM module is loaded by login(1), greetd and passwd(1) as a shared object.
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-keyring-handoff = { path = "../gnoblin-keyring-handoff" }
+# The password is held in buffers that are wiped on drop.
+zeroize.workspace = true
+# The real uid names the user's runtime dir when PAM has no XDG_RUNTIME_DIR.
+rustix.workspace = true
+
+# The workspace lint table forbids unsafe, which libpam FFI needs, so this crate sets its own
+# levels. Only the `ffi` module may allow unsafe_code.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

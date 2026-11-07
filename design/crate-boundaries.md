@@ -20,6 +20,10 @@ New crate `gnoblin-keyring-store` (phase 1 of `design/keyring.md`) is a leaf: it
 
 New crate `gnoblin-service-keyring` (phase 2 of `design/keyring.md`) is the Secret Service face on `org.freedesktop.secrets`. It names only `gnoblin-keyring-store` and `gnoblin-log` among workspace crates. `xtask/src/deps.rs` rule `service-keyring-isolation` enforces this.
 
+New crate `gnoblin-keyring-handoff` (phase 3 of `design/keyring.md`) is the wire format for the login password, shared by the PAM module and the service. It names no workspace crate. `xtask/src/deps.rs` rule `keyring-handoff-isolation` enforces this.
+
+New crate `pam-gnoblin-keyring` (phase 3 of `design/keyring.md`) is the PAM module. It names only `gnoblin-keyring-handoff` among workspace crates, so it cannot reach the store. `xtask/src/deps.rs` rule `pam-gnoblin-keyring-isolation` enforces this.
+
 ## Flagged splits
 
 | Crate               | Module                                       | Lines                   | Heavy deps it alone pulls       | Rule   | Proposed crate           |
