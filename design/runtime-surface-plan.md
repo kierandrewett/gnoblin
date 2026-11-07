@@ -144,7 +144,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Tests first:** a long-lived child does not hold a reload back; `kill` is idempotent; a window's `process` is
   attributed from the compositor, never from an app ID.
 - **Docs:** `docs/shell-api/launch-feedback.md`.
-- **Status:** partly done: `gnoblin.process.spawn` with every option, `wait`, `kill`, and the `id` and `pid` fields (`gnoblin-lua/src/process.rs`). Not done: `alive`, `argv`, `status`, `exit_code`, `signal`, `on`, `watch`, `revision`, `gnoblin.process.list`/`by_id`, and `Window.pid`/`Window.process` (compositor pid lookup).
+- **Status:** partly done: `gnoblin.process.spawn` with every option, `wait`, `kill`, the fields `id`, `pid`, `alive`, `argv`, `status`, `exit_code`, `signal` and `revision`, `on` (`closed`, `changed`), `watch`, and `gnoblin.process.list`/`by_id` (`gnoblin-lua/src/process.rs`, `bindings.rs`). Not done: `Window.pid`/`Window.process` (compositor pid lookup), and the reload behaviour (the `"config_reloaded"` reason and the handle ending on reload).
 
 ### S6. Request lifecycle in Lua
 
