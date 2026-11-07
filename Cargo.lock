@@ -1935,6 +1935,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-service-sessionidle"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-log",
+ "gnoblin-model",
+ "gnoblin-service-core",
+ "gnoblin-service-testkit",
+ "zbus",
+]
+
+[[package]]
 name = "gnoblin-service-testkit"
 version = "0.2.0-alpha.0"
 
@@ -1955,6 +1967,7 @@ dependencies = [
  "gnoblin-service-location",
  "gnoblin-service-polkit",
  "gnoblin-service-screensaver",
+ "gnoblin-service-sessionidle",
  "gnoblin-service-testkit",
  "gnoblin-types",
  "rustix 1.1.6",
@@ -2054,6 +2067,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
  "gnoblin-config",
+ "gnoblin-layers",
  "gnoblin-types",
  "gnoblin-wayland",
  "gnoblin-wm",
@@ -2069,6 +2083,7 @@ dependencies = [
  "clap_complete",
  "gnoblin-cli-style",
  "gnoblin-client",
+ "gnoblin-config",
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-proto",
