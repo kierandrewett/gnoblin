@@ -67,7 +67,7 @@ use gnoblin_render::Color;
 use gnoblin_types::{Scale, Size};
 
 use crate::render::RenderError;
-use crate::render::frame::{Layer, OutputFrame, Overlay, Surface};
+use crate::render::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, View};
 use crate::render::geometry::physical_rect;
 use crate::render::image::Image;
 
@@ -226,7 +226,13 @@ impl Software {
         let result = self.paint(frame, scale, &damage, &mut clipped);
         self.clipped = clipped;
         self.damage = damage;
-        result
+        result?;
+        // The magnifier and the colour matrix act on the whole buffer, so they run
+        // after the layers are painted, and only when the frame asks for them.
+        if frame.view().is_some() || frame.colour_matrix().is_some() {
+            self.final_pass(frame.view(), frame.colour_matrix())?;
+        }
+        Ok(())
     }
 
     /// Reads the buffer back as an [`Image`], without the cursor.
@@ -288,6 +294,49 @@ impl Software {
             paste_under(&mut bytes, stride, rect, under);
         }
         Image::new(Size::new(mapping.width(), mapping.height()), stride, bytes).ok_or(RenderError::Failed)
+    }
+
+    /// Applies the magnifier view and the colour matrix to the whole buffer.
+    ///
+    /// Pixman cannot resample a buffer in place, so the buffer is read back with the
+    /// cursor, transformed on the CPU, and uploaded over itself. The upload goes to a
+    /// cleared target with an unblended copy, so nothing of the previous contents
+    /// survives under transparent pixels.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when pixman cannot read, upload or draw the buffer.
+    fn final_pass(&mut self, view: Option<View>, matrix: Option<ColourMatrix>) -> Result<(), RenderError> {
+        let image = self.readback(false, true)?;
+        let size = image.size();
+        let packed = transform_pixels(&image, view, matrix);
+        let Self {
+            renderer,
+            buffer,
+            physical,
+            ..
+        } = self;
+        let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
+        let source_size = PhysicalSize::from((size.width as i32, size.height as i32));
+        let texture = renderer
+            .import_memory(&packed, READBACK_FORMAT, source_size, false)
+            .map_err(failed)?;
+        let full: Rectangle<i32, Physical> = Rectangle::from_size(output);
+        let source: Rectangle<f64, BufferCoords> = Rectangle::new(
+            (0.0, 0.0).into(),
+            (f64::from(size.width), f64::from(size.height)).into(),
+        );
+        let mut target = renderer.bind(buffer).map_err(failed)?;
+        let mut pixman_frame = renderer
+            .render(&mut target, output, Transform::Normal)
+            .map_err(failed)?;
+        pixman_frame
+            .clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[full])
+            .map_err(failed)?;
+        pixman_frame
+            .render_texture_from_to(&texture, source, full, &[full], &[], Transform::Normal, 1.0)
+            .map_err(failed)?;
+        Ok(())
     }
 
     /// Paints the layers into the bound buffer.
@@ -503,6 +552,83 @@ fn paste_under(bytes: &mut [u8], stride: usize, rect: Rectangle<i32, Physical>, 
         let start = (rect.loc.y as usize + line) * stride + x;
         bytes[start..start + row].copy_from_slice(source);
     }
+}
+
+/// Produces the magnified, recoloured pixels as a packed RGBA buffer.
+///
+/// The view is nearest-neighbour: output pixel `p` shows the source pixel at
+/// `centre + (p - centre) / zoom`, clamped to the image. The colour matrix acts on
+/// straight (unpremultiplied) colour and is then premultiplied again. Fully
+/// transparent pixels are passed through, since they have no colour to change.
+fn transform_pixels(image: &Image, view: Option<View>, matrix: Option<ColourMatrix>) -> Vec<u8> {
+    let size = image.size();
+    let (width, height) = (size.width as usize, size.height as usize);
+    let stride = image.stride();
+    let data = image.data();
+    let mut out = vec![0_u8; width * height * 4];
+    for y in 0..height {
+        let src_y = match view {
+            Some(view) => sample_index(y, view.centre_y, view.zoom, height),
+            None => y,
+        };
+        for x in 0..width {
+            let src_x = match view {
+                Some(view) => sample_index(x, view.centre_x, view.zoom, width),
+                None => x,
+            };
+            let at = src_y * stride + src_x * 4;
+            let Some(pixel) = data.get(at..at + 4) else {
+                continue;
+            };
+            let pixel = [pixel[0], pixel[1], pixel[2], pixel[3]];
+            let pixel = match matrix {
+                Some(matrix) => tint_pixel(pixel, &matrix),
+                None => pixel,
+            };
+            let dst = (y * width + x) * 4;
+            out[dst..dst + 4].copy_from_slice(&pixel);
+        }
+    }
+    out
+}
+
+/// The source index shown at output position `position`, for a view magnified by `zoom`
+/// about `centre`, clamped to `0..length`.
+fn sample_index(position: usize, centre: f32, zoom: f32, length: usize) -> usize {
+    // Sample at the pixel centre so that zoom 1 maps every pixel to itself.
+    let at = position as f32 + 0.5;
+    let source = centre + (at - centre) / zoom;
+    let last = length.saturating_sub(1) as f32;
+    source.floor().clamp(0.0, last) as usize
+}
+
+/// Applies a colour matrix to one premultiplied RGBA pixel, returning premultiplied RGBA.
+///
+/// Each output channel is the matrix row dotted with the straight `(r, g, b, a)`
+/// input, plus its offset, clamped to `0..=1`.
+fn tint_pixel(pixel: [u8; 4], matrix: &ColourMatrix) -> [u8; 4] {
+    if pixel[3] == 0 {
+        return pixel;
+    }
+    let alpha = f32::from(pixel[3]) / 255.0;
+    let straight = [
+        (f32::from(pixel[0]) / 255.0 / alpha).min(1.0),
+        (f32::from(pixel[1]) / 255.0 / alpha).min(1.0),
+        (f32::from(pixel[2]) / 255.0 / alpha).min(1.0),
+        alpha,
+    ];
+    let mut out = [0.0_f32; 4];
+    for (row, channel) in matrix.rows.iter().zip(out.iter_mut()) {
+        let value = row[0] * straight[0] + row[1] * straight[1] + row[2] * straight[2] + row[3] * straight[3] + row[4];
+        *channel = value.clamp(0.0, 1.0);
+    }
+    let new_alpha = out[3];
+    [
+        (out[0] * new_alpha * 255.0).round() as u8,
+        (out[1] * new_alpha * 255.0).round() as u8,
+        (out[2] * new_alpha * 255.0).round() as u8,
+        (new_alpha * 255.0).round() as u8,
+    ]
 }
 
 /// Creates an offscreen buffer.
