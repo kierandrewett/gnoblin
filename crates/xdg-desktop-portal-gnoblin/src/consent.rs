@@ -242,6 +242,9 @@ pub struct Prompt {
     pub capability: PortalCapability,
     /// Who is asking.
     pub app_id: String,
+    /// The parent window the caller named, as the frontend sent it. The relay does not
+    /// parse it; the compositor resolves and verifies it. `None` when the caller sent none.
+    pub parent_window: Option<String>,
     /// The title the provider shows.
     pub title: String,
     /// The sentence the provider shows.
@@ -251,7 +254,12 @@ pub struct Prompt {
 impl Prompt {
     /// The prompt for one capability, worded from the interface and the app.
     #[must_use]
-    pub fn new(interface: Interface, requester: &Requester, capability: PortalCapability) -> Prompt {
+    pub fn new(
+        interface: Interface,
+        requester: &Requester,
+        capability: PortalCapability,
+        parent_window: &str,
+    ) -> Prompt {
         let what = match capability {
             PortalCapability::Capture => "share your screen",
             PortalCapability::InputInjection => "control your pointer and keyboard",
@@ -264,9 +272,19 @@ impl Prompt {
         Prompt {
             capability,
             app_id: requester.app_id.clone(),
+            parent_window: non_empty(parent_window),
             title: format!("{app} wants to {what}"),
             message: format!("{} is asking through {}.", interface.as_str(), capability.as_str()),
         }
+    }
+}
+
+/// The parent window string as sent, or `None` when the caller sent none.
+fn non_empty(parent_window: &str) -> Option<String> {
+    if parent_window.is_empty() {
+        None
+    } else {
+        Some(parent_window.to_owned())
     }
 }
 
@@ -639,6 +657,7 @@ impl Guard {
         bus_name: &str,
         path: &str,
         capability: PortalCapability,
+        parent_window: &str,
     ) -> Result<Pending, Refusal> {
         let session = self.owned(bus_name, path)?.clone();
         if !session.interface.allows(capability) {
@@ -669,7 +688,7 @@ impl Guard {
             Decision::Denied(_) => {}
         }
 
-        let prompt = Prompt::new(session.interface, &session.owner, capability);
+        let prompt = Prompt::new(session.interface, &session.owner, capability, parent_window);
         let deadline = now.saturating_add(self.lifetime);
         let offer = self.host.offer(&prompt, self.timeout())?;
         let prompt_id = PromptId::new(offer.request.get());
@@ -740,6 +759,7 @@ impl Guard {
         path: &str,
         title: String,
         message: String,
+        parent_window: &str,
     ) -> Result<Pending, Refusal> {
         let session = self.owned(bus_name, path)?.clone();
         if self.locked {
@@ -753,6 +773,7 @@ impl Guard {
             // wording hint, so it names the interface that asked.
             capability: PortalCapability::Capture,
             app_id: session.owner.app_id.clone(),
+            parent_window: non_empty(parent_window),
             title,
             message,
         };

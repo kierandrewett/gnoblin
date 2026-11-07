@@ -169,8 +169,15 @@ impl RemoteDesktop {
         // Both capabilities, capture first: a user who allows control but not viewing has
         // not answered the question that matters, and the second question is the narrower
         // one.
-        let mut outcome =
-            await_consent(&self.portal, handle.as_str(), &caller, &path, PortalCapability::Capture).await?;
+        let mut outcome = await_consent(
+            &self.portal,
+            handle.as_str(),
+            &caller,
+            &path,
+            PortalCapability::Capture,
+            &parent_window,
+        )
+        .await?;
         if outcome.granted() {
             outcome = await_consent(
                 &self.portal,
@@ -178,6 +185,7 @@ impl RemoteDesktop {
                 &caller,
                 &path,
                 PortalCapability::InputInjection,
+                &parent_window,
             )
             .await?;
         }
@@ -408,7 +416,10 @@ impl RemoteDesktop {
 /// that asks, and a descriptor handed out from here would be a grant nobody gave.
 fn grant_live(shared: &mut super::Shared, caller: &str, path: &str) -> fdo::Result<()> {
     let now = shared.now();
-    match shared.guard.ask(now, caller, path, PortalCapability::InputInjection) {
+    match shared
+        .guard
+        .ask(now, caller, path, PortalCapability::InputInjection, "")
+    {
         Ok(crate::consent::Pending::AlreadyGranted) => Ok(()),
         Ok(crate::consent::Pending::Asked { answered, .. }) => {
             // The waiting entry is dropped with the receiver; its deadline expires it.
@@ -526,7 +537,7 @@ impl InputCapture {
         handle: ObjectPath<'_>,
         session_handle: ObjectPath<'_>,
         app_id: String,
-        _parent_window: String,
+        parent_window: String,
         _options: Options,
     ) -> fdo::Result<Reply> {
         let caller = sender(&header)?;
@@ -538,6 +549,7 @@ impl InputCapture {
             &caller,
             &path,
             PortalCapability::InputInjection,
+            &parent_window,
         )
         .await;
         let reply = match outcome {
@@ -651,7 +663,10 @@ impl InputCapture {
         {
             let mut shared = self.portal.lock();
             let now = shared.now();
-            match shared.guard.ask(now, &caller, &path, PortalCapability::InputInjection) {
+            match shared
+                .guard
+                .ask(now, &caller, &path, PortalCapability::InputInjection, "")
+            {
                 Ok(crate::consent::Pending::AlreadyGranted) => {}
                 Ok(crate::consent::Pending::Asked { .. }) => return Ok((2, BTreeMap::new())),
                 Err(refusal) => return Err(refused(refusal)),

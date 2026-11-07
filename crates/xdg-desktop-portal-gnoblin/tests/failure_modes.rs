@@ -62,7 +62,7 @@ fn guard_with_session() -> Guard {
 
 fn ask(guard: &mut Guard, now: u64) -> (RequestId, oneshot::Receiver<ConsentOutcome>) {
     match guard
-        .ask(Tick::new(now), BUS, PATH, PortalCapability::Capture)
+        .ask(Tick::new(now), BUS, PATH, PortalCapability::Capture, "")
         .expect("an asked session is not refused")
     {
         Pending::Asked { request, answered } => (request, answered),
@@ -165,7 +165,7 @@ fn granted_capability_is_not_asked_twice() {
         .expect("answerable");
 
     let again = guard
-        .ask(Tick::new(20), BUS, PATH, PortalCapability::Capture)
+        .ask(Tick::new(20), BUS, PATH, PortalCapability::Capture, "")
         .expect("not refused");
 
     assert!(matches!(again, Pending::AlreadyGranted));

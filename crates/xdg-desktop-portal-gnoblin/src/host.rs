@@ -37,14 +37,16 @@
 //! shape: `allow` or `deny`. A provider that answers anything else, or declines the
 //! request, refuses — an unreadable answer never consents.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use futures_channel::{mpsc, oneshot};
-use gnoblin_client::{Client, ClientError, Event, Transport};
-use gnoblin_model::Filter;
+use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
+use gnoblin_client::{Client, ClientError, Event, PortalOutcome, PortalTicket, Transport};
+use gnoblin_model::{Fields, Filter};
 use gnoblin_types::{RequestId, Version};
 
-use crate::consent::{Host, OFFERER, Offer, Prompt, Refusal};
+use crate::consent::{Host, OFFERER, Offer, PortalCapability, Prompt, Refusal};
 
 use crate::log;
 
@@ -90,7 +92,15 @@ impl IpcHost {
     #[must_use]
     pub fn pair<T: Transport>(client: Client<T>) -> (IpcHost, IpcLoop<T>) {
         let (commands, queue) = mpsc::unbounded();
-        (IpcHost { commands }, IpcLoop { client, queue })
+        (
+            IpcHost { commands },
+            IpcLoop {
+                client,
+                queue,
+                pending: HashMap::new(),
+                next_request: 0,
+            },
+        )
     }
 }
 
@@ -138,10 +148,35 @@ impl Host for NoShell {
     fn withdraw(&mut self, _request: RequestId) {}
 }
 
+/// Build the `portal.ui` request that carries one consent prompt.
+///
+/// The compositor's consent screen takes the caller as a verified identity, so the app id
+/// goes as the caller's label. This process does not know the caller's pid, so it goes as
+/// zero; the compositor resolves the caller from the bus itself. The interface names the
+/// portal screen the capability came from.
+fn portal_request(prompt: &Prompt, timeout: Duration) -> PortalRequest {
+    let interface = match prompt.capability {
+        PortalCapability::Capture => "org.freedesktop.impl.portal.ScreenCast",
+        PortalCapability::InputInjection => "org.freedesktop.impl.portal.RemoteDesktop",
+    };
+    PortalRequest {
+        interface: interface.to_owned(),
+        caller: VerifiedCaller::new(0, prompt.app_id.clone()),
+        prompt: format!("{}\n\n{}", prompt.title, prompt.message),
+        timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
+        options: Fields::new(),
+        parent_window: prompt.parent_window.clone().unwrap_or_default(),
+    }
+}
+
 /// The thread that owns the connection.
 pub struct IpcLoop<T: Transport> {
     client: Client<T>,
     queue: mpsc::UnboundedReceiver<Command>,
+    /// The compositor's ticket for each prompt still awaiting an answer, and the request the guard knows it by.
+    pending: HashMap<PortalTicket, RequestId>,
+    /// The last request number this loop handed out.
+    next_request: u64,
 }
 
 impl<T: Transport> std::fmt::Debug for IpcLoop<T> {
@@ -182,12 +217,15 @@ impl<T: Transport> IpcLoop<T> {
                         timeout,
                         reply: sender,
                     } => {
-                        let offered = self.client.offer(SLOT, &prompt.title, &prompt.message, timeout);
-                        let answered = match offered {
-                            Ok(request) => Ok(Offer {
-                                request,
-                                provider: OFFERER,
-                            }),
+                        let request = self.mint_request();
+                        let answered = match self.client.portal_ui(&portal_request(&prompt, timeout)) {
+                            Ok(ticket) => {
+                                self.pending.insert(ticket, request);
+                                Ok(Offer {
+                                    request,
+                                    provider: OFFERER,
+                                })
+                            }
                             Err(ClientError::Refused { code, message, .. })
                                 if code == gnoblin_client::code::NO_PROVIDER =>
                             {
@@ -205,17 +243,27 @@ impl<T: Transport> IpcLoop<T> {
                         let _ = sender.send(answered);
                     }
                     Command::Decline(request) => {
-                        if let Err(error) = self.client.decline(request) {
-                            log::debug!(%error, request = request.get(), "an abandoned prompt was already over");
+                        let held = self
+                            .pending
+                            .iter()
+                            .find(|(_, held)| **held == request)
+                            .map(|(ticket, _)| *ticket);
+                        if let Some(ticket) = held {
+                            self.pending.remove(&ticket);
+                            if let Err(error) = self.client.portal_cancel(ticket) {
+                                log::debug!(%error, request = request.get(), "an abandoned prompt was already over");
+                            }
                         }
                     }
                 }
             }
             match self.client.next_event() {
-                Ok(Event::RequestAnswered { request, answer }) => self.answer(&portal, request, Some(answer)),
-                Ok(Event::RequestFinished { request, .. }) => self.answer(&portal, request, None),
                 Ok(Event::Model(observation)) => {
                     futures_lite::future::block_on(portal.observe(&observation));
+                }
+                Ok(Event::RequestAnswered { .. } | Event::RequestFinished { .. }) => {
+                    // A portal.ui prompt settles through its ticket, read by `settle_outcomes`,
+                    // so the request events for it carry nothing this loop needs.
                 }
                 Ok(Event::RequestOffered { .. } | Event::Extension { .. }) => {
                     // A request this connection could claim is not its business: the portal
@@ -228,6 +276,7 @@ impl<T: Transport> IpcLoop<T> {
                     return;
                 }
             }
+            self.settle_outcomes(&portal);
         }
     }
 
@@ -249,6 +298,47 @@ impl<T: Transport> IpcLoop<T> {
             Err(error) => {
                 log::debug!(%error, request = request.get(), "an answer arrived for no prompt")
             }
+        }
+    }
+
+    /// Mint the identity the guard keys a prompt by. The compositor's ticket is its own
+    /// handle and not a request id, so this loop numbers the prompts it offers.
+    fn mint_request(&mut self) -> RequestId {
+        self.next_request += 1;
+        RequestId::new(self.next_request)
+    }
+
+    /// Apply every portal outcome that has settled since the last pass.
+    ///
+    /// A `Handled` outcome is an allow and a `Declined` one a deny. A cancelled or failed
+    /// prompt has no answer, so the guard releases its caller as it does for a request that
+    /// finished without one.
+    fn settle_outcomes(&mut self, portal: &crate::iface::Portal) {
+        let tickets: Vec<PortalTicket> = self.pending.keys().copied().collect();
+        for ticket in tickets {
+            let Some(outcome) = self.client.take_portal_outcome(ticket) else {
+                continue;
+            };
+            let Some(request) = self.pending.remove(&ticket) else {
+                continue;
+            };
+            let answer = match outcome {
+                Ok(PortalOutcome::Handled(_)) => Some(b"allow".to_vec()),
+                Ok(PortalOutcome::Declined) => Some(b"deny".to_vec()),
+                Ok(PortalOutcome::Cancelled(reason)) => {
+                    log::debug!(%reason, request = request.get(), "a consent prompt was cancelled");
+                    None
+                }
+                Ok(PortalOutcome::Error(reason)) => {
+                    log::warn!(%reason, request = request.get(), "a consent prompt failed");
+                    None
+                }
+                Err(error) => {
+                    log::warn!(%error, request = request.get(), "a consent outcome could not be read");
+                    None
+                }
+            };
+            self.answer(portal, request, answer);
         }
     }
 }

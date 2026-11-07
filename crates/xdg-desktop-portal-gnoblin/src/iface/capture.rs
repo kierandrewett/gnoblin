@@ -106,7 +106,15 @@ impl Screenshot {
                 })
                 .map_err(refused)?;
         }
-        let outcome = await_consent(&self.portal, &path, &caller, &path, PortalCapability::Capture).await;
+        let outcome = await_consent(
+            &self.portal,
+            &path,
+            &caller,
+            &path,
+            PortalCapability::Capture,
+            &parent_window,
+        )
+        .await;
         let reply = match outcome {
             Ok(ConsentOutcome::Granted) => {
                 let options = ScreenshotOptions {
@@ -173,10 +181,17 @@ impl Screenshot {
                 })
                 .map_err(refused)?;
         }
-        let outcome = await_consent(&self.portal, &path, &caller, &path, PortalCapability::Capture).await;
+        let outcome = await_consent(
+            &self.portal,
+            &path,
+            &caller,
+            &path,
+            PortalCapability::Capture,
+            &parent_window,
+        )
+        .await;
         let reply = match outcome {
             Ok(ConsentOutcome::Granted) => {
-                let _ = parent_window;
                 let picked = {
                     let mut shared = self.portal.lock();
                     shared.capture.pick_color()
@@ -316,9 +331,16 @@ impl ScreenCast {
         let caller = sender(&header)?;
         let path = session_handle.as_str().to_owned();
         export_request(&self.portal, handle.as_str()).await?;
-        let _ = parent_window;
         let _ = options;
-        let outcome = await_consent(&self.portal, handle.as_str(), &caller, &path, PortalCapability::Capture).await;
+        let outcome = await_consent(
+            &self.portal,
+            handle.as_str(),
+            &caller,
+            &path,
+            PortalCapability::Capture,
+            &parent_window,
+        )
+        .await;
         let reply = match outcome {
             Ok(ConsentOutcome::Granted) => {
                 let request = {

@@ -37,7 +37,7 @@ use crate::wire;
 /// A handle on one portal UI request, from [`Client::portal_ui`] until its outcome
 /// is taken. It is the wire correlation id, which the compositor echoes on the
 /// outcome, so it cannot be confused with another request on this connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PortalTicket(u64);
 
 /// How the built-in portal UI settled a request.

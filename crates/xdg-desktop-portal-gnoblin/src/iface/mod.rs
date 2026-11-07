@@ -571,11 +571,15 @@ pub async fn await_consent(
     bus_name: &str,
     path: &str,
     capability: gnoblin_authority::PortalCapability,
+    parent_window: &str,
 ) -> Result<ConsentOutcome, fdo::Error> {
     let pending = {
         let mut shared = portal.lock();
         let now = shared.now();
-        shared.guard.ask(now, bus_name, path, capability).map_err(refused)?
+        shared
+            .guard
+            .ask(now, bus_name, path, capability, parent_window)
+            .map_err(refused)?
     };
     match pending {
         crate::consent::Pending::AlreadyGranted => Ok(ConsentOutcome::Granted),
