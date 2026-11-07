@@ -1651,6 +1651,7 @@ dependencies = [
  "gnoblin-types",
  "gnoblin-wm",
  "mlua",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

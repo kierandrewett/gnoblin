@@ -1833,3 +1833,155 @@ end)
         Some(gnoblin_model::RequestCompletion::Answered)
     ));
 }
+
+/// Pump until a handler runs or reports, because a child process ends on its own clock.
+fn pump_until_handled(host: &mut Host<Loopback>, tick: &mut u64) -> gnoblin_lua::PumpReport {
+    for _ in 0..1000 {
+        *tick += 10;
+        let report = host.pump(Tick::new(*tick)).expect("a pump");
+        if report.handlers > 0 || !report.errors.is_empty() {
+            return report;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("no process completion reached the pump");
+}
+
+#[test]
+fn a_missing_program_completes_its_wait_with_not_found() {
+    let config = Config::new("process-missing");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"/nonexistent/gnoblin-test-program"})
+job:wait():on_complete(function(value, err)
+    assert(value == nil, "a program that did not start has no value")
+    assert(err.code == "not_found", "expected not_found, got " .. tostring(err.code))
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn captured_output_is_cut_at_output_limit_and_says_so() {
+    let config = Config::new("process-capture");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"sh", "-c", "printf abcdefgh"}, {stdout = "capture", output_limit = 4})
+job:wait():on_complete(function(value, err)
+    assert(err == nil, "the program ran")
+    assert(value.exit_code == 0, "exit status " .. tostring(value.exit_code))
+    assert(value.stdout == "abcd", "kept " .. tostring(value.stdout))
+    assert(value.stdout_truncated == true, "truncation was not reported")
+    assert(value.stderr == "", "stderr was not captured")
+    assert(value.stderr_truncated == false, "stderr was not truncated")
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn stdin_is_written_then_closed_so_the_program_ends() {
+    let config = Config::new("process-stdin");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"cat"}, {stdin = "hello", stdout = "capture"})
+job:wait():on_complete(function(value, err)
+    assert(err == nil, "cat ran")
+    assert(value.stdout == "hello", "cat echoed " .. tostring(value.stdout))
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn a_timeout_ends_the_process_and_reports_it_as_timed_out() {
+    let config = Config::new("process-timeout");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"sleep", "30"}, {timeout = 0.05})
+job:wait():on_complete(function(value, err)
+    assert(err == nil, "the program ran until the timeout")
+    assert(value.timed_out == true, "the timeout was not reported")
+    assert(value.signal == "term", "signal was " .. tostring(value.signal))
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn killing_an_ended_process_fails_with_not_found() {
+    let config = Config::new("process-kill-ended");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"true"})
+job:wait():on_complete(function(value, err)
+    assert(err == nil, "true ran")
+    local kill = job:kill()
+    kill:on_complete(function(_, kill_err)
+        assert(kill_err ~= nil and kill_err.code == "not_found", "kill after exit must fail")
+    end)
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1, "the kill completion runs once");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn spawn_arguments_are_refused() {
+    let config = Config::new("process-refused");
+    config.write(
+        "init.lua",
+        r#"
+assert(not pcall(gnoblin.process.spawn, {}), "an empty argv was accepted")
+assert(not pcall(gnoblin.process.spawn, {"true", 1}), "a non-string argument was accepted")
+assert(not pcall(gnoblin.process.spawn, {"true"}, {timeout = 0}), "a zero timeout was accepted")
+assert(not pcall(gnoblin.process.spawn, {"true"}, {output_limit = -1}), "a negative limit was accepted")
+assert(not pcall(gnoblin.process.spawn, {"true"}, {stdout = "pipe"}), "an unknown stream mode was accepted")
+assert(not pcall(gnoblin.process.spawn, {"true"}, {cwd = "relative"}), "a relative cwd was accepted")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}

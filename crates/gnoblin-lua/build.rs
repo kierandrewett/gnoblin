@@ -504,6 +504,17 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text.push_str("local Timer = {}\n");
     text.push_str("--- Cancel the timer.\n");
     text.push_str("function Timer:cancel() end\n\n");
+    text.push_str("--- A child process the runtime started.\n");
+    text.push_str("---@class gnoblin.Process\n");
+    text.push_str("---@field id integer\n");
+    text.push_str("local Process = {}\n");
+    text.push_str("--- The exit of the child, answered as an operation.\n");
+    text.push_str("---@return gnoblin.Operation\n");
+    text.push_str("function Process:wait() end\n");
+    text.push_str("--- Send a signal to the child's process group; the default is term.\n");
+    text.push_str("---@param signal? string\n");
+    text.push_str("---@return gnoblin.Operation\n");
+    text.push_str("function Process:kill(signal) end\n\n");
     stub_host_members(&mut text, host, "gnoblin");
 
     for namespace in catalog.namespaces() {

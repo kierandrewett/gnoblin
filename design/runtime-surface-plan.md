@@ -144,6 +144,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Tests first:** a long-lived child does not hold a reload back; `kill` is idempotent; a window's `process` is
   attributed from the compositor, never from an app ID.
 - **Docs:** `docs/shell-api/launch-feedback.md`.
+- **Status:** partly done: `gnoblin.process.spawn` with all options, `wait`, `kill` and `id` (`gnoblin-lua/src/process.rs`). Not done: `pid`, `alive`, `argv`, `status`, `exit_code`, `signal`, `on`, `watch`, `revision`, `gnoblin.process.list`/`by_id`, and `Window.pid`/`Window.process` (the compositor pid lookup). The docs page `docs/shell-api/processes.md` names the commit-1 subset as done and the rest as pending. The docs page named above is `processes.md`, not `launch-feedback.md`, for this slice; `launch-feedback.md` is left unchanged.
 
 ### S6. Request lifecycle in Lua
 

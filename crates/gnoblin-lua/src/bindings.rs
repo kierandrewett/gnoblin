@@ -284,6 +284,26 @@ pub(super) fn install<T: Transport + 'static>(
     }
     gnoblin.set("timers", timers)?;
 
+    // `process.spawn` only starts a program; its end arrives through the pump, and every
+    // answer about it is an operation, as with the other methods.
+    let process = lua.create_table()?;
+    {
+        let shared = Rc::clone(&shared);
+        process.set(
+            "spawn",
+            lua.create_function(move |lua, (argv, options): (Table, Option<Table>)| {
+                let spec = crate::process::parse(argv, options)?;
+                let (id, wait) = crate::process::spawn(&shared, spec)?;
+                lua.create_userdata(Process {
+                    shared: Rc::clone(&shared),
+                    id,
+                    wait,
+                })
+            })?,
+        )?;
+    }
+    gnoblin.set("process", process)?;
+
     // Core object types sit directly on `gnoblin`. The build refuses a core type named
     // like a declared member, so the two never share a key. Extension namespaces are
     // not generated here: `extension_bindings` builds them from the loaded schema.
@@ -1225,6 +1245,44 @@ impl<T: Transport + 'static> UserData for Timer<T> {
             this.shared.borrow_mut().timers.remove(&this.timer);
             forget(lua, this.timer);
             Ok(())
+        });
+    }
+}
+
+/// A child process the runtime started. One handle per `id`; `wait` and `kill` answer
+/// through operations, so a caller never blocks on the child.
+struct Process<T: Transport> {
+    shared: Rc<RefCell<Shared<T>>>,
+    id: u64,
+    wait: OperationId,
+}
+
+impl<T: Transport + 'static> UserData for Process<T> {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("id", |_, this| Ok(this.id));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("wait", |lua, this, ()| {
+            lua.create_userdata(Operation {
+                shared: Rc::clone(&this.shared),
+                operation: this.wait,
+                method: "wait",
+            })
+        });
+        methods.add_method("kill", |lua, this, signal: Option<String>| {
+            let name = signal.as_deref().unwrap_or("term");
+            let Some(signal) = crate::process::signal_named(name) else {
+                return Err(Error::runtime(format!(
+                    "gnoblin.Process:kill takes term, kill, int, hup, usr1, usr2, stop or cont, found {name}"
+                )));
+            };
+            let operation = crate::process::kill(&this.shared, this.id, signal);
+            lua.create_userdata(Operation {
+                shared: Rc::clone(&this.shared),
+                operation,
+                method: "kill",
+            })
         });
     }
 }

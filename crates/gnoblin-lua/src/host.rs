@@ -129,6 +129,8 @@ pub(super) struct Shared<T: Transport> {
     pub(super) timers: BTreeMap<u64, Tick>,
     /// Handlers that run at the end of the current pump.
     pub(super) deferred: Vec<u64>,
+    /// Child processes the runtime started and has not seen end.
+    pub(super) processes: crate::process::Processes,
     /// The next local operation identity; local ids do not overlap graph ids.
     pub(super) next_local_operation: u64,
     pub(super) next_id: u64,
@@ -434,6 +436,7 @@ impl<T: Transport + 'static> Host<T> {
             handlers: BTreeMap::new(),
             timers: BTreeMap::new(),
             deferred: Vec::new(),
+            processes: crate::process::Processes::new(),
             next_local_operation: LOCAL_OPERATION_BASE,
             next_id: 1,
             configuring: false,
@@ -714,6 +717,17 @@ impl<T: Transport + 'static> Host<T> {
                 Err(ClientError::Disconnected | ClientError::Idle) => break,
                 Err(error) => return Err(HostError::Client(error)),
             }
+        }
+        // A process ends on its own clock. Its messages are drained here, on the host
+        // thread, so the Lua state is only touched by the pump, and the handlers they wake
+        // run with this pump's deferred work.
+        let finished: Vec<crate::process::ProcessEvent> = {
+            let shared = self.shared.borrow();
+            shared.processes.events.try_iter().collect()
+        };
+        for event in finished {
+            let ready = crate::process::apply(&self.lua, &self.shared, event).map_err(HostError::Sandbox)?;
+            self.shared.borrow_mut().deferred.extend(ready);
         }
         let mut due: Vec<(Tick, u64)> = self
             .shared

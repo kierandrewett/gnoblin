@@ -60,6 +60,18 @@ doc = "The caller's monotonic clock in seconds."
 returns = ["number"]
 
 [[member]]
+name = "process"
+kind = "table"
+doc = "Child processes the runtime starts. `spawn` returns a `Process` at once; its end arrives later, through `wait()` or `kill()` operations."
+
+[[member.members]]
+name = "spawn"
+kind = "function"
+doc = "Start the program named by the first string of `argv`, found on PATH, with the rest as arguments. Options are `cwd`, `env`, `stdin`, `stdout`, `stderr`, `output_limit` and `timeout`. A bad argv or option is raised by name."
+params = [{ name = "argv", type = "string[]" }, { name = "options", type = "table|nil" }]
+returns = ["gnoblin.Process"]
+
+[[member]]
 name = "windows"
 kind = "table"
 doc = "The live windows, as interned objects. Each answer is as of the last pump; a window that closes leaves every answer at the same time."

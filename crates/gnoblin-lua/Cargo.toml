@@ -30,6 +30,8 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 serde_json.workspace = true
 # The primitives the role loop names: the tick it pumps on.
 gnoblin-types.workspace = true
+# The process table's signals: `Process:kill` sends one to the child's process group.
+rustix = { workspace = true, features = ["process"] }
 # The layout host settles placements through the window manager's layout validator and
 # engine, so Lua layouts and built-in layouts share one set of rules.
 gnoblin-wm = { path = "../gnoblin-wm" }
