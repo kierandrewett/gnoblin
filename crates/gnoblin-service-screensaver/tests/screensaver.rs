@@ -162,9 +162,11 @@ fn an_uninhibit_for_a_foreign_cookie_is_access_denied() {
     for unheld in [cookie, cookie + 100] {
         let error = zbus::block_on(foreign.call_method("UnInhibit", &(unheld,)))
             .expect_err("a cookie another sender holds, or nobody holds, is refused");
+        // zbus turns the standard org.freedesktop.DBus.Error names into its FDO variant, so a
+        // MethodError match would never see this reply and the assertion would be vacuous.
         match error {
-            zbus::Error::MethodError(name, _, _) => {
-                assert_eq!(name.as_str(), "org.freedesktop.DBus.Error.AccessDenied");
+            zbus::Error::FDO(fdo) => {
+                assert!(matches!(*fdo, zbus::fdo::Error::AccessDenied(_)), "got {fdo}");
             }
             other => panic!("expected AccessDenied, got {other}"),
         }
