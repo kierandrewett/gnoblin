@@ -192,6 +192,8 @@ pub enum PortalCapability {
     Capture,
     /// Inject input into the session.
     InputInjection,
+    /// Read one app's secret from the keyring. Granted per app, never remembered.
+    Secret,
 }
 
 impl PortalCapability {
@@ -201,6 +203,7 @@ impl PortalCapability {
         match self {
             Self::Capture => "capture",
             Self::InputInjection => "input-injection",
+            Self::Secret => "secret",
         }
     }
 }

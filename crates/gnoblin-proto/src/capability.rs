@@ -56,17 +56,25 @@ pub enum Capability {
     /// on screen above a window, so only a built-in may create one until extensions
     /// get their own Lua environments (design/layers.md, phase 10).
     RegisterLayer,
+    /// Offer the internal `secret.derive` slot (`request.offer`) on behalf of an app.
+    ///
+    /// This is the portal relay's connection, and it may use this one slot only. The
+    /// relay asks the services role for an app's secret after the user allowed it, so
+    /// the relay needs no general `OfferRequest` and cannot ask a polkit or prompt
+    /// question. The compositor still refuses the offer unless it granted the app.
+    RetrieveSecret,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 6] = [
+    pub const ALL: [Capability; 7] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
         Capability::PortalUi,
         Capability::PortalInput,
         Capability::RegisterLayer,
+        Capability::RetrieveSecret,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -78,6 +86,7 @@ impl Capability {
             Capability::PortalUi => "portal-ui",
             Capability::PortalInput => "portal-input",
             Capability::RegisterLayer => "register-layer",
+            Capability::RetrieveSecret => "retrieve-secret",
         }
     }
 
@@ -90,6 +99,7 @@ impl Capability {
             Capability::PortalUi => 1 << 3,
             Capability::PortalInput => 1 << 4,
             Capability::RegisterLayer => 1 << 5,
+            Capability::RetrieveSecret => 1 << 6,
         }
     }
 

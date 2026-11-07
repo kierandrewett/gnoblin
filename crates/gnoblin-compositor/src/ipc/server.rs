@@ -1043,6 +1043,23 @@ impl Dispatcher {
                 return;
             }
         };
+        // The capability depends on the slot, so the table above cannot name it. The relay
+        // holds `RetrieveSecret` and may offer `secret.derive` only; every other slot needs
+        // `OfferRequest`.
+        let required = if slot == gnoblin_model::CapabilitySlot::SecretDerive.name() {
+            Capability::RetrieveSecret
+        } else {
+            Capability::OfferRequest
+        };
+        if !self.capabilities(client).contains(required) {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::DENIED,
+                &format!("offering `{slot}` needs the `{required}` capability, which this connection does not hold"),
+            );
+            return;
+        }
         // The relay asks for an app's secret, but only the compositor, which showed the
         // consent dialog, may say the user allowed it. Without a grant the offer never leaves.
         if slot == gnoblin_model::CapabilitySlot::SecretDerive.name() {
@@ -2121,7 +2138,7 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> Envelope {
 /// without its capability by omission: the arm that adds a member adds it here.
 fn required_capability(member: &str) -> Option<Capability> {
     match member {
-        wire::member::OFFER => Some(Capability::OfferRequest),
+        // `OFFER` is gated per slot inside `offer`: `secret.derive` needs `RetrieveSecret`.
         wire::member::CONFIG_COMMIT
         | wire::member::CONFIG_CURRENT
         | wire::member::CONFIG_RELOAD

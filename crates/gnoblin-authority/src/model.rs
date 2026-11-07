@@ -64,10 +64,10 @@ impl Rng {
     }
 
     fn capability(&mut self) -> PortalCapability {
-        if self.below(2) == 0 {
-            PortalCapability::Capture
-        } else {
-            PortalCapability::InputInjection
+        match self.below(3) {
+            0 => PortalCapability::Capture,
+            1 => PortalCapability::InputInjection,
+            _ => PortalCapability::Secret,
         }
     }
 
@@ -205,7 +205,12 @@ fn invariants_hold_over_random_sequences() {
             }
 
             for requester in [RequesterId::new(1), RequesterId::new(2)] {
-                for capability in [PortalCapability::Capture, PortalCapability::InputInjection] {
+                let capabilities = [
+                    PortalCapability::Capture,
+                    PortalCapability::InputInjection,
+                    PortalCapability::Secret,
+                ];
+                for capability in capabilities {
                     let decision = authority.gate(now, requester, capability);
                     if authority.locked() {
                         assert_eq!(

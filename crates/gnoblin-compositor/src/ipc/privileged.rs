@@ -77,7 +77,7 @@ pub fn grants(role: &str) -> Capabilities {
     match role {
         "runtime" => Capabilities::of(&[Capability::CommitConfig, Capability::InputPolicy]),
         "services" => Capabilities::of(&[Capability::OfferRequest, Capability::RegisterLayer]),
-        "portal" => Capabilities::of(&[Capability::PortalUi]),
+        "portal" => Capabilities::of(&[Capability::PortalUi, Capability::RetrieveSecret]),
         "input" => Capabilities::of(&[Capability::PortalInput]),
         _ => Capabilities::NONE,
     }
@@ -166,6 +166,11 @@ mod tests {
 
         let portal = grants("portal");
         assert!(portal.contains(Capability::PortalUi), "the relay asks for a dialog");
+        assert!(
+            portal.contains(Capability::RetrieveSecret),
+            "and asks for an app's secret"
+        );
+        assert!(!portal.contains(Capability::OfferRequest), "but offers no other slot");
         assert!(!portal.contains(Capability::PortalInput), "and routes no keys");
 
         let input = grants("input");
