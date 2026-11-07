@@ -11,8 +11,10 @@
 //! ## What "covered" means in this slice
 //!
 //! The renderer draws the cover: `cover_frame` sets each output's background to the
-//! cover colour and draws no client content over it, so a covered window is not drawn
-//! even in the frame that proves the cover. What the lock requires is a **presented**
+//! cover colour and draws over it only the owner's lock surface on that output, so a
+//! covered window is not drawn even in the frame that proves the cover. A lock surface
+//! is the one thing a locker may show; it is sized to the output and drawn from the
+//! buffer it committed. What the lock requires is a **presented**
 //! cover, not only a drawn one: [`crate::State`] arms a barrier with a generation, and a
 //! frame presented on an output echoes that generation back as
 //! [`gnoblin_lock::Event::CoverPresented`]. Only when every output of the layout has
@@ -88,7 +90,8 @@ use gnoblin_lock::{
     Capture, CaptureStream, Delivery, Effect as LockEffect, Event as LockEvent, InputSource, Lock, RejectReason,
     State as LockState, Subject,
 };
-use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render::Effects;
+use gnoblin_render_frame::frame::{Layer, OutputFrame, Surface};
 use gnoblin_types::{ClientId, Color, OutputId, Rect};
 
 use crate::State;
@@ -417,7 +420,49 @@ impl State {
         frame.clear();
         frame.set_background(COVER);
         frame.push_damage(Rect::new(0, 0, rect.width, rect.height));
+        // The owner's lock surface is the one thing drawn over the cover. It is sized to
+        // the output and cropped from its committed buffer, so an uncommitted or unmapped
+        // surface leaves the bare cover, which is what an unmapped lock surface must show.
+        if let Some(surface) = self.lock_surface_on(output)
+            && let Some((buffer, content)) = crate::state::committed_content(&surface)
+        {
+            frame.push_layer(Layer::Surface(Surface {
+                buffer,
+                src: content.src,
+                dst: Rect::new(0, 0, rect.width, rect.height),
+                transform: content.transform,
+                opacity: 1.0,
+                tint: Color::WHITE,
+                corner_radius: 0.0,
+                effects: Effects::default(),
+                model: None,
+                // A capture must not read the lock screen's content either.
+                secure: true,
+            }));
+        }
         true
+    }
+
+    /// The owner's first mapped lock surface on `output`, when there is one.
+    fn lock_surface_on(&self, output: OutputId) -> Option<WlSurface> {
+        let owner = self.lock.locker()?;
+        self.lock_tables
+            .surfaces
+            .iter()
+            .find(|entry| entry.locker == owner && entry.mapped && entry.output == output)
+            .map(|entry| entry.surface.wl_surface().clone())
+    }
+
+    /// Every mapped lock surface the owner has, on every output. While the session is
+    /// covered these are the only surfaces that get frame callbacks, because they are
+    /// the only surfaces that are on screen.
+    pub(crate) fn owner_mapped_lock_surfaces(&self) -> impl Iterator<Item = WlSurface> + '_ {
+        let owner = self.lock.locker();
+        self.lock_tables
+            .surfaces
+            .iter()
+            .filter(move |entry| Some(entry.locker) == owner && entry.mapped)
+            .map(|entry| entry.surface.wl_surface().clone())
     }
 
     /// Echoes a presented frame back to the barrier.
@@ -478,11 +523,17 @@ impl State {
         let Some(entry) = self.lock_tables.surfaces.get_mut(index) else {
             return;
         };
-        if entry.mapped == mapped {
+        let (locker, output) = (entry.locker, entry.output);
+        let changed = entry.mapped != mapped;
+        entry.mapped = mapped;
+        // Every commit can carry a new buffer or crop, so the output is painted again even
+        // when the mapping did not change; the frame that paints it is what answers a
+        // frame callback on the lock surface.
+        self.lock_tables.painted.remove(&output);
+        self.damage_outputs();
+        if !changed {
             return;
         }
-        entry.mapped = mapped;
-        let (locker, output) = (entry.locker, entry.output);
         let event = if mapped {
             LockEvent::LockerSurfaceMapped { locker, output }
         } else {
@@ -528,6 +579,10 @@ impl State {
     }
 
     /// The owner's first mapped lock surface, when the gate delivers input to it.
+    ///
+    /// Keyboard focus is not bound to an output. It follows the lock, not the pointer, so
+    /// a locker that maps a surface on only one output still receives keys wherever the
+    /// pointer is. The pointer, by contrast, goes to the surface under it.
     fn lock_input_surface(&self) -> Option<WlSurface> {
         let owner = self.lock.locker()?;
         if self.lock.gate_input(InputSource::Local, Subject::Client(owner)) != Delivery::Deliver {
@@ -637,6 +692,10 @@ impl State {
         }
         self.lock_tables.surfaces.retain(|entry| entry.surface.alive());
         for (locker, output, mapped) in dead {
+            // The output still shows the dead surface's last frame until it is painted
+            // again, so the cover must be redrawn whether or not the surface was mapped.
+            self.lock_tables.painted.remove(&output);
+            self.damage_outputs();
             if !mapped {
                 continue;
             }

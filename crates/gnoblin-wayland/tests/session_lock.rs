@@ -28,7 +28,8 @@ use gnoblin_wayland::{Config, ControlHandle, LoopError, Modal, Server, SessionSn
 use wayland_client::backend::ObjectId;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::session_lock::v1::client::{
@@ -221,6 +222,8 @@ struct App {
     lock_acks: u32,
     lock_width: i32,
     lock_height: i32,
+    /// How many frame callbacks arrived.
+    frame_callbacks: u32,
 }
 
 /// A real Wayland client for one connection.
@@ -263,6 +266,16 @@ struct LockSurface {
     surface: wl_surface::WlSurface,
     #[allow(dead_code)]
     lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
+}
+
+impl LockSurface {
+    /// Unmaps the lock surface the way a locker must: destroy its role, then its surface.
+    ///
+    /// A null buffer is a protocol error on a lock surface, so this is the only unmap.
+    fn destroy(self) {
+        self.lock_surface.destroy();
+        self.surface.destroy();
+    }
 }
 
 impl Client {
@@ -379,6 +392,14 @@ impl Client {
         self.roundtrip();
     }
 
+    /// Asks for a frame callback on `surface` and damages it, so the next frame draws it.
+    fn request_frame(&mut self, surface: &wl_surface::WlSurface, width: i32, height: i32) {
+        surface.frame(&self.qh, ());
+        surface.damage(0, 0, width, height);
+        surface.commit();
+        self.roundtrip();
+    }
+
     /// Creates a toplevel and maps it with a buffer.
     fn map_window(&mut self, app_id: &str, title: &str) -> Window {
         let window = self.create_window(app_id, title);
@@ -401,6 +422,11 @@ impl Client {
     /// The order is the protocol's: create the surface, receive a configure, ack it,
     /// then commit a buffer of exactly the configured size.
     fn lock_surface(&mut self, index: usize) -> LockSurface {
+        self.lock_surface_with_pixel(index, 0)
+    }
+
+    /// Like `lock_surface`, but the committed buffer is filled with the ARGB `pixel`.
+    fn lock_surface_with_pixel(&mut self, index: usize, pixel: u32) -> LockSurface {
         let output = self.outputs.get(index).expect("an output").clone();
         let lock = self.locks.last().expect("a lock request");
         let surface = self.compositor.create_surface(&self.qh, ());
@@ -409,7 +435,7 @@ impl Client {
         assert!(self.state.lock_configures >= 1, "the lock surface was configured");
         let (width, height) = (self.state.lock_width, self.state.lock_height);
         assert!(width > 0 && height > 0, "the configure carries the output size");
-        self.attach_buffer(&surface, width, height);
+        self.attach_pixels(&surface, width, height, pixel);
         LockSurface { surface, lock_surface }
     }
 
@@ -982,7 +1008,11 @@ fn a_modal_set_while_locked_is_refused() {
             Some(vec![]),
             "a refused modal takes no key"
         );
-        assert_eq!(session.corner_rgb(output), BLACK, "and it is not drawn over the cover");
+        assert_eq!(
+            session.corner_rgb(output),
+            MASK,
+            "and the lock surface holds the corner, not the modal"
+        );
 
         locker.unlock();
         session.wait_for_lock(LockState::Unlocked);
@@ -999,6 +1029,153 @@ fn a_modal_set_while_locked_is_refused() {
             session.control.modal_events(),
             Some(vec![]),
             "no modal stands after the unlock"
+        );
+    });
+}
+
+/// What a capture shows where a secure lock surface is: the redaction mask. A capture
+/// never reads the lock scene's pixels, so a drawn lock surface is seen only as this.
+const MASK: [u8; 3] = [128, 128, 128];
+
+/// The first output the session publishes, once the loop has published one.
+fn first_output(session: &Handle) -> OutputId {
+    session
+        .wait_for(|observation| !observation.outputs().is_empty())
+        .outputs()
+        .first()
+        .copied()
+        .expect("an output")
+}
+
+/// Round-trips `client` for `span`, so an event the server sends late has arrived before the test reads it.
+fn settle_for(client: &mut Client, span: Duration) {
+    let deadline = Instant::now() + span;
+    while Instant::now() < deadline {
+        client.roundtrip();
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_lock_surface_is_drawn_over_the_cover() {
+    let session = Session::start();
+    session.run(|session| {
+        let output = first_output(session);
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        session.wait_for_corner(output, MASK, "the lock surface replaces the cover");
+        assert_eq!(session.corner_rgb(output), MASK, "and it stays on the output");
+    });
+}
+
+#[test]
+fn an_unmapped_lock_surface_shows_the_cover_again() {
+    let session = Session::start();
+    session.run(|session| {
+        let output = first_output(session);
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let surface = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        session.wait_for_corner(output, MASK, "the lock surface is drawn");
+
+        surface.destroy();
+        locker.roundtrip();
+        session.wait_for_corner(output, BLACK, "without its surface the cover shows again");
+    });
+}
+
+#[test]
+fn a_lock_surface_covers_only_its_own_output() {
+    let session = Session::start();
+    session.run(|session| {
+        let first = first_output(session);
+        session
+            .backend
+            .connect_output(
+                "HEADLESS-2",
+                gnoblin_backend::headless::DEFAULT_MODE,
+                gnoblin_types::Scale::integral(1),
+            )
+            .expect("a mode with pixels");
+        let second = session
+            .wait_for(|observation| observation.outputs().len() == 2)
+            .outputs()
+            .iter()
+            .copied()
+            .find(|id| *id != first)
+            .expect("a second output");
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        session.wait_for_corner(first, MASK, "the lock surface covers its own output");
+        assert_eq!(
+            session.corner_rgb(second),
+            BLACK,
+            "and the other output keeps the cover"
+        );
+    });
+}
+
+#[test]
+fn a_covered_client_gets_no_frame_callbacks_while_locked() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let window = app.map_window("org.gnoblin.Covered", "Covered");
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+        app.request_frame(&window.surface, 200, 150);
+        wait_for_client(
+            &mut app,
+            "the window never got a frame callback before the lock",
+            |state| state.frame_callbacks >= 1,
+        );
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let lock = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        let (width, height) = (locker.state.lock_width, locker.state.lock_height);
+        locker.request_frame(&lock.surface, width, height);
+        wait_for_client(&mut locker, "the lock surface never got a frame callback", |state| {
+            state.frame_callbacks >= 1
+        });
+
+        app.state.frame_callbacks = 0;
+        app.request_frame(&window.surface, 200, 150);
+        locker.state.frame_callbacks = 0;
+        locker.request_frame(&lock.surface, width, height);
+        wait_for_client(&mut locker, "the lock surface never got a second frame", |state| {
+            state.frame_callbacks >= 1
+        });
+        settle_for(&mut app, Duration::from_millis(100));
+        assert_eq!(app.state.frame_callbacks, 0, "a covered window gets no frame callbacks");
+    });
+}
+
+#[test]
+fn the_owners_lock_surface_gets_frame_callbacks_while_locked() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let lock = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        let (width, height) = (locker.state.lock_width, locker.state.lock_height);
+        locker.request_frame(&lock.surface, width, height);
+        wait_for_client(
+            &mut locker,
+            "the owner's lock surface never got a frame callback",
+            |state| state.frame_callbacks >= 1,
         );
     });
 }
@@ -1182,6 +1359,21 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for App 
             // the serial has to be the one this configure carried.
             lock_surface.ack_configure(serial);
             state.lock_acks = state.lock_acks.saturating_add(1);
+        }
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, ()> for App {
+    fn event(
+        state: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: <wl_callback::WlCallback as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            state.frame_callbacks = state.frame_callbacks.saturating_add(1);
         }
     }
 }

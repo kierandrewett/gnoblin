@@ -22,6 +22,7 @@ use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Su
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::{GlobalId, ObjectId};
+use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
@@ -1714,30 +1715,12 @@ impl State {
     fn sync_content(&mut self, window: WindowId, surface: &WlSurface) {
         let factor = crate::protocols::wp_alpha_modifier_v1::committed_factor(surface);
         self.composer.set_window_surface_alpha(window, factor);
-        let committed = with_renderer_surface_state(surface, |state| {
-            let buffer = state.buffer()?.clone();
-            let view = state.view()?;
-            let size = state.buffer_size()?;
-            let scale = f64::from(state.buffer_scale());
-            let transform = state.buffer_transform();
-            let buffer_size = SmithaySize::from((f64::from(size.w), f64::from(size.h)));
-            let src = view.src.to_buffer(scale, transform, &buffer_size);
-            Some((
-                buffer,
-                Content {
-                    src: RectF::new(src.loc.x, src.loc.y, src.size.w, src.size.h),
-                    size: Size::new(view.dst.w.max(0).unsigned_abs(), view.dst.h.max(0).unsigned_abs()),
-                    transform,
-                },
-            ))
-        })
-        .flatten();
-        match committed {
+        match committed_content(surface) {
             Some((buffer, content)) => {
                 self.composer.set_window_content(window, Some(content));
-                // `Buffer` derefs to the protocol object; the scene holds the handle and
-                // Smithay keeps the object alive for as long as a frame can read it.
-                self.composer.set_window_buffer(window, Some((*buffer).clone()));
+                // The scene holds the handle; Smithay keeps the object alive for as long as a
+                // frame can read it.
+                self.composer.set_window_buffer(window, Some(buffer));
             }
             None => {
                 self.composer.set_window_content(window, None);
@@ -2239,27 +2222,41 @@ impl State {
     /// surfaces: without this call a session on the nested backend would show its first
     /// frame and then stall.
     pub(crate) fn send_frame_callbacks(&self, time: u32) {
-        for entry in self.windows.values() {
-            // A window with no buffer has nothing on screen to have drawn, and Smithay's
-            // own helper refuses those for the same reason.
-            if !entry.mapped {
-                continue;
-            }
-            let Some(surface) = entry.surface.wl_surface() else {
-                continue;
-            };
-            with_states(&surface, |states| {
-                for callback in states
-                    .cached_state
-                    .get::<SurfaceAttributes>()
-                    .current()
-                    .frame_callbacks
-                    .drain(..)
-                {
-                    callback.done(time);
+        // A covered session shows no window, so no window gets a callback: a client that
+        // cannot see its frame must not render one. The owner's lock surfaces are the
+        // only thing on screen while covered, so they always get theirs.
+        if self.lock.state() == LockState::Unlocked {
+            for entry in self.windows.values() {
+                // A window with no buffer has nothing on screen to have drawn, and Smithay's
+                // own helper refuses those for the same reason.
+                if !entry.mapped {
+                    continue;
                 }
-            });
+                let Some(surface) = entry.surface.wl_surface() else {
+                    continue;
+                };
+                Self::done_frame_callbacks(&surface, time);
+            }
         }
+        for surface in self.owner_mapped_lock_surfaces() {
+            Self::done_frame_callbacks(&surface, time);
+        }
+    }
+
+    /// Answers every frame callback the surface has queued, which is what tells a client
+    /// its frame was presented and it may draw the next one.
+    fn done_frame_callbacks(surface: &WlSurface, time: u32) {
+        with_states(surface, |states| {
+            for callback in states
+                .cached_state
+                .get::<SurfaceAttributes>()
+                .current()
+                .frame_callbacks
+                .drain(..)
+            {
+                callback.done(time);
+            }
+        });
     }
 
     /// Ends the iteration the frame hook ran, dropping the damage it consumed.
@@ -2840,6 +2837,31 @@ fn contains(rect: &Rect, point: SmithayPoint<f64, Logical>) -> bool {
 /// runs and only the renderer's copy records that the client has content.
 pub(crate) fn has_buffer(surface: &WlSurface) -> bool {
     with_renderer_surface_state(surface, |state| state.buffer().is_some()).unwrap_or(false)
+}
+
+/// What a surface committed right now: its buffer and how that buffer is cropped and placed.
+///
+/// Read from the renderer's surface state for the same reason as `has_buffer`, so a lock
+/// surface and a window answer through one path. `None` when the surface has no buffer.
+pub(crate) fn committed_content(surface: &WlSurface) -> Option<(WlBuffer, Content)> {
+    with_renderer_surface_state(surface, |state| {
+        let buffer = state.buffer()?.clone();
+        let view = state.view()?;
+        let size = state.buffer_size()?;
+        let scale = f64::from(state.buffer_scale());
+        let transform = state.buffer_transform();
+        let buffer_size = SmithaySize::from((f64::from(size.w), f64::from(size.h)));
+        let src = view.src.to_buffer(scale, transform, &buffer_size);
+        Some((
+            (*buffer).clone(),
+            Content {
+                src: RectF::new(src.loc.x, src.loc.y, src.size.w, src.size.h),
+                size: Size::new(view.dst.w.max(0).unsigned_abs(), view.dst.h.max(0).unsigned_abs()),
+                transform,
+            },
+        ))
+    })
+    .flatten()
 }
 
 impl Host for State {
