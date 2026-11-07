@@ -145,11 +145,8 @@ mod camera;
 
 mod damage;
 mod effect;
-mod id;
 mod matrix;
-mod property;
 mod scene;
-mod transform;
 mod tween;
 
 #[cfg(test)]
@@ -167,16 +164,10 @@ pub use effect::{
 };
 /// Geometry and identity types re-exported from `gnoblin-types`.
 pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsupported3d, Unsupported3dField, Vec3};
-/// Opaque node and track identities.
-pub use id::{NodeId, TrackId};
 /// The 4x4 matrix every node placement is expressed in.
 pub use matrix::Mat4;
-/// Typed visual property names, values and their kinds.
-pub use property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
 /// The node tree, its node kinds, hit results and the scene error type.
 pub use scene::{DEFAULT_DAMAGE_RECT_LIMIT, Hit, Node, NodeKind, NodeSpec, Scene, SceneError};
-/// The per-node visual transform (offset, rotation, scale, depth, opacity).
-pub use transform::VisualTransform;
 /// Animation tracks: the player, its specs and its terminal reports.
 pub use tween::{TrackEnd, TrackEndReason, TrackError, TrackSpec, TrackStart, TweenPlayer};
 

@@ -36,10 +36,11 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_animation::{Easing, EasingError};
+use gnoblin_animation::{
+    Easing, EasingError, PropertyError, PropertyValue, ValueKind, VisualProperty, VisualTransform,
+};
+use gnoblin_types::{NodeId, TrackId};
 
-use crate::id::{NodeId, TrackId};
-use crate::property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
 use crate::scene::{Scene, SceneError};
 
 /// Where a track starts.
@@ -467,7 +468,7 @@ impl TweenPlayer {
 /// The copy is the point of this helper: a refused value leaves the scene
 /// untouched, so a failed write never half-applies a transform.
 fn apply_candidate(
-    transform: &crate::transform::VisualTransform,
+    transform: &VisualTransform,
     property: VisualProperty,
     value: PropertyValue,
 ) -> Result<PropertyValue, TrackError> {

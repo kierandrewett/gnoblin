@@ -1,11 +1,10 @@
-//! Identities the scene graph and the tween player own.
+//! Identities the scene graph and the tween player share.
 //!
-//! `NodeId` and `TrackId` stay local to the renderer because they name a scene
-//! node and a player track, not a shared object: an output, a window and an
-//! operation get their identities from `gnoblin-types`, and this crate uses
-//! those where it hands an identity back. Both are `u64` newtypes for the same
-//! reason the shared set is: the graph allocates unbounded counters and a
-//! narrowing here would be a silent truncation somewhere later.
+//! `NodeId` names a scene node and `TrackId` names a tween track. The animation
+//! target trait takes a `NodeId`, so the animation crate and the renderer must
+//! both see one definition, and this crate is the lowest shared home. Both are
+//! `u64` newtypes because the graph allocates unbounded counters and a narrowing
+//! here would be a silent truncation somewhere later.
 
 use std::fmt;
 

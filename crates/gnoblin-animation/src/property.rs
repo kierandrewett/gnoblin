@@ -214,7 +214,7 @@ impl VisualProperty {
 
     /// Apply a value, refusing a wrong kind or a non-finite component.
     ///
-    /// The resulting transform is not checked here: [`crate::scene::Scene`]
+    /// The resulting transform is not checked here: the scene in `gnoblin-render`
     /// rejects a transform outside the 2D subset as one unit, after the property
     /// has been applied to a candidate copy. That keeps opacity, tint and every
     /// other 2D member working while a depth component can still be targeted by

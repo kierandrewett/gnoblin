@@ -10,12 +10,12 @@
 //! - Scale and rotation happen about the node's own bounds centre, which is the
 //!   `origin = center` pivot the animation guide documents. That pivot is
 //!   relative to the node's own rectangle, so it cannot live in the shared
-//!   transform: the type would have to know the bounds. [`crate::matrix::Mat4::node_local`]
-//!   composes the two, and rendering and hit testing both go through it so they
-//!   cannot disagree.
+//!   transform: the type would have to know the bounds. The renderer's
+//!   `Mat4::node_local` composes the two, and rendering and hit testing both go
+//!   through it so they cannot disagree.
 //!
 //! Every member is valid in 3D. The scene builds one 4x4 matrix per node from
-//! these values ([`crate::matrix`]) and refuses only a result that is not finite
+//! these values and refuses only a result that is not finite
 //! or not invertible.
 
 use gnoblin_types::{Color, Transform};

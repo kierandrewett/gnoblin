@@ -43,15 +43,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use gnoblin_types::{OutputId, PointF, Rect, RectF, Vec3};
+use gnoblin_animation::{PropertyError, PropertyValue, VisualProperty, VisualTransform};
+use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Vec3};
 
 use crate::camera::{Camera, CameraError, Projection};
 use crate::damage::{Damage, OutputDamage, merge_rects};
 use crate::effect::{EffectError, Effects};
-use crate::id::NodeId;
 use crate::matrix::Mat4;
-use crate::property::{PropertyError, PropertyValue, VisualProperty};
-use crate::transform::VisualTransform;
 
 /// The default number of damage rectangles per output.
 ///

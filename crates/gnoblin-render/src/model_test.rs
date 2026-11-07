@@ -16,12 +16,10 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_types::Color;
+use gnoblin_animation::{Easing, PropertyValue, VisualProperty};
+use gnoblin_types::{Color, NodeId, OutputId, Rect, TrackId, Vec3};
 
-use crate::{
-    Easing, NodeId, NodeSpec, OutputId, PropertyValue, Rect, Scene, TrackId, TrackSpec, TrackStart, TweenPlayer, Vec3,
-    VisualProperty,
-};
+use crate::{NodeSpec, Scene, TrackSpec, TrackStart, TweenPlayer};
 
 /// The seed; the same sequence runs on every build.
 const SEED: u64 = 0x5EED_1234_9E37_79B9;

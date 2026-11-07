@@ -42,7 +42,7 @@
 //! them in one description is what lets the two paths be compared pixel for pixel on
 //! the properties they both implement.
 //!
-//! [`VisualTransform`]: gnoblin_render::VisualTransform
+//! [`VisualTransform`]: gnoblin_animation::VisualTransform
 
 use std::sync::Arc;
 
@@ -90,7 +90,7 @@ pub struct Surface {
     pub tint: Color,
     /// Corner radius in logical pixels, 0 for square corners.
     ///
-    /// It comes from the node's [`VisualTransform`](gnoblin_render::VisualTransform) and
+    /// It comes from the node's [`VisualTransform`](gnoblin_animation::VisualTransform) and
     /// is a *clip*: the renderer draws the corner as background, the same way a rounded
     /// window reveals what is behind it.
     pub corner_radius: f32,

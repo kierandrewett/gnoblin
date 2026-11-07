@@ -8,6 +8,12 @@
 //! scene free of any dependency on how an animation is evaluated.
 
 mod easing;
+mod property;
+mod transform;
 
 /// Timing curves for tracks and their validation error.
 pub use easing::{Easing, EasingError};
+/// Typed visual property names, values and their kinds.
+pub use property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
+/// The per-node visual transform (offset, rotation, scale, depth, opacity).
+pub use transform::VisualTransform;
