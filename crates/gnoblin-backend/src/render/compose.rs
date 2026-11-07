@@ -118,6 +118,16 @@ pub struct Content {
     pub transform: Transform,
 }
 
+/// What a closing window becomes once its fade ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloseEnd {
+    /// The window was destroyed: it is forgotten, and leaves the stacking order.
+    Remove,
+    /// The client unmapped it: its node goes but the window stays known, so a later
+    /// re-map can draw it again.
+    Hide,
+}
+
 /// A window that is closing: the picture it kept and the crop it was drawn with.
 #[derive(Clone, Debug)]
 struct Closing {
@@ -125,6 +135,8 @@ struct Closing {
     image: Arc<Image>,
     /// The crop and transform the window was drawn with, so the picture matches it.
     content: Content,
+    /// What the window becomes when the fade ends.
+    on_end: CloseEnd,
 }
 
 /// One managed window's rendering state.
@@ -288,6 +300,9 @@ impl Composer {
     /// Starts drawing a window.
     pub fn insert_window(&mut self, window: WindowId, geometry: Rect) {
         if self.windows.contains_key(&window) {
+            // A window shown again while its unmap fades (an X11 window mapping again) keeps its
+            // node and stops fading, as a Wayland window's commit does.
+            self.cancel_unmap_fade(window);
             self.place_window(window, geometry);
             return;
         }
@@ -328,35 +343,88 @@ impl Composer {
     ///
     /// The picture is read from the window's buffer now, because the client may free that
     /// buffer once it has destroyed the window. A window with no picture to read, or with
-    /// motion reduced, is removed at once, as [`Composer::remove_window`] does.
+    /// motion reduced, is removed at once, as [`Composer::remove_window`] does. A window that is
+    /// already fading for an unmap keeps its fade, and is removed when the fade ends.
     pub fn close_window(&mut self, window: WindowId) {
-        let closing = match self.windows.get(&window) {
-            Some(entry) if !self.reduced_motion => match (entry.buffer.as_ref(), entry.content) {
-                (Some(buffer), Some(content)) => shm::readback(buffer).ok().map(|image| Closing {
-                    image: Arc::new(image),
-                    content,
-                }),
-                _ => None,
-            },
-            _ => None,
-        };
+        if let Some(closing) = self.windows.get_mut(&window).and_then(|entry| entry.closing.as_mut()) {
+            closing.on_end = CloseEnd::Remove;
+            return;
+        }
+        let closing = self.snapshot(window, CloseEnd::Remove);
         self.close_with_snapshot(window, closing);
+    }
+
+    /// Hides a window the client has unmapped, by committing no buffer: its last picture fades
+    /// out, then its node goes, but the window stays known so a later map draws it again.
+    ///
+    /// The picture is read the same way [`Composer::close_window`] reads it. An unmap of a window
+    /// that is already fading changes nothing.
+    pub fn unmap_window(&mut self, window: WindowId) {
+        if self.is_fading(window) {
+            return;
+        }
+        let closing = self.snapshot(window, CloseEnd::Hide);
+        self.unmap_with_snapshot(window, closing);
+    }
+
+    /// Reads the picture a window keeps when it leaves: its buffer's pixels as it was drawn.
+    /// `None` when there is no picture to read, or when motion is reduced, so the window is
+    /// hidden or removed at once.
+    fn snapshot(&self, window: WindowId, on_end: CloseEnd) -> Option<Closing> {
+        if self.reduced_motion {
+            return None;
+        }
+        let entry = self.windows.get(&window)?;
+        let buffer = entry.buffer.as_ref()?;
+        let content = entry.content?;
+        let image = shm::readback(buffer).ok()?;
+        Some(Closing {
+            image: Arc::new(image),
+            content,
+            on_end,
+        })
     }
 
     /// The body of [`Composer::close_window`]: fades the picture `closing` keeps, or removes
     /// the window when there is none.
+    fn close_with_snapshot(&mut self, window: WindowId, closing: Option<Closing>) {
+        let node = self.windows.get(&window).and_then(|entry| entry.node);
+        match (closing, node) {
+            (Some(closing), Some(node)) => self.fade_out(window, node, closing),
+            _ => self.remove_window(window),
+        }
+    }
+
+    /// The body of [`Composer::unmap_window`]: fades the picture `closing` keeps, or drops the
+    /// window's content so its node goes at once.
+    fn unmap_with_snapshot(&mut self, window: WindowId, closing: Option<Closing>) {
+        if self.is_fading(window) {
+            return;
+        }
+        let node = self.windows.get(&window).and_then(|entry| entry.node);
+        match (closing, node) {
+            (Some(closing), Some(node)) => self.fade_out(window, node, closing),
+            _ => {
+                if let Some(entry) = self.windows.get_mut(&window) {
+                    entry.content = None;
+                    entry.buffer = None;
+                }
+                self.sync(window, true);
+            }
+        }
+    }
+
+    /// Starts a window's fade. Its node keeps drawing `closing`'s picture while its opacity
+    /// tweens to zero; the fade's end is applied by [`Composer::finish_fade`].
     ///
     /// The fade is an opacity track to zero on the window's node, so the scene damages the
     /// rectangle on every step and the frames repaint it until the track ends.
-    fn close_with_snapshot(&mut self, window: WindowId, closing: Option<Closing>) {
-        let node = self.windows.get(&window).and_then(|entry| entry.node);
-        let (Some(closing), Some(node)) = (closing, node) else {
-            self.remove_window(window);
-            return;
-        };
+    fn fade_out(&mut self, window: WindowId, node: NodeId, closing: Closing) {
         self.cancel_tracks(window);
+        let on_end = closing.on_end;
         if let Some(entry) = self.windows.get_mut(&window) {
             entry.closing = Some(closing);
+            entry.content = None;
             entry.buffer = None;
         }
         let spec = TrackSpec {
@@ -369,8 +437,27 @@ impl Composer {
             Ok(track) => {
                 self.tracks.insert((window, VisualProperty::Opacity), track);
             }
-            Err(_) => self.remove_window(window),
+            Err(_) => self.finish_fade(window, on_end),
         }
+    }
+
+    /// Applies a window's closing once its fade has ended: a destroyed window is forgotten, and
+    /// an unmapped one loses its node but stays known.
+    fn finish_fade(&mut self, window: WindowId, on_end: CloseEnd) {
+        match on_end {
+            CloseEnd::Remove => self.remove_window(window),
+            CloseEnd::Hide => {
+                if let Some(entry) = self.windows.get_mut(&window) {
+                    entry.closing = None;
+                }
+                self.sync(window, false);
+            }
+        }
+    }
+
+    /// Whether a window is fading out after it was closed or unmapped.
+    fn is_fading(&self, window: WindowId) -> bool {
+        self.windows.get(&window).is_some_and(|entry| entry.closing.is_some())
     }
 
     /// Moves a window's frame rectangle.
@@ -579,9 +666,13 @@ impl Composer {
                 .map(|(key, _)| *key);
             self.tracks.retain(|_, track| *track != end.track);
             if let Some((window, VisualProperty::Opacity)) = owner
-                && self.windows.get(&window).is_some_and(|entry| entry.closing.is_some())
+                && let Some(on_end) = self
+                    .windows
+                    .get(&window)
+                    .and_then(|entry| entry.closing.as_ref())
+                    .map(|closing| closing.on_end)
             {
-                self.remove_window(window);
+                self.finish_fade(window, on_end);
             }
         }
         self.advance_flash(elapsed_ms);
@@ -649,17 +740,44 @@ impl Composer {
         self.scene.absolute_bounds(node)
     }
 
-    /// Replaces a window's content, or clears it when the client unmaps.
+    /// Replaces a window's content, or clears it.
     ///
     /// A commit always damages the window's rectangle: the client may have drawn
     /// into the same buffer, and nothing in the handle says whether its pixels
-    /// changed.
+    /// changed. A commit of content to a window that is fading out after an unmap cancels the
+    /// fade: the window eases back to opaque on the node it kept, rather than starting over
+    /// with a new one. A window being destroyed is not revived.
     pub fn set_window_content(&mut self, window: WindowId, content: Option<Content>) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
         entry.content = content;
+        if content.is_some() && self.cancel_unmap_fade(window) {
+            return;
+        }
         self.sync(window, true);
+    }
+
+    /// Stops a window's unmap fade because the window is shown again, so its node takes the
+    /// content it is given rather than fading out. Returns whether a fade was stopped.
+    ///
+    /// A destroy fade is not stopped: the client cannot show a window it has destroyed. The
+    /// fade's picture is dropped here, so the node is re-synced to the window's state.
+    fn cancel_unmap_fade(&mut self, window: WindowId) -> bool {
+        let unmap_fading = self
+            .windows
+            .get(&window)
+            .and_then(|entry| entry.closing.as_ref())
+            .is_some_and(|closing| closing.on_end == CloseEnd::Hide);
+        if !unmap_fading {
+            return false;
+        }
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.closing = None;
+        }
+        self.cancel_tracks(window);
+        self.sync_with(window, true, true);
+        true
     }
 
     /// Records the buffer a window's content is read from.
@@ -1189,6 +1307,7 @@ mod tests {
             Some(Closing {
                 image: picture(),
                 content: content(),
+                on_end: CloseEnd::Remove,
             }),
         );
         composer.begin_frame();
@@ -1223,6 +1342,7 @@ mod tests {
             Some(Closing {
                 image: picture(),
                 content: content(),
+                on_end: CloseEnd::Remove,
             }),
         );
         damage_of(&mut composer, output);
@@ -1246,6 +1366,7 @@ mod tests {
             Some(Closing {
                 image: picture(),
                 content: content(),
+                on_end: CloseEnd::Remove,
             }),
         );
         composer.advance_motion(MOTION_MS / 2);
@@ -1255,6 +1376,241 @@ mod tests {
             !composer.windows.contains_key(&window),
             "the window is gone once its fade ends"
         );
+    }
+
+    // A client that unmaps (commits a null buffer) keeps its window. Its last picture fades
+    // out, then only the node goes: the window stays known, so a re-map needs no new identity.
+    #[test]
+    fn an_unmapped_window_fades_then_loses_its_node() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.unmap_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Hide,
+            }),
+        );
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        assert!(composer.compose(output, &mut frame));
+        composer.end_frame();
+        assert!(
+            frame.layers().iter().any(|layer| matches!(
+                layer,
+                Layer::Surface(Surface {
+                    source: SurfaceSource::Snapshot(_),
+                    ..
+                })
+            )),
+            "the unmapped window fades from the picture it kept"
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        assert!(composer.window_matrix(window).is_some(), "still fading");
+        composer.advance_motion(MOTION_MS);
+        assert!(composer.windows.contains_key(&window), "the window is still known");
+        assert!(
+            composer.window_matrix(window).is_none(),
+            "its node is gone once the fade ends"
+        );
+        assert!(composer.tracks.is_empty(), "no track outlives the fade");
+    }
+
+    #[test]
+    fn an_unmapped_window_with_no_picture_is_hidden_at_once() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.unmap_with_snapshot(window, None);
+        assert!(composer.window_matrix(window).is_none(), "nothing to fade, so no node");
+        assert!(composer.windows.contains_key(&window));
+    }
+
+    // Mapping again during the fade cancels it: the node is the same one, it eases back to
+    // full opacity, and the fade's end does not remove the window.
+    #[test]
+    fn a_window_that_maps_again_while_fading_cancels_the_fade() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        let node = composer.windows[&window].node.expect("a node");
+        composer.unmap_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Hide,
+            }),
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        composer.set_window_content(window, Some(content()));
+        assert!(composer.windows[&window].closing.is_none(), "the picture is dropped");
+        assert_eq!(composer.windows[&window].node, Some(node), "the same node");
+        composer.advance_motion(MOTION_MS * 2);
+        assert!(
+            composer.windows.contains_key(&window),
+            "the old fade's end keeps the window"
+        );
+        assert_eq!(composer.windows[&window].node, Some(node));
+        assert!(composer.tracks.is_empty(), "the cancelled fade left no track");
+        assert_eq!(
+            composer.scene.transform(node).map(|transform| transform.opacity),
+            Some(1.0),
+            "the window is opaque again"
+        );
+    }
+
+    // A destroy that arrives during an unmap fade must not cut the fade short: the picture is
+    // still on screen, so it finishes and then the window is removed.
+    #[test]
+    fn a_destroy_during_an_unmap_fade_finishes_the_fade_then_removes() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.unmap_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Hide,
+            }),
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        composer.close_window(window);
+        assert!(composer.window_matrix(window).is_some(), "the fade is not cut short");
+        composer.advance_motion(MOTION_MS);
+        assert!(!composer.windows.contains_key(&window), "removed once the fade ends");
+        assert!(composer.tracks.is_empty());
+    }
+
+    // Unmapped with nothing to fade, then destroyed: the entry is removed, not kept forever.
+    #[test]
+    fn an_unmapped_window_destroyed_later_is_forgotten() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.unmap_with_snapshot(window, None);
+        composer.close_window(window);
+        assert!(
+            !composer.windows.contains_key(&window),
+            "a destroyed window is forgotten"
+        );
+        assert!(composer.order.is_empty(), "and it leaves the stacking order");
+    }
+
+    // An X11 window is inserted again while its unmap fade runs. The fade stops, and since the
+    // window has no picture yet it keeps no node, so nothing is drawn as a ghost.
+    #[test]
+    fn an_unmapped_window_inserted_again_while_fading_stops_the_fade() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.unmap_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Hide,
+            }),
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        assert!(!composer.is_fading(window), "the fade stops");
+        assert!(composer.tracks.is_empty(), "the stopped fade left no track");
+        assert_eq!(composer.windows[&window].node, None, "no picture, so no node");
+        composer.advance_motion(MOTION_MS * 2);
+        assert!(composer.windows.contains_key(&window), "the window is still known");
+        assert_eq!(composer.windows[&window].node, None, "and still drawn as nothing");
+    }
+    // A client that unmaps a window with no picture to keep hides it through the public entry
+    // point, and an X11 window that maps again reuses the same entry: one slot, one entry, no
+    // leak from the repeated inserts.
+    #[test]
+    fn unmap_and_remap_without_a_picture_keeps_one_entry() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.unmap_window(window);
+        assert!(composer.windows.contains_key(&window), "the window stays known");
+        assert!(!composer.is_fading(window), "there was no picture to fade");
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        assert_eq!(composer.order, vec![window], "one stacking slot");
+        assert_eq!(composer.windows.len(), 1, "one entry");
+    }
+
+    // An unmap that arrives after a destroy must not turn the destroy into a hide: the window
+    // still leaves when its fade ends.
+    #[test]
+    fn an_unmap_during_a_destroy_fade_does_not_hide_the_window() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.close_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Remove,
+            }),
+        );
+        composer.unmap_window(window);
+        assert_eq!(
+            composer.windows[&window].closing.as_ref().map(|closing| closing.on_end),
+            Some(CloseEnd::Remove),
+            "the destroy still decides the end"
+        );
+        composer.advance_motion(MOTION_MS * 2);
+        assert!(
+            !composer.windows.contains_key(&window),
+            "the destroyed window is removed"
+        );
+    }
+
+    // A commit that lands after a destroy fades the old picture and does not bring the window
+    // back: the client cannot show a window it has destroyed.
+    #[test]
+    fn a_commit_during_a_destroy_fade_does_not_revive_the_window() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.close_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Remove,
+            }),
+        );
+        composer.set_window_content(window, Some(content()));
+        assert_eq!(
+            composer.windows[&window].closing.as_ref().map(|closing| closing.on_end),
+            Some(CloseEnd::Remove),
+            "the fade is not cancelled"
+        );
+        composer.advance_motion(MOTION_MS * 2);
+        assert!(
+            !composer.windows.contains_key(&window),
+            "the window is removed at the fade's end"
+        );
+        assert!(composer.tracks.is_empty(), "no track outlives its window");
     }
 
     #[test]

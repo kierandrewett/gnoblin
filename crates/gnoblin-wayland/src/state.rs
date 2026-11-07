@@ -1725,8 +1725,9 @@ impl State {
                 self.composer.set_window_buffer(window, Some(buffer));
             }
             None => {
-                self.composer.set_window_content(window, None);
-                self.composer.set_window_buffer(window, None);
+                // An unmapped window fades its last picture out, or leaves at once when it has
+                // none to show. The composer keeps it either way, for a later commit to reuse.
+                self.composer.unmap_window(window);
             }
         }
     }

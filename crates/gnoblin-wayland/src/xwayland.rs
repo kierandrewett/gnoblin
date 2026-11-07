@@ -365,6 +365,9 @@ impl State {
 
     /// Removes an X11 window from the manager after its server went away.
     pub(crate) fn x11_window_gone(&mut self, window: gnoblin_types::WindowId) {
+        // The composer may still hold a window the manager has forgotten at its unmap, fading
+        // or hidden, so it is closed before the manager is asked.
+        self.composer.close_window(window);
         if self.windows.remove(&window).is_none() {
             return;
         }
@@ -376,7 +379,6 @@ impl State {
                 output.output.leave(&wl_surface);
             }
         }
-        self.composer.close_window(window);
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
         self.publish();
@@ -386,6 +388,10 @@ impl State {
     fn x11_event(&mut self, event: WindowEvent<'_>, surface: Option<&X11Surface>) {
         let Some(mut running) = self.x11.take() else {
             return;
+        };
+        let destroyed = match &event {
+            WindowEvent::Destroyed(x11) => running.windows.managed_window(*x11),
+            _ => None,
         };
         let outcome = running.windows.handle(event, &mut self.wm);
         if let (Some(window), Some(surface)) = (outcome.window, surface) {
@@ -418,14 +424,19 @@ impl State {
                 }
             }
         }
-        // An X11 window exists in the table exactly while the manager holds it, so an
-        // unmap or a destroy leaves nothing behind.
-        if let Some(window) = outcome.window
+        // A destroy closes the window: the composer fades it out and forgets it. An unmap
+        // only hides it: the composer fades the last picture and keeps the node and the X11
+        // surface, so a remap reuses them. The destroyed window is named before the table
+        // forgets it in `handle`.
+        if let Some(window) = destroyed {
+            self.windows.remove(&window);
+            self.composer.close_window(window);
+            running.surfaces.remove(&window);
+        } else if let Some(window) = outcome.window
             && self.wm.window(window).is_none()
         {
             self.windows.remove(&window);
-            self.composer.remove_window(window);
-            running.surfaces.remove(&window);
+            self.composer.unmap_window(window);
         }
         self.x11 = Some(running);
         self.publish();
