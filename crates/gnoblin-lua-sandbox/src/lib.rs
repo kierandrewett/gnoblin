@@ -42,9 +42,8 @@
 //! is the one deliberate exception to "full Lua": every other standard library
 //! function a script can name is either present or refused by a documented rule.
 //!
-//! Binary Lua bytecode is never loaded. In the configuration profile `load` is
-//! wrapped so its mode is always text, because crafted bytecode can crash the
-//! interpreter; the layout profile has no `load` at all.
+//! Binary Lua bytecode is never loaded. `load` is wrapped in both profiles so its mode is
+//! always text, because crafted bytecode can crash the interpreter.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -52,8 +51,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mlua::{Error, Function, HookTriggers, Lua, LuaOptions, MultiValue, StdLib, Table, Value, VmState};
 
+mod output;
 mod pattern;
 mod strlib;
+
+pub use output::{LogLevel, Sink};
 
 /// How many instructions pass between two hook calls.
 ///
@@ -183,13 +185,10 @@ impl Guard {
 /// The returned state has no file, process or environment access in either profile. The
 /// configuration profile reads the host clock through `os`; the layout profile does not.
 /// The caller arms `guard` with [`Guard::begin`] before each entry.
-pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua, Error> {
-    let libraries = match profile {
-        Profile::Config => {
-            StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH | StdLib::COROUTINE | StdLib::OS
-        }
-        Profile::Layout => StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::COROUTINE | StdLib::OS,
-    };
+pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>, sink: Sink) -> Result<Lua, Error> {
+    // Both profiles open the same libraries. `io`, `debug` and `package` are never opened,
+    // so no script can reach them, even by name.
+    let libraries = StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH | StdLib::COROUTINE | StdLib::OS;
     let lua = Lua::new_with(libraries, LuaOptions::default())?;
     lua.set_memory_limit(limits.memory_bytes)?;
     match profile {
@@ -197,23 +196,62 @@ pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua
         Profile::Layout => restrict_layout(&lua)?,
     }
     restrict_os(&lua, profile)?;
-    if profile == Profile::Config {
-        // Stock Lua seeds `math.random` from the clock and a stack address when a state
-        // opens, so two identical configs would draw different numbers. A fixed seed
-        // makes the draws a pure function of the script.
-        let math: Table = lua.globals().get("math")?;
-        let randomseed: Function = math.get("randomseed")?;
-        randomseed.call::<()>(CONFIG_RANDOM_SEED)?;
-        strlib::install(&lua, Rc::clone(&guard), limits.instructions)?;
-    }
-
+    seed_random(&lua)?;
+    text_only_load(&lua)?;
+    cap_unpack(&lua)?;
+    output::install(&lua, sink)?;
+    strlib::install(&lua, Rc::clone(&guard), limits.instructions)?;
     install_hook(&lua, limits, Rc::clone(&guard))?;
     guard_protected_calls(&lua, guard)?;
     Ok(lua)
 }
 
-/// The seed the configuration profile gives `math.random` at every state open.
+/// Seed `math.random` with a fixed value, so draws are a pure function of the script.
+///
+/// Stock Lua seeds from the clock and a stack address when a state opens, so two identical
+/// scripts would draw different numbers. Runs after the layout guard on `randomseed` is
+/// installed, which is fine because a seed argument is passed through.
+fn seed_random(lua: &Lua) -> Result<(), Error> {
+    let math: Table = lua.globals().get("math")?;
+    let randomseed: Function = math.get("randomseed")?;
+    randomseed.call::<()>(CONFIG_RANDOM_SEED)
+}
+
+/// The seed the states give `math.random` at every open.
 const CONFIG_RANDOM_SEED: i64 = 0x6f6d_7073;
+
+/// The largest number of values one `table.unpack` call may return.
+///
+/// Stock Lua refuses only when the C stack cannot grow, which is a late and unclear error.
+/// Refusing early keeps a single call from building a very large argument list.
+const UNPACK_LIMIT: i128 = 1 << 20;
+
+/// Wrap `table.unpack` so a huge explicit range is refused before any value is pushed.
+///
+/// Only explicit integer bounds are checked. Without an end index the length of the table
+/// decides, and that is already bounded by the memory limit.
+fn cap_unpack(lua: &Lua) -> Result<(), Error> {
+    let table: Table = lua.globals().get("table")?;
+    let original: Function = table.get("unpack")?;
+    let unpack = lua.create_function(move |_, args: MultiValue| {
+        let values: Vec<Value> = args.into_iter().collect();
+        let start = match values.get(1) {
+            None | Some(Value::Nil) => 1,
+            Some(Value::Integer(start)) => *start,
+            Some(_) => return original.call::<MultiValue>(values.into_iter().collect::<MultiValue>()),
+        };
+        if let Some(Value::Integer(end)) = values.get(2) {
+            let count = i128::from(*end) - i128::from(start) + 1;
+            if count > UNPACK_LIMIT {
+                return Err(Error::runtime(format!(
+                    "table.unpack would return {count} values, above the limit of {UNPACK_LIMIT}"
+                )));
+            }
+        }
+        original.call::<MultiValue>(values.into_iter().collect::<MultiValue>())
+    })?;
+    table.set("unpack", unpack)
+}
 
 /// Wrap `pcall` and `xpcall` so a limit abort cannot be caught.
 ///
@@ -274,7 +312,7 @@ fn clear_config(lua: &Lua) -> Result<(), Error> {
     for name in ["dofile", "loadfile", "require", "io", "debug", "package"] {
         globals.set(name, Value::Nil)?;
     }
-    text_only_load(lua)
+    Ok(())
 }
 
 /// Wrap `load` so its mode is always text.
@@ -300,26 +338,47 @@ fn text_only_load(lua: &Lua) -> Result<(), Error> {
     lua.globals().set("load", load)
 }
 
-/// Cut the layout VM to the pure subset (D17, "Stdlib subset").
+/// Cut the layout VM to the base library and the standard libraries that cannot reach the host.
+///
+/// Layouts run full Lua, so the base functions and the metatable machinery stay: `setmetatable`,
+/// `getmetatable`, the raw accessors, `load` (text only, see [`text_only_load`]), `print`,
+/// `warn`, `collectgarbage`, `_G` and `_VERSION`. `dofile`, `loadfile` and `require` read the
+/// host filesystem, so they are not in the allowlist, and `io`, `debug` and `package` are never
+/// opened. Two functions keep a guard. `string.format` refuses a width or precision above
+/// `FORMAT_LIMIT`, and `math.randomseed` refuses a call without a seed, because that call
+/// reads the clock and a layout must replay identically.
 fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     let globals = lua.globals();
     let keep = [
+        "_G",
+        "_VERSION",
         "assert",
+        "collectgarbage",
+        "coroutine",
         "error",
+        "getmetatable",
         "ipairs",
+        "load",
+        "math",
         "next",
+        "os",
         "pairs",
         "pcall",
+        "print",
+        "rawequal",
+        "rawget",
+        "rawlen",
+        "rawset",
         "select",
+        "setmetatable",
+        "string",
+        "table",
         "tonumber",
         "tostring",
         "type",
+        "utf8",
+        "warn",
         "xpcall",
-        "math",
-        "string",
-        "table",
-        "coroutine",
-        "os",
     ];
     let names: Vec<Value> = globals
         .pairs::<Value, Value>()
@@ -336,20 +395,6 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     }
 
     let string: Table = globals.get("string")?;
-    let kept_strings = ["len", "sub", "byte", "char", "format"];
-    let strings: Vec<Value> = string
-        .pairs::<Value, Value>()
-        .map(|pair| pair.map(|(key, _)| key))
-        .collect::<Result<_, _>>()?;
-    for key in strings {
-        let allowed = match &key {
-            Value::String(name) => kept_strings.contains(&&*name.to_str()?),
-            _ => false,
-        };
-        if !allowed {
-            string.set(key, Value::Nil)?;
-        }
-    }
     let original: Function = string.get("format")?;
     let format = lua.create_function(move |_, args: MultiValue| {
         if let Some(Value::String(template)) = args.front() {
@@ -360,8 +405,16 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     string.set("format", format)?;
 
     let math: Table = globals.get("math")?;
-    math.set("random", Value::Nil)?;
-    math.set("randomseed", Value::Nil)?;
+    let randomseed: Function = math.get("randomseed")?;
+    let guarded_randomseed = lua.create_function(move |_, args: MultiValue| {
+        if args.is_empty() {
+            return Err(Error::runtime(
+                "math.randomseed() without a seed reads the clock, which a layout cannot do",
+            ));
+        }
+        randomseed.call::<()>(args)
+    })?;
+    math.set("randomseed", guarded_randomseed)?;
     Ok(())
 }
 
@@ -550,11 +603,16 @@ fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Erro
 mod tests {
     use super::*;
 
+    /// A sink that drops every message, for tests that do not read the output.
+    fn quiet() -> Sink {
+        Rc::new(|_, _| {})
+    }
+
     fn lua(profile: Profile) -> Lua {
         let limits = Limits::default();
         let guard = Rc::new(Guard::new());
         guard.begin(&limits);
-        create(profile, &limits, guard).expect("the sandbox builds")
+        create(profile, &limits, guard, quiet()).expect("the sandbox builds")
     }
 
     #[test]
@@ -671,7 +729,7 @@ mod tests {
         };
         let guard = Rc::new(Guard::new());
         guard.begin(&limits);
-        let lua = create(Profile::Layout, &limits, Rc::clone(&guard)).expect("the sandbox builds");
+        let lua = create(Profile::Layout, &limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
         let error = lua.load("while true do end").exec().expect_err("the loop must abort");
         assert!(error.to_string().contains("instruction budget"), "{error}");
         assert!(guard.aborted());
@@ -967,7 +1025,7 @@ mod tests {
         std::thread::spawn(move || {
             let guard = Rc::new(Guard::new());
             guard.begin(&limits);
-            let lua = create(profile, &limits, Rc::clone(&guard)).expect("the sandbox builds");
+            let lua = create(profile, &limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
             let _ = lua.load(first).exec();
             guard.begin(&limits);
             let result = match lua.load(second).eval::<String>() {
@@ -1101,7 +1159,7 @@ mod tests {
     fn armed(profile: Profile, limits: &Limits) -> (Lua, Rc<Guard>) {
         let guard = Rc::new(Guard::new());
         guard.begin(limits);
-        let lua = create(profile, limits, Rc::clone(&guard)).expect("the sandbox builds");
+        let lua = create(profile, limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
         (lua, guard)
     }
 

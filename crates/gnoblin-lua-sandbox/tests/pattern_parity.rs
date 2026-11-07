@@ -17,7 +17,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_lua_sandbox::{Guard, Limits, Profile, create};
+use gnoblin_lua_sandbox::{Guard, Limits, LogLevel, Profile, Sink, create};
 use mlua::{Lua, LuaOptions, StdLib};
 
 /// Lua prelude prepended to every case. It renders each returned value with its type
@@ -142,7 +142,8 @@ fn stock_lua() -> Lua {
 fn sandbox_lua() -> (Lua, Rc<Guard>, Limits) {
     let limits = Limits::default();
     let guard = Rc::new(Guard::new());
-    let lua = create(Profile::Config, &limits, Rc::clone(&guard)).expect("sandbox state");
+    let sink: Sink = Rc::new(|_: LogLevel, _: &str| {});
+    let lua = create(Profile::Config, &limits, Rc::clone(&guard), sink).expect("sandbox state");
     (lua, guard, limits)
 }
 

@@ -91,7 +91,7 @@ pub(crate) struct Vm {
 impl Vm {
     pub(crate) fn new(limits: Limits, roots: LayoutRoots) -> mlua::Result<Self> {
         let guard = Rc::new(Guard::new());
-        let lua = sandbox::create(Profile::Layout, &limits, guard.clone())?;
+        let lua = sandbox::create(Profile::Layout, &limits, guard.clone(), crate::host::script_sink())?;
         let modules = Rc::new(Modules::new(roots));
         require::install(&lua, modules.clone())?;
         Ok(Self {

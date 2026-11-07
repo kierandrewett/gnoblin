@@ -14,7 +14,7 @@
 
 use std::rc::Rc;
 
-use gnoblin_lua_sandbox::{Guard, Limits, Profile, create};
+use gnoblin_lua_sandbox::{Guard, Limits, LogLevel, Profile, Sink, create};
 
 /// One probe: a name, the snippet, and whether each profile should return `true`.
 struct Case {
@@ -60,7 +60,7 @@ const CASES: &[Case] = &[
         "close attribute",
         "local closed = false do local c <close> = setmetatable({}, {__close = function() closed = true end}) end return closed",
         true,
-        false,
+        true,
     ),
     case(
         "varargs and table.pack",
@@ -68,31 +68,31 @@ const CASES: &[Case] = &[
         true,
         true,
     ),
-    // Layout has no setmetatable (D17 allowlist), so no value can carry a metamethod or a
-    // <close> handler there; the layout column is false for these rows by design.
+    // Layout runs full Lua: metatables, `<close>` and every metamethod family work there, and
+    // the instruction hook and the wall-clock deadline bound each one.
     case(
         "arithmetic metamethods",
         "local o = setmetatable({}, {__add = function() return 42 end}) return o + 1 == 42",
         true,
-        false,
+        true,
     ),
     case(
         "concat and len metamethods",
         "local o = setmetatable({}, {__concat = function() return 'c' end, __len = function() return 7 end}) return o .. '' == 'c' and #o == 7",
         true,
-        false,
+        true,
     ),
     case(
         "call metamethod",
         "local o = setmetatable({}, {__call = function() return 9 end}) return o() == 9",
         true,
-        false,
+        true,
     ),
     case(
         "__gc accepted",
         "return setmetatable({}, {__gc = function() end}) ~= nil",
         true,
-        false,
+        true,
     ),
     case(
         "closures",
@@ -112,7 +112,7 @@ const CASES: &[Case] = &[
         true,
         true,
     ),
-    case("string.upper", "return ('abc'):upper() == 'ABC'", true, false),
+    case("string.upper", "return ('abc'):upper() == 'ABC'", true, true),
     case(
         "integer for-loop at maxinteger",
         "local n = 0 for i = math.maxinteger - 2, math.maxinteger do n = n + 1 end return n == 3",
@@ -141,22 +141,22 @@ const CASES: &[Case] = &[
         true,
         true,
     ),
-    case("rawget", "return rawget({5}, 1) == 5", true, false),
+    case("rawget", "return rawget({5}, 1) == 5", true, true),
     case(
         "getmetatable and setmetatable",
         "return getmetatable(setmetatable({}, {})) ~= nil",
         true,
-        false,
+        true,
     ),
-    case("load of text", "return load('return 1')() == 1", true, false),
-    case("load refuses binary", "return load('\\27Lua') == nil", true, false),
+    case("load of text", "return load('return 1')() == 1", true, true),
+    case("load refuses binary", "return load('\\27Lua') == nil", true, true),
     case(
         "collectgarbage",
         "return type(collectgarbage) == 'function'",
         true,
-        false,
+        true,
     ),
-    case("print", "return type(print) == 'function'", true, false),
+    case("print", "return type(print) == 'function'", true, true),
     // Coroutines (section 2.6, the coroutine library).
     case("coroutine library", "return type(coroutine) == 'table'", true, true),
     // The os library keeps its host-clock and pure-time functions. The layout profile
@@ -187,27 +187,22 @@ const CASES: &[Case] = &[
         "string.find",
         "return string.find('abc', 'b', 1, true) == 2",
         true,
-        false,
-    ),
-    case(
-        "string.match",
-        "return string.match('abc', '%a+') == 'abc'",
         true,
-        false,
     ),
+    case("string.match", "return string.match('abc', '%a+') == 'abc'", true, true),
     case(
         "string.gmatch",
         "local n = 0 for _ in string.gmatch('ab', '.') do n = n + 1 end return n == 2",
         true,
-        false,
+        true,
     ),
     case(
         "string.gsub",
         "return (string.gsub('abc', 'b', 'x')) == 'axc'",
         true,
-        false,
+        true,
     ),
-    case("string.rep", "return string.rep('ab', 2) == 'abab'", true, false),
+    case("string.rep", "return string.rep('ab', 2) == 'abab'", true, true),
     case(
         "string.format bounded",
         "return string.format('%5.2f', 1.5) == ' 1.50'",
@@ -247,9 +242,9 @@ const CASES: &[Case] = &[
         true,
         true,
     ),
-    case("math.random", "return math.random(1, 1) == 1", true, false),
+    case("math.random", "return math.random(1, 1) == 1", true, true),
     // The utf8 library.
-    case("utf8.len", "return utf8.len('h\\u{20AC}') == 2", true, false),
+    case("utf8.len", "return utf8.len('h\\u{20AC}') == 2", true, true),
 ];
 
 /// The outcome of one snippet under one profile.
@@ -257,7 +252,8 @@ fn outcome(profile: Profile, snippet: &str) -> bool {
     let limits = Limits::default();
     let guard = Rc::new(Guard::new());
     guard.begin(&limits);
-    let lua = create(profile, &limits, Rc::clone(&guard)).expect("the sandbox builds");
+    let sink: Sink = Rc::new(|_: LogLevel, _: &str| {});
+    let lua = create(profile, &limits, Rc::clone(&guard), sink).expect("the sandbox builds");
     guard.begin(&limits);
     lua.load(snippet).eval::<bool>().unwrap_or(false)
 }

@@ -244,6 +244,15 @@ pub struct RunReport {
     pub errors: Vec<ScriptError>,
 }
 
+/// The host's receiver for script `print` and `warn` output: routine output at debug level,
+/// deliberate warnings at warn level, both under the `lua` component.
+pub(crate) fn script_sink() -> gnoblin_lua_sandbox::Sink {
+    Rc::new(|level, text| match level {
+        gnoblin_lua_sandbox::LogLevel::Debug => crate::log::debug!("[script] {text}"),
+        gnoblin_lua_sandbox::LogLevel::Warn => crate::log::warn!("[script] {text}"),
+    })
+}
+
 /// The Lua host.
 pub struct Host<T: Transport> {
     lua: Lua,
@@ -278,8 +287,8 @@ impl<T: Transport + 'static> Host<T> {
             .map(|view| (view.id(), view.clone()))
             .collect();
         let guard = Rc::new(Guard::new());
-        let lua =
-            gnoblin_lua_sandbox::create(Profile::Config, &limits, Rc::clone(&guard)).map_err(HostError::Sandbox)?;
+        let lua = gnoblin_lua_sandbox::create(Profile::Config, &limits, Rc::clone(&guard), script_sink())
+            .map_err(HostError::Sandbox)?;
         let shared = Rc::new(RefCell::new(Shared {
             client,
             mirror,
