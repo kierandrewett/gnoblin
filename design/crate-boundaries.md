@@ -24,6 +24,8 @@ New crate `gnoblin-keyring-handoff` (phase 3 of `design/keyring.md`) is the wire
 
 New crate `pam-gnoblin-keyring` (phase 3 of `design/keyring.md`) is the PAM module. It names only `gnoblin-keyring-handoff` among workspace crates, so it cannot reach the store. `xtask/src/deps.rs` rule `pam-gnoblin-keyring-isolation` enforces this.
 
+New crate `gnoblin-service-sessionidle` (`org.gnoblin.SessionIdle`, decision 7 of `design/runtime-surface-plan.md` section 6) is a services-role agent served on the ScreenSaver connection. It names only `gnoblin-model`, `gnoblin-service-core`, `gnoblin-log` and the test kit among workspace crates. `xtask/src/deps.rs` rule `service-sessionidle-isolation` enforces this. It is new behaviour, not a split, so it is not in the table below.
+
 ## Flagged splits
 
 | Crate               | Module                                       | Lines                   | Heavy deps it alone pulls       | Rule   | Proposed crate           |

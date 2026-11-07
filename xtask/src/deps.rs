@@ -276,6 +276,10 @@ const RULES: &[Rule] = &[
         id: "pam-gnoblin-keyring-isolation",
         check: pam_gnoblin_keyring_isolation,
     },
+    Rule {
+        id: "service-sessionidle-isolation",
+        check: service_sessionidle_isolation,
+    },
 ];
 
 /// One broken edge.
@@ -910,6 +914,27 @@ fn pam_gnoblin_keyring_isolation(package: &Package, dep: &Dep) -> Option<String>
         dep.name
     ))
 }
+
+/// The SessionIdle agent is served on the ScreenSaver connection and reads the idle object through
+/// the services role's host. It may name only the model it reads, the shared agent machinery, the
+/// logging facade and the test kit, so it cannot reach the compositor's graph directly.
+fn service_sessionidle_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != SESSION_IDLE_CRATE || !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    if [SESSION_IDLE_MODEL, SESSION_IDLE_CORE, LOG_CRATE, SESSION_IDLE_TESTKIT].contains(&dep.name.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "`{SESSION_IDLE_CRATE}` may depend only on `{SESSION_IDLE_MODEL}`, `{SESSION_IDLE_CORE}`, `{LOG_CRATE}` and `{SESSION_IDLE_TESTKIT}` among workspace crates, not `{}`",
+        dep.name
+    ))
+}
+
+const SESSION_IDLE_CRATE: &str = "gnoblin-service-sessionidle";
+const SESSION_IDLE_MODEL: &str = "gnoblin-model";
+const SESSION_IDLE_CORE: &str = "gnoblin-service-core";
+const SESSION_IDLE_TESTKIT: &str = "gnoblin-service-testkit";
 
 const KEYRING_HANDOFF_CRATE: &str = "gnoblin-keyring-handoff";
 const PAM_KEYRING_CRATE: &str = "pam-gnoblin-keyring";

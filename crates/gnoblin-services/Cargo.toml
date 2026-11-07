@@ -28,6 +28,8 @@ gnoblin-service-core = { path = "../gnoblin-service-core" }
 gnoblin-service-polkit = { path = "../gnoblin-service-polkit" }
 # The ScreenSaver agent: the role serves it and offers its inhibits.
 gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
+# The SessionIdle agent: served on the ScreenSaver connection, fed from the idle object.
+gnoblin-service-sessionidle = { path = "../gnoblin-service-sessionidle" }
 # The GeoClue agent: the services role links it, and the session binary reaches it through there.
 gnoblin-service-location = { path = "../gnoblin-service-location" }
 # The Secret Service agent: the role serves it when `keyring.provider` names Gnoblin.

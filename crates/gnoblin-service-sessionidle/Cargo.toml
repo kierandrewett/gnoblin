@@ -1,0 +1,27 @@
+[package]
+name = "gnoblin-service-sessionidle"
+description = "The SessionIdle agent: org.gnoblin.SessionIdle, the idle state as a D-Bus interface."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The model the idle object is read through: its observations, values and type keys.
+gnoblin-model = { path = "../gnoblin-model" }
+# The shared agent machinery: the host the agent reaches the compositor through.
+gnoblin-service-core = { path = "../gnoblin-service-core" }
+# The interface is an object on the session bus, served through zbus on the ScreenSaver
+# connection, so a caller reaches it by the name `org.freedesktop.ScreenSaver` owns.
+zbus.workspace = true
+# One blocking wait per bus call and per signal: the role has no async runtime of its own.
+futures-lite.workspace = true
+# Every failed read and every refused emit is logged once.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[dev-dependencies]
+# The private bus the D-Bus tests start for themselves, shared with the other service crates.
+gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
+
+[lints]
+workspace = true

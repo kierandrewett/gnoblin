@@ -74,6 +74,7 @@ members = [
     "crates/gnoblin-service-location",
     "crates/gnoblin-service-polkit",
     "crates/gnoblin-service-screensaver",
+    "crates/gnoblin-service-sessionidle",
     "crates/gnoblin-service-testkit",
     "crates/gnoblin-services",
     "crates/gnoblin-session",

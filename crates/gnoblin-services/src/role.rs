@@ -55,6 +55,7 @@ use gnoblin_types::Version;
 use zbus::Connection;
 
 use gnoblin_service_screensaver::ScreenSaver;
+use gnoblin_service_sessionidle::SessionIdle;
 
 use crate::log;
 
@@ -171,6 +172,7 @@ impl Role {
         log::info!(slots = ?holding.iter().map(|slot| slot.name()).collect::<Vec<_>>(),
             polkit = agents.polkit.describe(),
             screensaver = agents.screensaver.is_some(),
+            session_idle = agents.session_idle.is_some(),
             linked = agents.linked.len(),
             "serving"
         );
@@ -196,6 +198,8 @@ impl Role {
 struct Agents {
     polkit: PolkitSlot,
     screensaver: Option<(ScreenSaver, Connection)>,
+    /// Served on the ScreenSaver connection, so it exists only when that agent does.
+    session_idle: Option<SessionIdle>,
     linked: Vec<Box<dyn LinkedAgent>>,
 }
 
@@ -206,9 +210,16 @@ impl Agents {
             return Agents::default();
         }
         let tick = Tick::new(u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX));
+        let screensaver = gnoblin_service_screensaver::start(host);
+        // The idle object is read once here, which is the subscription that keeps its
+        // observations coming on this connection; `dispatch` folds them from then on.
+        let session_idle = screensaver
+            .as_ref()
+            .and_then(|(_, connection)| gnoblin_service_sessionidle::serve(host, connection));
         Agents {
             polkit: start_polkit(host, tick),
-            screensaver: gnoblin_service_screensaver::start(host),
+            screensaver,
+            session_idle,
             linked: start_linked(host, tick, linked),
         }
     }
@@ -216,9 +227,14 @@ impl Agents {
     /// Deliver one event to whichever agent owns the request it names.
     fn dispatch(&self, event: gnoblin_client::Event, host: &Host) {
         match event {
-            gnoblin_client::Event::Model(_) => {
-                // The services role mirrors no object state: it acts on requests, and the
-                // graph it would subscribe to is the shells' and `gnoblinctl`'s.
+            gnoblin_client::Event::Model(observation) => {
+                // The services role mirrors object state only for the agents that serve
+                // it: the idle object feeds SessionIdle, and nothing else is kept here.
+                if let Some(session_idle) = &self.session_idle
+                    && let Some(activity) = session_idle.observe(&observation)
+                {
+                    session_idle.publish(activity);
+                }
             }
             gnoblin_client::Event::RequestOffered { request, slot, .. } => {
                 // This role provides the slot and draws nothing, so the offer ends here
