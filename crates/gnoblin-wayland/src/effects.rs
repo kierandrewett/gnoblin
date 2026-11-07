@@ -10,8 +10,8 @@
 //! documented range is refused by [`Pass::validate`] and the refusal text becomes the
 //! spec's `reason`.
 
-use gnoblin_backend::render::{BlurParams, Color, Effects, Pass, Shadow};
-use gnoblin_types::Vec3;
+use gnoblin_backend::render::{BlurParams, Effects, Pass, Shadow};
+use gnoblin_types::{Color, Vec3};
 
 use crate::observation::EffectSpec;
 

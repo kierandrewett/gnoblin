@@ -44,6 +44,7 @@
 //! monotonic reading and [`Revision`] a graph history stamp: neither crate reads
 //! a clock, so the same event sequence replays to the same decisions.
 
+mod color;
 mod direction;
 mod error_code;
 mod geometry;
@@ -56,6 +57,7 @@ mod tick;
 mod transform;
 mod version;
 
+pub use color::Color;
 pub use direction::{Axis, Corner, Direction, Edge};
 pub use error_code::{ErrorCode, InvalidErrorCode, is_error_code};
 pub use geometry::{Insets, Point, PointF, Rect, RectF, Size, Vec3};

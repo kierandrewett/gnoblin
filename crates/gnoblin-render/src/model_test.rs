@@ -16,9 +16,11 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_types::Color;
+
 use crate::{
-    Color, Easing, NodeId, NodeSpec, OutputId, PropertyValue, Rect, Scene, TrackId, TrackSpec, TrackStart, TweenPlayer,
-    Vec3, VisualProperty,
+    Easing, NodeId, NodeSpec, OutputId, PropertyValue, Rect, Scene, TrackId, TrackSpec, TrackStart, TweenPlayer, Vec3,
+    VisualProperty,
 };
 
 /// The seed; the same sequence runs on every build.

@@ -11,8 +11,8 @@
 //! into one numeric channel would make a wrong-kind assignment a runtime
 //! surprise instead of a typed refusal.
 
-use crate::color::Color;
 use crate::transform::VisualTransform;
+use gnoblin_types::Color;
 
 /// The kind of value a property accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

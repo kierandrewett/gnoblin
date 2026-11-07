@@ -18,9 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_types::{RectF, Unsupported3d, Unsupported3dField, Vec3};
-
-use crate::color::Color;
+use gnoblin_types::{Color, RectF, Unsupported3d, Unsupported3dField, Vec3};
 
 /// The largest number of passes a node may carry.
 ///

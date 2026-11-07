@@ -18,9 +18,7 @@
 //! these values ([`crate::matrix`]) and refuses only a result that is not finite
 //! or not invertible.
 
-use gnoblin_types::Transform;
-
-use crate::color::Color;
+use gnoblin_types::{Color, Transform};
 
 /// A node's transform plus the visual properties the scene layers on top.
 #[derive(Clone, Copy, Debug, PartialEq)]

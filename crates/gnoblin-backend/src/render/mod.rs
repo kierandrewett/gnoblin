@@ -73,7 +73,7 @@
 //!
 //! # Colour
 //!
-//! Every colour crosses this boundary in one form: [`gnoblin_render::Color`], linear
+//! Every colour crosses this boundary in one form: [`gnoblin_types::Color`], linear
 //! components from 0 to 1 where the stored values are display sRGB. A renderer
 //! clamps at draw time, so an overshooting animation cannot produce an invalid
 //! colour, and nothing here applies a transfer function: colour management is
@@ -117,8 +117,8 @@ pub use error::RenderError;
 pub use frame::{Layer, OutputFrame, Overlay, Solid, Surface};
 /// The GLES renderer.
 pub use gles::Gles;
-/// Colour and matrix types shared with the scene crate.
-pub use gnoblin_render::{BlurParams, Color, Effects, MAX_PASSES, Mat4, Pass, Shadow};
+/// Matrix and effect types shared with the scene crate.
+pub use gnoblin_render::{BlurParams, Effects, MAX_PASSES, Mat4, Pass, Shadow};
 /// The readback pixels of a frame.
 pub use image::Image;
 /// The enum that dispatches to each backend, and its kind selector.

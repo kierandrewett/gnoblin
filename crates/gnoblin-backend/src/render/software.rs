@@ -63,8 +63,7 @@ use smithay::backend::renderer::{
 use smithay::reexports::pixman::Image as PixmanImage;
 use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as PhysicalSize, Transform};
 
-use gnoblin_render::Color;
-use gnoblin_types::{Scale, Size};
+use gnoblin_types::{Color, Scale, Size};
 
 use crate::render::RenderError;
 use crate::render::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, View};

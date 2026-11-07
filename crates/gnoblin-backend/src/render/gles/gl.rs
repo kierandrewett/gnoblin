@@ -30,8 +30,8 @@ use smithay::backend::renderer::Texture as _;
 use smithay::backend::renderer::gles::{GlesError, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
 
-use gnoblin_render::{Color, ResolvedUniform};
-use gnoblin_types::{Rect, Size};
+use gnoblin_render::ResolvedUniform;
+use gnoblin_types::{Color, Rect, Size};
 
 use crate::render::RenderError;
 use crate::render::shader::uniforms::{UniformLayout, Uniforms};

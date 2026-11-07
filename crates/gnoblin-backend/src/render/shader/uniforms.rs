@@ -22,8 +22,8 @@
 //!    [`UniformLayout::pack`] refuses a value the compiled program did not declare with that
 //!    type: `gles::tests::a_user_shader_refuses_a_mistyped_uniform`.
 
-use gnoblin_render::{Color, ResolvedUniform, UniformType, UniformValue};
-use gnoblin_types::Rect;
+use gnoblin_render::{ResolvedUniform, UniformType, UniformValue};
+use gnoblin_types::{Color, Rect};
 
 use super::error::{ShaderError, ShaderOrigin, Stage};
 

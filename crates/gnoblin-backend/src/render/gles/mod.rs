@@ -109,8 +109,8 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::{Physical, Rectangle};
 
-use gnoblin_render::{Color, Effects, Mat4, Pass, UniformSchema};
-use gnoblin_types::{Rect, RectF, Scale, Size};
+use gnoblin_render::{Effects, Mat4, Pass, UniformSchema};
+use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
 use crate::render::RenderError;
 use crate::render::frame::{Layer, Model, OutputFrame, Overlay, Surface};

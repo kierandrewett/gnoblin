@@ -29,9 +29,8 @@
 use std::rc::Rc;
 
 use ash::vk;
-
-use gnoblin_render::Color;
-use gnoblin_types::{Rect, Scale, Size};
+use gnoblin_log::warn_in;
+use gnoblin_types::{Color, Rect, Scale, Size};
 
 use super::Vulkan;
 use super::context::{SHM_FORMAT, TARGET_FORMAT, VkBuffer, VkContext, VkImage, colour_range};

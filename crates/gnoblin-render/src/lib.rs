@@ -142,7 +142,7 @@
 //!   [`Easing::Spring`].
 
 mod camera;
-mod color;
+
 mod damage;
 mod effect;
 mod id;
@@ -157,8 +157,7 @@ mod model_test;
 
 /// Projection types: the camera, its projection and its error.
 pub use camera::{Camera, CameraError, Projection};
-/// The RGBA colour type used for backgrounds and tints.
-pub use color::Color;
+
 /// Damage rectangles per output and the merge helper.
 pub use damage::{Damage, OutputDamage, merge_rects};
 /// Per-node visual effects (blur, shadow, custom shader) and their limits.

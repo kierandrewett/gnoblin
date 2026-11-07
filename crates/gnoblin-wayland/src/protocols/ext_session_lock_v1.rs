@@ -84,12 +84,12 @@ use smithay::wayland::session_lock::{
     LockSurface, LockSurfaceConfigure, SessionLockHandler, SessionLockManagerState, SessionLocker,
 };
 
-use gnoblin_backend::render::{Color, OutputFrame};
+use gnoblin_backend::render::OutputFrame;
 use gnoblin_lock::{
     Capture, CaptureStream, Delivery, Effect as LockEffect, Event as LockEvent, InputSource, Lock, RejectReason,
     State as LockState, Subject,
 };
-use gnoblin_types::{ClientId, OutputId, Rect};
+use gnoblin_types::{ClientId, Color, OutputId, Rect};
 
 use crate::State;
 

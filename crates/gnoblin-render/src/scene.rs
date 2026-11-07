@@ -1149,7 +1149,7 @@ mod tests {
                 blur: 10.0,
                 spread: 0.0,
                 opacity: 0.5,
-                color: crate::color::Color::BLACK,
+                color: gnoblin_types::Color::BLACK,
             }))
             .expect("shadow");
         scene.set_effects(node, effects).expect("effects");

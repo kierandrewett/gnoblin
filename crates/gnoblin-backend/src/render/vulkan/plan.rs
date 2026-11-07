@@ -27,8 +27,7 @@
 //! rectangle and the viewport, three columns of an optional projection and its parameters.
 //! A flat quad leaves the projection empty and its flag clear.
 
-use gnoblin_render::Color;
-use gnoblin_types::{Rect, RectF, Scale, Size};
+use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};

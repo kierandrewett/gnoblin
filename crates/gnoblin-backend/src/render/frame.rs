@@ -49,8 +49,8 @@ use std::sync::Arc;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
-use gnoblin_render::{Color, Effects, Mat4};
-use gnoblin_types::{Rect, RectF};
+use gnoblin_render::{Effects, Mat4};
+use gnoblin_types::{Color, Rect, RectF};
 
 use super::image::Image;
 

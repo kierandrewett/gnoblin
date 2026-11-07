@@ -779,11 +779,11 @@ mod tests {
             if !self.changed {
                 return false;
             }
-            frame.set_background(gnoblin_render::Color::BLACK);
+            frame.set_background(gnoblin_types::Color::BLACK);
             frame.push_damage(Rect::new(0, 0, 4, 4));
             frame.push_layer(Layer::Solid(Solid::new(
                 Rect::new(0, 0, 4, 4),
-                gnoblin_render::Color::from_rgba8(255, 0, 0, 255),
+                gnoblin_types::Color::from_rgba8(255, 0, 0, 255),
             )));
             true
         }

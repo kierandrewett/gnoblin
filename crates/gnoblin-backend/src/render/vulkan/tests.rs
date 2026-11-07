@@ -20,8 +20,8 @@
 //! reports.
 
 use ash::vk;
-use gnoblin_render::{Color, Effects};
-use gnoblin_types::{Rect, RectF, Scale, Size};
+use gnoblin_render::Effects;
+use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::Transform;
 
 use super::harness::{BufferSpec, ShmClient};
