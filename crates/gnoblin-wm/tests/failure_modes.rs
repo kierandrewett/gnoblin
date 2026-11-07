@@ -1391,3 +1391,206 @@ fn a_workspace_switch_reports_which_way_the_new_workspace_lies() {
     );
     check(&wm);
 }
+
+// Moving a window to another workspace takes its transient children with it: a transient is
+// always on its parent's workspace, so moving the parent must not leave a dialog stranded.
+#[test]
+fn moving_a_parent_to_another_workspace_takes_its_transient_with_it() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    wm.apply(Event::WindowOpened(
+        WindowSpec::transient(window(2), "org.example.App", window(1)).with_requested(Rect::new(0, 0, 300, 200)),
+    ));
+    let effects = wm.apply(Event::MoveToWorkspace {
+        window: window(1),
+        workspace: WorkspaceId::new(2),
+    });
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(2)));
+    assert_eq!(wm.window(window(2)).map(|w| w.workspace), Some(WorkspaceId::new(2)));
+    assert_eq!(visibility(&effects, window(1)), Some(false));
+    assert_eq!(visibility(&effects, window(2)), Some(false));
+    assert_eq!(
+        wm.focused(),
+        None,
+        "nothing visible on the active workspace takes focus"
+    );
+    check(&wm);
+}
+
+// A transient cannot leave its parent's workspace on its own, because that would break the
+// rule that a transient shares its parent's workspace. The move is refused and nothing changes.
+#[test]
+fn a_transient_cannot_leave_its_parents_workspace_on_its_own() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    wm.apply(Event::WindowOpened(
+        WindowSpec::transient(window(2), "org.example.App", window(1)).with_requested(Rect::new(0, 0, 300, 200)),
+    ));
+    let effects = wm.apply(Event::MoveToWorkspace {
+        window: window(2),
+        workspace: WorkspaceId::new(2),
+    });
+    assert!(
+        effects.contains(&Effect::Rejected {
+            reason: Rejection::TransientFollowsParent(window(2)),
+        }),
+        "the caller is told the transient must follow its parent: {effects:?}"
+    );
+    assert_eq!(wm.window(window(2)).map(|w| w.workspace), Some(WorkspaceId::new(1)));
+    check(&wm);
+}
+
+#[test]
+fn moving_an_unknown_window_or_to_an_unknown_workspace_is_rejected() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    let effects = wm.apply(Event::MoveToWorkspace {
+        window: window(9),
+        workspace: WorkspaceId::new(2),
+    });
+    assert!(effects.contains(&Effect::Rejected {
+        reason: Rejection::UnknownWindow(window(9)),
+    }));
+    let effects = wm.apply(Event::MoveToWorkspace {
+        window: window(1),
+        workspace: WorkspaceId::new(99),
+    });
+    assert!(effects.contains(&Effect::Rejected {
+        reason: Rejection::UnknownWorkspace(WorkspaceId::new(99)),
+    }));
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(1)));
+    check(&wm);
+}
+
+// Moving a window to the workspace it is already on is not an error, and changes nothing.
+#[test]
+fn moving_to_the_current_workspace_changes_nothing() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    let effects = wm.apply(Event::MoveToWorkspace {
+        window: window(1),
+        workspace: WorkspaceId::new(1),
+    });
+    assert!(
+        !effects.iter().any(|effect| matches!(effect, Effect::Rejected { .. })),
+        "a no-op move is not reported as a rejection: {effects:?}"
+    );
+    assert_eq!(
+        visibility(&effects, window(1)),
+        None,
+        "the window is not hidden or shown again"
+    );
+    assert_eq!(wm.window(window(1)).map(|w| w.workspace), Some(WorkspaceId::new(1)));
+    check(&wm);
+}
+
+// A focused window that leaves the active workspace must not keep focus, or input would go to a
+// window the user cannot see.
+#[test]
+fn moving_the_focused_window_away_hands_focus_to_a_visible_window() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    open(&mut wm, 2);
+    focus(&mut wm, 1, ActivationDecision::Allow);
+    assert_eq!(wm.focused(), Some(window(1)));
+    wm.apply(Event::MoveToWorkspace {
+        window: window(1),
+        workspace: WorkspaceId::new(2),
+    });
+    assert_eq!(wm.focused(), Some(window(2)));
+    check(&wm);
+}
+
+#[test]
+fn moving_a_window_to_an_unknown_output_is_rejected() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    let effects = wm.apply(Event::MoveToOutput {
+        window: window(1),
+        output: OutputId::new(7),
+    });
+    assert!(effects.contains(&Effect::Rejected {
+        reason: Rejection::UnknownOutput(OutputId::new(7)),
+    }));
+    assert_eq!(wm.window(window(1)).map(|w| w.output), Some(Some(OutputId::new(0))));
+    check(&wm);
+}
+
+// The window keeps its size and is pulled inside the new output's work area, the same way a window
+// is reshaped when its output's layout changes.
+#[test]
+fn moving_a_window_to_another_output_reshapes_it_into_that_work_area() {
+    let mut wm = default_wm();
+    wm.apply(Event::OutputConnected {
+        output: OutputId::new(1),
+        rect: Rect::new(1920, 0, 1280, 720),
+    });
+    open(&mut wm, 1);
+    let effects = wm.apply(Event::MoveToOutput {
+        window: window(1),
+        output: OutputId::new(1),
+    });
+    assert_eq!(wm.window(window(1)).map(|w| w.output), Some(Some(OutputId::new(1))));
+    assert_eq!(configured(&effects, window(1)), Some(Rect::new(1920, 0, 600, 400)));
+    check(&wm);
+}
+
+#[test]
+fn a_maximised_window_fills_the_work_area_of_its_new_output() {
+    let mut wm = default_wm();
+    wm.apply(Event::OutputConnected {
+        output: OutputId::new(1),
+        rect: Rect::new(1920, 0, 1280, 720),
+    });
+    open(&mut wm, 1);
+    wm.apply(Event::ToggleMaximise { window: window(1) });
+    wm.apply(Event::MoveToOutput {
+        window: window(1),
+        output: OutputId::new(1),
+    });
+    assert_eq!(
+        wm.window(window(1)).map(|w| w.geometry),
+        Some(Rect::new(1920, 0, 1280, 720))
+    );
+    check(&wm);
+}
+
+#[test]
+fn a_fullscreen_window_is_not_moved_between_outputs() {
+    let mut wm = default_wm();
+    wm.apply(Event::OutputConnected {
+        output: OutputId::new(1),
+        rect: Rect::new(1920, 0, 1280, 720),
+    });
+    open(&mut wm, 1);
+    wm.apply(Event::ToggleFullscreen { window: window(1) });
+    let effects = wm.apply(Event::MoveToOutput {
+        window: window(1),
+        output: OutputId::new(1),
+    });
+    assert!(effects.contains(&Effect::Rejected {
+        reason: Rejection::NotFloating(window(1)),
+    }));
+    assert_eq!(wm.window(window(1)).map(|w| w.output), Some(Some(OutputId::new(0))));
+    check(&wm);
+}
+
+// A transient follows its parent to another output, so the pair stays together.
+#[test]
+fn a_transient_follows_its_parent_to_another_output() {
+    let mut wm = default_wm();
+    wm.apply(Event::OutputConnected {
+        output: OutputId::new(1),
+        rect: Rect::new(1920, 0, 1280, 720),
+    });
+    open(&mut wm, 1);
+    wm.apply(Event::WindowOpened(
+        WindowSpec::transient(window(2), "org.example.App", window(1)).with_requested(Rect::new(0, 0, 300, 200)),
+    ));
+    wm.apply(Event::MoveToOutput {
+        window: window(1),
+        output: OutputId::new(1),
+    });
+    assert_eq!(wm.window(window(2)).map(|w| w.output), Some(Some(OutputId::new(1))));
+    check(&wm);
+}

@@ -172,6 +172,12 @@ pub enum Event {
     MoveResize { window: WindowId, geometry: Rect },
     /// Move focus to the nearest visible window in a direction from the focused one.
     FocusDirection { direction: gnoblin_types::Direction },
+    /// Move a window to another workspace. Its transient children move with it, and a
+    /// transient cannot be moved on its own, because it shares its parent's workspace.
+    MoveToWorkspace { window: WindowId, workspace: WorkspaceId },
+    /// Move a window to another output, reshaping it into that output's work area. Its
+    /// transient children follow it.
+    MoveToOutput { window: WindowId, output: OutputId },
 }
 
 /// Why an event changed nothing.
@@ -204,6 +210,9 @@ pub enum Rejection {
     NotVisible(WindowId),
     /// The window is fullscreen, so a drag, snap or maximise does not apply.
     NotFloating(WindowId),
+    /// The window is a transient, so it moves only with its parent. Moving it alone would
+    /// put it on a different workspace from the parent it is attached to.
+    TransientFollowsParent(WindowId),
     /// The workspace's layout does not allow toggling a window's placement.
     NoFloatToggle(WindowId),
     /// The window is a transient, which always floats and cannot be tiled.

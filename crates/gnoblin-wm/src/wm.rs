@@ -463,6 +463,8 @@ impl Wm {
             Event::Unsnap { window } => self.unsnap(window),
             Event::MoveResize { window, geometry } => self.move_resize(window, geometry),
             Event::FocusDirection { direction } => self.focus_direction(direction),
+            Event::MoveToWorkspace { window, workspace } => self.move_to_workspace(window, workspace),
+            Event::MoveToOutput { window, output } => self.move_to_output(window, output),
         }
     }
 
@@ -1877,6 +1879,96 @@ impl Wm {
         Self::configured_with(id, window.geometry, window.state)
     }
 
+    /// Moves a window and its transient family to another workspace.
+    ///
+    /// A transient shares its parent's workspace, so it is refused on its own; the parent
+    /// carries it. Moving a window to the workspace it is on changes nothing.
+    fn move_to_workspace(&mut self, id: WindowId, workspace: WorkspaceId) -> Vec<Effect> {
+        let Some(window) = self.windows.get(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
+        if !self.workspaces.contains(workspace) {
+            return vec![Effect::rejected(Rejection::UnknownWorkspace(workspace))];
+        }
+        if window.workspace == workspace {
+            return Vec::new();
+        }
+        if window.transient_for.is_some() {
+            return vec![Effect::rejected(Rejection::TransientFollowsParent(id))];
+        }
+        let family = self.transient_family(id);
+        let before: Vec<(WindowId, bool)> = self
+            .windows
+            .keys()
+            .map(|window| (*window, self.is_visible(*window)))
+            .collect();
+        for member in family {
+            if let Some(window) = self.windows.get_mut(&member) {
+                window.workspace = workspace;
+            }
+        }
+        let mut effects = Vec::new();
+        for (window, was_visible) in before {
+            if self.is_visible(window) != was_visible {
+                effects.push(Effect::visible(window, !was_visible));
+            }
+        }
+        effects.extend(self.refocus());
+        effects
+    }
+
+    /// Moves a window and its transient family to another output.
+    ///
+    /// Each moved window is reshaped into the new output's work area, as it is when its
+    /// own output's layout changes, so a maximised window fills the new output. A
+    /// fullscreen window is refused: its rectangle is the monitor it is on, and moving it
+    /// is a fullscreen change, not a move.
+    fn move_to_output(&mut self, id: WindowId, output: OutputId) -> Vec<Effect> {
+        let Some(window) = self.windows.get(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
+        let Some(target) = self.output(output) else {
+            return vec![Effect::rejected(Rejection::UnknownOutput(output))];
+        };
+        if window.state.fullscreen {
+            return vec![Effect::rejected(Rejection::NotFloating(id))];
+        }
+        if window.output == Some(output) {
+            return Vec::new();
+        }
+        let (work_area, monitor) = (target.work_area(), target.rect());
+        let family = self.transient_family(id);
+        let mut effects = Vec::new();
+        for member in family {
+            let Some(window) = self.windows.get_mut(&member) else {
+                continue;
+            };
+            window.output = Some(output);
+            window.restore = window.restore.clamp_inside(work_area);
+            window.geometry = reshape(window.state, window.geometry, work_area, monitor);
+            effects.push(Effect::configure(member, window.geometry, window.state));
+        }
+        effects
+    }
+
+    /// The window and every transient below it, parents before children.
+    ///
+    /// The walk is breadth-first and skips windows already listed, so a malformed cycle of
+    /// transient links cannot loop it.
+    fn transient_family(&self, root: WindowId) -> Vec<WindowId> {
+        let mut family = vec![root];
+        let mut next = 0;
+        while let Some(&parent) = family.get(next) {
+            next += 1;
+            for window in self.windows.values() {
+                if window.transient_for == Some(parent) && !family.contains(&window.id) {
+                    family.push(window.id);
+                }
+            }
+        }
+        family
+    }
+
     /// Installs `factory` as the source of one layout engine per workspace, called
     /// with the workspace each engine is for, and submits the arrangement of every
     /// workspace. Placements arrive on the next [`Event::Frame`]; the returned
@@ -2189,6 +2281,8 @@ fn changes_tiling(event: &Event) -> bool {
             | Event::ToggleFullscreen { .. }
             | Event::SnapRequested { .. }
             | Event::Unsnap { .. }
+            | Event::MoveToWorkspace { .. }
+            | Event::MoveToOutput { .. }
     )
 }
 
