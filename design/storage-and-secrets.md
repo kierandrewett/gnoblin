@@ -125,19 +125,23 @@ The engine crate is shared code. It is not a shared process. The compositor link
 `log`, and it should never open a vault. A rule in `xtask/src/deps.rs` can stop any role but services from
 calling the vault constructors. That is a build-time rule, not a runtime boundary.
 
-**What actually enforces the separation.** Mode 0600 does not. The compositor, the runtime and the services role
-all run as the same user, so any of them (or any other process of that user) can open the vault file. Two things
-protect the secrets:
+**What separates them today: nothing at runtime.** Mode 0600 does not. The compositor, the runtime and the
+services role all run as the same user, so any of them, or any other process of that user, can open the vault
+file and can read the memory of the others unless the kernel stops it. The threat model has to include a same-user
+attacker.
+
+What the proposal relies on, none of it built or tested yet:
 
 1. The file is sealed. Without the key it is useless, and the key exists only in the services process's memory
-   while unlocked.
-2. The services process is hardened: non-dumpable, no `ptrace` attach by peers (Yama and `PR_SET_DUMPABLE`), and
-   no key in argv, environment or logs.
+   while unlocked. This holds against file theft and backup leaks, not against code running as the user.
+2. **Required controls, to implement and validate:** the services process sets `PR_SET_DUMPABLE` to 0, the
+   target distributions restrict `ptrace` between peers (Yama `ptrace_scope`), and the key never appears in
+   argv, environment or logs. Each needs a test on a target distribution before the design may say it holds.
 
-Neither stops a same-user attacker who can run code as that user and attach with enough privilege. A real
-boundary needs a separate UID for the keyring service or a credentialed broker, which is a different design.
-This proposal does not claim one. It is the same level of protection gnome-keyring gives. [INFERENCE] Whether
-the hardening in point 2 holds on the target distributions has not been tested.
+Even with those controls, a same-user attacker with enough privilege can defeat them. A real boundary needs a
+separate UID for the keyring service or a credentialed broker, which is a different design. This proposal does
+not claim one and does not claim to match another keyring's protection. The process isolation is unresolved until
+the controls above are validated.
 
 ### Shared API with separate sealed storage (variant A2)
 
