@@ -213,11 +213,11 @@ Foundations first, then the window and process surface, then animation, input, C
 
 ### S12. `org.gnoblin.Compositor` and CheckPermission
 
-- **Goal:** `CheckPermission` answers from the authority model in `gnoblin-authority`.
-- **Files:** `gnoblin-authority`, a new service crate, `gnoblin-services` registration.
-- **Schema:** the permission set (decision 6).
-- **Tests first:** a request from an unattributed process is denied; a permission never comes from an app ID or title.
-- **Docs:** `docs/dbus/` (new page for the Compositor interface).
+- **Status:** deferred, undecided. Kieran has not chosen between the two options below. Do not start S12 until he does.
+- **Option A, keep the interface:** `org.gnoblin.Compositor` at `/org/gnoblin/Compositor` exposes `CheckPermission`, answered from `gnoblin-authority`. Files: `gnoblin-authority`, a new service crate, `gnoblin-services` registration. Needs the permission set (decision 6). Affects: `docs/dbus/index.md` (new Compositor page; the current promise becomes true), `design/docs-parity/api.md` rows 7 and 245 (still MISSING), `design/portal-policy-contract.md:30` (stays as written).
+- **Option B, remove the interface:** the portal provider owns permissions, as proposed in `design/portal-policy-contract.md`. `CheckPermission` and `org.gnoblin.Compositor` are removed, not built. Affects: `docs/dbus/index.md` (Compositor section removed), `design/docs-parity/api.md` rows 7 and 245 (closed as removed), `design/portal-policy-contract.md:30` (Compositor row changes to match its D-Bus removal row), and this plan's S12 row.
+- **Tests first (either option):** a request from an unattributed process is denied; a permission never comes from an app ID or title.
+- **Docs (option A only):** `docs/dbus/` new page for the Compositor interface.
 
 ### S13. ScreenSaver drift
 
@@ -262,7 +262,7 @@ Kieran delegated these to the lanes. Each one is recorded here so a later slice 
 3. **Window control authority.** `close`, `minimise`, `move` and `resize` are for the shell only, gated by attribution. Extensions need a granted power later.
 4. **Shortcut surface.** Config only for now. Lua `shortcut.bind` and `input.grab` are out of scope for this port.
 5. **gnoblinctl verbs.** Keep the generated object verbs. Implement the small real set (`status`, `version`, `ping`, `reload`, `config get`, `config validate`). Delete the rest from `docs/cli` until built.
-6. **CheckPermission.** Deferred. S12 has not started.
+6. **CheckPermission.** Undecided, needs Kieran. Option A keeps `org.gnoblin.Compositor.CheckPermission` in the services role. Option B removes it, with the portal provider owning permissions per `design/portal-policy-contract.md`. S12 stays deferred until he picks one. See the S12 section for what each option affects.
 7. **SessionIdle host.** A new service crate in the services role, `gnoblin-service-sessionidle`, served on the ScreenSaver connection.
 
 ## 7. Parallel dispatch
