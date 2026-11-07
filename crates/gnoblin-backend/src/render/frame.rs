@@ -224,6 +224,79 @@ impl Overlay {
     }
 }
 
+/// The smallest magnification a [`View`] may ask for: no magnification at all.
+pub const MIN_ZOOM: f32 = 1.0;
+
+/// The largest magnification a [`View`] may ask for.
+///
+/// Past this a source rectangle is a few pixels across and the picture is only blocks.
+pub const MAX_ZOOM: f32 = 16.0;
+
+/// A magnified view of the output, drawn in place of the whole frame.
+///
+/// The renderer shows the source rectangle of size `output / zoom` centred on
+/// (`centre_x`, `centre_y`) in the output's logical space, clamped so it never leaves
+/// the output. The view samples only the frame of its own output, so it can never show
+/// another output, or a lock screen drawn on one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct View {
+    /// The magnification, between [`MIN_ZOOM`] and [`MAX_ZOOM`].
+    pub zoom: f32,
+    /// The point of the output that stays at the middle of the view, x.
+    pub centre_x: f32,
+    /// The point of the output that stays at the middle of the view, y.
+    pub centre_y: f32,
+}
+
+impl View {
+    /// A view, or [`None`] when the zoom is outside the allowed range or a value is not finite.
+    ///
+    /// The range test is written so that `NaN` fails it.
+    #[must_use]
+    pub fn new(zoom: f32, centre_x: f32, centre_y: f32) -> Option<Self> {
+        let valid = (MIN_ZOOM..=MAX_ZOOM).contains(&zoom) && centre_x.is_finite() && centre_y.is_finite();
+        valid.then_some(Self {
+            zoom,
+            centre_x,
+            centre_y,
+        })
+    }
+}
+
+/// A colour matrix applied to every pixel of the frame.
+///
+/// Row `i` gives output channel `i` (red, green, blue, alpha) as the sum of the four
+/// input channels times `rows[i][0..4]`, plus the offset `rows[i][4]`. The matrix acts on
+/// straight (unpremultiplied) colour, so a renderer that stores premultiplied pixels must
+/// divide by alpha first. The presets (invert, greyscale, colour-blindness simulation)
+/// are built from this type.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColourMatrix {
+    /// The four rows, one per output channel, each with four weights and an offset.
+    pub rows: [[f32; 5]; 4],
+}
+
+impl ColourMatrix {
+    /// The matrix that leaves every colour unchanged.
+    pub const IDENTITY: Self = Self {
+        rows: [
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ],
+    };
+
+    /// A matrix from its rows, or [`None`] when any entry is not finite.
+    #[must_use]
+    pub fn new(rows: [[f32; 5]; 4]) -> Option<Self> {
+        rows.iter()
+            .flatten()
+            .all(|value| value.is_finite())
+            .then_some(Self { rows })
+    }
+}
+
 /// The frame an output draws.
 ///
 /// A frame is reused across iterations: [`OutputFrame::clear`] drops the layers but
@@ -235,6 +308,10 @@ pub struct OutputFrame {
     layers: Vec<Layer>,
     overlay: Option<Overlay>,
     cursor: Option<Overlay>,
+    /// The magnified view, `None` for the whole frame at its own scale.
+    view: Option<View>,
+    /// The colour matrix applied to the whole frame, `None` for the colours as drawn.
+    colour_matrix: Option<ColourMatrix>,
 }
 
 impl OutputFrame {
@@ -251,6 +328,8 @@ impl OutputFrame {
             layers: Vec::new(),
             overlay: None,
             cursor: None,
+            view: None,
+            colour_matrix: None,
         }
     }
 
@@ -261,6 +340,8 @@ impl OutputFrame {
         self.layers.clear();
         self.overlay = None;
         self.cursor = None;
+        self.view = None;
+        self.colour_matrix = None;
     }
 
     /// The colour behind every layer.
@@ -373,6 +454,33 @@ impl OutputFrame {
     pub fn set_cursor_image(&mut self, cursor: Option<Overlay>) {
         self.cursor = cursor;
     }
+
+    /// The magnified view, if one is set.
+    #[must_use]
+    pub fn view(&self) -> Option<View> {
+        self.view
+    }
+
+    /// Sets the magnified view, or removes it with [`None`].
+    ///
+    /// A view whose zoom is out of range, or whose centre is not finite, is dropped, so
+    /// the frame is drawn unmagnified rather than with a value a renderer cannot use.
+    pub fn set_view(&mut self, view: Option<View>) {
+        self.view = view.filter(|view| View::new(view.zoom, view.centre_x, view.centre_y).is_some());
+    }
+
+    /// The colour matrix applied to the whole frame, if one is set.
+    #[must_use]
+    pub fn colour_matrix(&self) -> Option<ColourMatrix> {
+        self.colour_matrix
+    }
+
+    /// Sets the colour matrix applied to the whole frame, or removes it with [`None`].
+    ///
+    /// A matrix with a non-finite entry is dropped, for the same reason as a view.
+    pub fn set_colour_matrix(&mut self, matrix: Option<ColourMatrix>) {
+        self.colour_matrix = matrix.filter(|matrix| ColourMatrix::new(matrix.rows).is_some());
+    }
 }
 
 #[cfg(test)]
@@ -440,5 +548,50 @@ mod tests {
         let mut frame = OutputFrame::new();
         frame.set_background(Color::new(f32::INFINITY, 0.0, 0.0, 1.0));
         assert_eq!(frame.background(), Color::BLACK);
+    }
+
+    #[test]
+    fn a_view_is_limited_to_the_zoom_range_and_finite_centres() {
+        assert!(View::new(MIN_ZOOM, 0.0, 0.0).is_some(), "no magnification is allowed");
+        assert!(View::new(MAX_ZOOM, 10.0, 10.0).is_some(), "the largest zoom is allowed");
+        assert!(View::new(0.99, 0.0, 0.0).is_none(), "below one is not a magnification");
+        assert!(View::new(16.01, 0.0, 0.0).is_none(), "above sixteen is not allowed");
+        assert!(View::new(f32::NAN, 0.0, 0.0).is_none(), "NaN zoom fails the range test");
+        assert!(
+            View::new(2.0, f32::INFINITY, 0.0).is_none(),
+            "an infinite centre is refused"
+        );
+    }
+
+    #[test]
+    fn a_view_is_set_and_cleared_with_the_frame() {
+        let mut frame = OutputFrame::new();
+        let view = View::new(2.0, 100.0, 50.0);
+        frame.set_view(view);
+        assert_eq!(frame.view(), view);
+        frame.clear();
+        assert_eq!(frame.view(), None, "clearing a frame drops its view");
+    }
+
+    #[test]
+    fn an_invalid_view_is_dropped_and_the_frame_is_not_magnified() {
+        let mut frame = OutputFrame::new();
+        frame.set_view(Some(View {
+            zoom: 40.0,
+            centre_x: 0.0,
+            centre_y: 0.0,
+        }));
+        assert_eq!(frame.view(), None, "an out-of-range zoom is never stored");
+    }
+
+    #[test]
+    fn a_colour_matrix_is_stored_only_when_every_entry_is_finite() {
+        let mut frame = OutputFrame::new();
+        frame.set_colour_matrix(ColourMatrix::new(ColourMatrix::IDENTITY.rows));
+        assert_eq!(frame.colour_matrix(), Some(ColourMatrix::IDENTITY));
+        let mut bad = ColourMatrix::IDENTITY;
+        bad.rows[2][4] = f32::NAN;
+        frame.set_colour_matrix(Some(bad));
+        assert_eq!(frame.colour_matrix(), None, "a NaN offset drops the matrix");
     }
 }
