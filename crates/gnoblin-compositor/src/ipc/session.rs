@@ -130,8 +130,8 @@ struct PublishedOutput {
     object: ObjectId,
     /// Connector name the backend reports for this output.
     name: String,
-    /// The layout name last published for this output.
-    layout: String,
+    /// The property values last published for this output, keyed by schema name.
+    fields: Fields,
 }
 
 /// What the graph last published for one window.
@@ -595,36 +595,63 @@ impl SessionSync {
     }
 
     /// Creates or updates one output object.
+    ///
+    /// A create publishes every property the schema declares, so the graph accepts the
+    /// object; an update publishes only the properties whose values moved.
     fn publish_output(&mut self, output: &ObservedOutput) -> Result<(), ModelError> {
+        let fields = Self::output_fields(output);
         let Some(previous) = self.outputs.get(&output.id).cloned() else {
-            let properties = Fields::from([
-                (member::NAME.to_owned(), Value::Text(output.name.clone())),
-                (member::LAYOUT.to_owned(), Value::Text(output.layout.clone())),
-            ]);
-            let object = self.graph.create(TypeKey::gnoblin("output"), properties)?;
+            let object = self.graph.create(TypeKey::gnoblin("output"), fields.clone())?;
             self.outputs.insert(
                 output.id,
                 PublishedOutput {
                     object,
                     name: output.name.clone(),
-                    layout: output.layout.clone(),
+                    fields,
                 },
             );
             return Ok(());
         };
-        if previous.layout != output.layout {
-            self.graph
-                .set(previous.object, member::LAYOUT, Value::Text(output.layout.clone()))?;
+        for (name, value) in &fields {
+            if previous.fields.get(name) != Some(value) {
+                self.graph.set(previous.object, name, value.clone())?;
+            }
         }
         self.outputs.insert(
             output.id,
             PublishedOutput {
-                layout: output.layout.clone(),
                 name: output.name.clone(),
+                fields,
                 ..previous
             },
         );
         Ok(())
+    }
+
+    /// The properties the `output` schema declares, from what the backend reports.
+    ///
+    /// A value the backend does not report arrives as the schema's empty default, so
+    /// nothing here is invented hardware data.
+    fn output_fields(output: &ObservedOutput) -> Fields {
+        Fields::from([
+            ("name".to_owned(), Value::Text(output.name.clone())),
+            ("make".to_owned(), Value::Text(output.make.clone())),
+            ("model".to_owned(), Value::Text(output.model.clone())),
+            (
+                "modes".to_owned(),
+                Value::List(output.modes.iter().cloned().map(Value::Text).collect()),
+            ),
+            ("mode".to_owned(), Value::Text(output.mode.clone())),
+            ("scale".to_owned(), Value::Double(output.scale.as_f64())),
+            ("transform".to_owned(), Value::Uint(u64::from(output.transform))),
+            ("primary".to_owned(), Value::Bool(output.primary)),
+            ("enabled".to_owned(), Value::Bool(output.enabled)),
+            ("x".to_owned(), Value::Int(i64::from(output.rect.x))),
+            ("y".to_owned(), Value::Int(i64::from(output.rect.y))),
+            ("width".to_owned(), Value::Uint(u64::from(output.rect.width))),
+            ("height".to_owned(), Value::Uint(u64::from(output.rect.height))),
+            ("layout".to_owned(), Value::Text(output.layout.clone())),
+        ])
     }
 
     /// Creates, changes and closes `workspace` objects to match the snapshot, and raises
@@ -868,8 +895,8 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
 #[cfg(test)]
 mod tests {
     use gnoblin_model::{Filter, Observation, Subscription, Value};
-    use gnoblin_types::{Rect, Version, WindowId};
-    use gnoblin_wayland::{ObservedWindow, SessionSnapshot};
+    use gnoblin_types::{OutputId, Rect, Scale, Version, WindowId};
+    use gnoblin_wayland::{ObservedOutput, ObservedWindow, SessionSnapshot};
 
     use super::SessionSync;
 
@@ -921,6 +948,82 @@ mod tests {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no `{ty}` opened in {observations:#?}"))
+    }
+
+    fn output(id: u64, name: &str, rect: Rect) -> ObservedOutput {
+        ObservedOutput {
+            id: OutputId::new(id),
+            name: name.to_owned(),
+            layout: "floating".to_owned(),
+            make: String::new(),
+            model: String::new(),
+            modes: vec!["1920x1080@60.000".to_owned()],
+            mode: "1920x1080@60.000".to_owned(),
+            scale: Scale::integral(1),
+            transform: 0,
+            primary: true,
+            enabled: true,
+            rect,
+        }
+    }
+
+    #[test]
+    fn an_output_carries_every_declared_property() {
+        let mut store = store();
+        let subscription = store.subscribe(Filter::All);
+        let snapshot =
+            snapshot(Vec::new(), None).with_output_layouts(vec![output(1, "DP-1", Rect::new(0, 0, 1920, 1080))]);
+        store.apply(&snapshot).expect("the graph accepts the output");
+        let observations = drained(&mut store, &subscription);
+        let view = opened(&observations, "gnoblin.output");
+        assert_eq!(view.property("name"), Some(&Value::Text("DP-1".to_owned())));
+        assert_eq!(view.property("make"), Some(&Value::Text(String::new())));
+        assert_eq!(view.property("model"), Some(&Value::Text(String::new())));
+        assert_eq!(
+            view.property("modes"),
+            Some(&Value::List(vec![Value::Text("1920x1080@60.000".to_owned())]))
+        );
+        assert_eq!(view.property("mode"), Some(&Value::Text("1920x1080@60.000".to_owned())));
+        assert_eq!(view.property("scale"), Some(&Value::Double(1.0)));
+        assert_eq!(view.property("transform"), Some(&Value::Uint(0)));
+        assert_eq!(view.property("primary"), Some(&Value::Bool(true)));
+        assert_eq!(view.property("enabled"), Some(&Value::Bool(true)));
+        assert_eq!(view.property("x"), Some(&Value::Int(0)));
+        assert_eq!(view.property("y"), Some(&Value::Int(0)));
+        assert_eq!(view.property("width"), Some(&Value::Uint(1920)));
+        assert_eq!(view.property("height"), Some(&Value::Uint(1080)));
+        assert_eq!(view.property("layout"), Some(&Value::Text("floating".to_owned())));
+    }
+
+    #[test]
+    fn a_changed_output_publishes_only_what_changed() {
+        let mut store = store();
+        let subscription = store.subscribe(Filter::All);
+        store
+            .apply(&snapshot(Vec::new(), None).with_output_layouts(vec![output(
+                1,
+                "DP-1",
+                Rect::new(0, 0, 1920, 1080),
+            )]))
+            .expect("applied");
+        drained(&mut store, &subscription);
+        let moved = ObservedOutput {
+            rect: Rect::new(1920, 0, 1920, 1080),
+            primary: false,
+            ..output(1, "DP-1", Rect::new(0, 0, 1920, 1080))
+        };
+        store
+            .apply(&snapshot(Vec::new(), None).with_output_layouts(vec![moved]))
+            .expect("applied");
+        let mut changed: Vec<String> = drained(&mut store, &subscription)
+            .into_iter()
+            .filter_map(|observation| match observation {
+                Observation::Changed { property, .. } => Some(property),
+                _ => None,
+            })
+            .collect();
+        changed.sort();
+        assert_eq!(changed, vec!["primary".to_owned(), "x".to_owned()]);
     }
 
     #[test]

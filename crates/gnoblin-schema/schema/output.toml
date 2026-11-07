@@ -3,10 +3,10 @@
 # This is the slice `org.gnome.Mutter.DisplayConfig` needs, and it exists so that
 # a monitor is an object rather than a second vocabulary beside the window one
 # (design/rust-compositor.md, "Compatibility crates" and the redirect map's
-# `DisplayConfig` row). The compositor's output lane populates it from the
-# backend; until then the object is declared and nothing publishes it, which is
-# why every adapter that reads it fails closed instead of reporting a zero-sized
-# monitor.
+# `DisplayConfig` row). The compositor publishes one `output` object per connected
+# backend output, with every property below, so a graph reader and an adapter see
+# the same monitor. A property the backend does not report carries the empty or
+# zero default the comment on it names, never invented hardware data.
 #
 # A mode is a string rather than an object because the schema has no record type
 # yet. Each entry of `modes` is `<width>x<height>@<refresh>`, which is both the

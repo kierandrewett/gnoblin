@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use gnoblin_lock::State as LockState;
-use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, Rect, Scale, WindowId, WorkspaceId};
 
 /// One window, as the server last saw it.
 #[derive(Clone, PartialEq, Debug)]
@@ -189,16 +189,38 @@ pub struct ObservedWorkspace {
     pub layout: String,
 }
 
-/// One output at one instant: its connector name and the default layout its workspaces
-/// fall back to.
+/// One output at one instant: every property the `gnoblin.output` object publishes.
+///
+/// A value the backend does not report is published as the schema's documented
+/// default (an empty string, zero or `false`), never as invented hardware data.
+/// `make` and `model` stay empty until the backend reads them from the EDID.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct ObservedOutput {
     /// The output's policy identity.
     pub id: OutputId,
-    /// The connector name of the output.
+    /// The connector name of the output, such as `DP-1`.
     pub name: String,
     /// The default layout this output's workspaces fall back to.
     pub layout: String,
+    /// The vendor, as EDID reports it. Empty when the backend has none.
+    pub make: String,
+    /// The model name. Empty when the backend has none.
+    pub model: String,
+    /// Every mode the output supports, as `<width>x<height>@<refresh>`. The backend
+    /// reports only the mode it drives, so this holds that one mode.
+    pub modes: Vec<String>,
+    /// The mode currently set; always one of `modes`.
+    pub mode: String,
+    /// The logical scale the output composes at.
+    pub scale: Scale,
+    /// The rotation and flip, in Mutter's numbering; `0` is normal.
+    pub transform: u32,
+    /// Whether this output carries the primary logical monitor.
+    pub primary: bool,
+    /// Whether the output is driving a logical monitor.
+    pub enabled: bool,
+    /// The logical rectangle the output occupies.
+    pub rect: Rect,
 }
 
 /// Where a window menu should appear, in output logical coordinates.
@@ -556,6 +578,13 @@ pub trait Observer: Send + Sync + std::fmt::Debug {
 }
 
 impl SessionSnapshot {
+    /// The same snapshot with the outputs it presents on, for a test or a recorded replay.
+    #[must_use]
+    pub fn with_output_layouts(mut self, outputs: Vec<ObservedOutput>) -> Self {
+        self.output_layouts = outputs;
+        self
+    }
+
     /// The same snapshot with a bell count, for a reader that replays events.
     ///
     /// A session builds its own snapshot; this is what a test or a recorded replay needs

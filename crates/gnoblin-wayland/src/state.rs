@@ -195,7 +195,13 @@ pub(crate) struct OutputEntry {
     /// The backend's identity for the output.
     pub(crate) backend: OutputId,
     /// The window manager's identity for it.
-    policy: OutputId,
+    pub(crate) policy: OutputId,
+    /// The mode being driven, as the backend reported it.
+    pub(crate) mode: gnoblin_output::DisplayMode,
+    /// The scale the output composes at.
+    pub(crate) scale: gnoblin_types::Scale,
+    /// Whether this output carries the layout's primary logical monitor.
+    pub(crate) primary: bool,
     /// The Smithay output, which owns the `wl_output` global.
     pub(crate) output: Output,
     /// The global the output created.
@@ -1111,6 +1117,9 @@ impl State {
                 None => self.add_output(output, monitor.rect),
             }
         }
+        for entry in &mut self.outputs {
+            entry.primary = layout.primary == Some(entry.backend);
+        }
         // The lock hears the whole layout once, after every change landed: it restarts
         // its presentation barrier from this set, so a hotplugged output is covered
         // before it shows anything.
@@ -1190,6 +1199,9 @@ impl State {
             policy,
             output: smithay_output,
             global,
+            mode: output.mode,
+            scale: output.scale,
+            primary: false,
             rect: policy_rect,
         });
     }
@@ -1818,7 +1830,10 @@ impl State {
             .collect()
     }
 
-    /// Every output with its connector name and default layout.
+    /// Every output with the properties the `output` object publishes.
+    ///
+    /// The backend reports no EDID, so `make` and `model` stay empty and `transform` is
+    /// normal: the headless and DRM paths do not rotate yet, and nothing here guesses.
     fn observed_outputs(&self) -> Vec<crate::observation::ObservedOutput> {
         let Some(control) = self.layouts.as_ref() else {
             return Vec::new();
@@ -1827,9 +1842,19 @@ impl State {
             .iter()
             .map(|entry| {
                 let name = entry.output.name();
+                let mode = observed_mode(entry.mode);
                 crate::observation::ObservedOutput {
                     id: entry.backend,
                     layout: control.output_layout(&name),
+                    make: String::new(),
+                    model: String::new(),
+                    modes: vec![mode.clone()],
+                    mode,
+                    scale: entry.scale,
+                    transform: 0,
+                    primary: entry.primary,
+                    enabled: true,
+                    rect: entry.rect,
                     name,
                 }
             })
@@ -2636,6 +2661,16 @@ impl State {
         }
         None
     }
+}
+
+/// A mode as the `<width>x<height>@<refresh>` string the `output` object publishes.
+fn observed_mode(mode: gnoblin_output::DisplayMode) -> String {
+    format!(
+        "{}x{}@{:.3}",
+        mode.width,
+        mode.height,
+        f64::from(mode.refresh_mhz) / 1000.0
+    )
 }
 
 /// Removes the globals the session's configuration turned off.
