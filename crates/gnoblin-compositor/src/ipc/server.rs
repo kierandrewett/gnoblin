@@ -81,7 +81,7 @@ use gnoblin_wayland::{ControlHandle, EffectSpec, Observer, ProcessIdentity, Sess
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
-use super::reload::{Outcome, Reload};
+use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
@@ -1161,7 +1161,7 @@ impl Dispatcher {
             ));
         }
         // A commit made while a reload waits is the runtime's answer to that reload.
-        let answers = self.reload.finish(&Outcome::Accepted { revision });
+        let answers = self.reload.finish(&ReloadVerdict::Accepted { revision });
         self.deliver_replies(answers);
     }
 
@@ -1213,7 +1213,7 @@ impl Dispatcher {
             %message,
             "the runtime refused the configuration reload; the last accepted document stays in force"
         );
-        let answers = self.reload.finish(&Outcome::Rejected {
+        let answers = self.reload.finish(&ReloadVerdict::Rejected {
             message: message.clone(),
         });
         self.deliver_replies(answers);

@@ -17,7 +17,7 @@ const DEADLINE_MS: u64 = 10_000;
 
 /// What became of an outstanding reload, as the runtime or the deadline decided it.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Outcome {
+pub(crate) enum ReloadVerdict {
     /// The runtime committed the document, which is now in force under this revision.
     Accepted { revision: u64 },
     /// The runtime refused the document, and the last accepted one stays in force.
@@ -60,7 +60,7 @@ impl Reload {
 
     /// Ends the outstanding reload with `outcome`, returning the answer for every caller
     /// waiting on it. Nothing is returned when no reload is outstanding.
-    pub(crate) fn finish(&mut self, outcome: &Outcome) -> Vec<(ClientId, Envelope)> {
+    pub(crate) fn finish(&mut self, outcome: &ReloadVerdict) -> Vec<(ClientId, Envelope)> {
         let Some(outstanding) = self.outstanding.take() else {
             return Vec::new();
         };
@@ -74,29 +74,29 @@ impl Reload {
     /// Ends the outstanding reload as timed out when its deadline has passed.
     pub(crate) fn expire(&mut self, now: Tick) -> Vec<(ClientId, Envelope)> {
         match &self.outstanding {
-            Some(outstanding) if now.reached(outstanding.deadline) => self.finish(&Outcome::TimedOut),
+            Some(outstanding) if now.reached(outstanding.deadline) => self.finish(&ReloadVerdict::TimedOut),
             _ => Vec::new(),
         }
     }
 }
 
 /// The envelope that answers one caller with the outcome of its reload.
-fn answer(request_id: u64, outcome: &Outcome) -> Envelope {
+fn answer(request_id: u64, outcome: &ReloadVerdict) -> Envelope {
     match outcome {
-        Outcome::Accepted { revision } => Envelope::reply(
+        ReloadVerdict::Accepted { revision } => Envelope::reply(
             wire::NAMESPACE,
             wire::member::CONFIG_RELOAD,
             request_id,
             revision.to_be_bytes().to_vec(),
         ),
-        Outcome::Rejected { message } => Envelope::error(
+        ReloadVerdict::Rejected { message } => Envelope::error(
             wire::NAMESPACE,
             wire::member::CONFIG_RELOAD,
             request_id,
             wire::code::CONFIG_REJECTED,
             message.as_str(),
         ),
-        Outcome::TimedOut => Envelope::error(
+        ReloadVerdict::TimedOut => Envelope::error(
             wire::NAMESPACE,
             wire::member::CONFIG_RELOAD,
             request_id,
@@ -119,7 +119,7 @@ mod tests {
         let mut reload = Reload::default();
         assert_eq!(reload.request(FIRST, 1, Tick::ZERO), Some(1));
         assert_eq!(reload.request(SECOND, 2, Tick::ZERO), None);
-        let answers = reload.finish(&Outcome::Accepted { revision: 4 });
+        let answers = reload.finish(&ReloadVerdict::Accepted { revision: 4 });
         let callers: Vec<(ClientId, u64)> = answers
             .iter()
             .map(|(client, envelope)| (*client, envelope.request_id))
@@ -134,7 +134,7 @@ mod tests {
     fn the_next_reload_after_an_answer_raises_a_new_generation() {
         let mut reload = Reload::default();
         assert_eq!(reload.request(FIRST, 1, Tick::ZERO), Some(1));
-        let _ = reload.finish(&Outcome::Rejected {
+        let _ = reload.finish(&ReloadVerdict::Rejected {
             message: "line 3".to_owned(),
         });
         assert_eq!(reload.request(FIRST, 2, Tick::ZERO), Some(2));
@@ -145,7 +145,7 @@ mod tests {
         let mut reload = Reload::default();
         let _ = reload.request(FIRST, 1, Tick::ZERO);
         let _ = reload.request(SECOND, 2, Tick::ZERO);
-        let answers = reload.finish(&Outcome::Rejected {
+        let answers = reload.finish(&ReloadVerdict::Rejected {
             message: "init.lua:3: unexpected symbol".to_owned(),
         });
         assert_eq!(answers.len(), 2);
@@ -168,6 +168,6 @@ mod tests {
     #[test]
     fn an_answer_with_no_reload_outstanding_is_nothing() {
         let mut reload = Reload::default();
-        assert!(reload.finish(&Outcome::Accepted { revision: 1 }).is_empty());
+        assert!(reload.finish(&ReloadVerdict::Accepted { revision: 1 }).is_empty());
     }
 }
