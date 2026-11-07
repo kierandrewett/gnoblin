@@ -7,8 +7,7 @@
 
 use std::path::PathBuf;
 
-use gnoblin_model::RequestId;
-use gnoblin_service_keyring::{PasswordOffer, ServeError, serve_on};
+use gnoblin_service_keyring::{PasswordOffer, PromptId, ServeError, serve_on};
 use gnoblin_service_testkit::Bus;
 use zbus::Connection;
 use zbus::connection::Builder;
@@ -21,7 +20,7 @@ const NAME: &str = "org.freedesktop.secrets";
 struct NoOffer;
 
 impl PasswordOffer for NoOffer {
-    fn offer(&mut self, _title: &str, _message: &str) -> Result<RequestId, String> {
+    fn offer(&mut self, _title: &str, _message: &str) -> Result<PromptId, String> {
         Err("no prompt handler in this test".to_owned())
     }
 }

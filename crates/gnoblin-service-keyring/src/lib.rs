@@ -24,14 +24,13 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use futures_lite::future::block_on;
-use gnoblin_model::{RequestId, RequestOutcome};
 use zbus::Connection;
 use zbus::fdo::{RequestNameFlags, RequestNameReply};
 use zbus::names::BusName;
 
 pub use objects::SERVICE_PATH;
 pub use secret::{AppSecret, AppSecretError, Secrets};
-pub use unlock::{PasswordOffer, UnlockError, UnlockKeySource};
+pub use unlock::{PasswordOffer, PromptId, PromptOutcome, PromptRefusal, UnlockError, UnlockKeySource};
 
 gnoblin_log::logger!(log = "keyring-service");
 
@@ -146,7 +145,7 @@ pub struct PromptAnswers {
 
 impl PromptAnswers {
     /// Answer or end `request`. A request this source did not offer changes nothing.
-    pub fn answer(&self, request: RequestId, outcome: &RequestOutcome) {
+    pub fn answer(&self, request: PromptId, outcome: PromptOutcome) {
         let end = self
             .source
             .lock()

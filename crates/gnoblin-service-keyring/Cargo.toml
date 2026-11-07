@@ -10,7 +10,6 @@ publish.workspace = true
 gnoblin-keyring-store = { path = "../gnoblin-keyring-store" }
 gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-keyring-handoff = { path = "../gnoblin-keyring-handoff" }
-gnoblin-model = { path = "../gnoblin-model" }
 # The bus face: the Service, Collection, Item, Session and Prompt interfaces are zbus objects.
 zbus.workspace = true
 # The `dh-ietf1024-sha256-aes128-cbc-pkcs7` session: Diffie-Hellman on the
@@ -29,8 +28,8 @@ futures-lite.workspace = true
 rustix = { workspace = true, features = ["net"] }
 
 [dev-dependencies]
-# The log-capture test installs its own subscriber to read the events the unlock path emits.
-tracing.workspace = true
+# The log-capture test reads the events the unlock path emits through the facade.
+gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 
 [lints]
 workspace = true

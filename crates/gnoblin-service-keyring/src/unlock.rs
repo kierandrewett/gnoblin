@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use gnoblin_keyring_store::{Keyring, KeyringError, Passphrase};
-use gnoblin_model::{RequestId, RequestOutcome};
+use zeroize::Zeroizing;
 
 use crate::log;
 use crate::objects::{self, State};
@@ -32,16 +32,57 @@ pub enum UnlockError {
     Failed(String),
 }
 
+/// Names one password request the keyring offered. [`PasswordOffer::offer`] returns it, and the
+/// answer comes back keyed by it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PromptId(u64);
+
+impl PromptId {
+    pub const fn new(raw: u64) -> PromptId {
+        PromptId(raw)
+    }
+}
+
+/// How a password request ended, as the keyring sees it. The answer bytes are wiped on drop.
+pub enum PromptOutcome {
+    /// The prompt answered with the password.
+    Answered(Zeroizing<Vec<u8>>),
+    /// The prompt ended without an answer.
+    Ended,
+    /// The prompt was declined, and said why.
+    Refused(PromptRefusal),
+    /// The deadline passed before an answer arrived.
+    TimedOut,
+}
+
+impl PromptOutcome {
+    /// An answer, taking ownership of its bytes so they are wiped when the outcome drops.
+    pub fn answered(bytes: Vec<u8>) -> PromptOutcome {
+        PromptOutcome::Answered(Zeroizing::new(bytes))
+    }
+}
+
+/// Why a prompt was declined. The reason is not secret, so it may be logged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PromptRefusal {
+    /// The provider cannot answer while its store is locked.
+    Locked,
+    /// The provider was asked and refused.
+    Denied,
+    /// The provider cannot answer at all right now.
+    Unavailable,
+}
+
 /// Offers the password request to whoever answers prompts. The answer returns through
 /// [`UnlockKeySource::answer_password`], keyed by the id this returns.
 pub trait PasswordOffer: Send {
     /// Offer one request with `title` and `message`. The error says why nothing was offered.
-    fn offer(&mut self, title: &str, message: &str) -> Result<RequestId, String>;
+    fn offer(&mut self, title: &str, message: &str) -> Result<PromptId, String>;
 }
 
 /// The password request this source offered and is still waiting on.
-struct Pending {
-    request: RequestId,
+struct PendingPassword {
+    request: PromptId,
     /// The bus object the caller is waiting on for the `Completed` signal.
     path: String,
 }
@@ -62,7 +103,7 @@ pub struct UnlockKeySource {
     /// Set once the password has been offered, so a login session is never asked twice. A failed
     /// offer does not set it, because nothing was asked.
     offered: bool,
-    pending: Option<Pending>,
+    pending: Option<PendingPassword>,
     on_unlock: Box<dyn FnMut() + Send>,
     offers: Box<dyn PasswordOffer>,
 }
@@ -135,7 +176,7 @@ impl UnlockKeySource {
         }
         let request = self.offers.offer(PROMPT_TITLE, PROMPT_MESSAGE)?;
         self.offered = true;
-        self.pending = Some(Pending {
+        self.pending = Some(PendingPassword {
             request,
             path: path.to_owned(),
         });
@@ -146,17 +187,17 @@ impl UnlockKeySource {
     /// The answer to the password request. An answer for any other request is refused and changes
     /// nothing. An answer that opens the store finishes the prompt undismissed; any other ending
     /// finishes it dismissed, and the store stays locked.
-    pub fn answer_password(&mut self, request: RequestId, outcome: &RequestOutcome) -> Option<PromptEnd> {
+    pub fn answer_password(&mut self, request: PromptId, outcome: PromptOutcome) -> Option<PromptEnd> {
         let pending = self.pending.take_if(|pending| pending.request == request)?;
         match outcome {
-            RequestOutcome::Answered(password) => {
-                if let Err(error) = self.unlock(password) {
+            PromptOutcome::Answered(password) => {
+                if let Err(error) = self.unlock(&password) {
                     log::info!(reason = ?error, "the password from the prompt did not unlock the keyring");
                 }
             }
-            RequestOutcome::Ended => log::info!("the password prompt ended without an answer"),
-            RequestOutcome::Refused(reason) => log::info!(reason = ?reason, "the password prompt was declined"),
-            RequestOutcome::TimedOut => log::info!("the password prompt timed out"),
+            PromptOutcome::Ended => log::info!("the password prompt ended without an answer"),
+            PromptOutcome::Refused(reason) => log::info!(reason = ?reason, "the password prompt was declined"),
+            PromptOutcome::TimedOut => log::info!("the password prompt timed out"),
         }
         Some(PromptEnd {
             path: pending.path,
@@ -203,8 +244,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use gnoblin_model::DeclineReason;
-
     /// A scratch directory unique to this process and test.
     fn scratch(label: &str) -> PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -236,7 +275,7 @@ mod tests {
     /// A key source whose password offer answers `result`, with a counter of the offers made.
     fn prompt_source(
         dir: &std::path::Path,
-        result: Result<RequestId, String>,
+        result: Result<PromptId, String>,
     ) -> (UnlockKeySource, State, Arc<AtomicUsize>) {
         let state = objects::new_state(None);
         let offers = Arc::new(AtomicUsize::new(0));
@@ -255,7 +294,7 @@ mod tests {
 
     /// A password offer that counts its calls and returns a fixed result.
     struct FakeOffer {
-        result: Result<RequestId, String>,
+        result: Result<PromptId, String>,
         offers: Arc<AtomicUsize>,
     }
 
@@ -269,7 +308,7 @@ mod tests {
     }
 
     impl PasswordOffer for FakeOffer {
-        fn offer(&mut self, _title: &str, _message: &str) -> Result<RequestId, String> {
+        fn offer(&mut self, _title: &str, _message: &str) -> Result<PromptId, String> {
             self.offers.fetch_add(1, Ordering::SeqCst);
             self.result.clone()
         }
@@ -323,11 +362,11 @@ mod tests {
     #[test]
     fn a_wrong_password_from_the_prompt_stays_locked_and_is_dismissed() {
         let dir = scratch("prompt-wrong");
-        let (mut source, state, offers) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, state, offers) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the request is offered");
-        let end = source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"wrong".to_vec()));
+        let end = source.answer_password(PromptId::new(7), PromptOutcome::answered(b"wrong".to_vec()));
         assert_eq!(
             end,
             Some(PromptEnd {
@@ -340,42 +379,6 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
     }
 
-    /// The fields of every event, as text. It lives in memory for one test and is never printed.
-    #[derive(Clone, Default)]
-    struct Captured(Arc<std::sync::Mutex<String>>);
-
-    /// Appends each field as `name=value` to the text it is given.
-    struct Fields<'a>(&'a mut String);
-
-    impl tracing::field::Visit for Fields<'_> {
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            self.0.push_str(&format!("{}={value:?} ", field.name()));
-        }
-    }
-
-    impl tracing::Subscriber for Captured {
-        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
-            true
-        }
-
-        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-            tracing::span::Id::from_u64(1)
-        }
-
-        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
-
-        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
-
-        fn event(&self, event: &tracing::Event<'_>) {
-            let mut text = self.0.lock().expect("the capture lock");
-            event.record(&mut Fields(&mut text));
-        }
-
-        fn enter(&self, _: &tracing::span::Id) {}
-
-        fn exit(&self, _: &tracing::span::Id) {}
-    }
-
     /// A password that is typed wrong, through every path that takes a password, must never reach
     /// a log event. The assertions do not print the captured text, because it would hold the
     /// password on failure.
@@ -383,18 +386,20 @@ mod tests {
     fn the_password_never_reaches_the_log() {
         const SECRET: &str = "pw-never-logged-9f3c";
         let dir = scratch("no-log");
-        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, state, _) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(SECRET.as_bytes()).expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the request is offered");
         let wrong = format!("{SECRET}-wrong");
-        let captured = Captured::default();
-        tracing::subscriber::with_default(captured.clone(), || {
-            source.answer_password(RequestId::new(7), &RequestOutcome::answered(wrong.as_bytes().to_vec()));
+        let events = gnoblin_log::event::capture::logged(|| {
+            source.answer_password(PromptId::new(7), PromptOutcome::answered(wrong.as_bytes().to_vec()));
             let _ = source.unlock(wrong.as_bytes());
             let _ = source.change_password(wrong.as_bytes(), SECRET.as_bytes());
         });
-        let text = captured.0.lock().expect("the capture lock").clone();
+        let text: String = events
+            .iter()
+            .map(|event| format!("{} {}\n", event.message, event.fields_line()))
+            .collect();
         assert!(text.contains("did not unlock"), "the refused prompt answer is logged");
         assert!(!text.contains(SECRET), "the password reached a log event");
         std::fs::remove_dir_all(dir).ok();
@@ -411,7 +416,7 @@ mod tests {
             Err("no provider for prompt.secret".to_owned())
         );
         assert_eq!(
-            source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec())),
+            source.answer_password(PromptId::new(7), PromptOutcome::answered(b"right".to_vec())),
             None
         );
         assert!(!objects::is_unlocked(&state));
@@ -422,17 +427,17 @@ mod tests {
     #[test]
     fn a_prompt_that_ends_without_an_answer_is_dismissed_and_stays_locked() {
         let replies = [
-            RequestOutcome::Ended,
-            RequestOutcome::Refused(DeclineReason::Denied),
-            RequestOutcome::TimedOut,
+            PromptOutcome::Ended,
+            PromptOutcome::Refused(PromptRefusal::Denied),
+            PromptOutcome::TimedOut,
         ];
-        for (index, reply) in replies.iter().enumerate() {
+        for (index, reply) in replies.into_iter().enumerate() {
             let dir = scratch(&format!("prompt-ended-{index}"));
-            let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+            let (mut source, state, _) = prompt_source(&dir, Ok(PromptId::new(7)));
             source.unlock(b"right").expect("create");
             lock_store(&state);
             source.offer_password("/prompt/1").expect("the request is offered");
-            let end = source.answer_password(RequestId::new(7), reply);
+            let end = source.answer_password(PromptId::new(7), reply);
             assert_eq!(
                 end,
                 Some(PromptEnd {
@@ -449,11 +454,11 @@ mod tests {
     #[test]
     fn the_right_password_from_the_prompt_unlocks_and_is_not_dismissed() {
         let dir = scratch("prompt-right");
-        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, state, _) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the request is offered");
-        let end = source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec()));
+        let end = source.answer_password(PromptId::new(7), PromptOutcome::answered(b"right".to_vec()));
         assert_eq!(
             end,
             Some(PromptEnd {
@@ -468,16 +473,16 @@ mod tests {
     #[test]
     fn an_answer_for_another_request_is_refused_and_the_prompt_stays_pending() {
         let dir = scratch("prompt-other-id");
-        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, state, _) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the request is offered");
         assert_eq!(
-            source.answer_password(RequestId::new(8), &RequestOutcome::answered(b"right".to_vec())),
+            source.answer_password(PromptId::new(8), PromptOutcome::answered(b"right".to_vec())),
             None
         );
         assert!(!objects::is_unlocked(&state), "a stranger's answer unlocks nothing");
-        let end = source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec()));
+        let end = source.answer_password(PromptId::new(7), PromptOutcome::answered(b"right".to_vec()));
         assert_eq!(
             end,
             Some(PromptEnd {
@@ -492,13 +497,13 @@ mod tests {
     #[test]
     fn a_dismissed_prompt_refuses_a_late_answer() {
         let dir = scratch("prompt-dismissed");
-        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, state, _) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the request is offered");
         source.dismiss_password("/prompt/1");
         assert_eq!(
-            source.answer_password(RequestId::new(7), &RequestOutcome::answered(b"right".to_vec())),
+            source.answer_password(PromptId::new(7), PromptOutcome::answered(b"right".to_vec())),
             None,
             "the caller gave up, so the late answer is ignored"
         );
@@ -509,11 +514,11 @@ mod tests {
     #[test]
     fn the_prompt_is_offered_once_per_session() {
         let dir = scratch("prompt-once");
-        let (mut source, state, offers) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, state, offers) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         lock_store(&state);
         source.offer_password("/prompt/1").expect("the first offer");
-        source.answer_password(RequestId::new(7), &RequestOutcome::Ended);
+        source.answer_password(PromptId::new(7), PromptOutcome::Ended);
         assert!(source.offer_password("/prompt/2").is_err(), "a second offer is refused");
         assert_eq!(offers.load(Ordering::SeqCst), 1);
         std::fs::remove_dir_all(dir).ok();
@@ -522,7 +527,7 @@ mod tests {
     #[test]
     fn an_open_store_is_never_offered_a_password() {
         let dir = scratch("prompt-open");
-        let (mut source, _, offers) = prompt_source(&dir, Ok(RequestId::new(7)));
+        let (mut source, _, offers) = prompt_source(&dir, Ok(PromptId::new(7)));
         source.unlock(b"right").expect("create");
         assert!(source.offer_password("/prompt/1").is_err());
         assert_eq!(offers.load(Ordering::SeqCst), 0);

@@ -7,8 +7,10 @@
 
 use std::path::PathBuf;
 
-use gnoblin_model::CapabilitySlot;
-use gnoblin_service_keyring::{PasswordOffer, PromptAnswers, Secrets, ServeError};
+use gnoblin_model::{CapabilitySlot, DeclineReason};
+use gnoblin_service_keyring::{
+    PasswordOffer, PromptAnswers, PromptId, PromptOutcome, PromptRefusal, Secrets, ServeError,
+};
 
 use crate::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use crate::log;
@@ -97,8 +99,23 @@ struct HostOffer {
     host: Host,
 }
 
+/// The keyring's view of a password request's outcome. The answer is copied into the keyring's
+/// own zeroizing buffer; the original stays wiped by `RequestOutcome`.
+fn prompt_outcome(outcome: &RequestOutcome) -> PromptOutcome {
+    match outcome {
+        RequestOutcome::Answered(answer) => PromptOutcome::answered(answer.to_vec()),
+        RequestOutcome::Ended => PromptOutcome::Ended,
+        RequestOutcome::Refused(reason) => PromptOutcome::Refused(match reason {
+            DeclineReason::Locked => PromptRefusal::Locked,
+            DeclineReason::Denied => PromptRefusal::Denied,
+            DeclineReason::Unavailable => PromptRefusal::Unavailable,
+        }),
+        RequestOutcome::TimedOut => PromptOutcome::TimedOut,
+    }
+}
+
 impl PasswordOffer for HostOffer {
-    fn offer(&mut self, title: &str, message: &str) -> Result<RequestId, String> {
+    fn offer(&mut self, title: &str, message: &str) -> Result<PromptId, String> {
         self.host
             .offer(
                 CapabilitySlot::PromptSecret.name(),
@@ -107,6 +124,7 @@ impl PasswordOffer for HostOffer {
                 b"",
                 Tick::new(PROMPT_DEADLINE_MS),
             )
+            .map(|request| PromptId::new(request.get()))
             .map_err(|error| format!("{error:?}"))
     }
 }
@@ -141,7 +159,7 @@ impl LinkedAgent for KeyringAgent {
 
     fn answer(&self, request: RequestId, outcome: &RequestOutcome) {
         if let Some(prompt_answers) = &self.prompt_answers {
-            prompt_answers.answer(request, outcome);
+            prompt_answers.answer(PromptId::new(request.get()), prompt_outcome(outcome));
         }
     }
 

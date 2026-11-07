@@ -1572,3 +1572,21 @@ left = "gnoblin-model::Live"
 right = "gnoblinctl::Live"
 kind = "same-name"
 reason = "the object-graph live-subscription marker versus the follower that tails gnoblin.jsonl across rotations; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-model::DeclineReason"
+right = "gnoblin-service-keyring::PromptRefusal"
+kind = "same-shape"
+reason = "service-keyring-isolation forbids the keyring naming gnoblin-model or gnoblin-types, so the keyring owns the refusal vocabulary its trait carries; gnoblin-services maps it one-to-one onto DeclineReason in prompt_outcome"
+
+[[allow]]
+left = "gnoblin-model::RequestCompletion"
+right = "gnoblin-service-keyring::PromptOutcome"
+kind = "same-shape"
+reason = "service-keyring-isolation forbids the keyring naming gnoblin-model or gnoblin-types, so the keyring owns the prompt outcome its trait carries; gnoblin-services maps it onto RequestCompletion in prompt_outcome"
+
+[[allow]]
+left = "gnoblin-model::RequestOutcome"
+right = "gnoblin-service-keyring::PromptOutcome"
+kind = "same-shape"
+reason = "service-keyring-isolation forbids the keyring naming gnoblin-model or gnoblin-types, so the keyring owns the prompt outcome its trait carries; gnoblin-services maps it onto RequestOutcome in prompt_outcome"
