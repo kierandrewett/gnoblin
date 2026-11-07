@@ -29,7 +29,6 @@
 use std::rc::Rc;
 
 use ash::vk;
-use gnoblin_log::warn_in;
 use gnoblin_types::{Color, Rect, Scale, Size};
 
 use super::Vulkan;
