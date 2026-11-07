@@ -76,7 +76,7 @@ use crate::layout::{
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
-use crate::rules::{Rule, RuleAction};
+use crate::rules::{Facts, Rule, merge, validate_list};
 use crate::snapping::SnapZone;
 use crate::stack::{ClaimOrigin, Stack, StackItem, StackLayer};
 use crate::tiled::{TiledEdges, tiled_edges};
@@ -419,13 +419,18 @@ impl Wm {
                 kind,
                 transient_for,
             } => self.window_role_changed(window, kind, transient_for),
-            Event::RulesChanged { rules } => {
+            Event::RulesChanged { rules } => match validate_list(&rules) {
                 // Rules apply when a window is taken into management, never to
                 // windows that are already managed, so a reload cannot re-place or
                 // re-maximise an existing window.
-                self.rules = rules;
-                Vec::new()
-            }
+                Ok(()) => {
+                    self.rules = rules;
+                    Vec::new()
+                }
+                // A refused list is never partly applied: the rules already in force
+                // stay, so a bad reload cannot leave a half-configured session.
+                Err(error) => vec![Effect::rejected(Rejection::Rules(error))],
+            },
             Event::WorkspaceAdded { workspace } => self.workspace_added(workspace),
             Event::WorkspaceRemoved { workspace } => self.workspace_removed(workspace),
             Event::WorkspaceActivated { workspace } => self.workspace_activated(workspace),
@@ -1126,6 +1131,7 @@ impl Wm {
             state: WindowState::default(),
             placement,
             applied_rules: 0,
+            protocol: spec.protocol,
         };
         let mut effects = Vec::new();
         if !window.kind.is_transient() {
@@ -1151,48 +1157,55 @@ impl Wm {
 
     /// Applies the configured rules to a window that is being taken into management.
     ///
-    /// This is the only place rules run. Later rules override the fields they set,
-    /// so the list is walked to the end, and a rule whose workspace target does not
-    /// exist leaves the window where it is and reports why.
+    /// This is the only place rules run. The rules that match are merged, so the last
+    /// rule to set a field wins. A workspace target that does not exist leaves the
+    /// window where it is and reports why.
     fn apply_rules(&self, window: &mut Window) -> Vec<Effect> {
+        let facts = Facts {
+            focused: self.focus == Some(window.id),
+            workspace_number: self.workspaces.number_of(window.workspace),
+        };
+        let outcome = merge(&self.rules, &*window, facts);
         let mut effects = Vec::new();
-        for (index, rule) in self.rules.iter().enumerate() {
-            if !rule.matches(window) {
-                continue;
-            }
-            let mut rejected = false;
-            for action in &rule.actions {
-                match action {
-                    RuleAction::PlaceOnWorkspace(selector) => match self.workspaces.resolve(*selector) {
-                        Some(workspace) => window.workspace = workspace,
-                        None => {
-                            rejected = true;
-                            effects.push(Effect::rule_rejected(
-                                window.id,
-                                index,
-                                RuleRejection::MissingWorkspace(*selector),
-                            ));
-                        }
-                    },
-                    RuleAction::Maximise => {
-                        let Some(area) = window.output.and_then(|output| self.work_area(output)) else {
-                            continue;
-                        };
-                        if !window.state.maximised && window.state.snapped.is_none() {
-                            window.restore = window.geometry;
-                        }
-                        window.state.maximised = true;
-                        window.state.snapped = None;
-                        window.geometry = area;
-                    }
+        let mut applied = outcome.matched;
+        if let Some((rule, selector)) = outcome.workspace {
+            match self.workspaces.resolve(selector) {
+                Some(workspace) => window.workspace = workspace,
+                None => {
+                    // The window stays where it is, and the rule that asked for the
+                    // missing workspace is not counted, so the counter never claims
+                    // work that did not happen.
+                    applied -= 1;
+                    effects.push(Effect::rule_rejected(
+                        window.id,
+                        rule,
+                        RuleRejection::MissingWorkspace(selector),
+                    ));
                 }
             }
-            // A rule that could not be carried out completely is not counted as
-            // applied, so the counter never claims work that did not happen.
-            if !rejected {
-                window.applied_rules += 1;
-            }
         }
+        match outcome.maximise {
+            Some(true) => {
+                if let Some(area) = window.output.and_then(|output| self.work_area(output)) {
+                    if !window.state.maximised && window.state.snapped.is_none() {
+                        window.restore = window.geometry;
+                    }
+                    window.state.maximised = true;
+                    window.state.snapped = None;
+                    window.geometry = area;
+                }
+            }
+            Some(false) => {
+                if window.state.maximised
+                    && let Some(area) = window.output.and_then(|output| self.work_area(output))
+                {
+                    window.state.maximised = false;
+                    window.geometry = window.restore.clamp_inside(area);
+                }
+            }
+            None => {}
+        }
+        window.applied_rules = applied;
         effects
     }
 

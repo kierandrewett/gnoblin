@@ -13,7 +13,7 @@
 use gnoblin_types::{Insets, OutputId, Rect, Scale, WindowId, WorkspaceId};
 
 use crate::activation::ActivationDecision;
-use crate::rules::Rule;
+use crate::rules::{Rule, RuleError};
 use crate::snapping::SnapZone;
 use crate::window::WindowKind;
 
@@ -214,4 +214,7 @@ pub enum Rejection {
     /// `window_management.edge_tiling` is off, so edge snapping is unavailable. The
     /// rejection is not about one window, because the setting applies to the session.
     EdgeTilingDisabled,
+    /// The configured window rules were refused as a whole, so the rules in force are
+    /// unchanged. The error names the rule and the field that failed.
+    Rules(RuleError),
 }

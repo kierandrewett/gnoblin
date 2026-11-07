@@ -20,7 +20,7 @@
 
 use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, PlacementMode, Rule, RuleAction, SnapZone,
+    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, PlacementMode, Rule, RuleFields, SnapZone,
     WindowSpec, Wm, WmOptions, WorkspaceSelector,
 };
 
@@ -96,7 +96,7 @@ impl Rng {
     }
 }
 
-/// A rule list that exercises both typed actions and both selector kinds.
+/// A rule list that exercises both the workspace and maximise fields and both selector kinds.
 fn rules(rng: &mut Rng) -> Vec<Rule> {
     let app_id =
         Pattern::new(if rng.below(2) == 0 { "org.example" } else { "Other" }).expect("fixed patterns are valid");
@@ -105,24 +105,24 @@ fn rules(rng: &mut Rng) -> Vec<Rule> {
     } else {
         WorkspaceSelector::Number(rng.below(WORKSPACE_POOL) + 1)
     };
-    let mut actions = vec![RuleAction::PlaceOnWorkspace(selector)];
-    if rng.below(2) == 0 {
-        actions.push(RuleAction::Maximise);
-    }
+    let maximise = if rng.below(2) == 0 { Some(true) } else { None };
     vec![
         Rule {
             matcher: Match {
                 app_id: Some(app_id),
                 ..Match::default()
             },
-            actions,
+            fields: RuleFields {
+                workspace: Some(selector),
+                maximise,
+            },
         },
         Rule {
             matcher: Match {
                 title: Some(Pattern::new("^Report").expect("fixed patterns are valid")),
                 ..Match::default()
             },
-            actions: Vec::new(),
+            fields: RuleFields::default(),
         },
     ]
 }

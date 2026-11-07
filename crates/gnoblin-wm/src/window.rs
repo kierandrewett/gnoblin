@@ -9,6 +9,7 @@
 
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 
+use crate::event::WindowProtocol;
 use crate::layout::WindowPlacement;
 use crate::snapping::SnapZone;
 
@@ -93,6 +94,9 @@ pub struct Window {
     /// did not apply them again, and a rule whose workspace target was missing is
     /// not counted because nothing was applied.
     pub applied_rules: usize,
+    /// The protocol the window arrived on. Window rules that select by client type read
+    /// it, and it is fixed for the window's life.
+    pub protocol: WindowProtocol,
 }
 
 impl Window {
@@ -125,6 +129,7 @@ mod tests {
             restore: Rect::new(0, 0, 100, 100),
             state: WindowState::default(),
             applied_rules: 0,
+            protocol: WindowProtocol::Wayland,
         }
     }
 

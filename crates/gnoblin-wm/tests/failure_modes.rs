@@ -3,8 +3,8 @@
 
 use gnoblin_types::{Insets, OutputId, Rect, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, FocusMode, Match, Pattern, PlacementMode, Rejection, Rule,
-    RuleAction, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceSelector,
+    ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, Match, Pattern, PlacementMode, Rejection,
+    Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceSelector,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -52,8 +52,15 @@ fn rules(wm: &mut Wm, rules: Vec<Rule>) {
     wm.apply(Event::RulesChanged { rules });
 }
 
-fn rule(matcher: Match, actions: Vec<RuleAction>) -> Rule {
-    Rule { matcher, actions }
+fn rule(matcher: Match, fields: RuleFields) -> Rule {
+    Rule { matcher, fields }
+}
+
+fn place(selector: WorkspaceSelector) -> RuleFields {
+    RuleFields {
+        workspace: Some(selector),
+        ..RuleFields::default()
+    }
 }
 
 fn app(app_id: &str) -> Match {
@@ -281,10 +288,10 @@ fn rules_apply_once_even_when_titles_and_rules_change() {
         &mut wm,
         vec![rule(
             app("^org.example.Editor$"),
-            vec![
-                RuleAction::PlaceOnWorkspace(WorkspaceSelector::Id(WorkspaceId::new(2))),
-                RuleAction::Maximise,
-            ],
+            RuleFields {
+                workspace: Some(WorkspaceSelector::Id(WorkspaceId::new(2))),
+                maximise: Some(true),
+            },
         )],
     );
     wm.apply(Event::WindowOpened(
@@ -318,10 +325,7 @@ fn rules_apply_once_even_when_titles_and_rules_change() {
     );
     rules(
         &mut wm,
-        vec![rule(
-            Match::default(),
-            vec![RuleAction::PlaceOnWorkspace(WorkspaceSelector::Number(1))],
-        )],
+        vec![rule(Match::default(), place(WorkspaceSelector::Number(1)))],
     );
     assert_eq!(managed(&wm), after_open, "a rules reload does not re-run rules");
     check(&wm);
@@ -363,14 +367,8 @@ fn contradicting_rules_settle_on_the_last_match() {
     rules(
         &mut wm,
         vec![
-            rule(
-                Match::default(),
-                vec![RuleAction::PlaceOnWorkspace(WorkspaceSelector::Id(WorkspaceId::new(2)))],
-            ),
-            rule(
-                Match::default(),
-                vec![RuleAction::PlaceOnWorkspace(WorkspaceSelector::Id(WorkspaceId::new(3)))],
-            ),
+            rule(Match::default(), place(WorkspaceSelector::Id(WorkspaceId::new(2)))),
+            rule(Match::default(), place(WorkspaceSelector::Id(WorkspaceId::new(3)))),
         ],
     );
     let effects = wm.apply(Event::WindowOpened(WindowSpec::normal(window(1), "org.example.App")));
@@ -395,10 +393,7 @@ fn contradicting_rules_settle_on_the_last_match() {
 fn a_rule_naming_a_missing_workspace_reports_a_rejection() {
     let mut wm = default_wm();
     let selector = WorkspaceSelector::Id(WorkspaceId::new(99));
-    rules(
-        &mut wm,
-        vec![rule(Match::default(), vec![RuleAction::PlaceOnWorkspace(selector)])],
-    );
+    rules(&mut wm, vec![rule(Match::default(), place(selector))]);
     let effects = wm.apply(Event::WindowOpened(WindowSpec::normal(window(1), "org.example.App")));
     assert!(
         effects.iter().any(|effect| matches!(
@@ -420,6 +415,37 @@ fn a_rule_naming_a_missing_workspace_reports_a_rejection() {
         wm.window(window(1)).map(|w| w.applied_rules),
         Some(0),
         "a rejected rule is not counted as applied"
+    );
+    check(&wm);
+}
+
+// A reload that fails validation must leave the rules already in force untouched.
+#[test]
+fn a_refused_rules_list_leaves_the_rules_in_force() {
+    let mut wm = default_wm();
+    rules(
+        &mut wm,
+        vec![rule(
+            Match::default(),
+            place(WorkspaceSelector::Id(WorkspaceId::new(2))),
+        )],
+    );
+    let refused = vec![rule(Match::default(), RuleFields::default()); MAX_RULES + 1];
+    let effects = wm.apply(Event::RulesChanged { rules: refused });
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            Effect::Rejected {
+                reason: Rejection::Rules(RuleError::TooManyRules { count, max }),
+            } if *count == MAX_RULES + 1 && *max == MAX_RULES
+        )),
+        "a list over the cap is refused and the refusal names the count"
+    );
+    open(&mut wm, 1);
+    assert_eq!(
+        wm.window(window(1)).map(|w| w.workspace),
+        Some(WorkspaceId::new(2)),
+        "the rules already in force still apply to a new window"
     );
     check(&wm);
 }
@@ -695,7 +721,7 @@ fn workspace_rules_do_not_move_a_dialog_away_from_its_parent() {
         &mut wm,
         vec![rule(
             Match::default(),
-            vec![RuleAction::PlaceOnWorkspace(WorkspaceSelector::Id(WorkspaceId::new(2)))],
+            place(WorkspaceSelector::Id(WorkspaceId::new(2))),
         )],
     );
     open(&mut wm, 1);

@@ -60,6 +60,13 @@ impl Workspaces {
             .and_then(|p| self.at(p))
     }
 
+    /// The one-based position of a declared workspace, the inverse of `by_number`.
+    /// Rules match on it, so it must agree with the number a rule names.
+    pub(crate) fn number_of(&self, id: WorkspaceId) -> Option<u32> {
+        let position = self.ids.iter().position(|existing| *existing == id)?;
+        u32::try_from(position + 1).ok()
+    }
+
     /// The workspace that takes over when `id` is removed.
     ///
     /// The previous workspace wins so that removing the active workspace moves the
