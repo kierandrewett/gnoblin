@@ -201,19 +201,28 @@ impl OutputConfigHost for BackendOutputConfig<'_> {
         if test_only {
             return Ok(());
         }
-        let mut applied: Vec<(OutputId, DisplayMode, Scale)> = Vec::new();
-        for (id, mode, old_scale, target) in plans {
-            if let Err(error) = self.backend.configure_output(id, mode, target) {
-                for (done, done_mode, done_scale) in applied {
-                    // Restoring a mode the backend just accepted cannot be refused in turn;
-                    // if it is, the head is left at its new scale and the error says so.
-                    let _ = self.backend.configure_output(done, done_mode, done_scale);
-                }
-                return Err(format!("the backend refused the change: {error}"));
-            }
-            applied.push((id, mode, old_scale));
-        }
-        Ok(())
+        let steps: Vec<Step> = plans
+            .into_iter()
+            .map(|(id, mode, before, after)| Step {
+                id,
+                mode,
+                before,
+                after,
+            })
+            .collect();
+        apply_in_order(&steps, |id, mode, scale| {
+            self.backend
+                .configure_output(id, mode, scale)
+                .map_err(|error| error.to_string())
+        })
+        .map_err(|failure| {
+            failure.describe(|id| {
+                heads
+                    .iter()
+                    .find(|head| head.id == id)
+                    .map_or_else(|| format!("output {}", id.get()), |head| head.name.clone())
+            })
+        })
     }
 }
 
@@ -224,5 +233,184 @@ impl State {
             .into_iter()
             .filter_map(|id| self.output_rect(id).map(|rect| (id, (rect.x, rect.y))))
             .collect()
+    }
+}
+
+/// One output change in a configuration: the mode it is driven in, and the scale to move it
+/// from and to. Rollback reuses the same mode with the old scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Step {
+    /// The head being changed.
+    pub(crate) id: OutputId,
+    /// The mode the head is driven in during the change.
+    pub(crate) mode: DisplayMode,
+    /// The scale the head had before the change.
+    pub(crate) before: Scale,
+    /// The scale the head moves to.
+    pub(crate) after: Scale,
+}
+
+/// A configuration that could not be applied. The output named is the first one refused; the
+/// rest are listed so the message can say what was restored and what was left changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApplyFailure {
+    /// The output whose change was refused.
+    pub(crate) output: OutputId,
+    /// Why the backend refused that change.
+    pub(crate) reason: String,
+    /// Earlier outputs that were rolled back to their previous scale.
+    pub(crate) restored: Vec<OutputId>,
+    /// Earlier outputs whose rollback was itself refused and so keep their new scale.
+    pub(crate) stuck: Vec<OutputId>,
+}
+
+impl ApplyFailure {
+    /// The message a client sees, naming the output by `name`.
+    pub(crate) fn describe(&self, name: impl Fn(OutputId) -> String) -> String {
+        let mut message = format!("{}: the backend refused the change: {}", name(self.output), self.reason);
+        if !self.stuck.is_empty() {
+            let names: Vec<String> = self.stuck.iter().map(|id| name(*id)).collect();
+            message.push_str("; these outputs could not be restored and keep their new state: ");
+            message.push_str(&names.join(", "));
+        } else if !self.restored.is_empty() {
+            message.push_str("; the earlier outputs were restored to their previous state");
+        }
+        message
+    }
+}
+
+/// Applies `steps` in order. When one is refused, the earlier steps are rolled back in reverse
+/// order, so the last change made is the first undone. A rollback that is refused is recorded
+/// as stuck rather than hidden, because the client must be told which output kept its change.
+pub(crate) fn apply_in_order(
+    steps: &[Step],
+    mut configure: impl FnMut(OutputId, DisplayMode, Scale) -> Result<(), String>,
+) -> Result<(), ApplyFailure> {
+    for (index, step) in steps.iter().enumerate() {
+        if let Err(reason) = configure(step.id, step.mode, step.after) {
+            let mut restored = Vec::new();
+            let mut stuck = Vec::new();
+            for done in steps[..index].iter().rev() {
+                match configure(done.id, done.mode, done.before) {
+                    Ok(()) => restored.push(done.id),
+                    Err(_) => stuck.push(done.id),
+                }
+            }
+            return Err(ApplyFailure {
+                output: step.id,
+                reason,
+                restored,
+                stuck,
+            });
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use gnoblin_output::DisplayMode;
+    use gnoblin_types::{OutputId, Scale};
+
+    use super::{ApplyFailure, Step, apply_in_order};
+
+    fn step(id: u64, from: u32, to: u32) -> Step {
+        Step {
+            id: OutputId::new(id),
+            mode: DisplayMode::new(1920, 1080, 60_000),
+            before: Scale::from_percent(from),
+            after: Scale::from_percent(to),
+        }
+    }
+
+    /// Runs `apply_in_order` and records every call as `(output, scale percent)`, so a test can
+    /// check the forward changes and the rollback order.
+    fn run(steps: &[Step], refuse: impl Fn(OutputId, u32) -> bool) -> (Result<(), ApplyFailure>, Vec<(u64, u32)>) {
+        let mut calls = Vec::new();
+        let result = apply_in_order(steps, |id, _mode, scale| {
+            let percent = (scale.as_f64() * 100.0).round() as u32;
+            calls.push((id.get(), percent));
+            if refuse(id, percent) {
+                Err("the mode is not offered".to_owned())
+            } else {
+                Ok(())
+            }
+        });
+        (result, calls)
+    }
+
+    #[test]
+    fn every_change_is_applied_in_order_when_nothing_refuses() {
+        let steps = [step(1, 100, 200), step(2, 100, 150)];
+        let (result, calls) = run(&steps, |_, _| false);
+        assert_eq!(result, Ok(()));
+        assert_eq!(calls, vec![(1, 200), (2, 150)]);
+    }
+
+    #[test]
+    fn a_refusal_on_the_second_output_names_it_and_restores_the_first() {
+        let steps = [step(1, 100, 200), step(2, 100, 150)];
+        // Output 2 refuses its new scale; output 1 must go back to 100%.
+        let (result, calls) = run(&steps, |id, percent| id.get() == 2 && percent == 150);
+        let failure = result.expect_err("the second output refused");
+        assert_eq!(failure.output, OutputId::new(2));
+        assert_eq!(failure.reason, "the mode is not offered");
+        assert!(failure.stuck.is_empty(), "the restore of output 1 was accepted");
+        assert_eq!(calls, vec![(1, 200), (2, 150), (1, 100)]);
+    }
+
+    #[test]
+    fn rollback_undoes_the_changes_in_reverse_order() {
+        let steps = [step(1, 100, 200), step(2, 100, 150), step(3, 100, 300)];
+        let (result, calls) = run(&steps, |id, _| id.get() == 3);
+        assert_eq!(result.expect_err("the third output refused").output, OutputId::new(3));
+        // The refused change is the last one tried, so the restores run 2 then 1.
+        assert_eq!(calls, vec![(1, 200), (2, 150), (3, 300), (2, 100), (1, 100)]);
+    }
+
+    #[test]
+    fn a_restore_that_is_refused_is_reported_as_stuck() {
+        let steps = [step(1, 100, 200), step(2, 100, 150), step(3, 100, 300)];
+        // Output 3 refuses, and so does the restore of output 2: output 2 is left at 150%.
+        let (result, _) = run(&steps, |id, percent| {
+            (id.get() == 3) || (id.get() == 2 && percent == 100)
+        });
+        let failure = result.expect_err("output 3 refused");
+        assert_eq!(failure.output, OutputId::new(3));
+        assert_eq!(failure.stuck, vec![OutputId::new(2)]);
+    }
+
+    #[test]
+    fn the_message_names_the_output_by_connector_and_says_what_was_restored() {
+        let steps = [step(1, 100, 200), step(2, 100, 150)];
+        let (result, _) = run(&steps, |id, _| id.get() == 2);
+        let failure = result.expect_err("output 2 refused");
+        let names = |id: OutputId| {
+            if id.get() == 2 {
+                "DP-2".to_owned()
+            } else {
+                "DP-1".to_owned()
+            }
+        };
+        assert_eq!(
+            failure.describe(names),
+            "DP-2: the backend refused the change: the mode is not offered; \
+             the earlier outputs were restored to their previous state"
+        );
+    }
+
+    #[test]
+    fn the_message_names_an_output_left_at_its_new_state() {
+        let steps = [step(1, 100, 200), step(2, 100, 150), step(3, 100, 300)];
+        let (result, _) = run(&steps, |id, percent| {
+            (id.get() == 3) || (id.get() == 2 && percent == 100)
+        });
+        let failure = result.expect_err("output 3 refused");
+        let names = |id: OutputId| format!("DP-{}", id.get());
+        assert_eq!(
+            failure.describe(names),
+            "DP-3: the backend refused the change: the mode is not offered; \
+             these outputs could not be restored and keep their new state: DP-2"
+        );
     }
 }
