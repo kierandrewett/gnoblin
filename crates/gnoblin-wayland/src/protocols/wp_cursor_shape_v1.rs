@@ -76,7 +76,10 @@ pub(crate) const CURSOR_CACHE_BYTES: usize = 8 * 1024 * 1024;
 impl State {
     /// The cursor to draw on `output` this frame. A named shape is drawn when the pointer
     /// is on that output; a client's own surface cursor is not drawn here.
-    pub(crate) fn pointer_cursor(&self, output: gnoblin_types::OutputId) -> Option<gnoblin_render_frame::frame::Overlay> {
+    pub(crate) fn pointer_cursor(
+        &self,
+        output: gnoblin_types::OutputId,
+    ) -> Option<gnoblin_render_frame::frame::Overlay> {
         let smithay::input::pointer::CursorImageStatus::Named(icon) = &self.cursor_image else {
             return None;
         };
@@ -117,7 +120,8 @@ pub(crate) fn cursor_overlay(
             (pixel >> 24) as u8,
         ]);
     }
-    let image = gnoblin_render_frame::image::Image::new(gnoblin_types::Size { width, height }, width as usize * 4, data)?;
+    let image =
+        gnoblin_render_frame::image::Image::new(gnoblin_types::Size { width, height }, width as usize * 4, data)?;
     let (hotspot_x, hotspot_y) = images.hotspot();
     let dst = gnoblin_types::Rect {
         x: (at.0 - f64::from(hotspot_x) / scale).round() as i32,

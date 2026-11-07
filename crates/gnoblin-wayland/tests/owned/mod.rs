@@ -22,8 +22,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
-use gnoblin_render_frame::image::Image;
 use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
+use gnoblin_render_frame::image::Image;
 use gnoblin_types::OutputId;
 use gnoblin_wayland::{ClientRole, Config, ControlHandle, LoopError, Server};
 use smithay::reexports::calloop::LoopHandle;

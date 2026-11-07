@@ -64,10 +64,10 @@ use crate::drm::present::{OutputPresenter, Presenter, complete_flips};
 use crate::drm::scanout::{Buffers, Device as ScanoutDevice, Flip};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
-use gnoblin_render_frame::image::Image;
-use gnoblin_render_frame::frame::OutputFrame;
 use crate::session::{SeatEvent, SeatState, Transition};
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
+use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::image::Image;
 use std::collections::HashMap;
 
 use crate::log;

@@ -24,9 +24,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::time::{Duration, Instant};
 
-use gnoblin_render_frame::image::Image;
 use gnoblin_capture::{BufferId, CaptureOutcome, CaptureSource, Copied, Format, PixelFormat, SessionId, Table, Target};
 use gnoblin_lock::{Capture, CaptureStream};
+use gnoblin_render_frame::image::Image;
 use gnoblin_types::{ClientId, Point, Rect, Tick};
 use pipewire::context::ContextRc;
 use pipewire::core::CoreRc;

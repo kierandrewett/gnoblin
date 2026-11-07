@@ -73,12 +73,12 @@ use smithay::wayland::image_capture_source::{
 };
 use smithay::wayland::image_copy_capture::{ImageCopyCaptureState, Session as CaptureSession};
 
-use gnoblin_render_frame::image::Image;
-use gnoblin_render_frame::shm::copy_into;
 use gnoblin_capture::{
     BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, SessionId, Stop, Table, Target,
 };
 use gnoblin_lock::{Capture, CaptureStream};
+use gnoblin_render_frame::image::Image;
+use gnoblin_render_frame::shm::copy_into;
 use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
 
 use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;

@@ -176,8 +176,8 @@ impl CursorChain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_types::Scale;
     use crate::{CursorFrame, MemoryFiles, ProviderKind, SearchPath};
+    use gnoblin_types::Scale;
 
     /// A provider whose answer is a plain function of the request.
     struct Scripted(fn(&CursorRequest<'_>) -> Lookup);

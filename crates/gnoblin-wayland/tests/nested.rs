@@ -33,8 +33,8 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::nested::{Nested, NestedConfig};
-use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent, Output, Present};
+use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_types::{Color, OutputId, Point, Rect, Size};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
 
