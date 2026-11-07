@@ -273,12 +273,6 @@ kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-a11y::Mode"
-right = "gnoblin-compat-core::Mode"
-kind = "same-name"
-reason = "an accessibility input mode and a compat adapter's mode gate share a word and nothing else"
-
-[[allow]]
 left = "gnoblin-output::Verdict"
 right = "gnoblin-parity::Verdict"
 kind = "same-name"
@@ -1777,12 +1771,6 @@ left = "gnoblin-store::State"
 right = "xdg-desktop-portal-gnoblin::State"
 kind = "same-name"
 reason = "the store lifecycle state versus a portal consent state; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-render-frame::Layer"
-right = "gnoblin-render-vulkan::PassKind"
-kind = "same-shape"
-reason = "a Vulkan pass kind is the renderer's draw-order tag; a frame layer is the renderer-neutral scene stratum, and the shared small variant set is not one type"
 
 [[allow]]
 left = "gnoblin-types::Rect"
