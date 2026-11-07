@@ -669,6 +669,7 @@ impl Composer {
                 corner_radius: entry.transform.corner_radius,
                 effects: entry.effects.clone(),
                 model,
+                secure: false,
             }));
         }
         if let Some(flash) = self.flash {

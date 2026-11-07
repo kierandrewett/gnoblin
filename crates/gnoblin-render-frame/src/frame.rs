@@ -68,6 +68,50 @@ pub enum Layer {
     Overlay(Overlay),
 }
 
+/// What a capture draws in place of a secure layer.
+///
+/// It changes only the pixels a capture reads. The display still shows the layer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SecureTreatment {
+    /// A neutral rectangle over the layer's place, so a viewer can see that something is hidden.
+    #[default]
+    Mask,
+    /// Nothing for the layer, so the capture shows whatever lies beneath it.
+    Omit,
+}
+
+impl Layer {
+    /// Whether the layer is secure, so a capture replaces it.
+    fn is_secure(&self) -> bool {
+        match self {
+            Self::Surface(surface) => surface.secure,
+            Self::Solid(solid) => solid.secure,
+            Self::Overlay(overlay) => overlay.secure,
+        }
+    }
+
+    /// The neutral rectangle a capture draws in place of this secure layer.
+    ///
+    /// It keeps the layer's place, corners and perspective, so a masked window takes the shape
+    /// the display showed. It drops the effects, which act on the content the mask hides.
+    fn mask(&self) -> Solid {
+        let grey = Color::new(0.5, 0.5, 0.5, 1.0);
+        match self {
+            Self::Surface(surface) => Solid {
+                corner_radius: surface.corner_radius,
+                model: surface.model,
+                ..Solid::new(surface.dst, grey)
+            },
+            Self::Solid(solid) => Solid {
+                corner_radius: solid.corner_radius,
+                model: solid.model,
+                ..Solid::new(solid.dst, grey)
+            },
+            Self::Overlay(overlay) => Solid::new(overlay.dst(), grey),
+        }
+    }
+}
+
 /// A client buffer on the output.
 ///
 /// The buffer is the client's `wl_shm` allocation, held by a handle so a client
@@ -105,6 +149,8 @@ pub struct Surface {
     pub effects: Effects,
     /// How the layer sits in three dimensions, `None` when it is drawn flat.
     pub model: Option<Model>,
+    /// Whether a capture replaces this layer; the display still shows it.
+    pub secure: bool,
 }
 
 /// A solid rectangle on the output.
@@ -128,6 +174,8 @@ pub struct Solid {
     pub effects: Effects,
     /// How the rectangle sits in three dimensions, `None` when it is drawn flat.
     pub model: Option<Model>,
+    /// Whether a capture replaces this layer; the display still shows it.
+    pub secure: bool,
 }
 
 impl Solid {
@@ -144,6 +192,7 @@ impl Solid {
             corner_radius: 0.0,
             effects: Effects::new(),
             model: None,
+            secure: false,
         }
     }
 }
@@ -170,14 +219,16 @@ pub struct Model {
 /// `wl_buffer` and survives the client that asked for it. The pixels are
 /// premultiplied at construction, because both renderers blend premultiplied
 /// colour and a straight-alpha edge would brighten. It is drawn above every
-/// layer and below the cursor, and a screen capture leaves it out unless the
-/// frame says otherwise (see [`Layer::Overlay`]).
+/// layer and below the cursor. A capture leaves it in unless the overlay is secure;
+/// then the capture replaces it with the frame's [`SecureTreatment`].
 #[derive(Clone, Debug)]
 pub struct Overlay {
     /// Where the image lands, in the output's logical space.
     dst: Rect,
     /// The premultiplied RGBA8 pixels, rows packed.
     image: Arc<Image>,
+    /// Whether a capture replaces the overlay; the display still shows it.
+    secure: bool,
 }
 
 impl Overlay {
@@ -212,6 +263,7 @@ impl Overlay {
         Some(Self {
             dst,
             image: Arc::new(image),
+            secure: false,
         })
     }
 
@@ -225,6 +277,19 @@ impl Overlay {
     #[must_use]
     pub fn image(&self) -> &Image {
         &self.image
+    }
+
+    /// Marks the overlay secure, so a capture replaces it with the frame's secure treatment.
+    #[must_use]
+    pub fn with_secure(mut self, secure: bool) -> Self {
+        self.secure = secure;
+        self
+    }
+
+    /// Whether a capture replaces this overlay.
+    #[must_use]
+    pub fn is_secure(&self) -> bool {
+        self.secure
     }
 }
 
@@ -476,6 +541,39 @@ impl OutputFrame {
     pub fn set_colour_matrix(&mut self, matrix: Option<ColourMatrix>) {
         self.colour_matrix = matrix.filter(|matrix| ColourMatrix::new(matrix.rows).is_some());
     }
+
+    /// Whether any layer is secure, so a capture has to replace something.
+    #[must_use]
+    pub fn has_secure(&self) -> bool {
+        self.layers.iter().any(Layer::is_secure)
+    }
+
+    /// The same frame with all of `bounds` damaged, so a draw repaints the whole output.
+    #[must_use]
+    pub fn fully_damaged(&self, bounds: Rect) -> Self {
+        let mut frame = self.clone();
+        frame.damage.clear();
+        frame.damage.push(bounds);
+        frame
+    }
+
+    /// The same frame with every secure layer replaced by `treatment`, damaging all of `bounds`.
+    ///
+    /// A capture draws this in place of the frame, then reads the target back. Full damage is
+    /// what makes the replacement cover the whole output, not only the part that changed.
+    #[must_use]
+    pub fn redacted(&self, treatment: SecureTreatment, bounds: Rect) -> Self {
+        let mut frame = self.fully_damaged(bounds);
+        frame.layers.clear();
+        for layer in &self.layers {
+            match (layer.is_secure(), treatment) {
+                (false, _) => frame.layers.push(layer.clone()),
+                (true, SecureTreatment::Mask) => frame.layers.push(Layer::Solid(layer.mask())),
+                (true, SecureTreatment::Omit) => {}
+            }
+        }
+        frame
+    }
 }
 
 #[cfg(test)]
@@ -543,6 +641,66 @@ mod tests {
         let mut frame = OutputFrame::new();
         frame.set_background(Color::new(f32::INFINITY, 0.0, 0.0, 1.0));
         assert_eq!(frame.background(), Color::BLACK);
+    }
+
+    #[test]
+    fn a_secure_layer_is_masked_in_a_capture_and_the_frame_keeps_it() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 64, 64), Color::WHITE)));
+        let mut secret = Solid::new(Rect::new(8, 8, 16, 16), Color::BLACK);
+        secret.secure = true;
+        frame.push_layer(Layer::Solid(secret));
+        assert!(frame.has_secure());
+        let masked = frame.redacted(SecureTreatment::Mask, bounds);
+        assert_eq!(
+            masked.layers().len(),
+            2,
+            "the mask keeps the layer's place in the stack"
+        );
+        match &masked.layers()[1] {
+            Layer::Solid(mask) => assert_eq!(mask.dst, Rect::new(8, 8, 16, 16)),
+            other => panic!("expected a solid mask, got {other:?}"),
+        }
+        assert_eq!(frame.layers().len(), 2, "the display's frame is not touched");
+        assert!(matches!(&frame.layers()[1], Layer::Solid(solid) if solid.secure));
+    }
+
+    #[test]
+    fn an_omitted_secure_layer_leaves_the_layers_beneath_it_visible() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 64, 64), Color::WHITE)));
+        let mut secret = Solid::new(Rect::new(0, 0, 64, 64), Color::BLACK);
+        secret.secure = true;
+        frame.push_layer(Layer::Solid(secret));
+        let omitted = frame.redacted(SecureTreatment::Omit, Rect::new(0, 0, 64, 64));
+        assert_eq!(
+            omitted.layers().len(),
+            1,
+            "the secure layer is gone, the one beneath stays"
+        );
+        assert!(matches!(&omitted.layers()[0], Layer::Solid(solid) if !solid.secure));
+    }
+
+    #[test]
+    fn a_redacted_frame_repaints_the_whole_output() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let mut frame = OutputFrame::new();
+        frame.push_damage(Rect::new(4, 4, 2, 2));
+        let mut secret = Solid::new(Rect::new(0, 0, 8, 8), Color::BLACK);
+        secret.secure = true;
+        frame.push_layer(Layer::Solid(secret));
+        assert_eq!(frame.redacted(SecureTreatment::Mask, bounds).damage(), &[bounds]);
+    }
+
+    #[test]
+    fn a_secure_overlay_is_masked_and_a_plain_one_is_not() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Overlay(overlay_at(0).with_secure(true)));
+        assert!(frame.has_secure());
+        frame.clear();
+        frame.push_layer(Layer::Overlay(overlay_at(0)));
+        assert!(!frame.has_secure(), "an overlay is captured unless it says otherwise");
     }
 
     #[test]
