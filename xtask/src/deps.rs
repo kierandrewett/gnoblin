@@ -37,6 +37,7 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-cli-style",
     "gnoblin-client",
     "gnoblin-config",
+    "gnoblin-cursor",
     "gnoblin-layers",
     "gnoblin-lock",
     "gnoblin-model",
@@ -236,6 +237,10 @@ const RULES: &[Rule] = &[
     Rule {
         id: "store-consumers",
         check: store_consumers,
+    },
+    Rule {
+        id: "cursor-isolation",
+        check: cursor_isolation,
     },
 ];
 
@@ -697,6 +702,40 @@ fn store_consumers(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
+/// The cursor crate: the provider chain, theme lookup and image decoding for the pointer. It is a
+/// foundation crate, so it names only the shared primitives and the logging facade among workspace
+/// crates, and only the two crates that draw or configure the pointer may name it.
+const CURSOR_CRATE: &str = "gnoblin-cursor";
+
+/// The workspace crates `gnoblin-cursor` may depend on.
+const CURSOR_DEPS: &[&str] = &["gnoblin-log", "gnoblin-types"];
+
+/// The crates that name `gnoblin-cursor`: the compositor reads its settings and the Wayland
+/// engine draws the pointer from its images.
+const CURSOR_USERS: &[&str] = &["gnoblin-compositor", "gnoblin-wayland"];
+
+/// Keeps the cursor crate light and its users explicit: it may name only [`CURSOR_DEPS`] among
+/// workspace crates, and only [`CURSOR_USERS`] may depend on it.
+fn cursor_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name == CURSOR_CRATE {
+        if is_workspace_crate(&dep.name) && !CURSOR_DEPS.contains(&dep.name.as_str()) {
+            return Some(format!(
+                "`{CURSOR_CRATE}` may depend only on {} among workspace crates, not `{}`",
+                CURSOR_DEPS.join(" and "),
+                dep.name
+            ));
+        }
+        return None;
+    }
+    if dep.name != CURSOR_CRATE || CURSOR_USERS.contains(&package.name.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "only the pointer's users may depend on `{CURSOR_CRATE}`; `{}` is not one of them",
+        package.name
+    ))
+}
+
 /// The test kit and the parity harness are development dependencies only.
 fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name != "gnoblin-testkit" && dep.name != "gnoblin-parity" {
@@ -1049,6 +1088,34 @@ mod tests {
                 ("gnoblin-render", &["gnoblin-types"]),
             ]),
             Vec::<String>::new()
+        );
+    }
+
+    /// The cursor crate names only the primitives and the logging facade, and only the pointer's
+    /// two users depend on it.
+    #[test]
+    fn the_cursor_crate_names_only_its_primitives_and_the_logging_facade() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin-wayland", &["gnoblin-cursor"]),
+                ("gnoblin-compositor", &["gnoblin-cursor"]),
+                ("gnoblin-cursor", &["gnoblin-log", "gnoblin-types", "xcursor"]),
+            ]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            violations(&[
+                ("gnoblin-cursor", &["gnoblin-model", "gnoblin-types"]),
+                ("gnoblin-services", &["gnoblin-cursor"]),
+            ]),
+            vec![
+                "gnoblin-cursor -> gnoblin-model [cursor-isolation]: `gnoblin-cursor` may depend only on \
+                 gnoblin-log and gnoblin-types among workspace crates, not `gnoblin-model`"
+                    .to_owned(),
+                "gnoblin-services -> gnoblin-cursor [cursor-isolation]: only the pointer's users may depend on \
+                 `gnoblin-cursor`; `gnoblin-services` is not one of them"
+                    .to_owned(),
+            ]
         );
     }
 

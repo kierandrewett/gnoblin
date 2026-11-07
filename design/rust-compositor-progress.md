@@ -29,7 +29,7 @@ against it.
 | ENG  | `gnoblin-wayland`                                                                                 | globals, xdg-shell, session lock, frame loop                        | `7d718789` | 38    |
 | BE   | `gnoblin-backend`                                                                                 | backend trait, headless, software renderer, screenshot readback     | `7d718789` | 45    |
 | BE   | `gnoblin-output`                                                                                  | output model, layout, transactional apply                           | `31692467` | 25    |
-| RND  | `gnoblin-render`                                                                                  | scene, damage, tween player, cursor selection                       | `ae3b21c7` | 68    |
+| RND  | `gnoblin-render`                                                                                  | scene, damage, tween player                                         | `ae3b21c7` | 68    |
 | INP  | `gnoblin-input`                                                                                   | chords, bindings, gestures, policy                                  | `c0dc1b10` | 65    |
 | A11Y | `gnoblin-a11y`                                                                                    | sticky, slow, bounce and mouse keys, magnifier                      | `c0dc1b10` | 34    |
 | CMP  | `gnoblin-compat-core`                                                                             | adapter frame, support matrix, refusal                              | `23cc3f86` | 32    |

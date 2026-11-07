@@ -440,6 +440,7 @@ gnoblin/
     gnoblin-authority/        pure attribution, activation and capability grant rules (D22)
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol; dynamic globals from provider XML at run time (D22)
     gnoblin-render/           scene graph, effects, user shaders, animation and tween player, damage
+    gnoblin-cursor/           pointer themes: the ordered D20 provider chain (Hyprcursor, SVG layout, Xcursor), theme lookup, image decoding, built-in arrow, shape names
     gnoblin-input/            libinput settings, xkb, chords, gestures, input policy routing, IME, idle activity
     gnoblin-input-eis/        EIS server (libei over reis): client requests to seat events and consent decisions
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
@@ -603,7 +604,7 @@ word, such as a backend `Output` and the window manager's — is waived in
 | Capture series 65, 66, 74                                                | 5 patches                    | `gnoblin-capture`                               | Redesign as one frame export path                                                                            |
 | `src/agents`                                                             | 2,971 lines                  | `gnoblin-services`                              | Port to `zbus`; move out of the compositor process                                                           |
 | `src/portal` and `patches/xdg-desktop-portal-gnome`                      | 1,758 lines and 14 patches   | `xdg-desktop-portal-gnoblin`                    | Rewrite as a Rust backend; drop the patched GNOME backend                                                    |
-| `src/cursor` (Hyprcursor)                                                | 164 lines and 2 patches      | `gnoblin-render`                                | Load Xcursor and Hyprcursor themes in Rust (Hyprcursor via SVG rendering) [INFERENCE: check format coverage] |
+| `src/cursor` (Hyprcursor)                                                | 164 lines and 2 patches      | `gnoblin-cursor`                                | Load Xcursor and Hyprcursor themes in Rust (Hyprcursor via SVG rendering) [INFERENCE: check format coverage] |
 | ImGui console, debug and recovery panels                                 | C++ plus `subprojects/imgui` | `gnoblin-diag`                                  | Redesign (D5)                                                                                                |
 | Window frames (`61-window-frames`, `src/protocols/window-frame`)         | 8 patches and 2,064 lines    | `gnoblin-render`, `gnoblin-wayland`             | Keep `gnoblin_window_frame_manager_v1` wire-compatible; Bingux builds against it                             |
 | Crash and lifetime fixes (50, 59, 79, 80, 81)                            | about 8 patches              | none                                            | Drop. Rust ownership and Smithay's resource model remove the cause; parity scenarios prove it                |
@@ -1620,7 +1621,7 @@ Each section below records the choice, its consequences, and the options conside
 | D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback; `floating` (the default) is native Rust with no Lua engine, and equals the shipped module                          |
 | D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                                                                                    |
 | D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                                                                                 |
-| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
+| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-cursor` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
 | D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
 | D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `store`, `journal`, `init`)                                                                              |
@@ -2603,7 +2604,7 @@ Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-por
 
 ### D20: cursor providers
 
-**Decided 2026-11-05: cursors come from an ordered chain of pure providers in `gnoblin-render`: Hyprcursor, the KDE/GNOME SVG layout and Xcursor. A built-in arrow is the last resort. This replaces the single Hyprcursor path.**
+**Decided 2026-11-05: cursors come from an ordered chain of pure providers in `gnoblin-cursor`: Hyprcursor, the KDE/GNOME SVG layout and Xcursor. A built-in arrow is the last resort. This replaces the single Hyprcursor path.**
 
 Sourced context. The primary source is Mutter's NEWS file (https://github.com/GNOME/mutter/blob/main/NEWS), read directly on 2026-11-05 by Main. NEWS proves only these three things:
 
@@ -2619,7 +2620,7 @@ Reported by theme authors, unverified against Mutter's cursor-loader source: the
 - **Implementation-time check (blocking for the `kde-gnome-svg` provider):** read Mutter's cursor loader source (`src/backends/meta-cursor-*.c` and the theme loading code) and record the `metadata.json` schema, the search roots and the SVG-only-for-shell rule with file and line citations, before writing that provider. Until then, every claim about those is `[INFERENCE]`.
 - Not claimed: that stock Mutter reads Hyprcursor.
 
-- **Trait:** `gnoblin-render` defines `CursorProvider::lookup(theme, shape, size, scale, files) -> Lookup`. `files` is a loader over a fixed list of theme directories, passed in, so tests use an in-memory loader. The result is `Found(CursorImages)`, `Miss` (no such theme or shape) or `Failed(reason)` (a corrupt or oversized file). No provider touches the filesystem directly.
+- **Trait:** `gnoblin-cursor` defines `CursorProvider::lookup(theme, shape, size, scale, files) -> Lookup`. `files` is a loader over a fixed list of theme directories, passed in, so tests use an in-memory loader. The result is `Found(CursorImages)`, `Miss` (no such theme or shape) or `Failed(reason)` (a corrupt or oversized file). No provider touches the filesystem directly.
 - **Images:** `CursorImages { hotspot, frames }`. Each frame is a premultiplied ARGB8888 bitmap at the physical size, with `delay_ms`. A static shape has one frame. The hotspot is clamped into the image. A zero-size image is `Failed`.
 - **Chain:** `gnoblin.configure.cursor.providers` gives the order. Default: `hyprcursor`, `kde-gnome-svg`, `xcursor`. The first `Found` wins. `Miss` and `Failed` pass to the next provider, and `Failed` is logged with the file and reason. After the last provider, a built-in arrow answers, so the pointer is never invisible. The arrow is a 24-pixel RGBA bitmap compiled into the binary.
 - **Providers in 0.2.0:**
@@ -2629,7 +2630,7 @@ Reported by theme authors, unverified against Mutter's cursor-loader source: the
     - Rasteriser: `resvg`/`usvg`, pure Rust. librsvg is rejected: it is C with GLib and Cairo, which breaks the pure-Rust build and the `gnoblin-render` dependency rules. Cost: resvg can be slower than librsvg on large SVGs; the caps below bound it.
     - `svg-dir` (plain SVG themes without metadata) is reserved in the enum and not built in 0.2.0.
 - **Not in 0.2.0:** Lua user providers (a Lua call in the cursor load path breaks the pure trait and the sandbox limits) and external-command providers (IO and latency in the load path). Each needs its own decision.
-- **Shapes:** cursor-shape-v1 shapes map to a fixed candidate list in `gnoblin-render` (for example `default` to `left_ptr`, then `default`, then `arrow`). A client-supplied cursor surface bypasses the providers: the client draws it.
+- **Shapes:** cursor-shape-v1 shapes map to a fixed candidate list in `gnoblin-cursor` (for example `default` to `left_ptr`, then `default`, then `arrow`). A client-supplied cursor surface bypasses the providers: the client draws it.
 - **HiDPI:** the request is `size * scale` physical pixels. Vector providers rasterise at that size. Xcursor resamples as in the size rule.
 - **Animation:** frames and delays come from the theme where it defines them; otherwise the shape is static. The renderer advances frames on the frame clock and does not resample animated frames. The `wait` shape uses the same chain.
 - **Cache:** keyed by `(theme, shape, size, scale)`, LRU-capped at 64 MiB of pixel data. A `Miss` is cached too.
