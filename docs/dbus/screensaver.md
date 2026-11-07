@@ -1,16 +1,27 @@
 # Screen Saver Interface
 
-Use `org.freedesktop.ScreenSaver` to inhibit idle suspend, inspect lock state, or request a lock.
+Use `org.freedesktop.ScreenSaver` to inhibit idle, inspect lock state, or request a lock.
 
-Gnoblin exports this interface on the session bus as `org.freedesktop.ScreenSaver` at `/org/freedesktop/ScreenSaver`. Some methods forward to GNOME's screen saver when it owns that service; otherwise, Gnoblin handles them through the session lock and logind.
+Gnoblin exports this interface on the session bus as `org.freedesktop.ScreenSaver`, at `/org/freedesktop/ScreenSaver` and at `/ScreenSaver`. The service answers from the compositor's idle and lock state. It does not forward calls to another screen saver.
 
-| Method      | Arguments                               | Result            | Errors and behavior                                                                                                                                              |
-| ----------- | --------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Inhibit`   | `application: string`, `reason: string` | `cookie: uint32`  | Acquires a logind idle inhibitor. The inhibitor is tied to the caller's D-Bus name.                                                                              |
-| `UnInhibit` | `cookie: uint32`                        | None              | Releases a cookie owned by the caller. Unknown or foreign cookies return `org.freedesktop.DBus.Error.AccessDenied`.                                              |
-| `GetActive` | None                                    | `active: boolean` | Reports current lock state when handled by Gnoblin, or forwards to GNOME's screen saver.                                                                         |
-| `SetActive` | `active: boolean`                       | None              | `true` requests a lock when Gnoblin handles the call; `false` is rejected with `org.freedesktop.DBus.Error.NotSupported`. Forwarded when GNOME owns the service. |
-| `Lock`      | None                                    | None              | Requests a lock when Gnoblin handles the call, or forwards to GNOME's screen saver.                                                                              |
+The interface follows the [freedesktop idle-inhibit specification](https://whot.pages.freedesktop.org/xdg-specs/idle-inhibit-spec/latest/re01.html) for `Inhibit` and `UnInhibit`, and the member signatures of the [KDE screen locker's interface](https://github.com/KDE/kscreenlocker/blob/master/dbus/org.freedesktop.ScreenSaver.xml) for the rest. The specification defines no error codes, so the errors below are Gnoblin's own.
+
+| Member                 | Arguments                               | Result            | Errors and behavior                                                                                                                                                      |
+| ---------------------- | --------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Inhibit`              | `application: string`, `reason: string` | `cookie: uint32`  | Holds the screen awake until released. A caller may hold 64 inhibits; a 65th is `org.freedesktop.DBus.Error.LimitsExceeded`.                                             |
+| `UnInhibit`            | `cookie: uint32`                        | None              | Releases a cookie the caller holds. A cookie nobody holds, or one another caller holds, is `org.freedesktop.DBus.Error.AccessDenied` and changes nothing.                |
+| `GetActive`            | None                                    | `active: boolean` | Reports the lock state. It is an error when the compositor publishes no lock object, since nothing reported the state.                                                   |
+| `SetActive`            | `active: boolean`                       | `active: boolean` | `true` requests a lock and returns `true` once confirmed; a refused lock is an error. `false` is `org.freedesktop.DBus.Error.NotSupported`, since clients cannot unlock. |
+| `Lock`                 | None                                    | None              | Requests a lock. Succeeds only once the compositor confirms the session is locked. A refusal, a failed cover or a timeout is an error.                                   |
+| `GetActiveTime`        | None                                    | `seconds: uint32` | Seconds the session has been locked through this service, or `0` when it is not locked.                                                                                  |
+| `GetSessionIdleTime`   | None                                    | `seconds: uint32` | Seconds since the last input event. It is an error when the compositor's idle object is missing, rather than reporting `0`.                                              |
+| `SimulateUserActivity` | None                                    | None              | `org.freedesktop.DBus.Error.NotSupported`. The compositor does not take simulated activity yet.                                                                          |
+
+## Signal
+
+| Signal          | Arguments         | Behavior                                                                                                     |
+| --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ActiveChanged` | `active: boolean` | Emitted once each time the lock state changes. It is not emitted for a repeat of the state already reported. |
 
 ## Inhibit and release
 
@@ -21,7 +32,9 @@ busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.
 busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.freedesktop.ScreenSaver UnInhibit u COOKIE
 ```
 
-`application` and `reason` are strings. If `application` is empty, Gnoblin uses the D-Bus caller name. `UnInhibit` only accepts a cookie returned to that same caller.
+`application` and `reason` appear only in the service log. The hold is identified by the caller's D-Bus unique name and the cookie. `UnInhibit` only accepts a cookie returned to that same caller.
+
+When a caller leaves the bus, every hold it made is released, so a player that exits without calling `UnInhibit` does not keep the screen awake.
 
 ## Request a lock
 
@@ -29,4 +42,4 @@ busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.
 busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.freedesktop.ScreenSaver Lock
 ```
 
-A successful method reply confirms the request was accepted. Check session lock state through the [Lua runtime API](/shell-api/session-runtime) to confirm that the lock transition completed.
+A successful method reply means the compositor confirmed the session is locked. Check session lock state through the [Lua runtime API](/shell-api/session-runtime) to read the same state from the desktop side.

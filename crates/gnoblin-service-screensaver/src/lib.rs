@@ -12,18 +12,25 @@
 //! `uninhibit`. While any hold is set the compositor does not fire idle notifications.
 //! A hold the compositor refuses fails the `Inhibit` call and is not recorded here.
 //!
-//! # What the compositor does not read yet
+//! # Lock state
 //!
-//! `GetActive` reports the lock object only. `Lock` asks the compositor and succeeds only
-//! once the compositor confirms the session locked, within its bound; a refusal, a failed
-//! cover or a timeout is a D-Bus error. `SimulateUserActivity` is refused, since the schema
-//! declares no member for it. `ActiveChanged` is declared but not emitted, since no lock
-//! change is watched.
+//! The lock object is read once when the service starts, and its later `locked` changes
+//! arrive as observations, which [`ScreenSaver::observe`] folds. `GetActive` answers from
+//! that folded state and makes no compositor call of its own, since a per-call snapshot
+//! subscribes afresh each time. `ActiveChanged` is emitted only when the folded state
+//! changes. `SetActive(true)` requests a lock and answers `true` once the compositor
+//! confirms it. `SetActive(false)` is refused, since clients cannot unlock the session
+//! through this service. `Lock` asks the compositor and succeeds only once the compositor
+//! confirms the session locked, within its bound; a refusal, a failed cover or a timeout
+//! is a D-Bus error. `SimulateUserActivity` is refused, since the schema declares no
+//! member for it.
 //!
 //! # Failure modes first
 //!
-//! 1. **An `UnInhibit` for a cookie nobody holds** is a no-op, and so is one for a cookie
-//!    that a different sender owns: `tests::an_unknown_or_foreign_cookie_is_a_no_op`.
+//! 1. **An `UnInhibit` for a cookie nobody holds, or one another sender owns** is refused
+//!    with `AccessDenied` and changes nothing:
+//!    `tests::an_unknown_or_foreign_cookie_is_refused`, and over the bus
+//!    `tests/screensaver.rs::an_uninhibit_for_a_foreign_cookie_is_access_denied`.
 //! 2. **A sender leaves the bus** and its inhibits go with it, in the table and in the
 //!    compositor, so a crashed player cannot hold the screen awake:
 //!    `tests::a_departed_sender_releases_its_inhibits` and
@@ -34,14 +41,22 @@
 //!    `tests::lock_calls_the_compositor_once`. A lock the compositor does not confirm is a
 //!    D-Bus error, never success: `tests::a_lock_the_compositor_does_not_confirm_is_an_error`.
 //!    A confirmed lock starts the clock: `tests::a_confirmed_lock_starts_the_clock`.
-//! 5. **`SetActive(true)` is called**: refused with `false`, since clients cannot lock the
-//!    screen by setting a flag: `tests::set_active_is_refused`.
-//! 6. **The compositor's idle or lock object is missing**: the call fails rather than
-//!    reporting zero idle time, which would say the user is active when nothing told us:
+//! 5. **`SetActive(true)` is called**: a confirmed lock answers `true`
+//!    (`tests::set_active_true_requests_a_lock`), and a refused lock is an error, never
+//!    `false` (`tests::a_refused_set_active_lock_is_an_error`).
+//! 6. **`SetActive(false)` is called**: refused with `NotSupported`:
+//!    `tests::set_active_false_is_not_supported`.
+//! 7. **The lock changes**: `ActiveChanged` is emitted once per change and never for a
+//!    repeat: `tests::a_lock_change_is_emitted_once`, and over the bus
+//!    `tests/screensaver.rs::active_changed_reaches_a_subscriber_once_per_change`.
+//! 8. **The lock object is absent or unreadable**: `GetActive` fails rather than reporting
+//!    unlocked, since nothing told us the state: `tests::a_missing_lock_object_fails_closed`.
+//! 9. **The compositor's idle object is missing**: the call fails rather than reporting
+//!    zero idle time, which would say the user is active when nothing told us:
 //!    `tests::a_missing_idle_object_fails_closed`.
-//! 7. **The compositor refuses a hold** (its cap is reached): the `Inhibit` call fails and
-//!    no inhibit is recorded, so the sender's cookie count is not inflated:
-//!    `tests::a_refused_inhibit_leaves_no_entry`.
+//! 10. **The compositor refuses a hold** (its cap is reached): the `Inhibit` call fails and
+//!     no inhibit is recorded, so the sender's cookie count is not inflated:
+//!     `tests::a_refused_inhibit_leaves_no_entry`.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -49,7 +64,7 @@ use std::time::Instant;
 
 use futures_lite::StreamExt;
 
-use gnoblin_model::{Fields, TypeKey, Value};
+use gnoblin_model::{Fields, ObjectId, Observation, TypeKey, Value};
 use gnoblin_service_core::Host;
 use zbus::fdo;
 use zbus::message::Header;
@@ -70,8 +85,9 @@ pub const MAX_INHIBITS_PER_SENDER: usize = 64;
 pub trait Compositor: Send + Sync {
     /// Milliseconds since the last input event, from the `idle` object.
     fn idle_ms(&self) -> Result<u64, String>;
-    /// Whether the session is locked, from the `lock` object.
-    fn locked(&self) -> Result<bool, String>;
+    /// The `lock` object as the compositor publishes it now, or `None` when it publishes
+    /// none. Read once when the service starts; later changes arrive as observations.
+    fn lock_reading(&self) -> Result<Option<LockReading>, String>;
     /// Ask the compositor to lock the session, and wait for it to confirm the lock. `Ok`
     /// means the compositor has proven the session locked; an error means it refused, the
     /// cover failed, or it did not confirm within its bound.
@@ -83,25 +99,27 @@ pub trait Compositor: Send + Sync {
     fn uninhibit(&self, holder: &str) -> Result<(), String>;
 }
 
-/// One inhibit a client holds.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ScreenInhibit {
-    sender: String,
-    application: String,
-    reason: String,
+/// The lock object's identity and whether the session was locked when it was read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LockReading {
+    /// The lock object, whose later `locked` changes arrive by this identity.
+    pub object: ObjectId,
+    /// Whether the session is locked.
+    pub locked: bool,
 }
 
-/// The inhibit table, keyed by cookie.
+/// The inhibit table: the sender that holds each cookie. The application and reason are
+/// only reported when the inhibit is made, so they are not kept here.
 #[derive(Default, Debug)]
 pub struct Inhibitors {
     next_cookie: u32,
-    table: BTreeMap<u32, ScreenInhibit>,
+    table: BTreeMap<u32, String>,
 }
 
 impl Inhibitors {
     /// Record an inhibit for `sender` and return its cookie.
-    fn inhibit(&mut self, sender: &str, application: &str, reason: &str) -> Result<u32, fdo::Error> {
-        let held = self.table.values().filter(|held| held.sender == sender).count();
+    fn inhibit(&mut self, sender: &str) -> Result<u32, fdo::Error> {
+        let held = self.table.values().filter(|owner| owner.as_str() == sender).count();
         if held >= MAX_INHIBITS_PER_SENDER {
             return Err(fdo::Error::LimitsExceeded(format!(
                 "{sender} already holds {MAX_INHIBITS_PER_SENDER} inhibits"
@@ -112,27 +130,20 @@ impl Inhibitors {
             self.next_cookie = self.next_cookie.wrapping_add(1).max(1);
         }
         let cookie = self.next_cookie;
-        self.table.insert(
-            cookie,
-            ScreenInhibit {
-                sender: sender.to_owned(),
-                application: application.to_owned(),
-                reason: reason.to_owned(),
-            },
-        );
+        self.table.insert(cookie, sender.to_owned());
         Ok(cookie)
     }
 
     /// Whether `sender` owns `cookie`. Anything it does not own is treated as unheld.
     fn owned_by(&self, sender: &str, cookie: u32) -> bool {
-        self.table.get(&cookie).is_some_and(|held| held.sender == sender)
+        self.table.get(&cookie).is_some_and(|owner| owner == sender)
     }
 
     /// Every cookie `sender` holds, for releasing a departed sender's holds.
     fn cookies_of(&self, sender: &str) -> Vec<u32> {
         self.table
             .iter()
-            .filter(|(_, held)| held.sender == sender)
+            .filter(|(_, owner)| owner.as_str() == sender)
             .map(|(cookie, _)| *cookie)
             .collect()
     }
@@ -149,20 +160,43 @@ pub struct ScreenSaver {
     inner: Arc<Core>,
 }
 
+/// The lock object the service follows, and the last lock state it emitted.
+#[derive(Default)]
+struct LockTracking {
+    /// The lock object and its folded `locked` value, or `None` when none is known.
+    current: Option<LockReading>,
+    /// The last state `observe` returned for emission, so a repeat emits nothing.
+    published: Option<bool>,
+}
+
 struct Core {
     compositor: Box<dyn Compositor>,
     inhibitors: Mutex<Inhibitors>,
     locked_since: Mutex<Option<Instant>>,
+    lock_state: Mutex<LockTracking>,
 }
 
 impl ScreenSaver {
-    /// A service answering from `compositor`.
+    /// A service answering from `compositor`. The lock object is read once here, so the
+    /// state is known before the first change arrives; the state read here is not
+    /// announced, since nothing changed yet.
     pub fn new(compositor: Box<dyn Compositor>) -> ScreenSaver {
+        let current = match compositor.lock_reading() {
+            Ok(reading) => reading,
+            Err(error) => {
+                log::warn!(area = "services", %error, "the screensaver service cannot read the lock object");
+                None
+            }
+        };
         ScreenSaver {
             inner: Arc::new(Core {
                 compositor,
                 inhibitors: Mutex::new(Inhibitors::default()),
                 locked_since: Mutex::new(None),
+                lock_state: Mutex::new(LockTracking {
+                    current,
+                    published: current.map(|reading| reading.locked),
+                }),
             }),
         }
     }
@@ -171,12 +205,68 @@ impl ScreenSaver {
         self.inner.inhibitors.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    fn lock_tracking(&self) -> MutexGuard<'_, LockTracking> {
+        self.inner.lock_state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Fold one compositor observation into the lock state. `Some` means the folded state
+    /// is known and differs from the last state emitted, and the caller must publish it.
+    /// `None` means nothing the signal reports changed, or the lock object is not known.
+    pub fn observe(&self, observation: &Observation) -> Option<bool> {
+        let mut tracking = self.lock_tracking();
+        match observation {
+            Observation::Opened { view, .. } if view.ty() == &TypeKey::gnoblin("lock") => {
+                if let Some(Value::Bool(locked)) = view.property("locked") {
+                    tracking.current = Some(LockReading {
+                        object: view.id(),
+                        locked: *locked,
+                    });
+                }
+            }
+            Observation::Changed {
+                object,
+                property,
+                value: Value::Bool(locked),
+                ..
+            } if property == "locked" => {
+                if let Some(current) = tracking.current.as_mut().filter(|current| current.object == *object) {
+                    current.locked = *locked;
+                }
+            }
+            Observation::Closed { object, .. } if tracking.current.is_some_and(|current| current.object == *object) => {
+                tracking.current = None;
+            }
+            _ => return None,
+        }
+        // With no lock object known there is no state to announce, and the last emitted
+        // state stays, so a later object that reports the same state emits nothing.
+        let locked = tracking.current?.locked;
+        if tracking.published == Some(locked) {
+            return None;
+        }
+        tracking.published = Some(locked);
+        Some(locked)
+    }
+
+    /// Emit `ActiveChanged` with `active` on `connection`, from the primary object path.
+    /// A refused emit is logged; `GetActive` still answers the folded state, so the next
+    /// change re-reports it.
+    pub fn publish(connection: &Connection, active: bool) {
+        let result = block_on(async {
+            let emitter = SignalEmitter::new(connection, PATHS[0])?;
+            ScreenSaver::active_changed(&emitter, active).await
+        });
+        if let Err(error) = result {
+            log::warn!(area = "services", %error, "could not emit ActiveChanged");
+        }
+    }
+
     /// Record an inhibit and hold the session awake in the compositor under its holder
     /// name. The table lock is held across the compositor call, so a release of the same
     /// cookie cannot interleave. A refused hold leaves no entry behind.
-    fn add_inhibit(&self, sender: &str, application: &str, reason: &str) -> Result<u32, fdo::Error> {
+    fn add_inhibit(&self, sender: &str) -> Result<u32, fdo::Error> {
         let mut table = self.inhibitors();
-        let cookie = table.inhibit(sender, application, reason)?;
+        let cookie = table.inhibit(sender)?;
         if let Err(error) = self.inner.compositor.inhibit(&holder_name(sender, cookie)) {
             table.forget(cookie);
             return Err(fdo::Error::Failed(format!(
@@ -187,11 +277,14 @@ impl ScreenSaver {
     }
 
     /// Release a hold `sender` owns, in the compositor first. If the compositor refuses the
-    /// release the entry stays, so the client can retry. Anything not owned is a no-op.
+    /// release the entry stays, so the client can retry. A cookie `sender` does not own is
+    /// refused with `AccessDenied`, and the table is left as it was.
     fn remove_inhibit(&self, sender: &str, cookie: u32) -> Result<(), fdo::Error> {
         let mut table = self.inhibitors();
         if !table.owned_by(sender, cookie) {
-            return Ok(());
+            return Err(fdo::Error::AccessDenied(format!(
+                "cookie {cookie} is not an inhibit held by {sender}"
+            )));
         }
         self.inner
             .compositor
@@ -221,8 +314,12 @@ impl ScreenSaver {
         Ok(())
     }
 
+    /// The folded lock state, or an error when no lock object has been observed.
     fn is_locked(&self) -> Result<bool, fdo::Error> {
-        self.inner.compositor.locked().map_err(fdo::Error::Failed)
+        self.lock_tracking()
+            .current
+            .map(|reading| reading.locked)
+            .ok_or_else(|| fdo::Error::Failed("the compositor publishes no lock object".to_owned()))
     }
 
     fn active_seconds(&self) -> Result<u32, fdo::Error> {
@@ -291,25 +388,33 @@ impl ScreenSaver {
         #[zbus(header)] header: Header<'_>,
     ) -> fdo::Result<u32> {
         let sender = sender_of(&header)?;
-        let cookie = self.add_inhibit(&sender, application_name, reason)?;
-        log::info!(area = "services", %sender, cookie, application = application_name, "screensaver inhibited");
+        let cookie = self.add_inhibit(&sender)?;
+        log::info!(area = "services", %sender, cookie, application = application_name, reason = reason, "screensaver inhibited");
         Ok(cookie)
     }
 
-    /// Release the inhibit `cookie`. Unknown or foreign cookies are ignored.
+    /// Release the inhibit `cookie`. A cookie the caller does not own is `AccessDenied`.
     async fn un_inhibit(&self, cookie: u32, #[zbus(header)] header: Header<'_>) -> fdo::Result<()> {
         let sender = sender_of(&header)?;
         self.remove_inhibit(&sender, cookie)
     }
 
-    /// Whether the session is locked.
+    /// Whether the session is locked, as the folded lock state describes it.
     async fn get_active(&self) -> fdo::Result<bool> {
         self.is_locked()
     }
 
-    /// Clients cannot lock the screen by setting a flag, so this always answers false.
-    async fn set_active(&self, _active: bool) -> bool {
-        false
+    /// `true` requests a lock and answers `true` once the compositor confirms it. A refused
+    /// lock is an error, so the answer is never a silent `false`. `false` is refused, since
+    /// clients cannot unlock the session through this service.
+    async fn set_active(&self, active: bool) -> fdo::Result<bool> {
+        if !active {
+            return Err(fdo::Error::NotSupported(
+                "clients cannot unlock the session through the screensaver service".to_owned(),
+            ));
+        }
+        self.request_lock()?;
+        Ok(true)
     }
 
     /// Seconds the session has been locked through this service, or zero.
@@ -334,8 +439,8 @@ impl ScreenSaver {
         ))
     }
 
-    /// Emitted when the lock state changes. Not emitted yet: the compositor's lock changes
-    /// are not watched.
+    /// Emitted with the new lock state when it changes. Never emitted for a repeat of the
+    /// state already announced.
     #[zbus(signal)]
     async fn active_changed(emitter: &SignalEmitter<'_>, active: bool) -> zbus::Result<()>;
 }
@@ -369,15 +474,20 @@ impl Compositor for Host {
         }
     }
 
-    fn locked(&self) -> Result<bool, String> {
+    fn lock_reading(&self) -> Result<Option<LockReading>, String> {
         let snapshot = self.snapshot().map_err(|error| error.to_string())?;
-        let view = snapshot
+        let Some(view) = snapshot
             .objects()
             .iter()
             .find(|view| view.ty() == &TypeKey::gnoblin("lock"))
-            .ok_or_else(|| "the compositor publishes no lock object".to_owned())?;
+        else {
+            return Ok(None);
+        };
         match view.property("locked") {
-            Some(Value::Bool(locked)) => Ok(*locked),
+            Some(Value::Bool(locked)) => Ok(Some(LockReading {
+                object: view.id(),
+                locked: *locked,
+            })),
             _ => Err("the lock object has no locked".to_owned()),
         }
     }
@@ -454,10 +564,12 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_model::{ObjectView, Revision};
 
     struct Fake {
         idle: Result<u64, String>,
-        locked: Result<bool, String>,
+        /// What the `lock` object reads as when the service starts.
+        lock_at_start: Result<Option<LockReading>, String>,
         /// What the compositor answers a lock with: `Ok` once it has confirmed the lock.
         lock: Result<(), String>,
         locks: Mutex<u32>,
@@ -471,8 +583,8 @@ mod tests {
         fn idle_ms(&self) -> Result<u64, String> {
             self.idle.clone()
         }
-        fn locked(&self) -> Result<bool, String> {
-            self.locked.clone()
+        fn lock_reading(&self) -> Result<Option<LockReading>, String> {
+            self.lock_at_start.clone()
         }
         fn lock(&self) -> Result<(), String> {
             *self.locks.lock().unwrap() += 1;
@@ -491,34 +603,92 @@ mod tests {
         }
     }
 
-    fn fake(idle: Result<u64, String>) -> (Arc<Fake>, ScreenSaver) {
+    fn lock_at(object: u64, locked: bool) -> LockReading {
+        LockReading {
+            object: ObjectId::new(object),
+            locked,
+        }
+    }
+
+    fn served_with(
+        idle: Result<u64, String>,
+        lock_at_start: Result<Option<LockReading>, String>,
+        lock: Result<(), String>,
+        refuse_inhibit: bool,
+    ) -> (Arc<Fake>, ScreenSaver) {
         let fake = Arc::new(Fake {
             idle,
-            locked: Ok(false),
-            lock: Ok(()),
+            lock_at_start,
+            lock,
             locks: Mutex::new(0),
             holds: Mutex::new(Vec::new()),
-            refuse_inhibit: false,
+            refuse_inhibit,
         });
         (fake.clone(), ScreenSaver::new(Box::new(fake)))
     }
 
+    /// A service whose lock object starts unlocked, as object 7.
+    fn fake(idle: Result<u64, String>) -> (Arc<Fake>, ScreenSaver) {
+        served_with(idle, Ok(Some(lock_at(7, false))), Ok(()), false)
+    }
+
+    fn lock_opened(object: u64, locked: bool) -> Observation {
+        let mut properties = Fields::new();
+        properties.insert("locked".to_owned(), Value::Bool(locked));
+        Observation::Opened {
+            view: ObjectView::new(ObjectId::new(object), TypeKey::gnoblin("lock"), properties),
+            revision: Revision::new(1),
+        }
+    }
+
+    fn lock_changed(object: u64, locked: bool) -> Observation {
+        Observation::Changed {
+            object: ObjectId::new(object),
+            property: "locked".to_owned(),
+            value: Value::Bool(locked),
+            revision: Revision::new(2),
+        }
+    }
+
+    fn lock_closed(object: u64) -> Observation {
+        Observation::Closed {
+            object: ObjectId::new(object),
+            revision: Revision::new(3),
+        }
+    }
+
     #[test]
-    fn an_unknown_or_foreign_cookie_is_a_no_op() {
-        let (_, service) = fake(Ok(0));
-        let cookie = service.add_inhibit(":1.5", "player", "playing").unwrap();
-        service.remove_inhibit(":1.5", cookie + 100).unwrap();
-        service.remove_inhibit(":1.9", cookie).unwrap();
-        assert_eq!(service.inhibitors().table.len(), 1);
+    fn an_unknown_or_foreign_cookie_is_refused() {
+        // The failure mode: a client releases a cookie it does not own, and the release
+        // silently succeeds, dropping the owner's hold from under it.
+        let (fake, service) = fake(Ok(0));
+        let cookie = service.add_inhibit(":1.5").unwrap();
+        assert!(matches!(
+            service.remove_inhibit(":1.5", cookie + 100),
+            Err(fdo::Error::AccessDenied(_))
+        ));
+        assert!(matches!(
+            service.remove_inhibit(":1.9", cookie),
+            Err(fdo::Error::AccessDenied(_))
+        ));
+        assert_eq!(service.inhibitors().table.len(), 1, "a refused release changes nothing");
+        assert_eq!(
+            fake.holds.lock().unwrap().len(),
+            1,
+            "the compositor keeps the owner's hold"
+        );
         service.remove_inhibit(":1.5", cookie).unwrap();
-        assert!(service.inhibitors().table.is_empty());
+        assert!(
+            matches!(service.remove_inhibit(":1.5", cookie), Err(fdo::Error::AccessDenied(_))),
+            "a released cookie is unknown"
+        );
     }
 
     #[test]
     fn a_departed_sender_releases_its_inhibits() {
         let (_, service) = fake(Ok(0));
-        service.add_inhibit(":1.5", "player", "playing").unwrap();
-        let kept = service.add_inhibit(":1.6", "video", "watching").unwrap();
+        service.add_inhibit(":1.5").unwrap();
+        let kept = service.add_inhibit(":1.6").unwrap();
         service.release_sender(":1.5");
         let table = &service.inhibitors().table;
         assert_eq!(table.len(), 1);
@@ -529,11 +699,11 @@ mod tests {
     fn the_65th_inhibit_from_one_sender_is_refused() {
         let (_, service) = fake(Ok(0));
         for _ in 0..MAX_INHIBITS_PER_SENDER {
-            service.add_inhibit(":1.5", "player", "playing").unwrap();
+            service.add_inhibit(":1.5").unwrap();
         }
-        let refused = service.add_inhibit(":1.5", "player", "playing");
+        let refused = service.add_inhibit(":1.5");
         assert!(matches!(refused, Err(fdo::Error::LimitsExceeded(_))));
-        assert!(service.add_inhibit(":1.6", "video", "watching").is_ok());
+        assert!(service.add_inhibit(":1.6").is_ok());
     }
 
     #[test]
@@ -545,15 +715,12 @@ mod tests {
 
     #[test]
     fn a_lock_the_compositor_does_not_confirm_is_an_error() {
-        let fake = Arc::new(Fake {
-            idle: Ok(0),
-            locked: Ok(false),
-            lock: Err("the compositor did not lock the session: not-locked".to_owned()),
-            locks: Mutex::new(0),
-            holds: Mutex::new(Vec::new()),
-            refuse_inhibit: false,
-        });
-        let service = ScreenSaver::new(Box::new(fake.clone()));
+        let (fake, service) = served_with(
+            Ok(0),
+            Ok(Some(lock_at(7, false))),
+            Err("the compositor did not lock the session: not-locked".to_owned()),
+            false,
+        );
         assert!(matches!(service.request_lock(), Err(fdo::Error::Failed(_))));
         assert_eq!(*fake.locks.lock().unwrap(), 1);
         assert!(
@@ -570,11 +737,39 @@ mod tests {
     }
 
     #[test]
-    fn set_active_is_refused() {
-        assert!(!futures_lite::future::block_on(async {
-            let (_, service) = fake(Ok(0));
-            service.set_active(true).await
-        }));
+    fn set_active_true_requests_a_lock() {
+        // The failure mode: `SetActive` always answered `false`, so a caller could not
+        // tell the lock was requested. A confirmed lock answers `true`.
+        let (fake, service) = fake(Ok(0));
+        assert!(matches!(block_on(service.set_active(true)), Ok(true)));
+        assert_eq!(*fake.locks.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_refused_set_active_lock_is_an_error() {
+        let (fake, service) = served_with(
+            Ok(0),
+            Ok(Some(lock_at(7, false))),
+            Err("the compositor did not lock the session: not-locked".to_owned()),
+            false,
+        );
+        assert!(matches!(block_on(service.set_active(true)), Err(fdo::Error::Failed(_))));
+        assert_eq!(*fake.locks.lock().unwrap(), 1);
+        assert!(service.inner.locked_since.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn set_active_false_is_not_supported() {
+        let (fake, service) = fake(Ok(0));
+        assert!(matches!(
+            block_on(service.set_active(false)),
+            Err(fdo::Error::NotSupported(_))
+        ));
+        assert_eq!(
+            *fake.locks.lock().unwrap(),
+            0,
+            "a refused unlock reaches no compositor method"
+        );
     }
 
     #[test]
@@ -586,7 +781,7 @@ mod tests {
     #[test]
     fn a_departed_sender_releases_its_holds_in_the_compositor() {
         let (fake, service) = fake(Ok(0));
-        let cookie = service.add_inhibit(":1.5", "player", "playing").unwrap();
+        let cookie = service.add_inhibit(":1.5").unwrap();
         assert_eq!(*fake.holds.lock().unwrap(), vec![format!(":1.5:{cookie}")]);
         service.release_sender(":1.5");
         assert!(fake.holds.lock().unwrap().is_empty());
@@ -594,17 +789,70 @@ mod tests {
 
     #[test]
     fn a_refused_inhibit_leaves_no_entry() {
-        let fake = Arc::new(Fake {
-            idle: Ok(0),
-            locked: Ok(false),
-            lock: Ok(()),
-            locks: Mutex::new(0),
-            holds: Mutex::new(Vec::new()),
-            refuse_inhibit: true,
-        });
-        let service = ScreenSaver::new(Box::new(fake.clone()));
-        assert!(service.add_inhibit(":1.5", "player", "playing").is_err());
+        let (fake, service) = served_with(Ok(0), Ok(Some(lock_at(7, false))), Ok(()), true);
+        assert!(service.add_inhibit(":1.5").is_err());
         assert!(service.inhibitors().cookies_of(":1.5").is_empty());
         assert!(fake.holds.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_lock_change_is_emitted_once() {
+        // The failure mode: `ActiveChanged` was declared and never emitted, so a locker
+        // that waited for it never saw the session lock.
+        let (_, service) = fake(Ok(0));
+        assert_eq!(service.observe(&lock_changed(7, true)), Some(true));
+        assert_eq!(service.observe(&lock_changed(7, true)), None, "a repeat emits nothing");
+        assert_eq!(
+            service.observe(&lock_opened(7, true)),
+            None,
+            "a duplicate open emits nothing"
+        );
+        assert_eq!(service.observe(&lock_changed(7, false)), Some(false));
+    }
+
+    #[test]
+    fn the_state_read_at_start_is_not_announced() {
+        let (_, service) = fake(Ok(0));
+        assert_eq!(service.observe(&lock_opened(7, false)), None);
+    }
+
+    #[test]
+    fn a_change_to_another_object_is_ignored() {
+        let (_, service) = fake(Ok(0));
+        assert_eq!(service.observe(&lock_changed(9, true)), None);
+        assert!(matches!(block_on(service.get_active()), Ok(false)));
+    }
+
+    #[test]
+    fn a_closed_lock_object_is_unknown_and_a_returning_one_announces_only_a_change() {
+        let (_, service) = fake(Ok(0));
+        assert_eq!(
+            service.observe(&lock_closed(7)),
+            None,
+            "losing the object is not a lock change"
+        );
+        assert!(matches!(block_on(service.get_active()), Err(fdo::Error::Failed(_))));
+        assert_eq!(service.observe(&lock_opened(8, false)), None, "same state as before");
+        assert_eq!(service.observe(&lock_opened(8, true)), Some(true));
+    }
+
+    #[test]
+    fn get_active_answers_the_folded_lock_state() {
+        let (_, service) = fake(Ok(0));
+        assert!(matches!(block_on(service.get_active()), Ok(false)));
+        service.observe(&lock_changed(7, true));
+        assert!(matches!(block_on(service.get_active()), Ok(true)));
+    }
+
+    #[test]
+    fn a_missing_lock_object_fails_closed() {
+        let (_, service) = served_with(Ok(0), Ok(None), Ok(()), false);
+        assert!(matches!(block_on(service.get_active()), Err(fdo::Error::Failed(_))));
+    }
+
+    #[test]
+    fn an_unreadable_lock_object_at_start_fails_closed() {
+        let (_, service) = served_with(Ok(0), Err("the lock object has no locked".to_owned()), Ok(()), false);
+        assert!(matches!(block_on(service.get_active()), Err(fdo::Error::Failed(_))));
     }
 }
