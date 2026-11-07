@@ -7,9 +7,9 @@
 //! session bus is one any local process can read.
 
 use aes::Aes128;
-use cbc::Encryptor;
 use cbc::cipher::block_padding::Pkcs7;
-use cbc::cipher::{BlockModeEncrypt, KeyIvInit};
+use cbc::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit};
+use cbc::{Decryptor, Encryptor};
 use hkdf::Hkdf;
 use num_bigint::BigUint;
 use sha2::Sha256;
@@ -43,6 +43,9 @@ pub enum DhError {
     BadPeerKey,
     /// The operating system would not supply random bytes.
     Random,
+    /// The IV is not 16 bytes, the ciphertext is empty or not whole blocks, or the padding is
+    /// wrong. These are reported alike, so the error reveals nothing about the key.
+    BadCiphertext,
 }
 
 impl std::fmt::Display for DhError {
@@ -50,6 +53,7 @@ impl std::fmt::Display for DhError {
         match self {
             Self::BadPeerKey => write!(f, "the client's public value is outside the group"),
             Self::Random => write!(f, "no random bytes are available"),
+            Self::BadCiphertext => write!(f, "the ciphertext is malformed or its padding is wrong"),
         }
     }
 }
@@ -99,10 +103,28 @@ pub fn encrypt(key: &DhSessionKey, plain: &[u8]) -> Result<(Vec<u8>, Vec<u8>), D
     Ok((iv.to_vec(), cipher))
 }
 
+/// Decrypt a secret a client encrypted under the session key. The plaintext is returned in a
+/// zeroizing buffer, and the padding bytes are wiped before the buffer is truncated, so no copy
+/// of the secret outlives the caller's use of it.
+pub fn decrypt(key: &DhSessionKey, iv: &[u8], cipher: &[u8]) -> Result<Zeroizing<Vec<u8>>, DhError> {
+    let iv: &[u8; IV_LEN] = iv.try_into().map_err(|_| DhError::BadCiphertext)?;
+    if cipher.is_empty() || !cipher.len().is_multiple_of(IV_LEN) {
+        return Err(DhError::BadCiphertext);
+    }
+    let key_array: &[u8; KEY_LEN] = &key.0;
+    let mut buffer = Zeroizing::new(cipher.to_vec());
+    let plain_len = Decryptor::<Aes128>::new(key_array.into(), iv.into())
+        .decrypt_padded::<Pkcs7>(buffer.as_mut_slice())
+        .map_err(|_| DhError::BadCiphertext)?
+        .len();
+    buffer[plain_len..].zeroize();
+    buffer.truncate(plain_len);
+    Ok(buffer)
+}
+
 #[cfg(test)]
 mod tests {
-    use cbc::Decryptor;
-    use cbc::cipher::BlockModeDecrypt;
+    use cbc::cipher::block_padding::NoPadding;
 
     use super::*;
 
@@ -148,5 +170,64 @@ mod tests {
         assert_eq!(accept(&[1]).err(), Some(DhError::BadPeerKey));
         let prime_bytes = prime().to_bytes_be();
         assert_eq!(accept(&prime_bytes).err(), Some(DhError::BadPeerKey));
+    }
+
+    /// The server's session key and the client's, derived independently; they must agree.
+    fn session_keys() -> (DhSessionKey, DhSessionKey) {
+        let client_private = BigUint::from(0x0fed_cba9_8765_4321u64);
+        let client_public = BigUint::from(GENERATOR).modpow(&client_private, &prime()).to_bytes_be();
+        let (server_public, server_key) = accept(&client_public).expect("a valid public value");
+        let (_, client) = client_key(&server_public, &client_private);
+        (server_key, client)
+    }
+
+    #[test]
+    fn decrypt_round_trips_with_the_peers_key() {
+        let (server, client) = session_keys();
+        let (iv, cipher) = encrypt(&server, b"hunter2").expect("encrypts");
+        let plain = decrypt(&client, &iv, &cipher).expect("the peer's key decrypts");
+        assert_eq!(plain.as_slice(), b"hunter2");
+    }
+
+    #[test]
+    fn decrypt_refuses_a_truncated_empty_or_misaligned_input() {
+        let (server, client) = session_keys();
+        let (iv, cipher) = encrypt(&server, b"hunter2").expect("encrypts");
+        assert_eq!(
+            decrypt(&client, &iv, &cipher[..cipher.len() - 1]).err(),
+            Some(DhError::BadCiphertext)
+        );
+        assert_eq!(decrypt(&client, &iv, &[]).err(), Some(DhError::BadCiphertext));
+        assert_eq!(
+            decrypt(&client, &iv[..IV_LEN - 1], &cipher).err(),
+            Some(DhError::BadCiphertext)
+        );
+    }
+
+    #[test]
+    fn decrypt_refuses_bad_padding() {
+        let (_, client) = session_keys();
+        // A block of zeros has a final byte of 0, which is never valid PKCS#7 padding.
+        let iv = [7u8; IV_LEN];
+        let key_array: &[u8; KEY_LEN] = &client.0;
+        let cipher =
+            Encryptor::<Aes128>::new(key_array.into(), (&iv).into()).encrypt_padded_vec::<NoPadding>(&[0u8; IV_LEN]);
+        assert_eq!(decrypt(&client, &iv, &cipher).err(), Some(DhError::BadCiphertext));
+    }
+
+    #[test]
+    fn decrypt_does_not_recover_the_secret_under_another_key() {
+        let (server, _) = session_keys();
+        let stranger_public = BigUint::from(GENERATOR)
+            .modpow(&BigUint::from(42u8), &prime())
+            .to_bytes_be();
+        let (_, stranger) = accept(&stranger_public).expect("a valid public value");
+        let (iv, cipher) = encrypt(&server, b"hunter2").expect("encrypts");
+        // A wrong key can by chance leave valid padding, so the test asserts only that the
+        // plaintext is not recovered.
+        match decrypt(&stranger, &iv, &cipher) {
+            Ok(plain) => assert_ne!(plain.as_slice(), b"hunter2"),
+            Err(error) => assert_eq!(error, DhError::BadCiphertext),
+        }
     }
 }
