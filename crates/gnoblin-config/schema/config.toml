@@ -1715,6 +1715,22 @@ accepted = "a named accent (blue, teal, green, yellow, orange, red, pink, purple
 doc = "The accent colour. A named accent is used as it is; a hex colour is published as the nearest named accent, because GTK takes only names."
 since = "0.2.0"
 
+[[section.field]]
+key = "reduced-motion"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Suppress animations and publish the reduced-motion preference to applications, so they stop animating. Window changes land at once."
+since = "0.2.0"
+
+[[section.field]]
+key = "high-contrast"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Publish the high-contrast preference to applications through the Settings portal and the GNOME accessibility interface key."
+since = "0.2.0"
+
 [[section]]
 key = "input"
 type = "Input"
