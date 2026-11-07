@@ -2322,12 +2322,21 @@ impl State {
     /// Only a `ModalToOutput` layer takes input here. `Passive` and `Grab` layers have
     /// no engine path yet, so a modal that declares either is refused and the current
     /// modal stands, rather than being honoured under a policy it does not hold.
+    ///
+    /// A modal cannot be set while the session is locked: the lock cover owns every
+    /// output and every key, so a modal would be drawn over the cover or take the
+    /// locker's keys. Clearing is always allowed. A modal stored before the lock is kept
+    /// but is not drawn or routed while locked (see [`Self::active_modal`]).
     pub(crate) fn set_modal(&mut self, modal: Option<Modal>) {
         if let Some(modal) = modal
             .as_ref()
             .filter(|modal| modal.input() != InputPolicy::ModalToOutput)
         {
             log::warn!(area = "modal", policy = ?modal.input(), "refused a modal whose input policy the engine does not honour");
+            return;
+        }
+        if modal.is_some() && self.lock.state() != LockState::Unlocked {
+            log::warn!(area = "modal", "refused a modal set while the session is locked");
             return;
         }
         for output in [self.modal.as_ref(), modal.as_ref()]
@@ -2338,6 +2347,19 @@ impl State {
             self.composer.damage_output(output);
         }
         self.modal = modal;
+    }
+
+    /// The modal that is drawn and takes input now, or `None` while the session is locked.
+    ///
+    /// The lock gate runs before any client sees input, so a modal that is still stored
+    /// during a lock must not be drawn over the cover or take the locker's keys. It is
+    /// not cleared, so it reappears once the session unlocks.
+    fn active_modal(&self) -> Option<&Modal> {
+        if self.lock.state() == LockState::Unlocked {
+            self.modal.as_ref()
+        } else {
+            None
+        }
     }
 
     /// Takes the modal events queued since the last take.
@@ -2855,11 +2877,18 @@ impl Host for State {
             // a frame queued before the cover worthless.
             self.protection_generation = Some(self.session_host.protection.generation());
         }
-        frame.set_cursor_image(self.pointer_cursor(output));
+        // The frame draws its cursor above every layer, so a pointer shown while locked
+        // would sit over the cover. A locked output shows no pointer.
+        let cursor = if self.lock.state() == LockState::Unlocked {
+            self.pointer_cursor(output)
+        } else {
+            None
+        };
+        frame.set_cursor_image(cursor);
         // The modal overlay is the last layer on the output it covers. `compose` and
         // `cover_frame` clear the frame first, so a cleared or moved modal leaves no stale
-        // overlay behind.
-        if let Some(modal) = self.modal.as_ref().filter(|modal| modal.output() == output) {
+        // overlay behind. A locked session draws no modal: the cover is what the output shows.
+        if let Some(modal) = self.active_modal().filter(|modal| modal.output() == output) {
             frame.push_layer(Layer::Overlay(modal.overlay().clone()));
         }
         changed
@@ -2876,9 +2905,10 @@ impl Host for State {
         if let InputEvent::PointerButton { pressed, .. } = event {
             self.button_grab(pressed);
         }
-        // While a modal is set it takes the keys and pointer buttons, and the clients
-        // see none of them; the rest of the input is dropped for the same reason.
-        if self.modal.is_some() && self.route_to_modal(&event) {
+        // While a modal is active it takes the keys and pointer buttons, and the clients
+        // see none of them; the rest of the input is dropped for the same reason. While the
+        // session is locked no modal is active, so the event goes to the lock's own focus.
+        if self.active_modal().is_some() && self.route_to_modal(&event) {
             return;
         }
         match event {

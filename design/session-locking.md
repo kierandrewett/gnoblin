@@ -17,6 +17,17 @@ Regular GNOME sessions do not receive the global and keep using GNOME
 ScreenShield. See the [protocol implementation notes](../src/protocols/session-lock/README.md)
 and the [user guide](../docs/session-lock.md).
 
+## Rust compositor status
+
+The Rust compositor (`crates/gnoblin-wayland`) covers every output with a solid cover
+from the first frame presented while locked, including outputs hotplugged during the
+lock. Nothing else is drawn over the cover: no modal, cursor or client content. A
+modal cannot be set while locked. Capture is refused during the lock, and streams that
+were open before it are stopped. Lock surfaces are tracked for mapping and input but
+are not composed, so the locker's own UI is not shown yet. The portal-stream guarantee
+in the section below is the Mutter behaviour and is not implemented by the Rust
+compositor.
+
 ## API boundary
 
 `gnoblin.session.lock()` asks subscribed shell clients to show their lock UI.

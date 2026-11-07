@@ -4,8 +4,10 @@
 //!
 //! While a modal set to [`InputPolicy::ModalToOutput`] stands, no key or pointer button
 //! reaches a client on its output. Each one is kept as a [`ModalEvent`] for the
-//! compositor to take, and the compositor decides what it means. Screen captures leave
-//! the overlay out, so a capture shows what the modal covers.
+//! compositor to take, and the compositor decides what it means. While the session is
+//! locked the lock cover owns the output, so a stored modal is neither drawn nor routed
+//! until the session unlocks. Screen captures leave the overlay out, so a capture shows
+//! what the modal covers.
 
 use gnoblin_layers::InputPolicy;
 use gnoblin_render_frame::frame::Overlay;

@@ -409,6 +409,85 @@ mod tests {
         assert_eq!(state.lock_state(), LockState::Locked);
     }
 
+    /// Records whether the host handed the backend a cursor for the frame it drew.
+    ///
+    /// The frame draws its cursor above every layer, so a cursor here is visible over
+    /// whatever the output shows. The cover test below reads it back.
+    struct CursorRecorder {
+        outputs: Vec<gnoblin_backend::Output>,
+        cursor_drawn: Vec<bool>,
+    }
+
+    impl Backend<State> for CursorRecorder {
+        fn name(&self) -> &'static str {
+            "cursor-recorder"
+        }
+
+        fn outputs(&self) -> &[gnoblin_backend::Output] {
+            &self.outputs
+        }
+
+        fn output(&self, id: OutputId) -> Option<&gnoblin_backend::Output> {
+            self.outputs.iter().find(|output| output.id == id)
+        }
+
+        fn target(&mut self, _id: OutputId) -> Option<&mut dyn gnoblin_backend::Target> {
+            None
+        }
+
+        fn input(&mut self) -> &mut dyn InputSource {
+            unreachable!("this backend has no input")
+        }
+
+        fn register(&mut self, _loop_handle: &LoopHandle<'static, State>) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn render(&mut self, host: &mut State, output: OutputId) -> Result<Present, BackendError> {
+            let mut frame = OutputFrame::new();
+            host.frame(output, &mut frame);
+            self.cursor_drawn.push(frame.cursor().is_some());
+            Ok(Present::Nothing)
+        }
+
+        fn capture(&mut self, _output: OutputId, _with_cursor: bool) -> Option<Image> {
+            None
+        }
+
+        fn dispatch(&mut self, _host: &mut State) -> Vec<gnoblin_backend::BackendEvent> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn a_locked_output_draws_no_cursor_over_the_cover() {
+        let (backend, mut state) = session();
+        let mut recorder = CursorRecorder {
+            outputs: Backend::<State>::outputs(&backend).to_vec(),
+            cursor_drawn: Vec::new(),
+        };
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+
+        // Unlocked, the output shows the named pointer, so the locked result below is
+        // not vacuously empty.
+        render(&mut recorder, &mut state, &stats, &screenshots);
+        assert_eq!(recorder.cursor_drawn, vec![true]);
+        recorder.cursor_drawn.clear();
+
+        let effects = state.lock.apply(LockEvent::LockRequested {
+            locker: ClientId::new(1),
+        });
+        state.apply_lock(effects);
+        render(&mut recorder, &mut state, &stats, &screenshots);
+        assert_eq!(state.lock_state(), LockState::Locked);
+        assert_eq!(
+            recorder.cursor_drawn,
+            vec![false],
+            "a locked output must not draw a pointer over the cover"
+        );
+    }
+
     #[test]
     fn a_failed_protection_draw_does_not_prove_the_cover() {
         let (mut backend, mut state) = session();

@@ -10,14 +10,14 @@
 //!
 //! ## What "covered" means in this slice
 //!
-//! There is no renderer yet, so nothing is composited: a frame is the whole target
-//! presented as damage, and no client content is drawn on it at all. What the lock
-//! requires is not a drawn cover but a **presented** one: [`crate::State`] arms a
-//! barrier with a generation, and a frame presented on an output echoes that
-//! generation back as [`gnoblin_lock::Event::CoverPresented`]. Only when every
-//! output of the layout has echoed the current generation may `locked` be sent, so
-//! a frame presented before the barrier was armed cannot prove anything. When the
-//! renderer lands it fills that frame with the cover instead of with nothing.
+//! The renderer draws the cover: `cover_frame` sets each output's background to the
+//! cover colour and draws no client content over it, so a covered window is not drawn
+//! even in the frame that proves the cover. What the lock requires is a **presented**
+//! cover, not only a drawn one: [`crate::State`] arms a barrier with a generation, and a
+//! frame presented on an output echoes that generation back as
+//! [`gnoblin_lock::Event::CoverPresented`]. Only when every output of the layout has
+//! echoed the current generation may `locked` be sent, so a frame presented before the
+//! barrier was armed cannot prove anything.
 //!
 //! ## Failure modes first
 //!

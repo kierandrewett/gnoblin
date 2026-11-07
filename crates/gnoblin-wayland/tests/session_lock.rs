@@ -19,9 +19,12 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
+use gnoblin_layers::InputPolicy;
 use gnoblin_lock::State as LockState;
-use gnoblin_types::Point;
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_render_frame::frame::Overlay;
+use gnoblin_render_frame::image::Image;
+use gnoblin_types::{OutputId, Point, Rect, Size};
+use gnoblin_wayland::{Config, ControlHandle, LoopError, Modal, Server, SessionSnapshot};
 use wayland_client::backend::ObjectId;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -80,6 +83,26 @@ impl Handle {
     /// Waits until the lock is in `state`.
     fn wait_for_lock(&self, state: LockState) -> SessionSnapshot {
         self.wait_for(|observation| observation.lock_state() == state)
+    }
+
+    /// The red, green and blue of the output's top-left pixel, as the next screenshot shows it.
+    fn corner_rgb(&self, output: OutputId) -> [u8; 3] {
+        let image = self.control.screenshot(output).expect("the loop answers a screenshot");
+        let pixel = image.pixel(Point::new(0, 0)).expect("the output has a top-left pixel");
+        [pixel[0], pixel[1], pixel[2]]
+    }
+
+    /// Waits until the output's top-left pixel is `expected`, or fails with `what`.
+    fn wait_for_corner(&self, output: OutputId, expected: [u8; 3], what: &str) {
+        let deadline = Instant::now() + TIMEOUT;
+        while self.corner_rgb(output) != expected {
+            assert!(
+                Instant::now() < deadline,
+                "{what}: the corner is {:?}",
+                self.corner_rgb(output)
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     /// Queues a key press and release, as the backend would deliver them.
@@ -338,10 +361,16 @@ impl Client {
 
     /// Attaches a shared-memory buffer and commits, which maps the surface.
     fn attach_buffer(&mut self, surface: &wl_surface::WlSurface, width: i32, height: i32) {
+        self.attach_pixels(surface, width, height, 0);
+    }
+
+    /// Attaches a shared-memory buffer filled with the ARGB `pixel` and commits, which maps the surface.
+    fn attach_pixels(&mut self, surface: &wl_surface::WlSurface, width: i32, height: i32, pixel: u32) {
         let stride = width * 4;
         let length = stride * height;
         let file = tempfile::tempfile().expect("a shared memory file");
-        file.set_len(length as u64).expect("a buffer that big");
+        let bytes: Vec<u8> = (0..length / 4).flat_map(|_| pixel.to_le_bytes()).collect();
+        std::io::Write::write_all(&mut &file, &bytes).expect("the pixels fit the buffer");
         let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
         let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ());
         surface.attach(Some(&buffer), 0, 0);
@@ -835,6 +864,142 @@ fn unlock_restores_the_previous_focus() {
         session.wait_for_lock(LockState::Locked);
         next.wait_for_locked();
         assert_eq!(next.state.locked.len(), 1);
+    });
+}
+
+/// The cover colour: the lock paints every output black.
+const BLACK: [u8; 3] = [0, 0, 0];
+
+/// The colour of the test modal below.
+const WHITE: [u8; 3] = [255, 255, 255];
+
+/// An opaque white prompt in the top-left corner, the modal the tests try to see or to use.
+fn prompt(output: OutputId) -> Modal {
+    let size = Size { width: 2, height: 2 };
+    let image = Image::new(size, 8, vec![255; 16]).expect("a 2x2 image");
+    let overlay = Overlay::new(Rect::from_size(size), &image).expect("a non-empty overlay");
+    Modal::new(InputPolicy::ModalToOutput, output, overlay)
+}
+
+/// Maps a window of opaque grey, so a black or white corner can only be the cover or the modal.
+fn map_grey_window(app: &mut Client) -> Window {
+    let window = app.create_window("org.gnoblin.Covered", "Covered");
+    app.attach_pixels(&window.surface, 200, 150, 0xff80_8080);
+    window
+}
+
+/// Round-trips `client` until `ready` holds for its state, or fails with `what`.
+fn wait_for_client(client: &mut Client, what: &str, ready: impl Fn(&App) -> bool) {
+    let deadline = Instant::now() + TIMEOUT;
+    while !ready(&client.state) {
+        assert!(Instant::now() < deadline, "{what}");
+        client.roundtrip();
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_modal_set_before_the_lock_is_not_drawn_over_the_cover() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = map_grey_window(&mut app);
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+        let output = session.snapshot().outputs().first().copied().expect("an output");
+        session.control.set_modal(Some(prompt(output)));
+        session.wait_for_corner(output, WHITE, "the modal is drawn before the lock");
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        session.wait_for_corner(output, BLACK, "the cover replaces the modal");
+        assert_eq!(session.corner_rgb(output), BLACK, "and the cover stays over the output");
+    });
+}
+
+#[test]
+fn a_modal_set_before_the_lock_takes_no_keys_while_locked() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Covered", "Covered");
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+        let output = session.snapshot().outputs().first().copied().expect("an output");
+        session.control.set_modal(Some(prompt(output)));
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface(0);
+        wait_for_client(&mut locker, "the lock surface never took focus", |state| {
+            state.keyboard_enters >= 1
+        });
+
+        session.press_key();
+        wait_for_client(
+            &mut locker,
+            "the lock surface never received the key: a modal took it",
+            |state| state.keys >= 1,
+        );
+        assert_eq!(
+            session.control.modal_events(),
+            Some(vec![]),
+            "the modal took no key while the session was locked"
+        );
+        assert_eq!(app.settle().keys, 0, "the covered client received no key either");
+    });
+}
+
+#[test]
+fn a_modal_set_while_locked_is_refused() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = map_grey_window(&mut app);
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+        let output = session.snapshot().outputs().first().copied().expect("an output");
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface(0);
+        wait_for_client(&mut locker, "the lock surface never took focus", |state| {
+            state.keyboard_enters >= 1
+        });
+
+        session.control.set_modal(Some(prompt(output)));
+        session.press_key();
+        wait_for_client(
+            &mut locker,
+            "the lock surface never received the key: a refused modal took it",
+            |state| state.keys >= 1,
+        );
+        assert_eq!(
+            session.control.modal_events(),
+            Some(vec![]),
+            "a refused modal takes no key"
+        );
+        assert_eq!(session.corner_rgb(output), BLACK, "and it is not drawn over the cover");
+
+        locker.unlock();
+        session.wait_for_lock(LockState::Unlocked);
+        wait_for_client(&mut app, "the window never got focus back", |state| {
+            state.keyboard_enters >= 2
+        });
+        session.press_key();
+        wait_for_client(
+            &mut app,
+            "the window never received the key: a refused modal stood after the unlock",
+            |state| state.keys >= 1,
+        );
+        assert_eq!(
+            session.control.modal_events(),
+            Some(vec![]),
+            "no modal stands after the unlock"
+        );
     });
 }
 

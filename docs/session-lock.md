@@ -2,8 +2,8 @@
 
 Gnoblin uses the standard `ext-session-lock-v1` Wayland protocol in the
 Gnoblin session. The compositor owns the security boundary: it covers every
-output, stops normal input, replaces desktop capture with its lock scene, and
-stays locked if a locker exits. The locker owns its appearance and
+output, stops normal input, refuses screen capture, and stays locked if a locker
+exits. The locker owns its appearance and
 authentication. See the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml).
 
 The lock screen is a separate client. Bingux is one shell project with its own
@@ -124,8 +124,9 @@ lock.
 ## Portal and remote access while locked
 
 Remote and portal streams are routed by the selected portal backend. While the
-session is locked, a monitor stream that is already running receives the
-compositor lock scene rather than normal desktop content.
+session is locked, a new capture request is refused, and a monitor stream that was
+already running when the lock began is stopped: its client receives `stopped` and
+no further frame. No desktop pixels are sent while the lock holds.
 
 Remote keyboard and pointer input is available after `locked` and lock-scene
 presentation, and is routed only to the active lock surface. It is refused
