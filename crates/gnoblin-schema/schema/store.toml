@@ -72,6 +72,44 @@ name = "limit"
 type = "uint"
 since = "0.2.0"
 
+# The `log` object: the caller's own append-only record store. The verbs act on the
+# store the connection owns, as for `store`, and a connection with no owner is refused
+# with `no-store-owner`.
+#
+# Each write appends one record and nothing is replaced, so a key may hold many records.
+# `get` reads the newest one.
+[[object]]
+name = "log"
+since = "0.2.0"
+
+# Appends a record under `key` with `value` as its message, and completes `done` once the
+# record is committed. The value is text of at most 64 KiB. A key is 1 to 256 bytes with
+# no NUL and no leading or trailing `/`.
+[[object.method]]
+name = "put"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "value"
+type = "string"
+since = "0.2.0"
+
+# Completes with the message of the newest record written under `key` as a text value,
+# or `done` with nothing when no record has that key.
+[[object.method]]
+name = "get"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
 # The connection has no store, because nothing attributed it to an owner. Only the
 # privileged roles have one in this version.
 [[error]]

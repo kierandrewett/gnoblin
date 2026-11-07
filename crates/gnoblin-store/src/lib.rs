@@ -211,6 +211,7 @@ pub struct Store {
     root: PathBuf,
     options: Options,
     namespaces: Mutex<HashMap<String, Arc<Kv>>>,
+    logs: Mutex<HashMap<String, Arc<Logs>>>,
 }
 
 impl fmt::Debug for Store {
@@ -253,6 +254,7 @@ impl Store {
             root,
             options,
             namespaces: Mutex::new(HashMap::new()),
+            logs: Mutex::new(HashMap::new()),
         })
     }
 
@@ -311,6 +313,29 @@ impl Store {
             retention,
             Some(&legacy),
         )
+    }
+
+    /// Opens the named `log` store: a record table of its own, in `<name>.log.sqlite3` beside the
+    /// namespace files. The file carries the `.log` part because the store does not record each
+    /// file's kind, so a kv namespace and a log store with the same name would otherwise share a
+    /// file. A kv name has no `.`, so no two names can collide.
+    ///
+    /// The first open of a name opens its file and later opens return the same handle.
+    ///
+    /// # Errors
+    ///
+    /// `invalid-name` for a name the store refuses. `store-unavailable` when the store is
+    /// read-only and the file does not exist. `migration-failed` and `corrupt` as for [`Store::logs`].
+    pub fn log_store(&self, name: &str) -> Result<Arc<Logs>, StoreError> {
+        name::validate_name(name)?;
+        let mut logs = lock(&self.logs);
+        if let Some(store) = logs.get(name) {
+            return Ok(Arc::clone(store));
+        }
+        let path = self.root.join(format!("{name}.log.sqlite3"));
+        let store = Arc::new(Logs::open(&path, self.options.writable, Retention::default(), None)?);
+        logs.insert(name.to_owned(), Arc::clone(&store));
+        Ok(store)
     }
 
     /// Moves every open namespace to `closing`. Their verbs are refused from then on, and their

@@ -1330,8 +1330,8 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
-            (Some(ty), _, _, _) if ty == "store" => {
-                self.store_call(client, envelope, object, &method, &arguments);
+            (Some(ty), _, _, _) if ty == "store" || ty == "log" => {
+                self.store_call(client, envelope, object, &ty, &method, &arguments);
             }
             (None, _, _, _) => self.refuse(
                 client,
@@ -1469,14 +1469,15 @@ impl Dispatcher {
         self.finish(object, &operation, Some(outcome));
     }
 
-    /// Serves the `store` object's verbs on the store the connection's owner holds. A connection
-    /// the compositor did not attribute to a role owns no store, so the call is refused before the
-    /// graph sees it.
+    /// Serves the verbs of the `store` and `log` objects on the store the connection's owner holds.
+    /// A connection the compositor did not attribute to a role owns no store, so the call is refused
+    /// before the graph sees it.
     fn store_call(
         &mut self,
         client: ClientId,
         envelope: &Envelope,
         object: gnoblin_types::ObjectId,
+        ty: &str,
         method: &str,
         arguments: &gnoblin_model::Fields,
     ) {
@@ -1502,7 +1503,11 @@ impl Dispatcher {
             }
         };
         self.reply_with_operation(client, envelope, &operation);
-        let outcome = store_outcome(self.kv.as_ref(), &owner, method, arguments);
+        let outcome = if ty == "log" {
+            log_outcome(self.kv.as_ref(), &owner, method, arguments)
+        } else {
+            store_outcome(self.kv.as_ref(), &owner, method, arguments)
+        };
         self.sync();
         self.finish(object, &operation, Some(outcome));
     }
@@ -2189,6 +2194,40 @@ fn store_verb(
 /// Turns a store result into the operation's outcome: a failure carries the store's own code.
 fn settle(result: Result<OperationOutcome, gnoblin_store::StoreError>) -> OperationOutcome {
     result.unwrap_or_else(|error| OperationOutcome::Failed(ErrorCode::from_static(error.code())))
+}
+
+/// The outcome of one `log` verb on `owner`'s log store. The store's own failure codes reach the
+/// caller as they do for `store`, and a store that did not open completes `store-unavailable`.
+fn log_outcome(
+    kv: Option<&gnoblin_store::Store>,
+    owner: &str,
+    method: &str,
+    arguments: &gnoblin_model::Fields,
+) -> OperationOutcome {
+    let Some(kv) = kv else {
+        return OperationOutcome::Failed(ErrorCode::from_static("store-unavailable"));
+    };
+    let logs = match kv.log_store(owner) {
+        Ok(logs) => logs,
+        Err(error) => return OperationOutcome::Failed(ErrorCode::from_static(error.code())),
+    };
+    log_verb(&logs, method, arguments).unwrap_or(OperationOutcome::Failed(ErrorCode::from_static("internal")))
+}
+
+/// Runs one `log` verb against `logs`. `None` means an argument is missing or the method is not
+/// one this object serves.
+fn log_verb(logs: &gnoblin_store::Logs, method: &str, arguments: &gnoblin_model::Fields) -> Option<OperationOutcome> {
+    Some(match method {
+        "put" => settle(
+            logs.put(&text_argument(arguments, "key")?, &text_argument(arguments, "value")?)
+                .map(|()| OperationOutcome::Done),
+        ),
+        "get" => settle(logs.get(&text_argument(arguments, "key")?).map(|record| match record {
+            Some(record) => OperationOutcome::Value(gnoblin_model::Value::Text(record.message)),
+            None => OperationOutcome::Done,
+        })),
+        _ => return None,
+    })
 }
 
 /// The double at `name`; `None` when it is absent or of another type.

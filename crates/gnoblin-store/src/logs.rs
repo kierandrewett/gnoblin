@@ -18,7 +18,7 @@ use gnoblin_log::record::{LogRecord, RecordSink};
 use rusqlite::types::Value;
 use rusqlite::{Connection, params, params_from_iter};
 
-use crate::{StoreError, kv, log};
+use crate::{DEFAULT_VALUE_LIMIT, StoreError, kv, log, name};
 
 mod migrate;
 mod retention;
@@ -298,6 +298,56 @@ impl Logs {
             .map_err(kv::map_sqlite)
     }
 
+    /// Writes one record under `key` and returns once it is committed. The record is logged at
+    /// `INFO` with `value` as its message, and `key` as both its key and its component, so
+    /// [`Logs::get`] finds it by the same name.
+    ///
+    /// # Errors
+    ///
+    /// `read-only` when the store was opened read-only. `invalid-key` for a key the store
+    /// refuses. `value-too-large` when `value` is over [`DEFAULT_VALUE_LIMIT`]. `database` for
+    /// any SQLite failure.
+    pub fn put(&self, key: &str, value: &str) -> Result<(), StoreError> {
+        name::validate_key(key)?;
+        if value.len() > DEFAULT_VALUE_LIMIT {
+            return Err(StoreError::ValueTooLarge {
+                size: value.len(),
+                limit: DEFAULT_VALUE_LIMIT,
+            });
+        }
+        let Some(writer) = &self.inner.writer else {
+            return Err(StoreError::ReadOnly);
+        };
+        let record = LogRecord {
+            time_ms: kv::now_ms(),
+            level: "INFO",
+            component: key.to_owned(),
+            key: key.to_owned(),
+            role: "",
+            target: String::new(),
+            message: value.to_owned(),
+            fields: String::new(),
+        };
+        let mut writer = lock(writer);
+        insert(&mut writer.connection, std::slice::from_ref(&record))?;
+        self.trim_if_due(&mut writer);
+        Ok(())
+    }
+
+    /// Reads the newest record under `key`, or `None` when no record has that key.
+    ///
+    /// # Errors
+    ///
+    /// `invalid-key` for a key the store refuses. `database` for any SQLite failure.
+    pub fn get(&self, key: &str) -> Result<Option<StoredRecord>, StoreError> {
+        name::validate_key(key)?;
+        let reader = lock(&self.inner.reader);
+        let sql = format!("SELECT {SELECT_COLUMNS} FROM log_records WHERE key = ?1 ORDER BY id DESC LIMIT 1");
+        let mut statement = reader.prepare_cached(&sql).map_err(kv::map_sqlite)?;
+        let mut rows = statement.query_map(params![key], read_record).map_err(kv::map_sqlite)?;
+        rows.next().transpose().map_err(kv::map_sqlite)
+    }
+
     /// Runs the write path for one batch. A failure is reported once per run of failures.
     fn append(&self, records: &[LogRecord]) {
         let Some(writer) = &self.inner.writer else {
@@ -308,6 +358,12 @@ impl Logs {
             Ok(()) => self.inner.failing.store(false, Ordering::Relaxed),
             Err(error) => self.report(&error),
         }
+        self.trim_if_due(&mut writer);
+    }
+
+    /// Applies retention once [`TRIM_EVERY`] has passed since the last run. It runs on the write
+    /// path, so a log that is only written by `put` is still trimmed.
+    fn trim_if_due(&self, writer: &mut LogsWriter) {
         if writer.trimmed_at.elapsed() >= TRIM_EVERY {
             writer.trimmed_at = Instant::now();
             let retention = self.inner.retention;

@@ -1,5 +1,5 @@
 //! The `store` object serves a privileged role's own key-value namespace, so the verbs reach
-//! exactly what the owner wrote and nothing else. The tests pin four behaviours:
+//! exactly what the owner wrote and nothing else. The tests pin five behaviours:
 //!
 //! 1. **A privileged role's writes persist in its own namespace.** `put`, `get`, `list` and
 //!    `delete` round-trip over IPC, and the value is on disk under the role's name:
@@ -10,6 +10,9 @@
 //!    pretending the write happened: `a_store_that_did_not_open_refuses_verbs`.
 //! 4. **A typed store error reaches the caller.** An oversize value completes with the store's
 //!    own code, not a generic failure: `an_oversize_value_completes_with_its_typed_code`.
+//! 5. **A log keeps every record and reads the newest.** `put` appends and `get` returns the last
+//!    message written under a key, and the records are on disk under the role's log file:
+//!    `a_privileged_role_appends_log_records_and_reads_the_newest`.
 
 mod support;
 
@@ -47,18 +50,28 @@ fn services_client(ends: &mut Vec<(String, UnixStream)>) -> Client<UnixTransport
     Client::connect(UnixTransport::from_stream(stream).expect("a transport"), version()).expect("the handshake")
 }
 
-/// The store object's id, found in the subscription snapshot the client reads first.
-fn store_object(client: &mut Client<UnixTransport>) -> ObjectId {
+/// The id of the published object of type `ty`, found in the subscription snapshot the client reads first.
+fn object_of(client: &mut Client<UnixTransport>, ty: &str) -> ObjectId {
     let snapshot = client.subscribe(Filter::All).expect("the snapshot");
     snapshot
         .objects()
         .iter()
-        .find(|view| view.ty().to_string() == "gnoblin.store")
+        .find(|view| view.ty().to_string() == ty)
         .map(|view| view.id())
-        .expect("the store object is published")
+        .unwrap_or_else(|| panic!("the {ty} object is published"))
 }
 
-/// Calls `method` on the store and waits for the outcome the compositor completes it with.
+/// The store object's id.
+fn store_object(client: &mut Client<UnixTransport>) -> ObjectId {
+    object_of(client, "gnoblin.store")
+}
+
+/// The log object's id.
+fn log_object(client: &mut Client<UnixTransport>) -> ObjectId {
+    object_of(client, "gnoblin.log")
+}
+
+/// Calls `method` on a `store` or `log` object and waits for the outcome the compositor completes it with.
 fn verb(client: &mut Client<UnixTransport>, store: ObjectId, method: &str, arguments: &Fields) -> OperationOutcome {
     let operation: Operation = client.call(store, method, arguments).expect("the verb is served");
     client.await_operation(operation).expect("the completion")
@@ -183,4 +196,50 @@ fn an_oversize_value_completes_with_its_typed_code() {
     );
     drop(client);
     drop(session);
+}
+
+#[test]
+fn a_privileged_role_appends_log_records_and_reads_the_newest() {
+    let data = private_directory();
+    let (session, mut ends) = Session::start_privileged_configured(&[("services", Vec::new())], |config| {
+        config.kv_store = Some(Store::open(data.path()).expect("the store opens"));
+    });
+    let mut client = services_client(&mut ends);
+    let log = log_object(&mut client);
+
+    assert_eq!(
+        verb(
+            &mut client,
+            log,
+            "put",
+            &fields(&[("key", text("build")), ("value", text("started"))])
+        ),
+        OperationOutcome::Done
+    );
+    assert_eq!(
+        verb(
+            &mut client,
+            log,
+            "put",
+            &fields(&[("key", text("build")), ("value", text("failed"))])
+        ),
+        OperationOutcome::Done
+    );
+    assert_eq!(
+        verb(&mut client, log, "get", &fields(&[("key", text("build"))])),
+        OperationOutcome::Value(text("failed")),
+        "a key with many records reads its newest"
+    );
+    assert_eq!(
+        verb(&mut client, log, "get", &fields(&[("key", text("absent"))])),
+        OperationOutcome::Done,
+        "a key with no records reads as absent"
+    );
+    drop(client);
+    drop(session);
+
+    let reopened = Store::open(data.path()).expect("the store reopens");
+    let logs = reopened.log_store("services").expect("the services log");
+    let newest = logs.get("build").expect("the read").expect("the record is on disk");
+    assert_eq!(newest.message, "failed");
 }

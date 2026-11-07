@@ -619,6 +619,7 @@ mod tests {
                 "eis",
                 "idle",
                 "lock",
+                "log",
                 "output",
                 "portal_ui",
                 "portal_outcome",

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use gnoblin_model::Value;
 
-use crate::{BatchOutcome, Change, Op, Options, Order, Query, State, Store};
+use crate::{BatchOutcome, Change, DEFAULT_VALUE_LIMIT, Op, Options, Order, Query, State, Store};
 
 /// A fresh directory under the system temp dir, unique to this process and call.
 pub(crate) fn scratch(label: &str) -> PathBuf {
@@ -441,4 +441,70 @@ fn a_file_written_by_plain_sqlite_opens_unchanged_under_sqlcipher() {
         ns.list("", None, 10).unwrap(),
         vec!["greeting".to_owned(), "greeting-again".to_owned()]
     );
+}
+
+#[test]
+fn a_log_store_returns_the_newest_record_written_under_a_key() {
+    let (store, _dir) = open("log-newest");
+    let logs = store.log_store("prompt").unwrap();
+    logs.put("bingux-prompt", "first").unwrap();
+    logs.put("other", "unrelated").unwrap();
+    logs.put("bingux-prompt", "second").unwrap();
+    let newest = logs.get("bingux-prompt").unwrap().expect("present");
+    assert_eq!(newest.message, "second");
+    assert_eq!(newest.level, "INFO");
+    assert_eq!(newest.component, "bingux-prompt");
+    assert!(logs.get("missing").unwrap().is_none());
+}
+
+#[test]
+fn a_log_store_refuses_a_value_over_the_limit_and_a_bad_key() {
+    let (store, _dir) = open("log-limits");
+    let logs = store.log_store("prompt").unwrap();
+    let big = "x".repeat(DEFAULT_VALUE_LIMIT + 1);
+    assert_eq!(logs.put("area", &big).err().unwrap().code(), "value-too-large");
+    assert_eq!(logs.put("", "value").err().unwrap().code(), "invalid-key");
+    assert_eq!(logs.get("/rooted").err().unwrap().code(), "invalid-key");
+}
+
+#[test]
+fn a_read_only_log_store_refuses_put_and_keeps_get() {
+    let dir = scratch("log-readonly");
+    {
+        let store = Store::open(&dir).unwrap();
+        store.log_store("prompt").unwrap().put("area", "kept").unwrap();
+        store.close();
+    }
+    let store = Store::with_options(
+        &dir,
+        Options {
+            writable: false,
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let logs = store.log_store("prompt").unwrap();
+    assert_eq!(logs.put("area", "refused").err().unwrap().code(), "read-only");
+    assert_eq!(logs.get("area").unwrap().unwrap().message, "kept");
+}
+
+#[test]
+fn a_log_store_and_a_namespace_of_one_name_keep_separate_files() {
+    let (store, dir) = open("log-separate");
+    store.namespace("prompt").unwrap().put("k", Value::Int(1)).unwrap();
+    store.log_store("prompt").unwrap().put("area", "line").unwrap();
+    assert!(dir.join("prompt.sqlite3").exists());
+    assert!(dir.join("prompt.log.sqlite3").exists());
+    assert_eq!(
+        store.namespace("prompt").unwrap().get("k").unwrap().unwrap().value,
+        Value::Int(1)
+    );
+}
+
+#[test]
+fn a_log_store_name_is_checked_like_a_namespace_name() {
+    let (store, _dir) = open("log-names");
+    for bad in ["", "../escape", "a/b", "Upper", "with space"] {
+        assert_eq!(store.log_store(bad).err().unwrap().code(), "invalid-name", "{bad:?}");
+    }
 }

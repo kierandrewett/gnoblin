@@ -56,6 +56,7 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.settings": ObjectRep,
         "gnoblin:ipc/gnoblin.workspace": ObjectRep,
         "gnoblin:ipc/gnoblin.store": ObjectRep,
+        "gnoblin:ipc/gnoblin.log": ObjectRep,
     },
     imports: { default: trappable },
 });
@@ -418,6 +419,13 @@ mod gnoblin_objects {
 
         fn store_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             Ok(match self.open(id, "store") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn log_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "log") {
                 Ok(handle) => Ok(handle),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
@@ -1076,6 +1084,48 @@ mod gnoblin_objects {
             arguments.insert("after".to_owned(), Value::Text(after));
             arguments.insert("limit".to_owned(), Value::Uint(limit));
             self.method(object, "store", "keys", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostLog for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn put(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            key: String,
+            value: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("key".to_owned(), Value::Text(key));
+            arguments.insert("value".to_owned(), Value::Text(value));
+            self.method(object, "log", "put", arguments)
+        }
+
+        fn get(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            key: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("key".to_owned(), Value::Text(key));
+            self.method(object, "log", "get", arguments)
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {

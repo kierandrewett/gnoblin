@@ -425,11 +425,11 @@ Secret Service API keeps its own D-Bus surface.
 A backend is an implementation detail of a provider. The contract is the store
 and its name, not the file.
 
-| Kind     | Default backend                                                                            |
-| -------- | ------------------------------------------------------------------------------------------ |
-| `kv`     | SQLite, one file per store: `$XDG_DATA_HOME/gnoblin/store/<name>.sqlite3`                  |
-| `log`    | SQLite, one file: `$XDG_STATE_HOME/gnoblin/store/<name>.sqlite3`. Replaces `logs.sqlite3`. |
-| `secret` | SQLCipher file owned by the keyring service (D27, `design/keyring.md:13`)                  |
+| Kind     | Default backend                                                                   |
+| -------- | --------------------------------------------------------------------------------- |
+| `kv`     | SQLite, one file per store: `$XDG_DATA_HOME/gnoblin/store/<name>.sqlite3`         |
+| `log`    | SQLite, one file per store: `<root>/<name>.log.sqlite3`. Replaces `logs.sqlite3`. |
+| `secret` | SQLCipher file owned by the keyring service (D27, `design/keyring.md:13`)         |
 
 One file per store is decided. A failure stays local to one store.
 
@@ -604,6 +604,11 @@ Decisions from Kieran. Each one stands unless he reopens it.
   `key` to the record's area. `put(key, value)` appends, and `get(key)` returns
   the newest record for that key. A forward-only migration adds the column, with
   existing rows set to `key = area`, and the migration is idempotent.
+- **Log file name (decided by the implementing lane, 2026-11-07, reopen if wrong).**
+  A named `log` store is `<root>/<name>.log.sqlite3`, and `<root>` is the directory
+  the `kv` files use. The `.log` part is needed because the store does not record
+  each file's kind, so a `kv` and a `log` store with one name would share a file.
+  A `kv` name has no `.`, so the two cannot collide.
 - **Scope split (Main, 2026-11-07).** Phase 4 lands the `kv` verbs first as one
   commit. The `log` verbs follow as a second commit. Phases 5 and 6 build on both.
 - **Grant finding (2026-11-07, blocks phase 4 powers, no schema added).** The
@@ -650,3 +655,6 @@ Decisions from Kieran. Each one stands unless he reopens it.
   `log.sqlite3`, once, and renames the old file. The phase 3 verify items (row
   counts after migration, retention, and the single WAL reader) are not all run
   yet.
+- 2026-11-07: Phase 4 landed. The `kv` verbs are served on `store`, and the `log`
+  verbs (`put`, `get`) on `log`. Both serve the connection's owner's store and
+  refuse with `no-store-owner` otherwise. The file name is in "Decided".

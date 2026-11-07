@@ -220,10 +220,11 @@ impl SessionSync {
         ]);
         let idle = graph.create(TypeKey::gnoblin("idle"), idle_properties)?;
         let settings = graph.create(TypeKey::gnoblin("settings"), super::settings::defaults())?;
-        // The `store` object carries no properties: its verbs act on the caller's own
-        // store, so one object serves every owner and the owner is read from the
-        // connection. Nothing here needs its id, so it is not kept.
+        // The `store` and `log` objects carry no properties: their verbs act on the caller's
+        // own store, so one object of each serves every owner and the owner is read from the
+        // connection. Nothing here needs their ids, so they are not kept.
         graph.create(TypeKey::gnoblin("store"), Fields::new())?;
+        graph.create(TypeKey::gnoblin("log"), Fields::new())?;
         Ok(SessionSync {
             graph,
             session,
