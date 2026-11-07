@@ -10,15 +10,19 @@
 //! # What a child gets
 //!
 //! `gnoblin --role <role>`, started with no shell, in a process group of its own so a stop
-//! reaches its helpers, with the environment [`Effect::Spawn`] names. Two descriptors beyond
-//! the standard three, when the child has a use for them:
+//! reaches its helpers, with the environment [`Effect::Spawn`] names. Descriptors beyond the
+//! standard three, when the child has a use for them:
 //!
-//! - its end of the privileged IPC pair ([`gnoblin_proto::privilege`]), which the
-//!   compositor's other end grants it a capability on;
+//! - its end of a privileged IPC stream ([`gnoblin_proto::privilege`]), which the compositor
+//!   grants it a capability on. Each spawn makes a stream of its own, so a restarted child
+//!   never inherits what its predecessor left unread;
 //! - the report descriptor it writes readiness and configuration revisions on
-//!   ([`gnoblin_proto::report`]).
+//!   ([`gnoblin_proto::report`]);
+//! - for the compositor alone, the child end of the control socket the guardian hands each
+//!   privileged stream over. It is made fresh for every compositor spawn, so a restarted
+//!   compositor never reads a handover meant for its predecessor.
 //!
-//! Both are ordinary descriptors whose numbers travel in the environment. `FD_CLOEXEC` is
+//! Each is an ordinary descriptor whose number travels in the environment. `FD_CLOEXEC` is
 //! cleared for one descriptor and one `spawn` at a time and restored immediately after,
 //! which is what keeps the runtime's connection out of the services role: nothing else in
 //! this process ever has an inheritable descriptor, and the parent's copy of each end is
@@ -192,10 +196,14 @@ struct Supervisor {
     base: Environment,
     /// The children that are alive, by plan slot.
     running: BTreeMap<ChildId, RunningChild>,
-    /// The child ends of the privileged pairs, waiting for the child that owns each.
-    pending: BTreeMap<String, OwnedFd>,
-    /// The compositor's ends of those pairs, until the compositor starts.
-    compositor: Vec<(String, OwnedFd)>,
+    /// The guardian's end of the control socket the compositor reads privileged streams from.
+    ///
+    /// It is made fresh for each compositor spawn, so a compositor that restarts gets a
+    /// socket of its own, and it is kept for the session's life: every later privileged spawn
+    /// hands its compositor-side stream over this one socket. `None` until the compositor has
+    /// been spawned, and whenever its pair could not be made, in which case a privileged child
+    /// starts without a connection rather than with one nothing serves.
+    control: Option<OwnedFd>,
     /// The events the children and the signal handler produce.
     sender: Sender<LoopWake>,
     receiver: Receiver<LoopWake>,
@@ -254,13 +262,31 @@ impl Supervisor {
             );
             return;
         };
-        if spec.kind == ChildKind::Compositor
-            && let Err(error) = self.open_pairs()
-        {
-            log(
-                Level::Error,
-                &format!("[guardian] cannot create the privileged connections: {error}"),
-            );
+        // The compositor is the only process that serves privileged streams, and it learns of
+        // each one over a control socket. The socket is made fresh for every compositor spawn,
+        // so a compositor that starts again never reads a handover queued for its predecessor.
+        // The guardian keeps its own end, which is the one it sends handovers on; the
+        // compositor's end is inherited by this spawn alone and closed straight after.
+        let mut control_child = None;
+        if spec.kind == ChildKind::Compositor {
+            match socket_pair(rustix::net::SocketType::SEQPACKET) {
+                Ok((guardian_end, compositor_end)) => {
+                    // Assigning drops the previous end, which closes the guardian's copy of
+                    // the old socket. SEQPACKET keeps each handover one whole message.
+                    self.control = Some(guardian_end);
+                    control_child = Some(compositor_end);
+                }
+                Err(error) => {
+                    // Without a socket the compositor cannot be handed privileged streams, so
+                    // privileged children start without a connection rather than with one that
+                    // nothing serves. The compositor still starts for its unprivileged clients.
+                    self.control = None;
+                    log(
+                        Level::Error,
+                        &format!("[guardian] cannot create the privileged control socket: {error}"),
+                    );
+                }
+            }
         }
         let (reader, writer) = match readiness_pipe() {
             Ok(pipe) => pipe,
@@ -290,26 +316,48 @@ impl Supervisor {
         if let Ok(number) = inheritable(&writer) {
             command.env(report::READY_VARIABLE, number.to_string());
         }
-        // The privileged connection, for the role that owns one. The pair stays open in this
-        // process for the session's life: a restarted child presents a new handshake on the
-        // same stream, which is the only way a child that is not the pair's creator can
-        // rejoin it.
-        let privileged = self.role_name(&spec).filter(|role| self.pending.contains_key(role));
-        if let Some(role) = &privileged
-            && let Some(fd) = self.pending.get(role)
-            && let Ok(number) = inheritable(fd)
-        {
-            command.env(privilege::FD_VARIABLE, number.to_string());
-        }
-        // The compositor receives the other end of every pair, one variable per role.
-        let mut owners = Vec::new();
-        if spec.kind == ChildKind::Compositor {
-            for (role, fd) in &self.compositor {
-                if let Ok(number) = inheritable(fd) {
-                    owners.push((privilege::owner_variable(role), number.to_string()));
+        // The privileged connection, for the role that owns one. Each spawn makes a pair of its
+        // own: the child gets one end and the compositor gets the other, over the control socket.
+        // A child that dies takes its end with it, so the compositor sees the end of stream, and
+        // a restarted child never inherits the unread bytes a previous one left in its pair.
+        let mut privileged_child = None;
+        let mut privileged_handover = None;
+        if let Some(role) = self.role_name(&spec).filter(|role| privileged_role(role)) {
+            if self.control.is_none() {
+                // Without a control socket the compositor cannot receive the stream, so a child
+                // given one would hold a connection nothing serves. It starts without one instead.
+                log(
+                    Level::Warning,
+                    &format!("[guardian] {name}: no compositor control socket yet, so no privileged connection"),
+                );
+            } else {
+                let pair = socket_pair(rustix::net::SocketType::STREAM).and_then(|(child_end, compositor_end)| {
+                    // The child's end is inheritable for this spawn only, and the number is what
+                    // the child reads from its environment.
+                    let number = inheritable(&child_end)?;
+                    Ok((child_end, compositor_end, number))
+                });
+                match pair {
+                    Ok((child_end, compositor_end, number)) => {
+                        command.env(privilege::FD_VARIABLE, number.to_string());
+                        privileged_child = Some(child_end);
+                        privileged_handover = Some((role, compositor_end));
+                    }
+                    Err(error) => log(
+                        Level::Error,
+                        &format!("[guardian] {name}: cannot create its privileged connection: {error}"),
+                    ),
                 }
             }
-            command.envs(owners);
+        }
+        // The compositor reads the control socket, so it is given the child's end of this
+        // spawn's socket and nothing else. The number is inheritable for this spawn only, and
+        // the guardian's copy is closed straight after the spawn: a copy the guardian kept would
+        // take handovers that no compositor ever reads.
+        if let Some(control) = &control_child
+            && let Ok(number) = inheritable(control)
+        {
+            command.env(privilege::CONTROL_VARIABLE, number.to_string());
         }
 
         let started = command.spawn();
@@ -319,20 +367,24 @@ impl Supervisor {
         // the child's departure to the process at the other end of the pair.
         restore(&writer);
         drop(writer);
-        if let Some(role) = &privileged
-            && let Some(fd) = self.pending.get(role)
-        {
-            restore(fd);
-        }
-        if spec.kind == ChildKind::Compositor {
-            for (_, fd) in self.compositor.drain(..) {
-                restore(&fd);
-                drop(fd);
-            }
-        }
+        drop(privileged_child);
+        drop(control_child);
 
         let mut process = match started {
-            Ok(process) => process,
+            Ok(process) => {
+                // The compositor's end of the privileged pair goes over only now that the child
+                // exists. A stream sent for a child that never started would sit in the
+                // compositor, unserved, for as long as the compositor lives.
+                if let Some((role, stream)) = privileged_handover
+                    && let Err(error) = self.hand_over(&role, &stream)
+                {
+                    log(
+                        Level::Error,
+                        &format!("[guardian] {name}: cannot hand its privileged connection to the compositor: {error}"),
+                    );
+                }
+                process
+            }
             Err(reason) => {
                 log(Level::Error, &format!("[guardian] cannot start {name}: {reason}"));
                 // The policy asked for a start and cannot have one. Reporting the exit is
@@ -400,26 +452,16 @@ impl Supervisor {
         }
     }
 
-    /// Create one privileged pair per privileged child, keeping both ends for now.
-    fn open_pairs(&mut self) -> Result<(), SupervisorError> {
-        for spec in self.config.plan.children() {
-            let Some(role) = self.role_name(spec) else {
-                continue;
-            };
-            if !privileged_role(&role) {
-                continue;
-            }
-            let (compositor_end, child_end) = rustix::net::socketpair(
-                rustix::net::AddressFamily::UNIX,
-                rustix::net::SocketType::STREAM,
-                rustix::net::SocketFlags::CLOEXEC,
-                None,
-            )
-            .map_err(|error| SupervisorError::Descriptors(error.into()))?;
-            self.compositor.push((role.clone(), compositor_end));
-            self.pending.insert(role, child_end);
-        }
-        Ok(())
+    /// Hand one privileged stream to the compositor over the control socket.
+    ///
+    /// `SCM_RIGHTS` duplicates the stream into the compositor, so the caller may close its own
+    /// copy straight after. An error is returned rather than the stream dropped silently, so
+    /// the caller can say which child lost its connection.
+    fn hand_over(&self, role: &str, stream: &OwnedFd) -> std::io::Result<()> {
+        let Some(control) = &self.control else {
+            return Err(std::io::Error::other("the compositor has no control socket"));
+        };
+        privilege::send_handover(control, role, stream)
     }
 
     /// Signal one child's process group.
@@ -552,8 +594,9 @@ fn base_environment() -> Environment {
     let mut environment = Environment::new();
     for (key, value) in std::env::vars() {
         // A descriptor this process hands down is named by a variable that must not be
-        // inherited by a child that was not given one.
-        if key == privilege::FD_VARIABLE || key == report::READY_VARIABLE || key.starts_with(privilege::OWNER_PREFIX) {
+        // inherited by a child that was not given one. The control variable names a socket
+        // only the compositor may read, so no other child may see it either.
+        if key == privilege::FD_VARIABLE || key == privilege::CONTROL_VARIABLE || key == report::READY_VARIABLE {
             continue;
         }
         environment.set(key, value);
@@ -589,6 +632,20 @@ fn inheritable(fd: &OwnedFd) -> std::io::Result<i32> {
 /// Put a descriptor back under close-on-exec.
 fn restore(fd: &OwnedFd) {
     let _ = rustix::io::fcntl_setfd(fd, FdFlags::CLOEXEC);
+}
+
+/// A connected pair of sockets of one kind, both close-on-exec.
+///
+/// Both ends start close-on-exec so that nothing this process starts later inherits either by
+/// accident. Only the spawn that hands an end to a child clears the flag, and only for that
+/// spawn, so the descriptor reaches the one process it was made for.
+fn socket_pair(kind: rustix::net::SocketType) -> std::io::Result<(OwnedFd, OwnedFd)> {
+    Ok(rustix::net::socketpair(
+        rustix::net::AddressFamily::UNIX,
+        kind,
+        rustix::net::SocketFlags::CLOEXEC,
+        None,
+    )?)
 }
 
 /// Read one child's report stream, then reap it.
@@ -702,8 +759,7 @@ pub fn run(config: SupervisorConfig) -> Result<u8, SupervisorError> {
         guardian,
         base,
         running: BTreeMap::new(),
-        pending: BTreeMap::new(),
-        compositor: Vec::new(),
+        control: None,
         sender: sender.clone(),
         receiver,
         start,
