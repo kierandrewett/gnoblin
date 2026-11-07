@@ -626,7 +626,6 @@ fn a_script_that_exceeds_the_memory_limit_is_stopped() {
         memory_bytes: 1 << 20,
         instructions: 1_000_000_000,
         handler_ticks: 10_000,
-        ..Limits::default()
     };
     let config = Config::new("memory");
     config.write(
