@@ -398,6 +398,10 @@ pub fn observation(observation: &Observation) -> Envelope {
                     writer.u8(1);
                     writer.text(code.as_str());
                 }
+                OperationOutcome::Value(value) => {
+                    writer.u8(2);
+                    writer.value(value);
+                }
             }
             member::OPERATION_FINISHED
         }
@@ -725,6 +729,7 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
                     let code = ErrorCode::parse(&reader.text()?).ok_or(WireError::Code)?;
                     OperationOutcome::Failed(code)
                 }
+                2 => OperationOutcome::Value(reader.value()?),
                 tag => return Err(WireError::Tag(tag)),
             };
             reader.done()?;
@@ -1069,6 +1074,12 @@ mod tests {
                 object: ObjectId::new(1),
                 outcome: OperationOutcome::Done,
                 revision: Revision::new(12),
+            },
+            Observation::Finished {
+                operation: OperationId::new(5),
+                object: ObjectId::new(1),
+                outcome: OperationOutcome::Value(Value::Bytes(vec![0, 1, 255])),
+                revision: Revision::new(13),
             },
         ];
         for observation in observations {

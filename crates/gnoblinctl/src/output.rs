@@ -275,6 +275,7 @@ fn outcome_kind(outcome: &OperationOutcome) -> &'static str {
 fn outcome_text(outcome: &OperationOutcome) -> String {
     match outcome {
         OperationOutcome::Done => "done".to_owned(),
+        OperationOutcome::Value(_) => "value".to_owned(),
         OperationOutcome::Failed(code) => format!("failed ({code})"),
     }
 }

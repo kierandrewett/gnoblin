@@ -2,6 +2,8 @@
 
 use gnoblin_types::{ErrorCode, ObjectId, OperationId};
 
+use crate::Value;
+
 /// What a method call returns: a pending operation and the object it was called on.
 ///
 /// The handle is a value, not a capability. The graph holds the pending entry and
@@ -34,17 +36,24 @@ impl Operation {
 
 /// How a method call ended. Exactly one of these reaches a subscriber per
 /// operation, and the graph refuses a second one.
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// `Value` is the one outcome that carries data: a read such as `store.get` returns
+/// what it read here, so the reply and its completion are one event. It is bounded by
+/// the wire frame cap, so a read that would not fit is refused with a typed error
+/// instead of truncated; list-like reads page by cursor rather than return everything.
+#[derive(Clone, Debug, PartialEq)]
 pub enum OperationOutcome {
     /// The method did what it was asked.
     Done,
     /// The method refused, with the schema's error code.
     Failed(ErrorCode),
+    /// The method did what it was asked and returns this value.
+    Value(Value),
 }
 
 impl OperationOutcome {
     /// Whether the call succeeded.
     pub fn is_done(&self) -> bool {
-        matches!(self, OperationOutcome::Done)
+        matches!(self, OperationOutcome::Done | OperationOutcome::Value(_))
     }
 }

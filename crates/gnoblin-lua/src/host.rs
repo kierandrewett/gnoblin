@@ -207,7 +207,7 @@ impl<T: Transport> Shared<T> {
             .and_then(|pending| pending.outcome.as_ref())
         {
             None => Status::Pending,
-            Some(OperationOutcome::Done) => Status::Succeeded,
+            Some(OperationOutcome::Done | OperationOutcome::Value(_)) => Status::Succeeded,
             Some(OperationOutcome::Failed(code)) => Status::Failed(code.as_str().to_owned()),
         }
     }
