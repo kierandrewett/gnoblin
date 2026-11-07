@@ -1239,7 +1239,7 @@ Accessibility is its own lane, not a side effect of input and rendering.
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
-- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands.
+- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands. The egui dialogs never enable AccessKit, so the claim at line 2558 does not hold yet. The options and plan are in [accessibility.md](accessibility.md).
 - **Why the keyboard monitor stays in the compositor:** key grabs must decide
   before the focused client sees the key, so a process hop would add latency to
   every key press. It is the one D-Bus name the compositor serves itself.
