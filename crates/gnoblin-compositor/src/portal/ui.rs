@@ -81,7 +81,11 @@ fn serves(interface: Interface, dialog: &Dialog) -> bool {
     matches!(
         (interface, dialog),
         (
-            Interface::ScreenCast | Interface::Screenshot | Interface::RemoteDesktop | Interface::InputCapture,
+            Interface::ScreenCast
+                | Interface::Screenshot
+                | Interface::RemoteDesktop
+                | Interface::InputCapture
+                | Interface::Secret,
             Dialog::Consent(_),
         ) | (Interface::FileChooser, Dialog::Files(_))
             | (Interface::AppChooser, Dialog::App(_))

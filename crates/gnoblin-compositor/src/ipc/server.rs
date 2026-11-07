@@ -1028,6 +1028,20 @@ impl Dispatcher {
                 return;
             }
         };
+        // The relay asks for an app's secret, but only the compositor, which showed the
+        // consent dialog, may say the user allowed it. Without a grant the offer never leaves.
+        if slot == gnoblin_model::CapabilitySlot::SecretDerive.name() {
+            let granted = std::str::from_utf8(&subject).is_ok_and(|app| self.portal.secret_granted(app));
+            if !granted {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::DENIED,
+                    "the user has not allowed this app its secret in this session",
+                );
+                return;
+            }
+        }
         let deadline = self.now().saturating_add(timeout);
         match self.requests.offer(client, &slot, &title, &message, &subject, deadline) {
             Ok((request, deliveries)) => {

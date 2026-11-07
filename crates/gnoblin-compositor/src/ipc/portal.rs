@@ -28,6 +28,8 @@
 //! - Admission refused by the queue or the lock: settles `error(busy|locked)` to the
 //!   submitter, not a refusal, so the requester learns the verdict it waits for.
 
+use std::collections::BTreeSet;
+
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
 use gnoblin_layers::InputPolicy;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
@@ -71,6 +73,10 @@ struct HeldRequest {
     client: ClientId,
     /// The envelope id the outcome is sent under, so the client can pair it with its call.
     envelope_id: u64,
+    /// The interface the request asked for, so a granted consent is recorded for it.
+    interface: Interface,
+    /// The verified app id that asked, the key a secret grant is recorded under.
+    app_id: String,
 }
 
 /// The portal UI session and the routing of its requests to their owners.
@@ -81,6 +87,11 @@ pub struct PortalService {
     owners: Vec<HeldRequest>,
     /// The output the dialog modal is shown on, while one is shown.
     shown: Option<OutputId>,
+    /// Apps whose secret the user allowed this session. Held in memory only, so a new
+    /// session asks again, and it is the compositor's own record, never the relay's.
+    granted: BTreeSet<String>,
+    /// Whether the session is locked, as the last `set_locked` said.
+    locked: bool,
 }
 
 impl Default for PortalService {
@@ -100,6 +111,8 @@ impl PortalService {
             ui: PortalUi::new(FRAME_WIDTH, FRAME_HEIGHT),
             owners: Vec::new(),
             shown: None,
+            granted: BTreeSet::new(),
+            locked: false,
         }
     }
 
@@ -159,6 +172,8 @@ impl PortalService {
                     request: id,
                     client,
                     envelope_id,
+                    interface,
+                    app_id: request.caller.app_id().to_owned(),
                 });
                 Ok(Vec::new())
             }
@@ -223,8 +238,20 @@ impl PortalService {
     /// The session lock changed. Locking settles every held request `error(locked)`.
     /// `pump` feeds it from the lock state each tick.
     pub fn set_locked(&mut self, locked: bool) -> Vec<Reply> {
+        self.locked = locked;
+        if locked {
+            // A lock ends every secret grant: the next request after unlock asks again.
+            self.granted.clear();
+        }
         self.ui.set_locked(locked);
         self.settle()
+    }
+
+    /// Whether `app_id` may be offered its secret: the user allowed it this session
+    /// and the session is not locked. The compositor decides this, never the relay.
+    #[must_use]
+    pub fn secret_granted(&self, app_id: &str) -> bool {
+        !self.locked && self.granted.contains(app_id)
     }
 
     /// Whether the dialog modal needs routing: a dialog is open, or one is still
@@ -258,6 +285,9 @@ impl PortalService {
                 continue;
             };
             let owner = self.owners.remove(index);
+            if owner.interface == Interface::Secret && verdict == Verdict::Handled(Grant::Allowed) {
+                self.granted.insert(owner.app_id.clone());
+            }
             replies.push(outcome(owner.client, owner.envelope_id, verdict));
         }
         replies
@@ -575,6 +605,70 @@ mod tests {
         assert_eq!(replies[0].1.error_code(), Some("locked"));
 
         assert!(service.set_locked(false).is_empty(), "unlocking settles nothing");
+    }
+
+    /// A secret consent request from `app_id`, as the relay submits it.
+    fn secret_from(app_id: &str) -> PortalRequest {
+        PortalRequest {
+            interface: "Secret".to_owned(),
+            caller: VerifiedCaller::new(0, app_id),
+            prompt: "Give this app its secret?".to_owned(),
+            timeout_ms: 30_000,
+            options: Fields::default(),
+            parent_window: String::new(),
+        }
+    }
+
+    /// Submits `request` from client 1 at tick 0, then feeds `keys` once the dialog has armed.
+    fn answer(service: &mut PortalService, request: &PortalRequest, keys: &[&str]) -> Vec<Reply> {
+        service
+            .submit(ClientId::new(1), 7, request, Tick::ZERO)
+            .expect("the consent is admitted");
+        let mut replies = Vec::new();
+        for &key in keys {
+            replies.extend(service.key(key, false, Tick::new(600)).expect("a dialog key"));
+        }
+        replies
+    }
+
+    #[test]
+    fn an_allowed_secret_consent_grants_that_app() {
+        let mut service = PortalService::new();
+        let replies = answer(&mut service, &secret_from("org.example.Keys"), &["tab", "enter"]);
+        assert_eq!(replies.len(), 1, "the consent is settled once");
+        assert!(service.secret_granted("org.example.Keys"));
+        assert!(
+            !service.secret_granted("org.example.Other"),
+            "a grant is for the app asked"
+        );
+    }
+
+    #[test]
+    fn a_denied_secret_consent_grants_nothing() {
+        let mut service = PortalService::new();
+        answer(&mut service, &secret_from("org.example.Keys"), &["escape"]);
+        assert!(!service.secret_granted("org.example.Keys"));
+    }
+
+    #[test]
+    fn a_screenshot_grant_is_not_a_secret_grant() {
+        let mut service = PortalService::new();
+        answer(&mut service, &screenshot(), &["tab", "enter"]);
+        assert!(!service.secret_granted("org.example.Requester"));
+    }
+
+    #[test]
+    fn a_lock_ends_every_secret_grant() {
+        let mut service = PortalService::new();
+        answer(&mut service, &secret_from("org.example.Keys"), &["tab", "enter"]);
+        assert!(service.secret_granted("org.example.Keys"));
+        service.set_locked(true);
+        assert!(!service.secret_granted("org.example.Keys"), "a locked session refuses");
+        service.set_locked(false);
+        assert!(
+            !service.secret_granted("org.example.Keys"),
+            "the grant does not survive a lock"
+        );
     }
 
     #[test]
