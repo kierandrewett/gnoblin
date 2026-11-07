@@ -2318,4 +2318,88 @@ mod tests {
         assert!(layer_windows(&wm).is_empty());
         assert_eq!(surface_state(&wm, WindowId::new(1)), None);
     }
+
+    /// A manager with two side-by-side outputs, one workspace, and window 1 on the
+    /// first output, focused by a user action. Output 1 is the survivor if output 0 goes.
+    fn wm_with_two_outputs() -> Wm {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(1),
+            rect: Rect::new(1920, 0, 1920, 1080),
+        });
+        wm
+    }
+
+    #[test]
+    fn unplugging_an_output_keeps_a_window_layer_mapped_on_the_survivor() {
+        // Window 1 moves from output 0 to output 1. Its layer stays mapped and keeps
+        // its place above the window, because the layer follows the window, not the output.
+        let mut wm = wm_with_two_outputs();
+        wm.apply(Event::OutputDisconnected {
+            output: OutputId::new(0),
+        });
+        assert_eq!(
+            wm.window(WindowId::new(1)).and_then(|window| window.output),
+            Some(OutputId::new(1))
+        );
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Mapped)
+        );
+        assert_eq!(layer_windows(&wm), vec![WindowId::new(1)]);
+    }
+
+    #[test]
+    fn unplugging_the_last_output_hides_a_window_layer_until_an_output_returns() {
+        // With no output left the window is unassigned, so its layer is hidden. Replugging
+        // adopts the orphan and the layer is mapped again.
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::OutputDisconnected {
+            output: OutputId::new(0),
+        });
+        assert_eq!(wm.window(WindowId::new(1)).and_then(|window| window.output), None);
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Hidden)
+        );
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(0),
+            rect: Rect::new(0, 0, 1920, 1080),
+        });
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Mapped)
+        );
+    }
+
+    #[test]
+    fn a_window_moved_to_another_output_keeps_its_layer_hidden_while_its_workspace_is_not_active() {
+        // The workspace is global, so the survivor's view is the same as the old output's:
+        // a window on an inactive workspace stays hidden after its output changes.
+        let mut wm = wm_with_two_outputs();
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(2),
+        });
+        wm.apply(Event::WorkspaceActivated {
+            workspace: WorkspaceId::new(2),
+        });
+        wm.apply(Event::OutputDisconnected {
+            output: OutputId::new(0),
+        });
+        assert_eq!(
+            wm.window(WindowId::new(1)).and_then(|window| window.output),
+            Some(OutputId::new(1))
+        );
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Hidden)
+        );
+        wm.apply(Event::WorkspaceActivated {
+            workspace: WorkspaceId::new(1),
+        });
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Mapped)
+        );
+    }
 }
