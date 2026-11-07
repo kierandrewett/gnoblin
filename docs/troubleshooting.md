@@ -360,11 +360,17 @@ systemctl --user status pipewire xdg-desktop-portal-gnoblin
 A log that mentions `org.gnome.Shell.Screenshot` means another portal backend is
 still running. Log out and back in to start the Gnoblin backend.
 
-For a separate screenshot tool, use your shell's capture action or run:
+For a separate screenshot tool, use your shell's capture action or run it on the
+privileged socket. Plain `grim` on the ordinary socket fails with no screencopy
+global, on purpose:
 
 ```sh
-grim ~/screenshot.png
+WAYLAND_DISPLAY=$GNOBLIN_PRIVILEGED_DISPLAY grim ~/screenshot.png
 ```
+
+`GNOBLIN_PRIVILEGED_DISPLAY` is set for the programs the session starts. A shell
+that the session did not start does not have it set, so run the command from a
+shell the session started, such as a terminal opened from the launcher.
 
 ## The screen stays locked after the lock screen closes
 

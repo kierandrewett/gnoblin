@@ -125,7 +125,7 @@ pub use eis::EisGate;
 pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_config::{LogConsole, Logging, logging_from_environment};
 pub use gnoblin_types::Version;
-pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot};
+pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot, default_privileged_socket_path};
 pub use gnoblin_xwayland::xsettings::XSettings;
 pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync, guardian_from_environment};
 pub use layout::{
@@ -353,6 +353,13 @@ impl Compositor {
                 || gnoblin_wayland::DEFAULT_SOCKET_NAME.to_owned(),
                 |name| name.to_string_lossy().into_owned(),
             );
+        // The privileged display is named the same way, and read here for the same reason.
+        let privileged_display = config
+            .wayland
+            .privileged_socket_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned());
         let backend_name = config.backend.name();
         let backend = config.backend.build(
             config.renderer.unwrap_or(gnoblin_config::RendererChoice::Auto),
@@ -410,10 +417,16 @@ impl Compositor {
         // later children need the display, and the plan ends the session when a required
         // variable is missing.
         let mut reporter = gnoblin_client::Reporter::new(|name| std::env::var(name).ok());
-        reporter.ready(&[
+        let mut environment = vec![
             ("WAYLAND_DISPLAY".to_owned(), display_name.clone()),
             ("GNOBLIN_IPC_SOCKET".to_owned(), path.display().to_string()),
-        ]);
+        ];
+        // Only a session with a runtime directory has a privileged socket; without one the
+        // variable is left out, and the guardian then publishes nothing for it.
+        if let Some(name) = &privileged_display {
+            environment.push(("GNOBLIN_PRIVILEGED_DISPLAY".to_owned(), name.clone()));
+        }
+        reporter.ready(&environment);
         log::info!(socket = %path.display(),
             display = %display_name,
             version = %version,

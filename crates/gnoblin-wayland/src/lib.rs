@@ -212,8 +212,9 @@ pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConf
 pub use output_control::{NoOutputControl, OutputControl};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
-    Config, ControlHandle, CursorSettings, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings,
-    Server, StartupError, VisualAccessibilitySettings, VisualBellScope, VisualBellSettings,
+    Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT,
+    InputSink, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings, VisualBellScope,
+    VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
 };
 /// The dispatch glue a redirect implements.
 ///

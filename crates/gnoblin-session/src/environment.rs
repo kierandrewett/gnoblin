@@ -131,6 +131,9 @@ impl EnvironmentRules {
             "GSETTINGS_SCHEMA_DIR",
             "GI_TYPELIB_PATH",
             "GNOME_SHELL_SESSION_MODE",
+            // The privileged display is published by this session's own ready report, so a value
+            // a login exported names a socket from another session and must not reach children.
+            "GNOBLIN_PRIVILEGED_DISPLAY",
         ] {
             session.unset(stale);
         }
@@ -146,7 +149,9 @@ impl EnvironmentRules {
         Self {
             session,
             activation,
-            forwarded: ["WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY"].map(String::from).to_vec(),
+            forwarded: ["WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "GNOBLIN_PRIVILEGED_DISPLAY"]
+                .map(String::from)
+                .to_vec(),
             required: ["WAYLAND_DISPLAY"].map(String::from).to_vec(),
             safe_mode_key: "GNOBLIN_SAFE_MODE".to_owned(),
         }

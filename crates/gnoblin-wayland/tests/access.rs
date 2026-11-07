@@ -9,6 +9,7 @@
 mod session;
 
 use std::os::fd::AsFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
@@ -122,6 +123,38 @@ fn an_unprivileged_client_sees_no_privileged_global() {
     session.run(|session| {
         let application = Client::connect(session.socket());
         assert_unprivileged(&application, "an application");
+    });
+}
+
+#[test]
+fn the_privileged_socket_is_owner_only() {
+    // The socket is the one door a same-uid tool uses for screencopy, so its mode is
+    // the contract: owner read and write, and nothing for the group or the world.
+    let session = Session::start();
+    session.run(|session| {
+        let mode = std::fs::metadata(session.privileged_socket())
+            .expect("the privileged socket exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600, "the privileged socket must be owner-only");
+    });
+}
+
+#[test]
+fn screencopy_is_granted_on_the_privileged_socket_only() {
+    let session = Session::start();
+    session.run(|session| {
+        let privileged = Client::connect(session.privileged_socket());
+        assert!(
+            privileged.has_global("zwlr_screencopy_manager_v1"),
+            "the privileged socket grants screencopy"
+        );
+        let application = Client::connect(session.socket());
+        assert!(
+            !application.has_global("zwlr_screencopy_manager_v1"),
+            "the ordinary socket does not: an application must not copy another client's pixels"
+        );
     });
 }
 

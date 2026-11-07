@@ -30,6 +30,7 @@
 use std::collections::VecDeque;
 use std::io;
 use std::os::fd::AsFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -72,6 +73,13 @@ use crate::log;
 /// public: the guardian publishes that variable to every later child, and a second spelling
 /// here would be a session nothing can connect to.
 pub const DEFAULT_SOCKET_NAME: &str = "gnoblin-wayland.sock";
+
+/// The file name of the privileged socket, in the runtime directory.
+///
+/// Exported to the session's children as `GNOBLIN_PRIVILEGED_DISPLAY` so a tool the user
+/// declares can name it as `WAYLAND_DISPLAY`. It is a separate socket from
+/// [`DEFAULT_SOCKET_NAME`] so that the two cannot be confused in a `WAYLAND_DISPLAY`.
+pub const DEFAULT_PRIVILEGED_SOCKET_NAME: &str = "gnoblin-wayland-privileged.sock";
 
 /// How long [`ControlHandle::focus`] waits for the loop's answer.
 ///
@@ -399,7 +407,7 @@ impl Server {
             .map_err(|error| StartupError::EventLoop(error.into()))?;
 
         if let Some(path) = &config.privileged_socket_path {
-            let privileged = bind(path)?;
+            let privileged = bind_owner_only(path)?;
             log::info!(socket = %path.display(), "listening for privileged clients");
             event_loop
                 .handle()
@@ -1240,6 +1248,18 @@ fn bind(path: &Path) -> Result<UnixListener, StartupError> {
     Ok(listener)
 }
 
+/// Binds the privileged socket and restricts it to its owner.
+///
+/// The privileged socket is the only door to screencopy and the other privileged globals.
+/// The socket file is created under the process umask, so the mode is tightened straight
+/// after the bind. The default location is `XDG_RUNTIME_DIR`, already owner-only, so this
+/// is a second wall rather than the only one.
+fn bind_owner_only(path: &Path) -> Result<UnixListener, StartupError> {
+    let listener = bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(StartupError::Socket)?;
+    Ok(listener)
+}
+
 /// Applies any `zwlr_output_configuration_v1` the clients queued this turn, then publishes
 /// the heads when the outputs changed or a configuration did.
 fn sync_output_manager(state: &mut State, backend: &mut dyn Backend<State>, outputs_changed: bool) {
@@ -1297,6 +1317,42 @@ fn accept_clients(listener: &UnixListener, state: &mut State, role: ClientRole) 
 fn default_socket_path() -> PathBuf {
     let directory = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
     directory.join(DEFAULT_SOCKET_NAME)
+}
+
+/// The privileged socket a session listens on, or [`None`] when there is no runtime
+/// directory to put it in.
+///
+/// Unlike the ordinary socket this never falls back to the temporary directory: that
+/// directory is shared between users, and a privileged socket there would be reachable by
+/// every local account. No runtime directory means no privileged socket at all.
+#[must_use]
+pub fn privileged_socket_path_in(runtime_dir: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    runtime_dir.map(|directory| PathBuf::from(directory).join(DEFAULT_PRIVILEGED_SOCKET_NAME))
+}
+
+/// The privileged socket path for the current user, from `XDG_RUNTIME_DIR`.
+#[must_use]
+pub fn default_privileged_socket_path() -> Option<PathBuf> {
+    privileged_socket_path_in(std::env::var_os("XDG_RUNTIME_DIR").as_deref())
+}
+
+#[cfg(test)]
+mod privileged_path_tests {
+    use super::*;
+
+    #[test]
+    fn the_privileged_socket_lives_in_the_runtime_directory() {
+        let path = privileged_socket_path_in(Some(std::ffi::OsStr::new("/run/user/1000")));
+        assert_eq!(
+            path,
+            Some(PathBuf::from("/run/user/1000/gnoblin-wayland-privileged.sock"))
+        );
+    }
+
+    #[test]
+    fn no_runtime_directory_means_no_privileged_socket_not_a_shared_one() {
+        assert_eq!(privileged_socket_path_in(None), None);
+    }
 }
 
 /// Why a session could not start.

@@ -162,6 +162,11 @@ fn compositor() -> Result<(), Exit> {
         guardian,
         ..gnoblin_compositor::SessionConfig::default()
     };
+    // The privileged socket is the one door a user-declared tool uses to reach screencopy.
+    // It lives in the runtime directory and is owner-only, so it is reachable by this user's
+    // own processes and nobody else. Sandboxed clients never get it: they connect through
+    // their own listener, which carries no privileged role.
+    config.wayland.privileged_socket_path = gnoblin_compositor::default_privileged_socket_path();
     // A refused extension is logged and left out; the session starts either way.
     gnoblin_compositor::configure_from_environment(&mut config);
     // The compat adapters are served with the session's default mode until a configuration

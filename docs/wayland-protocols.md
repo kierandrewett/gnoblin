@@ -68,6 +68,11 @@ _Quickshell positions the panel with the layer-shell protocol._
 _Layer-shell panels remain separate from ordinary application windows._
 
 Screen capture through `wlr_screencopy` is separate from the desktop portal.
+It is served only on the privileged socket, never on the ordinary one. The
+session names that socket in `GNOBLIN_PRIVILEGED_DISPLAY`, so a capture tool
+runs as `WAYLAND_DISPLAY=$GNOBLIN_PRIVILEGED_DISPLAY grim`.
+
+The socket is owner-only (mode `0600`), and sandboxed clients never reach it.
 The portal path depends on the selected backend. Disabling this global does not
 block screen sharing.
 

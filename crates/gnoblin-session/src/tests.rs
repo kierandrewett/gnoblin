@@ -711,6 +711,43 @@ fn the_compositor_display_environment_reaches_later_children() {
 }
 
 #[test]
+fn the_privileged_display_reaches_later_children() {
+    // The privileged socket is how a user-declared tool gets screencopy. The compositor names
+    // it in its ready report, and the guardian must hand that name to every later child, or
+    // the tool has no way to find the socket.
+    let mut guardian = guardian();
+    let _ = actions(guardian.apply(at(0, EventKind::Start)));
+    let mut environment = display();
+    environment.push((
+        "GNOBLIN_PRIVILEGED_DISPLAY".to_owned(),
+        "gnoblin-wayland-privileged.sock".to_owned(),
+    ));
+    let effects = actions(guardian.apply(at(
+        1,
+        EventKind::Ready {
+            child: COMPOSITOR,
+            generation: generation(&guardian, COMPOSITOR),
+            environment,
+        },
+    )));
+    let next_environment = effects
+        .into_iter()
+        .find_map(|effect| match effect {
+            crate::Effect::Spawn { environment, .. } => Some(environment),
+            _ => None,
+        })
+        .expect("services are spawned after the display");
+    assert_eq!(
+        next_environment.get("GNOBLIN_PRIVILEGED_DISPLAY"),
+        Some("gnoblin-wayland-privileged.sock")
+    );
+    assert_eq!(
+        guardian.environment().get("GNOBLIN_PRIVILEGED_DISPLAY"),
+        Some("gnoblin-wayland-privileged.sock")
+    );
+}
+
+#[test]
 fn events_after_the_session_ended_change_nothing() {
     let mut guardian = up();
     stop_all(&mut guardian);
