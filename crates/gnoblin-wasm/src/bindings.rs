@@ -498,6 +498,23 @@ mod gnoblin_objects {
             let object = self.object(&handle).expect("a handle this store issued");
             self.method(object, "window", "kill", gnoblin_model::Fields::new())
         }
+
+        fn request_menu(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            x: i64,
+            y: i64,
+            width: u64,
+            height: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("x".to_owned(), Value::Int(x));
+            arguments.insert("y".to_owned(), Value::Int(y));
+            arguments.insert("width".to_owned(), Value::Uint(width));
+            arguments.insert("height".to_owned(), Value::Uint(height));
+            self.method(object, "window", "request_menu", arguments)
+        }
         fn icon(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "icon"))
