@@ -871,6 +871,381 @@ fn an_exported_surface_that_is_not_a_toplevel_is_refused() {
     });
 }
 
+/// Every export names its toplevel with its own handle, across clients as well as within one.
+#[test]
+fn every_export_gets_a_distinct_handle() {
+    Session::start().run(|session| {
+        let mut exporter_client = Client::connect(session.socket());
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = exporter_client
+            .globals
+            .bind(&exporter_client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let (first_surface, _, _first) = exporter_client.titled_toplevel("first export");
+        let (second_surface, _, _second) = exporter_client.titled_toplevel("second export");
+        let _first_export = exporter.export_toplevel(&first_surface, &exporter_client.qh, ());
+        let _second_export = exporter.export_toplevel(&second_surface, &exporter_client.qh, ());
+        exporter_client.roundtrip();
+
+        let mut other = Client::connect(session.socket());
+        let (other_surface, _, _other) = other.titled_toplevel("other client export");
+        let other_exporter: zxdg_exporter_v2::ZxdgExporterV2 = other
+            .globals
+            .bind(&other.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _other_export = other_exporter.export_toplevel(&other_surface, &other.qh, ());
+        other.roundtrip();
+
+        let mut handles = exporter_client.state.exported_handles.clone();
+        handles.extend(other.state.exported_handles.iter().cloned());
+        assert_eq!(handles.len(), 3, "each export names its toplevel once: {handles:?}");
+        handles.sort();
+        handles.dedup();
+        assert_eq!(handles.len(), 3, "no two exports share a handle");
+    });
+}
+
+/// Destroying the exported surface revokes its handle, so an importer is told `destroyed` and
+/// the window it parented loses that parent.
+#[test]
+fn destroying_the_exported_surface_revokes_its_handle_and_tells_importers() {
+    Session::start().run(|session| {
+        let mut exporter_client = Client::connect(session.socket());
+        let (parent_surface, parent_xdg, parent_toplevel) = exporter_client.titled_toplevel("destroyed parent");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = exporter_client
+            .globals
+            .bind(&exporter_client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _exported = exporter.export_toplevel(&parent_surface, &exporter_client.qh, ());
+        exporter_client.roundtrip();
+        let handle = exporter_client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+
+        let mut importer_client = Client::connect(session.socket());
+        let (child_surface, _, _child) = importer_client.titled_toplevel("destroyed child");
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = importer_client
+            .globals
+            .bind(&importer_client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        let imported = importer.import_toplevel(handle, &importer_client.qh, ());
+        imported.set_parent_of(&child_surface);
+        child_surface.commit();
+        importer_client.roundtrip();
+        let parent_id = session
+            .wait_for(|snapshot| snapshot.titled("destroyed parent").is_some())
+            .titled("destroyed parent")
+            .expect("the parent window")
+            .id;
+        session.wait_for(|snapshot| {
+            snapshot
+                .titled("destroyed child")
+                .is_some_and(|window| window.transient_for == Some(parent_id))
+        });
+
+        // The toplevel role goes before its xdg_surface, and the xdg_surface before the wl_surface.
+        parent_toplevel.destroy();
+        parent_xdg.destroy();
+        parent_surface.destroy();
+        exporter_client.roundtrip();
+        importer_client.wait_until(|app| app.imported_destroyed == 1);
+        session.wait_for(|snapshot| {
+            snapshot
+                .titled("destroyed child")
+                .is_some_and(|window| window.transient_for.is_none())
+        });
+        imported.destroy();
+        importer_client.roundtrip();
+    });
+}
+
+/// A handle whose export was destroyed is answered `destroyed` at once, and parenting through
+/// that import is accepted without a protocol error.
+#[test]
+fn importing_a_destroyed_export_is_answered_destroyed() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (surface, _, _toplevel) = client.titled_toplevel("revoked parent");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let exported = exporter.export_toplevel(&surface, &client.qh, ());
+        client.roundtrip();
+        let handle = client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+        exported.destroy();
+        client.roundtrip();
+
+        let (child_surface, _, _child) = client.titled_toplevel("revoked child");
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        let imported = importer.import_toplevel(handle, &client.qh, ());
+        imported.set_parent_of(&child_surface);
+        child_surface.commit();
+        client.roundtrip();
+        assert_eq!(
+            client.state.imported_destroyed, 1,
+            "a revoked handle is destroyed at once"
+        );
+        assert!(
+            client.roundtrip_protocol_error().is_none(),
+            "parenting through a destroyed import is not a client error"
+        );
+        imported.destroy();
+        client.roundtrip();
+    });
+}
+
+/// Setting the parent of a surface twice through one import keeps a single relation.
+#[test]
+fn set_parent_of_twice_keeps_one_parent() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (parent_surface, _, _parent) = client.titled_toplevel("twice parent");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _exported = exporter.export_toplevel(&parent_surface, &client.qh, ());
+        client.roundtrip();
+        let handle = client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+        let (child_surface, _, _child) = client.titled_toplevel("twice child");
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        let imported = importer.import_toplevel(handle, &client.qh, ());
+        imported.set_parent_of(&child_surface);
+        imported.set_parent_of(&child_surface);
+        child_surface.commit();
+        client.roundtrip();
+        assert!(
+            client.roundtrip_protocol_error().is_none(),
+            "setting the same parent twice is not a client error"
+        );
+
+        let parent_id = session
+            .wait_for(|snapshot| snapshot.titled("twice parent").is_some())
+            .titled("twice parent")
+            .expect("the parent window")
+            .id;
+        session.wait_for(|snapshot| {
+            snapshot
+                .titled("twice child")
+                .is_some_and(|window| window.transient_for == Some(parent_id))
+        });
+        imported.destroy();
+        client.roundtrip();
+    });
+}
+
+/// A surface cannot be made its own parent: the import refuses it with `invalid_surface`.
+#[test]
+fn a_surface_cannot_be_its_own_parent() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (surface, _, _toplevel) = client.titled_toplevel("self parent");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _exported = exporter.export_toplevel(&surface, &client.qh, ());
+        client.roundtrip();
+        let handle = client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        let imported = importer.import_toplevel(handle, &client.qh, ());
+        imported.set_parent_of(&surface);
+        surface.commit();
+        let (interface, code) = client
+            .roundtrip_protocol_error()
+            .expect("the server closes a connection that parents a surface to itself");
+        assert_eq!(interface, "zxdg_imported_v2", "the error names the importer");
+        assert_eq!(
+            code,
+            zxdg_imported_v2::Error::InvalidSurface as u32,
+            "the error is invalid_surface"
+        );
+
+        let mut fresh = Client::connect(session.socket());
+        fresh.roundtrip();
+    });
+}
+
+/// A surface cannot be parented to one of its own descendants: the second import would make
+/// the chain a loop, so it is refused with `invalid_surface`.
+#[test]
+fn a_surface_cannot_be_parented_to_its_own_descendant() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (parent_surface, _, _parent) = client.titled_toplevel("cycle parent");
+        let (child_surface, _, _child) = client.titled_toplevel("cycle child");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _child_export = exporter.export_toplevel(&child_surface, &client.qh, ());
+        client.roundtrip();
+        let child_handle = client.state.exported_handles[0].clone();
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        // The parent becomes a child of the child: the child is now the parent's ancestor.
+        let child_import = importer.import_toplevel(child_handle, &client.qh, ());
+        child_import.set_parent_of(&parent_surface);
+        parent_surface.commit();
+        client.roundtrip();
+        assert!(
+            client.roundtrip_protocol_error().is_none(),
+            "the first parenting is valid"
+        );
+
+        let _parent_export = exporter.export_toplevel(&parent_surface, &client.qh, ());
+        client.roundtrip();
+        let parent_handle = client.state.exported_handles[1].clone();
+        let parent_import = importer.import_toplevel(parent_handle, &client.qh, ());
+        // Making the child a child of the parent closes the loop: child -> parent -> child.
+        parent_import.set_parent_of(&child_surface);
+        child_surface.commit();
+        let (interface, code) = client
+            .roundtrip_protocol_error()
+            .expect("the server closes a connection that makes a loop");
+        assert_eq!(interface, "zxdg_imported_v2", "the error names the importer");
+        assert_eq!(
+            code,
+            zxdg_imported_v2::Error::InvalidSurface as u32,
+            "the error is invalid_surface"
+        );
+
+        let mut fresh = Client::connect(session.socket());
+        fresh.roundtrip();
+    });
+}
+
+/// A client that did not export a handle learns none, and a handle it guesses is refused: the
+/// only way to a handle is the exporter's own `handle` event.
+#[test]
+fn a_client_cannot_learn_another_clients_handle() {
+    Session::start().run(|session| {
+        let mut exporter_client = Client::connect(session.socket());
+        let (surface, _, _toplevel) = exporter_client.titled_toplevel("private export");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = exporter_client
+            .globals
+            .bind(&exporter_client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _exported = exporter.export_toplevel(&surface, &exporter_client.qh, ());
+        exporter_client.roundtrip();
+        let handle = exporter_client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+
+        let mut stranger = Client::connect(session.socket());
+        let (child_surface, _, _child) = stranger.titled_toplevel("stranger child");
+        assert!(
+            stranger.state.exported_handles.is_empty(),
+            "a client that exported nothing receives no handle events"
+        );
+        let guess = "0".repeat(32);
+        assert_ne!(guess, handle, "the guess is not the minted handle");
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = stranger
+            .globals
+            .bind(&stranger.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        let imported = importer.import_toplevel(guess, &stranger.qh, ());
+        imported.set_parent_of(&child_surface);
+        stranger.roundtrip();
+        assert_eq!(
+            stranger.state.imported_destroyed, 1,
+            "a guessed handle is destroyed at once"
+        );
+        assert!(
+            stranger.roundtrip_protocol_error().is_none(),
+            "a guessed handle is not a client error"
+        );
+        imported.destroy();
+        stranger.roundtrip();
+    });
+}
+
+/// The window manager floats an imported modal dialog above its parent: the parent link and the
+/// modal kind both reach the window manager through `WindowRoleChanged`.
+#[test]
+fn an_imported_modal_dialog_floats_above_its_parent() {
+    Session::start_allowing_focus().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (parent_surface, _, _parent) = client.mapped_titled_toplevel("floated parent");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        let _exported = exporter.export_toplevel(&parent_surface, &client.qh, ());
+        client.roundtrip();
+        let handle = client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+
+        let (child_surface, _, child) = client.mapped_titled_toplevel("floated dialog");
+        let importer: zxdg_importer_v2::ZxdgImporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_importer_v2");
+        let imported = importer.import_toplevel(handle, &client.qh, ());
+        imported.set_parent_of(&child_surface);
+        let manager: xdg_wm_dialog_v1::XdgWmDialogV1 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises xdg_wm_dialog_v1");
+        let dialog: xdg_dialog_v1::XdgDialogV1 = manager.get_xdg_dialog(&child, &client.qh, ());
+        dialog.set_modal();
+        child_surface.commit();
+        client.roundtrip();
+
+        let parent_id = session
+            .wait_for(|snapshot| snapshot.titled("floated parent").is_some())
+            .titled("floated parent")
+            .expect("the parent window")
+            .id;
+        let floated = session.wait_for(|snapshot| snapshot.titled("floated dialog").is_some_and(|window| window.modal));
+        let dialog_window = floated.titled("floated dialog").expect("the dialog window");
+        assert_eq!(
+            dialog_window.transient_for,
+            Some(parent_id),
+            "the imported dialog is a transient of its parent"
+        );
+        dialog.destroy();
+        imported.destroy();
+        client.roundtrip();
+    });
+}
+
 #[test]
 fn a_surface_has_one_alpha_modifier() {
     Session::start().run(|session| {
