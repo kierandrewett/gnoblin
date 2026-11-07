@@ -33,7 +33,7 @@ use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_portal_ui::ui::DialogScheme;
 use gnoblin_proto::Envelope;
-use gnoblin_types::{ClientId, KeyState, OutputId, Rect, RequestId, Size, Tick};
+use gnoblin_types::{ClientId, KeyState, OutputId, ParentWindow, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent, WindowProcess};
 
 use crate::portal::{CancelReason, PortalError, PortalUi, Verdict};
@@ -305,6 +305,57 @@ pub(super) fn parent_owner_check(caller: &VerifiedCaller, owner: &WindowProcess)
         WindowProcess::Connected(_) => Err("the parent window belongs to another process"),
         WindowProcess::Unknown => Err("the parent window's process is unknown"),
         WindowProcess::Disconnected => Err("the parent window's client has disconnected"),
+    }
+}
+
+/// Where a portal dialog opens: on its verified parent window, or on the output.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum PortalScope {
+    /// The parent is a Wayland handle that resolves to a window the caller's pid owns.
+    Parent,
+    /// The dialog opens on the output. `reason` says why the parent was not used; it is
+    /// empty when the request named no parent at all.
+    Output { reason: String },
+}
+
+/// Resolves a request's `parent_window` to the scope its dialog opens on.
+///
+/// This is the only place the parent is trusted, so it is a pure function over two
+/// lookups: `exported` maps a Wayland handle to its window (`None` while the compositor
+/// has not answered, `Some(None)` for an unknown or revoked handle), and `process` maps a
+/// window to its client process. Nothing here refuses a request. An unusable parent means
+/// the dialog opens on the output, so the app still gets its consent answer.
+///
+/// An X11 parent is never proven, because the compositor cannot yet map an XID to a
+/// process. A malformed string is an output scope with the parse error as the reason.
+pub(super) fn resolve_portal_scope<W>(
+    caller: &VerifiedCaller,
+    parent: &str,
+    exported: impl FnOnce(&str) -> Option<Option<W>>,
+    process: impl FnOnce(W) -> Option<Option<WindowProcess>>,
+) -> PortalScope {
+    let output = |reason: &str| PortalScope::Output {
+        reason: reason.to_owned(),
+    };
+    let handle = match ParentWindow::parse(parent) {
+        Ok(ParentWindow::None) => return output(""),
+        Ok(ParentWindow::X11(_)) => return output("an X11 parent window cannot be checked yet"),
+        Ok(ParentWindow::Wayland(handle)) => handle,
+        Err(error) => return output(&error.to_string()),
+    };
+    let window = match exported(&handle) {
+        None => return output("the compositor did not resolve the parent window in time"),
+        Some(None) => return output("the parent window handle is unknown or revoked"),
+        Some(Some(window)) => window,
+    };
+    let owner = match process(window) {
+        None => return output("the compositor did not report the parent window's process in time"),
+        Some(None) => return output("the parent window no longer exists"),
+        Some(Some(owner)) => owner,
+    };
+    match parent_owner_check(caller, &owner) {
+        Ok(()) => PortalScope::Parent,
+        Err(reason) => output(reason),
     }
 }
 
@@ -640,5 +691,76 @@ mod tests {
         let decoded = gnoblin_client::wire::read_portal_ui(payload).expect("decodes");
         assert_eq!(decoded.caller, request.caller);
         assert_eq!(decoded.caller.pid(), 1000);
+    }
+
+    /// A lookup that resolves the handle `live` (the part after `wayland:`) to window `7`, owned by `owner`.
+    fn resolve(parent: &str, owner: Option<WindowProcess>, caller_pid: u32) -> PortalScope {
+        resolve_portal_scope(
+            &VerifiedCaller::new(caller_pid, "org.example.Requester"),
+            parent,
+            |handle| (handle == "live").then_some(Some(7u32)),
+            |window| (window == 7).then_some(owner.clone()),
+        )
+    }
+
+    #[test]
+    fn a_verified_wayland_parent_is_the_scope() {
+        assert_eq!(resolve("wayland:live", Some(process(1000)), 1000), PortalScope::Parent);
+    }
+
+    #[test]
+    fn no_parent_opens_on_the_output_with_no_reason() {
+        assert_eq!(resolve("", None, 1000), PortalScope::Output { reason: String::new() });
+    }
+
+    #[test]
+    fn a_malformed_parent_opens_on_the_output() {
+        let scope = resolve("not a parent", None, 1000);
+        assert!(matches!(scope, PortalScope::Output { ref reason } if !reason.is_empty()));
+    }
+
+    #[test]
+    fn an_unknown_or_revoked_handle_opens_on_the_output() {
+        let scope = resolve_portal_scope(
+            &VerifiedCaller::new(1000, "org.example.Requester"),
+            "wayland:gone",
+            |_: &str| Some(None::<u32>),
+            |_: u32| Some(Some(process(1000))),
+        );
+        assert_eq!(
+            scope,
+            PortalScope::Output {
+                reason: "the parent window handle is unknown or revoked".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn an_unanswered_lookup_opens_on_the_output() {
+        let scope = resolve_portal_scope(
+            &VerifiedCaller::new(1000, "org.example.Requester"),
+            "wayland:live",
+            |_: &str| None::<Option<u32>>,
+            |_: u32| Some(Some(process(1000))),
+        );
+        assert!(matches!(scope, PortalScope::Output { .. }));
+    }
+
+    #[test]
+    fn a_window_owned_by_another_pid_opens_on_the_output() {
+        assert!(matches!(
+            resolve("wayland:live", Some(process(4242)), 1000),
+            PortalScope::Output { .. }
+        ));
+    }
+
+    #[test]
+    fn an_x11_parent_is_never_proven() {
+        assert_eq!(
+            resolve("x11:42", Some(process(1000)), 1000),
+            PortalScope::Output {
+                reason: "an X11 parent window cannot be checked yet".to_owned()
+            }
+        );
     }
 }
