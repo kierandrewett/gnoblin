@@ -113,9 +113,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // The Secret portal is served only when Gnoblin runs its built-in keyring. A configuration
+    // that cannot be read keeps the default, which is on, and the problem is logged.
+    let secret_served = match gnoblin_config::keyring_enabled_from_environment() {
+        Ok(enabled) => enabled,
+        Err(problem) => {
+            log::warn!(area = "keyring", "{problem}; the built-in keyring stays on");
+            true
+        }
+    };
     zbus::block_on(async move {
         let connection = zbus::Connection::session().await?;
-        let portal = Portal::new(connection.clone(), host, Backends::default(), CONSENT_LIFETIME);
+        let portal = Portal::new(
+            connection.clone(),
+            host,
+            Backends::default(),
+            CONSENT_LIFETIME,
+            secret_served,
+        );
         portal.export().await?;
         // The name is requested after the objects exist, and without queueing: a second
         // portal for one session is a configuration mistake, and the one that lost says so

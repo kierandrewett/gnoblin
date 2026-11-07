@@ -82,7 +82,7 @@ async fn serve(bus: &Bus) -> (Portal, String) {
         .unique_name()
         .expect("a connected bus gives the portal a unique name")
         .to_string();
-    let portal = Portal::new(connection, Box::new(NoProvider), Backends::default(), 1_000);
+    let portal = Portal::new(connection, Box::new(NoProvider), Backends::default(), 1_000, true);
     portal.export().await.expect("the portal exports its interfaces");
     (portal, name)
 }

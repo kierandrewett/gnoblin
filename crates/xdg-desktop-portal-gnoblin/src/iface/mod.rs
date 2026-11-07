@@ -92,6 +92,8 @@ pub struct Shared {
     pub clipboard: Box<dyn ClipboardBackend>,
     /// Live request handles, keyed by the path the frontend chose.
     pub handles: BTreeMap<String, Handle>,
+    /// Whether Gnoblin serves the Secret portal: `keyring.enabled`.
+    pub secret_served: bool,
     /// The instant deadlines are measured from.
     epoch: Instant,
 }
@@ -131,9 +133,16 @@ impl Portal {
     /// compositor calls.
     ///
     /// `lifetime` is how long one prompt stays open, in the same milliseconds
-    /// [`Shared::now`] counts.
+    /// [`Shared::now`] counts. `secret_served` is `keyring.enabled`: when false the Secret
+    /// portal is not served, and the system's own keyring answers it.
     #[must_use]
-    pub fn new(connection: Connection, host: Box<dyn Host>, backends: Backends, lifetime: u64) -> Portal {
+    pub fn new(
+        connection: Connection,
+        host: Box<dyn Host>,
+        backends: Backends,
+        lifetime: u64,
+        secret_served: bool,
+    ) -> Portal {
         Portal {
             shared: Arc::new(Mutex::new(Shared {
                 guard: Guard::new(host, lifetime),
@@ -144,6 +153,7 @@ impl Portal {
                 shortcuts: backends.shortcuts,
                 clipboard: backends.clipboard,
                 handles: BTreeMap::new(),
+                secret_served,
                 epoch: Instant::now(),
             })),
             connection,
@@ -228,13 +238,17 @@ impl Portal {
             )
             .await
             .map_err(bus)?;
-        object_server
-            .at(
-                PATH,
-                secret::SecretPortal::new(self.shared.clone(), self.connection.clone()),
-            )
-            .await
-            .map_err(bus)?;
+        // The Secret portal is answered only when Gnoblin runs its built-in keyring. With it off
+        // the object is not served at all, so the caller gets no Secret interface from Gnoblin.
+        if self.lock().secret_served {
+            object_server
+                .at(
+                    PATH,
+                    secret::SecretPortal::new(self.shared.clone(), self.connection.clone()),
+                )
+                .await
+                .map_err(bus)?;
+        }
         Ok(())
     }
 

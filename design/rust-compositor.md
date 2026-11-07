@@ -3107,7 +3107,7 @@ Consequences:
 - The Secret portal derives per-app secrets from one master secret. Per-app consent is unchanged: confirm the first retrieval per app, with no remember.
 - Acceptance is compatibility: a libsecret `secret-tool` round trip, the portal `Retrieve` call, and an existing Secret Service client needing no change.
 - Migration from gnome-keyring or KWallet is not offered, unless Kieran says yes (`design/keyring.md`, "Needs Kieran").
-- Decided 2026-11-06 (item 35): the coexistence default is a config leaf, `keyring.provider`, which defaults to `gnoblin`. See `design/keyring.md`, "Coexistence".
+- Decided 2026-11-06 (item 35), amended 2026-11-07: the built-in keyring is a config leaf, `keyring.enabled` (bool, default `true`). Turning it off means Gnoblin does not request `org.freedesktop.secrets`, creates no store, and does not answer the Secret portal. See `design/keyring.md`, "Coexistence", and `docs/config/configure/keyring.md`.
 
 **Store provider.** The keyring is a provider of kind `secret` in the store abstraction (D30). It speaks the provider interface, so `gnoblinctl store list` shows it. Its decisions here are unchanged.
 

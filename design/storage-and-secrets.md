@@ -79,7 +79,7 @@ derived from the same key, so a search needs the vault unlocked and the file rev
 `gnoblin-compat-dbus-freedesktop-secrets` is one new crate in the compat set. It serves
 `org.freedesktop.secrets` in the services role and talks to the vault in process. It supports the full
 Secret Service: create, update, delete, search, lock and unlock, so `secret-tool` works. Prompts for unlock use
-the stock built-in dialog. The bus coexistence rule and `keyring.provider` stay as decided.
+the stock built-in dialog. The bus coexistence rule and `keyring.enabled` stay as decided.
 
 ### The portal
 
@@ -162,8 +162,7 @@ file argues against. If you want the compositor build to contain no vault code a
 
 ## Alternatives
 
-**B. No own keyring.** Keep `kv` and `log`. Ship no Secret Service. Document gnome-keyring or KeePassXC through
-`keyring.provider`, and serve the Secret portal from the other provider when it can.
+**B. No own keyring.** Keep `kv` and `log`. Ship no Secret Service. Set `keyring.enabled = false` to run no built-in keyring, document gnome-keyring or KeePassXC as the one that serves the Secret Service, and serve the Secret portal from the other provider when it can.
 
 **C. Finish the current plan.** Keep the five crates, the slot and SQLCipher. The landed design refuses create,
 update and delete on the Secret Service (`design/keyring.md` lines 162 to 165). The Secret Service specification

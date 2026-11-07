@@ -63,6 +63,8 @@ pub mod engine;
 pub mod extensions;
 /// Cross-field rules that the schema cannot declare.
 pub mod hooks;
+/// The `keyring` section: whether Gnoblin runs its built-in keyring.
+pub mod keyring;
 /// The last-good store: the last accepted document, kept on disk.
 pub mod last_good;
 /// Decides which file is the configuration, and in what search order.
@@ -104,6 +106,8 @@ pub use generated::{
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
+/// The built-in keyring rule, read from the environment or from a store.
+pub use keyring::{keyring_enabled_from_environment, keyring_enabled_from_store};
 /// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 /// Config path lookup: the located path, its origin and the search order.

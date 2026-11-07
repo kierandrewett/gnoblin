@@ -144,7 +144,7 @@ section.
   name. Secret Service clients keep talking to the other provider. The two
   stores are then separate, and the consent text must say so.
 
-Decided 2026-11-06 (item 35): a config leaf chooses the keyring provider. The proposed name is `keyring.provider` (to be checked against `crates/gnoblin-config/schema`). Its default is `gnoblin`. Other values name another program, such as `gnome-keyring` or `keepassxc`. Gnoblin takes `org.freedesktop.secrets` only when it is the configured provider. If the configured provider is missing, or the name is owned by another program, the same on-screen warning used for config problems appears. That warning is built in `src/session/gnoblin-runtime-diagnostics.c` (`append_config_warning_notice`).
+Decided 2026-11-07 (item 35, revised): a config leaf, `keyring.enabled`, a bool that defaults to `true`, decides whether Gnoblin runs its built-in keyring. The doc line reads: "Run Gnoblin's built-in keyring. Turn it off to use a keyring from another program, or none." Gnoblin does not need to know which other keyring exists, so the earlier provider-name design (`keyring.provider`) is removed with no alias. With `keyring.enabled = false` the services role does not request `org.freedesktop.secrets`, creates no store file or directory, runs no keyring code, and the portal does not export the Secret object, so the system's keyring answers Secret requests. `prompts.enabled` stays a separate bool: with the built-in keyring off, turning prompts on lets Gnoblin draw the dialogs of the system keyring. The matrix is in `docs/config/configure/keyring.md`.
 
 ## Secret Service API
 
@@ -206,7 +206,7 @@ written to disk.
 | Wrong key                               | SQLCipher refuses to open. Store stays locked. No data is touched                      |
 | Password changed, hook missing          | Store stays locked. The user unlocks with the old password, then re-keys               |
 | Provider refuses `dh-ietf1024`          | `error { not-supported }`. No `plain` fallback                                         |
-| Other provider owns the name            | Coexistence: the service does not take the name. Portal serves from the private name   |
+| Built-in keyring off                    | No name request, no store opened, no Secret object. The system keyring answers         |
 | Services role down                      | `error { not-supported }` until services returns, as for other services-hosted portals |
 | Two or more master items found          | Use the oldest and log the others by id. Never create a second master                  |
 | Default collection missing on first run | Create it, with the same attribute, if the store allows it                             |

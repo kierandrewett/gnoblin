@@ -85,7 +85,7 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
     (
         "keyring",
         "0.2.0",
-        "the keyring section: which provider owns org.freedesktop.secrets, read by the services role at start",
+        "the keyring section: whether the built-in keyring runs, read by the services role and the portal relay at start",
     ),
     (
         "layers",

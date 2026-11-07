@@ -38,7 +38,7 @@ pub fn linked_agents(mode: Mode, prompts: bool, keyring: Option<Box<dyn LinkedAg
 }
 
 /// The agents the services role links in for the environment's settings: the prompt switch, the
-/// keyring provider and the compat mode, all read here so the binary names no adapter.
+/// keyring switch and the compat mode, all read here so the binary names no adapter.
 #[must_use]
 pub fn linked_agents_from_environment() -> Vec<Box<dyn LinkedAgent>> {
     let prompts = gnoblin_services::prompts::enabled_from_environment();
@@ -81,9 +81,9 @@ mod tests {
     }
 
     #[test]
-    fn the_secret_service_is_linked_only_when_gnoblin_is_the_provider() {
-        // `keyring.provider` names Gnoblin by default. Another provider leaves the name unrequested,
-        // so the role starts no Secret Service agent at all.
+    fn the_secret_service_is_linked_only_when_the_built_in_keyring_is_enabled() {
+        // `keyring.enabled` is true by default. When it is off the role links no Secret Service
+        // agent at all, and the name stays with the other program.
         assert_eq!(linked_agents(Mode::default(), false, keyring()).len(), 6);
         assert_eq!(linked_agents(Mode::default(), false, None).len(), 5);
     }

@@ -2184,15 +2184,14 @@ since = "0.2.0"
 [[section]]
 key = "keyring"
 type = "KeyringConfig"
-doc = "Which program provides the org.freedesktop.secrets keyring."
+doc = "Whether Gnoblin runs its built-in keyring: the org.freedesktop.secrets service and the Secret portal."
 
 [[section.field]]
-key = "provider"
-kind = "text"
-nonempty = true
-accepted = "a nonempty program name"
-default = { text = "gnoblin" }
-doc = "`gnoblin` serves the Secret Service from Gnoblin's own store. Any other name leaves the name to that program."
+key = "enabled"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Run Gnoblin's built-in keyring. Turn it off to use a keyring from another program, or none."
 since = "0.2.0"
 
 [[section]]

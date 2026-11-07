@@ -32,7 +32,7 @@ gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
 gnoblin-service-sessionidle = { path = "../gnoblin-service-sessionidle" }
 # The GeoClue agent: the services role links it, and the session binary reaches it through there.
 gnoblin-service-location = { path = "../gnoblin-service-location" }
-# The Secret Service agent: the role serves it when `keyring.provider` names Gnoblin.
+# The Secret Service agent: the role serves it when `keyring.enabled` is true.
 gnoblin-service-keyring = { path = "../gnoblin-service-keyring" }
 # The hand-off socket the Secret Service listens on sits under the runtime directory the role finds.
 gnoblin-keyring-handoff = { path = "../gnoblin-keyring-handoff" }
