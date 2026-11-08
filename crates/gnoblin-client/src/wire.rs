@@ -107,6 +107,9 @@ pub mod member {
     pub const PORTAL_CANCEL: &str = "portal.cancel";
     /// Input client to compositor: route one key to the open portal dialog.
     pub const PORTAL_KEY: &str = "portal.key";
+    /// Screenshot client to compositor: take one still picture of an output. The reply
+    /// payload is the PNG. Privileged.
+    pub const CAPTURE_SCREEN: &str = "capture.screen";
 }
 
 /// The error codes this layer reports in an error frame.
@@ -143,6 +146,16 @@ pub mod code {
     /// Fail closed: a request nobody will answer ends here instead of waiting out its
     /// deadline on the host that needed the decision.
     pub const NO_PROVIDER: &str = "no-provider";
+    /// The session is locked, or the lock embargoes capture: no pixel is read.
+    pub const CAPTURE_LOCKED: &str = "locked";
+    /// There is no output to take a picture of.
+    pub const CAPTURE_NO_OUTPUT: &str = "no-output";
+    /// The output has no frame to read back.
+    pub const CAPTURE_UNAVAILABLE: &str = "unavailable";
+    /// The picture is larger than one frame can carry.
+    pub const CAPTURE_TOO_LARGE: &str = "too-large";
+    /// The frame could not be encoded as PNG.
+    pub const CAPTURE_ENCODE_FAILED: &str = "encode-failed";
 }
 
 /// One decoded frame from the compositor.
@@ -402,6 +415,11 @@ pub fn portal_ui(request_id: u64, request: &PortalRequest) -> Envelope {
 /// A request to withdraw the portal request this connection holds. Privileged.
 pub fn portal_cancel(request_id: u64) -> Envelope {
     Envelope::request(NAMESPACE, member::PORTAL_CANCEL, request_id, Vec::new())
+}
+
+/// A request for one still picture of an output, answered with the PNG. Privileged.
+pub fn capture_screen(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::CAPTURE_SCREEN, request_id, Vec::new())
 }
 
 /// A request routing one key to the open portal dialog. The key is named `escape`,

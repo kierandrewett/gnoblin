@@ -552,6 +552,16 @@ impl<T: Transport> Client<T> {
         })
     }
 
+    /// Ask the compositor for one still picture of an output: the PNG bytes it sends
+    /// back. A refusal (locked session, no output, no frame) is a [`ClientError::Refused`]
+    /// carrying the compositor's code. Privileged: the connection must hold `capture-screen`.
+    pub fn capture_screen(&mut self) -> Result<Vec<u8>, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::capture_screen(correlation);
+        self.send(&frame)?;
+        self.await_reply(correlation)
+    }
+
     /// Ask the transport for a read deadline, where it has one.
     ///
     /// A role pumps on a clock: it wants a read that returns when nothing has arrived yet
@@ -735,6 +745,7 @@ mod routing_tests {
     use gnoblin_proto::{CodecError, Envelope, Transport, Version};
 
     use super::{Capabilities, Client, PortalOutcome, PortalTicket, wire};
+    use crate::error::ClientError;
 
     /// A transport that replays scripted frames and records what the client sent.
     #[derive(Debug, Default)]
@@ -843,6 +854,42 @@ mod routing_tests {
         assert_eq!(payload, vec![2]);
         assert!(client.stashed.is_empty(), "the late reply to request 1 is not held");
         assert!(client.pending.is_empty());
+    }
+
+    #[test]
+    fn a_capture_sends_the_capture_member_and_returns_the_png() {
+        let png = vec![0x89, b'P', b'N', b'G'];
+        let mut client = client(vec![Envelope::reply(
+            wire::NAMESPACE,
+            wire::member::CAPTURE_SCREEN,
+            1,
+            png.clone(),
+        )]);
+        assert_eq!(client.capture_screen().expect("the picture arrives"), png);
+        let sent = &client.transport.sent;
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].member, wire::member::CAPTURE_SCREEN);
+        assert_eq!(sent[0].request_id, 1);
+    }
+
+    #[test]
+    fn a_locked_refusal_is_a_refusal_not_an_empty_picture() {
+        // Failure mode: the compositor refuses; the caller must see the code, never a
+        // zero-length PNG it could mistake for a picture.
+        let mut client = client(vec![Envelope::error(
+            wire::NAMESPACE,
+            wire::member::CAPTURE_SCREEN,
+            1,
+            wire::code::CAPTURE_LOCKED,
+            "the session is locked",
+        )]);
+        match client.capture_screen() {
+            Err(ClientError::Refused { member, code, .. }) => {
+                assert_eq!(member, wire::member::CAPTURE_SCREEN);
+                assert_eq!(code, "locked");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
     }
 
     #[test]

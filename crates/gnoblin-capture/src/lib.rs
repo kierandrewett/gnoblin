@@ -79,6 +79,8 @@ pub mod format;
 pub mod session;
 /// The [`CaptureSource`] seam that output capture and window capture share.
 pub mod source;
+/// Still pictures: one frame of an output, encoded as PNG.
+pub mod still;
 /// The session table, which applies every rule before a frame exposes pixels.
 pub mod table;
 

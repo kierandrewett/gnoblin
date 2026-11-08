@@ -11,6 +11,8 @@ publish.workspace = true
 # a capture session names the same values every other crate names, so a target and a
 # tick cannot drift between the capture path and the compositor.
 gnoblin-types.workspace = true
+# The PNG encoder for a still picture: the one encoding a capture hands a caller that asked for a picture.
+png.workspace = true
 # The session lock's own answer (`Lock::capture`) and the consent a session holds
 # (`CaptureStream`). Capture does not decide the embargo; it applies the decision the
 # lock state machine already made, at every frame.

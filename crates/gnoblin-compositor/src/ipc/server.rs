@@ -70,6 +70,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use gnoblin_capture::still::{self, Refusal};
 use gnoblin_client::wire;
 use gnoblin_config::{LayoutReference, LayoutRoot, LayoutSelector};
 
@@ -865,6 +866,7 @@ impl Dispatcher {
             wire::member::PORTAL_UI => self.portal_ui(client, envelope),
             wire::member::PORTAL_CANCEL => self.portal_cancel(client, envelope),
             wire::member::PORTAL_KEY => self.portal_key(client, envelope),
+            wire::member::CAPTURE_SCREEN => self.capture_screen(client, envelope),
             _ => self.refuse(
                 client,
                 envelope,
@@ -1403,6 +1405,50 @@ impl Dispatcher {
                 envelope.request_id,
                 payload,
             ));
+        }
+    }
+
+    /// Answers `capture.screen` with one PNG of the first output.
+    ///
+    /// The lock is asked first: a locked or embargoed session is refused before any pixel
+    /// is read. The picture comes from the backend's screenshot, which applies the
+    /// configured secure treatment to secure layers, so a masked or omitted layer never
+    /// reaches the PNG.
+    fn capture_screen(&mut self, client: ClientId, envelope: &Envelope) {
+        // Headroom for the envelope around the payload, so the reply still fits one frame.
+        const ENVELOPE_HEADROOM: usize = 4096;
+        let snapshot = match self.observation.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let output = match still::choose_output(snapshot.lock_active(), snapshot.capture_allowed(), snapshot.outputs())
+        {
+            Ok(output) => output,
+            Err(refusal) => {
+                let (code, message) = capture_refusal(refusal);
+                return self.refuse(client, envelope, code, message);
+            }
+        };
+        let Some(image) = self.control.screenshot(output) else {
+            let (code, message) = capture_refusal(Refusal::Unavailable);
+            return self.refuse(client, envelope, code, message);
+        };
+        let max_len = gnoblin_proto::MAX_FRAME_LEN - ENVELOPE_HEADROOM;
+        match still::encode_png(image.size(), image.stride(), image.data(), max_len) {
+            Ok(png) => {
+                if let Some(connection) = self.connections.get_mut(&client) {
+                    connection.send(&Envelope::reply(
+                        wire::NAMESPACE,
+                        wire::member::CAPTURE_SCREEN,
+                        envelope.request_id,
+                        png,
+                    ));
+                }
+            }
+            Err(refusal) => {
+                let (code, message) = capture_refusal(refusal);
+                self.refuse(client, envelope, code, message);
+            }
         }
     }
 
@@ -2380,7 +2426,20 @@ fn required_capability(member: &str) -> Option<Capability> {
         wire::member::CONFIG_RELOAD => Some(Capability::ReloadConfig),
         wire::member::PORTAL_UI | wire::member::PORTAL_CANCEL => Some(Capability::PortalUi),
         wire::member::PORTAL_KEY => Some(Capability::PortalInput),
+        wire::member::CAPTURE_SCREEN => Some(Capability::CaptureScreen),
         _ => None,
+    }
+}
+
+/// The wire code and detail a still-picture refusal reports. The detail names the
+/// condition only; it never carries pixels or a secret.
+fn capture_refusal(refusal: Refusal) -> (&'static str, &'static str) {
+    match refusal {
+        Refusal::Locked => (wire::code::CAPTURE_LOCKED, "the session is locked"),
+        Refusal::NoOutput => (wire::code::CAPTURE_NO_OUTPUT, "there is no output to capture"),
+        Refusal::Unavailable => (wire::code::CAPTURE_UNAVAILABLE, "the output has no frame yet"),
+        Refusal::TooLarge => (wire::code::CAPTURE_TOO_LARGE, "the picture is too large for one frame"),
+        Refusal::Encode => (wire::code::CAPTURE_ENCODE_FAILED, "the frame could not be encoded"),
     }
 }
 
@@ -2597,7 +2656,8 @@ mod tests {
     use gnoblin_client::wire;
     use gnoblin_proto::Capability;
 
-    use super::{DEADLINE_TICK, DeadlineClock, IpcEvent, events, required_capability, wake};
+    use super::{DEADLINE_TICK, DeadlineClock, IpcEvent, capture_refusal, events, required_capability, wake};
+    use gnoblin_capture::still::Refusal;
 
     /// The regression: deadlines were swept only on a quiet `recv_timeout`, so a client that
     /// kept the loop busy starved every deadline and `config reload` never returned.
@@ -2677,5 +2737,26 @@ mod tests {
             required_capability(wire::member::CONFIG_REJECT),
             Some(Capability::CommitConfig)
         );
+    }
+
+    #[test]
+    fn a_capture_is_gated_on_the_capture_screen_capability() {
+        // Failure mode: an ungranted client must be refused, so the member must map to
+        // a capability at all. An omitted arm would serve pixels to any connection.
+        assert_eq!(
+            required_capability(wire::member::CAPTURE_SCREEN),
+            Some(Capability::CaptureScreen)
+        );
+    }
+
+    #[test]
+    fn every_capture_refusal_names_a_wire_code_the_client_knows() {
+        // The client reads these codes back; a refusal that fell through to an unknown
+        // code would reach the caller as a failure it cannot act on.
+        assert_eq!(capture_refusal(Refusal::Locked).0, wire::code::CAPTURE_LOCKED);
+        assert_eq!(capture_refusal(Refusal::NoOutput).0, wire::code::CAPTURE_NO_OUTPUT);
+        assert_eq!(capture_refusal(Refusal::Unavailable).0, wire::code::CAPTURE_UNAVAILABLE);
+        assert_eq!(capture_refusal(Refusal::TooLarge).0, wire::code::CAPTURE_TOO_LARGE);
+        assert_eq!(capture_refusal(Refusal::Encode).0, wire::code::CAPTURE_ENCODE_FAILED);
     }
 }
