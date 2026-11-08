@@ -277,6 +277,15 @@ pub(crate) fn validate(path: &Path, json: bool, out: &mut dyn Write) -> Result<u
 /// same reasons the compositor would give. Validation runs against an empty object graph; see
 /// `gnoblin_lua::check` for what that does not check.
 fn validate_lua(path: &Path) -> Result<Vec<String>, Failure> {
+    // `run_config` treats an absent file as "no configuration" (the runtime then starts with
+    // defaults). That is right for the compositor, but the user named this file, so its
+    // absence is a refusal here.
+    if let Err(error) = std::fs::metadata(path) {
+        return Err(Failure::Refusal {
+            code: "io".to_owned(),
+            message: format!("cannot read {}: {error}", path.display()),
+        });
+    }
     let paths = SearchPaths {
         home: None,
         config_home: None,
@@ -425,6 +434,22 @@ mod tests {
         };
         assert_eq!(code, "invalid-config");
         assert!(!message.is_empty(), "the refusal names the problem");
+    }
+
+    /// `validate` names the file the user gave; a missing one is refused, not reported valid.
+    /// (The runtime starts with defaults when `GNOBLIN_CONFIG` names no file; validating a
+    /// path the user typed must not do the same.)
+    #[test]
+    fn a_missing_lua_file_is_refused_not_reported_valid() {
+        let path = std::env::temp_dir().join(format!("gnoblinctl-validate-{}-absent.lua", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut out = Vec::new();
+        let Err(Failure::Refusal { code, message }) = validate(&path, false, &mut out) else {
+            panic!("a missing init.lua is refused");
+        };
+        assert_eq!(code, "io");
+        assert!(message.contains("cannot read"), "{message}");
+        assert!(out.is_empty(), "nothing is printed as valid");
     }
 
     #[test]
