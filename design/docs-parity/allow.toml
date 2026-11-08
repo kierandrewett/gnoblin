@@ -153,12 +153,6 @@ reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
 owner-slice = "S6"
 
 [[allow]]
-name = ":reset_visuals"
-doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
 name = ":restore_or_minimize"
 doc = "docs/shell-api/windows.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
@@ -213,37 +207,7 @@ reason = "documented, not implemented; Visuals, tweens and named animations (S7)
 owner-slice = "S7"
 
 [[allow]]
-name = ":set_offset"
-doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
-name = ":set_opacity"
-doc = "docs/shell-api/overrides.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
-name = ":set_opacity"
-doc = "docs/shell-api/tweens.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
-name = ":set_opacity"
-doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
 name = ":set_rotation"
-doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
-name = ":set_scale"
 doc = "docs/shell-api/windows.md"
 reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
 owner-slice = "S7"

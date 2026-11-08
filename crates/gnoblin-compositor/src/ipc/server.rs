@@ -81,7 +81,7 @@ use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, WindowChange,
-    WindowChangeRefusal, WindowProcess,
+    WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -1544,6 +1544,15 @@ impl Dispatcher {
             {
                 self.window_control_call(client, envelope, object, &method, &arguments, window);
             }
+            (Some(ty), Some(window), _, _)
+                if ty == "window"
+                    && matches!(
+                        method.as_str(),
+                        "set_opacity" | "set_scale" | "set_offset" | "reset_visuals"
+                    ) =>
+            {
+                self.window_visual_call(client, envelope, object, &method, &arguments, window);
+            }
             (Some(ty), Some(window), _, _) if ty == "window" && method == "add_effect" => {
                 self.add_effect_call(client, envelope, object, &method, &arguments, window);
             }
@@ -1999,6 +2008,81 @@ impl Dispatcher {
             None => None,
         };
         self.finish(object, &operation, outcome);
+    }
+
+    /// Serves the visual verbs that change how a window is drawn: `set_opacity`, `set_scale`,
+    /// `set_offset` and `reset_visuals`. The frame, workspace, focus and what the application
+    /// sees do not change. The loop applies the value to the window's own shell visuals, so a
+    /// window rule's opacity and the placement animations keep applying alongside them. The
+    /// operation completes `done` only when the value was applied; a refusal completes with its
+    /// reason. A connection without `window-control` is refused `power-missing` before the graph
+    /// sees the call, and arguments that are not numbers are refused before an operation exists.
+    fn window_visual_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        window: WindowId,
+    ) {
+        if !self.capabilities(client).contains(Capability::WindowControl) {
+            self.refuse(
+                client,
+                envelope,
+                "power-missing",
+                &format!("`{method}` needs the `window-control` capability, which this connection does not hold"),
+            );
+            return;
+        }
+        let change = match Self::visual_change(method, arguments) {
+            Ok(change) => change,
+            Err((code, message)) => {
+                self.refuse(client, envelope, code, &message);
+                return;
+            }
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        // The drawing changes in the loop, so the diff it caused is published before the
+        // completion reaches the client.
+        let applied = self.control.window_visual(window, change);
+        self.sync();
+        let outcome = match applied {
+            Some(Ok(())) => Some(OperationOutcome::Done),
+            Some(Err(refusal)) => Some(OperationOutcome::Failed(visual_refusal_code(refusal))),
+            // The loop did not answer, so it is stopping: the operation is left pending rather
+            // than given an outcome this server would have invented.
+            None => None,
+        };
+        self.finish(object, &operation, outcome);
+    }
+
+    /// Reads a visual verb's arguments into the value the loop applies. The error is the
+    /// refusal code and message for an argument that is missing or not a number.
+    fn visual_change(method: &str, arguments: &gnoblin_model::Fields) -> Result<WindowVisual, (&'static str, String)> {
+        let missing = |needs: &str| (wire::code::UNKNOWN_MEMBER, format!("`{method}` needs {needs}"));
+        Ok(match method {
+            "set_opacity" => WindowVisual::Opacity(
+                double_argument(arguments, "opacity").ok_or_else(|| missing("its number `opacity`"))?,
+            ),
+            "set_scale" => {
+                WindowVisual::Scale(double_argument(arguments, "scale").ok_or_else(|| missing("its number `scale`"))?)
+            }
+            "set_offset" => match (double_argument(arguments, "x"), double_argument(arguments, "y")) {
+                (Some(x), Some(y)) => WindowVisual::Offset { x, y },
+                _ => return Err(missing("numbers `x` and `y`")),
+            },
+            "reset_visuals" => WindowVisual::Reset,
+            _ => return Err(missing("a visual verb this server serves")),
+        })
     }
 
     /// Reads a window verb's arguments into the change the loop applies. The error is the
@@ -2587,6 +2671,17 @@ fn window_refusal_code(refusal: WindowChangeRefusal) -> ErrorCode {
         WindowChangeRefusal::NotFloating => ErrorCode::from_static("not-floating"),
         WindowChangeRefusal::TransientFollowsParent => ErrorCode::from_static("transient-follows-parent"),
         WindowChangeRefusal::Refused => ErrorCode::from_static("refused"),
+    }
+}
+
+/// The code a visual verb completes with when the loop refused it. The window's own `Gone` is
+/// `object-gone`; `locked` names the lock cover that holds the drawing, and `out-of-range` names
+/// a value the method's documented range does not accept.
+fn visual_refusal_code(refusal: WindowVisualRefusal) -> ErrorCode {
+    match refusal {
+        WindowVisualRefusal::Gone => OBJECT_GONE,
+        WindowVisualRefusal::Locked => ErrorCode::from_static("locked"),
+        WindowVisualRefusal::OutOfRange => ErrorCode::from_static("out-of-range"),
     }
 }
 

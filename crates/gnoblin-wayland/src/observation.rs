@@ -330,6 +330,35 @@ pub enum WindowChangeRefusal {
     Refused,
 }
 
+/// One change to how the compositor draws a window, as the shell's window methods set it.
+///
+/// These are the shell's own values. The window rule's opacity and the placement animations
+/// are separate and multiply with them, so setting one never overwrites another. Each value
+/// carries the amount the caller set, so repeating a request is a no-op.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WindowVisual {
+    /// The drawn opacity, from 0 (invisible) to 1 (opaque).
+    Opacity(f64),
+    /// The drawn scale about the window's centre.
+    Scale(f64),
+    /// The drawn offset, in logical pixels, from where the window is placed.
+    Offset { x: f64, y: f64 },
+    /// Every shell visual back to its default.
+    Reset,
+}
+
+/// Why the loop did not apply a [`WindowVisual`]. A caller is told the reason, so a value
+/// the compositor cannot draw is never reported as done.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowVisualRefusal {
+    /// The window closed before the loop reached the request.
+    Gone,
+    /// The session is locked, and the window's drawing does not change while it is.
+    Locked,
+    /// The value lies outside the range its method documents, or is not a number.
+    OutOfRange,
+}
+
 /// What the loop found when a window's `present` request reached it. The wait for a quiet
 /// session belongs to the caller, which asks again until the answer is final, so only
 /// `Focused` is a completed request and every other variant names why it is not yet, or

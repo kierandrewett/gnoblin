@@ -206,6 +206,50 @@ name = "height"
 type = "uint"
 since = "0.2.0"
 
+# Set how opaque the window is drawn, from 0 (invisible) to 1 (as drawn). The value is the
+# window's own visual, so the window rule's opacity and placement animations still apply. A
+# value outside 0..1 is refused `out-of-range`. Completes `done` when applied.
+[[object.method]]
+name = "set_opacity"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+
+# Scale the window about its centre, from 0.01 to 10 (1 is as drawn). A value outside that
+# range is refused `out-of-range`. Completes `done` when applied.
+[[object.method]]
+name = "set_scale"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+
+# Shift the window's drawing by `x` and `y` pixels from where placement puts it, each within
+# +-100000. A value outside that range is refused `out-of-range`. Completes `done` when applied.
+[[object.method]]
+name = "set_offset"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# Return the window's opacity, scale and offset to as drawn. Completes `done` when applied.
+[[object.method]]
+name = "reset_visuals"
+since = "0.2.0"
+
 # Move the window, and its transient children, to `workspace`. A transient window is
 # refused `transient-follows-parent`: it shares its parent's workspace, so the parent
 # moves it. Moving to the workspace it is on completes `done` and changes nothing.

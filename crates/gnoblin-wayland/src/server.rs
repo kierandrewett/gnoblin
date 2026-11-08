@@ -58,7 +58,8 @@ use gnoblin_wm::WmOptions;
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{
-    MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal,
+    MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
+    WindowVisualRefusal,
 };
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
@@ -524,6 +525,11 @@ impl Server {
                                 // reads the observation on the strength of it sees the change.
                                 let _ = reply.send(state.window_control(window, change));
                             }
+                            Command::WindowVisual { window, change, reply } => {
+                                // The answer follows the drawing change, so the caller's next
+                                // read of the window's pose sees it.
+                                let _ = reply.send(state.window_visual(window, change));
+                            }
                             Command::Lock { reply } => state.request_lock(reply),
                             Command::SetWorkspaceLayout {
                                 workspace,
@@ -852,6 +858,17 @@ impl ControlHandle {
     pub fn window_control(&self, window: WindowId, change: WindowChange) -> Option<Result<(), WindowChangeRefusal>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowControl { window, change, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Applies one shell visual request, as the IPC's `window.set_opacity`, `set_scale`,
+    /// `set_offset` and `reset_visuals` do. `Some(Ok(()))` means the drawing changed,
+    /// `Some(Err(reason))` means the window is gone, the session is locked or the value is
+    /// out of range, and [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`].
+    #[must_use]
+    pub fn window_visual(&self, window: WindowId, change: WindowVisual) -> Option<Result<(), WindowVisualRefusal>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::WindowVisual { window, change, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -1273,6 +1290,13 @@ enum Command {
         output: String,
         selector: gnoblin_config::LayoutSelector,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
+    },
+    /// A shell visual request from the IPC, and the channel its answer goes back on: `Ok(())`
+    /// when the drawing changed, `Err` with the reason when it did not.
+    WindowVisual {
+        window: WindowId,
+        change: WindowVisual,
+        reply: std::sync::mpsc::SyncSender<Result<(), WindowVisualRefusal>>,
     },
     /// Adds or removes one idle holder; see `ControlHandle::idle_hold`.
     IdleHold {

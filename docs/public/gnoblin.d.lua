@@ -637,6 +637,18 @@ function window:move(x, y) end
 ---@param height integer
 ---@return gnoblin.Operation
 function window:resize(width, height) end
+---@param opacity number
+---@return gnoblin.Operation
+function window:set_opacity(opacity) end
+---@param scale number
+---@return gnoblin.Operation
+function window:set_scale(scale) end
+---@param x number
+---@param y number
+---@return gnoblin.Operation
+function window:set_offset(x, y) end
+---@return gnoblin.Operation
+function window:reset_visuals() end
 ---@param workspace gnoblin.workspace
 ---@return gnoblin.Operation
 function window:set_workspace(workspace) end

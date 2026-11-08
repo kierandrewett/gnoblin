@@ -598,6 +598,49 @@ mod gnoblin_objects {
             self.method(object, "window", "set_fullscreen", arguments)
         }
 
+        fn set_opacity(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            opacity: f64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("opacity".to_owned(), Value::Double(opacity));
+            self.method(object, "window", "set_opacity", arguments)
+        }
+
+        fn set_scale(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            scale: f64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("scale".to_owned(), Value::Double(scale));
+            self.method(object, "window", "set_scale", arguments)
+        }
+
+        fn set_offset(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            x: f64,
+            y: f64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("x".to_owned(), Value::Double(x));
+            arguments.insert("y".to_owned(), Value::Double(y));
+            self.method(object, "window", "set_offset", arguments)
+        }
+
+        fn reset_visuals(
+            &mut self,
+            handle: Resource<ObjectRep>,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "window", "reset_visuals", gnoblin_model::Fields::new())
+        }
+
         /// Move the top-left corner to `x`, `y` in global logical coordinates.
         fn move_(
             &mut self,

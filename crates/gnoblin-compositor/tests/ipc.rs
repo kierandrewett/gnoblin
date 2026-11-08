@@ -286,6 +286,97 @@ fn set_fullscreen_without_its_value_is_refused() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// The visual verbs refuse a dead identity the way the other window verbs do: the object is
+/// unknown, and the session keeps running.
+#[test]
+fn visual_verbs_on_a_closed_window_are_refused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+    wayland.destroy(window);
+    wait_for("the window is gone", || {
+        let listed = session.ctl(&["window", "list"]).ok();
+        listed.out.is_empty().then_some(())
+    });
+
+    let mut client = ipc(&session);
+    for (method, arguments) in [
+        (
+            "set_opacity",
+            Fields::from([("opacity".to_owned(), Value::Double(0.5))]),
+        ),
+        ("set_scale", Fields::from([("scale".to_owned(), Value::Double(2.0))])),
+        (
+            "set_offset",
+            Fields::from([
+                ("x".to_owned(), Value::Double(1.0)),
+                ("y".to_owned(), Value::Double(1.0)),
+            ]),
+        ),
+        ("reset_visuals", Fields::new()),
+    ] {
+        let error = client
+            .call(ObjectId::new(id), method, &arguments)
+            .expect_err("a closed window takes no visual call");
+        match error {
+            gnoblin_client::ClientError::Refused { code, .. } => {
+                assert_eq!(code, gnoblin_client::code::OBJECT_UNKNOWN, "{method}");
+            }
+            other => panic!("{method}: expected object-unknown, got {other:?}"),
+        }
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+/// An opacity outside 0..1 is refused by the loop, which completes the operation `out-of-range`.
+/// The window keeps being listed, so the refusal changed nothing it draws.
+#[test]
+fn set_opacity_out_of_range_is_refused_and_the_window_stays() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    let mut client = ipc(&session);
+    client.subscribe(Filter::All).expect("the snapshot");
+    let arguments = Fields::from([("opacity".to_owned(), Value::Double(1.5))]);
+    let operation = client
+        .call(ObjectId::new(id), "set_opacity", &arguments)
+        .expect("the call is served");
+    let outcome = client.await_operation(operation).expect("the completion");
+    assert_eq!(
+        outcome,
+        gnoblin_model::OperationOutcome::Failed(gnoblin_types::ErrorCode::from_static("out-of-range")),
+        "an opacity of 1.5 is outside 0..1"
+    );
+    assert!(!session.ctl(&["window", "list"]).out.is_empty());
+    session.stop().expect("the session stops cleanly");
+}
+
+/// A visual verb on a live window completes `done`, and `reset_visuals` after it does too.
+#[test]
+fn set_opacity_and_reset_visuals_complete_done() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    let mut client = ipc(&session);
+    client.subscribe(Filter::All).expect("the snapshot");
+    let arguments = Fields::from([("opacity".to_owned(), Value::Double(0.5))]);
+    let set = client
+        .call(ObjectId::new(id), "set_opacity", &arguments)
+        .expect("the call is served");
+    assert!(client.await_operation(set).expect("the completion").is_done());
+
+    let reset = client
+        .call(ObjectId::new(id), "reset_visuals", &Fields::new())
+        .expect("the call is served");
+    assert!(client.await_operation(reset).expect("the completion").is_done());
+    session.stop().expect("the session stops cleanly");
+}
+
 /// A move needs both coordinates and a resize both sizes. A call without them is refused
 /// with the schema's code for a bad member, and the window keeps the geometry it had.
 #[test]

@@ -80,7 +80,7 @@ use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
     LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, PresentAnswer, SessionSnapshot,
-    WindowChange, WindowChangeRefusal,
+    WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal,
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
@@ -941,6 +941,32 @@ impl State {
             WindowChange::Workspace(workspace) => self.wm_change(Event::MoveToWorkspace { window, workspace }),
             WindowChange::Output(output) => self.wm_change(Event::MoveToOutput { window, output }),
         }
+    }
+
+    /// Applies one shell visual request from the IPC. A closed window is `Gone`, and a locked
+    /// session refuses the change, because the cover draws over the window and the value would
+    /// show nowhere. A value outside its documented range is refused by the composer and the
+    /// window keeps its drawing. The window's rule opacity and placement animation are separate
+    /// and keep applying alongside these values.
+    pub(crate) fn window_visual(&mut self, window: WindowId, change: WindowVisual) -> Result<(), WindowVisualRefusal> {
+        if self.wm.window(window).is_none() {
+            return Err(WindowVisualRefusal::Gone);
+        }
+        if self.lock.state() != LockState::Unlocked {
+            return Err(WindowVisualRefusal::Locked);
+        }
+        let applied = match change {
+            WindowVisual::Opacity(opacity) => self.composer.set_shell_opacity(window, opacity as f32),
+            WindowVisual::Scale(scale) => self.composer.set_shell_scale(window, scale as f32),
+            WindowVisual::Offset { x, y } => self.composer.set_shell_offset(window, x, y),
+            WindowVisual::Reset => {
+                self.composer.reset_shell_visuals(window);
+                Ok(())
+            }
+        };
+        applied.map_err(|_| WindowVisualRefusal::OutOfRange)?;
+        self.damage_outputs();
+        Ok(())
     }
 
     /// Applies a window-management event a control request asked for. A rejected event
