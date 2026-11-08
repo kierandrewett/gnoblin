@@ -337,7 +337,7 @@ fn capabilities_as_json_is_one_row_per_capability() {
     let (code, out, err) = run(&["--json", "capabilities"], ModelConnection::new(graph, Vec::new()));
     assert_eq!(code, 0, "stderr: {err}");
     let rows: Vec<serde_json::Value> = serde_json::from_str(&out).expect("one JSON array");
-    assert_eq!(rows.len(), 9);
+    assert_eq!(rows.len(), 10);
     assert_eq!(rows[0]["name"], "offer-request");
     assert_eq!(rows[0]["granted"], false);
     assert_eq!(rows[4]["name"], "portal-input");
@@ -345,6 +345,7 @@ fn capabilities_as_json_is_one_row_per_capability() {
     assert_eq!(rows[6]["name"], "retrieve-secret");
     assert_eq!(rows[7]["name"], "read-config");
     assert_eq!(rows[8]["name"], "reload-config");
+    assert_eq!(rows[9]["name"], "window-control");
 }
 
 #[test]
