@@ -709,7 +709,8 @@ fn supervise_child(
 ) {
     let tick = move || Tick::new(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
     let mut lines = std::io::BufRead::lines(std::io::BufReader::new(reader));
-    let mut ready = false;
+    // The block being read: `ready` or `display`, each sent once and then cleared.
+    let mut block: Option<report::Line> = None;
     let mut environment: Vec<(String, String)> = Vec::new();
     // The autostart lines of a revision arrive before its `config-accepted`, so they wait here.
     // A rejection, or a line for another revision, discards them.
@@ -717,23 +718,30 @@ fn supervise_child(
     while let Some(Ok(line)) = lines.next() {
         match report::parse(&line) {
             report::Line::Ready => {
-                ready = true;
+                block = Some(report::Line::Ready);
+                environment.clear();
+            }
+            report::Line::Display => {
+                block = Some(report::Line::Display);
                 environment.clear();
             }
             report::Line::Environment { key, value } => environment.push((key, value)),
             report::Line::End => {
-                if ready {
-                    let _ = events.send(LoopWake::Event(Event::new(
-                        tick(),
-                        EventKind::Ready {
-                            child,
-                            generation,
-                            environment: std::mem::take(&mut environment),
-                        },
-                    )));
-                    // A child reports ready once; a second block would be a bug in the
-                    // child, and the policy ignores a duplicate readiness anyway.
-                    ready = false;
+                let kind = match block.take() {
+                    Some(report::Line::Ready) => Some(EventKind::Ready {
+                        child,
+                        generation,
+                        environment: std::mem::take(&mut environment),
+                    }),
+                    Some(report::Line::Display) => Some(EventKind::DisplayPublished {
+                        child,
+                        generation,
+                        environment: std::mem::take(&mut environment),
+                    }),
+                    _ => None,
+                };
+                if let Some(kind) = kind {
+                    let _ = events.send(LoopWake::Event(Event::new(tick(), kind)));
                 }
             }
             report::Line::Autostart {

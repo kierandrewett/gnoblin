@@ -747,6 +747,145 @@ fn the_privileged_display_reaches_later_children() {
     );
 }
 
+/// The compositor's display, published once its X11 server is up: `DISPLAY` is not in
+/// its first ready report, because the server starts later.
+fn x11_display(number: &str) -> Vec<(String, String)> {
+    vec![("DISPLAY".to_owned(), number.to_owned())]
+}
+
+fn published_display(guardian: &mut Guardian, now: u64, environment: Vec<(String, String)>) -> Vec<crate::Effect> {
+    guardian.apply(at(
+        now,
+        EventKind::DisplayPublished {
+            child: COMPOSITOR,
+            generation: generation(guardian, COMPOSITOR),
+            environment,
+        },
+    ))
+}
+
+fn session_exports(effects: &[crate::Effect]) -> Vec<Environment> {
+    effects
+        .iter()
+        .filter_map(|effect| match effect {
+            crate::Effect::ExportEnv {
+                target: EnvTarget::Session,
+                environment,
+            } => Some(environment.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_display_published_after_ready_reaches_later_children() {
+    // The compositor reports ready before its X11 server exists, so DISPLAY arrives later. A
+    // child started after it must see it, or X11 clients cannot connect.
+    let mut guardian = guardian();
+    let _ = actions(guardian.apply(at(0, EventKind::Start)));
+    let compositor_ready = vec![("WAYLAND_DISPLAY".to_owned(), "wayland-1".to_owned())];
+    let _ = actions(guardian.apply(at(
+        1,
+        EventKind::Ready {
+            child: COMPOSITOR,
+            generation: generation(&guardian, COMPOSITOR),
+            environment: compositor_ready,
+        },
+    )));
+    ready(&mut guardian, SERVICES, 2);
+    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, FRONT, 4);
+    assert_eq!(guardian.session(), SessionState::Up);
+    assert_eq!(guardian.environment().get("DISPLAY"), None);
+
+    let effects = actions(published_display(&mut guardian, 10, x11_display(":1")));
+    assert_eq!(session_exports(&effects).len(), 1, "the display is exported once");
+    assert_eq!(guardian.environment().get("DISPLAY"), Some(":1"));
+    assert_eq!(guardian.environment().get("WAYLAND_DISPLAY"), Some("wayland-1"));
+
+    let effects = actions(guardian.apply(at(
+        20,
+        EventKind::ConfigAccepted {
+            revision: 2,
+            autostart: vec![crate::AutostartEntry {
+                name: "third.desktop".to_owned(),
+                command: vec!["third".to_owned()],
+            }],
+        },
+    )));
+    let started = effects
+        .into_iter()
+        .find_map(|effect| match effect {
+            crate::Effect::Spawn { environment, .. } => Some(environment),
+            _ => None,
+        })
+        .expect("the autostart application is spawned");
+    assert_eq!(started.get("DISPLAY"), Some(":1"));
+    assert_eq!(started.get("WAYLAND_DISPLAY"), Some("wayland-1"));
+}
+
+#[test]
+fn an_identical_display_report_is_ignored() {
+    let mut guardian = up();
+    let _ = actions(published_display(&mut guardian, 10, x11_display(":1")));
+    let effects = actions(published_display(&mut guardian, 11, x11_display(":1")));
+    assert!(
+        session_exports(&effects).is_empty(),
+        "a repeated display exports nothing"
+    );
+    assert_eq!(guardian.environment().get("DISPLAY"), Some(":1"));
+}
+
+#[test]
+fn a_changed_display_report_replaces_the_published_display() {
+    // A restarted X11 server can take another display number; later children get the new one.
+    let mut guardian = up();
+    let _ = actions(published_display(&mut guardian, 10, x11_display(":1")));
+    let effects = actions(published_display(&mut guardian, 11, x11_display(":2")));
+    let exported = session_exports(&effects);
+    assert_eq!(exported.len(), 1, "a changed display is exported");
+    assert_eq!(exported[0].get("DISPLAY"), Some(":2"));
+    assert_eq!(exported[0].get("WAYLAND_DISPLAY"), Some("wayland-1"));
+    assert_eq!(guardian.environment().get("DISPLAY"), Some(":2"));
+}
+
+#[test]
+fn a_display_report_from_another_child_or_an_earlier_instance_is_ignored() {
+    let mut guardian = up();
+    let effects = actions(guardian.apply(at(
+        10,
+        EventKind::DisplayPublished {
+            child: SERVICES,
+            generation: generation(&guardian, SERVICES),
+            environment: x11_display(":9"),
+        },
+    )));
+    assert!(session_exports(&effects).is_empty());
+    let effects = actions(guardian.apply(at(
+        11,
+        EventKind::DisplayPublished {
+            child: COMPOSITOR,
+            generation: generation(&guardian, COMPOSITOR) + 1,
+            environment: x11_display(":9"),
+        },
+    )));
+    assert!(session_exports(&effects).is_empty());
+    assert_eq!(
+        guardian.environment().get("DISPLAY"),
+        Some(":0"),
+        "the first display stays"
+    );
+}
+
+#[test]
+fn a_display_report_before_the_compositor_is_ready_is_ignored() {
+    let mut guardian = guardian();
+    let _ = actions(guardian.apply(at(0, EventKind::Start)));
+    let effects = actions(published_display(&mut guardian, 1, x11_display(":1")));
+    assert!(session_exports(&effects).is_empty());
+    assert_eq!(guardian.environment().get("DISPLAY"), None);
+}
+
 #[test]
 fn events_after_the_session_ended_change_nothing() {
     let mut guardian = up();

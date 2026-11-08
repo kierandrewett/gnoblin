@@ -362,10 +362,16 @@ impl Compositor {
             observer: Some(observer),
             ..config.wayland
         };
+        // The guardian's report goes out once the server is ready, and the X11 factory reports the
+        // display through the same reporter, so the reporter is made before the factory.
+        let reporter = Arc::new(std::sync::Mutex::new(gnoblin_client::Reporter::new(|name| {
+            std::env::var(name).ok()
+        })));
         // The X11 factory outlives this start: a commit that changes the `xwayland` table builds the
         // next server through it, so the search path and the XSETTINGS owner stay the same.
         let xwayland_path = config.xwayland_path.take().or_else(|| std::env::var_os("PATH"));
-        let mut xwayland_factory = xwayland::factory(xwayland_path.clone(), config.xsettings.take());
+        let mut xwayland_factory =
+            xwayland::factory(xwayland_path.clone(), config.xsettings.take(), Arc::clone(&reporter));
         let applied = config.xwayland.clone();
         let mut server = match xwayland_factory(applied.clone()) {
             // No X11: the server has no X server, no grab manager and no process.
@@ -405,7 +411,6 @@ impl Compositor {
         // The guardian waits for this report before it starts anything else: the session's
         // later children need the display, and the plan ends the session when a required
         // variable is missing.
-        let mut reporter = gnoblin_client::Reporter::new(|name| std::env::var(name).ok());
         let mut environment = vec![
             ("WAYLAND_DISPLAY".to_owned(), display_name.clone()),
             ("GNOBLIN_IPC_SOCKET".to_owned(), path.display().to_string()),
@@ -415,7 +420,10 @@ impl Compositor {
         if let Some(name) = &privileged_display {
             environment.push(("GNOBLIN_PRIVILEGED_DISPLAY".to_owned(), name.clone()));
         }
-        reporter.ready(&environment);
+        reporter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .ready(&environment);
         log::info!(socket = %path.display(),
             display = %display_name,
             version = %version,

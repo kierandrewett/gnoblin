@@ -9,12 +9,15 @@
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
+use gnoblin_backend::x11::{Restart, Start};
+use gnoblin_client::Reporter;
 use gnoblin_config::{Config, SearchPaths, Store, Xwayland};
 
 use gnoblin_wayland::{ControlHandle, XwaylandSession};
 use gnoblin_xwayland::xsettings::{Setting, XSettings};
-use gnoblin_xwayland::{Settings, Xwayland as Supervisor, probe};
+use gnoblin_xwayland::{Handle, Settings, Xwayland as Supervisor, probe};
 
 use crate::SessionConfig;
 
@@ -97,7 +100,14 @@ fn settings_for(section: Option<&Xwayland>, path: Option<&OsStr>) -> Result<Opti
 pub(crate) type Factory = Box<dyn FnMut(Option<Settings>) -> Option<XwaylandSession> + Send>;
 
 /// The factory for `path`, publishing `xsettings` to every server the session starts.
-pub(crate) fn factory(path: Option<OsString>, xsettings: Option<Box<dyn XSettings>>) -> Factory {
+///
+/// Every server reports its display to `reporter` once it is ready, so the guardian can give
+/// the children it starts afterwards `DISPLAY`.
+pub(crate) fn factory(
+    path: Option<OsString>,
+    xsettings: Option<Box<dyn XSettings>>,
+    reporter: Arc<Mutex<Reporter>>,
+) -> Factory {
     // One owner serves every server the session starts: a restart publishes the owner's values
     // to the new server, and the owner keeps the record of what was published.
     let owner = xsettings.map(|owner| Arc::new(Mutex::new(owner)));
@@ -107,8 +117,52 @@ pub(crate) fn factory(path: Option<OsString>, xsettings: Option<Box<dyn XSetting
             .as_ref()
             .map(|owner| Box::new(SharedOwner(Arc::clone(owner))) as Box<dyn XSettings>);
         let (handle, windows) = Supervisor::with_settings(settings, path.clone(), owner).parts();
-        Some(XwaylandSession::new(Box::new(handle), Box::new(windows)))
+        let session = ReportingSession {
+            inner: handle,
+            reporter: Arc::clone(&reporter),
+        };
+        Some(XwaylandSession::new(Box::new(session), Box::new(windows)))
     })
+}
+
+/// The X11 session policy, plus the report to the guardian that the server is ready.
+///
+/// The guardian's ready report is sent before any loop starts, and the display number is only
+/// known once the server answers ready, so the number follows in its own report.
+struct ReportingSession {
+    inner: Handle,
+    reporter: Arc<Mutex<Reporter>>,
+}
+
+impl gnoblin_backend::x11::Session for ReportingSession {
+    fn start(&mut self, now: Instant) -> Start {
+        self.inner.start(now)
+    }
+
+    fn ready(&mut self, display: u32, now: Instant) {
+        self.inner.ready(display, now);
+        let environment = [("DISPLAY".to_owned(), format!(":{display}"))];
+        self.reporter
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .display(&environment);
+    }
+
+    fn failed(&mut self, now: Instant) -> Restart {
+        self.inner.failed(now)
+    }
+
+    fn startup_deadline(&self) -> Duration {
+        self.inner.startup_deadline()
+    }
+
+    fn settings(&mut self) -> Vec<(String, Setting)> {
+        self.inner.settings()
+    }
+
+    fn settings_published(&mut self, result: Result<(), String>) {
+        self.inner.settings_published(result);
+    }
 }
 
 /// An XSETTINGS owner the session shares across the servers it starts.

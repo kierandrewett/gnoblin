@@ -198,6 +198,11 @@ impl Guardian {
                 generation,
                 environment,
             } => self.ready(child, generation, environment, now, &mut effects),
+            EventKind::DisplayPublished {
+                child,
+                generation,
+                environment,
+            } => self.display_published(child, generation, environment, &mut effects),
             EventKind::Exited {
                 child,
                 generation,
@@ -521,6 +526,80 @@ impl Guardian {
             return;
         }
         self.published = published;
+        self.export_published(effects);
+    }
+
+    /// Take a display the compositor published after its ready report, which it
+    /// sends once its X11 server has a display number. The variables it carries
+    /// replace the published ones; a report that changes nothing exports nothing.
+    fn display_published(
+        &mut self,
+        child: ChildId,
+        generation: u64,
+        environment: Vec<(String, String)>,
+        effects: &mut Vec<Effect>,
+    ) {
+        let Some(index) = self.index(child) else {
+            note(
+                Level::Warning,
+                format!("[guardian] display from unknown child {}; ignored", child.get()),
+                effects,
+            );
+            return;
+        };
+        let name = self.children[index].spec.name.clone();
+        if self.children[index].spec.kind != ChildKind::Compositor {
+            note(
+                Level::Warning,
+                format!("[guardian] {name} published display variables; only the compositor may; ignored"),
+                effects,
+            );
+            return;
+        }
+        if generation != self.children[index].generation {
+            note(
+                Level::Debug,
+                format!("[guardian] display from an earlier {name} instance ignored"),
+                effects,
+            );
+            return;
+        }
+        if !matches!(self.children[index].state, ChildState::Ready | ChildState::Running) {
+            note(
+                Level::Debug,
+                format!("[guardian] display from {name} before it is ready ignored"),
+                effects,
+            );
+            return;
+        }
+        let mut published = Vec::new();
+        for forwarded in &self.rules.environment.forwarded {
+            let reported = environment.iter().find(|(key, _)| key == forwarded);
+            let kept = self.published.iter().find(|(key, _)| key == forwarded);
+            if let Some((_, value)) = reported.or(kept) {
+                published.push((forwarded.clone(), value.clone()));
+            }
+        }
+        if published == self.published {
+            note(
+                Level::Debug,
+                "[guardian] the compositor repeated its display; nothing changed".to_owned(),
+                effects,
+            );
+            return;
+        }
+        self.published = published;
+        note(
+            Level::Info,
+            "[guardian] the compositor's display changed; later children get it".to_owned(),
+            effects,
+        );
+        self.export_published(effects);
+    }
+
+    /// Export the published display to the session and to the D-Bus activation
+    /// environment, so later children and activated services see it.
+    fn export_published(&self, effects: &mut Vec<Effect>) {
         let mut export = Environment::new();
         for (key, value) in &self.published {
             export.set(key.clone(), value.clone());

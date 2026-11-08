@@ -46,6 +46,20 @@ pub enum EventKind {
         /// What the compositor published, in its own order.
         environment: Vec<(String, String)>,
     },
+    /// The compositor published display variables after its ready report, once
+    /// its X11 server has a display number. Only the compositor may publish them,
+    /// and only after it is ready; any other report is ignored.
+    ///
+    /// `environment` may carry only some `forwarded` names. The ones it carries
+    /// replace the published values; the rest keep theirs.
+    DisplayPublished {
+        /// Which child reported.
+        child: ChildId,
+        /// Which of its instances reported; a stale one is ignored.
+        generation: u64,
+        /// The variables that changed, in its own order.
+        environment: Vec<(String, String)>,
+    },
     /// A child's process ended.
     Exited {
         /// Which child.

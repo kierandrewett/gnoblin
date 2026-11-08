@@ -31,12 +31,19 @@
 //!
 //! The descriptor is [`READY_VARIABLE`]. A child that never writes a ready report is
 //! unready, which is what the guardian's readiness deadline detects.
+//!
+//! A `display` report has the same block form. The compositor sends one after its ready
+//! report, once its X11 server has a display number, so the guardian can publish that
+//! variable to children started afterwards.
 
 /// The variable that carries the descriptor a child reports on.
 pub const READY_VARIABLE: &str = "GNOBLIN_READY_FD";
 
 /// The first word of a readiness report.
 pub const READY: &str = "ready";
+
+/// The first word of a display report, which the compositor sends after readiness.
+pub const DISPLAY: &str = "display";
 
 /// The first word of a configuration-accepted report.
 pub const CONFIG_ACCEPTED: &str = "config-accepted";
@@ -52,6 +59,9 @@ pub const AUTOSTART: &str = "autostart";
 pub enum Line {
     /// The readiness report starts here.
     Ready,
+    /// The display block starts here: variables the compositor learned after its
+    /// readiness, such as `DISPLAY` once its X server has a display number.
+    Display,
     /// One variable the child publishes with its readiness, such as
     /// `WAYLAND_DISPLAY`.
     Environment {
@@ -97,7 +107,19 @@ pub enum Line {
 /// and a report that silently ended early would be worse than one that dropped a
 /// broken entry.
 pub fn ready(environment: &[(String, String)]) -> String {
-    let mut report = String::from(READY);
+    environment_block(READY, environment)
+}
+
+/// The display report for `environment`: the variables the compositor learned after its
+/// ready report, such as `DISPLAY` once its X server has a number. It has the ready
+/// report's block form, so a truncated one is recognisable too.
+pub fn display(environment: &[(String, String)]) -> String {
+    environment_block(DISPLAY, environment)
+}
+
+/// One block report: its first word, one `KEY=VALUE` line per variable, then a blank line.
+fn environment_block(word: &str, environment: &[(String, String)]) -> String {
+    let mut report = String::from(word);
     report.push('\n');
     for (key, value) in environment {
         report.push_str(first_line(key));
@@ -142,6 +164,9 @@ pub fn parse(line: &str) -> Line {
     }
     if line == READY {
         return Line::Ready;
+    }
+    if line == DISPLAY {
+        return Line::Display;
     }
     let mut words = line.splitn(2, ' ');
     let word = words.next().unwrap_or_default();
@@ -232,7 +257,7 @@ fn parse_autostart(rest: &str) -> Option<Line> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Line, autostart, config_accepted, config_rejected, parse, ready};
+    use super::{Line, autostart, config_accepted, config_rejected, display, parse, ready};
 
     #[test]
     fn a_ready_report_round_trips_its_environment() {
@@ -259,6 +284,26 @@ mod tests {
         );
         assert!(report.ends_with("\n\n"), "{report:?}");
         assert_eq!(parse(""), Line::End);
+    }
+
+    #[test]
+    fn a_display_report_round_trips_its_environment() {
+        // The failure this prevents: a display report read as an unknown line, so the
+        // guardian never learns the DISPLAY the compositor creates after its readiness.
+        let report = display(&[("DISPLAY".to_owned(), ":1".to_owned())]);
+        assert_eq!(report, "display\nDISPLAY=:1\n\n");
+        let lines: Vec<Line> = report.lines().map(parse).collect();
+        assert_eq!(
+            lines,
+            vec![
+                Line::Display,
+                Line::Environment {
+                    key: "DISPLAY".to_owned(),
+                    value: ":1".to_owned(),
+                },
+                Line::End,
+            ]
+        );
     }
 
     #[test]

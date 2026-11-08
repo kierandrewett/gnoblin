@@ -54,6 +54,12 @@ impl Reporter {
     pub fn ready(&mut self, environment: &[(String, String)]) {
         self.write(&report::ready(environment));
     }
+
+    /// Report variables learned after readiness, such as `DISPLAY` once an X server has
+    /// its number. The guardian publishes them to children it starts afterwards.
+    pub fn display(&mut self, environment: &[(String, String)]) {
+        self.write(&report::display(environment));
+    }
 }
 
 #[cfg(test)]
