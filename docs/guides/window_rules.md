@@ -150,8 +150,16 @@ gnoblin.window_rule {
 ```
 
 Use `workspace = {number = 2}` to target a position instead; numbers range from
-1 to 1024. An `{id = ...}` target that is not present leaves the window where
-it is and logs a warning.
+1 to 1024.
+
+An `{id = ...}` target that names a declared workspace resolves to that
+workspace's position when the configuration is committed. The id is then fixed
+until the configuration is committed again.
+
+A name that is not declared, and is not a number, is refused at commit with the
+field named; the previous accepted rules stay in force. A number is kept as the
+workspace id it was written as. If no such workspace exists, the window stays
+where it is and a warning is logged.
 
 ## When rules run again
 

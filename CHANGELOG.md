@@ -24,6 +24,7 @@
   sleep inhibitor is still held, then releases the inhibitor. A `Lock` signal on the session's own logind object locks
   the session. The service takes the inhibitor again on resume. A logind lock on another session is ignored. Without a
   system bus the watch is skipped.
+- Window rules accept a workspace name declared in `workspaces`, in the `workspace = {id = ...}` target and the `workspace-id` match. A declared name resolves to its position. An undeclared name that is not a number is refused when the configuration is committed, with the field named. The declared list also sets the persistent workspace count.
 
 ### Changed
 

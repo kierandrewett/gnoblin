@@ -1602,8 +1602,8 @@ doc = "The workspace a window rule places a window on. Give exactly one of id or
 key = "id"
 kind = "text"
 nonempty = true
-accepted = "a nonempty workspace id"
-doc = "The workspace id to place the window on."
+accepted = "a nonempty workspace name declared in workspaces, or a numeric workspace id"
+doc = "The workspace to place the window on: a name declared in workspaces, which resolves to its position, or a numeric workspace id."
 since = "0.2.0"
 
 [[record.field]]

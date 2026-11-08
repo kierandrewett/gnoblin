@@ -1207,7 +1207,7 @@ impl Dispatcher {
         let config = gnoblin_config::Config::from_json_bytes(&document);
         let rules = match config
             .as_ref()
-            .map(|config| crate::window_rules::convert(&config.window_rules))
+            .map(|config| crate::window_rules::convert(&config.window_rules, &config.workspaces))
         {
             Ok(Ok(rules)) => Some(rules),
             Ok(Err(message)) => {
