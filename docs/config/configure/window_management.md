@@ -196,6 +196,44 @@ gnoblin.configure {
 }
 ```
 
+Declare named workspace sets in the top-level `workspace_sets` field of
+`gnoblin.configure`. A set names the workspace each output shows, so one name
+describes a whole arrangement of workspaces across outputs.
+
+```lua
+gnoblin.configure {
+    workspaces = {
+        {id = "main", name = "Main"},
+        {id = "chat", name = "Chat"},
+    },
+    workspace_sets = {
+        {
+            name = "desk",
+            workspaces = {
+                {workspace = "main", output = "DP-1"},
+                {workspace = "chat", output = "DP-2"},
+            },
+        },
+    },
+}
+```
+
+Each set needs a `name`, which is unique among the sets, and a nonempty
+`workspaces` list. Each entry needs a `workspace`: the id of a workspace declared
+in `workspaces`, or its position in that list counted from 1.
+
+An entry may name an `output`, the connector name of the output that shows the
+workspace. An entry without `output` is for the primary output, the first
+connected one. Each output may appear once in a set.
+
+Gnoblin checks the whole `workspace_sets` list when the session starts. A set
+that names an undeclared workspace, repeats a set name, has no workspaces or
+repeats an output refuses the whole list. No set applies and the log names the
+field.
+
+Declaring a set does not change what the outputs show yet. The session does not
+activate a set when it starts, and no Lua or command-line call activates one.
+
 ## Titlebar actions
 
 The three titlebar click fields accept these values:

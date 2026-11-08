@@ -4,6 +4,10 @@
 
 ### Added
 
+- Named workspace sets: the `workspace_sets` field of `gnoblin.configure` declares sets that name the workspace each
+  output shows, checked as a whole list when the session starts. The window manager can make a set live, and a named
+  output that is not connected falls back to the primary output with a logged warning. Declaring a set does not
+  change the screen yet; Lua and command-line activation follow.
 - `Window.client_type` (`"wayland"` or `"x11"`, bridge API 1.93) in window records, `gnoblin.find("Window", {client_type = ...})`,
   the window rule `match.client_type` key and `gnoblinctl window list` and `window match`.
 - The services role starts the GeoClue agent next to the polkit agent, with the policy of the `location` table
