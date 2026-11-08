@@ -12,11 +12,11 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use smithay::backend::input::{ButtonState, InputTime};
+use smithay::backend::input::{Axis, AxisSource, ButtonState, InputTime};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::PopupManager;
 use smithay::input::keyboard::KeyboardHandle;
-use smithay::input::pointer::{ButtonEvent, CursorImageStatus, MotionEvent, RelativeMotionEvent};
+use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorImageStatus, MotionEvent, RelativeMotionEvent};
 use smithay::input::{Seat, SeatState, pointer::PointerHandle};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -113,6 +113,10 @@ const MENU_REQUESTS_KEPT: usize = 32;
 /// repeats, and the gap between repeats, both in milliseconds. These are the values the
 /// configuration reference defaults to.
 pub(crate) const KEY_REPEAT_DELAY: i32 = 200;
+/// How many logical pixels one wheel step scrolls. The backend states scroll in 1/120 of a step,
+/// and `wl_pointer.axis` wants pixels beside the discrete step, so a client that ignores the
+/// discrete value still moves by the distance a notch is worth.
+const AXIS_PIXELS_PER_STEP: f64 = 15.0;
 /// The gap, in milliseconds, between repeats once a key repeat has started.
 pub(crate) const KEY_REPEAT_INTERVAL: i32 = 40;
 
@@ -3148,9 +3152,24 @@ impl Host for State {
                 // a client's `wl_keyboard.key` is the code the protocol defines.
                 self.dispatch_key(keycode, state, serial, time);
             }
-            // A scroll needs the axis source and the pointer's focus serial, which the
-            // input slice adds; until then a scroll reaches the seat and stops here
-            // rather than scrolling a client by the wrong amount.
+            // A scroll goes to the client the pointer is over. The value is in 1/120 of a step, so
+            // it is both the discrete `v120` value and, scaled, the pixel distance. The backend
+            // cannot tell a wheel from a touchpad finger, so the source is the wheel: a client
+            // that smooths scrolling still gets the exact fractional steps.
+            InputEvent::PointerAxis { horizontal, vertical } if horizontal != 0 || vertical != 0 => {
+                let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
+                for (axis, steps) in [(Axis::Horizontal, horizontal), (Axis::Vertical, vertical)] {
+                    if steps != 0 {
+                        frame = frame
+                            .value(axis, f64::from(steps) / 120.0 * AXIS_PIXELS_PER_STEP)
+                            .v120(axis, steps);
+                    }
+                }
+                let pointer = self.pointer.clone();
+                pointer.axis(self, frame);
+                pointer.frame(self);
+            }
+            // A scroll that moved nothing sends nothing, so a client never sees an empty frame.
             InputEvent::PointerAxis { .. } => {}
             // A touch point needs a seat that tracks one point per slot per output,
             // which is the input slice's; nothing is invented about it here.

@@ -132,6 +132,19 @@ impl Handle {
             pressed: false,
         });
     }
+
+    /// Queues a pointer motion to a global position.
+    fn move_pointer(&self, at: Point) {
+        let output = self.snapshot().outputs().first().copied().expect("an output");
+        self.control
+            .inject_input(InputEvent::PointerMotion { output, position: at });
+    }
+
+    /// Queues a scroll at the pointer, in 1/120 of a step on each axis.
+    fn scroll(&self, horizontal: i32, vertical: i32) {
+        self.control
+            .inject_input(InputEvent::PointerAxis { horizontal, vertical });
+    }
 }
 
 /// Stops the session when the worker finishes, including when it panics.
@@ -213,6 +226,12 @@ struct App {
     pointer_x: f64,
     pointer_y: f64,
     pointer_buttons: u32,
+    /// The pointer frames received: one ends each batch of pointer events.
+    pointer_frames: u32,
+    /// The `wl_pointer.axis` events received, as an axis and its pixels.
+    scrolls: Vec<(wl_pointer::Axis, f64)>,
+    /// The `wl_pointer.axis_value120` events received, as an axis and its units.
+    scroll_steps: Vec<(wl_pointer::Axis, i32)>,
     /// The lock objects that received `locked`, in arrival order.
     locked: Vec<ObjectId>,
     /// The lock objects that received `finished`, in arrival order.
@@ -313,7 +332,8 @@ impl Client {
             .bind(&qh, 1..=1, ())
             .expect("the session advertises wl_compositor");
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_shm");
-        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_seat");
+        // Version 8 or later, so the pointer sends `axis_value120`.
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=9, ()).expect("the session advertises wl_seat");
         let mut client = Self {
             connection,
             queue,
@@ -618,6 +638,43 @@ fn a_covered_client_receives_no_input() {
 
         // The cover hid the window, it did not close it.
         assert_eq!(observation.len(), 1, "the covered window is still managed");
+    });
+}
+
+#[test]
+fn a_scroll_while_locked_reaches_only_the_lock_surface() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Covered", "Covered");
+        let observation =
+            session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+        let geometry = observation.only().expect("the window").geometry;
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface(0);
+        // The pointer goes over the lock surface first, so the scroll has a surface to reach.
+        session.move_pointer(centre(geometry));
+        wait_for_client(&mut locker, "the lock surface never received the pointer", |state| {
+            state.pointer_enters >= 1
+        });
+
+        session.scroll(0, 120);
+        wait_for_client(&mut locker, "the lock surface never received the scroll", |state| {
+            state.pointer_frames >= 1
+        });
+        let locker_state = &locker.state;
+        assert_eq!(locker_state.scrolls, vec![(wl_pointer::Axis::VerticalScroll, 15.0)]);
+        assert_eq!(locker_state.scroll_steps, vec![(wl_pointer::Axis::VerticalScroll, 120)]);
+
+        let app_state = app.settle();
+        assert!(app_state.scrolls.is_empty(), "no scroll reached the covered client");
+        assert!(
+            app_state.scroll_steps.is_empty(),
+            "no scroll reached the covered client"
+        );
     });
 }
 
@@ -1270,6 +1327,16 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 state.pointer_y = surface_y;
             }
             wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            wl_pointer::Event::Frame => state.pointer_frames += 1,
+            wl_pointer::Event::Axis {
+                axis: WEnum::Value(axis),
+                value,
+                ..
+            } => state.scrolls.push((axis, value)),
+            wl_pointer::Event::AxisValue120 {
+                axis: WEnum::Value(axis),
+                value120,
+            } => state.scroll_steps.push((axis, value120)),
             _ => {}
         }
     }

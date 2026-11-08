@@ -140,6 +140,12 @@ impl Handle {
     fn pointer_leave(&self) {
         self.control.inject_input(InputEvent::PointerLeave);
     }
+
+    /// Queues a scroll at the pointer, in 1/120 of a step on each axis.
+    fn scroll(&self, horizontal: i32, vertical: i32) {
+        self.control
+            .inject_input(InputEvent::PointerAxis { horizontal, vertical });
+    }
 }
 
 /// Stops the session when the worker finishes, including when it panics.
@@ -232,6 +238,12 @@ struct App {
     pointer_x: f64,
     pointer_y: f64,
     pointer_buttons: u32,
+    /// The pointer frames received: one ends each batch of pointer events.
+    pointer_frames: u32,
+    /// The `wl_pointer.axis` events received, as an axis and its pixels.
+    scrolls: Vec<(wl_pointer::Axis, f64)>,
+    /// The `wl_pointer.axis_value120` events received, as an axis and its units.
+    scroll_steps: Vec<(wl_pointer::Axis, i32)>,
     /// The motion vectors a relative pointer received.
     relative: Vec<(f64, f64)>,
     // Pointer constraints.
@@ -292,7 +304,8 @@ impl Client {
             .bind(&qh, 1..=1, ())
             .expect("the session advertises wl_compositor");
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_shm");
-        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=4, ()).expect("the session advertises wl_seat");
+        // Version 8 or later, so the pointer sends `axis_value120`.
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=9, ()).expect("the session advertises wl_seat");
         Self {
             connection,
             queue,
@@ -520,6 +533,16 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 state.pointer_y = surface_y;
             }
             wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            wl_pointer::Event::Frame => state.pointer_frames += 1,
+            wl_pointer::Event::Axis {
+                axis: WEnum::Value(axis),
+                value,
+                ..
+            } => state.scrolls.push((axis, value)),
+            wl_pointer::Event::AxisValue120 {
+                axis: WEnum::Value(axis),
+                value120,
+            } => state.scroll_steps.push((axis, value120)),
             _ => {}
         }
     }
@@ -909,6 +932,78 @@ fn a_pointer_lock_is_released_when_focus_moves() {
             (state.pointer_x, state.pointer_y) == (f64::from(moved.x - geometry.x), f64::from(moved.y - geometry.y)),
             "the pointer moved by the second motion, not by the enter"
         );
+    });
+}
+
+#[test]
+fn a_scroll_over_a_window_reaches_the_pointer_in_pixels_and_steps() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Scrolled");
+        let geometry = session.focused_window();
+        session.move_pointer(centre(geometry));
+        client.wait_for(|state| state.pointer_enters == 1);
+
+        // One wheel notch is 120 units: 15 logical pixels, with the step count alongside.
+        session.scroll(0, 120);
+        let state = client.wait_for(|state| state.pointer_frames == 1);
+        assert_eq!(state.scrolls, vec![(wl_pointer::Axis::VerticalScroll, 15.0)]);
+        assert_eq!(state.scroll_steps, vec![(wl_pointer::Axis::VerticalScroll, 120)]);
+
+        // Two notches on the horizontal axis: 30 pixels, and 240 units.
+        session.scroll(-240, 0);
+        let state = client.wait_for(|state| state.pointer_frames == 2);
+        assert_eq!(state.scrolls[1], (wl_pointer::Axis::HorizontalScroll, -30.0));
+        assert_eq!(state.scroll_steps[1], (wl_pointer::Axis::HorizontalScroll, -240));
+    });
+}
+
+#[test]
+fn a_scroll_that_moved_nothing_is_not_sent() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Still");
+        let geometry = session.focused_window();
+        let at = centre(geometry);
+        session.move_pointer(at);
+        client.wait_for(|state| state.pointer_enters == 1);
+
+        session.scroll(0, 0);
+        session.scroll(0, 120);
+        // A motion is ordered after every event before it, so once it arrives the scrolls are in.
+        session.move_pointer(Point::new(at.x + 1, at.y));
+        let state = client.wait_for(|state| state.pointer_motions >= 1);
+        assert_eq!(
+            state.scrolls.len(),
+            1,
+            "only the notch reached the client: {:?}",
+            state.scrolls
+        );
+        assert_eq!(state.scroll_steps, vec![(wl_pointer::Axis::VerticalScroll, 120)]);
+    });
+}
+
+#[test]
+fn a_scroll_with_the_pointer_over_no_window_reaches_nobody() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Unhovered");
+        let geometry = session.focused_window();
+        let at = centre(geometry);
+        session.move_pointer(at);
+        client.wait_for(|state| state.pointer_enters == 1);
+
+        // Leaving every surface clears the pointer's focus, so nothing is under the scroll.
+        session.pointer_leave();
+        session.scroll(0, 120);
+        // Coming back sends a new enter, ordered after the scroll.
+        session.move_pointer(at);
+        let state = client.wait_for(|state| state.pointer_enters == 2);
+        assert!(state.scrolls.is_empty(), "no window was under the scroll");
+        assert!(state.scroll_steps.is_empty(), "no window was under the scroll");
     });
 }
 
