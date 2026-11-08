@@ -78,12 +78,24 @@ Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
   `text/plain`, `text/plain;charset=utf-8`, `TEXT`, `STRING` and `UTF8_STRING`.
   In I44 the `text/plain` read returned the text and a `UTF8_STRING` read
   returned 0 bytes. In I45 the same `UTF8_STRING` read returned the text. So the
-  failure is intermittent and not a missing MIME mapping. It is not isolated.
-  The X11 log shows `BadWindow` on `ChangeProperty` for the XWM's own window
-  during these steps. `[INFERENCE]` a race in smithay's XWM selection path
-  (`src/xwayland/xwm/mod.rs`) is the likely cause; not confirmed.
-- Policy: ZERO smithay patches. Any fix must wrap smithay from this crate. The
-  F1 and F3 checks stay failing until that fix lands; the harness is not weakened.
+  failure is intermittent and not a missing MIME mapping.
+- Root cause (lane `XwaylandSelectionRace`, K16, K22, K23): smithay's
+  `X11Wm::new_selection` calls `set_selection_owner`, which x11rb only queues in
+  its write buffer. Nothing flushes that buffer until the next reply is awaited.
+  A reader's `ConvertSelection` can reach the X server before the owner request,
+  finds no owner and reads 0 bytes. x11rb's `wait_for_reply` flushes the buffer
+  first, so any reply request after `new_selection` is a barrier.
+- Fix (wrapper, zero smithay patches): `set_x11_selection_owner` in
+  `crates/gnoblin-wayland/src/xwayland.rs` calls `new_selection`, then
+  `get_randr_primary_output`, a read-only reply request, as the barrier. Its
+  failure is logged and changes nothing. `wl_data_device_manager.rs` uses it
+  for both `Advertise` and `Withdraw`.
+- Policy: ZERO smithay patches. The fix only wraps smithay from this crate.
+- Result on Agent37 (Xwayland 22.1.9, `allow-byte-swapped-clients = true`,
+  `tests/xwayland-clipboard-e2e.sh`, 50 runs): 450 PASS, 0 FAIL. All 100 F1
+  and F3 reads returned the full source bytes (`bytes=19`, `bytes=15`), none 0.
+  Logs: `K28-loop50-result.log`, `K29-loop50-raw.log` in the lane logs directory.
+  The F1 and F3 failure above is the state before this fix.
 
 ### F2: Xwayland does not start on this binary with the default setting
 
