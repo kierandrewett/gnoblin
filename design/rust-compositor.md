@@ -801,7 +801,8 @@ Open:
 
 - The two Mutter reference targets and the EIS input path, so a scenario can run
   against the reference and the performance baseline can be recorded.
-- An MSRV job, which waits for the dependency floors the probe produces.
+- The MSRV is measured at 1.97.0 (1.96.0 fails on `cranelift-assembler-x64` 0.137.1,
+  which needs 1.97.0). `just msrv` and the CI `msrv` job check it.
 - The Mutter patch freeze announced in `CONTRIBUTING.md`; D9 is decided but the
   announcement is not written.
 - The native dependency probe on every target image.
@@ -3202,7 +3203,8 @@ Needs Kieran:
 - [x] Create the Cargo workspace, toolchain pin, shared lints, `just` recipes
       and the CI job for build, Clippy, tests, `cargo deny` and the dependency
       rules.
-- [ ] Add the MSRV job. It waits for the dependency floors the probe produces.
+- [x] Add the MSRV job. Measured at 1.97.0: `rust-version` is set, and the CI
+      `msrv` job and `just msrv` check the workspace with that toolchain.
 - [x] Draft `gnoblin-schema` and `gnoblin-proto` from the object model, with the
       parse and catalog rules under test.
 - [x] Read the contract inventory out of the C sources into
