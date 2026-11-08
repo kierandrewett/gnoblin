@@ -62,7 +62,7 @@ fn map_three(client: &mut Client) -> [Window; 3] {
 }
 
 /// The configure size of each window, once the sizes have settled over a few round trips.
-fn settled_sizes(client: &mut Client, windows: &[Window; 3]) -> Vec<(i32, i32)> {
+fn settled_sizes(client: &mut Client, windows: &[Window]) -> Vec<(i32, i32)> {
     let mut previous = Vec::new();
     wait_for("the configure sizes to settle", || {
         client.roundtrip();
@@ -104,7 +104,7 @@ fn published_rect(session: &Session, id: u64) -> [i64; 4] {
 }
 
 /// The published rectangle of each window, once two reads in a row agree.
-fn settled_rects(session: &Session, ids: &[u64; 3]) -> Vec<[i64; 4]> {
+fn settled_rects(session: &Session, ids: &[u64]) -> Vec<[i64; 4]> {
     let mut previous = Vec::new();
     wait_for("the published rectangles to settle", || {
         let rects: Vec<[i64; 4]> = ids.iter().map(|&id| published_rect(session, id)).collect();
@@ -505,6 +505,223 @@ fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
     assert!(
         watched.out.contains("layout_failed"),
         "the workspace emits layout_failed: {:?}",
+        watched.out
+    );
+    assert_eq!(settled_sizes(&mut client, &windows), floating);
+}
+
+/// Maps `count` toplevels titled `w0`, `w1`, ... and returns them once each has its first configure.
+fn map_many(client: &mut Client, count: usize) -> Vec<Window> {
+    let windows: Vec<Window> = (0..count)
+        .map(|index| client.map_window(&format!("org.example.w{index}"), &format!("w{index}")))
+        .collect();
+    wait_for("every window to be configured", || {
+        client.roundtrip();
+        windows
+            .iter()
+            .all(|window| client.configured_size(window).is_some())
+            .then_some(())
+    });
+    windows
+}
+
+/// Sets the strip layout on the session's workspace and returns the workspace id.
+fn set_strip(session: &Session) -> String {
+    let workspace = workspace_id(session).to_string();
+    let strip = source_hash(&shipped_modules().join("gnoblin/layouts/strip.lua"));
+    session
+        .ctl(&[
+            "workspace",
+            "call",
+            &workspace,
+            "set_layout",
+            "root=shipped",
+            "module=gnoblin.layouts.strip",
+            &format!("hash={strip}"),
+            "options=",
+        ])
+        .ok();
+    workspace
+}
+
+/// Sends a strip command to the workspace and returns the outcome unchecked.
+fn strip_command(session: &Session, workspace: &str, name: &str, params: &str) -> Command {
+    session.ctl(&[
+        "workspace",
+        "call",
+        workspace,
+        "layout_command",
+        &format!("name={name}"),
+        params,
+    ])
+}
+
+/// Whether `window get` reports the window with `id` as focused.
+fn is_focused(session: &Session, id: u64) -> bool {
+    let focused = session.ctl(&["window", "get", &id.to_string(), "focused"]).ok();
+    match focused.out.trim() {
+        "true" => true,
+        "false" => false,
+        other => panic!("`focused` is a boolean, got {other:?}"),
+    }
+}
+
+/// Waits until the window with `id` holds focus.
+fn wait_focused(session: &Session, id: u64) {
+    wait_for(&format!("window {id} to take focus"), || {
+        is_focused(session, id).then_some(())
+    });
+}
+
+/// Focuses the window with `id` through IPC, then waits until it holds focus.
+fn focus_window(session: &Session, id: u64) {
+    session.ctl(&["window", "call", &id.to_string(), "focus"]).ok();
+    wait_focused(session, id);
+}
+
+#[test]
+fn strip_with_no_windows_answers_its_commands_without_error() {
+    // With nothing mapped there is no column to move from, and no window to place. Every
+    // command still succeeds, and the first window that arrives is placed as one column.
+    let session = session_with(LayoutSettings {
+        shipped_dir: shipped_modules(),
+        ..LayoutSettings::default()
+    });
+    let workspace = set_strip(&session);
+    strip_command(&session, &workspace, "focus", "params={\"direction\":\"right\"}").ok();
+    strip_command(&session, &workspace, "fit_all", "params={}").ok();
+    strip_command(&session, &workspace, "scroll_to", "params={\"x\":10}").ok();
+
+    let mut client = Client::connect(session.wayland());
+    let windows = map_many(&mut client, 1);
+    assert_eq!(settled_sizes(&mut client, &windows), vec![(512, 768)]);
+}
+
+#[test]
+fn strip_with_one_window_places_it_and_focus_right_is_a_no_op() {
+    let session = session_with(LayoutSettings {
+        shipped_dir: shipped_modules(),
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let workspace = set_strip(&session);
+    let windows = map_many(&mut client, 1);
+    assert_eq!(settled_sizes(&mut client, &windows), vec![(512, 768)]);
+
+    let only = wait_for_listed_id(&session, "w0");
+    focus_window(&session, only);
+    // No neighbour to the right: the command succeeds, and the window keeps focus and its place.
+    strip_command(&session, &workspace, "focus", "params={\"direction\":\"right\"}").ok();
+    assert!(is_focused(&session, only), "the only window keeps focus");
+    assert_eq!(settled_sizes(&mut client, &windows), vec![(512, 768)]);
+}
+
+#[test]
+fn strip_focus_right_stops_at_the_last_column_without_an_error() {
+    let session = session_with(LayoutSettings {
+        shipped_dir: shipped_modules(),
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let workspace = set_strip(&session);
+    let windows = map_three(&mut client);
+    // Three columns of half the area each, one window per column.
+    assert_eq!(settled_sizes(&mut client, &windows), vec![(512, 768); 3]);
+
+    let ids: Vec<u64> = ["one", "two", "three"]
+        .iter()
+        .map(|title| wait_for_listed_id(&session, title))
+        .collect();
+    let mut order: Vec<(i64, u64)> = settled_rects(&session, &ids)
+        .iter()
+        .zip(&ids)
+        .map(|(rect, &id)| (rect[0], id))
+        .collect();
+    order.sort();
+    let left_to_right: Vec<u64> = order.iter().map(|&(_, id)| id).collect();
+
+    focus_window(&session, left_to_right[0]);
+    for &id in &left_to_right[1..3] {
+        strip_command(&session, &workspace, "focus", "params={\"direction\":\"right\"}").ok();
+        wait_focused(&session, id);
+    }
+    // The rightmost column has no neighbour: the command still succeeds and focus stays put.
+    strip_command(&session, &workspace, "focus", "params={\"direction\":\"right\"}").ok();
+    assert!(
+        is_focused(&session, left_to_right[2]),
+        "the rightmost window keeps focus"
+    );
+}
+
+#[test]
+fn strip_lays_out_two_hundred_windows_and_focus_walks_them() {
+    let session = session_with(LayoutSettings {
+        shipped_dir: shipped_modules(),
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let workspace = set_strip(&session);
+    let windows = map_many(&mut client, 200);
+    assert_eq!(settled_sizes(&mut client, &windows), vec![(512, 768); 200]);
+
+    let ids: Vec<u64> = (0..200)
+        .map(|index| wait_for_listed_id(&session, &format!("w{index}")))
+        .collect();
+    let mut order: Vec<(i64, u64)> = settled_rects(&session, &ids)
+        .iter()
+        .zip(&ids)
+        .map(|(rect, &id)| (rect[0], id))
+        .collect();
+    order.sort();
+    let left_to_right: Vec<u64> = order.iter().map(|&(_, id)| id).collect();
+
+    focus_window(&session, left_to_right[0]);
+    for &id in &left_to_right[1..200] {
+        strip_command(&session, &workspace, "focus", "params={\"direction\":\"right\"}").ok();
+        wait_focused(&session, id);
+    }
+    strip_command(&session, &workspace, "focus", "params={\"direction\":\"right\"}").ok();
+    assert!(is_focused(&session, left_to_right[199]), "the last window keeps focus");
+}
+
+#[test]
+fn a_hostile_reply_naming_an_unknown_window_is_refused_and_the_workspace_floats() {
+    let floating = {
+        let session = session_with(LayoutSettings::default());
+        let mut client = Client::connect(session.wayland());
+        let windows = map_three(&mut client);
+        settled_sizes(&mut client, &windows)
+    };
+
+    let modules = tempfile::tempdir().expect("a module directory");
+    let layouts = modules.path().join("layouts");
+    std::fs::create_dir_all(&layouts).expect("the layouts directory");
+    std::fs::write(
+        layouts.join("hostile.lua"),
+        "local M = {}\nM.kind = 'tiling'\nM.options = {}\n\
+         function M.arrange(_ctx) return { placements = { { window = 999999, x = 0, y = 0, width = 10, height = 10 } } } end\n\
+         function M.on_request(_ctx) return nil end\nreturn M\n",
+    )
+    .expect("the hostile module");
+
+    let session = session_with(LayoutSettings {
+        default: named("layouts.hostile"),
+        config_dir: Some(modules.path().to_path_buf()),
+        ..LayoutSettings::default()
+    });
+    let workspace = workspace_id(&session);
+    let socket = session.socket().to_path_buf();
+    let watcher = std::thread::spawn(move || {
+        Command::run(&socket, &["workspace", "watch", &workspace.to_string(), "--count", "1"])
+    });
+    std::thread::sleep(Duration::from_millis(200));
+
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    let watched = watcher.join().expect("the watch thread finishes");
+    assert!(
+        watched.out.contains("layout_failed") && watched.out.contains("invalid-reply"),
+        "the unknown window id is refused as invalid-reply: {:?}",
         watched.out
     );
     assert_eq!(settled_sizes(&mut client, &windows), floating);
