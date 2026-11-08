@@ -72,6 +72,24 @@
 //! 12. **logind asks for our session to lock** (`loginctl lock-session`): it locks, and a lock
 //!     for another session does not: `tests/logind.rs::a_session_lock_on_our_own_session_locks_the_session`
 //!     and `tests/logind.rs::a_session_lock_on_another_session_is_ignored`.
+//! 13. **A GNOME client calls `Lock`, `GetActive`, `GetActiveTime` or `SetActive`** on
+//!     `org.gnome.ScreenSaver`: the call reaches the same lock state as the freedesktop name:
+//!     `tests/screensaver.rs::a_gnome_client_lock_locks_the_compositor`,
+//!     `tests/screensaver.rs::gnome_get_active_reports_the_same_lock_state_as_freedesktop`,
+//!     `tests/screensaver.rs::gnome_get_active_time_follows_the_lock_like_freedesktop` and
+//!     `tests/screensaver.rs::gnome_set_active_true_requests_a_lock_and_false_is_refused`.
+//! 14. **Another owner holds `org.gnome.ScreenSaver`**: this service refuses the name with a
+//!     named log and does not take it, so the other owner's clients keep reaching it:
+//!     `tests/screensaver.rs::a_gnome_name_held_by_another_owner_is_not_taken`.
+//! 15. **The lock changes while the GNOME name is served**: `ActiveChanged` is emitted once
+//!     per change on the GNOME path too:
+//!     `tests/screensaver.rs::gnome_active_changed_reaches_a_subscriber_once_per_change`.
+//!
+//! # The GNOME name
+//!
+//! `org.gnome.ScreenSaver` is served at [`GNOME_PATH`] with the same state. The name is
+//! requested without queueing, so when another owner holds it this service logs the
+//! refusal and serves only the freedesktop name. The freedesktop name never depends on it.
 
 pub mod logind;
 
@@ -85,6 +103,7 @@ use gnoblin_model::{Fields, ObjectId, Observation, TypeKey, Value};
 use gnoblin_service_core::Host;
 use zbus::fdo;
 use zbus::message::Header;
+use zbus::names::BusName;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, interface};
 
@@ -94,6 +113,11 @@ gnoblin_log::logger!(log = "screensaver");
 pub const BUS_NAME: &str = "org.freedesktop.ScreenSaver";
 /// The two object paths the interface is served on, as clients use both.
 pub const PATHS: [&str; 2] = ["/org/freedesktop/ScreenSaver", "/ScreenSaver"];
+/// The GNOME name and path, served on the same state as the freedesktop name when this
+/// service wins the name.
+pub const GNOME_BUS_NAME: &str = "org.gnome.ScreenSaver";
+/// The object path of the GNOME name.
+pub const GNOME_PATH: &str = "/org/gnome/ScreenSaver";
 /// The most inhibits one sender may hold at once.
 pub const MAX_INHIBITS_PER_SENDER: usize = 64;
 
@@ -265,16 +289,28 @@ impl ScreenSaver {
         Some(locked)
     }
 
-    /// Emit `ActiveChanged` with `active` on `connection`, from the primary object path.
-    /// A refused emit is logged; `GetActive` still answers the folded state, so the next
+    /// Emit `ActiveChanged` with `active` on `connection`, from the freedesktop object path
+    /// and, when this connection serves the GNOME name, from [`GNOME_PATH`] too. Each emit is
+    /// logged on its own when refused. `GetActive` still answers the folded state, so the next
     /// change re-reports it.
     pub fn publish(connection: &Connection, active: bool) {
-        let result = block_on(async {
+        let freedesktop = block_on(async {
             let emitter = SignalEmitter::new(connection, PATHS[0])?;
             ScreenSaver::active_changed(&emitter, active).await
         });
-        if let Err(error) = result {
+        if let Err(error) = freedesktop {
             log::warn!(area = "services", %error, "could not emit ActiveChanged");
+        }
+        let gnome_served = block_on(connection.object_server().interface::<_, GnomeScreenSaver>(GNOME_PATH)).is_ok();
+        if !gnome_served {
+            return;
+        }
+        let gnome = block_on(async {
+            let emitter = SignalEmitter::new(connection, GNOME_PATH)?;
+            GnomeScreenSaver::active_changed(&emitter, active).await
+        });
+        if let Err(error) = gnome {
+            log::warn!(area = "services", %error, name = GNOME_BUS_NAME, "could not emit ActiveChanged");
         }
     }
 
@@ -353,12 +389,14 @@ impl ScreenSaver {
     }
 
     /// Serve the interface on both paths, own the bus name, and release the inhibits of
-    /// each sender that leaves the bus.
+    /// each sender that leaves the bus. The GNOME name is claimed on a best-effort basis, see
+    /// [`ScreenSaver::register_gnome`].
     pub fn register(&self, connection: &Connection) -> zbus::Result<()> {
         for path in PATHS {
             block_on(connection.object_server().at(path, self.clone()))?;
         }
         block_on(connection.request_name(BUS_NAME))?;
+        self.register_gnome(connection);
         let watcher = connection.clone();
         let service = self.clone();
         std::thread::Builder::new()
@@ -366,6 +404,33 @@ impl ScreenSaver {
             .spawn(move || block_on(watch_owners(watcher, service)))
             .map_err(|error| zbus::Error::InputOutput(Arc::new(error)))?;
         Ok(())
+    }
+
+    /// Serve `org.gnome.ScreenSaver` at [`GNOME_PATH`] when this connection wins the name.
+    /// A name another owner holds stays with that owner, and this service does not queue for
+    /// it, so the GNOME owner's clients keep reaching their own service. The freedesktop name
+    /// is served either way, so a refusal here is logged and never fails [`ScreenSaver::register`].
+    fn register_gnome(&self, connection: &Connection) {
+        let reply = block_on(connection.request_name_with_flags(GNOME_BUS_NAME, fdo::RequestNameFlags::DO_NOT_QUEUE));
+        match reply {
+            Ok(fdo::RequestNameReply::PrimaryOwner | fdo::RequestNameReply::AlreadyOwner) => {
+                let served = block_on(
+                    connection
+                        .object_server()
+                        .at(GNOME_PATH, GnomeScreenSaver(self.clone())),
+                );
+                if let Err(error) = served {
+                    log::warn!(area = "services", %error, name = GNOME_BUS_NAME, path = GNOME_PATH, "the GNOME path is taken, so the GNOME name is not served");
+                }
+            }
+            Ok(_) => {
+                let owner = block_on(gnome_owner(connection));
+                log::warn!(area = "services", owner = %owner, name = GNOME_BUS_NAME, "the GNOME name is held by another owner, so this service does not serve it");
+            }
+            Err(error) => {
+                log::warn!(area = "services", %error, name = GNOME_BUS_NAME, "cannot request the GNOME name, so this service does not serve it");
+            }
+        }
     }
 }
 
@@ -387,6 +452,21 @@ async fn watch_owners(connection: Connection, service: ScreenSaver) {
         if args.new_owner().is_none() {
             service.release_sender(&args.name().to_string());
         }
+    }
+}
+
+/// The unique name that owns [`GNOME_BUS_NAME`], or a placeholder when the lookup fails. It only
+/// names the owner in the refusal log, so a failed lookup must not stop the refusal.
+async fn gnome_owner(connection: &Connection) -> String {
+    let Ok(name) = BusName::try_from(GNOME_BUS_NAME) else {
+        return "unknown".to_owned();
+    };
+    match fdo::DBusProxy::new(connection).await {
+        Ok(proxy) => match proxy.get_name_owner(name).await {
+            Ok(owner) => owner.to_string(),
+            Err(_) => "unknown".to_owned(),
+        },
+        Err(_) => "unknown".to_owned(),
     }
 }
 
@@ -454,6 +534,59 @@ impl ScreenSaver {
         Err(fdo::Error::NotSupported(
             "the compositor does not take simulated activity yet".to_owned(),
         ))
+    }
+
+    /// Emitted with the new lock state when it changes. Never emitted for a repeat of the
+    /// state already announced.
+    #[zbus(signal)]
+    async fn active_changed(emitter: &SignalEmitter<'_>, active: bool) -> zbus::Result<()>;
+}
+
+/// The `org.gnome.ScreenSaver` object, served at [`GNOME_PATH`] over the same state and
+/// inhibit table as the freedesktop name. Each member delegates to the freedesktop
+/// implementation, so the two names answer the same question the same way.
+pub struct GnomeScreenSaver(ScreenSaver);
+
+#[interface(name = "org.gnome.ScreenSaver")]
+impl GnomeScreenSaver {
+    /// Hold the screen awake for `application_name` until `UnInhibit`, in the same table.
+    async fn inhibit(
+        &self,
+        application_name: &str,
+        reason: &str,
+        #[zbus(header)] header: Header<'_>,
+    ) -> fdo::Result<u32> {
+        self.0.inhibit(application_name, reason, header).await
+    }
+
+    /// Release the inhibit `cookie`. A cookie the caller does not own is `AccessDenied`.
+    async fn un_inhibit(&self, cookie: u32, #[zbus(header)] header: Header<'_>) -> fdo::Result<()> {
+        self.0.un_inhibit(cookie, header).await
+    }
+
+    /// Whether the session is locked, as the folded lock state describes it.
+    async fn get_active(&self) -> fdo::Result<bool> {
+        self.0.get_active().await
+    }
+
+    /// `true` requests a lock, as on the freedesktop name. `false` is refused.
+    async fn set_active(&self, active: bool) -> fdo::Result<()> {
+        self.0.set_active(active).await.map(|_| ())
+    }
+
+    /// Seconds the session has been locked through this service, or zero.
+    async fn get_active_time(&self) -> fdo::Result<u32> {
+        self.0.get_active_time().await
+    }
+
+    /// Seconds since the last input event.
+    async fn get_session_idle_time(&self) -> fdo::Result<u32> {
+        self.0.get_session_idle_time().await
+    }
+
+    /// Lock the session.
+    async fn lock(&self) -> fdo::Result<()> {
+        self.0.lock().await
     }
 
     /// Emitted with the new lock state when it changes. Never emitted for a repeat of the
