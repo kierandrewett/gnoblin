@@ -824,17 +824,7 @@ impl State {
             announced_text_inputs: HashSet::new(),
             cursor_image: CursorImageStatus::default_named(),
             cursor_shape_changed: false,
-            cursor_chain: gnoblin_cursor::CursorChain::new(
-                std::sync::Arc::new(gnoblin_cursor::FsFiles::from_environment()),
-                &cursor.theme,
-                cursor
-                    .providers
-                    .iter()
-                    .copied()
-                    .map(gnoblin_cursor::ProviderKind::provider)
-                    .collect(),
-                crate::protocols::wp_cursor_shape_v1::CURSOR_CACHE_BYTES,
-            ),
+            cursor_chain: crate::protocols::wp_cursor_shape_v1::cursor_chain(&cursor),
             cursor_size: cursor.size,
             tearing: Vec::new(),
             clock: Tick::ZERO,

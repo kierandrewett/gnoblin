@@ -50,6 +50,8 @@ const BLUE: u32 = 0xFF00_00FF;
 const CURSOR_SIZE: u16 = 24;
 /// The theme the tests install and configure.
 const THEME: &str = "gnoblin-test";
+/// A second theme, applied by a committed configuration during a test.
+const LIVE_THEME: &str = "gnoblin-live";
 
 /// What a test body reads from its session.
 #[derive(Clone)]
@@ -114,7 +116,7 @@ fn with_theme(test: &str, theme: &str, cursors: &[(&str, u32)], body: impl FnOnc
         return;
     }
     for (name, colour) in cursors {
-        install_cursor(themes.path(), name, *colour);
+        install_cursor(themes.path(), THEME, name, *colour);
     }
     let status = Command::new(std::env::current_exe().expect("this test binary"))
         .args([test, "--exact", "--nocapture", "--test-threads=1"])
@@ -170,9 +172,9 @@ fn push(bytes: &mut Vec<u8>, value: u32) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
-/// Writes a one-image Xcursor file of a solid `colour` at `<themes>/THEME/cursors/<name>`.
-fn install_cursor(themes: &Path, name: &str, colour: u32) {
-    let directory = themes.join(THEME).join("cursors");
+/// Writes a one-image Xcursor file of a solid `colour` at `<themes>/<theme>/cursors/<name>`.
+fn install_cursor(themes: &Path, theme: &str, name: &str, colour: u32) {
+    let directory = themes.join(theme).join("cursors");
     std::fs::create_dir_all(&directory).expect("a theme directory");
     let size = u32::from(CURSOR_SIZE);
     let mut bytes = Vec::new();
@@ -627,6 +629,32 @@ fn the_default_and_text_shapes_draw_different_cursors_at_the_same_size() {
                 text.pixel(x, y),
                 "the text shape draws a different cursor"
             );
+        },
+    );
+}
+
+#[test]
+fn a_committed_cursor_theme_replaces_the_one_in_force() {
+    with_theme(
+        "a_committed_cursor_theme_replaces_the_one_in_force",
+        THEME,
+        &[("default", GREEN)],
+        |session| {
+            // The child's XCURSOR_PATH holds the first theme; a second one is written beside it.
+            let themes = std::env::var_os("XCURSOR_PATH").expect("the theme directory");
+            install_cursor(Path::new(&themes), LIVE_THEME, "default", BLUE);
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Default);
+            let (x, y) = tip_sample(at);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+
+            session.control.set_cursor_settings(CursorSettings {
+                theme: LIVE_THEME.to_owned(),
+                size: CURSOR_SIZE,
+                providers: vec![ProviderKind::Xcursor],
+            });
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == BLUE);
         },
     );
 }

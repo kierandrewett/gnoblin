@@ -1211,6 +1211,11 @@ impl Dispatcher {
                 if let Some(sources) = config.input_sources.clone() {
                     self.control.set_input_sources(sources);
                 }
+                // The cursor is re-derived from the accepted document, as at startup: a document with no
+                // `cursor` section gets the defaults, so removing the section restores them.
+                self.control.set_cursor_settings(crate::cursor::cursor_settings(
+                    config.cursor.clone().unwrap_or_default(),
+                ));
             }
             Err(reason) => {
                 log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")

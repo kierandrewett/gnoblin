@@ -47,7 +47,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 }
 
 /// The cursor settings of an accepted `cursor` section.
-fn cursor_settings(section: gnoblin_config::Cursor) -> CursorSettings {
+pub(crate) fn cursor_settings(section: gnoblin_config::Cursor) -> CursorSettings {
     let defaults = CursorSettings::default();
     CursorSettings {
         theme: section

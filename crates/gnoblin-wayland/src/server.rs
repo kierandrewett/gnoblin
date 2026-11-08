@@ -488,6 +488,7 @@ impl Server {
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
                             Command::WindowRules(rules) => state.apply_window_rules(rules),
                             Command::KeyboardSettings(keyboard) => state.apply_keyboard_settings(&keyboard),
+                            Command::CursorSettings(cursor) => state.apply_cursor_settings(&cursor),
                             Command::InputSources(sources) => state.apply_input_sources(&sources),
                             Command::Focus { window, reply } => {
                                 // The answer is sent after the publish, so a caller that
@@ -1069,6 +1070,12 @@ impl ControlHandle {
         self.control.push(Command::KeyboardSettings(Box::new(keyboard)));
     }
 
+    /// Applies the cursor theme, size and providers from the next loop turn, as a committed
+    /// document does.
+    pub fn set_cursor_settings(&self, cursor: CursorSettings) {
+        self.control.push(Command::CursorSettings(Box::new(cursor)));
+    }
+
     /// Replaces the switchable layouts from the next loop turn, as a committed document does.
     pub fn set_input_sources(&self, sources: gnoblin_config::InputSources) {
         self.control.push(Command::InputSources(Box::new(sources)));
@@ -1285,6 +1292,8 @@ enum Command {
     WindowRules(Vec<gnoblin_wm::Rule>),
     /// The keyboard repeat and XKB options the configuration accepted, applied in place.
     KeyboardSettings(Box<gnoblin_config::Keyboard>),
+    /// The cursor theme, size and providers the configuration accepted, applied in place.
+    CursorSettings(Box<CursorSettings>),
     /// The switchable layouts the configuration accepted, applied in place.
     InputSources(Box<gnoblin_config::InputSources>),
     /// A tick of the session clock, in milliseconds.

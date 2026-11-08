@@ -28,12 +28,29 @@ use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 
 use crate::State;
+use crate::server::CursorSettings;
 
 use crate::log;
 
 /// Creates the `wp_cursor_shape_manager_v1` global.
 pub(crate) fn global(display: &DisplayHandle) -> CursorShapeManagerState {
     CursorShapeManagerState::new::<State>(display)
+}
+
+/// The cursor chain a session draws from: the theme, searched through the providers in order,
+/// with a cache of the images read so far.
+pub(crate) fn cursor_chain(cursor: &CursorSettings) -> gnoblin_cursor::CursorChain {
+    gnoblin_cursor::CursorChain::new(
+        std::sync::Arc::new(gnoblin_cursor::FsFiles::from_environment()),
+        &cursor.theme,
+        cursor
+            .providers
+            .iter()
+            .copied()
+            .map(gnoblin_cursor::ProviderKind::provider)
+            .collect(),
+        CURSOR_CACHE_BYTES,
+    )
 }
 
 impl State {
@@ -48,6 +65,15 @@ impl State {
         self.cursor_image = image;
         // Called from inside smithay's seat callback, where the pointer is locked, so the
         // composer is updated at the next frame instead.
+        self.cursor_shape_changed = true;
+    }
+
+    /// Applies the cursor theme, size and providers a committed configuration names. The next
+    /// frame draws the pointer from the new theme; the shape a client asked for is kept.
+    pub(crate) fn apply_cursor_settings(&mut self, cursor: &CursorSettings) {
+        log::debug!(area = "cursor", theme = %cursor.theme, size = cursor.size, "applied the committed cursor settings");
+        self.cursor_chain = cursor_chain(cursor);
+        self.cursor_size = cursor.size;
         self.cursor_shape_changed = true;
     }
 
