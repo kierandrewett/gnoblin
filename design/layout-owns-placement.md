@@ -87,11 +87,26 @@ gets that one error naming the new option, not a silent change.
 
 ### Failure is not a decline
 
-If a layout errors, times out or returns an invalid answer, the last good
-arrangement stays in force and `LayoutFailed` is reported, as today. A window
-that opens while the layout is failing gets the built-in safety layout
-(`layout/fallback.rs`: centred, cascaded). That is a failure path with a visible
-error. It is not a second way to lay out windows.
+There is always exactly one active layout per workspace. That keeps one
+authority.
+
+If the active layout errors, times out or returns an invalid answer, the
+workspace swaps its active layout for the native floating layout. Floating is a
+registered layout with the same contract, so a window is still placed by a layout
+and never by the window manager. `LayoutFailed` is reported with the reason. The
+last good arrangement stays in force until the swap takes effect, so no window
+moves. When the configured layout answers a valid arrangement again, it becomes
+active again and re-arranges.
+
+The window manager has no placement rule of its own, including during a failure.
+The existing `layout/fallback.rs` (centre and cascade) is replaced by this swap, so
+it is removed with `Declined`. A window never waits on a layout past the frame
+deadline: it opens under the floating layout and is re-arranged when the
+configured layout is ready.
+
+Open: if the native floating layout itself fails, that is a compositor bug. It
+runs no script, so the only faults are invalid parameters, and those are
+refused before the call.
 
 ## What it needs
 
@@ -108,7 +123,7 @@ error. It is not a second way to lay out windows.
 ## Risks
 
 - One more question per new window. A layout runs on a worker with a deadline.
-  If it is late, the safety layout places the window and the window never waits.
+  If it is late, the workspace swaps to the floating layout and the window never waits.
 - Raise and focus requests now reach a layout. Under a 3D layout, depth and
   z-order interact. Each layout decides, and the shipped ones document it.
 - Every shipped Lua layout must answer every request kind. That is a mechanical
