@@ -16,11 +16,17 @@ pub(crate) type Raised = (&'static str, Fields);
 
 /// The event an object raises when the graph opens it, if any.
 pub(crate) fn opened(object: ObjectId, view: &ObjectView) -> Option<Raised> {
-    if !is_core(view, "window") && !is_core(view, "output") {
+    if !is_core(view, "window") && !is_core(view, "output") && !is_core(view, "workspace") {
         return None;
     }
     if is_core(view, "window") {
         return Some(("created", window_fields(object)));
+    }
+    if is_core(view, "workspace") {
+        return Some((
+            "created",
+            Fields::from([("workspace".to_owned(), ModelValue::Object(object))]),
+        ));
     }
     let output_id = output_id(view)?;
     Some((
@@ -66,6 +72,19 @@ pub(crate) fn changed(object: ObjectId, view: &ObjectView, property: String) -> 
 /// The event an object raises when the graph closes it, if any. The handlers still
 /// read the object: the mirror entry is dropped after they run.
 pub(crate) fn closed(object: ObjectId, view: &ObjectView) -> Option<Raised> {
+    if is_core(view, "workspace") {
+        let workspace_id = match view.properties().get("id") {
+            Some(ModelValue::Uint(id)) => ModelValue::Uint(*id),
+            _ => return None,
+        };
+        return Some((
+            "removed",
+            Fields::from([
+                ("workspace_id".to_owned(), workspace_id),
+                ("last".to_owned(), ModelValue::Object(object)),
+            ]),
+        ));
+    }
     if !is_core(view, "output") {
         return None;
     }

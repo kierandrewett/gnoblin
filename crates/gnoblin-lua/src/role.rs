@@ -177,7 +177,7 @@ impl RoleRunner {
             .run_config(&self.paths)
             .map_err(|error| RoleError::Config(error.to_string()))?;
         bind_configured_extensions(&mut host, &loaded, &self.stock)?;
-        let revision = commit(&mut host, &loaded, &mut reporter)?;
+        let (revision, _) = commit(&mut host, &loaded, &mut reporter)?;
         log::info!(area = "runtime", path = %loaded.path.path().display(),
             revision,
             "configuration committed"
@@ -191,7 +191,8 @@ impl RoleRunner {
     }
 }
 
-/// Commit the validated document and tell the guardian the revision.
+/// Commit the validated document and tell the guardian the revision, returning the revision
+/// and the warnings of the sections that were dropped.
 ///
 /// The enabled autostart entries go out as their own lines before `config-accepted`, so the
 /// guardian has them by the time it learns the revision was accepted. A rejected revision
@@ -200,7 +201,7 @@ fn commit<T: Transport + 'static>(
     host: &mut Host<T>,
     report: &RunReport,
     reporter: &mut Reporter,
-) -> Result<u64, RoleError> {
+) -> Result<(u64, Vec<String>), RoleError> {
     // A configuration that fails validation is not all-or-nothing at login: the sections that
     // validate are kept, and the dropped ones are logged as `ignored` once the revision is
     // accepted. Only a document with nothing left to keep is refused whole.
@@ -242,7 +243,8 @@ fn commit<T: Transport + 'static>(
         reporter.write(&report::autostart(revision, name, command));
     }
     reporter.write(&report::config_accepted(revision));
-    Ok(revision)
+    let warnings = dropped.iter().map(ToString::to_string).collect();
+    Ok((revision, warnings))
 }
 
 /// The document login keeps when the whole file fails validation: the sections that validate,
@@ -446,7 +448,8 @@ fn reload<T: Transport + 'static>(
     match outcome {
         ReloadOutcome::Accepted(loaded) => {
             bind_configured_extensions(host, &loaded, stock)?;
-            let revision = commit(host, &loaded, reporter)?;
+            let (revision, warnings) = commit(host, &loaded, reporter)?;
+            host.announce_reload(loaded.path.path(), revision, &warnings);
             log::info!(area = "runtime", path = %loaded.path.path().display(), revision, "configuration reloaded");
         }
         ReloadOutcome::Rejected(reason) => {

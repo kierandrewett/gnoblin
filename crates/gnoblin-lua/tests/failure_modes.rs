@@ -365,6 +365,95 @@ end
     );
 }
 
+/// The fields `menu_requested` carries: the schema requires every one of them.
+fn menu_fields() -> Fields {
+    let mut fields = Fields::new();
+    fields.insert("x".to_owned(), ModelValue::Int(4));
+    fields.insert("y".to_owned(), ModelValue::Int(8));
+    fields.insert("width".to_owned(), ModelValue::Uint(0));
+    fields.insert("height".to_owned(), ModelValue::Uint(0));
+    fields.insert("source".to_owned(), ModelValue::Text("client".to_owned()));
+    fields.insert("seat".to_owned(), ModelValue::Text("seat0".to_owned()));
+    fields
+}
+
+#[test]
+fn hyphenated_event_spellings_subscribe_to_the_underscored_signal() {
+    let config = Config::new("hyphen-events");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.menu-requested", function(event)
+    assert(event.name == "gnoblin.window.menu_requested")
+end)
+gnoblin.once("gnoblin.window.menu-requested", function() end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Menu");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .signal(window, "menu_requested", menu_fields())
+        .expect("menu_requested is a signal");
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert_eq!(pumped.handlers, 2, "the hyphen spelling and the once handler both fire");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+
+    server
+        .signal(window, "menu_requested", menu_fields())
+        .expect("menu_requested is a signal");
+    let pumped = host.pump(Tick::new(2)).expect("the pump runs");
+    assert_eq!(pumped.handlers, 1, "the once handler is gone after one delivery");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn per_object_hyphen_spelling_subscribes_to_the_underscored_signal() {
+    let config = Config::new("hyphen-object-events");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.created", function(event)
+    event.window:on("menu-requested", function(menu)
+        assert(menu.x == 4 and menu.y == 8)
+    end)
+end)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    let window = open_window(&mut server, "Menu");
+    let pumped = host.pump(Tick::new(1)).expect("created arrives");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+
+    server
+        .signal(window, "menu_requested", menu_fields())
+        .expect("menu_requested is a signal");
+    let pumped = host.pump(Tick::new(2)).expect("the pump runs");
+    assert_eq!(pumped.handlers, 1, "the per-object hyphen handler fires");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn an_unknown_hyphenated_event_is_refused_with_the_underscored_name() {
+    let config = Config::new("hyphen-unknown-event");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(gnoblin.on, "gnoblin.window.no-such-event", function() end)
+assert(not ok, "an unknown event is refused")
+assert(string.find(tostring(message), "gnoblin.window.no_such_event", 1, true) ~= nil, "message was " .. tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
 #[test]
 fn a_load_pattern_cannot_leave_the_configuration_directory() {
     let config = Config::new("escape");

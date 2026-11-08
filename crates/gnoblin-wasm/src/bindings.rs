@@ -308,13 +308,16 @@ impl StoreData {
         Ok(())
     }
 
-    /// Where an operation the module holds is.
-    fn operation_state(&self, handle: &Resource<ObjectRep>) -> Result<bool, RefusalKind> {
-        let id = ObjectId::new(self.object(handle)?.get());
-        match self.outcomes.get(&OperationId::new(id.get())) {
-            Some(outcome) => Ok(outcome.is_done()),
-            None => Ok(false),
+    /// A handle for a completed operation the host recorded, by its identity. A pending
+    /// operation has no handle here: the handle comes from the method call that started it.
+    fn open_operation(&mut self, id: u64) -> Result<Resource<ObjectRep>, RefusalKind> {
+        if !self.allowed("operation", "read", self.capabilities.may_read("operation")) {
+            return Err(RefusalKind::Denied);
         }
+        if !self.outcomes.contains_key(&OperationId::new(id)) {
+            return Err(RefusalKind::UnknownObject);
+        }
+        self.operation(OperationId::new(id))
     }
 }
 
@@ -356,6 +359,13 @@ mod gnoblin_objects {
 
         fn session_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             Ok(match self.open(id, "session") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn operation_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open_operation(id) {
                 Ok(handle) => Ok(handle),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
@@ -433,16 +443,15 @@ mod gnoblin_objects {
     }
 
     impl gnoblin::ipc::gnoblin::HostOperation for StoreData {
-        fn id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
             Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
         }
 
-        fn state(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<gnoblin::ipc::gnoblin::OperationState> {
-            match self.operation_state(&handle) {
-                Ok(true) => Ok(gnoblin::ipc::gnoblin::OperationState::Succeeded),
-                Ok(false) => Ok(gnoblin::ipc::gnoblin::OperationState::Pending),
-                Err(_) => Ok(gnoblin::ipc::gnoblin::OperationState::Failed),
-            }
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
         }
 
         fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {

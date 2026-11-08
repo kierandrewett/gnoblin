@@ -657,6 +657,7 @@ pub(crate) fn spawn<T: Transport + 'static>(
         shared.operations.insert(
             wait,
             Pending {
+                method: "wait".to_owned(),
                 outcome: None,
                 local_error: None,
                 completions: Vec::new(),
@@ -707,6 +708,7 @@ pub(crate) fn kill<T: Transport + 'static>(shared: &Rc<RefCell<Shared<T>>>, id: 
     let mut shared = shared.borrow_mut();
     let operation = shared.allocate_operation();
     let mut pending = Pending {
+        method: "kill".to_owned(),
         outcome: None,
         local_error: None,
         completions: Vec::new(),

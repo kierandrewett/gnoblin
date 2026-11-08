@@ -60,6 +60,10 @@ impl Implemented {
         if name.starts_with(':') {
             return self.methods.contains(name);
         }
+        if name.contains('-') {
+            // A hyphen spelling names the underscored signal, as `gnoblin.on` accepts it.
+            return self.provides(&name.replace('-', "_"));
+        }
         let prefix = format!("{name}.");
         self.paths.contains(name)
             || self.events.contains(name)
@@ -402,6 +406,26 @@ mod tests {
         let mentions = scan_doc("docs/events/a.md", "Subscribe to `gnoblin.session.lock-requested`.\n");
         let names: Vec<_> = mentions.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(names, ["gnoblin.session.lock-requested"], "{mentions:?}");
+    }
+
+    #[test]
+    fn a_hyphen_spelling_is_satisfied_by_its_underscored_event() {
+        let mut surface = implemented();
+        surface.events.insert("gnoblin.session.lock_state_changed".into());
+        let mentions = scan_doc(
+            "docs/events/a.md",
+            "Subscribe to `gnoblin.session.lock-state-changed`.\n",
+        );
+        let report = reconcile(&mentions, &surface, &[]);
+        assert_eq!(report.missing, 0, "{report:?}");
+        assert!(report.unlisted.is_empty(), "{report:?}");
+    }
+
+    #[test]
+    fn a_hyphen_spelling_of_an_unimplemented_event_is_still_unlisted() {
+        let mentions = scan_doc("docs/events/a.md", "Use `gnoblin.session.no-such-event`.\n");
+        let report = reconcile(&mentions, &implemented(), &[]);
+        assert_eq!(report.unlisted.len(), 1, "{report:?}");
     }
 
     #[test]

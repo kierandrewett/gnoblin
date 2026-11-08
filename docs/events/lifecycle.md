@@ -46,8 +46,8 @@ current value. The default column applies only where the source defines one.
 
 Only `locked` confirms that Mutter completed the lock transition.
 
-The `ok` field of `gnoblin.operation.completed` is a boolean. Successful
-events include `value`; failures include an `Error` record.
+The `ok` field of `gnoblin.operation.completed` is a boolean. `error` holds the
+failure code, and is empty when `ok` is `true`.
 
 Other fields are snapshots or values supplied by their source. The
 [shared type reference](/shell-api/types) defines the Gnoblin records used in
@@ -66,9 +66,8 @@ families.
 | `gnoblin.capability.changed`   | `revision`   | integer               | Native state revision.                                                                       |
 | `gnoblin.focus.policy-changed` | `policy`     | focus policy record   | Effective policy after a successful config commit; see the [shared types](/shell-api/types). |
 | `gnoblin.operation.completed`  | `ok`         | boolean               | `true` on success, `false` on failure.                                                       |
-| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation.                                                      |
-| `gnoblin.operation.completed`  | `value`      | any                   | Present on success.                                                                          |
-| `gnoblin.operation.completed`  | `error`      | `Error` record        | Present on failure.                                                                          |
+| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation, such as `set_layout`.                                |
+| `gnoblin.operation.completed`  | `error`      | string                | Failure code such as `refused`; empty on success.                                            |
 
 #### Session and configuration
 
@@ -155,16 +154,16 @@ In the Lua configuration, the `location` and `auth` events above, and
 
 #### Animations and operations
 
-| Event name                    | Fields                                                                             | Dispatched when                                                                              |
-| ----------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `gnoblin.animation.started`   | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview starts.             |
-| `gnoblin.animation.finished`  | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview completes or stops. |
-| `gnoblin.operation.completed` | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | An asynchronous operation completes; `error` is an `Error` record.                           |
+| Event name                    | Fields                                                      | Dispatched when                                                                              |
+| ----------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `gnoblin.animation.started`   | `animation`, `target`, `event`, `cancelled`                 | A configured window or layer animation, workspace transition, or preview starts.             |
+| `gnoblin.animation.finished`  | `animation`, `target`, `event`, `cancelled`                 | A configured window or layer animation, workspace transition, or preview completes or stops. |
+| `gnoblin.operation.completed` | `operation_id`, `method`, `ok`, `error`, `sequence`, `time` | An asynchronous operation completes; `error` is the failure code, empty on success.          |
 
 ### Reloads and appearance
 
-When reload requests overlap, inspect their `Operation` results. Gnoblin emits
-no separate event.
+`gnoblin.config.reloaded` reports each accepted reload, and
+`gnoblin.config.reload_failed` reports each refused one.
 
 `gnoblin.appearance.color-scheme-changed` fires after the desktop color-scheme
 preference changes. It does not report the initial value. The preference is

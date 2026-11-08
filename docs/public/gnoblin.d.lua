@@ -187,6 +187,10 @@ local config = {}
 ---@param callback fun(fields: { path: string, error: string, sequence: integer, time: integer })
 ---@return gnoblin.Subscription
 function config:on(name, callback) end
+---@param name "reloaded"
+---@param callback fun(fields: { path: string, revision: integer, warnings: string[], sequence: integer, time: integer })
+---@return gnoblin.Subscription
+function config:on(name, callback) end
 ---@class gnoblin.configCollection
 ---@field by_id fun(id: integer): gnoblin.config|nil
 ---@field all fun(): gnoblin.config[]
@@ -269,6 +273,16 @@ function lock:lock_session() end
 ---@class gnoblin.lockCollection
 ---@field by_id fun(id: integer): gnoblin.lock|nil
 ---@field all fun(): gnoblin.lock[]
+
+---@class gnoblin.operation
+local operation = {}
+---@param name "completed"
+---@param callback fun(fields: { operation_id: integer, method: string, ok: boolean, error: string, sequence: integer, time: integer })
+---@return gnoblin.Subscription
+function operation:on(name, callback) end
+---@class gnoblin.operationCollection
+---@field by_id fun(id: integer): gnoblin.operation|nil
+---@field all fun(): gnoblin.operation[]
 
 ---@class gnoblin.output
 ---@field name string
@@ -717,6 +731,14 @@ function workspace:on(name, callback) end
 ---@param callback fun(fields: { layout: string, reason: string })
 ---@return gnoblin.Subscription
 function workspace:on(name, callback) end
+---@param name "created"
+---@param callback fun(fields: { workspace: gnoblin.workspace })
+---@return gnoblin.Subscription
+function workspace:on(name, callback) end
+---@param name "removed"
+---@param callback fun(fields: { workspace_id: integer, last: gnoblin.workspace })
+---@return gnoblin.Subscription
+function workspace:on(name, callback) end
 ---@class gnoblin.workspaceCollection
 ---@field by_id fun(id: integer): gnoblin.workspace|nil
 ---@field all fun(): gnoblin.workspace[]
@@ -729,6 +751,7 @@ function workspace:on(name, callback) end
 ---@field idle gnoblin.idleCollection
 ---@field layers gnoblin.layersCollection
 ---@field lock gnoblin.lockCollection
+---@field operation gnoblin.operationCollection
 ---@field output gnoblin.outputCollection
 ---@field portal_ui gnoblin.portal_uiCollection
 ---@field portal_outcome gnoblin.portal_outcomeCollection

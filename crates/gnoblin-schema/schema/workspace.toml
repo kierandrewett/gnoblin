@@ -98,6 +98,34 @@ name = "reason"
 type = "string"
 since = "0.2.0"
 
+# A workspace was created. `workspace` is the new object; its `id` and `layout` are
+# already set when the handler runs.
+[[object.signal]]
+name = "created"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "workspace"
+type = "object:workspace"
+since = "0.2.0"
+
+# A workspace was removed. `workspace_id` is its identity and `last` is the object as
+# it was when it went; the handler can still read it, and the object is gone after the
+# handlers run.
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "workspace_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "last"
+type = "object:workspace"
+since = "0.2.0"
+
 [[error]]
 name = "refused"
 since = "0.2.0"

@@ -393,18 +393,6 @@ reason = "documented, not implemented; gnoblinctl verbs (S10)"
 owner-slice = "S10"
 
 [[allow]]
-name = "gnoblin.config.reloaded"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.config.reloaded"
-doc = "docs/shell-api/session-runtime.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
 name = "gnoblin.configure.keyring"
 doc = "docs/shell-api/passphrase-prompts.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
@@ -727,24 +715,6 @@ name = "gnoblin.location.authorization"
 doc = "docs/shell-api/privacy.md"
 reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
 owner-slice = "S6"
-
-[[allow]]
-name = "gnoblin.operation.completed"
-doc = "docs/events/input-shortcuts.md"
-reason = "documented, not implemented; Timers and Operation combinators (S1)"
-owner-slice = "S1"
-
-[[allow]]
-name = "gnoblin.operation.completed"
-doc = "docs/events/launch-portal.md"
-reason = "documented, not implemented; Timers and Operation combinators (S1)"
-owner-slice = "S1"
-
-[[allow]]
-name = "gnoblin.operation.completed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Timers and Operation combinators (S1)"
-owner-slice = "S1"
 
 [[allow]]
 name = "gnoblin.osd.requested"
@@ -1108,18 +1078,6 @@ owner-slice = "S2"
 
 [[allow]]
 name = "gnoblin.workspace.changed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.workspace.created"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.workspace.removed"
 doc = "docs/events/lifecycle.md"
 reason = "documented, not implemented; Global event bus (S2)"
 owner-slice = "S2"

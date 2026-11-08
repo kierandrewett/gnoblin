@@ -189,27 +189,6 @@ fn interface(wit: &mut String, catalog: &Catalog, namespace: &Namespace) -> Resu
     }
     let _ = writeln!(wit, "    }}");
 
-    let _ = writeln!(wit);
-    let _ = writeln!(wit, "    /// Where an operation is.");
-    let _ = writeln!(wit, "    enum operation-state {{");
-    for state in ["pending", "succeeded", "failed"] {
-        let _ = writeln!(wit, "        {state},");
-    }
-    let _ = writeln!(wit, "    }}");
-
-    let _ = writeln!(wit);
-    let _ = writeln!(
-        wit,
-        "    /// One method call. The reply is this handle; the completion arrives as"
-    );
-    let _ = writeln!(wit, "    /// an event with kind `operation-finished`.");
-    let _ = writeln!(wit, "    resource operation {{");
-    let _ = writeln!(wit, "        /// The identity the completion is stamped with.");
-    let _ = writeln!(wit, "        id: func() -> u64;");
-    let _ = writeln!(wit, "        /// Where the operation is now.");
-    let _ = writeln!(wit, "        state: func() -> operation-state;");
-    let _ = writeln!(wit, "    }}");
-
     let objects: Vec<&ObjectType> = catalog.objects(namespace).collect();
     for object in &objects {
         resource(wit, object, namespace.as_str())?;

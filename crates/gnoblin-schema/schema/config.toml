@@ -1,10 +1,11 @@
 # The `config` object: the configuration's own lifecycle signals.
 #
-# The object has no properties or methods. Its one signal is raised inside the
-# Lua host, not sent by the compositor: when a reload is refused, the last accepted
-# configuration is restored and every handler it registered is told why. It is
-# declared here so the signal is a schema member, the way `request.finished` is,
-# and a script's `gnoblin.on` can name it with the same checks as any other signal.
+# The object has no properties or methods. Its signals are raised inside the Lua
+# host, not sent by the compositor: `reloaded` when a reload is accepted, and
+# `reload_failed` when one is refused, in which case the last accepted configuration
+# is restored and every handler it registered is told why. They are declared here so
+# they are schema members, the way `request.finished` is, and a script's `gnoblin.on`
+# can name them with the same checks as any other signal.
 namespace = "gnoblin"
 version = "0.2.0"
 
@@ -38,6 +39,44 @@ type = "uint"
 since = "0.2.0"
 
 # The host's clock when the refusal was raised.
+[[object.signal.field]]
+name = "time"
+type = "uint"
+since = "0.2.0"
+
+# A reload was accepted and its configuration is now in force. Raised once per accepted
+# reload, after the new handlers are registered, so the handlers that hear it are the ones
+# that will run from now on.
+[[object.signal]]
+name = "reloaded"
+since = "0.2.0"
+
+# The configuration file that was reloaded.
+[[object.signal.field]]
+name = "path"
+type = "string"
+since = "0.2.0"
+
+# The revision the compositor committed for the new configuration.
+[[object.signal.field]]
+name = "revision"
+type = "uint"
+since = "0.2.0"
+
+# The problems of the sections the reload dropped, each a string; empty when every
+# section validated.
+[[object.signal.field]]
+name = "warnings"
+type = "list<string>"
+since = "0.2.0"
+
+# How many reloads this host has accepted, counted from 1 for each host.
+[[object.signal.field]]
+name = "sequence"
+type = "uint"
+since = "0.2.0"
+
+# The host's clock when the reload was accepted.
 [[object.signal.field]]
 name = "time"
 type = "uint"

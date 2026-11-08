@@ -1,0 +1,54 @@
+# The `operation` object: the host's own completions, raised inside the Lua host.
+#
+# An operation is a call a script made that the compositor answers later. Every one has a
+# completion, and a script can watch them all here, not only the handle it holds. The
+# signal is raised once per operation, after the handlers that waited on it have run.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "operation"
+since = "0.2.0"
+
+# An operation finished: the compositor answered it, or the host did. The completion is
+# the operation's one outcome; `ok` says whether it succeeded and `error` is the failure
+# code, empty on success.
+[[object.signal]]
+name = "completed"
+since = "0.2.0"
+
+# The operation's identity, as the host numbered it for this run.
+[[object.signal.field]]
+name = "operation_id"
+type = "uint"
+since = "0.2.0"
+
+# The method the script called, such as `set_layout`, `present`, `wait` or `kill`.
+[[object.signal.field]]
+name = "method"
+type = "string"
+since = "0.2.0"
+
+# Whether the operation succeeded.
+[[object.signal.field]]
+name = "ok"
+type = "bool"
+since = "0.2.0"
+
+# The failure code when `ok` is false, such as `refused` or `denied`; empty on success.
+[[object.signal.field]]
+name = "error"
+type = "string"
+since = "0.2.0"
+
+# How many completions this host has raised, counted from 1 for each host.
+[[object.signal.field]]
+name = "sequence"
+type = "uint"
+since = "0.2.0"
+
+# The host's clock when the completion was raised.
+[[object.signal.field]]
+name = "time"
+type = "uint"
+since = "0.2.0"

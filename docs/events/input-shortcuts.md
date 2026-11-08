@@ -72,6 +72,6 @@ Lua callbacks can subscribe to events and register dynamic shortcuts. See
 ## Operation completion
 
 Use `gnoblin.operation.completed` to observe asynchronous operations. The event
-contains `operation_id`, `method`, and boolean `ok`. Success includes `value`;
-failure includes an `Error` record with `code` and `message`. In Lua,
+contains `operation_id`, `method`, boolean `ok`, and `error`. `error` is the
+failure code, such as `refused`, and is empty when `ok` is true. In Lua,
 `operation_id` matches the returned operation handle's `id`.

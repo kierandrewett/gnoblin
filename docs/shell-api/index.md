@@ -42,6 +42,8 @@ The Rust event bus is narrower than the legacy reference: `gnoblin.on` and `gnob
 
 The local socket protocol for non-Lua clients is documented in the [compositor bridge](/bridge/). For command-line use, see [gnoblinctl](/cli/).
 
+Hyphen spellings such as `gnoblin.config.reload-failed` are accepted for compatibility with 0.1.x shells; the underscore spelling (`reload_failed`) is the canonical one.
+
 ## Runtime identity and settings
 
 `gnoblin.settings` is an immutable snapshot of active configuration values. Setting names use public snake_case. It becomes available after the initial configuration commits.

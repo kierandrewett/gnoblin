@@ -95,6 +95,8 @@ pub(super) enum Watching {
 /// One tracked operation, remote or locally derived.
 #[derive(Debug)]
 pub(super) struct Pending {
+    /// The method the operation called, named in `gnoblin.operation.completed`.
+    pub(super) method: String,
     /// How it ended, once the single completion arrived.
     pub(super) outcome: Option<OperationOutcome>,
     /// A local failure has a stable code and a useful message.
@@ -162,6 +164,13 @@ pub(super) struct Shared<T: Transport> {
     /// Refused reloads this host has announced; the next `reload_failed` carries the count
     /// after its own increment, so the first refusal is sequence 1.
     pub(super) reload_failures: u64,
+    /// Operations that finished since the last pump, in finish order. The pump raises
+    /// `gnoblin.operation.completed` for each, once, then empties the queue.
+    pub(super) completed: Vec<OperationId>,
+    /// Completions the host has raised; the next `completed` carries the count after its own increment.
+    pub(super) operation_completions: u64,
+    /// Reloads the host has announced as committed; the next `config.reloaded` carries the count after its own increment.
+    pub(super) reloads: u64,
 }
 
 impl<T: Transport> Shared<T> {
@@ -260,6 +269,7 @@ impl<T: Transport> Shared<T> {
         self.operations.insert(
             operation.id(),
             Pending {
+                method: method.to_owned(),
                 outcome: None,
                 local_error: None,
                 completions: Vec::new(),
@@ -303,7 +313,10 @@ impl<T: Transport> Shared<T> {
         outcome: OperationOutcome,
         error: Option<(String, String)>,
     ) -> Vec<u64> {
-        let Some(pending) = self.operations.get_mut(&operation) else {
+        let Self {
+            operations, completed, ..
+        } = self;
+        let Some(pending) = operations.get_mut(&operation) else {
             return Vec::new();
         };
         if pending.outcome.is_some() || pending.local_error.is_some() {
@@ -311,6 +324,7 @@ impl<T: Transport> Shared<T> {
         }
         pending.outcome = Some(outcome);
         pending.local_error = error;
+        completed.push(operation);
         std::mem::take(&mut pending.completions)
     }
 }
@@ -475,6 +489,9 @@ impl<T: Transport + 'static> Host<T> {
             modules: None,
             reload_requested: false,
             reload_failures: 0,
+            completed: Vec::new(),
+            operation_completions: 0,
+            reloads: 0,
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {
@@ -686,6 +703,70 @@ impl<T: Transport + 'static> Host<T> {
         });
     }
 
+    /// Raise `gnoblin.operation.completed` for one finished operation. `ok` and `error` come
+    /// from its outcome; `method` is the name the host called. The sequence counts announcements.
+    fn announce_operation_completed(&mut self, operation: OperationId, handlers: &mut usize) {
+        let (sequence, time, method, status) = {
+            let mut shared = self.shared.borrow_mut();
+            shared.operation_completions += 1;
+            let method = shared
+                .operations
+                .get(&operation)
+                .map(|pending| pending.method.clone())
+                .unwrap_or_default();
+            (
+                shared.operation_completions,
+                shared.clock.get(),
+                method,
+                shared.status(operation),
+            )
+        };
+        let (ok, error) = match status {
+            Status::Failed(code) => (false, code),
+            _ => (true, String::new()),
+        };
+        self.run_global_signal("gnoblin", "operation", "completed", handlers, move |lua| {
+            let as_integer = |value: u64| i64::try_from(value).map_err(|error| mlua::Error::runtime(error.to_string()));
+            let table = lua.create_table()?;
+            table.set("name", "gnoblin.operation.completed")?;
+            table.set("operation_id", as_integer(operation.get())?)?;
+            table.set("method", method.as_str())?;
+            table.set("ok", ok)?;
+            table.set("error", error.as_str())?;
+            table.set("sequence", as_integer(sequence)?)?;
+            table.set("time", as_integer(time)?)?;
+            Ok(table)
+        });
+    }
+
+    /// Raise `gnoblin.config.reloaded` once a reload has committed. `warnings` are the
+    /// problems of the sections the commit dropped; `revision` is the one it committed.
+    pub(crate) fn announce_reload(&mut self, path: &Path, revision: u64, warnings: &[String]) {
+        let (sequence, time) = {
+            let mut shared = self.shared.borrow_mut();
+            shared.reloads += 1;
+            (shared.reloads, shared.clock.get())
+        };
+        let path = path.display().to_string();
+        let warnings = warnings.to_vec();
+        let mut handlers = 0;
+        self.run_global_signal("gnoblin", "config", "reloaded", &mut handlers, move |lua| {
+            let as_integer = |value: u64| i64::try_from(value).map_err(|error| mlua::Error::runtime(error.to_string()));
+            let table = lua.create_table()?;
+            table.set("name", "gnoblin.config.reloaded")?;
+            table.set("path", path.as_str())?;
+            table.set("revision", as_integer(revision)?)?;
+            let list = lua.create_table()?;
+            for (index, warning) in warnings.iter().enumerate() {
+                list.set(index + 1, warning.as_str())?;
+            }
+            table.set("warnings", list)?;
+            table.set("sequence", as_integer(sequence)?)?;
+            table.set("time", as_integer(time)?)?;
+            Ok(table)
+        });
+    }
+
     /// Whether the compositor has asked for a reload since the last call. Taking the request
     /// clears it, so one request runs one reload.
     pub fn take_reload_request(&self) -> bool {
@@ -819,6 +900,12 @@ impl<T: Transport + 'static> Host<T> {
         let deferred: Vec<u64> = std::mem::take(&mut self.shared.borrow_mut().deferred);
         for id in deferred {
             self.run_handler(id, None, &mut handlers);
+        }
+        // The operations that finished this turn, each announced once. The handlers waiting
+        // on an operation have already run; this signal reaches every observer.
+        let finished = std::mem::take(&mut self.shared.borrow_mut().completed);
+        for operation in finished {
+            self.announce_operation_completed(operation, &mut handlers);
         }
         let errors = std::mem::take(&mut self.shared.borrow_mut().reports);
         Ok(PumpReport {
@@ -986,9 +1073,13 @@ impl<T: Transport + 'static> Host<T> {
             Observation::Finished { operation, outcome, .. } => {
                 let completions = {
                     let mut shared = self.shared.borrow_mut();
-                    match shared.operations.get_mut(&operation) {
+                    let Shared {
+                        operations, completed, ..
+                    } = &mut *shared;
+                    match operations.get_mut(&operation) {
                         Some(pending) if pending.outcome.is_none() => {
                             pending.outcome = Some(outcome);
+                            completed.push(operation);
                             std::mem::take(&mut pending.completions)
                         }
                         // A second completion for one operation: the graph refuses

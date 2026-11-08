@@ -621,6 +621,7 @@ mod tests {
                 "idle",
                 "layers",
                 "lock",
+                "operation",
                 "output",
                 "portal_ui",
                 "portal_outcome",

@@ -79,7 +79,7 @@ gnoblin.on("gnoblin.operation.completed", function(event)
     creating = false
 
     if not event.ok then
-        print("Workspace action failed: " .. event.error.message)
+        print("Workspace action failed: " .. event.error)
     end
 end)
 ```

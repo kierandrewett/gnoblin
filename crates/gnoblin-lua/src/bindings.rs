@@ -773,6 +773,7 @@ fn call_method<T: Transport + 'static>(
             shared.operations.insert(
                 operation,
                 crate::host::Pending {
+                    method: "present".to_owned(),
                     outcome: Some(OperationOutcome::Done),
                     local_error: Some((
                         "denied".to_owned(),
@@ -781,6 +782,8 @@ fn call_method<T: Transport + 'static>(
                     completions: Vec::new(),
                 },
             );
+            // Refused here, never sent: it finished at once, so it is announced like any other.
+            shared.completed.push(operation);
             operation
         };
         return lua.create_userdata(Operation {
@@ -911,6 +914,7 @@ fn subscribe<T: Transport + 'static>(
     name: String,
     callback: Function,
 ) -> mlua::Result<AnyUserData> {
+    let name = canonical_event_name(&name);
     if !spec.signals.iter().any(|signal| signal.name == name) {
         let accepted: Vec<&str> = spec.signals.iter().map(|signal| signal.name).collect();
         return Err(Error::runtime(format!(
@@ -936,6 +940,13 @@ fn subscribe<T: Transport + 'static>(
         handler,
     })
 }
+
+/// The schema spelling of an event or signal name. Shells written for 0.1.x subscribe
+/// with hyphens (`lock-state-changed`); the schema uses underscores, so both name one signal.
+fn canonical_event_name(name: &str) -> String {
+    name.replace('-', "_")
+}
+
 /// Subscribe to one schema-declared signal name from every object of that type.
 fn subscribe_global<T: Transport + 'static>(
     lua: &Lua,
@@ -944,6 +955,7 @@ fn subscribe_global<T: Transport + 'static>(
     callback: Function,
     once: bool,
 ) -> mlua::Result<AnyUserData> {
+    let event = canonical_event_name(&event);
     let Some((namespace, object, signal)) = global_signal_spec(&event) else {
         return Err(Error::runtime(format!(
             "no schema signal named `{event}`; expected `namespace.object.signal`"
@@ -1218,6 +1230,7 @@ impl<T: Transport + 'static> UserData for Operation<T> {
                 shared.operations.insert(
                     target,
                     crate::host::Pending {
+                        method: "map".to_owned(),
                         outcome: None,
                         local_error: None,
                         completions: Vec::new(),
@@ -1256,6 +1269,7 @@ impl<T: Transport + 'static> UserData for Operation<T> {
             shared.operations.insert(
                 target,
                 crate::host::Pending {
+                    method: "timeout".to_owned(),
                     outcome: None,
                     local_error: None,
                     completions: Vec::new(),
