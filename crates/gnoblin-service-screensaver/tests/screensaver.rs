@@ -8,6 +8,7 @@
 //! ones a media player or a video player uses. The compositor is the [`Compositor`] seam:
 //! a recorder standing in for the compositor's `idle` and `lock` objects.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -24,16 +25,24 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The lock object the recorder reports, unlocked when the service starts.
 const LOCK_OBJECT: u64 = 7;
+/// The GNOME screen saver name and object path, as GNOME Shell and its clients use them.
+const GNOME_NAME: &str = "org.gnome.ScreenSaver";
+const GNOME_PATH: &str = "/org/gnome/ScreenSaver";
 
 /// The compositor's hold names, in the order the service set them.
 #[derive(Clone, Default)]
 struct Recorder {
     holds: Arc<Mutex<Vec<String>>>,
+    lock_calls: Arc<AtomicUsize>,
 }
 
 impl Recorder {
     fn holds(&self) -> Vec<String> {
         self.holds.lock().unwrap().clone()
+    }
+
+    fn lock_count(&self) -> usize {
+        self.lock_calls.load(Ordering::SeqCst)
     }
 }
 
@@ -50,7 +59,8 @@ impl Compositor for Recorder {
     }
 
     fn lock(&self) -> Result<(), String> {
-        Err("locking is not part of this test".to_owned())
+        self.lock_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
     fn inhibit(&self, holder: &str) -> Result<(), String> {
@@ -245,4 +255,167 @@ fn active_changed_reaches_a_subscriber_once_per_change() {
     });
 
     assert_eq!(received, (vec![true, false], None));
+}
+
+/// A stand-in for GNOME Shell: it serves `org.gnome.ScreenSaver` and counts the `Lock` calls
+/// it answers. It claims its name without `ALLOW_REPLACEMENT`, as GNOME Shell does.
+#[derive(Clone)]
+struct SquatterLock {
+    locks: Arc<AtomicUsize>,
+}
+
+#[zbus::interface(name = "org.gnome.ScreenSaver")]
+impl SquatterLock {
+    fn lock(&self) {
+        self.locks.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn a_gnome_client_lock_locks_the_compositor() {
+    // The failure mode: GNOME clients (gsd, GNOME Shell extensions) call
+    // org.gnome.ScreenSaver.Lock. With no GNOME interface served the call fails, and the user
+    // who asked for a lock stays unlocked.
+    let bus = Bus::start();
+    let recorder = Recorder::default();
+    let (_server, _service) = serve(bus.address(), recorder.clone());
+    let (client, _) = caller(bus.address());
+    let gnome =
+        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built");
+
+    let (): () = zbus::block_on(gnome.call("Lock", &())).expect("the service accepts the lock");
+    assert_eq!(recorder.lock_count(), 1);
+}
+
+#[test]
+fn gnome_get_active_reports_the_same_lock_state_as_freedesktop() {
+    // The failure mode: the two names answer from different state, so a GNOME client reads
+    // "unlocked" while the session is locked. Both answer the folded lock object.
+    let bus = Bus::start();
+    let (_server, service) = serve(bus.address(), Recorder::default());
+    let (client, _) = caller(bus.address());
+    let gnome =
+        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built");
+    let freedesktop =
+        zbus::block_on(zbus::Proxy::new(&client, BUS_NAME, PATHS[0], BUS_NAME)).expect("the proxy is built");
+
+    let unlocked: bool = zbus::block_on(gnome.call("GetActive", &())).expect("GetActive answers");
+    assert!(!unlocked);
+
+    assert_eq!(service.observe(&lock_changed(true)), Some(true));
+    let locked_gnome: bool = zbus::block_on(gnome.call("GetActive", &())).expect("GetActive answers");
+    let locked_freedesktop: bool = zbus::block_on(freedesktop.call("GetActive", &())).expect("GetActive answers");
+    assert_eq!((locked_gnome, locked_freedesktop), (true, true));
+}
+
+#[test]
+fn gnome_get_active_time_follows_the_lock_like_freedesktop() {
+    // The failure mode: GetActiveTime is missing from the GNOME name, so a client that reads
+    // how long the session has been locked gets an error instead of the same seconds.
+    let bus = Bus::start();
+    let (_server, service) = serve(bus.address(), Recorder::default());
+    let (client, _) = caller(bus.address());
+    let gnome =
+        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built");
+    let freedesktop =
+        zbus::block_on(zbus::Proxy::new(&client, BUS_NAME, PATHS[0], BUS_NAME)).expect("the proxy is built");
+
+    let idle: u32 = zbus::block_on(gnome.call("GetActiveTime", &())).expect("GetActiveTime answers");
+    assert_eq!(idle, 0);
+
+    let (): () = zbus::block_on(gnome.call("Lock", &())).expect("the service accepts the lock");
+    assert_eq!(service.observe(&lock_changed(true)), Some(true));
+    let gnome_seconds: u32 = zbus::block_on(gnome.call("GetActiveTime", &())).expect("answers");
+    let freedesktop_seconds: u32 = zbus::block_on(freedesktop.call("GetActiveTime", &())).expect("answers");
+    assert_eq!(gnome_seconds, freedesktop_seconds);
+}
+
+#[test]
+fn gnome_set_active_true_requests_a_lock_and_false_is_refused() {
+    // The failure mode: SetActive(false) from a GNOME client is accepted as an unlock, or
+    // SetActive(true) is dropped. True asks for a lock; false is refused as the freedesktop
+    // name refuses it.
+    let bus = Bus::start();
+    let recorder = Recorder::default();
+    let (_server, _service) = serve(bus.address(), recorder.clone());
+    let (client, _) = caller(bus.address());
+    let gnome =
+        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built");
+
+    let (): () = zbus::block_on(gnome.call("SetActive", &true)).expect("SetActive(true) is accepted");
+    assert_eq!(recorder.lock_count(), 1);
+
+    let refused: zbus::Result<()> = zbus::block_on(gnome.call("SetActive", &false));
+    let error = refused.expect_err("SetActive(false) is refused");
+    assert!(error.to_string().contains("NotSupported"), "{error}");
+    assert_eq!(recorder.lock_count(), 1);
+}
+
+#[test]
+fn gnome_active_changed_reaches_a_subscriber_once_per_change() {
+    // The failure mode: ActiveChanged is emitted only on the freedesktop name, so a GNOME
+    // subscriber (gsd, the shell) never learns the session locked. Each real change reaches
+    // the GNOME subscriber once, in order, like the freedesktop one.
+    let bus = Bus::start();
+    let (server, service) = serve(bus.address(), Recorder::default());
+    let destination = server
+        .unique_name()
+        .expect("a connected server has a unique name")
+        .to_string();
+    let (client, _) = caller(bus.address());
+    let proxy = zbus::block_on(zbus::Proxy::new(&client, destination.as_str(), GNOME_PATH, GNOME_NAME))
+        .expect("the proxy is built");
+    let mut stream =
+        zbus::block_on(proxy.receive_signal("ActiveChanged")).expect("the caller subscribes to the signal");
+
+    // Publish from outside any async block: the emit is itself a blocking call.
+    for locked in [true, true, false] {
+        if let Some(active) = service.observe(&lock_changed(locked)) {
+            ScreenSaver::publish(&server, active);
+        }
+    }
+
+    let received = zbus::block_on(async {
+        let mut seen = Vec::new();
+        for _ in 0..2 {
+            seen.push(active_changed(&mut stream).await.expect("a change is announced"));
+        }
+        (seen, active_changed(&mut stream).await)
+    });
+
+    assert_eq!(received, (vec![true, false], None));
+}
+
+#[test]
+fn a_gnome_name_held_by_another_owner_is_not_taken() {
+    // The failure mode: the adapter takes org.gnome.ScreenSaver from the owner that holds it
+    // (GNOME Shell), so the owner's clients reach the adapter's lock or the owner is
+    // displaced. The name stays with its owner, and the freedesktop name is still served.
+    let bus = Bus::start();
+    let squatter_locks = Arc::new(AtomicUsize::new(0));
+    let owner = zbus::block_on(connect(bus.address()));
+    zbus::block_on(owner.object_server().at(
+        GNOME_PATH,
+        SquatterLock {
+            locks: squatter_locks.clone(),
+        },
+    ))
+    .expect("the other owner serves its interface");
+    zbus::block_on(owner.request_name_with_flags(GNOME_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE))
+        .expect("the other owner holds the name");
+
+    let recorder = Recorder::default();
+    let (_server, _service) = serve(bus.address(), recorder.clone());
+    let (client, _) = caller(bus.address());
+    let gnome =
+        zbus::block_on(zbus::Proxy::new(&client, GNOME_NAME, GNOME_PATH, GNOME_NAME)).expect("the proxy is built");
+    let freedesktop =
+        zbus::block_on(zbus::Proxy::new(&client, BUS_NAME, PATHS[0], BUS_NAME)).expect("the proxy is built");
+
+    let (): () = zbus::block_on(gnome.call("Lock", &())).expect("the owner answers the lock");
+    assert_eq!(squatter_locks.load(Ordering::SeqCst), 1);
+    assert_eq!(recorder.lock_count(), 0);
+
+    let (): () = zbus::block_on(freedesktop.call("Lock", &())).expect("the service accepts the lock");
+    assert_eq!(recorder.lock_count(), 1);
 }
