@@ -50,8 +50,30 @@ while locked return nothing until the store is unlocked.
 
 ## When a change applies
 
-Gnoblin reads `keyring.enabled` when the services role starts. A change takes
-effect at the next session start.
+The services role does not decide `keyring.enabled` from the file on disk when it
+starts. It waits for the compositor to accept this session's configuration, then
+reads the flag from that accepted document. Until it decides, Gnoblin serves
+nothing: it does not request `org.freedesktop.secrets`, creates no store, and
+writes no file.
+
+- **Accepted configuration arrives.** The flag of the accepted document decides at
+  once, and the log names the revision. With `enabled = false` Gnoblin never serves.
+  With `enabled = true` it serves.
+- **Nothing is accepted within 20 seconds.** The wait is the constant
+  `CONFIGURATION_WAIT` in `crates/gnoblin-services/src/keyring.rs`. The services role
+  then uses the flag of the last accepted configuration file, if one exists. If none
+  exists, or it cannot be read, the schema default decides, which is on. The log names
+  the source (`accepted revision`, `last accepted file` or `schema default`) and the
+  reason.
+
+So a change to `keyring.enabled` takes effect at the next session start, once the
+compositor accepts the configuration. On a first boot with no saved file, the flag
+from `init.lua` decides when it is accepted, and the wait is not reached.
+
+The Secret portal reads the last accepted file when it starts, not the accepted
+document. On a first boot with no saved file it assumes the default, which is on,
+so it does not follow an unsaved `enabled = false`. This is a known residual of the
+first-boot fix, recorded in `design/e2e-keyring.md`.
 
 ## Apps reach gnome-keyring instead
 
