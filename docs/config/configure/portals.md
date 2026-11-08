@@ -40,6 +40,17 @@ Wallpaper, Background, Lockdown, or DynamicLauncher yet. The shipped
 Gnoblin never answers them. Add a route to `gnoblin` for one of them only once it
 serves that interface.
 
+Screenshot takes one picture of the whole output. The compositor sends the PNG, and the
+portal writes it to your Pictures folder. The response carries its `file://` URI.
+
+The Gnoblin consent dialog asks first. Deny has focus; Tab moves to Allow and Return
+presses it. Escape or Deny returns response 1.
+
+A request with `interactive` set to true asks you to choose an area. The portal refuses
+it by name after consent.
+
+PickColor is refused. The compositor does not expose colour sampling.
+
 Common backend IDs include `gtk`, `gnome`, `kde`, and `gnoblin`. Use IDs
 provided by the backends installed on your system.
 

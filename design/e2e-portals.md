@@ -80,11 +80,11 @@ outcome=Granted` for request 2, then request 3 (queued behind it) is shown and g
 Queue order holds: request 3 is not answered until request 2 has been. Anonymous callers each
 prompt.
 
-Still open, and not a consent fault: the Allow returns `response=2`, not `response=0` with a
-PNG. The Screenshot path calls `CaptureBackend::screenshot`, and the composition root still
-installs `Missing` (`crates/xdg-desktop-portal-gnoblin/src/backends.rs`), so no frame is
-produced. Real capture needs the compositor IPC behind that trait. Until it lands, an Allow
-cannot return a PNG.
+Screenshot is wired to the compositor's `capture.screen` member through `CaptureBackend` in
+`crates/xdg-desktop-portal-gnoblin/src/backends.rs` and `capture_relay.rs`, so an Allow returns
+`response=0` with a `file://` PNG when the shell is reachable. Not yet proven live: the later run
+(`PortalConsentLive-logs/live-run2.log`) got `response=1` on Tab+Return, and the cause is open.
+The 500 ms arm delay is not it, since that harness waits 5 s before its keys.
 
 FileChooser and the fallback sysroot are unchanged.
 
