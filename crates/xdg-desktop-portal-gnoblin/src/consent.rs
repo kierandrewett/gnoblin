@@ -249,6 +249,9 @@ pub struct NewSession {
 pub struct Prompt {
     /// What is being asked for, so the provider can word the question.
     pub capability: PortalCapability,
+    /// The portal interface that asked. The provider receives its name, so the consent
+    /// screen can say which portal the question came from.
+    pub interface: Interface,
     /// Who is asking.
     pub app_id: String,
     /// The parent window the caller named, as the frontend sent it. The relay does not
@@ -281,6 +284,7 @@ impl Prompt {
         };
         Prompt {
             capability,
+            interface,
             app_id: requester.app_id.clone(),
             parent_window: non_empty(parent_window),
             title: format!("{app} wants to {what}"),
@@ -790,9 +794,10 @@ impl Guard {
             return Err(Refusal::Pending { path: path.to_owned() });
         }
         let prompt = Prompt {
-            // The question is not about a capability. The field is the provider's
-            // wording hint, so it names the interface that asked.
+            // The question is not about a capability. The capability is a placeholder
+            // that the provider never reads; the interface carries the meaning.
             capability: PortalCapability::Capture,
+            interface: session.interface,
             app_id: session.owner.app_id.clone(),
             parent_window: non_empty(parent_window),
             title,

@@ -47,7 +47,7 @@ use gnoblin_model::{Fields, Filter};
 use gnoblin_types::{RequestId, Version};
 use zeroize::Zeroizing;
 
-use crate::consent::{Host, OFFERER, Offer, PortalCapability, Prompt, Refusal, SECRET_DERIVE};
+use crate::consent::{Host, OFFERER, Offer, Prompt, Refusal, SECRET_DERIVE};
 
 use crate::log;
 
@@ -197,16 +197,12 @@ impl Host for NoShell {
 ///
 /// The compositor's consent screen takes the caller as a verified identity, so the app id
 /// goes as the caller's label. This process does not know the caller's pid, so it goes as
-/// zero; the compositor resolves the caller from the bus itself. The interface names the
-/// portal screen the capability came from.
+/// zero; the compositor resolves the caller from the bus itself. The interface is the
+/// portal interface name without its `org.freedesktop.impl.portal.` prefix, which is the
+/// form the compositor parses.
 fn portal_request(prompt: &Prompt, timeout: Duration) -> PortalRequest {
-    let interface = match prompt.capability {
-        PortalCapability::Capture => "org.freedesktop.impl.portal.ScreenCast",
-        PortalCapability::InputInjection => "org.freedesktop.impl.portal.RemoteDesktop",
-        PortalCapability::Secret => "org.freedesktop.impl.portal.Secret",
-    };
     PortalRequest {
-        interface: interface.to_owned(),
+        interface: prompt.interface.as_str().to_owned(),
         caller: VerifiedCaller::new(0, prompt.app_id.clone()),
         prompt: format!("{}\n\n{}", prompt.title, prompt.message),
         timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
@@ -431,6 +427,51 @@ impl<T: Transport> IpcLoop<T> {
                 }
             };
             self.answer(portal, request, answer);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::consent::{Interface, PortalCapability};
+
+    fn prompt(interface: Interface, capability: PortalCapability) -> Prompt {
+        Prompt {
+            capability,
+            interface,
+            app_id: "org.example.App".to_owned(),
+            parent_window: None,
+            title: "App wants to share your screen".to_owned(),
+            message: "Share?".to_owned(),
+        }
+    }
+
+    // The compositor parses the bare interface name. A full D-Bus name here is refused as
+    // unknown, and a screenshot sent as ScreenCast asks the wrong question.
+    #[test]
+    fn screenshot_prompt_names_its_own_interface() {
+        let request = portal_request(
+            &prompt(Interface::Screenshot, PortalCapability::Capture),
+            Duration::from_secs(1),
+        );
+        assert_eq!(request.interface, "Screenshot");
+    }
+
+    #[test]
+    fn every_prompt_sends_a_bare_interface_name() {
+        for interface in [
+            Interface::ScreenCast,
+            Interface::Screenshot,
+            Interface::RemoteDesktop,
+            Interface::InputCapture,
+            Interface::GlobalShortcuts,
+            Interface::Inhibit,
+            Interface::Secret,
+        ] {
+            let request = portal_request(&prompt(interface, PortalCapability::Capture), Duration::from_secs(1));
+            assert_eq!(request.interface, interface.as_str());
+            assert!(!request.interface.contains('.'), "{}", request.interface);
         }
     }
 }
