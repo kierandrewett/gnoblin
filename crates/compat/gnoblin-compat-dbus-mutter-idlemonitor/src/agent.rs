@@ -74,7 +74,16 @@ impl LinkedAgent for MutterIdleMonitor {
         if let Err(error) = block_on(service.publish(link.state())) {
             log::warn!(area = "services", %error, "the idle monitor could not publish its counter");
         }
-        block_on(watch_callers(connection.clone(), service.clone()));
+        // The caller watch ends only when the connection does. It gets its own thread: running it
+        // here would block `start`, and the role would never report ready.
+        let watched = connection.clone();
+        let watching = service.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("gnoblin-idlemonitor-callers".to_owned())
+            .spawn(move || block_on(watch_callers(watched, watching)))
+        {
+            log::warn!(area = "services", %error, "the idle monitor could not watch caller lifetimes");
+        }
         let handle = std::thread::Builder::new()
             .name("gnoblin-idlemonitor".to_owned())
             .spawn(move || {
