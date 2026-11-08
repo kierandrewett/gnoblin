@@ -759,42 +759,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.output.added"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.output.added"
-doc = "docs/shell-api/outputs.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.output.changed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.output.changed"
-doc = "docs/shell-api/outputs.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.output.removed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.output.removed"
-doc = "docs/shell-api/outputs.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
 name = "gnoblin.outputs.renderer"
 doc = "docs/shell-api/outputs.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"

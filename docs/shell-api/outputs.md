@@ -1,6 +1,6 @@
 # Outputs
 
-> **Status:** not available yet: `gnoblin.output.added`, `gnoblin.output.changed`, `gnoblin.output.removed`, `gnoblin.outputs.renderer`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.outputs.renderer`. The sections that use them describe the target, not current behaviour.
 
 An output is a connected display. The compositor publishes one `output` object per display it drives. Its fields are
 the ones the `output` object declares in the `gnoblin` schema.
@@ -67,6 +67,4 @@ Lua:
 - `gnoblin.outputs.renderer()` and the `Renderer` record;
 - the output fields `id`, `kind`, `serial`, `monitor_id`, `index`, `work_area`, `privacy_screen`, `renderer` and
   `revision`;
-- the output signal `changed`, and the `gnoblin.output.added`, `gnoblin.output.changed` and
-  `gnoblin.output.removed` events;
 - the privacy screen state, and the `monitors.privacy_screen` override that sets it.

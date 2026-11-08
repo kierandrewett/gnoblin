@@ -159,6 +159,59 @@ since = "0.2.0"
 name = "closed"
 since = "0.2.0"
 
+# A display was connected and the compositor published it. The handler sees the output's
+# state at that moment. `output_id` is its connector name, the identity `by_id` takes.
+[[object.signal]]
+name = "added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output_id"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+since = "0.2.0"
+
+# A property of the output changed. `changed` names the properties, and the mirror already
+# holds the new value when the handler runs.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output_id"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "changed"
+type = "list<string>"
+since = "0.2.0"
+
+# The display was disconnected or the compositor stopped driving it. `last` is the output as
+# it was when it went; the handler can still read it, and the object is gone after the handlers run.
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output_id"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "last"
+type = "object:output"
+since = "0.2.0"
+
 # The layout a workspace on this output runs when the workspace has no override of
 # its own. `floating` when unset. Reads the output's default; `set_layout` writes it.
 [[object.property]]

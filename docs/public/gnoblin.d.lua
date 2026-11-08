@@ -305,6 +305,18 @@ function output:set_layout(root, module, hash, options) end
 ---@param callback fun(fields: table)
 ---@return gnoblin.Subscription
 function output:on(name, callback) end
+---@param name "added"
+---@param callback fun(fields: { output_id: string, output: gnoblin.output })
+---@return gnoblin.Subscription
+function output:on(name, callback) end
+---@param name "changed"
+---@param callback fun(fields: { output_id: string, output: gnoblin.output, changed: string[] })
+---@return gnoblin.Subscription
+function output:on(name, callback) end
+---@param name "removed"
+---@param callback fun(fields: { output_id: string, last: gnoblin.output })
+---@return gnoblin.Subscription
+function output:on(name, callback) end
 ---@class gnoblin.outputCollection
 ---@field by_id fun(id: integer): gnoblin.output|nil
 ---@field all fun(): gnoblin.output[]

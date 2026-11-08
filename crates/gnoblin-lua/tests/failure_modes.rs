@@ -1239,6 +1239,93 @@ end)
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
 
+/// The fields of an `output`, with the connector name the lifecycle events key on.
+fn output_properties(name: &str) -> Fields {
+    gnoblin_testkit::object_fields("output", &[("name", ModelValue::Text(name.to_owned()))])
+}
+
+#[test]
+fn an_output_appearing_raises_added_naming_its_connector() {
+    let (mut server, mut host) = pair();
+    let config = Config::new("output-added");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.output.added", function(event)
+    assert(event.name == "gnoblin.output.added")
+    assert(event.output_id == "DP-1", "the id is the connector name, was " .. tostring(event.output_id))
+    assert(event.output.name == "DP-1", "the object is readable, was " .. tostring(event.output.name))
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .create(TypeKey::gnoblin("output"), output_properties("DP-1"))
+        .expect("the output type and its properties are in the schema");
+    let pumped = host.pump(Tick::new(1)).expect("added arrives");
+    assert_eq!(pumped.handlers, 1, "one added handler");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn an_output_property_change_raises_changed_naming_the_property() {
+    let (mut server, mut host) = pair();
+    let output = server
+        .create(TypeKey::gnoblin("output"), output_properties("DP-2"))
+        .expect("the output type and its properties are in the schema");
+    let config = Config::new("output-changed");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.output.changed", function(event)
+    assert(event.output_id == "DP-2", "the id is the connector name")
+    assert(#event.changed == 1, "one property changed")
+    assert(event.changed[1] == "enabled", "the changed list names the property, was " .. tostring(event.changed[1]))
+    assert(event.output.enabled == true, "the mirror is updated before the handler runs")
+end)
+gnoblin.on("gnoblin.window.focused", function()
+    error("an output change does not move focus")
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .set(output, "enabled", ModelValue::Bool(true))
+        .expect("enabled is a bool property");
+    let pumped = host.pump(Tick::new(1)).expect("changed arrives");
+    assert_eq!(pumped.handlers, 1, "only the changed handler runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn an_output_going_away_raises_removed_with_its_last_state() {
+    let (mut server, mut host) = pair();
+    let output = server
+        .create(TypeKey::gnoblin("output"), output_properties("HDMI-A-1"))
+        .expect("the output type and its properties are in the schema");
+    let config = Config::new("output-removed");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.output.removed", function(event)
+    assert(event.output_id == "HDMI-A-1", "the id is the connector name")
+    assert(event.last.name == "HDMI-A-1", "the last state is still readable, was " .. tostring(event.last.name))
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server.close(output).expect("the output can be closed");
+    let pumped = host.pump(Tick::new(1)).expect("removed arrives");
+    assert_eq!(pumped.handlers, 1, "one removed handler");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
 #[test]
 fn configure_is_refused_outside_a_configuration_run() {
     let config = Config::new("runtime-configure");

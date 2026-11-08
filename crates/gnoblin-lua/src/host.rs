@@ -43,6 +43,7 @@ use mlua::{Error, Lua, Table};
 
 use crate::error::{HostError, ScriptError};
 use crate::extensions::ExtensionRegistry;
+use crate::lifecycle;
 use crate::loader::{self, Resolution};
 use crate::process::{Listen, Notice};
 use gnoblin_lua_sandbox::{Guard, Limits, Profile};
@@ -871,11 +872,10 @@ impl<T: Transport + 'static> Host<T> {
         match observation {
             Observation::Opened { view, .. } => {
                 let object = view.id();
-                let is_window = view.ty().namespace() == "gnoblin" && view.ty().name() == "window";
+                let raised = lifecycle::opened(object, &view);
                 self.shared.borrow_mut().mirror.insert(object, view);
-                if is_window {
-                    let fields = Fields::from([("window".to_owned(), ModelValue::Object(object))]);
-                    self.emit_signal(object, "created", &fields, handlers);
+                if let Some((signal, fields)) = raised {
+                    self.emit_signal(object, signal, &fields, handlers);
                 }
             }
             Observation::Changed {
@@ -909,28 +909,18 @@ impl<T: Transport + 'static> Host<T> {
                     self.emit_signal(object, signal, &fields, handlers);
                     return;
                 }
-                // Only windows raise window signals; the window's compositor id is
-                // its `id` property, not the graph's object identity.
-                let identity = {
+                // The lifecycle module decides which object types raise a signal, and
+                // reads a window's compositor id where the signal carries it.
+                let raised = {
                     let shared = self.shared.borrow();
                     shared
                         .mirror
                         .get(&object)
-                        .filter(|view| view.ty().namespace() == "gnoblin" && view.ty().name() == "window")
-                        .and_then(|view| match view.properties().get("id") {
-                            Some(ModelValue::Uint(id)) => Some(*id),
-                            _ => None,
-                        })
+                        .and_then(|view| lifecycle::changed(object, view, property))
                 };
-                let Some(window_id) = identity else {
-                    return;
-                };
-                let changed = Fields::from([
-                    ("window_id".to_owned(), ModelValue::Uint(window_id)),
-                    ("changed".to_owned(), ModelValue::List(vec![ModelValue::Text(property)])),
-                    ("window".to_owned(), ModelValue::Object(object)),
-                ]);
-                self.emit_signal(object, "changed", &changed, handlers);
+                if let Some((signal, fields)) = raised {
+                    self.emit_signal(object, signal, &fields, handlers);
+                }
             }
             Observation::Signalled {
                 object, signal, fields, ..
@@ -949,6 +939,15 @@ impl<T: Transport + 'static> Host<T> {
                     .mirror
                     .get(&object)
                     .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
+                let removed = self
+                    .shared
+                    .borrow()
+                    .mirror
+                    .get(&object)
+                    .and_then(|view| lifecycle::closed(object, view));
+                if let Some((signal, fields)) = removed {
+                    self.emit_signal(object, signal, &fields, handlers);
+                }
                 if let Some((namespace, object_type)) = kind {
                     self.run_signal(
                         Emission {

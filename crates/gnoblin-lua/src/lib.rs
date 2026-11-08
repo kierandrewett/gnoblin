@@ -122,6 +122,7 @@ mod extensions;
 mod glob;
 mod host;
 pub mod layout;
+mod lifecycle;
 mod loader;
 #[cfg(test)]
 #[path = "../lua_names.rs"]
