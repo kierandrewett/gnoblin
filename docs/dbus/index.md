@@ -27,3 +27,9 @@ preferences do not change the fixed threshold.
 
 The service also implements `org.freedesktop.ScreenSaver` for inhibition and
 lock requests. See the [screen saver interface reference](/dbus/screensaver).
+
+## `org.gnoblin.Privacy`
+
+The privacy service is available at `/org/gnoblin/Privacy`. It reports whether a
+microphone or a camera is in use, from the PipeWire graph. See the
+[privacy interface reference](/dbus/privacy).

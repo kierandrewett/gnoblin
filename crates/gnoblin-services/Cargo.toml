@@ -30,6 +30,8 @@ gnoblin-service-polkit = { path = "../gnoblin-service-polkit" }
 gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
 # The SessionIdle agent: served on the ScreenSaver connection, fed from the idle object.
 gnoblin-service-sessionidle = { path = "../gnoblin-service-sessionidle" }
+# The Privacy agent: the role serves it on the session bus, and its PipeWire thread reads capture-node state.
+gnoblin-service-privacy = { path = "../gnoblin-service-privacy" }
 # The GeoClue agent: the services role links it, and the session binary reaches it through there.
 gnoblin-service-location = { path = "../gnoblin-service-location" }
 # The Secret Service agent: the role serves it when `keyring.enabled` is true.

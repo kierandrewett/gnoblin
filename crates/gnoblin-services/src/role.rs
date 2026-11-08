@@ -1,8 +1,7 @@
 //! The services role: the D-Bus agents, in their own process.
 //!
 //! Design/rust-compositor.md, "Process model": the services role owns "polkit agent,
-//! GeoClue agent, passphrase prompts (`prompt.secret`), PipeWire privacy monitor (not ported to Rust yet, see
-//! `design/services-status.md`),
+//! GeoClue agent, passphrase prompts (`prompt.secret`), PipeWire privacy monitor,
 //! `org.freedesktop.ScreenSaver`, idle, inhibit", it is restartable, and "requests fail
 //! closed while it is down". This module is the role `gnoblin --role services` plays:
 //!
@@ -55,6 +54,7 @@ use gnoblin_service_polkit::{AGENT_PATH, Polkit};
 use gnoblin_types::Version;
 use zbus::Connection;
 
+use gnoblin_service_privacy::Privacy;
 use gnoblin_service_screensaver::ScreenSaver;
 use gnoblin_service_sessionidle::SessionIdle;
 
@@ -174,6 +174,7 @@ impl Role {
             polkit = agents.polkit.describe(),
             screensaver = agents.screensaver.is_some(),
             session_idle = agents.session_idle.is_some(),
+            privacy = agents.privacy.is_some(),
             linked = agents.linked.len(),
             "serving"
         );
@@ -201,6 +202,9 @@ struct Agents {
     screensaver: Option<(ScreenSaver, Connection)>,
     /// Served on the ScreenSaver connection, so it exists only when that agent does.
     session_idle: Option<SessionIdle>,
+    /// Served on the session bus by its own connection. Held so the object and its
+    /// PipeWire thread live as long as the role.
+    privacy: Option<Privacy>,
     linked: Vec<Box<dyn LinkedAgent>>,
 }
 
@@ -217,10 +221,12 @@ impl Agents {
         let session_idle = screensaver
             .as_ref()
             .and_then(|(_, connection)| gnoblin_service_sessionidle::serve(host, connection));
+        let privacy = gnoblin_service_privacy::start();
         Agents {
             polkit: start_polkit(host, tick),
             screensaver,
             session_idle,
+            privacy,
             linked: start_linked(host, tick, linked),
         }
     }

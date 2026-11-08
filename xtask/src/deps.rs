@@ -278,6 +278,10 @@ const RULES: &[Rule] = &[
         id: "service-sessionidle-isolation",
         check: service_sessionidle_isolation,
     },
+    Rule {
+        id: "service-privacy-isolation",
+        check: service_privacy_isolation,
+    },
 ];
 
 /// One broken edge.
@@ -693,9 +697,17 @@ const PIPEWIRE_EXPORT_ALLOWED: &[&str] = &[
     "pipewire",
 ];
 
-/// Only `gnoblin-wayland` may name the PipeWire export, and only the export may link
-/// `pipewire`. The PipeWire client is a large stack, so one crate owns it, and the export
-/// names only the types listed in [`PIPEWIRE_EXPORT_ALLOWED`].
+/// Crates allowed to link `pipewire` directly. `gnoblin-pipewire-export` is the frame export;
+/// `gnoblin-service-privacy` reads capture-node state from the registry. Each is listed here
+/// so that a new PipeWire user is a reviewed change to this rule, not an accident.
+const PIPEWIRE_LINKERS: &[&str] = &["gnoblin-pipewire-export", "gnoblin-service-privacy"];
+
+/// Only `gnoblin-wayland` may name the PipeWire export, and only the export and the privacy
+/// agent may link `pipewire`. The PipeWire client is a large stack, so it stays in as few
+/// crates as possible: the export names only the types listed in [`PIPEWIRE_EXPORT_ALLOWED`],
+/// and the privacy agent is the one other crate that reads the graph itself, because its
+/// question (is a capture node running right now) is answered by the registry and not by
+/// the frame export. Its only other link to the rest of the workspace is the log crate.
 fn pipewire_export_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if package.name == "gnoblin-pipewire-export" {
         if dep.name == "pipewire" || dep.name.starts_with("gnoblin-") {
@@ -715,10 +727,11 @@ fn pipewire_export_isolation(package: &Package, dep: &Dep) -> Option<String> {
             package.name
         ));
     }
-    if dep.name == "pipewire" && dep.kind == DepKind::Normal {
+    if dep.name == "pipewire" && dep.kind == DepKind::Normal && !PIPEWIRE_LINKERS.contains(&package.name.as_str()) {
         return Some(format!(
-            "`{}` may not link `pipewire`; only `gnoblin-pipewire-export` does",
-            package.name
+            "`{}` may not link `pipewire`; only {} do",
+            package.name,
+            PIPEWIRE_LINKERS.join(", ")
         ));
     }
     None
@@ -907,6 +920,21 @@ const SESSION_IDLE_CRATE: &str = "gnoblin-service-sessionidle";
 const SESSION_IDLE_MODEL: &str = "gnoblin-model";
 const SESSION_IDLE_CORE: &str = "gnoblin-service-core";
 const SESSION_IDLE_TESTKIT: &str = "gnoblin-service-testkit";
+
+/// The Privacy agent reads the PipeWire registry itself, so it links `pipewire` (see
+/// [`PIPEWIRE_LINKERS`]) and names no other workspace crate but the log facade. It cannot reach
+/// the compositor's graph or any other agent's state.
+fn service_privacy_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != PRIVACY_CRATE || !is_workspace_crate(&dep.name) || dep.name == LOG_CRATE {
+        return None;
+    }
+    Some(format!(
+        "`{PRIVACY_CRATE}` may depend only on `{LOG_CRATE}` among workspace crates, not `{}`",
+        dep.name
+    ))
+}
+
+const PRIVACY_CRATE: &str = "gnoblin-service-privacy";
 
 const KEYRING_HANDOFF_CRATE: &str = "gnoblin-keyring-handoff";
 const PAM_KEYRING_CRATE: &str = "pam-gnoblin-keyring";
@@ -1400,6 +1428,38 @@ mod tests {
                     .to_owned(),
             ]
         );
+    }
+
+    /// The privacy agent reads the PipeWire graph itself, so it is the second crate allowed to
+    /// link pipewire. It names no other workspace crate but the log facade: the services role
+    /// holds it, and a reverse edge would make the agent reach the role's other agents.
+    #[test]
+    fn the_privacy_agent_names_only_the_log_facade_and_links_pipewire() {
+        assert_eq!(
+            violations(&[
+                (
+                    "gnoblin-service-privacy",
+                    &["futures-lite", "gnoblin-log", "pipewire", "zbus"]
+                ),
+                ("gnoblin-services", &["gnoblin-service-privacy"]),
+            ]),
+            Vec::<String>::new()
+        );
+        let found = violations(&[("gnoblin-service-privacy", &["gnoblin-service-core"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("gnoblin-service-privacy -> gnoblin-service-core [service-privacy-isolation]: "),
+            "{found:?}"
+        );
+    }
+
+    /// Only the PipeWire export and the privacy agent link pipewire; the services role reaches
+    /// the graph through the agent, not directly.
+    #[test]
+    fn pipewire_is_linked_only_by_the_export_and_the_privacy_agent() {
+        let found = violations(&[("gnoblin-services", &["pipewire"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].starts_with("gnoblin-services -> pipewire ["), "{found:?}");
     }
 
     /// A test target may link a sibling engine to run it; a shipped dependency may not.

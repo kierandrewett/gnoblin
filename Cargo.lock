@@ -1919,6 +1919,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-service-privacy"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-log",
+ "pipewire",
+ "zbus",
+]
+
+[[package]]
 name = "gnoblin-service-screensaver"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1962,6 +1972,7 @@ dependencies = [
  "gnoblin-service-keyring",
  "gnoblin-service-location",
  "gnoblin-service-polkit",
+ "gnoblin-service-privacy",
  "gnoblin-service-screensaver",
  "gnoblin-service-sessionidle",
  "gnoblin-service-testkit",

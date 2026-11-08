@@ -1590,3 +1590,9 @@ left = "gnoblin-model::RequestOutcome"
 right = "gnoblin-service-keyring::PromptOutcome"
 kind = "same-shape"
 reason = "service-keyring-isolation forbids the keyring naming gnoblin-model or gnoblin-types, so the keyring owns the prompt outcome its trait carries; gnoblin-services maps it onto RequestOutcome in prompt_outcome"
+
+[[allow]]
+left = "gnoblin-input::Activity"
+right = "gnoblin-service-privacy::Activity"
+kind = "same-name"
+reason = "input's Activity counts input events since session start; the privacy Activity is the published PipeWire microphone and camera state; the name is shared, the meaning is not"

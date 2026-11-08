@@ -1,5 +1,5 @@
-//! D-Bus agents: polkit, the built-in Secret Service, inhibit and idle. ScreenSaver is
-//! `gnoblin-service-screensaver` and GeoClue is `gnoblin-service-location`.
+//! D-Bus agents: polkit, the built-in Secret Service, inhibit, idle and the PipeWire privacy
+//! monitor. ScreenSaver is `gnoblin-service-screensaver` and GeoClue is `gnoblin-service-location`.
 //!
 //! This is the services role of `design/rust-compositor.md` ("Providers and slots")
 //! as an **IPC client**. It depends on `gnoblin-client` and the request vocabulary in

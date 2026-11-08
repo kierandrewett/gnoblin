@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-service-privacy"
+description = "The Privacy agent: org.gnoblin.Privacy, microphone and camera activity from PipeWire."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The PipeWire graph the monitor reads: the registry, capture nodes and their run state.
+pipewire = { version = "0.10", features = ["v0_3_34"] }
+# The interface is an object on the session bus, served through zbus.
+zbus.workspace = true
+# One blocking wait per bus signal: the services role has no async runtime of its own.
+futures-lite.workspace = true
+# Every lost connection and every refused emit is logged once.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[lints]
+workspace = true
