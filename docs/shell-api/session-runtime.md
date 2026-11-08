@@ -42,6 +42,8 @@ logind accepts the request. The Lua runtime keeps running after a suspend or
 hibernate. For a reboot or power off, logind ends the session after it
 accepts.
 
+Any sleep, including `systemctl suspend` and hibernate, locks the session first. On logind's `PrepareForSleep(true)` Gnoblin locks while it still holds its sleep inhibitor, then releases the inhibitor so the sleep goes ahead. A refused lock still releases the inhibitor, so a refusal never blocks the sleep.
+
 A refused or failed request ends the operation with an error:
 
 - `denied`: the capability answer is `no`, or polkit denies the action (`AccessDenied`).

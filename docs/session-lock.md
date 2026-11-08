@@ -38,8 +38,10 @@ These sources send the request:
 - `gnoblinctl session lock`
 - `gnoblin.session.lock()` in the Lua configuration
 - `org.freedesktop.ScreenSaver.Lock`, or `SetActive(true)`, on the session bus
-- `loginctl lock-session` for your graphical session, and a lid or idle policy
-  that asks logind to lock it
+- `loginctl lock-session` for your graphical session. Gnoblin locks when logind
+  asks for the session lock, and locks before a suspend or hibernate: logind's
+  `PrepareForSleep(true)` makes the lock happen before the sleep inhibitor is
+  released.
 
 A request does not prove the session is locked. The call reports whether a
 shell received the request. Read `lock_state` in `gnoblinctl status` or
@@ -48,7 +50,7 @@ shell received the request. Read `lock_state` in `gnoblinctl status` or
 If no shell is subscribed, the call fails and says so. `gnoblinctl` exits with
 an error, and `ScreenSaver.Lock` returns the error
 `no session-lock client is subscribed to lock requests`. A logind request writes
-the same message to the journal. Gnoblin leaves the session unlocked in this
+a warning with the same reason to the journal. Gnoblin leaves the session unlocked in this
 case.
 
 A request while the session is already locked succeeds and sends no second

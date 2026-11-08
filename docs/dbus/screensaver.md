@@ -36,6 +36,8 @@ busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.
 
 When a caller leaves the bus, every hold it made is released, so a player that exits without calling `UnInhibit` does not keep the screen awake.
 
+Gnoblin also holds a logind sleep inhibitor. On `PrepareForSleep(true)` (suspend or hibernate) it locks the session while it still holds the inhibitor, then releases it. On resume it takes the inhibitor again without locking. A lock on the session's own logind object (`loginctl lock-session`) locks the session the same way as `Lock`.
+
 ## Request a lock
 
 ```sh

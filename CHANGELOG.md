@@ -20,6 +20,10 @@
   are captured by default, and the services role only with `GNOBLIN_LOG_RAW_SERVICES=1`; other children are read and
   discarded. Each line is scrubbed of secret-looking text on a best-effort basis that cannot recognise every secret, see
   `docs/guides/logging.md`.
+- The screensaver service watches logind. A `PrepareForSleep(true)` (suspend or hibernate) locks the session while the
+  sleep inhibitor is still held, then releases the inhibitor. A `Lock` signal on the session's own logind object locks
+  the session. The service takes the inhibitor again on resume. A logind lock on another session is ignored. Without a
+  system bus the watch is skipped.
 
 ### Changed
 
