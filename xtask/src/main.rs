@@ -6,6 +6,7 @@ mod allow;
 mod compat_report;
 mod deps;
 mod dist;
+mod docs_parity;
 mod dupes;
 mod gen_proto;
 mod layout;
@@ -26,6 +27,7 @@ subcommands:
   dupes --warn       the same report, printing every hit and exiting zero
   layout             fail on a Rust string literal that names the retired source-data tree
   logging            fail on a direct logging-crate dependency or a stock print in library code
+  docs-parity        fail on a documented gnoblin name the implemented surface lacks, unless allow-listed
   compat-report --json  the same report as JSON
   dist install|uninstall --prefix P [--destdir D] [--profile NAME]
                      install or remove the session tree; see xtask/src/dist.rs";
@@ -42,13 +44,14 @@ fn main() -> ExitCode {
         ("gen-proto", []) => gen_proto::run(),
         ("layout", []) => layout::run(),
         ("logging", []) => logging::run(),
+        ("docs-parity", []) => docs_parity::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
         ("dupes", []) => dupes::run(true),
         ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
         ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
         ("dist", _) => dist::run(&rest),
-        ("deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout", _) => {
+        ("deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity", _) => {
             usage_error("unexpected argument")
         }
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),

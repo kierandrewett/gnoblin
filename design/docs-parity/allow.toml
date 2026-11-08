@@ -1,0 +1,1377 @@
+# Documented names the implemented surface does not provide yet.
+# Each entry: name, doc page, reason, owner-slice (an S-number from design/runtime-surface-plan.md, or `docs wrong`).
+# The docs-parity gate fails on an unlisted gap and on a stale entry. Burn-down: design/docs-parity/status.md.
+
+[[allow]]
+name = ":activate"
+doc = "docs/shell-api/workspaces.md"
+reason = "workspaces.md lists this as not available; the gate matches the mention, not a claim"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":begin_move"
+doc = "docs/shell-api/grants.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":begin_move"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":begin_resize"
+doc = "docs/shell-api/grants.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":begin_resize"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":commit"
+doc = "docs/shell-api/window-snapping.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":end_session"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":finish"
+doc = "docs/events/launch-portal.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = ":finish"
+doc = "docs/shell-api/launch-feedback.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = ":finished"
+doc = "docs/shell-api/privacy.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":insert_text"
+doc = "docs/shell-api/text-insertion.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":inspect_animation"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":inspect_animation"
+doc = "docs/shell-api/layer-surfaces.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":narrow"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":narrow"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":offer_targets"
+doc = "docs/shell-api/window-snapping.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":pause"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":play"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":play"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":preview_animation"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":preview_animation"
+doc = "docs/shell-api/layer-surfaces.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":property"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":release"
+doc = "docs/shell-api/input-grab.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":rename"
+doc = "docs/shell-api/workspaces.md"
+reason = "workspaces.md lists this as not available; the gate matches the mention, not a claim"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":renew"
+doc = "docs/shell-api/input-grab.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":reset_visuals"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":restore_or_minimize"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":revoke"
+doc = "docs/shell-api/input.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":revoke"
+doc = "docs/shell-api/overrides.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":revoke"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = ":seek"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":select"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":set_above"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":set_effect"
+doc = "docs/shell-api/overrides.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_effect"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_offset"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_opacity"
+doc = "docs/shell-api/overrides.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_opacity"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_opacity"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_rotation"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_scale"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":set_sticky"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":step"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":stop"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = ":thumbnail"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":unbind"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.animation"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.animation"
+doc = "docs/shell-api/index.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.animation.finished"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.animation.started"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.animations"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.animations.get"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.animations.list"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.appearance.color"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.appearance.color"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.appearance.color_scheme"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.appearance.color_scheme"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.auth.finished"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.auth.message"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.auth.prompt"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.auth.requested"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.capabilities"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.capabilities.list"
+doc = "docs/shell-api/layer-surfaces.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.capability.changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.capability.changed"
+doc = "docs/events/session.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.capability.changed"
+doc = "docs/shell-api/layer-surfaces.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.config.reloaded"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.config.reloaded"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.configure.keyring"
+doc = "docs/shell-api/passphrase-prompts.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.configure.shortcuts"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.ease"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.focus.history"
+doc = "docs/shell-api/find.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.focus.history"
+doc = "docs/shell-api/focus-activation.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.focus.history"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.focus.policy"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.focus.policy"
+doc = "docs/shell-api/focus-activation.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.focus.policy"
+doc = "docs/shell-api/overrides.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.focus.policy"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; Window method set, present and focus (S4)"
+owner-slice = "S4"
+
+[[allow]]
+name = "gnoblin.idle.watch"
+doc = "docs/shell-api/idle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input"
+doc = "docs/shell-api/grants.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.current_source"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.device"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.device"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.devices"
+doc = "docs/shell-api/input-handlers.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.devices"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.devices"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.devices"
+doc = "docs/shell-api/tablet-pad-help.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.gesture"
+doc = "docs/events/input-shortcuts.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.gesture"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.gesture"
+doc = "docs/events/mutter.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.grab"
+doc = "docs/shell-api/input-grab.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.input.grab"
+doc = "docs/shell-api/input.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.input.grab.closed"
+doc = "docs/shell-api/input-grab.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.input.grab.key"
+doc = "docs/shell-api/input-grab.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.input.on"
+doc = "docs/shell-api/grants.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.on"
+doc = "docs/shell-api/input-handlers.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.on"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.on"
+doc = "docs/shell-api/types.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.orientation"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.orientation"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.orientation_lock"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.orientation_lock"
+doc = "docs/shell-api/overrides.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.pad"
+doc = "docs/events/input-shortcuts.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.pad"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.pad"
+doc = "docs/shell-api/tablet-pad-help.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.source"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.source"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.sources"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.sources"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.text_target"
+doc = "docs/shell-api/grants.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.text_target"
+doc = "docs/shell-api/text-insertion.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.launch.changed"
+doc = "docs/events/launch-portal.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.launch.changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.launch.changed"
+doc = "docs/shell-api/launch-feedback.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.launches"
+doc = "docs/shell-api/launch-feedback.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.launches.begin"
+doc = "docs/events/launch-portal.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.launches.begin"
+doc = "docs/shell-api/launch-feedback.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.launches.list"
+doc = "docs/shell-api/launch-feedback.md"
+reason = "documented, not implemented; Process object and launch attribution (S5)"
+owner-slice = "S5"
+
+[[allow]]
+name = "gnoblin.layer.changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.layer.created"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.layer.removed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.layers"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.layers.animation_policy"
+doc = "docs/shell-api/layer-surfaces.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.layers.list"
+doc = "docs/shell-api/find.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.layers.list"
+doc = "docs/shell-api/layer-surfaces.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.lerp"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.listeners"
+doc = "docs/events/listen-all.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.location.authorization"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.location.authorization"
+doc = "docs/events/session.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.location.authorization"
+doc = "docs/shell-api/privacy.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.operation.completed"
+doc = "docs/events/input-shortcuts.md"
+reason = "documented, not implemented; Timers and Operation combinators (S1)"
+owner-slice = "S1"
+
+[[allow]]
+name = "gnoblin.operation.completed"
+doc = "docs/events/launch-portal.md"
+reason = "documented, not implemented; Timers and Operation combinators (S1)"
+owner-slice = "S1"
+
+[[allow]]
+name = "gnoblin.operation.completed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Timers and Operation combinators (S1)"
+owner-slice = "S1"
+
+[[allow]]
+name = "gnoblin.osd.requested"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.osd.requested"
+doc = "docs/shell-api/windows.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.output.added"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.output.added"
+doc = "docs/shell-api/outputs.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.output.changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.output.changed"
+doc = "docs/shell-api/outputs.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.output.removed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.output.removed"
+doc = "docs/shell-api/outputs.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.outputs.renderer"
+doc = "docs/shell-api/outputs.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.privacy.changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.privacy.changed"
+doc = "docs/events/session.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.privacy.changed"
+doc = "docs/shell-api/privacy.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.privacy.state"
+doc = "docs/shell-api/privacy.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.privacy.stop_recording"
+doc = "docs/shell-api/privacy.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.privacy.stop_sharing"
+doc = "docs/shell-api/privacy.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.runtime.reload_config"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.runtime.status"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.runtime.status"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.session.activity"
+doc = "docs/shell-api/idle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.activity"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.hibernate"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock"
+doc = "docs/events/session.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock"
+doc = "docs/shell-api/idle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.logout"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.session.poweroff"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.reboot"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.state"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.status"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.session.suspend"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.settings.compositor.blur"
+doc = "docs/shell-api/index.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.settings"
+doc = "docs/shell-api/index.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.settings"
+doc = "docs/shell-api/overrides.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.settings.override"
+doc = "docs/shell-api/index.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.settings.override"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.settings.override"
+doc = "docs/shell-api/overrides.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/events/input-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/shell-api/focus-activation.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/shell-api/processes.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/shell-api/text-insertion.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.activated"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.binding"
+doc = "docs/events/input-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.binding"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.binding"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.binding"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.activated"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.activated"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.ended"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.ended"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.key"
+doc = "docs/events/input-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.key"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.key"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.session.key"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.actions"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.bind"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.bind"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.capture"
+doc = "docs/shell-api/input-grab.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.capture"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.configured"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcuts.list"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.snapshot"
+doc = "docs/shell-api/index.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.tween"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
+owner-slice = "S7"
+
+[[allow]]
+name = "gnoblin.version"
+doc = "docs/shell-api/errors.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.version"
+doc = "docs/shell-api/index.md"
+reason = "documented, not implemented; gnoblinctl verbs (S10)"
+owner-slice = "S10"
+
+[[allow]]
+name = "gnoblin.window.activation"
+doc = "docs/events/desktop-state.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.activation"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.attention"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/focus-activation.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/processes.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/tweens.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/types.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.created"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.drag.started"
+doc = "docs/shell-api/window-snapping.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.focused"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.focused"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.menu"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.menu"
+doc = "docs/shell-api/windows.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.window.unfocused"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.windows.snap_context"
+doc = "docs/shell-api/grants.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.windows.snap_context"
+doc = "docs/shell-api/window-snapping.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.workspace.activated"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspace.activated"
+doc = "docs/shell-api/errors.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspace.changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspace.created"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspace.removed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspace.renamed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspace.window"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.workspaces.active"
+doc = "docs/shell-api/workspaces.md"
+reason = "workspaces.md lists this as not available; the gate matches the mention, not a claim"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.workspaces.next"
+doc = "docs/shell-api/errors.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
