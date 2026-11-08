@@ -26,6 +26,7 @@ use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputSource, Ou
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::OutputId;
 use gnoblin_wayland::{ClientRole, Config, ControlHandle, LoopError, Server};
+use gnoblin_wm::{NewWindowFocus, WmOptions};
 use smithay::reexports::calloop::LoopHandle;
 use wayland_client::DispatchError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -130,35 +131,66 @@ impl Session {
     /// the test connects is recorded with the role. That is the same seam the
     /// composition root uses: promise, then start the renderer or the session.
     pub fn start(role: Option<ClientRole>) -> Self {
-        Self::boot(role, true, gnoblin_wayland::MonitorSettings::default())
+        Self::boot(
+            role,
+            true,
+            gnoblin_wayland::MonitorSettings::default(),
+            WmOptions::default(),
+        )
+    }
+
+    /// A session where a new window takes focus, as `focus_new_windows = allow` configures it.
+    /// The default session refuses that, which is the documented default.
+    pub fn start_allowing_focus(role: Option<ClientRole>) -> Self {
+        let wm = WmOptions {
+            new_window_focus: NewWindowFocus::Allow,
+            ..WmOptions::default()
+        };
+        Self::boot(role, true, gnoblin_wayland::MonitorSettings::default(), wm)
     }
 
     /// A session whose `monitors` table sets `monitors`, as the composition root reads it.
     pub fn start_with_monitors(role: Option<ClientRole>, monitors: gnoblin_wayland::MonitorSettings) -> Self {
-        Self::boot(role, true, monitors)
+        Self::boot(role, true, monitors, WmOptions::default())
     }
 
     /// A session whose backend reports no gamma or power control, so neither protocol
     /// is advertised.
     pub fn start_without_output_controls() -> Self {
-        Self::boot(None, false, gnoblin_wayland::MonitorSettings::default())
+        Self::boot(
+            None,
+            false,
+            gnoblin_wayland::MonitorSettings::default(),
+            WmOptions::default(),
+        )
     }
 
     /// A session whose every workspace runs the master-stack layout, so a mapped window is
     /// placed by the layout rather than where it asks to be.
     pub fn start_tiled(role: Option<ClientRole>) -> Self {
-        let mut session = Self::boot(role, true, gnoblin_wayland::MonitorSettings::default());
+        let mut session = Self::boot(
+            role,
+            true,
+            gnoblin_wayland::MonitorSettings::default(),
+            WmOptions::default(),
+        );
         session.server.install_layouts(Rc::new(master::MasterLayouts));
         session
     }
 
     /// Starts the session; `controls` says whether the headless backend keeps its controls.
-    fn boot(role: Option<ClientRole>, controls: bool, monitors: gnoblin_wayland::MonitorSettings) -> Self {
+    fn boot(
+        role: Option<ClientRole>,
+        controls: bool,
+        monitors: gnoblin_wayland::MonitorSettings,
+        wm: WmOptions,
+    ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
             monitors,
+            wm,
             ..Config::default()
         };
         let headless = Headless::new();
