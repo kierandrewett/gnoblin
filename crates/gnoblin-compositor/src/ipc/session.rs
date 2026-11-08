@@ -41,7 +41,9 @@ use std::fmt;
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
 use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
-use gnoblin_wayland::{EffectSpec, ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot};
+use gnoblin_wayland::{
+    EffectSpec, LockState, ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot, lock_state_name,
+};
 
 use crate::log;
 
@@ -112,6 +114,18 @@ mod member {
     pub const IDLE_MS: &str = "idle_ms";
     /// The `idle` object's inhibitors property: how many holds keep the session awake.
     pub const INHIBITORS: &str = "inhibitors";
+    /// The `session` object's lock_state property: the lock's state as a name.
+    pub const LOCK_STATE: &str = "lock_state";
+    /// The `session` object's lock_available property: whether a lock state has been published.
+    pub const LOCK_AVAILABLE: &str = "lock_available";
+    /// The `session` object's lock_revision property: how many lock state changes were published.
+    pub const LOCK_REVISION: &str = "lock_revision";
+    /// The `session` object's lock_state_changed signal, sent once per change of lock state.
+    pub const LOCK_STATE_CHANGED: &str = "lock_state_changed";
+    /// The lock_state_changed signal's state field: the new lock state's name.
+    pub const STATE: &str = "state";
+    /// The lock_state_changed signal's revision field: the revision the change published.
+    pub const REVISION: &str = "revision";
 }
 
 /// What the graph last published for one workspace.
@@ -189,6 +203,11 @@ pub struct SessionSync {
     /// How many bells the last snapshot counted, so `apply` raises the signal once per
     /// ring rather than once per snapshot.
     bells: u64,
+    /// The lock state last published, so a snapshot that repeats it raises nothing. None
+    /// until the first snapshot.
+    lock_published: Option<LockState>,
+    /// How many lock state changes have been published: the `session` object's lock_revision.
+    lock_revision: u64,
     /// The sequence of the last menu request emitted, so each request is raised once.
     menu_seq: u64,
     /// Last published state per window, kept so each new snapshot is diffed against it and
@@ -213,7 +232,17 @@ impl SessionSync {
         // The schema declares one property per slot, so the object cannot be created without
         // them: the plan's default providers are what a session publishes before anyone claims
         // anything, which is also what makes "nobody provides this slot yet" readable.
-        let mut properties = Fields::from([(member::VERSION.to_owned(), Value::Text(version.to_string()))]);
+        // The lock properties start at "no state published yet": unavailable, at revision zero.
+        // The schema needs a value for `lock_state`, so it starts at the state a lock starts in.
+        let mut properties = Fields::from([
+            (member::VERSION.to_owned(), Value::Text(version.to_string())),
+            (
+                member::LOCK_STATE.to_owned(),
+                Value::Text(lock_state_name(LockState::Unlocked).to_owned()),
+            ),
+            (member::LOCK_AVAILABLE.to_owned(), Value::Bool(false)),
+            (member::LOCK_REVISION.to_owned(), Value::Uint(0)),
+        ]);
         properties.extend(gnoblin_model::Slots::new().fields());
         let session = graph.create(TypeKey::gnoblin("session"), properties)?;
         let lock_properties = Fields::from([(member::LOCKED.to_owned(), Value::Bool(false))]);
@@ -234,6 +263,8 @@ impl SessionSync {
             idle,
             settings,
             bells: 0,
+            lock_published: None,
+            lock_revision: 0,
             menu_seq: 0,
             windows: BTreeMap::new(),
             workspaces: BTreeMap::new(),
@@ -373,6 +404,7 @@ impl SessionSync {
         self.apply_outputs(snapshot, &mut failures);
         self.apply_workspaces(snapshot, &mut failures);
         self.publish_lock(snapshot.lock_active());
+        self.publish_lock_state(snapshot.lock_state());
         self.publish_idle(snapshot.idle_ms(), snapshot.inhibitors());
         if failures.is_empty() {
             Ok(())
@@ -387,6 +419,30 @@ impl SessionSync {
     /// the confirmation a `lock` call waits for: that is the operation's own outcome.
     fn publish_lock(&mut self, locked: bool) {
         self.set_if_changed(self.lock, member::LOCKED, Value::Bool(locked));
+    }
+
+    /// Publishes the lock state the snapshot carries on the `session` object, and raises
+    /// `lock_state_changed` once per change with the revision it published.
+    ///
+    /// A state already published raises nothing, so a repeat snapshot is quiet. The revision
+    /// is the count of changes, which lets a reader that missed a signal see the gap.
+    fn publish_lock_state(&mut self, state: LockState) {
+        if self.lock_published == Some(state) {
+            return;
+        }
+        self.lock_published = Some(state);
+        self.lock_revision = self.lock_revision.saturating_add(1);
+        let name = lock_state_name(state);
+        self.set_if_changed(self.session, member::LOCK_AVAILABLE, Value::Bool(true));
+        self.set_if_changed(self.session, member::LOCK_STATE, Value::Text(name.to_owned()));
+        self.set_if_changed(self.session, member::LOCK_REVISION, Value::Uint(self.lock_revision));
+        let fields = Fields::from([
+            (member::STATE.to_owned(), Value::Text(name.to_owned())),
+            (member::REVISION.to_owned(), Value::Uint(self.lock_revision)),
+        ]);
+        if let Err(error) = self.graph.signal(self.session, member::LOCK_STATE_CHANGED, fields) {
+            log::error!(area = "ipc", %error, "the session object declares no lock_state_changed signal");
+        }
     }
 
     /// Writes one property only when its value differs, so a repeat snapshot publishes nothing.
@@ -1120,6 +1176,84 @@ mod tests {
         state = state.with_bells(3);
         store.apply(&state).expect("applied");
         assert_eq!(store.bells(), 3, "a gap is caught up, not dropped");
+    }
+
+    /// The state a `lock_state_changed` signal carried, with its revision, in the order raised.
+    fn lock_changes(observations: &[Observation]) -> Vec<(String, u64)> {
+        observations
+            .iter()
+            .filter_map(|observation| match observation {
+                Observation::Signalled { signal, fields, .. } if signal == "lock_state_changed" => {
+                    match (fields.get("state"), fields.get("revision")) {
+                        (Some(Value::Text(state)), Some(Value::Uint(revision))) => Some((state.clone(), *revision)),
+                        other => panic!("the lock change carries a state and a revision, not {other:?}"),
+                    }
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn session_property(store: &SessionSync, property: &str) -> Value {
+        store
+            .graph()
+            .object(store.session())
+            .and_then(|live| live.property(property))
+            .cloned()
+            .unwrap_or_else(|| panic!("the session object has no `{property}`"))
+    }
+
+    /// The session publishes its lock state with a revision that advances on each change,
+    /// and announces each change once with the revision it published. Before the first
+    /// snapshot the revision is zero and the state is not available.
+    #[test]
+    fn the_lock_state_is_published_with_a_revision() {
+        use gnoblin_wayland::LockState;
+
+        let mut store = store();
+        assert_eq!(session_property(&store, "lock_available"), Value::Bool(false));
+        assert_eq!(session_property(&store, "lock_revision"), Value::Uint(0));
+
+        let subscription = store.subscribe(Filter::All);
+        let unlocked = snapshot(Vec::new(), None);
+        store.apply(&unlocked).expect("applied");
+        assert_eq!(session_property(&store, "lock_available"), Value::Bool(true));
+        assert_eq!(
+            session_property(&store, "lock_state"),
+            Value::Text("unlocked".to_owned())
+        );
+        assert_eq!(session_property(&store, "lock_revision"), Value::Uint(1));
+        assert_eq!(
+            lock_changes(&drained(&mut store, &subscription)),
+            vec![("unlocked".to_owned(), 1)]
+        );
+
+        store.apply(&unlocked).expect("applied again");
+        assert_eq!(
+            lock_changes(&drained(&mut store, &subscription)),
+            Vec::new(),
+            "an unchanged state raises nothing"
+        );
+        assert_eq!(session_property(&store, "lock_revision"), Value::Uint(1));
+
+        let states = [
+            (LockState::Locking, "covering"),
+            (LockState::Locked, "locked"),
+            (LockState::Unlocking, "covering"),
+            (LockState::CoverFailed, "failsafe"),
+            (LockState::Unlocked, "unlocked"),
+        ];
+        for (index, (state, name)) in states.into_iter().enumerate() {
+            let revision = u64::try_from(index).expect("a small index") + 2;
+            store.apply(&unlocked.clone().with_lock_state(state)).expect("applied");
+            assert_eq!(
+                lock_changes(&drained(&mut store, &subscription)),
+                vec![(name.to_owned(), revision)],
+                "{state:?} is announced as {name} at revision {revision}"
+            );
+            assert_eq!(session_property(&store, "lock_state"), Value::Text(name.to_owned()));
+            assert_eq!(session_property(&store, "lock_revision"), Value::Uint(revision));
+        }
     }
 
     #[test]

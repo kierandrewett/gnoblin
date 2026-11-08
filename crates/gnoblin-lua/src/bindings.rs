@@ -352,8 +352,10 @@ pub(super) fn install<T: Transport + 'static>(
         for spec in namespace.objects {
             install_instance_meta(lua, &shared, namespace.name, spec)?;
             let class = install_class(lua, &shared, namespace.name, spec)?;
-            if spec.name == "request" {
-                crate::requests::install_methods(lua, &shared, &class)?;
+            match spec.name {
+                "request" => crate::requests::install_methods(lua, &shared, &class)?,
+                "session" => crate::session_status::install_methods(lua, &shared, &class)?,
+                _ => {}
             }
             gnoblin.set(spec.name, class)?;
             core.push(spec.name);
@@ -361,6 +363,10 @@ pub(super) fn install<T: Transport + 'static>(
     }
     crate::collections::install(lua, &shared, &gnoblin)?;
     check_installed(&gnoblin, "gnoblin", HOST_MEMBERS, &core)?;
+    for (object, members) in OBJECT_HOST_MEMBERS {
+        let class: Table = gnoblin.get(*object)?;
+        check_installed(&class, &format!("gnoblin.{object}"), members, &["by_id", "all"])?;
+    }
     let mut accepted: Vec<&'static str> = HOST_NAMES.to_vec();
     accepted.extend(core.iter().copied());
 

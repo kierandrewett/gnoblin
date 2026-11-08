@@ -114,7 +114,6 @@ Rust `gnoblin.on` and `gnoblin.once` accept only schema-declared object-model si
 
 ```text
 gnoblin.session.state-changed
-gnoblin.session.lock-state-changed
 gnoblin.runtime.status-changed
 gnoblin.appearance.color-scheme-changed
 gnoblin.shortcut.activated

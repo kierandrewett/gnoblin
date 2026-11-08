@@ -110,6 +110,9 @@ fn a_client_learns_who_provides_each_slot() {
     let slots = Slots::new();
     let mut properties = slots.fields();
     properties.insert("version".to_owned(), Value::Text("0.2.0".to_owned()));
+    properties.insert("lock_state".to_owned(), Value::Text("unlocked".to_owned()));
+    properties.insert("lock_available".to_owned(), Value::Bool(false));
+    properties.insert("lock_revision".to_owned(), Value::Uint(0));
     let session = server
         .create(TypeKey::gnoblin("session"), properties)
         .expect("the slot fields are the schema's");

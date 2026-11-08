@@ -399,12 +399,9 @@ mod tests {
 
     #[test]
     fn a_hyphenated_event_name_is_read_whole() {
-        let mentions = scan_doc(
-            "docs/events/a.md",
-            "Subscribe to `gnoblin.session.lock-state-changed`.\n",
-        );
+        let mentions = scan_doc("docs/events/a.md", "Subscribe to `gnoblin.session.lock-requested`.\n");
         let names: Vec<_> = mentions.iter().map(|m| m.name.as_str()).collect();
-        assert_eq!(names, ["gnoblin.session.lock-state-changed"], "{mentions:?}");
+        assert_eq!(names, ["gnoblin.session.lock-requested"], "{mentions:?}");
     }
 
     #[test]

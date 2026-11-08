@@ -159,6 +159,18 @@ pub struct ActivationDenial {
     pub reason: String,
 }
 
+/// The name a session publishes for a lock state: `unlocked`, `covering` (a cover is up
+/// or coming down), `locked`, or `failsafe` (the cover is up and no owner can proceed).
+#[must_use]
+pub const fn lock_state_name(state: LockState) -> &'static str {
+    match state {
+        LockState::Unlocked => "unlocked",
+        LockState::Locking | LockState::Unlocking => "covering",
+        LockState::Locked => "locked",
+        LockState::CoverFailed => "failsafe",
+    }
+}
+
 /// What a reader may know about the session lock.
 ///
 /// The answers are the ones the lock announced, so a consumer compares what it
@@ -657,6 +669,14 @@ impl SessionSnapshot {
     #[must_use]
     pub fn with_bells(mut self, bells: u64) -> Self {
         self.bells = bells;
+        self
+    }
+
+    /// The same snapshot with a lock state, for a reader that replays events or a test that
+    /// needs the lock in a given state. A session reports its own lock state.
+    #[must_use]
+    pub fn with_lock_state(mut self, state: LockState) -> Self {
+        self.lock.state = state;
         self
     }
 

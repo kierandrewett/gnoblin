@@ -96,6 +96,45 @@ name = "slot_idle_policy"
 type = "string"
 since = "0.2.0"
 
+# The session's lock state: `unlocked`, `covering` (a cover is up or coming down),
+# `locked`, or `failsafe` (the cover is up and no owner can proceed). It is the lock's
+# state as the session announced it, so a reader that compares it with `lock_state_changed`
+# sees the same states. Read it only while `lock_available` is true: before the first
+# snapshot it holds `unlocked` only because the schema needs a value.
+[[object.property]]
+name = "lock_state"
+type = "string"
+since = "0.2.0"
+
+# Whether the session has published a lock state yet. False until the first snapshot.
+[[object.property]]
+name = "lock_available"
+type = "bool"
+since = "0.2.0"
+
+# How many lock state changes the session has published. A reader that compares it with
+# the revision it last saw knows whether it missed one. Zero until the first snapshot.
+[[object.property]]
+name = "lock_revision"
+type = "uint"
+since = "0.2.0"
+
+# The session's lock state changed. `state` is the new state's name and `revision` is the
+# value `lock_revision` now holds, so a reader that missed one still sees the revision gap.
+[[object.signal]]
+name = "lock_state_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "state"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "revision"
+type = "uint"
+since = "0.2.0"
+
 # A client asked for a member this compositor does not serve. Returned instead of
 # silently ignoring the frame, so an old client reports what it needed.
 [[error]]

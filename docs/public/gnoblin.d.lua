@@ -527,6 +527,9 @@ function request:on(name, callback) end
 ---@field slot_prompt_secret string
 ---@field slot_location_agent string
 ---@field slot_idle_policy string
+---@field lock_state string
+---@field lock_available boolean
+---@field lock_revision integer
 local session = {}
 ---@param name "ready"
 ---@param callback fun(fields: table)
@@ -540,6 +543,14 @@ function session:on(name, callback) end
 ---@param callback fun(fields: { generation: integer })
 ---@return gnoblin.Subscription
 function session:on(name, callback) end
+---@param name "lock_state_changed"
+---@param callback fun(fields: { state: string, revision: integer })
+---@return gnoblin.Subscription
+function session:on(name, callback) end
+--- The session's state as the mirror holds it: `state` (always `running`), `lock_available` and `revision`. `lock_state` is present only while `lock_available` is true. Read on each call, as of the last pump.
+---@return table
+function session:status() end
+
 ---@class gnoblin.sessionCollection
 ---@field by_id fun(id: integer): gnoblin.session|nil
 ---@field all fun(): gnoblin.session[]

@@ -119,6 +119,10 @@ fn session(server: &mut Server) -> ObjectId {
     ] {
         properties.insert(slot.to_owned(), ModelValue::Text("none".to_owned()));
     }
+    // No lock state is published yet: the schema's defaults for the lock properties.
+    properties.insert("lock_state".to_owned(), ModelValue::Text("unlocked".to_owned()));
+    properties.insert("lock_available".to_owned(), ModelValue::Bool(false));
+    properties.insert("lock_revision".to_owned(), ModelValue::Uint(0));
     server
         .create(TypeKey::gnoblin("session"), properties)
         .expect("the session type is in the schema")
@@ -3021,4 +3025,63 @@ assert(string.find(tostring(message), "gnoblin.version takes no arguments", 1, t
     let (_server, mut host) = pair();
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+/// A `ready` handler that raises the status record it read, so the pump report carries the fields
+/// back to the test as an error message.
+const STATUS_REPORT: &str = r#"
+gnoblin.on("gnoblin.session.ready", function()
+    local status = gnoblin.session.status()
+    error(string.format("state=%s available=%s revision=%s lock_state=%s",
+        status.state, tostring(status.lock_available), tostring(status.revision), tostring(status.lock_state)))
+end)
+"#;
+
+#[test]
+fn session_status_omits_the_lock_state_until_the_session_publishes_one() {
+    let config = Config::new("status-unavailable");
+    config.write("init.lua", STATUS_REPORT);
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
+    let message = pumped.errors[0].message();
+    assert!(
+        message.contains("state=running available=false revision=0 lock_state=nil"),
+        "{message}"
+    );
+}
+
+#[test]
+fn session_status_reports_the_published_lock_state_and_revision() {
+    let config = Config::new("status-published");
+    config.write("init.lua", STATUS_REPORT);
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    server
+        .set(session, "lock_available", ModelValue::Bool(true))
+        .expect("lock_available is declared");
+    server
+        .set(session, "lock_state", ModelValue::Text("covering".to_owned()))
+        .expect("lock_state is declared");
+    server
+        .set(session, "lock_revision", ModelValue::Uint(3))
+        .expect("lock_revision is declared");
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert_eq!(pumped.errors.len(), 1, "{:#?}", pumped.errors);
+    let message = pumped.errors[0].message();
+    assert!(
+        message.contains("state=running available=true revision=3 lock_state=covering"),
+        "{message}"
+    );
 }

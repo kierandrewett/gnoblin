@@ -201,8 +201,10 @@ mod xwayland;
 pub use clock::{Clock, ManualClock, SystemClock};
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
+pub use gnoblin_lock::State as LockState;
 /// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
+pub use observation::lock_state_name;
 /// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
     ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,

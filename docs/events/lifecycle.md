@@ -35,7 +35,7 @@ current value. The default column applies only where the source defines one.
 | Event                                     | Field          | Accepted values                                       | Default |
 | ----------------------------------------- | -------------- | ----------------------------------------------------- | ------- |
 | `gnoblin.session.state-changed`           | `state`        | `starting`, `running`, `stopping`                     | None    |
-| `gnoblin.session.lock-state-changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`          | None    |
+| `gnoblin.session.lock_state_changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`          | None    |
 | `gnoblin.runtime.status-changed`          | `state`        | `starting`, `running`, `restarting`, `unavailable`    | None    |
 | `gnoblin.appearance.color-scheme-changed` | `color_scheme` | `default`, `prefer-dark`, `prefer-light`              | None    |
 | `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                    | `press` |
@@ -74,7 +74,7 @@ families.
 
 | Event name                           | Fields                                             | Dispatched when                                                                                                                                   |
 | ------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gnoblin.session.lock-state-changed` | `state`, `revision`, `sequence`, `time`            | Mutter reports a lock-state transition in a native session.                                                                                       |
+| `gnoblin.session.lock_state_changed` | `state`, `revision`, `sequence`, `time`            | Mutter reports a lock-state transition in a native session.                                                                                       |
 | `gnoblin.session.state-changed`      | `state`, `revision`, `sequence`, `time`            | The session moves from `starting` to `running` or `stopping`, or from `running` to `stopping`. Only in a session started by Gnoblin's supervisor. |
 | `gnoblin.runtime.status-changed`     | `state`, `generation`, `sequence`, `time`          | The worker state or accepted runtime generation changes; matches `gnoblin.runtime.status()`.                                                      |
 | `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |

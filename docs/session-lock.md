@@ -45,7 +45,7 @@ These sources send the request:
 
 A request does not prove the session is locked. The call reports whether a
 shell received the request. Read `lock_state` in `gnoblinctl status` or
-`gnoblin.session.status()` to see the real state.
+`gnoblin.session:status()` to see the real state.
 
 If no shell is subscribed, the call fails and says so. `gnoblinctl` exits with
 an error, and `ScreenSaver.Lock` returns the error
@@ -65,7 +65,7 @@ lock transition.
 Subscribe to `org.freedesktop.ScreenSaver.ActiveChanged` on the session bus at
 `/org/freedesktop/ScreenSaver` to receive that boolean when it changes. Read
 `GetActive` for the initial value. Changes between active lock states do not
-send duplicate signals. Use `gnoblin.session.lock-state-changed` when you need
+send duplicate signals. Use `gnoblin.session.lock_state_changed` when you need
 the individual state transitions.
 
 If the compositor connection is interrupted, Gnoblin sends no unlock signal.

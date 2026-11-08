@@ -12,7 +12,7 @@ API 1.21 adds:
 
 - `session.lock`
 - `gnoblin.session.lock-requested`
-- `gnoblin.session.lock-state-changed`
+- `gnoblin.session.lock_state_changed`
 
 #### Request a lock
 
@@ -27,7 +27,7 @@ acknowledgement or evidence that the session is locked.
 
 #### Track lock state
 
-Subscribe to `gnoblin.session.lock-state-changed` for Mutter's lock state. Each
+Subscribe to `gnoblin.session.lock_state_changed` for Mutter's lock state. Each
 event includes `state`, `revision`, `sequence`, and monotonic-clock `time`.
 `revision` matches the lock-state snapshot revision. The possible states are:
 
@@ -109,7 +109,7 @@ The shell lock client renders and authenticates its own UI. Mutter remains
 authoritative for lock state.
 
 ```json
-{"op":"events","api_version":{"major":1,"minor":21},"events":["gnoblin.session.lock-requested","gnoblin.session.lock-state-changed"]}
+{"op":"events","api_version":{"major":1,"minor":21},"events":["gnoblin.session.lock-requested","gnoblin.session.lock_state_changed"]}
 {"op":"api","api_version":{"major":1,"minor":21},"id":"lock-1","method":"session.lock","arguments":{}}
 ```
 

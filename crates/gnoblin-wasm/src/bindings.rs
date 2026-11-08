@@ -916,6 +916,21 @@ mod gnoblin_objects {
             Ok(self.text(object, "version"))
         }
 
+        fn lock_state(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "lock_state"))
+        }
+
+        fn lock_available(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "lock_available"))
+        }
+
+        fn lock_revision(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "lock_revision"))
+        }
+
         fn slot_auth_polkit(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "slot_auth_polkit"))

@@ -34,7 +34,7 @@ compositor.
 Its result reports request delivery; it does not confirm that a lock screen was
 shown or that the compositor is locked. The lock client then acquires
 `ext-session-lock-v1` directly. Lua clients can observe
-`gnoblin.session.lock-state-changed` and read `gnoblin.session.status()`.
+`gnoblin.session.lock_state_changed` and read `gnoblin.session.status()`.
 `gnoblin.session.lock-requested` is a socket event for external shell clients,
 not a Lua configuration event.
 

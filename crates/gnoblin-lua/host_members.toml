@@ -162,3 +162,10 @@ kind = "function"
 doc = "The live objects of one kind that match a filter, as a Lua array in identity order. The kinds are `Window`, `Workspace` and `Output`. A table filter keeps the objects whose scalar fields equal every value given; a function filter keeps those it returns a truthy value for. An unknown kind or filter field is raised by name."
 params = [{ name = "kind", type = "string" }, { name = "filter", type = "table|fun(object: table): boolean|nil" }]
 returns = ["table"]
+
+[[member]]
+name = "status"
+kind = "function"
+object = "session"
+doc = "The session's state as the mirror holds it: `state` (always `running`), `lock_available` and `revision`. `lock_state` is present only while `lock_available` is true. Read on each call, as of the last pump."
+returns = ["table"]

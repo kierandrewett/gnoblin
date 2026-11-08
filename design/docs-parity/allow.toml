@@ -867,12 +867,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.session.status"
-doc = "docs/shell-api/session-runtime.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
-
-[[allow]]
 name = "gnoblin.session.suspend"
 doc = "docs/shell-api/session-runtime.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
@@ -1239,12 +1233,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.session.lock-state-changed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2): planned in design/session-locking.md"
-owner-slice = "S2"
-
-[[allow]]
 name = "gnoblin.runtime.status-changed"
 doc = "docs/events/lifecycle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
@@ -1273,12 +1261,6 @@ name = "gnoblin.workspace.window-moved"
 doc = "docs/events/lifecycle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.lock-state-changed"
-doc = "docs/events/session.md"
-reason = "documented, not implemented; Global event bus (S2): planned in design/session-locking.md"
-owner-slice = "S2"
 
 [[allow]]
 name = "gnoblin.location.authorization-requested"
@@ -1393,12 +1375,6 @@ name = "gnoblin.session.activity-changed"
 doc = "docs/shell-api/session-runtime.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.lock-state-changed"
-doc = "docs/shell-api/session-runtime.md"
-reason = "documented, not implemented; Global event bus (S2): planned in design/session-locking.md"
-owner-slice = "S2"
 
 [[allow]]
 name = "gnoblin.input.pad-help-requested"

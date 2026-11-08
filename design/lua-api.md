@@ -1257,7 +1257,7 @@ targets the request). The count is not a delivery acknowledgement. The
 operation fails if the compositor cannot provide session locking or no shell
 client is subscribed. Completion confirms request delivery only; it does not
 confirm that the session is covered or locked. Subscribe to
-`gnoblin.session.lock-state-changed` for compositor state. There is no Lua
+`gnoblin.session.lock_state_changed` for compositor state. There is no Lua
 unlock method: only the active Wayland session-lock owner can unlock.
 
 `gnoblin.session.activity()` returns the latest native idle-monitor sample.
@@ -1283,7 +1283,7 @@ compositor-secured session.
 `SessionStatus` is available as a live API read from API 1.29. It contains
 `state = "running"`, `lock_available`, and `revision`. `revision` identifies
 the lock-state snapshot; it starts at zero and matches the revision on the
-corresponding `gnoblin.session.lock-state-changed` event. When lock state is
+corresponding `gnoblin.session.lock_state_changed` event. When lock state is
 available, the record also contains `lock_state`, a `SessionLockState`. If it
 is unavailable, `lock_state` is omitted; unavailable does not mean unlocked.
 The compositor socket answers this read directly from Mutter and therefore
@@ -1613,7 +1613,7 @@ both axes. Other animation events do not include these workspace fields.
 | `gnoblin.config.reloaded` | `path`, `revision`, `sequence`, `time` | Configuration loads and applies successfully. |
 | `gnoblin.config.reload_failed` | `path`, `error: string`, `sequence`, `time` | Candidate load or apply fails; rejected overlapping requests report only through their operation result. |
 | `gnoblin.operation.completed` | `operation_id`, `method`, `ok`, `value?`, `error?` | A mutating call finishes. |
-| `gnoblin.session.lock-state-changed` | `state: SessionLockState`, `revision`, `sequence`, `time` | Mutter reports a session-lock state transition; `revision` matches its state snapshot and request delivery is not lock confirmation. |
+| `gnoblin.session.lock_state_changed` | `state: SessionLockState`, `revision`, `sequence`, `time` | Mutter reports a session-lock state transition; `revision` matches its state snapshot and request delivery is not lock confirmation. |
 | `gnoblin.session.activity-changed` | `available`, `idle`, `threshold_ms`, `idle_for_ms`, `revision`, `sequence`, `time` | Native idle-monitor state changes; `idle_for_ms` is sampled at the transition. |
 | `gnoblin.runtime.status-changed` | `state`, `generation`, `sequence`, `time` | Worker state or accepted config generation changes; native-control API 1.72. |
 | `gnoblin.input.pad-help-requested` | `device`, `monitor_id?`, `output_names?`, `edition_mode`, `buttons`, `mode_groups`, `features` | Native-control API 1.73 forwards tablet-pad help metadata to shell clients. |
@@ -2003,7 +2003,7 @@ does not expose Mutter actors, GSettings objects, or Wacom layout paths.
 Native-control API 1.21
 implements `gnoblin.session.lock()` as a request to subscribed external shell
 clients and reports Mutter lock-state transitions through
-`gnoblin.session.lock-state-changed`; a request result does not confirm the
+`gnoblin.session.lock_state_changed`; a request result does not confirm the
 session is locked.
 
 The current source also implements the immutable window, workspace, monitor,

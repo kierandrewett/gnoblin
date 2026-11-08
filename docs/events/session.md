@@ -8,7 +8,7 @@ Session events are available in a running Gnoblin session when their source serv
 
 ### Session state
 
-`gnoblin.session.lock-state-changed` reports these session lock states:
+`gnoblin.session.lock_state_changed` reports these session lock states:
 
 - `unlocked`: no active session lock.
 - `covering`: the compositor has started the lock transition.

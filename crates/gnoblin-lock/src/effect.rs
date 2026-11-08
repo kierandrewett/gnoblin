@@ -61,7 +61,7 @@ pub enum Effect {
     Publish(Published),
 }
 
-/// The state observers see, matching `gnoblin.session.lock-state-changed` and
+/// The state observers see, matching `gnoblin.session.lock_state_changed` and
 /// `org.freedesktop.ScreenSaver.ActiveChanged`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Published {

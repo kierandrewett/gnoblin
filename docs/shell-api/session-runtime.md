@@ -1,8 +1,8 @@
 # Session and runtime health
 
-> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.config.reloaded`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.layers`, `gnoblin.runtime.reload_config`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.hibernate`, `gnoblin.session.lock`, `gnoblin.session.logout`, `gnoblin.session.poweroff`, `gnoblin.session.reboot`, `gnoblin.session.status`, `gnoblin.session.suspend`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.config.reloaded`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.layers`, `gnoblin.runtime.reload_config`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.hibernate`, `gnoblin.session.lock`, `gnoblin.session.logout`, `gnoblin.session.poweroff`, `gnoblin.session.reboot`, `gnoblin.session.suspend`. The sections that use them describe the target, not current behaviour.
 
-`gnoblin.session.status()` returns a record with these fields:
+`gnoblin.session:status()` returns a record with these fields:
 
 - `state` is `"running"` while the compositor answers the request.
 - `lock_available` says whether Mutter can report its lock state.
@@ -18,7 +18,7 @@ not mean unlocked.
 The read cannot report why a stopped session exited. The socket is unavailable
 after the compositor stops. The record remains available while the Lua
 supervisor is recovering. It reports compositor state, not supervisor health. Subscribe to
-`gnoblin.session.lock-state-changed` for lock transitions.
+`gnoblin.session.lock_state_changed` for lock transitions.
 
 `gnoblin.session.logout()` takes no arguments and returns an operation whose
 successful value is `{accepted = true}`. After the compositor confirms that
@@ -28,7 +28,7 @@ manager. A socket caller may receive EOF while the session is closing.
 
 `gnoblinctl lua` exposes this operation and `gnoblin.session.lock()` too. The
 lock result reports that a subscribed shell client received the request; check
-`session.status()` to confirm the compositor entered a locked state.
+`gnoblin.session:status()` to confirm the compositor entered a locked state.
 
 These methods take no arguments and return operations:
 
