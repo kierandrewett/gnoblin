@@ -53,3 +53,24 @@ jobs:
         run: rustup show active-toolchain
       - name: Run the workspace gate
         run: just ci
+
+  # The minimum supported Rust version (`rust-version` in Cargo.toml), checked with
+  # the exact pinned dependencies. The version here must equal `msrv_toolchain` in
+  # the justfile.
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Install the minimum supported toolchain
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Check the workspace with the minimum supported toolchain
+        run: just msrv

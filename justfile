@@ -66,6 +66,15 @@ dupes:
 dupes-warn:
     cargo xtask dupes --warn
 
+# Minimum supported Rust version: `rust-version` in Cargo.toml, measured against the
+# exact pinned dependencies. Needs `rustup toolchain install 1.97.0 --profile minimal`
+# locally; the CI `msrv` job installs it. Keep this version equal to `rust-version`.
+msrv_toolchain := "1.97.0"
+
+# Check every crate and target with the minimum supported toolchain.
+msrv:
+    cargo +{{msrv_toolchain}} check --workspace --all-targets --locked
+
 # Build the workspace in release mode, then install the session under PREFIX, with DESTDIR
 # prepended for staging. Every installed file is listed in share/gnoblin/install-manifest.
 # See xtask/src/dist.rs. Remove with `cargo xtask dist uninstall --prefix PREFIX`.
