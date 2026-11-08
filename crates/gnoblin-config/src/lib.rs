@@ -106,8 +106,11 @@ pub use generated::{
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
-/// The built-in keyring rule, read from the environment or from a store.
-pub use keyring::{keyring_enabled_from_environment, keyring_enabled_from_store};
+/// The built-in keyring rule: from the environment, from a document, or from the last accepted file.
+pub use keyring::{
+    keyring_enabled_from_document, keyring_enabled_from_environment, keyring_enabled_from_store,
+    last_good_keyring_enabled_from_environment,
+};
 /// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 /// Config path lookup: the located path, its origin and the search order.

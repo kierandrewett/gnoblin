@@ -58,6 +58,12 @@ impl Host {
         self.lock().subscribe(Filter::All)
     }
 
+    /// The configuration the compositor has accepted this session, with its revision, or `None`
+    /// while it has accepted none. The document is the JSON the compositor evaluated.
+    pub fn configuration(&self) -> Result<Option<(u64, Vec<u8>)>, ClientError> {
+        self.lock().configuration()
+    }
+
     /// Calls a declared method on an object and waits for the operation's outcome.
     pub fn call_operation(&self, object: ObjectId, method: &str) -> Result<OperationOutcome, ClientError> {
         self.call_operation_with(object, method, &Fields::new())

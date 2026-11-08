@@ -32,16 +32,20 @@ pub use role::{Buses, Role, RoleError};
 
 gnoblin_log::logger!(log = "services");
 
-/// The Secret Service agent over Gnoblin's own store, at the paths the environment names. `None`
-/// when `keyring.enabled` is false: another program keeps the name and Gnoblin runs no keyring.
+/// The Secret Service agent over Gnoblin's own store. It is always linked when there is a store path:
+/// it decides `keyring.enabled` from the configuration the compositor accepts this session, and
+/// serves nothing, creates no file and does not request the name while that flag is off. `None`
+/// only when there is no absolute store path to keep items in.
 #[must_use]
 pub fn keyring_agent() -> Option<Box<dyn link::LinkedAgent>> {
-    let agent = keyring::agent_for(
-        keyring::enabled_from_environment(),
-        keyring::store_path_from_environment(),
+    let Some(store) = keyring::store_path_from_environment() else {
+        log::warn!("no keyring store path: neither XDG_DATA_HOME nor HOME is absolute");
+        return None;
+    };
+    Some(Box::new(keyring::KeyringAgent::new(
+        store,
         keyring::socket_path_from_environment(),
-    )?;
-    Some(Box::new(agent))
+    )))
 }
 
 /// The GeoClue agent, with the `location` table of the configuration as its policy. The

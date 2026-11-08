@@ -82,7 +82,11 @@ pub fn grants(role: &str) -> Capabilities {
             Capability::InputPolicy,
             Capability::WindowControl,
         ]),
-        "services" => Capabilities::of(&[Capability::OfferRequest, Capability::RegisterLayer]),
+        "services" => Capabilities::of(&[
+            Capability::OfferRequest,
+            Capability::RegisterLayer,
+            Capability::ReadConfig,
+        ]),
         "portal" => Capabilities::of(&[Capability::PortalUi, Capability::RetrieveSecret]),
         "input" => Capabilities::of(&[Capability::PortalInput]),
         _ => Capabilities::NONE,
@@ -203,6 +207,11 @@ mod tests {
         assert!(
             !services.contains(Capability::CommitConfig),
             "the services role commits no configuration"
+        );
+
+        assert!(
+            services.contains(Capability::ReadConfig),
+            "the services role reads the accepted configuration to decide keyring.enabled"
         );
 
         let portal = grants("portal");

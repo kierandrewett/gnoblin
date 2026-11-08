@@ -4,6 +4,11 @@
 //! portal only when `keyring.enabled` is true, which is the default. Gnoblin does not need to know
 //! which other program holds the name when it is off. The services role and the portal relay read
 //! the same rule from here, so they cannot disagree about it.
+//!
+//! The services role does not read the last accepted file as its source of truth. It takes the
+//! flag from the configuration the compositor has accepted in this session, and reads the last
+//! accepted file only when no accepted configuration arrives. See [`keyring_enabled_from_document`]
+//! and [`last_good_keyring_enabled_from_environment`].
 
 use std::path::Path;
 
@@ -21,6 +26,17 @@ impl Config {
     }
 }
 
+/// Whether `keyring.enabled` is true in a configuration document, as the compositor sends it.
+///
+/// # Errors
+///
+/// A human-readable description when the document is not a configuration.
+pub fn keyring_enabled_from_document(document: &[u8]) -> Result<bool, String> {
+    Config::from_json_bytes(document)
+        .map(|config| config.keyring_enabled())
+        .map_err(|problem| format!("configuration not readable: {problem}"))
+}
+
 /// Whether the last accepted configuration enables Gnoblin's built-in keyring.
 ///
 /// With no state directory or no configuration file, the keyring stays on, as the default is. A
@@ -31,24 +47,45 @@ impl Config {
 ///
 /// A human-readable description when the last accepted configuration cannot be read.
 pub fn keyring_enabled_from_environment() -> Result<bool, String> {
-    let Some(store) = Store::from_env() else {
-        return Ok(true);
-    };
-    let Ok(path) = locate(&SearchPaths::from_env()) else {
-        return Ok(true);
-    };
-    keyring_enabled_from_store(&store, path.path())
+    last_good_keyring_enabled_from_environment().map(|flag| flag.unwrap_or(true))
 }
 
-/// [`keyring_enabled_from_environment`] for the document at `source`, read through `store`.
+/// The `keyring.enabled` flag of the last accepted configuration, or `None` when there is no last
+/// accepted file to read.
+///
+/// # Errors
+///
+/// A human-readable description when the last accepted configuration exists but cannot be read.
+pub fn last_good_keyring_enabled_from_environment() -> Result<Option<bool>, String> {
+    let Some(store) = Store::from_env() else {
+        return Ok(None);
+    };
+    let Ok(path) = locate(&SearchPaths::from_env()) else {
+        return Ok(None);
+    };
+    last_good_keyring_enabled_from_store(&store, path.path())
+}
+
+/// Whether the document at `source`, read through `store`, enables the built-in keyring. The
+/// caller keeps the default when there is no document.
 ///
 /// # Errors
 ///
 /// A human-readable description when the document exists but cannot be read.
 pub fn keyring_enabled_from_store(store: &Store, source: &Path) -> Result<bool, String> {
+    last_good_keyring_enabled_from_store(store, source).map(|flag| flag.unwrap_or(true))
+}
+
+/// [`last_good_keyring_enabled_from_environment`] for the document at `source`, read through
+/// `store`. `None` when there is no document.
+///
+/// # Errors
+///
+/// A human-readable description when the document exists but cannot be read.
+pub fn last_good_keyring_enabled_from_store(store: &Store, source: &Path) -> Result<Option<bool>, String> {
     match store.load(source) {
-        Ok(stored) => Ok(stored.config.keyring_enabled()),
-        Err(error) if error.is_absent() => Ok(true),
+        Ok(stored) => Ok(Some(stored.config.keyring_enabled())),
+        Err(error) if error.is_absent() => Ok(None),
         Err(error) => Err(format!("configuration not readable: {error}")),
     }
 }
@@ -56,6 +93,8 @@ pub fn keyring_enabled_from_store(store: &Store, source: &Path) -> Result<bool, 
 #[cfg(test)]
 mod tests {
     use crate::{Config, Value};
+
+    use super::keyring_enabled_from_document;
 
     fn config_with(document: Value) -> Config {
         Config::from_value(document).expect("the document is accepted")
@@ -80,5 +119,23 @@ mod tests {
     fn the_built_in_keyring_follows_the_enabled_flag() {
         assert!(config_with(enabled(true)).keyring_enabled());
         assert!(!config_with(enabled(false)).keyring_enabled());
+    }
+
+    #[test]
+    fn a_document_as_the_compositor_sends_it_carries_the_flag() {
+        assert_eq!(
+            keyring_enabled_from_document(br#"{"keyring":{"enabled":false}}"#),
+            Ok(false)
+        );
+        assert_eq!(
+            keyring_enabled_from_document(br#"{"keyring":{"enabled":true}}"#),
+            Ok(true)
+        );
+        assert_eq!(keyring_enabled_from_document(br"{}"), Ok(true));
+    }
+
+    #[test]
+    fn a_document_that_is_not_a_configuration_is_an_error_not_a_default() {
+        assert!(keyring_enabled_from_document(b"not json").is_err());
     }
 }
