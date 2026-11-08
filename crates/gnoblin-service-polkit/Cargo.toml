@@ -3,6 +3,7 @@ name = "gnoblin-service-polkit"
 description = "The polkit authentication agent: org.freedesktop.PolicyKit1.AuthenticationAgent."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

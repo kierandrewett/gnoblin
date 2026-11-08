@@ -3,6 +3,7 @@ name = "gnoblin-a11y"
 description = "Accessibility state machines: keyboard monitor, sticky, slow, bounce and mouse keys, magnifier, colour filters."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

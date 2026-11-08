@@ -3,6 +3,7 @@ name = "gnoblin-lua"
 description = "Lua host: sandbox, loader, generated bindings, operations, timers and tweens."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

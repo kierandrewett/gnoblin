@@ -3,6 +3,7 @@ name = "gnoblin-compat-gtk-dconf-settings"
 description = "dconf layer for the GSettings keys GTK reads: fonts, icon theme, cursor and button layout."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

@@ -3,6 +3,7 @@ name = "gnoblin-pipewire-export"
 description = "PipeWire video streams for the capture sessions the table has granted."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

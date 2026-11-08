@@ -97,15 +97,15 @@ members = [
 # versions/gnoblin-version.json at release time; do not edit this by hand.
 version = "0.2.0-alpha.0"
 edition = "2024"
+rust-version = "1.97.0"
 license = "GPL-2.0-or-later"
 repository = "https://github.com/kierandrewett/gnoblin"
 # Workspace crates are built from the tree and packaged by the distribution
 # packaging, never uploaded to crates.io.
 publish = false
-# `rust-version` is deliberately unset. The MSRV is the highest floor of the
-# exact pinned dependencies, not a release number (design/rust-compositor.md,
-# "Distribution and toolchain"), and no crate depends on anything yet. The
-# rust-toolchain.toml pin covers development until that job exists.
+# `rust-version` is the measured MSRV: the newest `rust-version` among the exact
+# pinned dependencies (`cranelift-*` 0.137.1 needs 1.97.0; 1.96.0 fails). `just msrv`
+# and the CI `msrv` job check with that toolchain. Measure again before raising it.
 
 # Lints every crate inherits with `[lints] workspace = true`.
 #

@@ -3,6 +3,7 @@ name = "gnoblin-render"
 description = "Scene graph, effects, user shaders, animation and tween player, and damage."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

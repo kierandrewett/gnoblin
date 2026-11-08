@@ -3,6 +3,7 @@ name = "gnoblin-service-screensaver"
 description = "The ScreenSaver agent: org.freedesktop.ScreenSaver inhibit and lock."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

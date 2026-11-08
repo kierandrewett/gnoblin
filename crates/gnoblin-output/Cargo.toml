@@ -3,6 +3,7 @@ name = "gnoblin-output"
 description = "Output layout, transactional configuration, gamma, power, EDID and vendor names."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

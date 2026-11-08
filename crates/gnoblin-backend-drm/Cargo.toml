@@ -3,6 +3,7 @@ name = "gnoblin-backend-drm"
 description = "The hardware backend: DRM and KMS through udev and libseat, libinput for input, and a GLES scan-out path."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

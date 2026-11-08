@@ -3,6 +3,7 @@ name = "gnoblin-service-testkit"
 description = "A private D-Bus bus for one test, shared by the service crates' tests."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

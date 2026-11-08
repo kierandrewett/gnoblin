@@ -3,6 +3,7 @@ name = "gnoblin-lua-pattern"
 description = "The Lua 5.4 pattern matcher behind string.find, match, gmatch and gsub, ported from lstrlib.c with a step budget, plus the load-time pattern checker used by window rules."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

@@ -3,6 +3,7 @@ name = "gnoblin-compat-wayland-mutter-x11-interop"
 description = "mutter_x11_interop Wayland redirect: a dialogs parent when it is an X11 window."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

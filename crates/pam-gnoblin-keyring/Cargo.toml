@@ -3,6 +3,7 @@ name = "pam-gnoblin-keyring"
 description = "The PAM module that hands the login password to the Gnoblin keyring service."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

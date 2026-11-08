@@ -3,6 +3,7 @@ name = "gnoblin-schema"
 description = "Object types, properties, methods, signals and error codes, with the version that added each member."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

@@ -3,6 +3,7 @@ name = "gnoblin-input-eis"
 description = "The EIS server: libei's server side, turning EI requests into seat input events and consent decisions."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

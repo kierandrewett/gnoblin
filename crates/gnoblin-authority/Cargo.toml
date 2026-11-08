@@ -3,6 +3,7 @@ name = "gnoblin-authority"
 description = "Pure attribution, activation and grant rules."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

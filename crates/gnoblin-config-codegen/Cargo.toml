@@ -3,6 +3,7 @@ name = "gnoblin-config-codegen"
 description = "Generates gnoblin-config's typed document, validators, reference tables and Lua stubs from schema/config.toml."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

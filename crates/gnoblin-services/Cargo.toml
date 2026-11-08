@@ -3,6 +3,7 @@ name = "gnoblin-services"
 description = "The services role: polkit, the keyring, ScreenSaver, inhibit and idle agents."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

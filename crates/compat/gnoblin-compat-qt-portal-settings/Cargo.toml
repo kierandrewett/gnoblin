@@ -3,6 +3,7 @@ name = "gnoblin-compat-qt-portal-settings"
 description = "Qt settings via QT_QPA_PLATFORMTHEME=xdgdesktopportal, over the portal Settings interface."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

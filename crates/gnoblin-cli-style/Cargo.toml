@@ -3,6 +3,7 @@ name = "gnoblin-cli-style"
 description = "The shared look of Gnoblin's command-line tools: colour, glyphs, tables and error blocks."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

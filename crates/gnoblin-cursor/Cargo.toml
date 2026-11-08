@@ -3,6 +3,7 @@ name = "gnoblin-cursor"
 description = "Cursor images: the ordered provider chain (Hyprcursor, kde-gnome-svg, Xcursor), theme lookup, image decoding, the built-in arrow and size selection."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

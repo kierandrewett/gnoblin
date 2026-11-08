@@ -3,6 +3,7 @@ name = "gnoblin-compat-dbus-mutter-screencast"
 description = "org.gnome.Mutter.ScreenCast adapter."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

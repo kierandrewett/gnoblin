@@ -3,6 +3,7 @@ name = "gnoblin-lua-sandbox"
 description = "The sandboxed Lua state shared by the runtime and the layout host: instruction, memory and deadline limits, and the stdlib subset each profile loads."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

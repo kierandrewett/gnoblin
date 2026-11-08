@@ -3,6 +3,7 @@ name = "gnoblin-keyring-handoff"
 description = "The framed unix-socket protocol that hands the login password from PAM to the keyring service."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

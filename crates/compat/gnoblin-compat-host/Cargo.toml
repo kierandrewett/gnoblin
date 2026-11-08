@@ -3,6 +3,7 @@ name = "gnoblin-compat-host"
 description = "The one place that knows which compat adapters exist and how the session and services roles wire them."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

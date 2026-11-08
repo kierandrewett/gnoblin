@@ -3,6 +3,7 @@ name = "gnoblin-capture"
 description = "Frame export: capture sessions, the lock embargo, pacing and single-use frames."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

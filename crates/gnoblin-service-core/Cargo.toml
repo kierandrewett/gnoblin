@@ -3,6 +3,7 @@ name = "gnoblin-service-core"
 description = "The services role's shared agent machinery: slots, the request state machine and the offer connection."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

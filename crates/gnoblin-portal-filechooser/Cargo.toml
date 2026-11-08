@@ -3,6 +3,7 @@ name = "gnoblin-portal-filechooser"
 description = "The FileChooser dialog of the portal: listing, save name, filter, status and buttons."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

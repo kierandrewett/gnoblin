@@ -3,6 +3,7 @@ name = "gnoblin-portal"
 description = "Recovery and console overlay, and the built-in portal dialog screens."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

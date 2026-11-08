@@ -3,6 +3,7 @@ name = "gnoblin-service-keyring"
 description = "The Secret Service provider on org.freedesktop.secrets: the keyring's bus face, with dh-ietf1024 sessions only."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

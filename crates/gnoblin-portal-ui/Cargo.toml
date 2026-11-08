@@ -3,6 +3,7 @@ name = "gnoblin-portal-ui"
 description = "The egui layer of the portal dialogs: the DialogUi trait, the DialogShell that runs it, and the CPU painter."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

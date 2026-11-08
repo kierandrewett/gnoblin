@@ -3,6 +3,7 @@ name = "xtask"
 description = "Workspace automation: dependency-rule checks over cargo metadata, and code generation from the object schema."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

@@ -3,6 +3,7 @@ name = "gnoblin-render-software"
 description = "The software renderer: an OutputFrame drawn through Smithay's Pixman renderer into an offscreen buffer, damage-only."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

@@ -3,6 +3,7 @@ name = "gnoblin-animation"
 description = "Easing curves, the animatable visual properties and transform, and the tween player that drives them."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

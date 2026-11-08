@@ -3,6 +3,7 @@ name = "gnoblin-render-gles"
 description = "The GLES renderer: an OutputFrame drawn through glow on an EGL context, with Smithay's GLES path for the shared shaders."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

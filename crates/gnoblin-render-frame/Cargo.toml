@@ -2,6 +2,7 @@
 name = "gnoblin-render-frame"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 description = "The renderer-neutral frame: what an output draws, the shared shader sources and the shm writer."

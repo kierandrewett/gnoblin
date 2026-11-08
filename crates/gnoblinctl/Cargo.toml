@@ -3,6 +3,7 @@ name = "gnoblinctl"
 description = "Command line client for the Gnoblin IPC."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

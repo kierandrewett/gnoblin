@@ -3,6 +3,7 @@ name = "gnoblin-service-sessionidle"
 description = "The SessionIdle agent: org.gnoblin.SessionIdle, the idle state as a D-Bus interface."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

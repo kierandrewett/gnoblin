@@ -3,6 +3,7 @@ name = "gnoblin-compat-dbus-a11y-keyboard-monitor"
 description = "org.freedesktop.a11y.KeyboardMonitor adapter: the D-Bus face of the compositor's accessibility key path."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

@@ -3,6 +3,7 @@ name = "xdg-desktop-portal-gnoblin"
 description = "Desktop portal backend for Gnoblin."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

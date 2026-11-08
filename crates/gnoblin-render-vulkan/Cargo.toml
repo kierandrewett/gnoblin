@@ -3,6 +3,7 @@ name = "gnoblin-render-vulkan"
 description = "The Vulkan renderer: an OutputFrame drawn through ash into an offscreen image and read back."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

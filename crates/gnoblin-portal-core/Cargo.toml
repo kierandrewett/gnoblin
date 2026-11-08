@@ -3,6 +3,7 @@ name = "gnoblin-portal-core"
 description = "Portal dialog models and interface payloads. Plain data: no drawing, no egui, no D-Bus."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

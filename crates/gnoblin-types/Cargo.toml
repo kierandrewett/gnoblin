@@ -3,6 +3,7 @@ name = "gnoblin-types"
 description = "The shared primitives: geometry, scale, transforms, directions, identities, ticks, revisions, versions and error codes."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

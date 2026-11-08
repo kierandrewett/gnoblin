@@ -3,6 +3,7 @@ name = "gnoblin-compat-dbus-mutter-inputmapping"
 description = "org.gnome.Mutter.InputMapping adapter (later)."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
