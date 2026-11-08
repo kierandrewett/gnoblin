@@ -1,5 +1,7 @@
 # Keyboard grabs
 
+> **Status:** not available yet: `gnoblin.input.grab`, `gnoblin.input.grab.closed`, `gnoblin.input.grab.key`, `gnoblin.shortcuts.capture`, `:release`, `:renew`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.input.grab(options?)` takes the keyboard for your shell. While the grab is alive, every key press and release
 goes to your code. No application, no shortcut and no other handler sees a key. Use it for a launcher, a password
 prompt, a key-binding recorder or a modal overlay that types text. It returns a `Grab`.

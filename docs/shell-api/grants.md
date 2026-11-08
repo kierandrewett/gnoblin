@@ -1,5 +1,7 @@
 # Grants
 
+> **Status:** not available yet: `:begin_move`, `:begin_resize`, `:narrow`, `gnoblin.input`, `gnoblin.input.on`, `gnoblin.input.text_target`, `gnoblin.shortcut.activated`, `gnoblin.shortcut.binding`, `gnoblin.shortcut.session.key`, `gnoblin.shortcuts.bind`, `gnoblin.window.created`, `gnoblin.window.menu`, `gnoblin.windows.snap_context`. The sections that use them describe the target, not current behaviour.
+
 A `Grant` proves that the user just did something: pressed a shortcut, clicked with a binding, or asked for a window
 menu. The compositor makes the proof. A script receives it as `event.grant`.
 
@@ -29,9 +31,8 @@ every operation used up the whole gesture, and a script that wanted to focus and
 | `gnoblin.shortcut.activated`                          | A key press that matched a shortcut.            |
 | `gnoblin.shortcut.binding-activated`                  | The first activation of a Lua shortcut binding. |
 | `gnoblin.shortcut.session.key`                        | A real key press or release in a modal session. |
-| `gnoblin.pointer.binding-activated`                   | A pointer binding such as `<Super>Button1`.     |
 | `gnoblin.input` events for a `gnoblin.input.on`       | A real input event that the handler matched.    |
-| `gnoblin.window.menu-requested` (window-manager menu) | A request for the window menu of one window.    |
+| `gnoblin.window.menu_requested` (window-manager menu) | A request for the window menu of one window.    |
 
 Nothing else has a grant. A timer callback, a `Process` end, `gnoblin.window.created`, a repeated key and a
 synthetic or input-method event carry no `event.grant`. A script cannot make one: the value is not a table and has no

@@ -1,5 +1,7 @@
 # Session and runtime health
 
+> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.config.reloaded`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.layers`, `gnoblin.runtime.reload_config`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.hibernate`, `gnoblin.session.lock`, `gnoblin.session.logout`, `gnoblin.session.poweroff`, `gnoblin.session.reboot`, `gnoblin.session.status`, `gnoblin.session.suspend`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.session.status()` returns a record with these fields:
 
 - `state` is `"running"` while the compositor answers the request.

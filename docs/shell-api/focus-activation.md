@@ -1,5 +1,7 @@
 # Focus and activation
 
+> **Status:** not available yet: `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.shortcut.activated`, `gnoblin.window.created`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.focus.policy()` returns a read-only snapshot of the supported focus
 settings. Its `revision` identifies the committed settings snapshot.
 

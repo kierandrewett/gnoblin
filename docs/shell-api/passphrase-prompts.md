@@ -1,5 +1,7 @@
 # Answer keyring passphrase prompts
 
+> **Status:** not available yet: `gnoblin.configure.keyring`. The sections that use it describe the target, not current behaviour.
+
 Gnoblin's built-in keyring is locked until it receives its login password. It asks
 for that password through the `prompt.secret` capability slot. A shell that claims
 the slot shows the prompt and returns the answer.

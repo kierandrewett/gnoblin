@@ -1,5 +1,7 @@
 # Input Handlers
 
+> **Status:** not available yet: `gnoblin.input.devices`, `gnoblin.input.on`. The sections that use them describe the target, not current behaviour.
+
 Register handlers for supported local input events from Lua configuration.
 
 Input handlers are registered from the loaded Lua configuration and are replaced on successful config reload.

@@ -1,5 +1,7 @@
 # Launch feedback
 
+> **Status:** not available yet: `:finish`, `gnoblin.launch.changed`, `gnoblin.launches`, `gnoblin.launches.begin`, `gnoblin.launches.list`. The sections that use them describe the target, not current behaviour.
+
 Use `gnoblin.launches` to read launch feedback and track a launch request.
 `list()` returns the cached native snapshot as `Launch` objects, one for each
 token. The Lua API has no `snapshot()`; each `Launch` has its own `revision`.

@@ -1,5 +1,7 @@
 # Outputs
 
+> **Status:** not available yet: `gnoblin.output.added`, `gnoblin.output.changed`, `gnoblin.output.removed`, `gnoblin.outputs.renderer`. The sections that use them describe the target, not current behaviour.
+
 An output is a connected display. The compositor publishes one `output` object per display it drives. Its fields are
 the ones the `output` object declares in the `gnoblin` schema.
 

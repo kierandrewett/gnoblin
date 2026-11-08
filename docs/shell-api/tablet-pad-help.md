@@ -1,5 +1,7 @@
 # Tablet Pad Help
 
+> **Status:** not available yet: `gnoblin.input.devices`, `gnoblin.input.pad`. The sections that use them describe the target, not current behaviour.
+
 Handle tablet-pad help requests and present the available button and mode labels.
 
 The event is available when Mutter reports a tablet-pad help request.

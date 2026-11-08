@@ -1,5 +1,7 @@
 # Idle watches
 
+> **Status:** not available yet: `gnoblin.idle.watch`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.idle.watch(seconds)` runs your code when the session has had no input for a set time. Use it to dim a
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 

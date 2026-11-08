@@ -3,7 +3,7 @@
 Gnoblin reports window-menu requests to the active shell. The shell draws the
 menu as its own Wayland surface and chooses which actions to show.
 
-Subscribe to `gnoblin.window.menu-requested` through the
+Subscribe to `gnoblin.window.menu_requested` through the
 [compositor bridge](/bridge/#api-127-shell-presentation-requests).
 The event includes:
 

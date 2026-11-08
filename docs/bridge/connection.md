@@ -102,7 +102,7 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.23            | `window.thumbnail` and the `window-thumbnails` capability                                             |
 | 1.24            | `session.activity`, activity-change events, and the `session-activity` capability                     |
 | 1.26            | Pointer-drag lifecycle events and capability-bound `window.snap.offer`                                |
-| 1.27            | `gnoblin.window.menu-requested` and `gnoblin.osd.requested`                                           |
+| 1.27            | `gnoblin.window.menu_requested` and `gnoblin.osd.requested`                                           |
 | 1.28            | Connection-owned text targets and keyboard snap contexts                                              |
 | 1.29            | `session.status` live-state read                                                                      |
 | 1.30            | One-use WM menu capabilities for target-bound move and resize grabs                                   |

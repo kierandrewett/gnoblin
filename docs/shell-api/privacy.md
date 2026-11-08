@@ -1,5 +1,7 @@
 # Privacy
 
+> **Status:** not available yet: `:finished`, `gnoblin.location.authorization`, `gnoblin.privacy.changed`, `gnoblin.privacy.state`, `gnoblin.privacy.stop_recording`, `gnoblin.privacy.stop_sharing`. The sections that use them describe the target, not current behaviour.
+
 | Method                             | Arguments | Successful result                 |
 | ---------------------------------- | --------- | --------------------------------- |
 | `gnoblin.privacy.state()`          | None      | Read-only `PrivacyState` snapshot |

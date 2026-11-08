@@ -1,5 +1,7 @@
 # Windows
 
+> **Status:** not available yet: `:begin_move`, `:begin_resize`, `:narrow`, `:reset_visuals`, `:restore_or_minimize`, `:revoke`, `:set_above`, `:set_effect`, `:set_offset`, `:set_opacity`, `:set_rotation`, `:set_scale`, `:set_sticky`, `:thumbnail`, `gnoblin.osd.requested`, `gnoblin.shortcut.activated`, `gnoblin.window.created`, `gnoblin.window.menu`. The sections that use them describe the target, not current behaviour.
+
 ## Read windows
 
 The native Mutter runtime exposes the window state directly:
@@ -85,22 +87,22 @@ Window and workspace objects expose methods that queue the corresponding
 typed operation. Call them with colon syntax from a runtime event callback.
 Each method returns an `Operation` handle.
 
-| Window method                                   | Arguments                                          | Effect                                                                                           |
-| ----------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `window:close()`                                | None                                               | Ask the application to close.                                                                    |
-| `window:kill()`                                 | None                                               | SIGKILL the window's process, refused if unknown, gone or changed, or the compositor's pid or 1. |
-| `window:set_minimized(enabled)`                 | Boolean                                            | Minimize the window, or remove minimization.                                                     |
-| `window:restore_or_minimize()`                  | None                                               | Unmaximize, restore the pre-snap frame, or minimize.                                             |
-| `window:set_maximized(enabled)`                 | Boolean                                            | Set maximization.                                                                                |
-| `window:set_fullscreen(enabled)`                | Boolean                                            | Set fullscreen.                                                                                  |
-| `window:set_above(enabled)`                     | Boolean                                            | Set the above state.                                                                             |
-| `window:set_sticky(enabled)`                    | Boolean                                            | Set visibility across workspaces.                                                                |
-| `window:move(x, y)`                             | Integers from −100000 to 100000                    | Move in logical desktop pixels.                                                                  |
-| `window:resize(width, height)`                  | Integers from 1 to 32768                           | Resize in logical pixels.                                                                        |
-| `window:move_to_workspace(workspace, options?)` | `Workspace`, its ID or its number; option `follow` | Move this window and optionally activate the destination.                                        |
-| `window:move_to_monitor(monitor)`               | `Output`, or a monitor connector ID                | Move this window to an active monitor.                                                           |
-| `window:thumbnail(width, height)`               | Width from 1 to 480, height from 1 to 320          | Capture a bounded compositor-rendered PNG preview.                                               |
-| `window:present()`                              | None                                               | Focus a window of a process the runtime started.                                                 |
+| Window method                     | Arguments                                 | Effect                                                                                           |
+| --------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `window:close()`                  | None                                      | Ask the application to close.                                                                    |
+| `window:kill()`                   | None                                      | SIGKILL the window's process, refused if unknown, gone or changed, or the compositor's pid or 1. |
+| `window:set_minimized(enabled)`   | Boolean                                   | Minimize the window, or remove minimization.                                                     |
+| `window:restore_or_minimize()`    | None                                      | Unmaximize, restore the pre-snap frame, or minimize.                                             |
+| `window:set_maximized(enabled)`   | Boolean                                   | Set maximization.                                                                                |
+| `window:set_fullscreen(enabled)`  | Boolean                                   | Set fullscreen.                                                                                  |
+| `window:set_above(enabled)`       | Boolean                                   | Set the above state.                                                                             |
+| `window:set_sticky(enabled)`      | Boolean                                   | Set visibility across workspaces.                                                                |
+| `window:move(x, y)`               | Integers from −100000 to 100000           | Move in logical desktop pixels.                                                                  |
+| `window:resize(width, height)`    | Integers from 1 to 32768                  | Resize in logical pixels.                                                                        |
+| `window:set_workspace(workspace)` | `Workspace`                               | Move this window, and its transient children, to the workspace.                                  |
+| `window:set_output(output)`       | `Output`                                  | Move this window to an output, reshaping it into that output's work area.                        |
+| `window:thumbnail(width, height)` | Width from 1 to 480, height from 1 to 320 | Capture a bounded compositor-rendered PNG preview.                                               |
+| `window:present()`                | None                                      | Focus a window of a process the runtime started.                                                 |
 
 Record properties remain read-only. In the native runtime,
 `Window:focus(grant)` requests focus with the [`grant`](/shell-api/grants) of
@@ -177,15 +179,17 @@ multiplies with `set_opacity`. See [overrides](/shell-api/overrides) for the end
 
 ## Compositor requests
 
-Subscribe to `gnoblin.window.menu-requested` to show a shell-owned window menu,
+Subscribe to `gnoblin.window.menu_requested` to show a shell-owned window menu,
 or `gnoblin.osd.requested` to show an OSD requested by Mutter. Lua callbacks
 receive events with those names.
 
-`gnoblin.window.menu-requested` includes:
+`gnoblin.window.menu_requested` includes:
 
-- `window_id`: Gnoblin's stable window ID;
-- `menu_type`: `wm` for a window manager menu or `app` for an application menu;
-- `x` and `y`: global logical coordinates supplied by Mutter.
+- `x`, `y`, `width` and `height`: the anchor rectangle, in global logical coordinates;
+- `source`: `client`, `keyboard` or `extension`, saying what asked for the menu;
+- `seat`: the seat that asked for it.
+
+> **Status:** not available yet: `menu_type` and `event.grant`. The menu's grant sentences below describe the target.
 
 For `menu_type == "wm"`, Lua receives a [`grant`](/shell-api/grants) in `event.grant`.
 In that callback, call `window:begin_move(event.grant)` or

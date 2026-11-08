@@ -1,5 +1,7 @@
 # Input and interaction
 
+> **Status:** not available yet: `:revoke`, `:select`, `gnoblin.input.current_source`, `gnoblin.input.device`, `gnoblin.input.devices`, `gnoblin.input.grab`, `gnoblin.input.on`, `gnoblin.input.orientation`, `gnoblin.input.orientation_lock`, `gnoblin.input.pad`, `gnoblin.input.source`, `gnoblin.input.sources`, `gnoblin.settings.override`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.input.devices()` returns read-only records from the native
 input-device snapshot. It takes no arguments and is available in runtime event
 callbacks after startup. The read raises a Lua error if its snapshot is

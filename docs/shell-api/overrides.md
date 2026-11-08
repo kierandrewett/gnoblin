@@ -1,5 +1,7 @@
 # Overrides
 
+> **Status:** not available yet: `:revoke`, `:set_effect`, `:set_opacity`, `gnoblin.focus.policy`, `gnoblin.input.orientation_lock`, `gnoblin.settings`, `gnoblin.settings.override`. The sections that use them describe the target, not current behaviour.
+
 An override puts a value over the committed configuration, or over the window rules of one window, until your code
 takes it back. Use it for a change that belongs to the running session, such as a mode that the user switches on, and
 not for a setting that belongs in the configuration file. An override never writes the configuration.

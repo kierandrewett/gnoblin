@@ -1,5 +1,7 @@
 # Workspaces
 
+> **Status:** not available yet: `:activate`, `:rename`, `gnoblin.workspaces.active`. The sections that use them describe the target, not current behaviour.
+
 For window-level workspace moves, see [Windows](/shell-api/windows). For displays, see [Outputs](/shell-api/outputs).
 
 ## Read workspaces
@@ -51,7 +53,7 @@ The workspace object signals:
 These names appear in earlier design notes. The `workspace` object does not declare them, so they are not available
 from Lua:
 
-- `workspace:activate()`, `workspace:rename(name)`, `workspace:remove()` and `window:move_to_workspace(workspace, options?)`;
+- `workspace:activate()`, `workspace:rename(name)` and `workspace:remove()`;
 - `workspace:on(signal, fn)` with the `changed`, `activated` and `closed` signals, and `workspace:watch(field, fn)`;
 - `gnoblin.workspaces.active()`, `create`, `next` and `previous`;
 - the workspace fields `number`, `name`, `active`, `window_count`, `persistent` and `revision`;

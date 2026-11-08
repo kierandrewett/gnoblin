@@ -1,5 +1,7 @@
 # Lua Runtime API
 
+> **Status:** not available yet: `gnoblin.animation`, `gnoblin.settings`, `gnoblin.settings.override`, `gnoblin.snapshot`, `gnoblin.version`. The sections that use them describe the target, not current behaviour.
+
 Use the Lua runtime API to read compositor state, handle events, and request session actions from a shell integration.
 
 The supervised Lua runtime is available in the standalone Gnoblin session. Its API version is `1.93` in the current source. Callback code runs outside Mutter's compositor thread; keep event callbacks short and nonblocking.
@@ -42,11 +44,11 @@ The local socket protocol for non-Lua clients is documented in the [compositor b
 
 ## Runtime identity and settings
 
-`gnoblin.settings` is an immutable snapshot of active configuration values. Setting names use public snake_case, and `revision` identifies the committed snapshot. It becomes available after the initial configuration commits.
+`gnoblin.settings` is an immutable snapshot of active configuration values. Setting names use public snake_case. It becomes available after the initial configuration commits.
 
 ```lua
-local focus_mode = gnoblin.settings.window_management.focus_mode
-print(focus_mode, gnoblin.settings.revision)
+local blur = gnoblin.settings.compositor.blur
+print(blur)
 ```
 
 `gnoblin.settings.override(path, value)` layers a value over one committed setting without changing this snapshot. See

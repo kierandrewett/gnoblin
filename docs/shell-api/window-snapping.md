@@ -1,5 +1,7 @@
 # Window Snapping
 
+> **Status:** not available yet: `:commit`, `:offer_targets`, `gnoblin.window.drag.started`, `gnoblin.windows.snap_context`. The sections that use them describe the target, not current behaviour.
+
 Build and commit a window frame using a [grant](/shell-api/grants).
 
 Window snapping is available from a trusted event callback in a Gnoblin session.

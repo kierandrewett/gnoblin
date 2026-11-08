@@ -1,5 +1,7 @@
 # Layer surfaces
 
+> **Status:** not available yet: `:inspect_animation`, `:preview_animation`, `gnoblin.capabilities.list`, `gnoblin.capability.changed`, `gnoblin.layers.animation_policy`, `gnoblin.layers.list`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.layers.list()` returns `LayerSurface` objects from the native
 layer-surface snapshot. Each includes its state revision. Layer surfaces have
 no mutating methods; shell clients continue to own their surfaces.

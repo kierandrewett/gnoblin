@@ -6,7 +6,7 @@ These operations require the minimum API versions stated below and a live, unloc
 
 ### API 1.27: shell presentation requests
 
-Subscribe to `gnoblin.window.menu-requested` and `gnoblin.osd.requested` to
+Subscribe to `gnoblin.window.menu_requested` and `gnoblin.osd.requested` to
 handle requests for shell-owned UI. Gnoblin reports
 requests; the external shell owns their presentation.
 
@@ -28,7 +28,7 @@ Mutter supplies no OSD level or maximum.
 ### API 1.30: WM menu actions
 
 API 1.30 adds `menu_context` to WM requests from
-`gnoblin.window.menu-requested`. App menu requests remain informational and
+`gnoblin.window.menu_requested`. App menu requests remain informational and
 carry no authority.
 
 The token belongs to the receiving connection. It expires after five seconds

@@ -1,5 +1,7 @@
 # Runtime Types
 
+> **Status:** not available yet: `gnoblin.input.on`, `gnoblin.window.created`. The sections that use them describe the target, not current behaviour.
+
 Use these shared record descriptions when reading snapshots and event payloads.
 
 The Lua runtime exposes records after native startup completes; exact availability is stated on each domain page. Most records are [live objects](#live-objects) that stay current; the rest are immutable snapshots. Records can carry a `revision` so clients can identify the state version they read.

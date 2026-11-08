@@ -1,5 +1,7 @@
 # Tweens and easing
 
+> **Status:** not available yet: `:play`, `:property`, `:set_opacity`, `gnoblin.ease`, `gnoblin.lerp`, `gnoblin.tween`, `gnoblin.window.created`. The sections that use them describe the target, not current behaviour.
+
 A tween changes window properties over time. You build a timeline of steps in
 Lua, and the compositor plays it in its render loop, so each frame follows the
 display and does not wait for Lua.

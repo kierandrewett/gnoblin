@@ -1,5 +1,7 @@
 # Appearance and animations
 
+> **Status:** not available yet: `:inspect_animation`, `:pause`, `:play`, `:preview_animation`, `:seek`, `:step`, `:stop`, `gnoblin.animation`, `gnoblin.animations`, `gnoblin.animations.get`, `gnoblin.animations.list`, `gnoblin.appearance.color`, `gnoblin.appearance.color_scheme`, `gnoblin.window.created`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.appearance.color_scheme()` returns the current desktop color scheme:
 `default`, `prefer-dark`, or `prefer-light`. It returns `nil` when the
 `org.gnome.desktop.interface/color-scheme` schema or key is unavailable.
@@ -32,7 +34,7 @@ configuration.
 | `target:inspect_animation(name, event?)`            | Name; optional event       | `Operation<AnimationInspection>`   |
 | `target:preview_animation(name, event?, autoplay?)` | Name; optional event; flag | `Operation<AnimationPreview>`      |
 
-`target` is a `Window` or a `LayerSurface`. Find one with `gnoblin.windows.active()`,
+`target` is a `Window` or a `LayerSurface`. Find one with `gnoblin.windows.focused()`,
 `gnoblin.find("Window", filter)` or `gnoblin.find("LayerSurface", filter)`. The calls take no
 window ID, layer ID or target type: the object you call is the target.
 

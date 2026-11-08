@@ -141,7 +141,6 @@ families.
 | Event name                                 | Fields                                                                                         | Dispatched when                                                        |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                           | Mutter requests an OSD; a shell decides whether and how to display it. |
-| `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                                   | The user pressed the locate-pointer key; a listener shows the pointer. |
 | `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`              | GeoClue asks Gnoblin to authorize an application's location request.   |
 | `gnoblin.location.authorization-finished`  | `request_id`, `result`, `sequence`, `time`                                                     | A location request ends with `allowed`, `denied` or `timeout`.         |
 | `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time` | A program asks the session's polkit agent for authentication.          |

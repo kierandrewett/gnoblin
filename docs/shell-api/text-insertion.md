@@ -1,5 +1,7 @@
 # Text Insertion
 
+> **Status:** not available yet: `:insert_text`, `gnoblin.input.text_target`, `gnoblin.shortcut.activated`. The sections that use them describe the target, not current behaviour.
+
 Insert text into the focused Wayland client using a [grant](/shell-api/grants).
 
 Text insertion is available for the focused Wayland client when the runtime receives an event with a grant.

@@ -1,5 +1,7 @@
 # Find objects
 
+> **Status:** not available yet: `gnoblin.focus.history`, `gnoblin.layers.list`. The sections that use them describe the target, not current behaviour.
+
 `gnoblin.find(kind, filter?)` returns the live objects of one kind that match a filter. One call works for every
 kind that has a list, so you do not need a separate filter for each one.
 
