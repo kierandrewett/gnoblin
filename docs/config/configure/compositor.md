@@ -2,8 +2,10 @@
 
 Configure this part of `gnoblin.configure` with the `compositor` key.
 
-Put these fields inside `gnoblin.configure {compositor = {...}}`. Changes apply
-on configuration reload. Omitted values keep the defaults shown below.
+Put these fields inside `gnoblin.configure {compositor = {...}}`. Only
+`visual_bell` and `visual_bell_type` apply on configuration reload. The other
+fields are read when the session starts, so restart the session after changing
+them. Omitted values keep the defaults shown below.
 
 Animations run only when selected through animation declarations or window
 rules. See the [animation guide](/guides/animations).
@@ -19,7 +21,7 @@ rules. See the [animation guide](/guides/animations).
 | `debug`              | Boolean                                         | `false`              | Shows a mostly opaque FPS, frame-time, CPU and memory overlay.    |
 | `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"`         | `"fullscreen-flash"` | Flash the full screen or the focused window.                      |
 
-`blur = "auto"` enables blur when Mutter reports hardware accelerated rendering and disables it otherwise. `"on"` always enables blur; `"off"` disables blur for panels, window rules, and shell-requested background effects. The setting applies on configuration reload.
+`blur = "auto"` enables blur when Mutter reports hardware accelerated rendering and disables it otherwise. `"on"` always enables blur; `"off"` disables blur for panels, window rules, and shell-requested background effects. The setting is parsed, but the session does not apply it, so changing it has no effect.
 
 Gnoblin draws nothing for the pointer locator. With `locate_pointer = true`,
 pressing `locate_pointer_key` sends the `gnoblin.pointer.locate-requested`

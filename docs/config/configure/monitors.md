@@ -21,6 +21,9 @@ gnoblin.configure {
 `false` requests that they turn off. `"inherit"` follows the system privacy
 screen preference.
 
+`privacy_screen` is parsed, but no output backend applies it, so it has no
+effect on hardware.
+
 Gnoblin applies an explicit choice for the current session and does not save it
 to the system preference. The request applies globally. Monitors without a
 privacy screen are unaffected. Remove the setting or use `"inherit"` to follow

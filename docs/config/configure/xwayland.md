@@ -31,16 +31,12 @@ not remove those built-in rules. Grab rules only permit a grab when
 XTEST extension, which lets clients synthesize input events. Mutter ignores a
 request to disable an extension when Xwayland was built without that extension.
 
-Changing `disable_extensions` or `allow_byte_swapped_clients` requires
-restarting Xwayland; changes to those settings restart the Xwayland child after
-a successful config reload. This disconnects running X11 apps; they may need to
-be started again. The other settings apply during the session without
-restarting Xwayland.
+Xwayland settings are read when the session starts. Restart the session after
+changing them.
 
 Gnoblin exposes the effective scale to X11 clients through XSettings and the
-`Xft.dpi` resource. A config reload updates these values live. If another
-XSettings manager already owns the XWayland display, Gnoblin leaves it in
-control.
+`Xft.dpi` resource. If another XSettings manager already owns the XWayland
+display, Gnoblin leaves it in control.
 
 The upper scale limit keeps Mutter's conversion to a signed integer in range:
 Mutter stores the value as a `float`, rounds it, and converts it to `int` for

@@ -1,9 +1,10 @@
 # gnoblin.configure.input
 
-Input settings go in `gnoblin.configure {input = {...}}` and apply on config
-reload. Groups and fields are optional. Gnoblin leaves anything you omit at its
-current system setting, so start with a small override and add only what you
-need.
+Input settings go in `gnoblin.configure {input = {...}}`. Keyboard repeat,
+delay, and xkb options apply on config reload. Other input groups are read when
+the session starts, so restart the session after changing them. Groups and
+fields are optional. Gnoblin leaves anything you omit at its current system
+setting, so start with a small override and add only what you need.
 
 `"inherit"` has the same effect for an individual field. Use it to clear a
 value supplied by an earlier loaded config file. For example, this keeps the

@@ -3,7 +3,8 @@
 Configure this part of `gnoblin.configure` with the `window_management` key.
 
 Put these fields inside `gnoblin.configure {window_management = {...}}`.
-Changes apply on configuration reload. Omitted fields use the defaults below.
+The fields on this page are read when the session starts. Restart the session
+after changing them. Window rules are set on reload; see the window rule guide.
 
 ## Settings at a glance
 
@@ -41,7 +42,7 @@ work area, which is the monitor minus the space that panels reserve.
 - With `false`, Mutter's own rule applies: a window can move until only a strip
   of it stays on screen, at most 75 pixels tall.
 
-The setting is read when a drag starts, so a reload affects the next drag.
+The setting is read when the session starts. A reload does not change it.
 
 `new_window_placement` applies only to normal application windows. Dialogs,
 modal dialogs, splash screens and transient windows keep Mutter's own placement.

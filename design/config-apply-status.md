@@ -62,6 +62,17 @@ starts. A commit does not change it.
   `gnoblin-wayland`, `gnoblin-backend*`, or `gnoblin-compositor` reads it, so a
   document that sets it changes nothing, at start or on commit. Either wire it to
   the backend or remove the key from the schema. Not fixed in this change.
+
+- **`compositor.blur` is parsed, not applied.** `docs/config/configure/compositor.md`
+  used to say it applied on reload. No session code reads it, so changing it
+  does nothing. Either wire it or remove the key.
+- **Shortcut and keybinding reload is unverified.** The commit path in
+  `ipc/server.rs` sets no shortcut state, yet the keybinding and shortcut docs
+  say a reload replaces the set. Trace how the runtime reload reaches shortcuts
+  before trusting either claim.
+- **Orientation lock reload is unverified.** `docs/config/configure/input.md`
+  says a reload reapplies it. The commit path does not touch it.
+
 - **Startup-only sections are silent.** A user who edits `xwayland`, `renderer`,
   `layouts`, `extensions`, or `window_management` (other than rules) and commits
   sees the commit accepted, and nothing changes until the next start. Each such
