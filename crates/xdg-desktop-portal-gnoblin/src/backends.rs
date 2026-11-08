@@ -38,6 +38,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::os::fd::OwnedFd;
+use std::sync::Arc;
 
 use gnoblin_capture::Target;
 use gnoblin_model::Value;
@@ -100,19 +101,32 @@ pub struct StreamRequest {
     pub multiple: bool,
 }
 
+/// Why a screenshot did not produce a picture, and what the portal answers for each reason.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ScreenshotError {
+    /// The compositor cannot take screenshots here at all: the app is told the call is
+    /// unsupported.
+    Unavailable(Unavailable),
+    /// The session refused the capture (locked, no output, no frame yet): the request ends
+    /// with response 2, the same as a cancelled one.
+    Refused(Unavailable),
+    /// The picture was taken but could not be stored: the app is told why.
+    Write(Unavailable),
+}
+
 /// The capture call the compositor owns.
-pub trait CaptureBackend: Send {
-    /// Take one screenshot, returning the URI of the file it wrote.
-    fn screenshot(&mut self, options: &ScreenshotOptions) -> Result<String, Unavailable>;
+pub trait CaptureBackend: Send + Sync {
+    /// Take one screenshot of the screen and return the URI of the file it wrote.
+    fn screenshot(&self, options: &ScreenshotOptions) -> Result<String, ScreenshotError>;
 
     /// Read the pixel under the pointer, as sRGB components in [0, 1].
-    fn pick_color(&mut self) -> Result<(f64, f64, f64), Unavailable>;
+    fn pick_color(&self) -> Result<(f64, f64, f64), Unavailable>;
 
     /// Open a stream for one target.
-    fn open_stream(&mut self, request: &StreamRequest) -> Result<Stream, Unavailable>;
+    fn open_stream(&self, request: &StreamRequest) -> Result<Stream, Unavailable>;
 
     /// Close a stream this backend opened.
-    fn close_stream(&mut self, stream: StreamId);
+    fn close_stream(&self, stream: StreamId);
 }
 
 /// The input call the compositor owns.
@@ -227,12 +241,12 @@ impl std::error::Error for Unavailable {}
 
 /// Every compositor call the backend makes, in one value.
 ///
-/// One struct rather than five constructor arguments, because the composition root
-/// supplies all of them or none: a portal with a real capture backend and the default for
-/// EIS is a state somebody has to look at, and naming it here makes that state explicit.
+/// One struct rather than five constructor arguments. The composition root supplies capture
+/// from the compositor's IPC when a shell is reachable; every other call stays [`Missing`]
+/// until its IPC member exists, and each refusal names what is missing.
 pub struct Backends {
     /// The capture call.
-    pub capture: Box<dyn CaptureBackend>,
+    pub capture: Arc<dyn CaptureBackend>,
     /// The input call.
     pub eis: Box<dyn EisBackend>,
     /// The inhibit call.
@@ -248,7 +262,7 @@ impl Default for Backends {
     /// compositor-side support runs with, and every refusal says so.
     fn default() -> Self {
         Backends {
-            capture: Box::new(Missing),
+            capture: Arc::new(Missing),
             eis: Box::new(Missing),
             inhibit: Box::new(Missing),
             shortcuts: Box::new(Missing),
@@ -271,19 +285,19 @@ impl fmt::Debug for Backends {
 pub struct Missing;
 
 impl CaptureBackend for Missing {
-    fn screenshot(&mut self, _options: &ScreenshotOptions) -> Result<String, Unavailable> {
-        Err(Unavailable::missing("screenshot"))
+    fn screenshot(&self, _options: &ScreenshotOptions) -> Result<String, ScreenshotError> {
+        Err(ScreenshotError::Unavailable(Unavailable::missing("screenshot")))
     }
 
-    fn pick_color(&mut self) -> Result<(f64, f64, f64), Unavailable> {
+    fn pick_color(&self) -> Result<(f64, f64, f64), Unavailable> {
         Err(Unavailable::missing("pick-color"))
     }
 
-    fn open_stream(&mut self, _request: &StreamRequest) -> Result<Stream, Unavailable> {
+    fn open_stream(&self, _request: &StreamRequest) -> Result<Stream, Unavailable> {
         Err(Unavailable::missing("capture-open-stream"))
     }
 
-    fn close_stream(&mut self, _stream: StreamId) {}
+    fn close_stream(&self, _stream: StreamId) {}
 }
 
 impl EisBackend for Missing {

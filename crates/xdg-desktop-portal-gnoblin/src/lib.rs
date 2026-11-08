@@ -44,8 +44,10 @@
 //! `Settings` interface end to end (its values come from the graph and its changes are
 //! signals), and `Inhibit`'s request and monitoring lifetimes.
 //!
-//! A seam: every call into the compositor. The object schema declares no member for a
-//! screenshot, a stream, an EIS connection, a shortcut binding, a clipboard transfer or an
+//! A seam: every call into the compositor except the screenshot. A screenshot is the
+//! compositor's `capture.screen` member, served by [`capture_relay`], which writes the
+//! picture to the user's Pictures folder. The object schema declares no member for a stream,
+//! a colour pick, an EIS connection, a shortcut binding, a clipboard transfer or an
 //! inhibition, so [`backends::Missing`] refuses each one with a sentence naming what is
 //! missing, and the composition root supplies a real implementation when the members exist.
 //! No interface returns success for work it did not do.
@@ -79,12 +81,16 @@
 
 /// Compositor-side calls each portal request ends in; all refuse by default.
 pub mod backends;
+/// Screenshots: the compositor's `capture.screen` member, stored in the Pictures folder.
+pub mod capture_relay;
 /// The consent core: portal sessions, grants and the `portal.ui` offer.
 pub mod consent;
 /// The privileged IPC connection: offers out, answers and graph diffs in.
 pub mod host;
 /// The D-Bus objects, one per served `org.freedesktop.impl.portal.*` interface.
 pub mod iface;
+/// Screenshot file storage: the Pictures folder, the file name and the `file://` URI.
+pub mod picture;
 /// The `settings` object's properties as the namespaces toolkits read.
 pub mod settings;
 

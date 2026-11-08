@@ -83,7 +83,7 @@ pub struct Shared {
     /// The values `Settings` publishes.
     pub settings: Table,
     /// The capture call.
-    pub capture: Box<dyn CaptureBackend>,
+    pub capture: Arc<dyn CaptureBackend>,
     /// The input call.
     pub eis: Box<dyn EisBackend>,
     /// The inhibit call.

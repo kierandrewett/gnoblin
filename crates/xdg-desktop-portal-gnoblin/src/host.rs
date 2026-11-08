@@ -47,9 +47,11 @@ use gnoblin_model::{Fields, Filter};
 use gnoblin_types::{RequestId, Version};
 use zeroize::Zeroizing;
 
+use crate::backends::{ScreenshotError, Unavailable};
 use crate::consent::{Host, OFFERER, Offer, Prompt, Refusal, SECRET_DERIVE};
 
 use crate::log;
+use crate::picture;
 
 /// The slot consent prompts are offered to.
 const SLOT: &str = crate::consent::PORTAL_UI;
@@ -83,9 +85,14 @@ enum Command {
     },
     /// Withdraw an offer that can no longer be answered.
     Decline(RequestId),
+    /// Ask the compositor for one still picture of the screen and answer with its PNG bytes.
+    Capture {
+        reply: oneshot::Sender<Result<Vec<u8>, ScreenshotError>>,
+    },
 }
 
 /// The `portal.ui` host, as a handler sees it.
+#[derive(Clone)]
 pub struct IpcHost {
     commands: mpsc::UnboundedSender<Command>,
 }
@@ -115,6 +122,23 @@ impl IpcHost {
                 secrets: HashMap::new(),
             },
         )
+    }
+
+    /// One still picture of the screen, as the PNG bytes the compositor sent. The loop's
+    /// client makes the call, so the connection is still read by one thread.
+    ///
+    /// # Errors
+    ///
+    /// A refusal the session gave by name, or a capture that never got an answer.
+    pub fn capture_screen(&self) -> Result<Vec<u8>, ScreenshotError> {
+        let (reply, answer) = oneshot::channel();
+        if self.commands.unbounded_send(Command::Capture { reply }).is_err() {
+            return Err(capture_closed());
+        }
+        match futures_lite::future::block_on(answer) {
+            Ok(outcome) => outcome,
+            Err(_) => Err(capture_closed()),
+        }
     }
 }
 
@@ -332,6 +356,9 @@ impl<T: Transport> IpcLoop<T> {
                             }
                         }
                     }
+                    Command::Capture { reply } => {
+                        let _ = reply.send(capture_outcome(self.client.capture_screen()));
+                    }
                 }
             }
             match self.client.next_event() {
@@ -431,6 +458,27 @@ impl<T: Transport> IpcLoop<T> {
     }
 }
 
+/// What `capture.screen` comes to for the portal: the PNG bytes, a refusal the session gave
+/// by name, or a capture the compositor never answered.
+fn capture_outcome(result: Result<Vec<u8>, ClientError>) -> Result<Vec<u8>, ScreenshotError> {
+    match result {
+        Ok(png) => Ok(png),
+        Err(ClientError::Refused { code, message, .. }) => {
+            Err(ScreenshotError::Refused(picture::refusal(&code, &message)))
+        }
+        Err(error) => Err(ScreenshotError::Unavailable(Unavailable {
+            reason: format!("the compositor did not answer the capture: {error}"),
+        })),
+    }
+}
+
+/// The refusal for a capture whose connection closed before it was answered.
+fn capture_closed() -> ScreenshotError {
+    ScreenshotError::Unavailable(Unavailable {
+        reason: "the compositor connection closed before the capture was answered".to_owned(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,5 +521,34 @@ mod tests {
             assert_eq!(request.interface, interface.as_str());
             assert!(!request.interface.contains('.'), "{}", request.interface);
         }
+    }
+
+    // A compositor refusal is a named refusal the portal answers as response 2: never a
+    // picture, and never a wait for one.
+    #[test]
+    fn a_locked_capture_is_refused_by_name() {
+        let refused = ClientError::Refused {
+            member: "capture-screen".to_owned(),
+            code: gnoblin_client::code::CAPTURE_LOCKED.to_owned(),
+            message: "the session is locked".to_owned(),
+        };
+        match capture_outcome(Err(refused)) {
+            Err(ScreenshotError::Refused(reason)) => assert!(reason.reason.contains("locked"), "{reason}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_picture_passes_through_unchanged() {
+        let bytes = vec![0x89, b'P', b'N', b'G'];
+        assert_eq!(capture_outcome(Ok(bytes.clone())).unwrap(), bytes);
+    }
+
+    #[test]
+    fn a_dropped_connection_is_unavailable_not_a_refusal() {
+        assert!(matches!(
+            capture_outcome(Err(ClientError::Disconnected)),
+            Err(ScreenshotError::Unavailable(_))
+        ));
     }
 }

@@ -33,12 +33,15 @@
 //! process waits on: it exits when the session bus goes away.
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use futures_lite::future;
 use gnoblin_client::{Client, Reporter, UnixTransport, inherited_stream, socket_path};
 use gnoblin_types::Version;
+use xdg_desktop_portal_gnoblin::backends::Missing;
+use xdg_desktop_portal_gnoblin::capture_relay::CaptureRelay;
 use xdg_desktop_portal_gnoblin::host::NoShell;
-use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Portal};
+use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, CaptureBackend, Host, IpcHost, IpcLoop, Portal, picture};
 use zbus::fdo::RequestNameReply;
 
 gnoblin_log::logger!(log = "portal");
@@ -103,11 +106,19 @@ fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptio
 
 /// Connect if a shell is reachable, export, own the name and serve until the bus goes.
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let (host, loop_) = match ipc() {
-        Ok((host, loop_)) => (Box::new(host) as Box<dyn Host>, Some(loop_)),
+    let (host, loop_, capture) = match ipc() {
+        Ok((host, loop_)) => {
+            let folder = picture::pictures_dir(|name| std::env::var(name).ok());
+            let capture = Arc::new(CaptureRelay::new(host.clone(), folder)) as Arc<dyn CaptureBackend>;
+            (Box::new(host) as Box<dyn Host>, Some(loop_), capture)
+        }
         Err(error) => {
             log::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
-            (Box::new(NoShell) as Box<dyn Host>, None)
+            (
+                Box::new(NoShell) as Box<dyn Host>,
+                None,
+                Arc::new(Missing) as Arc<dyn CaptureBackend>,
+            )
         }
     };
 
@@ -125,7 +136,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let portal = Portal::new(
             connection.clone(),
             host,
-            Backends::default(),
+            Backends {
+                capture,
+                ..Backends::default()
+            },
             CONSENT_LIFETIME,
             secret_served,
         );

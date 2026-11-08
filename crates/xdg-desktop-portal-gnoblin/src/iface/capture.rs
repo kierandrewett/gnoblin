@@ -11,10 +11,14 @@
 //! as the caller asked for it and as this backend narrows it, the consent question with
 //! D14's refusal, the response codes, the close and the stream bookkeeping.
 //!
-//! Not real: the frames. [`crate::backends::CaptureBackend`] is the compositor's call, and
-//! the default refuses with a sentence naming the missing schema member. A screen cast
-//! therefore fails at `Start` with `org.freedesktop.portal.Error.NotSupported` after the
-//! user has been asked, and the stream list is never fabricated.
+//! Real for a screenshot: the frames come from the compositor's `capture.screen` member,
+//! through [`crate::capture_relay`], which writes the PNG and answers with its URI. Only
+//! full-screen screenshots are served.
+//!
+//! Not real: the screen cast frames. [`crate::backends::CaptureBackend::open_stream`] is
+//! still the default that refuses, so a screen cast fails at `Start` with
+//! `org.freedesktop.portal.Error.NotSupported` after the user has been asked, and the stream
+//! list is never fabricated.
 //!
 //! # The narrower option set
 //!
@@ -32,7 +36,7 @@ use zbus::message::Header;
 use zbus::{Connection, ObjectPath, fdo};
 
 use super::{Portal, Reply, await_consent, export_request, refused, remove, sender, unsupported, variant};
-use crate::backends::{ScreenshotOptions, StreamRequest};
+use crate::backends::{ScreenshotError, ScreenshotOptions, StreamRequest};
 use crate::consent::{ConsentOutcome, Interface, NewSession, PortalCapability};
 
 use crate::log;
@@ -122,9 +126,11 @@ impl Screenshot {
                     interactive: flag(&options, "interactive"),
                     modal: flag(&options, "modal"),
                 };
+                // The backend is cloned out of the lock: a capture takes a while, and every
+                // other request needs the lock to answer.
                 let shot = {
-                    let mut shared = self.portal.lock();
-                    shared.capture.screenshot(&options)
+                    let capture = std::sync::Arc::clone(&self.portal.lock().capture);
+                    capture.screenshot(&options)
                 };
                 match shot {
                     Ok(uri) => {
@@ -132,10 +138,19 @@ impl Screenshot {
                         results.insert("uri".to_owned(), text(&uri));
                         (0, results)
                     }
-                    Err(missing) => {
+                    Err(ScreenshotError::Refused(reason)) => {
+                        log::info!(detail = %reason, "the compositor refused a screenshot");
+                        (2, BTreeMap::new())
+                    }
+                    Err(ScreenshotError::Unavailable(missing)) => {
                         let _ = self.portal.close_session(&caller, &path);
                         let _ = remove(&self.portal.connection, &path).await;
                         return Err(unsupported(missing));
+                    }
+                    Err(ScreenshotError::Write(problem)) => {
+                        let _ = self.portal.close_session(&caller, &path);
+                        let _ = remove(&self.portal.connection, &path).await;
+                        return Err(fdo::Error::Failed(problem.reason));
                     }
                 }
             }
@@ -193,7 +208,7 @@ impl Screenshot {
         let reply = match outcome {
             Ok(ConsentOutcome::Granted) => {
                 let picked = {
-                    let mut shared = self.portal.lock();
+                    let shared = self.portal.lock();
                     shared.capture.pick_color()
                 };
                 match picked {
