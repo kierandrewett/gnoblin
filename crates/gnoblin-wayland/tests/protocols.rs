@@ -27,15 +27,16 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
+use gnoblin_backend::{InputEvent, TouchPhase};
 use gnoblin_lock::State as LockState;
 use gnoblin_types::Point;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
 use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface, wl_touch,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::idle_notify::v1::client::{ext_idle_notification_v1, ext_idle_notifier_v1};
@@ -146,6 +147,17 @@ impl Handle {
         self.control
             .inject_input(InputEvent::PointerAxis { horizontal, vertical });
     }
+
+    /// Queues a touch point's change at a global position on the first output.
+    fn touch(&self, slot: u32, at: Point, phase: TouchPhase) {
+        let output = self.snapshot().outputs().first().copied().expect("an output");
+        self.control.inject_input(InputEvent::Touch {
+            output,
+            slot,
+            position: at,
+            phase,
+        });
+    }
 }
 
 /// Stops the session when the worker finishes, including when it panics.
@@ -246,6 +258,18 @@ struct App {
     scroll_steps: Vec<(wl_pointer::Axis, i32)>,
     /// The motion vectors a relative pointer received.
     relative: Vec<(f64, f64)>,
+    // Touch.
+    /// The `wl_touch` this connection created, once the seat offered touch.
+    touch: Option<wl_touch::WlTouch>,
+    /// The downs received as an id and the surface position it landed at.
+    touch_downs: Vec<(i32, f64, f64)>,
+    /// The motions received as an id and the surface position it moved to.
+    touch_motions: Vec<(i32, f64, f64)>,
+    /// The ids of the touch points lifted.
+    touch_ups: Vec<i32>,
+    touch_cancels: u32,
+    /// The touch frames received: one ends each batch of touch events.
+    touch_frames: u32,
     // Pointer constraints.
     locked: u32,
     unlocked: u32,
@@ -343,6 +367,12 @@ impl Client {
     fn pointer(&mut self) -> wl_pointer::WlPointer {
         self.roundtrip();
         self.state.pointer.clone().expect("the seat offered a pointer")
+    }
+
+    /// Waits for the seat to offer touch, then checks that this connection bound a `wl_touch`.
+    fn touch_device(&mut self) {
+        self.roundtrip();
+        assert!(self.state.touch.is_some(), "the seat offered no touch device");
     }
 
     /// Waits for `predicate` over the client's own state, with a round trip per try.
@@ -473,6 +503,9 @@ impl Dispatch<wl_seat::WlSeat, ()> for App {
             if capabilities.contains(wl_seat::Capability::Pointer) && state.pointer.is_none() {
                 state.pointer = Some(seat.get_pointer(qh, ()));
             }
+            if capabilities.contains(wl_seat::Capability::Touch) && state.touch.is_none() {
+                state.touch = Some(seat.get_touch(qh, ()));
+            }
         }
     }
 }
@@ -543,6 +576,26 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 axis: WEnum::Value(axis),
                 value120,
             } => state.scroll_steps.push((axis, value120)),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_touch::WlTouch, ()> for App {
+    fn event(
+        state: &mut Self,
+        _: &wl_touch::WlTouch,
+        event: <wl_touch::WlTouch as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_touch::Event::Down { id, x, y, .. } => state.touch_downs.push((id, x, y)),
+            wl_touch::Event::Motion { id, x, y, .. } => state.touch_motions.push((id, x, y)),
+            wl_touch::Event::Up { id, .. } => state.touch_ups.push(id),
+            wl_touch::Event::Cancel => state.touch_cancels += 1,
+            wl_touch::Event::Frame => state.touch_frames += 1,
             _ => {}
         }
     }
@@ -1004,6 +1057,150 @@ fn a_scroll_with_the_pointer_over_no_window_reaches_nobody() {
         let state = client.wait_for(|state| state.pointer_enters == 2);
         assert!(state.scrolls.is_empty(), "no window was under the scroll");
         assert!(state.scroll_steps.is_empty(), "no window was under the scroll");
+    });
+}
+
+#[test]
+fn a_touch_on_a_window_reaches_it_at_window_local_coordinates() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Touched");
+        let geometry = session.focused_window();
+        let at = centre(geometry);
+        client.touch_device();
+
+        session.touch(0, at, TouchPhase::Down);
+        let state = client.wait_for(|state| state.touch_frames == 1);
+        assert_eq!(
+            state.touch_downs,
+            vec![(0, f64::from(at.x - geometry.x), f64::from(at.y - geometry.y))]
+        );
+
+        session.touch(0, at, TouchPhase::Up);
+        let state = client.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(state.touch_ups, vec![0]);
+    });
+}
+
+#[test]
+fn a_touch_that_moves_off_the_window_stays_with_it() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Dragged");
+        let geometry = session.focused_window();
+        let at = centre(geometry);
+        client.touch_device();
+
+        session.touch(0, at, TouchPhase::Down);
+        client.wait_for(|state| state.touch_frames == 1);
+
+        // The finger is past the right edge, but a touch belongs to the surface it went down on.
+        let away = Point::new(geometry.x + geometry.width as i32 + 40, at.y);
+        session.touch(0, away, TouchPhase::Motion);
+        let state = client.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(
+            state.touch_motions,
+            vec![(0, f64::from(away.x - geometry.x), f64::from(away.y - geometry.y))]
+        );
+    });
+}
+
+#[test]
+fn a_touch_over_no_window_reaches_nobody() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Untouched");
+        let geometry = session.focused_window();
+        client.touch_device();
+
+        // Slot 0 lands on nothing, so only slot 1, which lands on the window, reaches the client.
+        session.touch(0, Point::new(-5000, -5000), TouchPhase::Down);
+        session.touch(1, centre(geometry), TouchPhase::Down);
+        let state = client.wait_for(|state| state.touch_frames == 1);
+        let ids: Vec<i32> = state.touch_downs.iter().map(|down| down.0).collect();
+        assert_eq!(ids, vec![1]);
+    });
+}
+
+#[test]
+fn a_touch_up_for_a_point_that_never_went_down_is_not_sent() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Lifted");
+        let geometry = session.focused_window();
+        let at = centre(geometry);
+        client.touch_device();
+
+        session.touch(7, at, TouchPhase::Up);
+        session.touch(0, at, TouchPhase::Down);
+        let state = client.wait_for(|state| state.touch_frames == 1);
+        assert!(
+            state.touch_ups.is_empty(),
+            "no point of slot 7 was down: {:?}",
+            state.touch_ups
+        );
+        assert_eq!(state.touch_downs.len(), 1);
+    });
+}
+
+#[test]
+fn a_cancelled_touch_ends_its_point_without_an_up() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Cancelled");
+        let geometry = session.focused_window();
+        let at = centre(geometry);
+        client.touch_device();
+
+        session.touch(0, at, TouchPhase::Down);
+        client.wait_for(|state| state.touch_frames == 1);
+
+        session.touch(0, at, TouchPhase::Cancel);
+        // wl_touch.cancel is not part of a frame, so the client sees no frame after it.
+        let state = client.wait_for(|state| state.touch_cancels == 1);
+        assert_eq!(state.touch_cancels, 1);
+        assert!(
+            state.touch_ups.is_empty(),
+            "a cancel is not an up: {:?}",
+            state.touch_ups
+        );
+    });
+}
+
+#[test]
+fn each_touch_point_keeps_its_own_id() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.TwoFingers");
+        let geometry = session.focused_window();
+        let first = centre(geometry);
+        let second = Point::new(geometry.x + 5, geometry.y + 5);
+        client.touch_device();
+
+        session.touch(0, first, TouchPhase::Down);
+        session.touch(1, second, TouchPhase::Down);
+        let state = client.wait_for(|state| state.touch_frames == 2);
+        let ids: Vec<i32> = state.touch_downs.iter().map(|down| down.0).collect();
+        assert_eq!(ids, vec![0, 1]);
+
+        // Only the second finger moves, so only its id is reported.
+        let moved = Point::new(second.x + 20, second.y + 20);
+        session.touch(1, moved, TouchPhase::Motion);
+        let state = client.wait_for(|state| state.touch_frames == 3);
+        assert_eq!(
+            state.touch_motions,
+            vec![(1, f64::from(moved.x - geometry.x), f64::from(moved.y - geometry.y))]
+        );
+
+        session.touch(0, first, TouchPhase::Up);
+        let state = client.wait_for(|state| state.touch_frames == 4);
+        assert_eq!(state.touch_ups, vec![0]);
     });
 }
 

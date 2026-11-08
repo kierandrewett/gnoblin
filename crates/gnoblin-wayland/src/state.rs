@@ -7,16 +7,17 @@
 //! Smithay type and this module never decides policy: the same split the plan draws
 //! between the composition root and the pure crates.
 
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use smithay::backend::input::{Axis, AxisSource, ButtonState, InputTime};
+use smithay::backend::input::{Axis, AxisSource, ButtonState, InputTime, TouchSlot};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::PopupManager;
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorImageStatus, MotionEvent, RelativeMotionEvent};
+use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, TouchHandle, UpEvent};
 use smithay::input::{Seat, SeatState, pointer::PointerHandle};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -63,7 +64,7 @@ use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
 use gnoblin_backend::render::compose::{Composer, Content};
-use gnoblin_backend::{Host, InputEvent};
+use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::Protocols;
 use gnoblin_input::Activity;
 use gnoblin_layers::{InputPolicy, LayerHandle, LayerProvider, LayerSpec};
@@ -158,6 +159,12 @@ impl Managed {
             Self::X11(_) => None,
         }
     }
+}
+
+/// A touch point the seat holds: the window it went down on and where it is now.
+struct TouchPoint {
+    surface: WlSurface,
+    location: SmithayPoint<f64, Logical>,
 }
 
 /// One toplevel the server is managing.
@@ -422,6 +429,8 @@ pub struct State {
     pub(crate) keyboard: KeyboardHandle<State>,
     /// The pointer handle of the seat, the target of pointer focus and motion.
     pub(crate) pointer: PointerHandle<State>,
+    /// The touch handle of the seat, the target of touch focus and touch points.
+    pub(crate) touch: TouchHandle<State>,
     /// What each connection is allowed to be, shared with the globals' filters.
     pub(crate) access: Arc<Access>,
     /// The layer surfaces and what they reserve.
@@ -521,6 +530,9 @@ pub struct State {
     pointer_position: SmithayPoint<f64, Logical>,
     /// How many pointer buttons are held. Focus does not follow the pointer while one is.
     held_buttons: u32,
+    /// The touch points the seat holds, by device slot: the window each went down on and
+    /// where it is now.
+    touch_points: HashMap<u32, TouchPoint>,
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
     pub(crate) composer: Composer,
@@ -734,6 +746,7 @@ impl State {
             .add_keyboard(Default::default(), KEY_REPEAT_DELAY, KEY_REPEAT_INTERVAL)
             .map_err(StartupError::Keyboard)?;
         let pointer = seat.add_pointer();
+        let touch = seat.add_touch();
 
         let mut state = Self {
             display_handle,
@@ -786,6 +799,7 @@ impl State {
             security_context_state,
             keyboard,
             pointer,
+            touch,
             seat,
             access,
             layers: ZwlrLayerShellV1Layers::default(),
@@ -833,6 +847,7 @@ impl State {
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             held_buttons: 0,
+            touch_points: HashMap::new(),
             composer: Composer::new(),
             modal: None,
             modal_events: Vec::new(),
@@ -1155,6 +1170,7 @@ impl State {
         self.release_constraints();
         self.revoke_shortcut_inhibitors();
         self.clear_pointer_focus();
+        self.cancel_touches();
     }
 
     /// The display, taken out for the caller that drives a dispatch.
@@ -1700,6 +1716,11 @@ impl State {
                 // A constraint the window's client held cannot outlive the surface it
                 // was created for.
                 self.constraint_tables.held.retain(|held| held.surface != wl_surface);
+                // A touch point on the window cannot outlive it: the clients holding touches are
+                // told the gesture ended, as the protocol's cancel does.
+                if self.touch_points.values().any(|point| point.surface == wl_surface) {
+                    self.cancel_touches();
+                }
                 log::debug!(area = "window", %window, surface = ?wl_surface.id(), "closed");
             }
             // The window fades out from the picture its buffer holds now, before the
@@ -2705,7 +2726,13 @@ impl State {
 
     /// Asks the window manager to focus the window under the pointer.
     fn activate_under_pointer(&mut self) {
-        let Some((surface, _)) = self.surface_under(self.pointer_position) else {
+        self.activate_at(self.pointer_position);
+    }
+
+    /// Asks the window manager to focus the window under a point. A pointer press and a
+    /// touch down are the same request.
+    fn activate_at(&mut self, position: SmithayPoint<f64, Logical>) {
+        let Some((surface, _)) = self.surface_under(position) else {
             return;
         };
         let Some(window) = self.window_of(&surface) else {
@@ -2729,6 +2756,111 @@ impl State {
             }
             None => self.report_window(None),
         }
+    }
+
+    /// Routes one touch point. A point goes to the window under it when it goes down; its
+    /// motion and up follow its slot, because the protocol ties a point to a surface only
+    /// at down.
+    fn touch_input(&mut self, slot: u32, location: SmithayPoint<f64, Logical>, phase: TouchPhase, time: InputTime) {
+        let touch = self.touch.clone();
+        match phase {
+            TouchPhase::Down => {
+                // A press on a window asks for activation, as a pointer press does.
+                self.activate_at(location);
+                // A point that lands on nothing reaches no client.
+                let Some((surface, origin)) = self.surface_under(location) else {
+                    return;
+                };
+                let serial = SERIAL_COUNTER.next_serial();
+                self.remember_input_serial(u32::from(serial));
+                self.touch_points.insert(
+                    slot,
+                    TouchPoint {
+                        surface: surface.clone(),
+                        location,
+                    },
+                );
+                touch.down(
+                    self,
+                    Some((surface, origin)),
+                    &DownEvent {
+                        slot: TouchSlot::from(Some(slot)),
+                        location,
+                        serial,
+                        time,
+                    },
+                );
+                touch.frame(self);
+            }
+            TouchPhase::Motion => {
+                let Some(point) = self.touch_points.get_mut(&slot) else {
+                    return;
+                };
+                point.location = location;
+                touch.motion(
+                    self,
+                    None,
+                    &TouchMotionEvent {
+                        slot: TouchSlot::from(Some(slot)),
+                        location,
+                        time,
+                    },
+                );
+                touch.frame(self);
+            }
+            TouchPhase::Up => {
+                if self.touch_points.remove(&slot).is_none() {
+                    return;
+                }
+                let serial = SERIAL_COUNTER.next_serial();
+                self.remember_input_serial(u32::from(serial));
+                touch.up(
+                    self,
+                    &UpEvent {
+                        slot: TouchSlot::from(Some(slot)),
+                        serial,
+                        time,
+                    },
+                );
+                touch.frame(self);
+            }
+            TouchPhase::Cancel => {
+                if self.touch_points.contains_key(&slot) {
+                    self.cancel_touches();
+                }
+            }
+        }
+    }
+
+    /// Ends every touch point the seat holds. The protocol's cancel names no slot and goes
+    /// to every client holding a touch, so every point ends for every client at once.
+    ///
+    /// Smithay's cancel acts only on a pending frame, and a frame opens with an event, so
+    /// each point first gets a motion to the location it was last seen at. That repeats a
+    /// position the client already has, and the cancel that follows ends the points.
+    fn cancel_touches(&mut self) {
+        if self.touch_points.is_empty() {
+            return;
+        }
+        let touch = self.touch.clone();
+        let time = InputTime::now();
+        let last_seen: Vec<(u32, SmithayPoint<f64, Logical>)> = self
+            .touch_points
+            .drain()
+            .map(|(slot, point)| (slot, point.location))
+            .collect();
+        for (slot, location) in last_seen {
+            touch.motion(
+                self,
+                None,
+                &TouchMotionEvent {
+                    slot: TouchSlot::from(Some(slot)),
+                    location,
+                    time,
+                },
+            );
+        }
+        touch.cancel(self);
     }
 
     /// Sends the window the pointer is over, or none, to the window manager.
@@ -3171,9 +3303,21 @@ impl Host for State {
             }
             // A scroll that moved nothing sends nothing, so a client never sees an empty frame.
             InputEvent::PointerAxis { .. } => {}
-            // A touch point needs a seat that tracks one point per slot per output,
-            // which is the input slice's; nothing is invented about it here.
-            InputEvent::Touch { .. } => {}
+            InputEvent::Touch {
+                output,
+                slot,
+                position,
+                phase,
+            } => {
+                let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
+                    return;
+                };
+                let location = SmithayPoint::from((
+                    f64::from(position.x + entry.rect.x),
+                    f64::from(position.y + entry.rect.y),
+                ));
+                self.touch_input(slot, location, phase, time);
+            }
             // A device joining or leaving changes no focus or pointer state; the seat only
             // needs the release a removal sends for the buttons and touches it held.
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}

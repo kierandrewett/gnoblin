@@ -107,12 +107,12 @@
 //!
 //! **Not served, and not pretended:**
 //!
-//! - **Touch.** The seat advertises keyboard and pointer only. A `wl_touch` request is not
-//!   answered because no touch device reaches this slice, and a seat that advertised touch
-//!   without one would make every toolkit wait for events that never come.
-//! - **Pointer and touch gestures that carry data.** The gesture interfaces bind, but no
-//!   hold, pinch or swipe ever arrives: the backends of this slice report motion, buttons,
-//!   keys and scroll only.
+//! - **Touch gestures that carry data.** The seat serves `wl_touch` points (down, motion, up,
+//!   cancel) and a point goes to the window under it. `wl_touch.shape` and
+//!   `wl_touch.orientation` are never sent: the backends of this slice report position only.
+//! - **Pointer gestures that carry data.** The gesture interfaces bind, but no hold, pinch or
+//!   swipe ever arrives: the backends of this slice report motion, buttons, keys, scroll and
+//!   touch points only.
 //! - **Cursor drawing.** A `wp_cursor_shape_v1` or `wl_cursor` request is recorded and never
 //!   painted, for the same reason: a headless output has no pointer plane.
 //! - **Text input on a surface that is not a `xdg_toplevel`** — there is no input-panel or
