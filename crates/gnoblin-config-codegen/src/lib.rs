@@ -411,6 +411,7 @@ pub const HOOKS: &[&str] = &[
     "window_rules",
     "workspace",
     "workspaces",
+    "workspace_sets",
     "xwayland",
 ];
 

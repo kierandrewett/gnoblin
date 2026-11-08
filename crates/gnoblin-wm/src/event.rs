@@ -16,6 +16,7 @@ use crate::activation::ActivationDecision;
 use crate::rules::{Rule, RuleError};
 use crate::snapping::SnapZone;
 use crate::window::WindowKind;
+use crate::workspace_set::{WorkspaceSet, WorkspaceSetError};
 
 /// The protocol a window arrived on. It decides which surface record the window has.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -122,6 +123,11 @@ pub enum Event {
     },
     /// The configured window rules were replaced.
     RulesChanged { rules: Vec<Rule> },
+    /// Replaces the declared workspace sets. The list is checked as a whole before it
+    /// is applied, so a refused list leaves the sets already in force untouched.
+    WorkspaceSetsChanged { sets: Vec<WorkspaceSet> },
+    /// Makes the named set the live one: each output the set names shows its workspace.
+    WorkspaceSetActivated { name: String },
     /// A workspace was declared.
     WorkspaceAdded { workspace: WorkspaceId },
     /// A workspace was removed.
@@ -186,7 +192,7 @@ pub enum Event {
 /// protocol message and the policy call, outputs disappear, and a configuration can
 /// name a workspace that no longer exists. Reporting the reason keeps those races
 /// out of the compositor's logs as panics or silent misbehaviour.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Rejection {
     /// The window id is already managed.
     DuplicateWindow(WindowId),
@@ -226,4 +232,7 @@ pub enum Rejection {
     /// The configured window rules were refused as a whole, so the rules in force are
     /// unchanged. The error names the rule and the field that failed.
     Rules(RuleError),
+    /// The workspace sets were refused as a whole, or the named set cannot be activated.
+    /// The previously declared sets stay in force.
+    WorkspaceSet(WorkspaceSetError),
 }

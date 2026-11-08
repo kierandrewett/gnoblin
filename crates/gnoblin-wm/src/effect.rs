@@ -103,6 +103,20 @@ pub enum Effect {
         /// Which way the workspace moved, or `None` when the order gives no direction.
         direction: Option<WorkspaceDirection>,
     },
+    /// A workspace set named an output that is not connected, so its workspace went to
+    /// the primary output instead. The set is still activated; this reports the fallback.
+    WorkspaceSetOutputFallback {
+        /// The set that named the output.
+        set: String,
+        /// The connector name the set asked for.
+        output: String,
+    },
+    /// A workspace set changed which workspace each output shows. Emitted only when the
+    /// shown workspaces actually change, so activating the live set again is silent.
+    WorkspaceSetActivated {
+        /// The set that became live.
+        name: String,
+    },
     /// A rule could not be applied to a newly managed window.
     RuleRejected {
         /// The window the rule would have applied to.

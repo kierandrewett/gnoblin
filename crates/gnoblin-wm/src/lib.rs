@@ -108,6 +108,7 @@ mod tiled;
 mod window;
 mod wm;
 mod workspace;
+mod workspace_set;
 
 pub use activation::{ActivationDecision, NewWindowFocus};
 pub use drag::DragConstraint;
@@ -123,3 +124,4 @@ pub use snapping::SnapZone;
 pub use tiled::{TiledEdges, tiled_edges};
 pub use window::{Window, WindowKind, WindowState};
 pub use wm::{Broken, CommandError, LayerRegisterError, Wm, WmOptions};
+pub use workspace_set::{WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError};

@@ -494,6 +494,48 @@ doc = "The name shown to the user."
 since = "0.2.0"
 
 [[record]]
+name = "WorkspaceSetEntry"
+doc = "One workspace a set shows, and the output that shows it."
+
+[[record.field]]
+key = "workspace"
+kind = "text"
+nonempty = true
+required = "a workspace id"
+accepted = "a nonempty id of a declared workspace, or a numeric workspace id"
+doc = "The workspace to show: an id declared in workspaces, or a numeric workspace id."
+since = "0.2.0"
+
+[[record.field]]
+key = "output"
+kind = "text"
+nonempty = true
+accepted = "a nonempty output connector name"
+doc = "The output that shows the workspace. Omit it for the primary output."
+since = "0.2.0"
+
+[[record]]
+name = "WorkspaceSet"
+doc = "A named set of workspaces to show together."
+
+[[record.field]]
+key = "name"
+kind = "text"
+nonempty = true
+required = "a workspace set name"
+accepted = "a nonempty set name"
+doc = "The name the set is activated by. Set names are unique."
+since = "0.2.0"
+
+[[record.field]]
+key = "workspaces"
+kind = "record-list"
+record = "WorkspaceSetEntry"
+accepted = "a non-empty list of workspace tables"
+doc = "The workspaces the set shows, and the output each one shows on."
+since = "0.2.0"
+
+[[record]]
 name = "LayoutOutput"
 doc = "The layout of every workspace on one output."
 
@@ -2356,6 +2398,19 @@ kind = "record-list"
 record = "Workspace"
 accepted = "a list of workspace tables"
 doc = "The declared workspaces."
+
+[[section]]
+key = "workspace-sets"
+type = "WorkspaceSets"
+doc = "The named workspace sets, in declaration order."
+hook = "workspace_sets"
+
+[section.spread]
+field = "sets"
+kind = "record-list"
+record = "WorkspaceSet"
+accepted = "a list of workspace set tables"
+doc = "The declared workspace sets."
 
 [[section]]
 key = "touchpad-gestures"

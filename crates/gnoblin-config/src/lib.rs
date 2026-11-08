@@ -102,7 +102,7 @@ pub use generated::{
     RuleCorners, RuleWorkspace, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus,
     StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys,
     Touchpad, Trackball, VisualAccessibility, VisualBellType, WindowManagement, WindowMatch, WindowRule,
-    WindowRuleType, Workspace, Xwayland, XwaylandExtension,
+    WindowRuleType, Workspace, WorkspaceSet, WorkspaceSetEntry, Xwayland, XwaylandExtension,
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};

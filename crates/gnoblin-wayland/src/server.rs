@@ -240,6 +240,9 @@ pub struct Config {
     /// window when it is first taken into management, so a rule set here places every
     /// window opened after the session starts.
     pub window_rules: Vec<gnoblin_wm::Rule>,
+    /// The named workspace sets the document declares, in declaration order. Activating
+    /// one makes its workspaces the live ones on their outputs.
+    pub workspace_sets: Vec<gnoblin_wm::WorkspaceSet>,
 }
 
 impl Default for Config {
@@ -257,6 +260,7 @@ impl Default for Config {
             input_sources: None,
             keyboard: None,
             window_rules: Vec::new(),
+            workspace_sets: Vec::new(),
             shortcuts: None,
             titlebar_actions: TitlebarActions::default(),
             cursor: CursorSettings::default(),
@@ -366,6 +370,7 @@ impl Server {
 
         let window_process_override = config.window_process_override;
         let window_rules = config.window_rules;
+        let workspace_sets = config.workspace_sets;
         let global_scale = config.monitors.global_scale;
         apply_global_scale(backend.as_mut(), None, global_scale);
         let outputs = backend.outputs().to_vec();
@@ -403,6 +408,7 @@ impl Server {
             state.apply_shortcuts(shortcuts);
         }
         state.apply_window_rules(window_rules);
+        state.apply_workspace_sets(workspace_sets);
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
 

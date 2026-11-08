@@ -111,12 +111,14 @@ pub struct Window {
 impl Window {
     /// Whether the window would be drawn right now.
     ///
-    /// A window is visible when it is not minimised, has an output that can show it
-    /// and belongs to the active workspace. Focus eligibility uses the same
-    /// question, so an invisible window can never hold focus.
+    /// A window is visible when it is not minimised, has an output, and belongs to the
+    /// workspace that output shows. `shown_on_output` is that workspace, looked up by the
+    /// caller from the window's own output, so two outputs can show two workspaces at
+    /// once. Focus eligibility uses the same question, so an invisible window can never
+    /// hold focus.
     #[must_use]
-    pub fn is_visible(&self, active_workspace: Option<WorkspaceId>) -> bool {
-        !self.state.minimised && self.output.is_some() && Some(self.workspace) == active_workspace
+    pub fn is_visible(&self, shown_on_output: Option<WorkspaceId>) -> bool {
+        !self.state.minimised && self.output.is_some() && Some(self.workspace) == shown_on_output
     }
 }
 

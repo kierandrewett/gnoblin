@@ -82,6 +82,7 @@ use crate::stack::{ClaimOrigin, Stack, StackItem, StackLayer};
 use crate::tiled::{TiledEdges, tiled_edges};
 use crate::window::{Window, WindowAppearance, WindowKind, WindowState};
 use crate::workspace::Workspaces;
+use crate::workspace_set::{self, WorkspaceSet, WorkspaceSetError};
 
 /// Size used for a window that asks for none.
 ///
@@ -217,6 +218,17 @@ pub enum Broken {
     NoActiveWorkspace,
     /// The active workspace is not declared.
     ActiveWorkspaceUnknown(WorkspaceId),
+    /// An output shows a workspace that is not declared.
+    ShownWorkspaceUnknown {
+        /// The output.
+        output: OutputId,
+        /// The workspace it claims to show.
+        workspace: WorkspaceId,
+    },
+    /// A connected output shows no workspace while workspaces are declared.
+    OutputUnshown(OutputId),
+    /// A workspace is recorded as shown on an output that is not connected.
+    ShownOutputUnknown(OutputId),
     /// No workspace is declared but the manager considers one active.
     ActiveWorkspaceWhileNone,
     /// The stack and the window map disagree on how many windows exist.
@@ -298,7 +310,13 @@ pub struct Wm {
     options: WmOptions,
     outputs: Vec<Output>,
     workspaces: Workspaces,
-    active_workspace: Option<WorkspaceId>,
+    /// The workspace each connected output shows. Empty while no workspace is declared.
+    shown: BTreeMap<OutputId, WorkspaceId>,
+    /// The declared workspace sets, in declaration order.
+    sets: Vec<WorkspaceSet>,
+    /// The workspace last shown on the primary output. It is what the desktop shows
+    /// while no output is connected, so an output that returns shows the same one.
+    last_shown: Option<WorkspaceId>,
     windows: BTreeMap<WindowId, Window>,
     stack: Stack,
     focus: Option<WindowId>,
@@ -442,6 +460,8 @@ impl Wm {
             Event::WorkspaceAdded { workspace } => self.workspace_added(workspace),
             Event::WorkspaceRemoved { workspace } => self.workspace_removed(workspace),
             Event::WorkspaceActivated { workspace } => self.workspace_activated(workspace),
+            Event::WorkspaceSetsChanged { sets } => self.workspace_sets_changed(sets),
+            Event::WorkspaceSetActivated { name } => self.workspace_set_activated(&name),
             Event::ActivationRequested { window, decision } => self.activation(window, decision),
             Event::PointerMoved { window, at } => self.pointer_moved(window, at),
             Event::PointerTick { at } => self.pointer_due(at),
@@ -493,10 +513,25 @@ impl Wm {
         self.workspaces.ids()
     }
 
-    /// The workspace the outputs are showing, if any is declared.
+    /// The workspace the primary output shows, or the one last shown while no output is
+    /// connected. `None` when no workspace is declared.
     #[must_use]
     pub fn active_workspace(&self) -> Option<WorkspaceId> {
-        self.active_workspace
+        self.primary_output()
+            .and_then(|output| self.shown.get(&output).copied())
+            .or(self.last_shown)
+    }
+
+    /// The workspace `output` shows, or `None` when it is not connected.
+    #[must_use]
+    pub fn shown_workspace(&self, output: OutputId) -> Option<WorkspaceId> {
+        self.shown.get(&output).copied()
+    }
+
+    /// The declared workspace sets, in declaration order.
+    #[must_use]
+    pub fn workspace_sets(&self) -> &[WorkspaceSet] {
+        &self.sets
     }
 
     /// Every managed window, ordered by id.
@@ -534,12 +569,21 @@ impl Wm {
         &self.rules
     }
 
-    /// Whether a window would be drawn right now.
+    /// Whether a window would be drawn right now: it is on the workspace its own output
+    /// shows, is not minimised and has an output.
     #[must_use]
     pub fn is_visible(&self, id: WindowId) -> bool {
-        self.windows
-            .get(&id)
-            .is_some_and(|window| window.is_visible(self.active_workspace))
+        self.windows.get(&id).is_some_and(|window| self.visible(window))
+    }
+
+    /// Whether `window` would be drawn right now. See [`Self::is_visible`].
+    fn visible(&self, window: &Window) -> bool {
+        window.is_visible(window.output.and_then(|output| self.shown_workspace(output)))
+    }
+
+    /// The first connected output, which is the one that shows the active workspace.
+    fn primary_output(&self) -> Option<OutputId> {
+        self.outputs.first().map(Output::id)
     }
 
     /// Returns the live layers in paint order, bottom to top.
@@ -768,7 +812,7 @@ impl Wm {
 
         // The active workspace must exist exactly when one is declared.
         checks += 1;
-        match (self.workspaces.is_empty(), self.active_workspace) {
+        match (self.workspaces.is_empty(), self.active_workspace()) {
             (true, Some(_)) => return Err(Broken::ActiveWorkspaceWhileNone),
             (false, None) => return Err(Broken::NoActiveWorkspace),
             (true, None) => {}
@@ -777,6 +821,28 @@ impl Wm {
                 if !self.workspaces.contains(workspace) {
                     return Err(Broken::ActiveWorkspaceUnknown(workspace));
                 }
+            }
+        }
+
+        // Every connected output shows a declared workspace, and only connected outputs
+        // appear in the map.
+        for (output, workspace) in &self.shown {
+            checks += 1;
+            if self.output(*output).is_none() {
+                return Err(Broken::ShownOutputUnknown(*output));
+            }
+            checks += 1;
+            if !self.workspaces.contains(*workspace) {
+                return Err(Broken::ShownWorkspaceUnknown {
+                    output: *output,
+                    workspace: *workspace,
+                });
+            }
+        }
+        for output in &self.outputs {
+            checks += 1;
+            if !self.workspaces.is_empty() && !self.shown.contains_key(&output.id()) {
+                return Err(Broken::OutputUnshown(output.id()));
             }
         }
 
@@ -898,7 +964,7 @@ impl Wm {
                 None => return Err(Broken::FocusUnknown(focused)),
                 Some(window) => {
                     checks += 1;
-                    if !window.is_visible(self.active_workspace) {
+                    if !self.visible(window) {
                         return Err(Broken::FocusHidden(focused));
                     }
                 }
@@ -919,9 +985,7 @@ impl Wm {
     /// Whether a window may take focus: managed, not minimised, on the shown
     /// workspace and on an output that still exists.
     fn is_focus_candidate(&self, id: WindowId) -> bool {
-        self.windows
-            .get(&id)
-            .is_some_and(|window| window.is_visible(self.active_workspace))
+        self.windows.get(&id).is_some_and(|window| self.visible(window))
     }
 
     /// The topmost visible modal child of `parent`. While it is open the parent cannot
@@ -929,9 +993,7 @@ impl Wm {
     fn blocking_modal(&self, parent: WindowId) -> Option<WindowId> {
         self.stack.order().iter().copied().find(|id| {
             self.windows.get(id).is_some_and(|window| {
-                window.kind == WindowKind::Modal
-                    && window.transient_for == Some(parent)
-                    && window.is_visible(self.active_workspace)
+                window.kind == WindowKind::Modal && window.transient_for == Some(parent) && self.visible(window)
             })
         })
     }
@@ -1034,7 +1096,14 @@ impl Wm {
         if self.output(id).is_some() {
             return vec![Effect::rejected(Rejection::DuplicateOutput(id))];
         }
+        // The new output shows the workspace the desktop shows now, read before it is
+        // pushed, because it may become the primary and change what that reads as.
+        let shows = self.active_workspace();
         self.outputs.push(Output::new(id, rect, Insets::ZERO));
+        if let Some(workspace) = shows {
+            self.shown.insert(id, workspace);
+        }
+        self.remember_active();
         self.layouts.output_connected(id);
         let Some(output) = self.output(id) else {
             return Vec::new();
@@ -1079,6 +1148,8 @@ impl Wm {
         // their window to the survivor, so they are left alone.
         self.layers.end_output(id);
         self.outputs.retain(|output| output.id() != id);
+        self.shown.remove(&id);
+        self.remember_active();
         let survivor = self
             .outputs
             .first()
@@ -1170,12 +1241,16 @@ impl Wm {
         if self.windows.contains_key(&spec.id) {
             return vec![Effect::rejected(Rejection::DuplicateWindow(spec.id))];
         }
-        let Some(workspace) = self.active_workspace else {
+        let Some(active) = self.active_workspace() else {
             return vec![Effect::rejected(Rejection::NoWorkspace)];
         };
         let Some(fallback_output) = self.placement_output() else {
             return vec![Effect::rejected(Rejection::NoOutput)];
         };
+        // A new window lands on the workspace its output shows, so it is visible where
+        // it opens. Outputs that show different workspaces, as a set makes them, rely on
+        // this.
+        let workspace = self.shown_workspace(fallback_output).unwrap_or(active);
         let Some(fallback_area) = self.work_area(fallback_output) else {
             return vec![Effect::rejected(Rejection::NoOutput)];
         };
@@ -1463,11 +1538,12 @@ impl Wm {
     }
 
     fn workspace_added(&mut self, id: WorkspaceId) -> Vec<Effect> {
+        let first = self.workspaces.is_empty();
         if !self.workspaces.add(id) {
             return vec![Effect::rejected(Rejection::DuplicateWorkspace(id))];
         }
-        if self.active_workspace.is_none() {
-            self.active_workspace = Some(id);
+        if first {
+            self.show_on_every_output(id);
         }
         Vec::new()
     }
@@ -1479,7 +1555,9 @@ impl Wm {
         let Some(neighbour) = self.workspaces.neighbour_of(id) else {
             return vec![Effect::rejected(Rejection::LastWorkspace(id))];
         };
-        let was_active = self.active_workspace == Some(id);
+        // Sets may still name the removed workspace; activating such a set is refused
+        // until the sets are redefined, so removal itself stays unconditional.
+        let was_active = self.active_workspace() == Some(id);
         self.workspaces.remove(id);
         let moved: Vec<WindowId> = self
             .windows
@@ -1492,9 +1570,17 @@ impl Wm {
                 window.workspace = neighbour;
             }
         }
+        // Every output that showed the removed workspace moves to its neighbour.
+        for shown in self.shown.values_mut() {
+            if *shown == id {
+                *shown = neighbour;
+            }
+        }
+        if self.last_shown == Some(id) {
+            self.last_shown = Some(neighbour);
+        }
         let mut effects = Vec::new();
         if was_active {
-            self.active_workspace = Some(neighbour);
             effects.push(Effect::workspace_shown(neighbour, None));
         }
         for window_id in moved {
@@ -1510,17 +1596,102 @@ impl Wm {
         if !self.workspaces.contains(id) {
             return vec![Effect::rejected(Rejection::UnknownWorkspace(id))];
         }
-        if self.active_workspace == Some(id) {
+        // Already shown on every output: activating it again changes nothing.
+        if self.last_shown == Some(id) && self.shown.values().all(|shown| *shown == id) {
             return Vec::new();
         }
+        self.change_shown(|wm| wm.show_on_every_output(id))
+    }
+
+    fn workspace_sets_changed(&mut self, sets: Vec<WorkspaceSet>) -> Vec<Effect> {
+        let workspaces = &self.workspaces;
+        if let Err(error) = workspace_set::validate(&sets, |id| workspaces.contains(id)) {
+            return vec![Effect::rejected(Rejection::WorkspaceSet(error))];
+        }
+        self.sets = sets;
+        Vec::new()
+    }
+
+    /// Makes the named set the live one. An entry with no output goes to the primary
+    /// output; an entry naming an output that is not connected goes to the primary
+    /// output too, and the fallback is reported. Outputs the set does not name keep what
+    /// they show. Every entry is resolved before any is applied, so a refused set changes
+    /// nothing.
+    fn workspace_set_activated(&mut self, name: &str) -> Vec<Effect> {
+        let Some(set) = self.sets.iter().find(|set| set.name == name) else {
+            return vec![Effect::rejected(Rejection::WorkspaceSet(
+                WorkspaceSetError::UnknownSet(name.to_owned()),
+            ))];
+        };
+        let Some(primary) = self.primary_output() else {
+            return vec![Effect::rejected(Rejection::NoOutput)];
+        };
+        let mut fallbacks = Vec::new();
+        let mut targets: Vec<(OutputId, WorkspaceId)> = Vec::with_capacity(set.entries.len());
+        for entry in &set.entries {
+            if !self.workspaces.contains(entry.workspace) {
+                return vec![Effect::rejected(Rejection::WorkspaceSet(
+                    WorkspaceSetError::UndeclaredWorkspace {
+                        set: name.to_owned(),
+                        workspace: entry.workspace,
+                    },
+                ))];
+            }
+            let output = match entry.output.as_deref() {
+                None => primary,
+                Some(connector) => {
+                    if let Some(output) = self.outputs.iter().find(|output| output.name() == connector) {
+                        output.id()
+                    } else {
+                        fallbacks.push(Effect::WorkspaceSetOutputFallback {
+                            set: name.to_owned(),
+                            output: connector.to_owned(),
+                        });
+                        primary
+                    }
+                }
+            };
+            if targets.iter().any(|(earlier, _)| *earlier == output) {
+                return vec![Effect::rejected(Rejection::WorkspaceSet(
+                    WorkspaceSetError::OutputClash {
+                        set: name.to_owned(),
+                        output,
+                    },
+                ))];
+            }
+            targets.push((output, entry.workspace));
+        }
+        let shown_before = self.shown.clone();
+        let mut effects = fallbacks;
+        effects.extend(self.change_shown(|wm| {
+            for (output, workspace) in targets {
+                wm.shown.insert(output, workspace);
+            }
+            wm.remember_active();
+        }));
+        if self.shown != shown_before {
+            effects.push(Effect::WorkspaceSetActivated { name: name.to_owned() });
+        }
+        effects
+    }
+
+    /// Applies a change to what the outputs show, then reports its effects: the change
+    /// of workspace on the primary output, the windows whose visibility flipped and the
+    /// focus that follows.
+    fn change_shown(&mut self, change: impl FnOnce(&mut Self)) -> Vec<Effect> {
         let before: Vec<(WindowId, bool)> = self
             .windows
             .keys()
             .map(|window| (*window, self.is_visible(*window)))
             .collect();
-        let direction = self.direction_to(id);
-        self.active_workspace = Some(id);
-        let mut effects = vec![Effect::workspace_shown(id, direction)];
+        let previous = self.active_workspace();
+        change(self);
+        let next = self.active_workspace();
+        let mut effects = Vec::new();
+        if let Some(workspace) = next.filter(|workspace| Some(*workspace) != previous) {
+            let direction = self.direction_between(previous, workspace);
+            effects.push(Effect::workspace_shown(workspace, direction));
+        }
         for (window, was_visible) in before {
             if self.is_visible(window) != was_visible {
                 effects.push(Effect::visible(window, !was_visible));
@@ -1530,14 +1701,31 @@ impl Wm {
         effects
     }
 
-    /// Which way moving from the active workspace to `id` goes in the workspace order.
+    /// Makes `id` the workspace every connected output shows, and the one remembered for
+    /// when none is connected.
+    fn show_on_every_output(&mut self, id: WorkspaceId) {
+        for output in self.outputs.iter().map(Output::id) {
+            self.shown.insert(output, id);
+        }
+        self.last_shown = Some(id);
+    }
+
+    /// Remembers the workspace the primary output shows, for when no output is connected.
+    /// Does nothing while no workspace is declared.
+    fn remember_active(&mut self) {
+        if let Some(active) = self.active_workspace() {
+            self.last_shown = Some(active);
+        }
+    }
+
+    /// Which way moving from `from` to `to` goes in the workspace order.
     ///
-    /// `None` when there is no active workspace or either one is missing from the order,
-    /// which leaves the renderer nothing to slide along.
-    fn direction_to(&self, id: WorkspaceId) -> Option<WorkspaceDirection> {
+    /// `None` when `from` is missing, when either one is missing from the order, or when
+    /// they are the same, which leaves the renderer nothing to slide along.
+    fn direction_between(&self, from: Option<WorkspaceId>, to: WorkspaceId) -> Option<WorkspaceDirection> {
         let ids = self.workspaces.ids();
-        let from = ids.iter().position(|w| Some(*w) == self.active_workspace)?;
-        let to = ids.iter().position(|w| *w == id)?;
+        let from = ids.iter().position(|w| Some(*w) == from)?;
+        let to = ids.iter().position(|w| *w == to)?;
         match to.cmp(&from) {
             std::cmp::Ordering::Greater => Some(WorkspaceDirection::Later),
             std::cmp::Ordering::Less => Some(WorkspaceDirection::Earlier),
@@ -1602,10 +1790,7 @@ impl Wm {
         if let Some((id, _)) = self.auto_raise.filter(|(_, due)| at.reached(*due)) {
             self.auto_raise = None;
             let focused_and_under = self.focus == Some(id) && self.pointer.over() == Some(id);
-            let visible = self
-                .windows
-                .get(&id)
-                .is_some_and(|window| window.is_visible(self.active_workspace));
+            let visible = self.windows.get(&id).is_some_and(|window| self.visible(window));
             if focused_and_under && visible {
                 effects.extend(self.raise(id));
             }
@@ -1653,7 +1838,7 @@ impl Wm {
         let Some(window) = self.windows.get(&id) else {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         };
-        if !window.is_visible(self.active_workspace) {
+        if !self.visible(window) {
             return vec![Effect::rejected(Rejection::NotVisible(id))];
         }
         let previous = self.focus;
@@ -2234,10 +2419,9 @@ impl Wm {
             return Vec::new();
         };
         let (ox, oy) = center(origin);
-        let active = self.active_workspace;
         let mut best: Option<(f64, WindowId)> = None;
         for (&id, window) in &self.windows {
-            if id == from || !window.is_visible(active) {
+            if id == from || !self.visible(window) {
                 continue;
             }
             let Some(rect) = self.focus_rect(id) else {

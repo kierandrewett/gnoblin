@@ -24,7 +24,7 @@ use crate::engine::{Parser, is_inherit};
 use crate::generated::{
     AccelCurve, Appearance, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, PadButton,
     PadButtonAction, Tablet, TouchpadGestures, WindowManagement, WindowRule, WindowRuleType, WindowRules, Workspace,
-    Workspaces, Xwayland,
+    WorkspaceSets, Workspaces, Xwayland,
 };
 use crate::model::Inherit;
 use crate::path::Path;
@@ -256,6 +256,38 @@ pub(crate) fn workspaces(section: &mut Workspaces, _value: &Value, path: &Path, 
         seen.push(id.to_owned());
     }
     true
+}
+
+/// `workspace-sets`: set names are unique and non-empty, and every set lists a workspace.
+pub(crate) fn workspace_sets(section: &mut WorkspaceSets, _value: &Value, path: &Path, out: &mut Parser) -> bool {
+    let mut seen: Vec<String> = Vec::new();
+    let mut ok = true;
+    for (index, set) in section.sets.iter().enumerate() {
+        let set_path = path.entry(index);
+        if set.workspaces.as_ref().is_none_or(Vec::is_empty) {
+            out.problem(
+                &set_path.key("workspaces"),
+                Fault::UnsupportedValue {
+                    expected: "at least one workspace in the set".to_owned(),
+                },
+            );
+            ok = false;
+        }
+        let Some(name) = set.name.as_deref() else {
+            continue;
+        };
+        if seen.iter().any(|previous| previous == name) {
+            out.problem(
+                &set_path.key("name"),
+                Fault::UnsupportedValue {
+                    expected: "a set name no other set uses".to_owned(),
+                },
+            );
+            ok = false;
+        }
+        seen.push(name.to_owned());
+    }
+    ok
 }
 
 /// `workspace`: the id and name rules.

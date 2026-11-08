@@ -122,6 +122,11 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the capture section: whether captures mask or omit secure layers, read by the screencopy and portal paths",
     ),
+    (
+        "workspace-sets",
+        "0.2.0",
+        "the workspace-sets section: named groups of workspaces that activate together, read by the workspace manager at start; the C core had no workspace sets",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.

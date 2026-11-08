@@ -1,11 +1,11 @@
 //! One test per documented failure mode, plus the behaviours the state machine
 //! exists to provide.
 
-use gnoblin_types::{Insets, OutputId, Rect, Tick, WindowId, WorkspaceId};
+use gnoblin_types::{Insets, OutputId, Rect, Scale, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{
     ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, Match, Pattern, PlacementMode, Rejection,
     Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceDirection,
-    WorkspaceSelector,
+    WorkspaceSelector, WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -1681,5 +1681,213 @@ fn a_transient_follows_its_parent_to_another_output() {
         output: OutputId::new(1),
     });
     assert_eq!(wm.window(window(2)).map(|w| w.output), Some(Some(OutputId::new(1))));
+    check(&wm);
+}
+
+// --- Workspace sets ----------------------------------------------------------
+
+fn set(name: &str, entries: &[(u64, Option<&str>)]) -> WorkspaceSet {
+    WorkspaceSet {
+        name: name.to_owned(),
+        entries: entries
+            .iter()
+            .map(|(raw, output)| WorkspaceSetEntry {
+                workspace: WorkspaceId::new(*raw),
+                output: output.map(str::to_owned),
+            })
+            .collect(),
+    }
+}
+
+fn define_sets(wm: &mut Wm, sets: Vec<WorkspaceSet>) -> Vec<Effect> {
+    wm.apply(Event::WorkspaceSetsChanged { sets })
+}
+
+fn activate_set(wm: &mut Wm, name: &str) -> Vec<Effect> {
+    wm.apply(Event::WorkspaceSetActivated { name: name.to_owned() })
+}
+
+/// A wm with two outputs: `DP-1` (primary, workspace 1 shown) and `HDMI-1` (workspace 1 shown).
+fn two_output_wm() -> Wm {
+    let mut wm = default_wm();
+    wm.apply(Event::OutputConnected {
+        output: OutputId::new(1),
+        rect: Rect::new(1920, 0, 1920, 1080),
+    });
+    wm.apply(Event::OutputIdentified {
+        output: OutputId::new(0),
+        name: "DP-1".to_owned(),
+        scale: Scale::IDENTITY,
+    });
+    wm.apply(Event::OutputIdentified {
+        output: OutputId::new(1),
+        name: "HDMI-1".to_owned(),
+        scale: Scale::IDENTITY,
+    });
+    wm
+}
+
+fn rejection(effects: &[Effect]) -> Option<Rejection> {
+    effects.iter().find_map(|effect| match effect {
+        Effect::Rejected { reason } => Some(reason.clone()),
+        _ => None,
+    })
+}
+
+#[test]
+fn activating_an_unknown_set_is_refused_and_changes_nothing() {
+    let mut wm = default_wm();
+    define_sets(&mut wm, vec![set("work", &[(2, None)])]);
+    let before = wm.active_workspace();
+    let effects = activate_set(&mut wm, "nope");
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::UnknownSet(
+            "nope".to_owned()
+        )))
+    );
+    assert_eq!(wm.active_workspace(), before);
+    check(&wm);
+}
+
+#[test]
+fn a_set_with_no_entries_is_refused_and_the_previous_sets_stay() {
+    let mut wm = default_wm();
+    define_sets(&mut wm, vec![set("work", &[(2, None)])]);
+    let effects = define_sets(&mut wm, vec![set("empty", &[])]);
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::EmptySet("empty".to_owned())))
+    );
+    assert_eq!(wm.workspace_sets().len(), 1);
+    assert_eq!(wm.workspace_sets()[0].name, "work");
+    check(&wm);
+}
+
+#[test]
+fn a_set_naming_an_undeclared_workspace_is_refused_as_a_whole() {
+    let mut wm = default_wm();
+    define_sets(&mut wm, vec![set("work", &[(2, None)])]);
+    let effects = define_sets(&mut wm, vec![set("good", &[(1, None)]), set("bad", &[(99, None)])]);
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::UndeclaredWorkspace {
+            set: "bad".to_owned(),
+            workspace: WorkspaceId::new(99),
+        }))
+    );
+    assert_eq!(
+        wm.workspace_sets()[0].name,
+        "work",
+        "a refused list is never partly applied"
+    );
+    check(&wm);
+}
+
+#[test]
+fn a_set_whose_workspace_is_removed_refuses_to_activate() {
+    let mut wm = default_wm();
+    define_sets(&mut wm, vec![set("work", &[(3, None)])]);
+    wm.apply(Event::WorkspaceRemoved {
+        workspace: WorkspaceId::new(3),
+    });
+    let effects = activate_set(&mut wm, "work");
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::UndeclaredWorkspace {
+            set: "work".to_owned(),
+            workspace: WorkspaceId::new(3),
+        }))
+    );
+    check(&wm);
+}
+
+#[test]
+fn duplicate_set_names_are_refused() {
+    let mut wm = default_wm();
+    let effects = define_sets(&mut wm, vec![set("work", &[(1, None)]), set("work", &[(2, None)])]);
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::DuplicateName(
+            "work".to_owned()
+        )))
+    );
+    assert!(wm.workspace_sets().is_empty());
+}
+
+#[test]
+fn an_empty_set_name_is_refused() {
+    let mut wm = default_wm();
+    let effects = define_sets(&mut wm, vec![set("", &[(1, None)])]);
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::EmptyName))
+    );
+}
+
+#[test]
+fn two_entries_for_one_output_in_a_set_are_refused() {
+    let mut wm = two_output_wm();
+    let effects = define_sets(&mut wm, vec![set("clash", &[(1, Some("HDMI-1")), (2, Some("HDMI-1"))])]);
+    assert_eq!(
+        rejection(&effects),
+        Some(Rejection::WorkspaceSet(WorkspaceSetError::DuplicateOutput {
+            set: "clash".to_owned(),
+            output: "HDMI-1".to_owned(),
+        }))
+    );
+}
+
+#[test]
+fn activating_a_set_twice_is_idempotent() {
+    let mut wm = two_output_wm();
+    define_sets(&mut wm, vec![set("work", &[(2, Some("HDMI-1"))])]);
+    let first = activate_set(&mut wm, "work");
+    assert!(!first.is_empty(), "the first activation changes the live set");
+    let second = activate_set(&mut wm, "work");
+    assert!(second.is_empty(), "the second activation changes nothing");
+    assert_eq!(wm.shown_workspace(OutputId::new(1)), Some(WorkspaceId::new(2)));
+    check(&wm);
+}
+
+#[test]
+fn an_unknown_output_falls_back_to_the_primary_with_a_warning() {
+    let mut wm = two_output_wm();
+    define_sets(&mut wm, vec![set("work", &[(3, Some("GONE-1"))])]);
+    let effects = activate_set(&mut wm, "work");
+    assert!(effects.contains(&Effect::WorkspaceSetOutputFallback {
+        set: "work".to_owned(),
+        output: "GONE-1".to_owned(),
+    }));
+    assert_eq!(
+        wm.active_workspace(),
+        Some(WorkspaceId::new(3)),
+        "placed on the primary output"
+    );
+    check(&wm);
+}
+
+#[test]
+fn a_set_shows_each_named_workspace_on_its_own_output() {
+    let mut wm = two_output_wm();
+    open(&mut wm, 1);
+    wm.apply(Event::WorkspaceActivated {
+        workspace: WorkspaceId::new(2),
+    });
+    open(&mut wm, 2);
+    wm.apply(Event::MoveToOutput {
+        window: window(2),
+        output: OutputId::new(1),
+    });
+    wm.apply(Event::WorkspaceActivated {
+        workspace: WorkspaceId::new(1),
+    });
+    assert!(!wm.is_visible(window(2)), "workspace 2 is not shown anywhere yet");
+    define_sets(&mut wm, vec![set("split", &[(1, Some("DP-1")), (2, Some("HDMI-1"))])]);
+    activate_set(&mut wm, "split");
+    assert_eq!(wm.active_workspace(), Some(WorkspaceId::new(1)));
+    assert_eq!(wm.shown_workspace(OutputId::new(1)), Some(WorkspaceId::new(2)));
+    assert!(wm.is_visible(window(1)));
+    assert!(wm.is_visible(window(2)));
     check(&wm);
 }

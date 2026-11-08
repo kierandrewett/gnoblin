@@ -975,7 +975,7 @@ impl State {
     fn wm_change(&mut self, event: Event) -> Result<(), WindowChangeRefusal> {
         let effects = self.wm.apply(event);
         let rejected = effects.iter().find_map(|effect| match effect {
-            Effect::Rejected { reason } => Some(*reason),
+            Effect::Rejected { reason } => Some(reason),
             _ => None,
         });
         if let Some(reason) = rejected {
@@ -989,7 +989,7 @@ impl State {
     /// Maps the window manager's reason for refusing an event to the reply a caller sees.
     /// A window or target that has gone is named apart from a state refusal, so a script
     /// can tell that it lost a race from a change it can never make.
-    fn refusal_of(reason: gnoblin_wm::Rejection) -> WindowChangeRefusal {
+    fn refusal_of(reason: &gnoblin_wm::Rejection) -> WindowChangeRefusal {
         use gnoblin_wm::Rejection;
         match reason {
             Rejection::UnknownWindow(_) => WindowChangeRefusal::Gone,
@@ -1158,13 +1158,12 @@ impl State {
     /// has no buffer or does not intersect the output was not drawn.
     #[must_use]
     pub(crate) fn drawn_surfaces(&self, rect: Rect) -> Vec<WlSurface> {
-        let active = self.wm.active_workspace();
         let mut surfaces = Vec::new();
         for window in self.wm.stack() {
             let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
                 continue;
             };
-            if !entry.mapped || !managed.is_visible(active) {
+            if !entry.mapped || !self.wm.is_visible(*window) {
                 continue;
             }
             let geometry = self.shown_geometry(managed);
@@ -1420,6 +1419,17 @@ impl State {
                         self.composer.begin_workspace_slide(direction);
                     }
                     log::debug!(area = "workspace", %workspace, ?direction, "shown");
+                }
+                Effect::WorkspaceSetOutputFallback { set, output } => {
+                    log::warn!(
+                        area = "workspace",
+                        set,
+                        output,
+                        "the set names an output that is not connected; its workspace went to the primary output"
+                    );
+                }
+                Effect::WorkspaceSetActivated { name } => {
+                    log::debug!(area = "workspace", set = name, "workspace set activated");
                 }
                 Effect::RuleRejected { window, rule, reason } => {
                     log::warn!(area = "rules", %window, rule, ?reason, "rule did not apply")
@@ -2215,6 +2225,14 @@ impl State {
         self.apply(effects);
     }
 
+    /// Hands the window manager the workspace sets the configuration accepted. The window
+    /// manager checks the list against the workspaces that exist, and a refused list leaves
+    /// the sets already in force, so the caller reports the refusal through the effect.
+    pub(crate) fn apply_workspace_sets(&mut self, sets: Vec<gnoblin_wm::WorkspaceSet>) {
+        let effects = self.wm.apply(Event::WorkspaceSetsChanged { sets });
+        self.apply(effects);
+    }
+
     /// Advances the window animations by the real time one loop turn took.
     pub(crate) fn advance_motion(&mut self, elapsed_ms: u32) {
         self.composer.advance_motion(elapsed_ms);
@@ -2646,7 +2664,6 @@ impl State {
 
     /// Publishes the window state for the tests and for a diagnostics reader.
     pub(crate) fn publish(&mut self) {
-        let active = self.wm.active_workspace();
         // A covered window keeps the window manager's focus so the reveal can restore
         // it, but it holds no keyboard focus: the lock gate routes keys to the lock
         // surface or to nothing, so the snapshot says nothing is focused.
@@ -2697,7 +2714,7 @@ impl State {
                     title: window.title.clone(),
                     app_id: window.app_id.clone(),
                     mapped,
-                    visible: window.is_visible(active),
+                    visible: self.wm.is_visible(window.id),
                     focused: focused == Some(window.id),
                     geometry: self.shown_geometry(window),
                     pid: self.window_process(window.id).and_then(crate::WindowProcess::pid),
@@ -2978,12 +2995,11 @@ impl State {
         if self.lock.state() != LockState::Unlocked {
             return self.lock_surface_under(position);
         }
-        let active = self.wm.active_workspace();
         for window in self.wm.stack().iter() {
             let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
                 continue;
             };
-            if !managed.is_visible(active) || self.window_is_covered(*window) {
+            if !self.wm.is_visible(*window) || self.window_is_covered(*window) {
                 continue;
             }
             let geometry = self.shown_geometry(managed);

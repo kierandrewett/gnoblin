@@ -31,11 +31,12 @@ use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
     Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input,
     InputSources, KeyringConfig, LayerShell, Layers, Layout, Location, Logging, Monitors, Protocols, Shortcuts,
-    VisualAccessibility, WindowManagement, WindowRule, Workspace, Xwayland, parse_appearance, parse_auth,
+    VisualAccessibility, WindowManagement, WindowRule, Workspace, WorkspaceSet, Xwayland, parse_appearance, parse_auth,
     parse_autostart, parse_capture_settings, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers,
     parse_input, parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layers, parse_layout,
     parse_location, parse_logging, parse_monitors, parse_protocols, parse_shortcuts, parse_touchpad_gestures,
-    parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspaces, parse_xwayland,
+    parse_visual_accessibility, parse_window_management, parse_window_rules, parse_workspace_sets, parse_workspaces,
+    parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -104,6 +105,8 @@ pub struct Config {
     pub window_rules: Vec<WindowRule>,
     /// `workspaces`: the declared workspaces, in declaration order.
     pub workspaces: Vec<Workspace>,
+    /// `workspace-sets`: the named sets of workspaces, in declaration order.
+    pub workspace_sets: Vec<WorkspaceSet>,
     /// `xwayland`: how the X11 server behaves.
     pub xwayland: Option<Xwayland>,
     /// The accepted document, with deprecated spellings already resolved.
@@ -207,6 +210,10 @@ impl Config {
                     Some(value) => parse_workspaces(value, &root.key("workspaces"), &mut out).workspaces,
                     None => Vec::new(),
                 };
+                config.workspace_sets = match entries.get_mut("workspace-sets") {
+                    Some(value) => parse_workspace_sets(value, &root.key("workspace-sets"), &mut out).sets,
+                    None => Vec::new(),
+                };
                 config.window_rules = match entries.get_mut("window-rules") {
                     Some(value) => parse_window_rules(value, &root.key("window-rules"), &mut out).rules,
                     None => Vec::new(),
@@ -291,6 +298,7 @@ impl Config {
             touchpad_gestures: Vec::new(),
             window_management: None,
             window_rules: Vec::new(),
+            workspace_sets: Vec::new(),
             workspaces: Vec::new(),
             xwayland: None,
             document: Value::Map(BTreeMap::new()),

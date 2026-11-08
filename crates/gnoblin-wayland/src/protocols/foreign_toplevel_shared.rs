@@ -136,7 +136,6 @@ impl State {
     /// Called from [`State::publish`] after every change, so a title, a state flag or a
     /// visibility change is announced once and an idle iteration announces nothing.
     pub(crate) fn sync_foreign_toplevels(&mut self) {
-        let active = self.wm.active_workspace();
         let focused = self.wm.focused();
         let windows: Vec<ToplevelState> = self
             .wm
@@ -160,7 +159,7 @@ impl State {
                     title: window.title.clone(),
                     app_id: window.app_id.clone(),
                     states,
-                    outputs: if window.is_visible(active) {
+                    outputs: if self.wm.is_visible(window.id) {
                         self.output_ids()
                     } else {
                         Vec::new()
