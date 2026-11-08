@@ -2058,9 +2058,10 @@ impl Wm {
         command: LayoutCommand,
         deadline: Instant,
     ) -> Result<Vec<Effect>, CommandError> {
-        let (windows, outputs) = (&self.windows, &self.outputs);
+        let (windows, outputs, focus) = (&self.windows, &self.outputs, self.focus);
         let verdict = self.layouts.command(workspace, command, deadline, |output| {
             arrange::tiled_params(workspace, output, windows, outputs)
+                .map(|params| params.map(|params| params.with_focus(focus)))
         });
         match verdict {
             arrange::CommandVerdict::Handled(layout) => Ok(self.apply_layout(workspace, layout)),

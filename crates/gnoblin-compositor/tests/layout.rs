@@ -408,6 +408,65 @@ fn an_unknown_layout_name_is_refused_over_ipc() {
 }
 
 #[test]
+fn scrolling_commands_are_applied_over_ipc() {
+    // Every command answers with a reply table, so the IPC call is applied (exit 0) and
+    // the placements it returns reach the windows. A nil return would be `refused`.
+    let session = session_with(LayoutSettings {
+        shipped_dir: shipped_modules(),
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    settled_sizes(&mut client, &windows);
+
+    let workspace = workspace_id(&session).to_string();
+    let scrolling = source_hash(&shipped_modules().join("gnoblin/layouts/scrolling.lua"));
+    session
+        .ctl(&[
+            "workspace",
+            "call",
+            &workspace,
+            "set_layout",
+            "root=shipped",
+            "module=gnoblin.layouts.scrolling",
+            &format!("hash={scrolling}"),
+            "options=",
+        ])
+        .ok();
+    let workspace_call = |name: &str, params: &str| {
+        session
+            .ctl(&[
+                "workspace",
+                "call",
+                &workspace,
+                "layout_command",
+                &format!("name={name}"),
+                params,
+            ])
+            .ok();
+    };
+    // `width` sets one column to 300 px, so one window is then 300 px wide.
+    workspace_call("width", "params={\"px\":300}");
+    wait_for("one column to take the 300 px width", || {
+        client.roundtrip();
+        windows
+            .iter()
+            .any(|window| client.configured_size(window).is_some_and(|(width, _)| width == 300))
+            .then_some(())
+    });
+    for (name, params) in [
+        ("move_column", "params={\"direction\":\"left\"}"),
+        ("consume", "params={}"),
+        ("expel", "params={}"),
+        ("toggle_tabbed", "params={}"),
+        ("fit_all", "params={}"),
+        ("scroll_to", "params={\"x\":10}"),
+    ] {
+        workspace_call(name, params);
+    }
+}
+
+#[test]
 fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
     let floating = {
         let session = session_with(LayoutSettings::default());

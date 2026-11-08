@@ -371,4 +371,19 @@ M.command = {
     end,
 }
 
+-- A command that returns nothing answers with the arrangement it left, so the host
+-- applies it. A command that returns a reply table of its own keeps that reply. The
+-- `focus` command returns a window id, which is not a reply, so it is left as it is.
+for name, command in pairs(M.command) do
+    if name ~= "focus" then
+        M.command[name] = function(ctx, args)
+            local reply = command(ctx, args)
+            if type(reply) == "table" then
+                return reply
+            end
+            return M.arrange(ctx)
+        end
+    end
+end
+
 return M

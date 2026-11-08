@@ -140,10 +140,10 @@ fn params(ids: &[u64], width: f64, height: f64) -> Params {
 
 /// Arranges `ids` in a `width` by `height` output through `layout` on `host`.
 fn arrange(host: &Rc<RefCell<Host>>, layout: &str, focus: Option<u64>, ids: &[u64], width: f64, height: f64) -> Layout {
-    let mut engine = LuaEngine::new(Rc::clone(host), layout, WorkspaceId::new(1), Gaps::default())
-        .with_focus(focus.map(WindowId::new));
+    let mut engine = LuaEngine::new(Rc::clone(host), layout, WorkspaceId::new(1), Gaps::default());
     let extent = engine.extent();
-    let _ = engine.submit(Job::Arrange(params(ids, width, height)), Generation::FIRST);
+    let run = params(ids, width, height).with_focus(focus.map(WindowId::new));
+    let _ = engine.submit(Job::Arrange(run), Generation::FIRST);
     let reply = match engine.collect(Generation::FIRST, Instant::now() + Duration::from_secs(5)) {
         LayoutOutcome::Ready { generation, result } => {
             assert_eq!(generation, Generation::FIRST, "the answer names its generation");

@@ -43,6 +43,7 @@ pub struct Params {
     output_width: f64,
     output_height: f64,
     windows: Vec<LayoutWindow>,
+    focus: Option<WindowId>,
 }
 
 impl Params {
@@ -71,7 +72,22 @@ impl Params {
             output_width,
             output_height,
             windows,
+            focus: None,
         })
+    }
+
+    /// Sets the focused window of the run. A focus that names no window of the run is
+    /// reported as no focus.
+    #[must_use]
+    pub fn with_focus(mut self, focus: Option<WindowId>) -> Self {
+        self.focus = focus;
+        self
+    }
+
+    /// The focused window of the run, if it is one of the run's windows.
+    pub fn focus(&self) -> Option<WindowId> {
+        self.focus
+            .filter(|focus| self.windows.iter().any(|window| window.id == *focus))
     }
 
     /// The output the run is made for.
