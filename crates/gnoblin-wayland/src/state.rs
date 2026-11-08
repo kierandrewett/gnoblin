@@ -462,6 +462,8 @@ pub struct State {
     seat_name: String,
     /// The current clipboard and primary selections.
     pub(crate) selections: WlDataDeviceManagerSelections,
+    /// Which side owns each selection while the X11 bridge is running.
+    pub(crate) selection_owners: crate::selection_bridge::SelectionOwners,
     /// Sandbox listeners waiting for the event loop to watch them.
     ///
     /// `wp_security_context_v1` hands the compositor a listening socket during a
@@ -813,6 +815,7 @@ impl State {
             menu_seq: 0,
             seat_name: seat_name.to_owned(),
             selections: WlDataDeviceManagerSelections::default(),
+            selection_owners: crate::selection_bridge::SelectionOwners::default(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
             keyboard_tables: KeyboardTables::default(),

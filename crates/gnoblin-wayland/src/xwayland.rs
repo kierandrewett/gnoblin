@@ -49,6 +49,7 @@
 //!   clients are not carried into the policy, so an X11 client that asks for them keeps
 //!   its floating geometry.
 
+use std::os::unix::io::OwnedFd;
 use std::process::Stdio;
 use std::time::Instant;
 
@@ -59,6 +60,13 @@ use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle, SERIAL_COUNTER};
 
+use smithay::wayland::selection::SelectionTarget;
+use smithay::wayland::selection::data_device::{
+    clear_data_device_selection, request_data_device_client_selection, set_data_device_selection,
+};
+use smithay::wayland::selection::primary_selection::{
+    clear_primary_selection, request_primary_client_selection, set_primary_selection,
+};
 use smithay::wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrab, XWaylandKeyboardGrabHandler};
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::settings::Value as SettingValue;
@@ -69,6 +77,7 @@ use gnoblin_backend::x11::{self, Launch, Restart, Session, Start, WindowEvent, W
 use gnoblin_types::Rect;
 use gnoblin_wm::Event;
 
+use crate::selection_bridge::ToWayland;
 use crate::state::State;
 
 use crate::log;
@@ -518,6 +527,36 @@ fn rect_of(rectangle: Rectangle<i32, Logical>) -> Rect {
     )
 }
 
+impl State {
+    /// The X11 window manager, when an Xwayland session has one running.
+    pub(crate) fn x11_wm(&mut self) -> Option<&mut X11Wm> {
+        self.x11.as_mut()?.wm.as_mut()
+    }
+
+    /// Makes an X11 client's selection the Wayland one: a compositor-owned source that
+    /// offers `mime_types`. A paste from it is answered by the X11 owner.
+    fn offer_x11_selection(&mut self, target: SelectionTarget, mime_types: Vec<String>) {
+        match target {
+            SelectionTarget::Clipboard => {
+                set_data_device_selection(&self.display_handle, &self.seat, mime_types.clone(), ());
+            }
+            SelectionTarget::Primary => {
+                set_primary_selection(&self.display_handle, &self.seat, mime_types.clone(), ());
+            }
+        }
+        self.record_selection(target, Some(mime_types));
+    }
+
+    /// Clears the Wayland selection after the X11 owner of its mirror gave it up.
+    fn clear_wayland_selection(&mut self, target: SelectionTarget) {
+        match target {
+            SelectionTarget::Clipboard => clear_data_device_selection(&self.display_handle, &self.seat),
+            SelectionTarget::Primary => clear_primary_selection(&self.display_handle, &self.seat),
+        }
+        self.record_selection(target, None);
+    }
+}
+
 impl XwmHandler for State {
     fn xwm_state(&mut self, xwm: XwmId) -> &mut X11Wm {
         // The X11 events only arrive through the window manager's own source, so the
@@ -529,6 +568,57 @@ impl XwmHandler for State {
             .expect("an X11 event arrived without a window manager");
         debug_assert_eq!(wm.id(), xwm);
         wm
+    }
+
+    fn allow_selection_access(&mut self, _xwm: XwmId, selection: SelectionTarget) -> bool {
+        let allowed = self.selection_allowed();
+        self.selection_owners.allow_x11_read(selection, allowed)
+    }
+
+    fn send_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_type: String, fd: OwnedFd) {
+        let allowed = self.selection_allowed();
+        if !self.selection_owners.allow_x11_read(selection, allowed) {
+            // Dropping the write end is an empty read, the honest answer to a refused read.
+            drop(fd);
+            return;
+        }
+        // The data-device and primary-selection modules each define their own error type, so both are
+        // reduced to their message here.
+        let result: Result<(), String> = match selection {
+            SelectionTarget::Clipboard => {
+                request_data_device_client_selection(&self.seat, mime_type, fd).map_err(|error| error.to_string())
+            }
+            SelectionTarget::Primary => {
+                request_primary_client_selection(&self.seat, mime_type, fd).map_err(|error| error.to_string())
+            }
+        };
+        if let Err(error) = result {
+            log::warn!(
+                area = "selection",
+                ?selection,
+                %error,
+                "a Wayland selection could not be read for X11"
+            );
+        }
+    }
+
+    fn new_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
+        let allowed = self.selection_allowed();
+        match self
+            .selection_owners
+            .x11_changed(selection, Some(mime_types.as_slice()), allowed)
+        {
+            ToWayland::Offer(types) => self.offer_x11_selection(selection, types),
+            ToWayland::Clear => self.clear_wayland_selection(selection),
+            ToWayland::Nothing => {}
+        }
+    }
+
+    fn cleared_selection(&mut self, _xwm: XwmId, selection: SelectionTarget) {
+        match self.selection_owners.x11_cleared(selection) {
+            ToWayland::Clear => self.clear_wayland_selection(selection),
+            ToWayland::Offer(_) | ToWayland::Nothing => {}
+        }
     }
 
     fn new_window(&mut self, _xwm: XwmId, window: X11Surface) {

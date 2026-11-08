@@ -53,6 +53,7 @@ use smithay::wayland::selection::data_device::{DataDeviceHandler, DataDeviceStat
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
 
 use crate::State;
+use crate::selection_bridge::{PasteRoute, ToX11};
 
 use crate::log;
 
@@ -115,8 +116,29 @@ impl SelectionHandler for State {
             Some(mime_types) => log::debug!(area = "selection", ?target, ?mime_types, "set"),
             None => log::debug!(area = "selection", ?target, "cleared"),
         }
-        self.selections.set(target, mime_types);
-        self.publish();
+        self.record_selection(ty, mime_types.clone());
+        // X11 clients learn of the new Wayland selection through the window manager, so
+        // they can ask for its data. A change with no X11 window manager is recorded only.
+        let allowed = self.selection_allowed();
+        let change = self
+            .selection_owners
+            .wayland_changed(ty, mime_types.as_deref(), allowed);
+        let Some(wm) = self.x11_wm() else {
+            return;
+        };
+        let result = match change {
+            ToX11::Advertise(types) => wm.new_selection(ty, Some(types)),
+            ToX11::Withdraw => wm.new_selection(ty, None),
+            ToX11::Nothing => return,
+        };
+        if let Err(error) = result {
+            log::warn!(
+                area = "selection",
+                ?ty,
+                ?error,
+                "the X11 selection could not be updated"
+            );
+        }
     }
 
     fn send_selection(
@@ -127,23 +149,24 @@ impl SelectionHandler for State {
         seat: Seat<Self>,
         user_data: &Self::SelectionUserData,
     ) {
-        let _ = user_data;
-        let _ = &seat;
-        let target = match ty {
-            SelectionTarget::Clipboard => WlDataDeviceManagerSelectionKind::Clipboard,
-            SelectionTarget::Primary => WlDataDeviceManagerSelectionKind::Primary,
-        };
+        let _ = (user_data, &seat);
         // A client-set selection never reaches here: Smithay forwards that `receive` to
         // the source's own client, which is what keeps the bytes out of the compositor.
-        // This path is a compositor-set selection, and this slice sets none, so the
-        // honest answer is end of file — dropping the write end is exactly that.
-        log::trace!(
-            area = "selection",
-            ?target,
-            mime_type,
-            "no compositor selection to send"
-        );
-        drop(fd);
+        // Here the selection is compositor-set, which only happens when an X11 client
+        // owns it, so the bytes come from that client through the window manager.
+        let allowed = self.selection_allowed();
+        match self.selection_owners.paste_route(ty, allowed) {
+            PasteRoute::X11 => match self.x11_wm() {
+                Some(wm) => {
+                    if let Err(error) = wm.send_selection(ty, mime_type, fd) {
+                        log::warn!(area = "selection", ?ty, ?error, "the X11 paste could not be served");
+                    }
+                }
+                None => drop(fd),
+            },
+            // Dropping the write end is an empty read, the honest answer to a refused paste.
+            PasteRoute::Refuse => drop(fd),
+        }
     }
 }
 
@@ -164,6 +187,19 @@ impl State {
     /// The mime types of the current clipboard selection, for a diagnostics reader.
     pub(crate) fn clipboard_mime_types(&self) -> Option<Vec<String>> {
         self.selections.mime_types(WlDataDeviceManagerSelectionKind::Clipboard)
+    }
+
+    /// Records a selection's mime types for the observation, and publishes the change.
+    ///
+    /// Both the Wayland side and the X11 bridge go through here, so the observation
+    /// reflects whichever side actually set the selection.
+    pub(crate) fn record_selection(&mut self, ty: SelectionTarget, mime_types: Option<Vec<String>>) {
+        let target = match ty {
+            SelectionTarget::Clipboard => WlDataDeviceManagerSelectionKind::Clipboard,
+            SelectionTarget::Primary => WlDataDeviceManagerSelectionKind::Primary,
+        };
+        self.selections.set(target, mime_types);
+        self.publish();
     }
 
     /// Tells the clipboard which connection has focus.

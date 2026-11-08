@@ -191,6 +191,7 @@ mod output_config;
 mod output_control;
 mod process;
 mod protocols;
+mod selection_bridge;
 mod server;
 mod state;
 mod xwayland;
