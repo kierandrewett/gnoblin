@@ -5,6 +5,7 @@
 mod allow;
 mod compat_report;
 mod deps;
+mod dist;
 mod dupes;
 mod gen_proto;
 mod layout;
@@ -25,7 +26,9 @@ subcommands:
   dupes --warn       the same report, printing every hit and exiting zero
   layout             fail on a Rust string literal that names the retired source-data tree
   logging            fail on a direct logging-crate dependency or a stock print in library code
-  compat-report --json  the same report as JSON";
+  compat-report --json  the same report as JSON
+  dist install|uninstall --prefix P [--destdir D] [--profile NAME]
+                     install or remove the session tree; see xtask/src/dist.rs";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -44,6 +47,7 @@ fn main() -> ExitCode {
         ("dupes", []) => dupes::run(true),
         ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
         ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
+        ("dist", _) => dist::run(&rest),
         ("deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout", _) => {
             usage_error("unexpected argument")
         }

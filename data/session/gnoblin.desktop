@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Gnoblin
 Comment=Standalone Wayland desktop
-Exec=gnoblin
+Exec=@PREFIX@/bin/gnoblin
 Type=Application
 DesktopNames=Gnoblin;
 X-GDM-SessionRegisters=false

@@ -66,6 +66,13 @@ dupes:
 dupes-warn:
     cargo xtask dupes --warn
 
+# Build the workspace in release mode, then install the session under PREFIX, with DESTDIR
+# prepended for staging. Every installed file is listed in share/gnoblin/install-manifest.
+# See xtask/src/dist.rs. Remove with `cargo xtask dist uninstall --prefix PREFIX`.
+dist prefix="/usr/local" destdir="":
+    cargo build --release --workspace
+    cargo xtask dist install --prefix "{{prefix}}" --destdir "{{destdir}}"
+
 # Check advisories, licences, duplicate versions and git sources.
 deny:
     cargo deny check
