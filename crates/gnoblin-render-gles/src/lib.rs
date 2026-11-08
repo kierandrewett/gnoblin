@@ -183,6 +183,8 @@ pub struct Gles {
     cursor_under: Vec<u8>,
     /// The cursor's visible rectangle in the last frame, or `None` when it had none.
     cursor_under_rect: Option<Rectangle<i32, Physical>>,
+    /// Whether the last frame left magnified or tinted pixels in the target.
+    filtered: bool,
 }
 
 impl std::fmt::Debug for Gles {
@@ -264,6 +266,7 @@ impl Gles {
             damage: Vec::new(),
             cursor_under: Vec::new(),
             cursor_under_rect: None,
+            filtered: false,
         })
     }
 
@@ -411,8 +414,18 @@ impl Gles {
             self.damage = damage;
             return Ok(());
         }
+        // The magnifier and the colour matrix read and rewrite the whole output. A pixel that is
+        // not repainted would be filtered again on the next frame, and an unfiltered pixel left
+        // behind after a filter was turned off would stay wrong. So whenever the filter is on now
+        // or was on last frame, repaint the whole output.
+        let filtering = view::is_active(frame.view(), frame.colour_matrix());
+        if filtering || self.filtered {
+            damage.clear();
+            damage.push(Rect::new(0, 0, self.physical.width, self.physical.height));
+        }
         let outcome = self.paint(frame, scale, &damage, None);
         self.damage = damage;
+        self.filtered = filtering;
         outcome?;
         self.draws = self.draws.saturating_add(1);
         Ok(())

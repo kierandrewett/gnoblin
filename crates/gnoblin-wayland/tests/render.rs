@@ -45,6 +45,7 @@ use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wayland::{
     Config, ControlHandle, FrameStats, LayoutControl, LoopError, ObservedWindow, Server, SessionSnapshot,
+    VisualAccessibilitySettings,
 };
 use gnoblin_wm::layout::{
     Camera, Generation, Handled, Job, LayoutEffect, LayoutEngine, LayoutFailure, LayoutOutcome, Reply, Ticket,
@@ -164,10 +165,16 @@ impl Session {
     /// Creates a session whose motion runs on real elapsed time, so a window whose content
     /// arrives fades in over the open duration as it does on screen.
     fn start_live(backend: Headless) -> Self {
+        Self::start_with(backend, VisualAccessibilitySettings::default())
+    }
+
+    /// Creates a live session with the given visual accessibility settings.
+    fn start_with(backend: Headless, visual_accessibility: VisualAccessibilitySettings) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
+            visual_accessibility,
             ..Config::default()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
@@ -553,6 +560,86 @@ fn a_committed_buffer_is_drawn_where_the_window_is() {
                 session.probe(width - 1, height - 1),
                 BACKGROUND,
                 "the desktop background is drawn where no window is"
+            );
+        });
+    });
+}
+
+/// The centre of the 100x100 red buffer, which fills the window's frame from its origin.
+/// The frame rectangle can be larger than the buffer, so its own centre is not red.
+fn red_window_centre(session: &Handle) -> gnoblin_types::Point {
+    let observation = session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+    let geometry = observation.only().expect("one window").geometry;
+    centre(Rect::new(
+        geometry.x,
+        geometry.y,
+        geometry.width.min(100),
+        geometry.height.min(100),
+    ))
+}
+
+/// The magnifier is drawn into the frame the output shows. With the pointer at the output's
+/// origin the magnifier centres on the output's quarter point, so at zoom 2 a display point
+/// `p` shows the source at `p / 2`: the red window, which is drawn at its own place in the
+/// unmagnified frame, must appear at twice its distance from that point.
+#[test]
+fn the_magnifier_is_drawn_into_the_frame_the_output_shows() {
+    for_each_renderer(|backend| {
+        let session = Session::start_with(
+            backend,
+            VisualAccessibilitySettings {
+                magnifier_zoom: Some(2.0),
+                colour_matrix: None,
+            },
+        );
+        session.handle.control.set_reduced_motion(true);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Red");
+            client.attach_solid(&window, 100, 100, RED);
+            let source = red_window_centre(session);
+            let (width, height) = screen();
+            let display = gnoblin_types::Point::new(
+                width / 2 + 2 * (source.x - width / 4),
+                height / 2 + 2 * (source.y - height / 4),
+            );
+            assert_eq!(
+                session.probe(display.x, display.y),
+                RED,
+                "the magnified window is drawn in the displayed frame at twice its distance from the magnifier centre"
+            );
+        });
+    });
+}
+
+/// The colour matrix is drawn into the frame the output shows: an inverting matrix turns the
+/// red window cyan in the displayed frame.
+#[test]
+fn the_colour_matrix_is_drawn_into_the_frame_the_output_shows() {
+    const INVERT: [[f32; 5]; 4] = [
+        [-1.0, 0.0, 0.0, 0.0, 1.0],
+        [0.0, -1.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0, 0.0, 1.0],
+        [0.0, 0.0, 0.0, 1.0, 0.0],
+    ];
+    for_each_renderer(|backend| {
+        let session = Session::start_with(
+            backend,
+            VisualAccessibilitySettings {
+                magnifier_zoom: None,
+                colour_matrix: Some(INVERT),
+            },
+        );
+        session.handle.control.set_reduced_motion(true);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Red");
+            client.attach_solid(&window, 100, 100, RED);
+            let inside = red_window_centre(session);
+            let [r, g, b, _] = session.probe(inside.x, inside.y);
+            assert!(
+                r <= 8 && g >= 247 && b >= 247,
+                "the inverted red window is cyan in the displayed frame, got [{r}, {g}, {b}]"
             );
         });
     });

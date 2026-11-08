@@ -8,8 +8,10 @@
 // than blending over it.
 //
 // The view is nearest-neighbour: output pixel `p` shows the source pixel at
-// `centre + (p + 0.5 - centre) / zoom`, clamped to the output. A zoom of one with any centre
-// maps every pixel to itself, which is why the renderer skips this pass for an identity view.
+// `middle + (p + 0.5 - length / 2) / zoom`, where `middle` is `centre` clamped so the visible
+// rectangle stays inside the output, so `centre` is the point at the middle of the view. A
+// zoom of one with any centre maps every pixel to itself, which is why the renderer skips
+// this pass for an identity view.
 //
 // The colour matrix acts on straight (unpremultiplied) colour and is then premultiplied
 // again. A fully transparent pixel is passed through unchanged, since it has no colour to
@@ -45,9 +47,13 @@ struct GnoblinViewOut {
 @group(1) @binding(0) var gnoblin_tex: texture_2d<f32>;
 @group(1) @binding(1) var gnoblin_sampler: sampler;
 
-// The source index shown at one axis of an output position, clamped to the output.
+// The source index shown at one axis of an output position, clamped to the output. `centre`
+// is the source point at the middle of a `length`-pixel axis; it is kept so the visible
+// `length / zoom` rectangle stays inside the axis.
 fn gnoblin_view_index(position: f32, centre: f32, zoom: f32, length: f32) -> f32 {
-    let source = centre + (position + 0.5 - centre) / zoom;
+    let half_visible = length * 0.5 / zoom;
+    let middle = clamp(centre, half_visible, length - half_visible);
+    let source = middle + (position + 0.5 - length * 0.5) / zoom;
     return clamp(floor(source), 0.0, length - 1.0);
 }
 

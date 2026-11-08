@@ -102,6 +102,8 @@ pub struct Software {
     /// both reused for the same reason.
     damage: Vec<Rectangle<i32, Physical>>,
     clipped: Vec<Rectangle<i32, Physical>>,
+    /// Whether the last frame left filtered pixels in the buffer.
+    filtered: bool,
 }
 
 impl Software {
@@ -134,6 +136,7 @@ impl Software {
             scratch: Vec::new(),
             damage: Vec::new(),
             clipped: Vec::new(),
+            filtered: false,
         })
     }
 
@@ -198,6 +201,18 @@ impl Software {
             return Ok(());
         }
 
+        // The magnifier and the colour matrix read and rewrite the whole buffer. A pixel
+        // that is not repainted would be filtered again on the next frame, and an unfiltered
+        // pixel left behind after a filter was turned off would stay wrong. So whenever the
+        // filter is on now or was on last frame, repaint the whole output.
+        let view = frame.view().filter(|view| view.zoom != 1.0);
+        let matrix = frame.colour_matrix().filter(|matrix| *matrix != ColourMatrix::IDENTITY);
+        let filtering = view.is_some() || matrix.is_some();
+        if filtering || self.filtered {
+            damage.clear();
+            damage.push(bounds);
+        }
+
         // Textures first: importing needs the renderer mutably, and the frame
         // borrows it for the whole of the draw.
         self.prepare(frame);
@@ -210,11 +225,10 @@ impl Software {
         // after the layers are painted. An identity view or matrix changes nothing, so
         // it is dropped here: running it would still round-trip every pixel through a
         // straight colour and could move its values by one.
-        let view = frame.view().filter(|view| view.zoom != 1.0);
-        let matrix = frame.colour_matrix().filter(|matrix| *matrix != ColourMatrix::IDENTITY);
-        if view.is_some() || matrix.is_some() {
+        if filtering {
             self.final_pass(view, matrix)?;
         }
+        self.filtered = filtering;
         Ok(())
     }
 
@@ -654,7 +668,8 @@ fn paste_under(bytes: &mut [u8], stride: usize, rect: Rectangle<i32, Physical>, 
 /// Produces the magnified, recoloured pixels as a packed RGBA buffer.
 ///
 /// The view is nearest-neighbour: output pixel `p` shows the source pixel at
-/// `centre + (p - centre) / zoom`, clamped to the image. The colour matrix acts on
+/// `centre + (p - length / 2) / zoom`, clamped to the image, so `centre` is the point of the
+/// source that sits in the middle of the view. The colour matrix acts on
 /// straight (unpremultiplied) colour and is then premultiplied again. Fully
 /// transparent pixels are passed through, since they have no colour to change.
 fn transform_pixels(image: &Image, view: Option<View>, matrix: Option<ColourMatrix>) -> Vec<u8> {
@@ -690,13 +705,16 @@ fn transform_pixels(image: &Image, view: Option<View>, matrix: Option<ColourMatr
 }
 
 /// The source index shown at output position `position`, for a view magnified by `zoom`
-/// about `centre`, clamped to `0..length`.
+/// about `centre`, clamped to `0..length`. `centre` is the source point at the middle of a
+/// `length`-pixel axis, kept so the `length / zoom` visible rectangle stays inside the axis.
 fn sample_index(position: usize, centre: f32, zoom: f32, length: usize) -> usize {
+    let length = length as f32;
+    let half_visible = length * 0.5 / zoom;
+    let centre = centre.max(half_visible).min(length - half_visible);
     // Sample at the pixel centre so that zoom 1 maps every pixel to itself.
     let at = position as f32 + 0.5;
-    let source = centre + (at - centre) / zoom;
-    let last = length.saturating_sub(1) as f32;
-    source.floor().clamp(0.0, last) as usize
+    let source = centre + (at - length * 0.5) / zoom;
+    source.floor().clamp(0.0, (length - 1.0).max(0.0)) as usize
 }
 
 /// Applies a colour matrix to one premultiplied RGBA pixel, returning premultiplied RGBA.
@@ -1265,9 +1283,14 @@ mod tests {
     /// A frame of solid one-pixel layers, one per pixel of a `width` by `height` output,
     /// each coloured by `colour(x, y)`, damaged over the whole output.
     fn pattern_frame(width: i32, height: i32, colour: impl Fn(i32, i32) -> Color) -> OutputFrame {
+        pattern_frame_damaged(width, height, Rect::new(0, 0, width as u32, height as u32), colour)
+    }
+
+    /// As [`pattern_frame`], but damaging only `damage`.
+    fn pattern_frame_damaged(width: i32, height: i32, damage: Rect, colour: impl Fn(i32, i32) -> Color) -> OutputFrame {
         let mut frame = OutputFrame::new();
         frame.set_background(Color::TRANSPARENT);
-        frame.push_damage(Rect::new(0, 0, width as u32, height as u32));
+        frame.push_damage(damage);
         for y in 0..height {
             for x in 0..width {
                 frame.push_layer(Layer::Solid(Solid::new(Rect::new(x, y, 1, 1), colour(x, y))));
@@ -1313,6 +1336,68 @@ mod tests {
                 assert_eq!(image.colour_at(x, y), Some(want), "output pixel ({x}, {y})");
             }
         }
+    }
+
+    #[test]
+    fn a_magnifier_about_an_off_centre_point_puts_that_point_in_the_middle_of_the_output() {
+        // Eight pixels wide, two times, about source column 2. Output x samples
+        // floor(2 + (x + 0.5 - 4) / 2), clamped to 0..=7, so the middle of the output (column 4)
+        // shows source column 2.
+        let colour = |x: i32, y: i32| Color::from_rgba8((x * 30) as u8, (y * 30) as u8, 200, 255);
+        let mut frame = pattern_frame(8, 1, colour);
+        frame.set_view(View::new(2.0, 2.0, 2.0));
+        let mut software = Software::new(Size::new(8, 1)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        let source = [0, 0, 1, 1, 2, 2, 3, 3];
+        for x in 0..8 {
+            let want = [(source[x as usize] * 30) as u8, 0, 200, 255];
+            assert_eq!(image.colour_at(x, 0), Some(want), "output column {x}");
+        }
+    }
+
+    #[test]
+    fn a_filtered_frame_that_damages_one_pixel_shows_the_same_picture_as_one_that_damages_all() {
+        // The magnifier reads and rewrites the whole buffer. A frame that damages a single pixel
+        // must not magnify the pixels it left alone a second time.
+        let colour = |x: i32, y: i32| Color::from_rgba8((x * 60) as u8, (y * 60) as u8, 200, 255);
+        let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
+        let mut whole = pattern_frame(4, 4, colour);
+        whole.set_view(View::new(2.0, 2.0, 2.0));
+        software.draw(&whole, Scale::IDENTITY).expect("drawn");
+        let first = software.screenshot().expect("a readback");
+        let mut partial = pattern_frame_damaged(4, 4, Rect::new(0, 0, 1, 1), colour);
+        partial.set_view(View::new(2.0, 2.0, 2.0));
+        software.draw(&partial, Scale::IDENTITY).expect("drawn");
+        assert_eq!(
+            software.screenshot().expect("a readback").data(),
+            first.data(),
+            "a second magnified frame shows the same picture"
+        );
+    }
+
+    #[test]
+    fn turning_the_filter_off_repaints_the_pixels_it_left_behind() {
+        let colour = |x: i32, y: i32| Color::from_rgba8((x * 60) as u8, (y * 60) as u8, 200, 255);
+        let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
+        let mut magnified = pattern_frame(4, 4, colour);
+        magnified.set_view(View::new(2.0, 2.0, 2.0));
+        software.draw(&magnified, Scale::IDENTITY).expect("drawn");
+        software
+            .draw(
+                &pattern_frame_damaged(4, 4, Rect::new(0, 0, 1, 1), colour),
+                Scale::IDENTITY,
+            )
+            .expect("drawn");
+        let mut plain = Software::new(Size::new(4, 4)).expect("a software renderer");
+        plain
+            .draw(&pattern_frame(4, 4, colour), Scale::IDENTITY)
+            .expect("drawn");
+        assert_eq!(
+            software.screenshot().expect("a readback").data(),
+            plain.screenshot().expect("a readback").data(),
+            "the unmagnified scene is shown everywhere, not only where the frame damaged"
+        );
     }
 
     #[test]

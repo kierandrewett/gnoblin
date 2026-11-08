@@ -1209,9 +1209,14 @@ fn the_view_block_packs_to_the_shader_layout() {
 /// A frame of two solid layers over a background, the same shape the parity test draws, so the
 /// view and matrix are the only difference between the frames a test compares.
 fn view_scene(view: Option<View>, matrix: Option<ColourMatrix>) -> OutputFrame {
+    view_scene_damaged(view, matrix, Rect::new(0, 0, 64, 64))
+}
+
+/// As [`view_scene`], but damaging only `damage`.
+fn view_scene_damaged(view: Option<View>, matrix: Option<ColourMatrix>, damage: Rect) -> OutputFrame {
     let mut frame = OutputFrame::new();
     frame.set_background(Color::from_rgba8(16, 32, 48, 255));
-    frame.push_damage(Rect::new(0, 0, 64, 64));
+    frame.push_damage(damage);
     frame.push_layer(Layer::Solid(Solid::new(
         Rect::new(0, 0, 32, 32),
         Color::from_rgba8(200, 40, 10, 255),
@@ -1271,5 +1276,54 @@ fn a_magnified_view_matches_the_software_reference() {
         gl.data(),
         reference.data(),
         "the GLES view must match the software view"
+    );
+}
+
+#[test]
+fn a_magnified_frame_that_damages_one_pixel_shows_the_same_picture_as_one_that_damages_all() {
+    // The view pass rewrites the whole output, so a frame that damages one pixel must not
+    // magnify the pixels it left alone a second time.
+    let size = Size::new(64, 64);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let view = View::new(2.0, 32.0, 32.0);
+    renderer
+        .draw(
+            &view_scene_damaged(view, None, Rect::new(0, 0, 64, 64)),
+            Scale::IDENTITY,
+        )
+        .expect("drawn");
+    let first = renderer.screenshot().expect("a readback");
+    renderer
+        .draw(&view_scene_damaged(view, None, Rect::new(0, 0, 1, 1)), Scale::IDENTITY)
+        .expect("drawn");
+    assert_eq!(
+        renderer.screenshot().expect("a readback").data(),
+        first.data(),
+        "a second magnified frame shows the same picture"
+    );
+}
+
+#[test]
+fn turning_the_view_off_repaints_the_pixels_it_left_behind() {
+    let size = Size::new(64, 64);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    renderer
+        .draw(&view_scene(View::new(2.0, 32.0, 32.0), None), Scale::IDENTITY)
+        .expect("drawn");
+    renderer
+        .draw(&view_scene_damaged(None, None, Rect::new(0, 0, 1, 1)), Scale::IDENTITY)
+        .expect("drawn");
+    let Some(mut plain) = gles(size) else {
+        return;
+    };
+    plain.draw(&view_scene(None, None), Scale::IDENTITY).expect("drawn");
+    assert_eq!(
+        renderer.screenshot().expect("a readback").data(),
+        plain.screenshot().expect("a readback").data(),
+        "the unmagnified scene is shown everywhere, not only where the frame damaged"
     );
 }
