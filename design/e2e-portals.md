@@ -74,9 +74,17 @@ requests in their own count (`anonymous_requester`, `end_anonymous`).
 (7, anonymous and named) were red before the fix and are green on Agent37
 (`PortalConsentLive-logs/green2.log`).
 
-Still open: a live run with two queued anonymous requests answered in order, and a Tab+Return
-Allow that returns `response=0` with a PNG. The harness is `PortalRole/e2e-live/live.sh`. This
-lane has not yet run it with the fixed build.
+Live run with the fixed build (`PortalConsentLive-logs/rd4-run1.txt`, `consent-tests-run2.txt`):
+Tab+Return on the dialog arms and presses Allow. The backend logs `a consent answer arrived
+outcome=Granted` for request 2, then request 3 (queued behind it) is shown and granted in turn.
+Queue order holds: request 3 is not answered until request 2 has been. Anonymous callers each
+prompt.
+
+Still open, and not a consent fault: the Allow returns `response=2`, not `response=0` with a
+PNG. The Screenshot path calls `CaptureBackend::screenshot`, and the composition root still
+installs `Missing` (`crates/xdg-desktop-portal-gnoblin/src/backends.rs`), so no frame is
+produced. Real capture needs the compositor IPC behind that trait. Until it lands, an Allow
+cannot return a PNG.
 
 FileChooser and the fallback sysroot are unchanged.
 

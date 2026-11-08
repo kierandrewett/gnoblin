@@ -58,3 +58,72 @@ impl DialogUi for ConsentUi {
         decision.map(|decision| Consent::grant(decision).map_or(Settled::Denied, Settled::Granted))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gnoblin_portal_core::model::ScreenKey;
+    use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, Setup, key_events};
+
+    fn setup() -> Setup {
+        Setup {
+            width: 480,
+            height: 240,
+            reduced_motion: true,
+            scheme: DialogScheme::Dark,
+        }
+    }
+
+    /// Opens a consent at `opened`, lays it out and feeds `keys` at `at`. Returns the
+    /// first settlement.
+    fn settle(keys: Vec<ScreenKey>, opened: u64, at: u64) -> Option<Settled> {
+        let mut shell = DialogShell::new(setup());
+        let mut ui = ConsentUi::new(Consent::open(
+            "org.example.App",
+            "Share your screen?",
+            Tick::new(opened),
+        ));
+        shell.layout(&mut ui, Tick::new(at));
+        let mut settled = None;
+        for key in keys {
+            settled = settled.or(shell.run(&mut ui, key_events(key, false), Tick::new(at)));
+        }
+        settled
+    }
+
+    #[test]
+    fn tab_then_enter_allows_once_armed() {
+        let settled = settle(vec![ScreenKey::Tab, ScreenKey::Enter], 0, 1_000);
+        assert!(
+            matches!(settled, Some(Settled::Granted(_))),
+            "Tab moves focus to Allow and Enter presses it once armed: {settled:?}"
+        );
+    }
+
+    #[test]
+    fn enter_on_initial_focus_denies() {
+        assert_eq!(
+            settle(vec![ScreenKey::Enter], 0, 1_000),
+            Some(Settled::Denied),
+            "Deny holds initial focus"
+        );
+    }
+
+    #[test]
+    fn tab_then_enter_before_arm_does_not_allow() {
+        assert_eq!(
+            settle(vec![ScreenKey::Tab, ScreenKey::Enter], 0, 100),
+            Some(Settled::Denied),
+            "Allow is disabled until the arm delay has passed"
+        );
+    }
+
+    #[test]
+    fn tab_alone_after_arm_does_not_settle() {
+        assert_eq!(
+            settle(vec![ScreenKey::Tab], 0, 1_000),
+            None,
+            "Tab only moves focus; it must not answer the consent"
+        );
+    }
+}

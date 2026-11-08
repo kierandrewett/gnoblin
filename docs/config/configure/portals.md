@@ -6,6 +6,13 @@ manage app permissions: the selected backend decides what each app may do. The
 Gnoblin backend shows its normal consent dialogs. A shell can also ship its own
 backend and route interfaces to it; Bingux does this.
 
+Consent is per request. A caller with an app ID, such as a Flatpak or sandboxed app, that is
+refused is not asked again for a short time.
+
+A caller with no app ID, such as an unsandboxed host app, has no identity the backend can see.
+Each of its requests prompts on its own, and no earlier answer is reused. Requests wait behind
+open dialogs in a bounded queue. When the queue is full, the request fails.
+
 ```lua
 gnoblin.configure {
     portals = {
