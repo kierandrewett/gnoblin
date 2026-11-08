@@ -22,6 +22,17 @@ first installed backend in the list that implements that interface.
 
 `default` applies to interfaces not listed under `interfaces`.
 
+Gnoblin serves the interfaces its own `gnoblin.portal` lists:
+
+- ScreenCast, Screenshot, RemoteDesktop, InputCapture, GlobalShortcuts,
+  Clipboard, Settings, Inhibit, and Access (the accessibility consent dialog).
+
+It does not serve FileChooser, AppChooser, Print, Account, Email, Notification,
+Wallpaper, Background, Lockdown, or DynamicLauncher yet. The shipped
+`portals.conf` routes them to `gtk`, then `kde`, then any installed backend, so
+Gnoblin never answers them. Add a route to `gnoblin` for one of them only once it
+serves that interface.
+
 Common backend IDs include `gtk`, `gnome`, `kde`, and `gnoblin`. Use IDs
 provided by the backends installed on your system.
 
