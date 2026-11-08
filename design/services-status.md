@@ -50,9 +50,19 @@ records the keyring scenarios on a real session.
 ## Gaps that need a real session or hardware
 
 - polkit: a real polkitd and a real prompt, with the agent answering.
-- GeoClue: a real GeoClue service and a location request.
-- PipeWire privacy: a PipeWire daemon. The C monitor needs porting to the Rust
-  services role before this row can be done.
+- GeoClue: the agent exists and is tested on a private bus (see the row above).
+  Not run against a real GeoClue service or a location request. Next slice: a
+  real GeoClue run on hardware, no code change.
+- PipeWire privacy: not ported. The monitor is only in the C tree
+  (`src/agents/gnoblin-pipewire-monitor.c`). Next slice: port the monitor to a
+  Rust crate in the services role, tested against a fake PipeWire node on a
+  private bus; a real PipeWire daemon is needed for the final check.
+- `org.gnome.ScreenSaver` forwarding: absent. Next slice: serve the GNOME name
+  on the ScreenSaver connection with the same methods, and a test that a GNOME
+  client's `Inhibit` reaches the compositor's idle hold.
+- logind unlock: deliberately absent. Unlock stays with the locker's password.
+  Next slice: none unless a decision changes; a logind `Unlock` must not bypass
+  the locker.
 - logind: a real seat, a real `systemctl suspend`, and `loginctl lock-session`.
 - SessionIdle and ScreenSaver: a real session bus client, such as a video
   player, holding `Inhibit`.
