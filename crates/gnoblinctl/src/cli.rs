@@ -143,15 +143,36 @@ pub(crate) fn command_tree() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print JSON instead of text, for scripts."),
         );
+    let mut verbs = verb_commands();
     for object in tree::OBJECTS {
-        root = root.subcommand(object_command(object));
+        let command = object_command(object);
+        root = root.subcommand(match verbs.iter().position(|verb| verb.get_name() == object.command) {
+            Some(index) => merge_object(verbs.remove(index), command),
+            None => command,
+        });
     }
-    for command in verb_commands() {
+    for command in verbs {
         root = root.subcommand(command);
     }
     root.subcommand(ipc_command())
         .subcommand(completions_command())
         .subcommand(log_command())
+}
+
+/// A hand-written verb and a schema object with one name are one command: the verb's
+/// subcommands and the object's (`list`, `watch`) side by side, under the verb's help. Clap
+/// resolves a repeated name to its first declaration, so a second `config` would hide every
+/// verb of the first.
+fn merge_object(verb: Command, object: Command) -> Command {
+    object.get_subcommands().fold(verb, |merged, subcommand| {
+        assert!(
+            merged.find_subcommand(subcommand.get_name()).is_none(),
+            "`{} {}` is declared twice",
+            merged.get_name(),
+            subcommand.get_name()
+        );
+        merged.subcommand(subcommand.clone())
+    })
 }
 
 /// One object's subcommands.
@@ -450,7 +471,7 @@ fn completions_invocation(matches: &ArgMatches) -> Result<Invocation, Usage> {
 }
 
 /// The `config` subcommands. `get` asks the session; `validate` reads a file and
-/// needs no session at all.
+/// needs no session at all; `list` and `watch` are the schema object's actions.
 fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
     let (name, sub) = matches.subcommand().expect("a subcommand is required");
     let verb = match name {
@@ -459,6 +480,10 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
         "validate" => verbs::Verb::ConfigValidate {
             path: sub.get_one::<PathBuf>("file").cloned().expect("clap requires the file"),
         },
+        "list" | "watch" => {
+            let object = tree::CliObject::find("config").expect("the schema declares the `config` object");
+            return object_invocation(object, matches, json);
+        }
         other => unreachable!("clap refuses `config {other}`"),
     };
     Ok(Invocation::Verb { verb, json })

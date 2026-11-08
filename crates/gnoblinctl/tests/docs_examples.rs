@@ -252,3 +252,55 @@ fn every_documented_gnoblinctl_example_names_a_built_command() {
         failures.join("\n")
     );
 }
+
+/// A connection that must never open: `config validate` reads a file and needs no session.
+struct NoSession;
+
+impl gnoblinctl::Connection for NoSession {
+    type Transport = gnoblinctl::UnixTransport;
+
+    fn connect(self) -> Result<gnoblin_client::Client<gnoblinctl::UnixTransport>, gnoblinctl::ConnectFailure> {
+        panic!("`config validate` must not open a session connection")
+    }
+}
+
+/// Run the CLI on `args` with no session, returning its exit code and both streams.
+fn run_without_session(args: &[&str]) -> (u8, String, String) {
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    let code = gnoblinctl::run(args.iter().map(std::ffi::OsString::from), NoSession, &mut out, &mut err);
+    (
+        code,
+        String::from_utf8(out).expect("stdout is UTF-8"),
+        String::from_utf8(err).expect("stderr is UTF-8"),
+    )
+}
+
+/// The documented `config validate FILE` example, run for real: a valid file exits 0 and
+/// prints `valid`, a file that does not parse exits 1 with `invalid-config`. Exit 2 would be
+/// the clap usage error this test exists to catch, so it is refused by name.
+#[test]
+fn config_validate_runs_on_a_valid_and_an_invalid_file() {
+    let dir = std::env::temp_dir().join(format!("gnoblinctl-docs-validate-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let valid = dir.join("valid.lua");
+    let invalid = dir.join("invalid.lua");
+    std::fs::write(&valid, "-- an empty configuration\n").expect("the valid file is written");
+    std::fs::write(&invalid, "this is not lua\n").expect("the invalid file is written");
+    let valid_path = valid.to_string_lossy().into_owned();
+    let invalid_path = invalid.to_string_lossy().into_owned();
+
+    let (code, out, err) = run_without_session(&["config", "validate", &valid_path]);
+    assert_eq!(code, 0, "a valid file exits 0; stderr: {err}");
+    assert_eq!(out, "valid\n", "a valid file prints `valid`");
+
+    let (code, out, err) = run_without_session(&["config", "validate", &invalid_path]);
+    assert_eq!(code, 1, "an invalid file exits 1, not the usage exit 2; stderr: {err}");
+    assert!(out.is_empty(), "an invalid file prints nothing on stdout: {out}");
+    assert!(
+        err.contains("invalid-config"),
+        "the refusal names `invalid-config`: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

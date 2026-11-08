@@ -36,7 +36,7 @@ const VERSION: Version = Version::new(0, 2, 0);
 
 /// The verbs written by hand rather than generated from the schema. They are not
 /// object commands, so the drift check must not expect a schema object behind them.
-const HAND_WRITTEN: &[&str] = &["ping", "status", "version", "capabilities", "config"];
+const HAND_WRITTEN: &[&str] = &["ping", "status", "version", "capabilities"];
 
 /// A unique path under the temporary directory.
 fn scratch(suffix: &str) -> PathBuf {
@@ -634,7 +634,13 @@ fn the_command_tree_matches_the_schema() {
             .filter(|name| name != "help")
             .collect();
         actions.sort();
+        // A command that is also a hand-written verb carries those verbs beside the object's.
+        let verbs: &[&str] = match command.as_str() {
+            "config" => &["get", "reload", "validate"],
+            _ => &[],
+        };
         let mut want = vec!["list".to_owned(), "watch".to_owned()];
+        want.extend(verbs.iter().map(|verb| (*verb).to_owned()));
         if !object.properties.is_empty() {
             want.push("get".to_owned());
         }
@@ -644,7 +650,10 @@ fn the_command_tree_matches_the_schema() {
         want.sort();
         assert_eq!(actions, want, "the actions of `gnoblinctl {command}`");
 
-        if let Some(get) = subcommand.find_subcommand("get") {
+        if let Some(get) = subcommand
+            .find_subcommand("get")
+            .filter(|_| !object.properties.is_empty())
+        {
             let properties = get
                 .get_arguments()
                 .find(|argument| argument.get_id() == "property")
@@ -656,7 +665,10 @@ fn the_command_tree_matches_the_schema() {
             let declared: Vec<String> = object.properties.iter().map(|property| property.name.clone()).collect();
             assert_eq!(properties, declared, "`gnoblinctl {command} get` offers every property");
         }
-        if let Some(call) = subcommand.find_subcommand("call") {
+        if let Some(call) = subcommand
+            .find_subcommand("call")
+            .filter(|_| !object.methods.is_empty())
+        {
             let methods = call
                 .get_arguments()
                 .find(|argument| argument.get_id() == "method")
@@ -693,6 +705,40 @@ fn the_command_tree_matches_the_schema() {
         tree.get_arguments().any(|argument| argument.get_id() == "json"),
         "`--json` is the one flag the tree adds to the schema"
     );
+}
+
+/// The schema's `config` object and the hand-written `config` verbs are one command. Clap
+/// resolves a repeated subcommand name to its first occurrence, so two `config` commands hide
+/// every verb of the second: `config validate` then fails as an unknown subcommand, exit 2.
+#[test]
+fn no_root_subcommand_name_is_declared_twice() {
+    let tree = gnoblinctl::command_tree();
+    let mut names: Vec<&str> = tree.get_subcommands().map(clap::Command::get_name).collect();
+    let declared = names.len();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(
+        names.len(),
+        declared,
+        "a repeated root subcommand shadows its later declarations"
+    );
+}
+
+#[test]
+fn config_carries_the_schema_object_and_every_hand_written_verb() {
+    let tree = gnoblinctl::command_tree();
+    let config: Vec<&clap::Command> = tree
+        .get_subcommands()
+        .filter(|command| command.get_name() == "config")
+        .collect();
+    assert_eq!(config.len(), 1, "`config` must be declared once");
+    let verbs: Vec<&str> = config[0].get_subcommands().map(clap::Command::get_name).collect();
+    for expected in ["get", "reload", "validate", "list", "watch"] {
+        assert!(
+            verbs.contains(&expected),
+            "`config {expected}` is missing; `config` has {verbs:?}"
+        );
+    }
 }
 
 #[test]
