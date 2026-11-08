@@ -360,7 +360,7 @@ fn activate_set_is_refused_until_the_session_publishes_a_workspace() {
         r#"
 local refused, message = pcall(gnoblin.workspaces.activate_set, "main")
 assert(not refused, "there is no workspace object to ask")
-assert(string.find(message, "the workspace object", 1, true), "it names the missing object, was " .. tostring(message))
+assert(string.find(tostring(message), "the workspace object", 1, true), "it names the missing object, was " .. tostring(message))
 "#,
     );
     let report = host.run_config(&paths).expect("the run starts");

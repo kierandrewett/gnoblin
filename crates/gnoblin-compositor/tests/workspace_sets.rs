@@ -25,9 +25,11 @@ fn set(name: &str, raw: u64) -> WorkspaceSet {
     }
 }
 
-/// Starts a session whose configuration defines `sets`.
+/// Starts a session with two workspaces, so a set may name workspace 2, and whose
+/// configuration defines `sets`.
 fn started(sets: Vec<WorkspaceSet>) -> Session {
     let (session, _) = Session::start_privileged_configured(&[], |config| {
+        config.wayland.workspaces = 2;
         config.wayland.workspace_sets = sets;
     });
     session

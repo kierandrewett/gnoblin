@@ -121,7 +121,7 @@ fn module(start: &str, on_event: &str) -> String {
     (type $ec (enum "busy" "denied" "idle-unavailable" "internal" "layer-refused" "not-floating"
       "not-locked" "power-missing" "refused" "timed-out" "too-many-inhibitors" "too-many-passes"
       "transient-follows-parent" "unavailable" "unknown-effect-kind" "unknown-layout" "unknown-member"
-      "unknown-object" "unsupported"))
+      "unknown-object" "unknown-set" "unsupported"))
     (export "error-code" (type $ecx (eq $ec)))
     (export "operation" (type $op (sub resource)))
     (export "window" (type $w (sub resource)))

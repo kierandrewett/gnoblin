@@ -420,8 +420,11 @@ fn a_failed_operation_exits_1() {
 /// The one `workspace` object the session publishes; set activation is a verb on it.
 fn workspace() -> (Graph, ObjectId) {
     let mut graph = Graph::new(catalog());
+    let mut fields = Fields::new();
+    fields.insert("id".to_owned(), Value::Uint(1));
+    fields.insert("layout".to_owned(), Value::Text("floating".to_owned()));
     let object = graph
-        .create(TypeKey::gnoblin("workspace"), Fields::new())
+        .create(TypeKey::gnoblin("workspace"), fields)
         .expect("workspace is in the schema");
     (graph, object)
 }
@@ -697,6 +700,7 @@ fn the_command_tree_matches_the_schema() {
         // A command that is also a hand-written verb carries those verbs beside the object's.
         let verbs: &[&str] = match command.as_str() {
             "config" => &["get", "reload", "validate"],
+            "workspace" => &["activate-set"],
             _ => &[],
         };
         let mut want = vec!["list".to_owned(), "watch".to_owned()];
