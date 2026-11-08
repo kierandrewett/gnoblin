@@ -42,7 +42,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
 };
-use gnoblin_config::{Config, SearchPaths, extensions::load_extensions};
+use gnoblin_config::{Config, Problem, SearchPaths, Value, extensions::load_extensions, salvage};
 use gnoblin_proto::Version;
 use gnoblin_schema::Schema;
 use gnoblin_types::Tick;
@@ -201,12 +201,29 @@ fn commit<T: Transport + 'static>(
     report: &RunReport,
     reporter: &mut Reporter,
 ) -> Result<u64, RoleError> {
-    let (document, autostart) = match &report.config {
+    // A configuration that fails validation is not all-or-nothing at login: the sections that
+    // validate are kept, and the dropped ones are logged as `ignored` once the revision is
+    // accepted. Only a document with nothing left to keep is refused whole.
+    let (document, autostart, dropped) = match &report.config {
         Ok(config) => match enabled_autostart(config) {
-            Ok(entries) => (report.document.to_json().to_string().into_bytes(), entries),
+            Ok(entries) => (
+                report.document.to_json().to_string().into_bytes(),
+                owned_autostart(entries),
+                Vec::new(),
+            ),
             Err(problem) => return Err(refuse(report, reporter, &problem)),
         },
-        Err(problems) => return Err(refuse(report, reporter, &problems.to_string())),
+        Err(problems) => match keep_what_validates(report.document.clone()) {
+            Some((kept, dropped)) => match enabled_autostart(&kept) {
+                Ok(entries) => (
+                    kept.document().to_json().to_string().into_bytes(),
+                    owned_autostart(entries),
+                    dropped,
+                ),
+                Err(problem) => return Err(refuse(report, reporter, &problem)),
+            },
+            None => return Err(refuse(report, reporter, &problems.to_string())),
+        },
     };
     // A refused revision logs its script errors inside the refusal reason, so they are logged
     // here only when the revision goes on.
@@ -218,11 +235,39 @@ fn commit<T: Transport + 'static>(
             return Err(RoleError::Commit(error.to_string()));
         }
     };
+    for problem in &dropped {
+        log::warn!(area = "config", "ignored {problem}");
+    }
     for (name, command) in &autostart {
         reporter.write(&report::autostart(revision, name, command));
     }
     reporter.write(&report::config_accepted(revision));
     Ok(revision)
+}
+
+/// The document login keeps when the whole file fails validation: the sections that validate,
+/// and the problems of the sections that were dropped.
+///
+/// `None` when no section survives. A document with nothing left would replace the last
+/// accepted settings with the empty configuration, so the caller refuses the revision instead.
+fn keep_what_validates(document: Value) -> Option<(Config, Vec<Problem>)> {
+    let salvaged = salvage(document);
+    if salvaged.config.is_empty() {
+        return None;
+    }
+    let dropped = salvaged
+        .report
+        .map(|report| report.problems().to_vec())
+        .unwrap_or_default();
+    Some((salvaged.config, dropped))
+}
+
+/// The autostart entries as owned values, so they outlive the configuration they came from.
+fn owned_autostart(entries: Vec<(&str, &[String])>) -> Vec<(String, Vec<String>)> {
+    entries
+        .into_iter()
+        .map(|(name, command)| (name.to_owned(), command.to_vec()))
+        .collect()
 }
 
 /// Refuse a configuration revision: log why, tell the guardian, and return the error.
@@ -422,7 +467,33 @@ pub(crate) fn version() -> Version {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, enabled_autostart, keyring_conflict};
+    use super::{Config, enabled_autostart, keep_what_validates, keyring_conflict};
+    use gnoblin_config::Value;
+
+    fn json_document(text: &str) -> Value {
+        Value::from_json(&serde_json::from_str(text).expect("the test document is JSON")).expect("a table")
+    }
+
+    /// The failure this prevents: one misspelled section costs the user every other setting
+    /// at login. The valid cursor section is kept, and the invalid compositor section is the
+    /// one named as dropped.
+    #[test]
+    fn login_keeps_the_sections_that_validate_and_names_the_one_it_drops() {
+        let document = json_document(r#"{"compositor": {"blur2": "on"}, "cursor": {"size": 32}}"#);
+        let (kept, dropped) = keep_what_validates(document).expect("the cursor section survives");
+        assert_eq!(kept.cursor.as_ref().expect("cursor").size, Some(32));
+        assert!(kept.compositor.is_none(), "the invalid section is not kept");
+        assert_eq!(dropped.len(), 1, "{dropped:?}");
+        assert_eq!(dropped[0].path.to_string(), "compositor.blur2");
+    }
+
+    /// The failure this prevents: a document with nothing valid left replaces the last
+    /// accepted settings with an empty configuration. Such a document is refused whole.
+    #[test]
+    fn login_refuses_a_document_with_nothing_left_to_keep() {
+        let document = json_document(r#"{"compositor": {"blur2": "on"}}"#);
+        assert!(keep_what_validates(document).is_none());
+    }
 
     fn argv(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| (*word).to_owned()).collect()
