@@ -2307,7 +2307,7 @@ shadows the shipped file. Layouts are not special-cased.
   are `visible = false`.
 - `master-stack`, `dwindle` (Hyprland), `grid`: tiled arrangements with their
   options.
-- `scrolling` (niri): columns in a row, with rectangles that may lie outside the
+- `strip` (niri): columns in a row, with rectangles that may lie outside the
   area and are clipped by the renderer. `ctx.state` holds the columns and the
   view offset. The view offset animates in the tween player.
 - `carousel` (3D example): windows on a ring in 3D space with a perspective

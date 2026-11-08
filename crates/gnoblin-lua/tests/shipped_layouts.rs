@@ -12,7 +12,7 @@
 //! - kiosk and monocle show one window and hide the rest [every_layout_settles_for_every_count_and_area]
 //! - the same input on a fresh host gives the same settled layout [every_layout_settles_for_every_count_and_area]
 //! - removing the focused or only window, adding windows and re-adding windows keep state stable [add_and_remove_sequences_keep_every_window_placed]
-//! - scrolling columns may lie outside the area, and carousel3d uses depth, so bounds are not checked for them [every_layout_settles_for_every_count_and_area]
+//! - strip columns may lie outside the area, and carousel3d uses depth, so bounds are not checked for them [every_layout_settles_for_every_count_and_area]
 //! - commands mutate state and change geometry as documented [command_tests]
 //! - scroll_to pins the view until focus moves, and clamps it to the strip [scroll_to_pins_the_view_until_focus_moves, scroll_to_clamps_the_view_to_the_strip]
 //! - the loader resolves `gnoblin.layouts.<name>` from the installed prefix alone [installed_layouts_load_from_their_prefix]
@@ -45,7 +45,7 @@ const LAYOUTS: [&str; 8] = [
     "master_stack",
     "dwindle",
     "grid",
-    "scrolling",
+    "strip",
     "carousel3d",
 ];
 const COUNTS: [usize; 6] = [0, 1, 2, 3, 7, 20];
@@ -245,7 +245,7 @@ fn check_layout(layout: &str, ids: &[u64], width: f64, height: f64, settled: &La
                 }
             }
         }
-        "scrolling" | "carousel3d" => {
+        "strip" | "carousel3d" => {
             assert_eq!(placed_ids(settled), ids, "{layout} places every window");
         }
         other => panic!("no invariant for {other}"),
@@ -397,13 +397,13 @@ fn command_tests() {
     assert_eq!(shown(&mono_before), vec![1], "monocle starts on the first window");
     assert_eq!(shown(&mono_after), vec![2], "next shows the second window");
 
-    // scrolling: with focus 1 the columns read 1, 3, 2 (reconcile adds each new window
+    // strip: with focus 1 the columns read 1, 3, 2 (reconcile adds each new window
     // right of the focused column). consume pulls window 3 into window 1's column;
     // expel moves it back out, restoring the baseline columns.
-    let scroll = baseline("scrolling", Some(1), &[1, 2, 3]);
+    let scroll = baseline("strip", Some(1), &[1, 2, 3]);
     let consumed = driven(
         "drv_sc_consume",
-        "scrolling",
+        "strip",
         "  real.command.consume(ctx, {window = 3})",
         Some(1),
         &[1, 2, 3],
@@ -420,7 +420,7 @@ fn command_tests() {
     );
     let expelled = driven(
         "drv_sc_expel",
-        "scrolling",
+        "strip",
         "  real.command.consume(ctx, {window = 3})\n  real.command.expel(ctx, {window = 3})",
         Some(1),
         &[1, 2, 3],
@@ -433,10 +433,10 @@ fn command_tests() {
         );
     }
 
-    // scrolling: move_column right swaps focused column 1 with its right neighbour 3.
+    // strip: move_column right swaps focused column 1 with its right neighbour 3.
     let moved = driven(
         "drv_sc_move",
-        "scrolling",
+        "strip",
         "  real.command.move_column(ctx, {direction = \"right\"})",
         Some(1),
         &[1, 2, 3],
@@ -448,10 +448,10 @@ fn command_tests() {
     );
     assert!(x3 < x1 && x1 < x2, "columns read 3, 1, 2: {x3} {x1} {x2}");
 
-    // scrolling: fit_all gives every column an equal share of the area.
+    // strip: fit_all gives every column an equal share of the area.
     let fitted = driven(
         "drv_sc_fit",
-        "scrolling",
+        "strip",
         "  real.command.fit_all(ctx, {})",
         Some(1),
         &[1, 2, 3],
@@ -470,7 +470,7 @@ fn scroll_to_pins_the_view_until_focus_moves() {
     // until the first arrange sets it.
     let dir = driver(
         "drv_sc_pin",
-        "scrolling",
+        "strip",
         "  if ctx.state.view == nil then\n    real.command.scroll_to(ctx, {x = 300})\n  end",
     );
     let host = hosted(Some(dir), &[("drv_sc_pin", "drv_sc_pin")]);
@@ -498,7 +498,7 @@ fn scroll_to_pins_the_view_until_focus_moves() {
 fn focus_command_names_the_neighbour_it_moves_to() {
     // The command answers with the arrangement and a focus effect on the right neighbour.
     let body = "  if ctx.focus == 1 then\n    return real.command.focus(ctx, {direction = \"right\"})\n  end";
-    let layout = driven("drv_focus_right", "scrolling", body, Some(1), &[1, 2]);
+    let layout = driven("drv_focus_right", "strip", body, Some(1), &[1, 2]);
     assert_eq!(
         layout.effects,
         vec![LayoutEffect::Focus {
@@ -512,7 +512,7 @@ fn focus_command_names_the_neighbour_it_moves_to() {
 #[test]
 fn focus_command_without_a_neighbour_returns_the_arrangement_alone() {
     let body = "  if ctx.focus == 1 then\n    return real.command.focus(ctx, {direction = \"left\"})\n  end";
-    let layout = driven("drv_focus_none", "scrolling", body, Some(1), &[1, 2]);
+    let layout = driven("drv_focus_none", "strip", body, Some(1), &[1, 2]);
     assert!(
         layout.effects.is_empty(),
         "no neighbour, no focus effect: {:?}",
@@ -527,7 +527,7 @@ fn scroll_to_clamps_the_view_to_the_strip() {
     for (index, (x, expected)) in [(10000.0, -500.0), (-50.0, 0.0)].into_iter().enumerate() {
         let test = format!("drv_sc_clamp_{index}");
         let body = format!("  real.command.scroll_to(ctx, {{x = {x}}})");
-        let layout = driven(&test, "scrolling", &body, Some(1), &[1, 2, 3]);
+        let layout = driven(&test, "strip", &body, Some(1), &[1, 2, 3]);
         let placed = rect(&by_id(&layout)[&1]).x;
         assert!(
             (placed - expected).abs() < EPS,

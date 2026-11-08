@@ -408,7 +408,7 @@ fn an_unknown_layout_name_is_refused_over_ipc() {
 }
 
 #[test]
-fn scrolling_commands_are_applied_over_ipc() {
+fn strip_commands_are_applied_over_ipc() {
     // Every command answers with a reply table, so the IPC call is applied (exit 0) and
     // the placements it returns reach the windows. A nil return would be `refused`.
     let session = session_with(LayoutSettings {
@@ -420,7 +420,7 @@ fn scrolling_commands_are_applied_over_ipc() {
     settled_sizes(&mut client, &windows);
 
     let workspace = workspace_id(&session).to_string();
-    let scrolling = source_hash(&shipped_modules().join("gnoblin/layouts/scrolling.lua"));
+    let strip = source_hash(&shipped_modules().join("gnoblin/layouts/strip.lua"));
     session
         .ctl(&[
             "workspace",
@@ -428,8 +428,8 @@ fn scrolling_commands_are_applied_over_ipc() {
             &workspace,
             "set_layout",
             "root=shipped",
-            "module=gnoblin.layouts.scrolling",
-            &format!("hash={scrolling}"),
+            "module=gnoblin.layouts.strip",
+            &format!("hash={strip}"),
             "options=",
         ])
         .ok();

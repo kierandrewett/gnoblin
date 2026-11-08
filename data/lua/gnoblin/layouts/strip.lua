@@ -1,4 +1,4 @@
--- scrolling: an ordered strip of columns, in the style of niri. Each column holds one
+-- strip: an ordered strip of columns, in the style of niri. Each column holds one
 -- or more windows, stacked top to bottom, or tabbed (only the active window shows).
 -- The strip is wider than the area; a view offset decides which part is on screen.
 -- Columns that fall outside the view keep their placements, with x outside the area.
@@ -39,7 +39,7 @@
 --                 changes. The view is clamped to the strip, so an x past either end
 --                 stops at that end.
 --
--- Usage: require("gnoblin.layouts.scrolling"):with({ column_width = 0.5 })
+-- Usage: require("gnoblin.layouts.strip"):with({ column_width = 0.5 })
 
 local M = {}
 M.kind = "tiling"
@@ -164,7 +164,7 @@ local function follow(ctx, columns, geo, total, vw)
                 view = centred
             end
         else
-            error("scrolling centre must be always, never or on-overflow")
+            error("strip centre must be always, never or on-overflow")
         end
     end
     local max_view = math.max(0, total - vw)
@@ -249,7 +249,7 @@ M.command = {
         else
             local fraction = PRESETS[args.preset]
             if fraction == nil then
-                error("scrolling width preset must be 1/3, 1/2, 2/3 or 1")
+                error("strip width preset must be 1/3, 1/2, 2/3 or 1")
             end
             column.fraction = fraction
             column.px = nil
@@ -307,7 +307,7 @@ M.command = {
         elseif args.direction == "right" then
             other = ci + 1
         else
-            error("scrolling move_column direction must be left or right")
+            error("strip move_column direction must be left or right")
         end
         if other >= 1 and other <= #columns then
             columns[ci], columns[other] = columns[other], columns[ci]
@@ -358,7 +358,7 @@ M.command = {
                 end
             end
         else
-            error("scrolling focus direction must be left, right, up or down")
+            error("strip focus direction must be left, right, up or down")
         end
         if target == nil then
             return M.arrange(ctx)
@@ -375,7 +375,7 @@ M.command = {
         args = args or {}
         local x = args.x
         if type(x) ~= "number" or x ~= x then
-            error("scrolling scroll_to needs a number x, in pixels")
+            error("strip scroll_to needs a number x, in pixels")
         end
         ctx.state.view = x
         ctx.state.pinned = true
