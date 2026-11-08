@@ -56,17 +56,37 @@ fn validate(params: &Params, extent: LayoutExtent, handled: Handled) -> Result<L
         check_extent(placement, params, extent)?;
     }
 
+    let visible: BTreeSet<WindowId> = handled
+        .placements
+        .iter()
+        .filter(|placement| placement.visible)
+        .map(|placement| placement.window)
+        .collect();
     let mut floated = BTreeSet::new();
+    let mut focused = None;
     for effect in &handled.effects {
         let window = effect.window();
         if !tiled.contains(&window) {
             return Err(ReplyError::UnknownWindow(window));
         }
-        if !floated.insert(window) {
-            return Err(ReplyError::DuplicateEffect(window));
-        }
-        if placed.contains(&window) {
-            return Err(ReplyError::FloatedWindowPlaced(window));
+        match effect {
+            LayoutEffect::Float { .. } => {
+                if !floated.insert(window) {
+                    return Err(ReplyError::DuplicateEffect(window));
+                }
+                if placed.contains(&window) {
+                    return Err(ReplyError::FloatedWindowPlaced(window));
+                }
+            }
+            LayoutEffect::Focus { .. } => {
+                if focused.is_some() {
+                    return Err(ReplyError::DuplicateEffect(window));
+                }
+                if !visible.contains(&window) {
+                    return Err(ReplyError::UnplacedFocus(window));
+                }
+                focused = Some(window);
+            }
         }
     }
 

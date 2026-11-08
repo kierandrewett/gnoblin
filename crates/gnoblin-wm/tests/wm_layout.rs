@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_types::{Direction, OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
-    Camera, Generation, Handled, Job, LayoutEngine, LayoutOutcome, Params, Placement, Reply, Ticket,
+    Camera, Generation, Handled, Job, LayoutEffect, LayoutEngine, LayoutOutcome, Params, Placement, Reply, Ticket,
 };
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
@@ -52,6 +52,8 @@ fn master_stack(params: &Params) -> Vec<Placement> {
 struct MasterStack {
     /// Answer every arrangement with `Declined`, so the built-in fallback places.
     decline: bool,
+    /// Answer every arrangement with a focus effect on this window, when set.
+    focus: Option<WindowId>,
     pending: u32,
     ready: Option<(Generation, Reply)>,
 }
@@ -76,7 +78,11 @@ impl LayoutEngine for MasterStack {
             Job::Arrange(params) => Reply::Handled(Handled {
                 placements: master_stack(&params),
                 camera: Camera::Orthographic,
-                effects: Vec::new(),
+                effects: self
+                    .focus
+                    .map(|window| LayoutEffect::Focus { window })
+                    .into_iter()
+                    .collect(),
             }),
             Job::Request(request) => Reply::Handled(Handled {
                 placements: master_stack(&request.params),
@@ -108,6 +114,11 @@ impl LayoutEngine for MasterStack {
 }
 
 fn wm_with_engines(decline: bool) -> Wm {
+    wm_with_engine(decline, None)
+}
+
+/// A wm whose engine answers every arrangement with `focus` as its focus effect.
+fn wm_with_engine(decline: bool, focus: Option<WindowId>) -> Wm {
     let mut wm = Wm::new(WmOptions::default());
     for raw in [1, 2] {
         wm.apply(Event::WorkspaceAdded { workspace: ws(raw) });
@@ -119,6 +130,7 @@ fn wm_with_engines(decline: bool) -> Wm {
     let effects = wm.set_layout_engines(move |_workspace, _output| -> Box<dyn LayoutEngine> {
         Box::new(MasterStack {
             decline,
+            focus,
             pending: 0,
             ready: None,
         })
@@ -358,4 +370,21 @@ fn directional_focus_follows_the_placed_rectangles() {
         direction: Direction::Right,
     });
     assert!(matches!(wm.focused(), Some(id) if id == win(2) || id == win(3)));
+}
+
+#[test]
+fn a_layout_focus_effect_focuses_its_placed_window() {
+    let mut wm = wm_with_engine(false, Some(win(2)));
+    open(&mut wm, 1);
+    open(&mut wm, 2);
+    let effects = settle(&mut wm);
+    assert!(
+        failures(&effects).is_empty(),
+        "a focus on a placed window is not a failure"
+    );
+    assert_eq!(wm.focused(), Some(win(2)), "the layout's focus effect focuses window 2");
+    assert!(
+        wm.check_invariants().is_ok(),
+        "the wm's invariants hold after the focus"
+    );
 }

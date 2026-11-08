@@ -2351,17 +2351,22 @@ impl Wm {
         effects
     }
 
-    /// Frees the windows a layout took out of tiling, and reports its placements.
+    /// Frees the windows a layout took out of tiling, reports its placements, and focuses
+    /// the window it asks to focus.
     fn apply_layout(&mut self, workspace: WorkspaceId, layout: Layout) -> Vec<Effect> {
         let mut effects = Vec::new();
+        let mut focus = None;
         for effect in layout.effects {
-            let LayoutEffect::Float { window } = effect;
-            let tiled_here = self
-                .windows
-                .get(&window)
-                .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state, entry.placement));
-            if tiled_here {
-                effects.extend(self.set_placement(window, WindowPlacement::Free));
+            match effect {
+                LayoutEffect::Float { window } => {
+                    let tiled_here = self.windows.get(&window).is_some_and(|entry| {
+                        entry.workspace == workspace && arrange::is_tiled(&entry.state, entry.placement)
+                    });
+                    if tiled_here {
+                        effects.extend(self.set_placement(window, WindowPlacement::Free));
+                    }
+                }
+                LayoutEffect::Focus { window } => focus = Some(window),
             }
         }
         // The tiled edges come from the placed rectangles: a placement's neighbours are the
@@ -2389,6 +2394,17 @@ impl Wm {
                 tiled,
                 work_area,
             });
+        }
+        // A focus names a window the reply places visibly. It is applied only on the
+        // active workspace, since focus cannot land on a window that is not shown.
+        if let Some(window) = focus {
+            let here = self
+                .windows
+                .get(&window)
+                .is_some_and(|entry| entry.workspace == workspace);
+            if here && self.active_workspace() == Some(workspace) {
+                effects.extend(self.focus_window(window, ActivationDecision::Allow));
+            }
         }
         effects
     }

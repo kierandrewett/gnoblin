@@ -33,8 +33,8 @@ use std::time::{Duration, Instant};
 use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, ModuleRoots, default_prefix, installed_module_dir};
 use gnoblin_types::{OutputId, Scale, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
-    Camera, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
-    Placement, Reply, Transform3, settle,
+    Camera, Generation, Job, Layout, LayoutEffect, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput,
+    LayoutWindow, Params, Placement, Reply, Transform3, settle,
 };
 
 const SHIPPED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/lua");
@@ -492,6 +492,33 @@ fn scroll_to_pins_the_view_until_focus_moves() {
     // it, clamped to the strip's end at 500.
     let moved = arrange(&host, "drv_sc_pin", Some(2), &[1, 2, 3], 1000.0, 600.0);
     assert!((x1(&moved) + 500.0).abs() < EPS, "focus change unpins: {}", x1(&moved));
+}
+
+#[test]
+fn focus_command_names_the_neighbour_it_moves_to() {
+    // The command answers with the arrangement and a focus effect on the right neighbour.
+    let body = "  if ctx.focus == 1 then\n    return real.command.focus(ctx, {direction = \"right\"})\n  end";
+    let layout = driven("drv_focus_right", "scrolling", body, Some(1), &[1, 2]);
+    assert_eq!(
+        layout.effects,
+        vec![LayoutEffect::Focus {
+            window: WindowId::new(2)
+        }]
+    );
+    assert_eq!(by_id(&layout).len(), 2, "the arrangement places every window");
+    assert!(by_id(&layout)[&2].visible, "the focus target is placed visibly");
+}
+
+#[test]
+fn focus_command_without_a_neighbour_returns_the_arrangement_alone() {
+    let body = "  if ctx.focus == 1 then\n    return real.command.focus(ctx, {direction = \"left\"})\n  end";
+    let layout = driven("drv_focus_none", "scrolling", body, Some(1), &[1, 2]);
+    assert!(
+        layout.effects.is_empty(),
+        "no neighbour, no focus effect: {:?}",
+        layout.effects
+    );
+    assert_eq!(by_id(&layout).len(), 2, "the arrangement is still applied");
 }
 
 #[test]

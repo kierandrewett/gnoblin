@@ -122,6 +122,50 @@ fn refuses_float_of_placed_window() {
 }
 
 #[test]
+fn accepts_focus_of_visible_placement() {
+    let reply = handled(
+        vec![Placement::rect(win(1), 0.0, 0.0, 100.0, 50.0)],
+        vec![LayoutEffect::Focus { window: win(1) }],
+    );
+    let layout = settle(&params(&[1]), LayoutExtent::Output, reply).expect("accepted");
+    assert_eq!(layout.effects, vec![LayoutEffect::Focus { window: win(1) }]);
+}
+
+#[test]
+fn refuses_focus_of_hidden_window() {
+    let hidden = Placement {
+        visible: false,
+        ..Placement::rect(win(2), 0.0, 0.0, 100.0, 50.0)
+    };
+    let reply = handled(
+        vec![Placement::rect(win(1), 0.0, 0.0, 100.0, 50.0), hidden],
+        vec![LayoutEffect::Focus { window: win(2) }],
+    );
+    assert_eq!(refused(reply, &[1, 2]), ReplyError::UnplacedFocus(win(2)));
+}
+
+#[test]
+fn refuses_two_focus_effects() {
+    let reply = handled(
+        vec![
+            Placement::rect(win(1), 0.0, 0.0, 100.0, 50.0),
+            Placement::rect(win(2), 100.0, 0.0, 100.0, 50.0),
+        ],
+        vec![
+            LayoutEffect::Focus { window: win(1) },
+            LayoutEffect::Focus { window: win(2) },
+        ],
+    );
+    assert_eq!(refused(reply, &[1, 2]), ReplyError::DuplicateEffect(win(2)));
+}
+
+#[test]
+fn refuses_focus_of_unknown_window() {
+    let reply = handled(vec![], vec![LayoutEffect::Focus { window: win(9) }]);
+    assert_eq!(refused(reply, &[1]), ReplyError::UnknownWindow(win(9)));
+}
+
+#[test]
 fn refuses_non_finite_width() {
     let reply = handled(vec![Placement::rect(win(1), 0.0, 0.0, f64::NAN, 1.0)], vec![]);
     assert_eq!(

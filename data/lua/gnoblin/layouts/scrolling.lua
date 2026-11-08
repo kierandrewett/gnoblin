@@ -31,9 +31,10 @@
 --                 "right". No wrap.
 --   fit_all:      give every column an equal share of the area and scroll to the start.
 --   toggle_tabbed: switch the focused column between stacked and tabbed.
---   focus(direction): "left", "right", "up" or "down". Returns the id of the window
---                 to focus, or nil. The layout cannot move focus itself: the compositor
---                 must focus the returned window.
+--   focus(direction): "left", "right", "up" or "down". Returns the arrangement with the
+--                 neighbouring window as the focus target, plus a focus effect that
+--                 names it. The compositor focuses that window; when there is no
+--                 neighbour the arrangement is returned alone.
 --   scroll_to(x): set the view offset to x pixels and keep it there until the focus
 --                 changes. The view is clamped to the strip, so an x past either end
 --                 stops at that end.
@@ -339,24 +340,35 @@ M.command = {
         local columns = reconcile(ctx)
         local ci, wi = locate(columns, ctx.focus)
         if ci == nil then
-            return nil
+            return M.arrange(ctx)
         end
         local column = columns[ci]
         local direction = args.direction
+        local target
         if direction == "up" or direction == "down" then
             local step = direction == "up" and -1 or 1
-            return column.windows[wi + step]
+            target = column.windows[wi + step]
         elseif direction == "left" or direction == "right" then
             local neighbour = columns[ci + (direction == "left" and -1 or 1)]
-            if neighbour == nil then
-                return nil
+            if neighbour ~= nil then
+                if neighbour.tabbed and neighbour.active ~= nil then
+                    target = neighbour.active
+                else
+                    target = neighbour.windows[1]
+                end
             end
-            if neighbour.tabbed and neighbour.active ~= nil then
-                return neighbour.active
-            end
-            return neighbour.windows[1]
+        else
+            error("scrolling focus direction must be left, right, up or down")
         end
-        error("scrolling focus direction must be left, right, up or down")
+        if target == nil then
+            return M.arrange(ctx)
+        end
+        -- The arrangement is taken with the target focused, so the view follows it and
+        -- the target is placed visibly, as the focus effect requires.
+        local moved = setmetatable({ focus = target }, { __index = ctx })
+        local reply = M.arrange(moved)
+        reply.effects = { { kind = "focus", window = target } }
+        return reply
     end,
 
     scroll_to = function(ctx, args)
@@ -372,17 +384,14 @@ M.command = {
 }
 
 -- A command that returns nothing answers with the arrangement it left, so the host
--- applies it. A command that returns a reply table of its own keeps that reply. The
--- `focus` command returns a window id, which is not a reply, so it is left as it is.
+-- applies it. A command that returns a reply table of its own keeps that reply.
 for name, command in pairs(M.command) do
-    if name ~= "focus" then
-        M.command[name] = function(ctx, args)
-            local reply = command(ctx, args)
-            if type(reply) == "table" then
-                return reply
-            end
-            return M.arrange(ctx)
+    M.command[name] = function(ctx, args)
+        local reply = command(ctx, args)
+        if type(reply) == "table" then
+            return reply
         end
+        return M.arrange(ctx)
     end
 end
 

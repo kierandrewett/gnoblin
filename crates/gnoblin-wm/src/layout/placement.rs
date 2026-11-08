@@ -181,13 +181,19 @@ pub enum LayoutEffect {
         /// The tiled window to float.
         window: WindowId,
     },
+    /// Focus the window, raising it. Only a window the same reply places visibly can be
+    /// focused, and a reply carries at most one focus.
+    Focus {
+        /// The placed window to focus.
+        window: WindowId,
+    },
 }
 
 impl LayoutEffect {
     /// The window this effect names.
     pub fn window(&self) -> WindowId {
         match *self {
-            Self::Float { window } => window,
+            Self::Float { window } | Self::Focus { window } => window,
         }
     }
 }

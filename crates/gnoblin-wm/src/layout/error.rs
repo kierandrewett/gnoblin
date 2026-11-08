@@ -28,6 +28,8 @@ pub enum ReplyError {
     MissingWindow(WindowId),
     /// A float effect names a window that also has a placement.
     FloatedWindowPlaced(WindowId),
+    /// A focus effect names a window that the reply does not place visibly.
+    UnplacedFocus(WindowId),
     /// A value that must be finite is NaN or infinite.
     NonFinite {
         /// Which placement or camera carries the value.

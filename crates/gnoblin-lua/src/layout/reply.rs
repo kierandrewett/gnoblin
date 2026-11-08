@@ -108,6 +108,9 @@ fn effect(table: &Table) -> mlua::Result<LayoutEffect> {
         "float" => Ok(LayoutEffect::Float {
             window: window_id(table, "window")?,
         }),
+        "focus" => Ok(LayoutEffect::Focus {
+            window: window_id(table, "window")?,
+        }),
         other => Err(runtime(format!("unknown effect kind `{other}`"))),
     }
 }
