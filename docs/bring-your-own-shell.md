@@ -96,7 +96,7 @@ not.
 
 If none appears while the session is unlocked, the recovery panel offers:
 
-- Open the configuration path reported by `gnoblinctl config path`.
+- Open `~/.config/gnoblin/init.lua`.
 - Launch a terminal, if one is installed.
 - Read this shell setup guide.
 

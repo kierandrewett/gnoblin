@@ -48,7 +48,7 @@ The callback can return `"consume"` to keep the event in Gnoblin or
 Release triggers consume the whole pair, including the reserved press.
 Use a press trigger when the callback must choose whether to forward input.
 
-Run `gnoblinctl reload` after changing the config.
+Run `gnoblinctl config reload` after changing the config.
 
 ## Open an application launcher
 
@@ -137,16 +137,7 @@ chord that uses plus signs. The message names the form to write:
 
 Gnoblin writes a chord back with the modifiers in the order
 `<Shift><Control><Alt><Meta><Super><Hyper>`, then the key. A `Shortcut` from
-`gnoblin.shortcuts.bind`, the configured shortcuts and the output of
-`gnoblinctl shortcut capture` use that order.
-
-Run `gnoblinctl shortcut capture` in a Gnoblin terminal and press a key
-combination. It prints the chord for `binding`; bare Super prints
-Gnoblin’s special `Super` binding. Escape cancels.
-
-The command grabs the keyboard while it waits and consumes the captured
-combination. It times out after 30 seconds by default. Use `--timeout SECONDS`
-for 1–60 seconds.
+`gnoblin.shortcuts.bind` and the configured shortcuts use that order.
 
 ## Which mechanism to use
 
@@ -209,9 +200,9 @@ keys are not handled by the standalone session; bind them to a command such as
 Gnoblin handles shortcuts inside the compositor. It does not require systemd
 or GNOME Settings Daemon’s MediaKeys service.
 
-Run `gnoblinctl config path` to see the config file used by your session. Run
-`gnoblinctl config default` to print the packaged starter config. For example,
-a volume key can run `wpctl` directly:
+The config file is `~/.config/gnoblin/init.lua`. The packaged starter config is
+`init.lua.example` in `share/gnoblin/`. For example, a volume key can run `wpctl`
+directly:
 
 ```lua
 gnoblin.configure {

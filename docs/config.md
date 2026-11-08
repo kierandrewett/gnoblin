@@ -23,7 +23,6 @@ On first login, `gnoblin` copies the packaged reference config to
 an existing config. Edit that file to configure Gnoblin.
 
 ```sh
-gnoblinctl config path
 gnoblinctl config reload
 ```
 

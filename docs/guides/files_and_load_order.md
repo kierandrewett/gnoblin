@@ -7,7 +7,7 @@ to read.
 
 ## Which file is loaded?
 
-`gnoblinctl config path` prints the main config file used by your running session.
+The main config file used by your running session is `init.lua` in the config directory.
 
 The usual path is `~/.config/gnoblin/init.lua`, or
 `$XDG_CONFIG_HOME/gnoblin/init.lua` when that variable is set.
@@ -19,12 +19,11 @@ can report that the file must be converted; TOML and CONF are not parsed. Rename
 or remove an old file after converting it to Lua. Every selected root and
 included configuration file must use the `.lua` suffix.
 
-When no user config exists, the session supervisor loads the starter Lua
-configuration embedded in the binary, followed by the
-[system drop-ins](#system-drop-ins). Run `gnoblinctl init` to create an
-editable copy at the selected config path. The command leaves existing files
-unchanged. Setting `GNOBLIN_CONFIG` in a terminal does not change the
-environment of an already-running compositor.
+When no user config exists, the session loads the packaged starter configuration,
+followed by the [system drop-ins](#system-drop-ins). The first login copies the
+packaged `init.lua.example` to the selected config path and leaves existing files
+unchanged. Setting `GNOBLIN_CONFIG` in a terminal does not change the environment of
+an already-running compositor.
 
 ## System drop-ins
 
@@ -58,7 +57,7 @@ Where the drop-ins fit depends on whether you have your own `init.lua`:
 Whatever loads later replaces earlier values. A package can change a built-in
 default, and your own config can change what a package set.
 
-A copy of the starter files made with `gnoblinctl init` is part of your own
+A copy of the starter files that the first login made is part of your own
 config. If it contains a rule that a package also sets, your copy overrides the
 package. Delete that rule from your copy to use the package's value. The
 starter files never load the drop-ins a second time.

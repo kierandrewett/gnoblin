@@ -63,8 +63,8 @@ If your existing `init.lua` loads other files installed by a shell, keep those
 shortcut's existing name when changing its command. [Load order and merging](/guides/files_and_load_order)
 explain why the order matters.
 
-Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
-file. Run `gnoblinctl config reload` to apply edits; Gnoblin reports any
+Log in to Gnoblin. The active file is `~/.config/gnoblin/init.lua`. Run
+`gnoblinctl config reload` to apply edits; Gnoblin reports any
 configuration errors. See the [autostart guide](/guides/autostart) for launch
 timing and named entries.
 

@@ -60,9 +60,8 @@ Check which case applies:
   If the message still appears, include the output of `journalctl -b -u gdm` in
   your bug report.
 
-If no configuration exists, Gnoblin loads its built-in Lua configuration. Run
-`gnoblinctl init` to create an editable configuration tree from the copy
-embedded in the binary. The command leaves existing files unchanged.
+If no configuration exists, the first login copies the packaged `init.lua.example`
+to `~/.config/gnoblin/init.lua`. An existing file is never replaced.
 
 Gnoblin starts with its embedded configuration before applying the user
 configuration. If Lua loading or native settings fail, it tries the last
@@ -71,7 +70,7 @@ accepted settings, then keeps embedded defaults if those also fail.
 The top-left ImGui recovery panel appears above application and shell layers
 and shows the error. Choose **Open config** to open its folder, fix the config
 in an editor, then choose **Reload** or run
-`gnoblinctl reload` from a terminal. Gnoblin keeps failed files unchanged. See
+`gnoblinctl config reload` from a terminal. Gnoblin keeps failed files unchanged. See
 [configuration recovery](/config/load#recover-from-a-configuration-error).
 
 The panel requires a running compositor. A missing library or a native
@@ -106,11 +105,10 @@ Open the network's sign-in page in a browser. The NetworkManager secret agent ha
 ## A config edit does nothing
 
 ```sh
-gnoblinctl config path
 gnoblinctl config reload
 ```
 
-Edit the printed path and read the reload error. Then check:
+Edit `~/.config/gnoblin/init.lua` and read the reload error. Then check:
 
 - Does this setting restart a child service, and does that affect its clients?
   See [reload behavior](/guides/files_and_load_order#reload-and-persistence).
