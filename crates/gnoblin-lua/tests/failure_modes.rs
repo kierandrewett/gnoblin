@@ -1043,6 +1043,203 @@ end)
 }
 
 #[test]
+fn a_new_window_raises_created_with_its_state() {
+    let (mut server, mut host) = pair();
+    let config = Config::new("window-created");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.created", function(event)
+    assert(event.name == "gnoblin.window.created")
+    assert(event.window.title == "Fresh", "the object is readable, was " .. tostring(event.window.title))
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    open_window(&mut server, "Fresh");
+    let pumped = host.pump(Tick::new(1)).expect("created arrives");
+    assert_eq!(pumped.handlers, 1, "one created handler");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn focus_moving_onto_and_off_a_window_raises_focused_and_unfocused() {
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Focus");
+    let config = Config::new("window-focus");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.focused", function(event)
+    assert(event.window_id == event.window.id, "the id is the compositor id")
+    assert(event.window.focused == true, "the mirror is updated before the handler runs")
+end)
+gnoblin.on("gnoblin.window.unfocused", function(event)
+    assert(event.window_id == event.window.id, "the id is the compositor id")
+    assert(event.window.focused == false, "the mirror is updated before the handler runs")
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .set(window, "focused", ModelValue::Bool(true))
+        .expect("focused is a bool property");
+    let pumped = host.pump(Tick::new(1)).expect("focused arrives");
+    assert_eq!(pumped.handlers, 1, "focus gained runs only the focused handler");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+
+    server
+        .set(window, "focused", ModelValue::Bool(false))
+        .expect("focused is a bool property");
+    let pumped = host.pump(Tick::new(2)).expect("unfocused arrives");
+    assert_eq!(pumped.handlers, 1, "focus lost runs only the unfocused handler");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+/// The messages of the handlers that raised an error, in the order they ran.
+fn handler_errors(report: &gnoblin_lua::PumpReport) -> Vec<String> {
+    report.errors.iter().map(|error| error.message().to_owned()).collect()
+}
+
+#[test]
+fn focus_moving_from_one_window_to_another_raises_unfocused_then_focused_once_each() {
+    let (mut server, mut host) = pair();
+    let first = open_window(&mut server, "First");
+    let mut properties = window_properties("Second");
+    properties.insert("id".to_owned(), ModelValue::Uint(2));
+    let second = server
+        .create(TypeKey::gnoblin("window"), properties)
+        .expect("a second window is in the schema");
+    let config = Config::new("window-focus-move");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.focused", function(event)
+    error("focused " .. event.window_id)
+end)
+gnoblin.on("gnoblin.window.unfocused", function(event)
+    error("unfocused " .. event.window_id)
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .set(first, "focused", ModelValue::Bool(true))
+        .expect("focused is a bool property");
+    let pumped = host.pump(Tick::new(1)).expect("focus gained arrives");
+    let errors = handler_errors(&pumped);
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    assert!(errors[0].contains("focused 1"), "{errors:#?}");
+
+    // One pump carries both changes, so the order is the order the server made them.
+    server
+        .set(first, "focused", ModelValue::Bool(false))
+        .expect("focused is a bool property");
+    server
+        .set(second, "focused", ModelValue::Bool(true))
+        .expect("focused is a bool property");
+    let pumped = host.pump(Tick::new(2)).expect("the move arrives");
+    let errors = handler_errors(&pumped);
+    assert_eq!(pumped.handlers, 2, "one unfocused and one focused handler");
+    assert_eq!(errors.len(), 2, "{errors:#?}");
+    assert!(errors[0].contains("unfocused 1"), "{errors:#?}");
+    assert!(errors[1].contains("focused 2"), "{errors:#?}");
+}
+
+#[test]
+fn a_closed_focused_window_raises_neither_focused_nor_unfocused() {
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Closing");
+    let config = Config::new("window-focus-closed");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.focused", function(event)
+    error("focused " .. event.window_id)
+end)
+gnoblin.on("gnoblin.window.unfocused", function(event)
+    error("unfocused " .. event.window_id)
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .set(window, "focused", ModelValue::Bool(true))
+        .expect("focused is a bool property");
+    let pumped = host.pump(Tick::new(1)).expect("focus gained arrives");
+    assert_eq!(handler_errors(&pumped).len(), 1, "the focus gained handler ran");
+
+    server.close(window).expect("the window can be closed");
+    let pumped = host.pump(Tick::new(2)).expect("the close arrives");
+    assert_eq!(pumped.handlers, 0, "a closed window raises no focus event");
+    assert!(handler_errors(&pumped).is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn a_throwing_focus_handler_does_not_stop_the_later_ones() {
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Throwing");
+    let config = Config::new("window-focus-throwing");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.focused", function() error("first") end)
+gnoblin.on("gnoblin.window.focused", function() error("second") end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .set(window, "focused", ModelValue::Bool(true))
+        .expect("focused is a bool property");
+    let pumped = host.pump(Tick::new(1)).expect("focus gained arrives");
+    let errors = handler_errors(&pumped);
+    assert_eq!(pumped.handlers, 2, "both handlers ran");
+    assert_eq!(errors.len(), 2, "{errors:#?}");
+    assert!(errors[0].contains("first"), "{errors:#?}");
+    assert!(errors[1].contains("second"), "{errors:#?}");
+}
+
+#[test]
+fn a_window_property_change_raises_changed_naming_the_property() {
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Before");
+    let config = Config::new("window-changed");
+    config.write(
+        "init.lua",
+        r#"
+gnoblin.on("gnoblin.window.changed", function(event)
+    assert(event.window_id == event.window.id, "the id is the compositor id")
+    assert(#event.changed == 1, "one property changed")
+    assert(event.changed[1] == "title", "the changed list names the property, was " .. tostring(event.changed[1]))
+    assert(event.window.title == "Renamed", "the mirror is updated before the handler runs")
+end)
+gnoblin.on("gnoblin.window.focused", function()
+    error("a title change does not move focus")
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server
+        .set(window, "title", ModelValue::Text("Renamed".to_owned()))
+        .expect("title is a text property");
+    let pumped = host.pump(Tick::new(1)).expect("changed arrives");
+    assert_eq!(pumped.handlers, 1, "only the changed handler runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
 fn configure_is_refused_outside_a_configuration_run() {
     let config = Config::new("runtime-configure");
     config.write(

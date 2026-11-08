@@ -15,6 +15,7 @@ use serde::Deserialize;
 
 const STUB: &str = "docs/public/gnoblin.d.lua";
 const SCHEMA_DIR: &str = "crates/gnoblin-schema/schema";
+const DERIVED_FILE: &str = "crates/gnoblin-lua/derived_events.toml";
 const ALLOW: &str = "design/docs-parity/allow.toml";
 const DOC_DIRS: [&str; 2] = ["docs/shell-api", "docs/events"];
 /// Methods of Lua's string library. A documented `s:find(` is string code, not a gnoblin name.
@@ -288,6 +289,18 @@ fn load_schema(root: &Path) -> Result<Vec<toml::Value>, String> {
         .collect()
 }
 
+/// The events the host raises from a property change, as `gnoblin.<object>.<signal>`. The
+/// manifest is the one `gnoblin-lua`'s build reads, so the gate and the host cannot disagree.
+fn load_derived(root: &Path) -> Result<BTreeSet<String>, String> {
+    let path = root.join(DERIVED_FILE);
+    let events =
+        gnoblin_schema::derived::load(&path).map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    Ok(events
+        .iter()
+        .map(|event| format!("gnoblin.{}.{}", event.object, event.signal))
+        .collect())
+}
+
 fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
     let mut mentions = Vec::new();
     for dir in DOC_DIRS {
@@ -318,6 +331,7 @@ pub fn run() -> ExitCode {
         let stub = fs::read_to_string(root.join(STUB)).map_err(|error| format!("could not read {STUB}: {error}"))?;
         let mut implemented = parse_stub(&stub);
         implemented.events = schema_events(&load_schema(root)?);
+        implemented.events.extend(load_derived(root)?);
         let allow = load_allow(root)?;
         Ok(reconcile(&load_docs(root)?, &implemented, &allow))
     })();
@@ -436,6 +450,25 @@ mod tests {
             schema_events(&[document]),
             BTreeSet::from(["gnoblin.window.closed".to_owned()])
         );
+    }
+
+    #[test]
+    fn derived_events_count_as_implemented() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("the xtask lives in the repository");
+        let mut surface = implemented();
+        surface.events = load_derived(root).expect("the derived manifest reads");
+        let mentions = scan_doc("docs/events/a.md", "Subscribe to `gnoblin.window.focused`.\n");
+        let report = reconcile(&mentions, &surface, &[]);
+        assert!(report.unlisted.is_empty() && report.stale.is_empty(), "{report:?}");
+    }
+
+    #[test]
+    fn a_derived_event_missing_from_the_manifest_is_unlisted() {
+        let mentions = scan_doc("docs/events/a.md", "Subscribe to `gnoblin.window.focused`.\n");
+        let report = reconcile(&mentions, &implemented(), &[]);
+        assert_eq!(report.unlisted.len(), 1, "{report:?}");
     }
 
     #[test]

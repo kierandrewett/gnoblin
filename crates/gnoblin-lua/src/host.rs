@@ -34,7 +34,9 @@ use std::rc::Rc;
 
 use gnoblin_client::{Client, ClientError, Event, Transport};
 use gnoblin_config::{Config, ConfigPath, Report, SearchPaths, Value, locate};
-use gnoblin_model::{Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, Tick};
+use gnoblin_model::{
+    Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, Tick, Value as ModelValue,
+};
 use mlua::Value as LuaValue;
 use mlua::prelude::LuaChunkMode;
 use mlua::{Error, Lua, Table};
@@ -868,7 +870,13 @@ impl<T: Transport + 'static> Host<T> {
     fn observe(&mut self, observation: Observation, handlers: &mut usize) {
         match observation {
             Observation::Opened { view, .. } => {
-                self.shared.borrow_mut().mirror.insert(view.id(), view);
+                let object = view.id();
+                let is_window = view.ty().namespace() == "gnoblin" && view.ty().name() == "window";
+                self.shared.borrow_mut().mirror.insert(object, view);
+                if is_window {
+                    let fields = Fields::from([("window".to_owned(), ModelValue::Object(object))]);
+                    self.emit_signal(object, "created", &fields, handlers);
+                }
             }
             Observation::Changed {
                 object,
@@ -876,12 +884,53 @@ impl<T: Transport + 'static> Host<T> {
                 value,
                 ..
             } => {
-                let mut shared = self.shared.borrow_mut();
-                if let Some(view) = shared.mirror.get_mut(&object) {
+                // A property that raises a derived event raises that event instead of a
+                // `changed` signal, so one change is one notice.
+                let raised = {
+                    let mut shared = self.shared.borrow_mut();
+                    let Some(view) = shared.mirror.get_mut(&object) else {
+                        return;
+                    };
                     let mut properties = view.properties().clone();
-                    properties.insert(property, value);
+                    properties.insert(property.clone(), value.clone());
                     *view = ObjectView::new(view.id(), view.ty().clone(), properties);
+                    let view: &ObjectView = view;
+                    crate::derived::DERIVED_EVENTS
+                        .iter()
+                        .find(|event| {
+                            event.property == property
+                                && event.object == view.ty().name()
+                                && view.ty().namespace() == "gnoblin"
+                                && matches!(&value, ModelValue::Bool(flag) if *flag == event.when)
+                        })
+                        .map(|event| (event.signal, crate::derived::payload(object, event, view)))
+                };
+                if let Some((signal, fields)) = raised {
+                    self.emit_signal(object, signal, &fields, handlers);
+                    return;
                 }
+                // Only windows raise window signals; the window's compositor id is
+                // its `id` property, not the graph's object identity.
+                let identity = {
+                    let shared = self.shared.borrow();
+                    shared
+                        .mirror
+                        .get(&object)
+                        .filter(|view| view.ty().namespace() == "gnoblin" && view.ty().name() == "window")
+                        .and_then(|view| match view.properties().get("id") {
+                            Some(ModelValue::Uint(id)) => Some(*id),
+                            _ => None,
+                        })
+                };
+                let Some(window_id) = identity else {
+                    return;
+                };
+                let changed = Fields::from([
+                    ("window_id".to_owned(), ModelValue::Uint(window_id)),
+                    ("changed".to_owned(), ModelValue::List(vec![ModelValue::Text(property)])),
+                    ("window".to_owned(), ModelValue::Object(object)),
+                ]);
+                self.emit_signal(object, "changed", &changed, handlers);
             }
             Observation::Signalled {
                 object, signal, fields, ..
@@ -889,29 +938,7 @@ impl<T: Transport + 'static> Host<T> {
                 if signal == RELOAD_REQUESTED && self.is_session(object) {
                     self.shared.borrow_mut().reload_requested = true;
                 }
-                let declared = crate::bindings::signal_fields(&self.shared, object, &signal);
-                let arguments = crate::bindings::signal_table(&self.lua, &self.shared, declared, &fields);
-                let kind = self
-                    .shared
-                    .borrow()
-                    .mirror
-                    .get(&object)
-                    .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
-                match (arguments, kind) {
-                    (Ok(arguments), Some((namespace, object_type))) => self.run_signal(
-                        Emission {
-                            object,
-                            namespace: &namespace,
-                            object_type: &object_type,
-                            signal: &signal,
-                            arguments: LuaValue::Table(arguments),
-                            fields: &fields,
-                        },
-                        handlers,
-                    ),
-                    (Err(error), _) => self.report(ScriptError::from_lua(&error)),
-                    _ => {}
-                }
+                self.emit_signal(object, &signal, &fields, handlers);
             }
             Observation::Closed { object, .. } => {
                 // The handler still sees the object: the mirror entry is dropped
@@ -975,6 +1002,34 @@ impl<T: Transport + 'static> Host<T> {
                     self.shared.borrow_mut().defer(id);
                 }
             }
+        }
+    }
+
+    /// Deliver one declared signal to the handlers watching it, on its object and
+    /// globally, with the argument table the schema declares for it.
+    fn emit_signal(&mut self, object: ObjectId, signal: &str, fields: &Fields, handlers: &mut usize) {
+        let declared = crate::bindings::signal_fields(&self.shared, object, signal);
+        let arguments = crate::bindings::signal_table(&self.lua, &self.shared, declared, fields);
+        let kind = self
+            .shared
+            .borrow()
+            .mirror
+            .get(&object)
+            .map(|view| (view.ty().namespace().to_owned(), view.ty().name().to_owned()));
+        match (arguments, kind) {
+            (Ok(arguments), Some((namespace, object_type))) => self.run_signal(
+                Emission {
+                    object,
+                    namespace: &namespace,
+                    object_type: &object_type,
+                    signal,
+                    arguments: LuaValue::Table(arguments),
+                    fields,
+                },
+                handlers,
+            ),
+            (Err(error), _) => self.report(ScriptError::from_lua(&error)),
+            _ => {}
         }
     }
 

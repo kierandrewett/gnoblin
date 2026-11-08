@@ -1,0 +1,41 @@
+# Events the host raises from a property change, not from a signal the compositor
+# sends. Each entry is read twice: the schema build adds it to the catalog as a signal
+# of its object (so the stub, the bindings and the docs-parity gate see it), and the
+# host raises it when `property` changes to `when`. A property with a derived event
+# raises no `changed` signal for that change.
+#
+# `from` is `object` for the object that changed, or the name of one of its properties.
+
+[[derived]]
+object = "window"
+signal = "focused"
+property = "focused"
+when = true
+since = "0.2.0"
+
+[[derived.field]]
+name = "window_id"
+type = "uint"
+from = "id"
+
+[[derived.field]]
+name = "window"
+type = "object:window"
+from = "object"
+
+[[derived]]
+object = "window"
+signal = "unfocused"
+property = "focused"
+when = false
+since = "0.2.0"
+
+[[derived.field]]
+name = "window_id"
+type = "uint"
+from = "id"
+
+[[derived.field]]
+name = "window"
+type = "object:window"
+from = "object"

@@ -1,6 +1,6 @@
 # Keyboard shortcuts
 
-> **Status:** not available yet: `:end_session`, `:unbind`, `gnoblin.configure.shortcuts`, `gnoblin.shortcut.binding`, `gnoblin.shortcut.session.activated`, `gnoblin.shortcut.session.ended`, `gnoblin.shortcut.session.key`, `gnoblin.shortcuts.actions`, `gnoblin.shortcuts.bind`, `gnoblin.shortcuts.capture`, `gnoblin.shortcuts.configured`, `gnoblin.shortcuts.list`, `gnoblin.window.focused`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `:end_session`, `:unbind`, `gnoblin.configure.shortcuts`, `gnoblin.shortcut.binding`, `gnoblin.shortcut.session.activated`, `gnoblin.shortcut.session.ended`, `gnoblin.shortcut.session.key`, `gnoblin.shortcuts.actions`, `gnoblin.shortcuts.bind`, `gnoblin.shortcuts.capture`, `gnoblin.shortcuts.configured`, `gnoblin.shortcuts.list`. The sections that use them describe the target, not current behaviour.
 
 `gnoblin.shortcuts.configured()` returns the command and action shortcuts that
 the configuration declares. It omits shortcuts owned by shell clients. A

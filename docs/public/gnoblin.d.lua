@@ -648,8 +648,24 @@ function window:request_menu(x, y, width, height) end
 ---@param callback fun(fields: table)
 ---@return gnoblin.Subscription
 function window:on(name, callback) end
+---@param name "created"
+---@param callback fun(fields: { window: gnoblin.window })
+---@return gnoblin.Subscription
+function window:on(name, callback) end
+---@param name "changed"
+---@param callback fun(fields: { window_id: integer, changed: string[], window: gnoblin.window })
+---@return gnoblin.Subscription
+function window:on(name, callback) end
 ---@param name "menu_requested"
 ---@param callback fun(fields: { x: integer, y: integer, width: integer, height: integer, source: string, seat: string })
+---@return gnoblin.Subscription
+function window:on(name, callback) end
+---@param name "focused"
+---@param callback fun(fields: { window_id: integer, window: gnoblin.window })
+---@return gnoblin.Subscription
+function window:on(name, callback) end
+---@param name "unfocused"
+---@param callback fun(fields: { window_id: integer, window: gnoblin.window })
 ---@return gnoblin.Subscription
 function window:on(name, callback) end
 ---@class gnoblin.windowCollection

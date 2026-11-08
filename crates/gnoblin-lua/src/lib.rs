@@ -115,6 +115,7 @@ mod bindings;
 pub mod check;
 mod collections;
 mod configure;
+mod derived;
 mod error;
 mod extension_bindings;
 mod extensions;

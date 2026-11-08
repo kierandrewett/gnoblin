@@ -1,6 +1,6 @@
 # Runtime Types
 
-> **Status:** not available yet: `gnoblin.input.on`, `gnoblin.window.created`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.input.on`. The sections that use them describe the target, not current behaviour.
 
 Use these shared record descriptions when reading snapshots and event payloads.
 

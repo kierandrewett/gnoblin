@@ -30,6 +30,7 @@
 //! build script and `cargo xtask gen-proto` produce the same bytes from one
 //! implementation.
 
+pub mod derived;
 mod error;
 mod model;
 mod parse;

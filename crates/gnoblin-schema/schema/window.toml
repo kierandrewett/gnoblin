@@ -90,6 +90,39 @@ since = "0.2.0"
 name = "closed"
 since = "0.2.0"
 
+# A managed window came into existence in the compositor. The handler sees the
+# window's state at that moment.
+[[object.signal]]
+name = "created"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "window"
+type = "object:window"
+since = "0.2.0"
+
+# A property of the window other than `focused` changed. `changed` names the property,
+# `window_id` is the compositor id, and the mirror already holds the new value when the
+# handler runs. A focus flip raises `focused` or `unfocused` instead (derived_events.toml).
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "window_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "changed"
+type = "list<string>"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "window"
+type = "object:window"
+since = "0.2.0"
+
 # Whether the window's client has missed its liveness ping for longer than the
 # `window-management.check-alive-timeout` setting. Read-only: the compositor sets it.
 [[object.property]]

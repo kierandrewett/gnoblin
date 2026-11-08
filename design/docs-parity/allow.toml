@@ -1107,78 +1107,12 @@ reason = "documented, not implemented; Visuals, tweens and named animations (S7)
 owner-slice = "S7"
 
 [[allow]]
-name = "gnoblin.window.changed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/appearance-animations.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/focus-activation.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/grants.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/processes.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/tweens.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/types.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.created"
-doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
 name = "gnoblin.window.drag.started"
 doc = "docs/shell-api/window-snapping.md"
 reason = "documented, not implemented; Global event bus (S2)"
 owner-slice = "S2"
 
 [[allow]]
-name = "gnoblin.window.focused"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.focused"
-doc = "docs/shell-api/keyboard-shortcuts.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
 name = "gnoblin.window.menu"
 doc = "docs/shell-api/grants.md"
 reason = "documented, not implemented; Global event bus (S2)"
@@ -1187,12 +1121,6 @@ owner-slice = "S2"
 [[allow]]
 name = "gnoblin.window.menu"
 doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.unfocused"
-doc = "docs/events/lifecycle.md"
 reason = "documented, not implemented; Global event bus (S2)"
 owner-slice = "S2"
 

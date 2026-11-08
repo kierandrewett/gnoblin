@@ -1,6 +1,6 @@
 # Windows
 
-> **Status:** not available yet: `:begin_move`, `:begin_resize`, `:narrow`, `:reset_visuals`, `:restore_or_minimize`, `:revoke`, `:set_above`, `:set_effect`, `:set_offset`, `:set_opacity`, `:set_rotation`, `:set_scale`, `:set_sticky`, `:thumbnail`, `gnoblin.osd.requested`, `gnoblin.shortcut.activated`, `gnoblin.window.created`, `gnoblin.window.menu`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `:begin_move`, `:begin_resize`, `:narrow`, `:reset_visuals`, `:restore_or_minimize`, `:revoke`, `:set_above`, `:set_effect`, `:set_offset`, `:set_opacity`, `:set_rotation`, `:set_scale`, `:set_sticky`, `:thumbnail`, `gnoblin.osd.requested`, `gnoblin.shortcut.activated`, `gnoblin.window.menu`. The sections that use them describe the target, not current behaviour.
 
 ## Read windows
 

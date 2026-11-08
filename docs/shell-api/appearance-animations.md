@@ -1,6 +1,6 @@
 # Appearance and animations
 
-> **Status:** not available yet: `:inspect_animation`, `:pause`, `:play`, `:preview_animation`, `:seek`, `:step`, `:stop`, `gnoblin.animation`, `gnoblin.animations`, `gnoblin.animations.get`, `gnoblin.animations.list`, `gnoblin.appearance.color`, `gnoblin.appearance.color_scheme`, `gnoblin.window.created`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `:inspect_animation`, `:pause`, `:play`, `:preview_animation`, `:seek`, `:step`, `:stop`, `gnoblin.animation`, `gnoblin.animations`, `gnoblin.animations.get`, `gnoblin.animations.list`, `gnoblin.appearance.color`, `gnoblin.appearance.color_scheme`. The sections that use them describe the target, not current behaviour.
 
 `gnoblin.appearance.color_scheme()` returns the current desktop color scheme:
 `default`, `prefer-dark`, or `prefer-light`. It returns `nil` when the

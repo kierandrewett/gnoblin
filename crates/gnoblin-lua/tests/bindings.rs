@@ -21,11 +21,12 @@ use gnoblin_lua::{Host, Limits};
 const VERSION: Version = Version::new(0, 2, 0);
 
 fn catalog() -> Catalog {
-    Catalog::load_dir(Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../gnoblin-schema/schema"
-    )))
-    .expect("the checked-in schema loads")
+    let schema = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema"));
+    let derived = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/derived_events.toml"));
+    Catalog::load_dir(schema)
+        .expect("the checked-in schema loads")
+        .with_derived(&gnoblin_schema::derived::load(derived).expect("the derived events load"))
+        .expect("the derived events join the schema")
 }
 
 /// A configuration directory holding one script, removed when the test ends.

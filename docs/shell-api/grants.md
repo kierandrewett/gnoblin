@@ -1,6 +1,6 @@
 # Grants
 
-> **Status:** not available yet: `:begin_move`, `:begin_resize`, `:narrow`, `gnoblin.input`, `gnoblin.input.on`, `gnoblin.input.text_target`, `gnoblin.shortcut.activated`, `gnoblin.shortcut.binding`, `gnoblin.shortcut.session.key`, `gnoblin.shortcuts.bind`, `gnoblin.window.created`, `gnoblin.window.menu`, `gnoblin.windows.snap_context`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `:begin_move`, `:begin_resize`, `:narrow`, `gnoblin.input`, `gnoblin.input.on`, `gnoblin.input.text_target`, `gnoblin.shortcut.activated`, `gnoblin.shortcut.binding`, `gnoblin.shortcut.session.key`, `gnoblin.shortcuts.bind`, `gnoblin.window.menu`, `gnoblin.windows.snap_context`. The sections that use them describe the target, not current behaviour.
 
 A `Grant` proves that the user just did something: pressed a shortcut, clicked with a binding, or asked for a window
 menu. The compositor makes the proof. A script receives it as `event.grant`.
