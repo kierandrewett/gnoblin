@@ -1,6 +1,6 @@
 # Operations, Errors and Timers
 
-> **Status:** not available yet: `gnoblin.version`, `gnoblin.workspace.activated`, `gnoblin.workspaces.next`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.workspace.activated`, `gnoblin.workspaces.next`. The sections that use them describe the target, not current behaviour.
 
 Gnoblin's Lua runtime API reports the outcome of an asynchronous operation through an `Operation` object.
 
@@ -108,4 +108,4 @@ end)
 - [Events](/events/)
 - [Compositor bridge errors](/bridge/connection)
 - A shell that uses the compositor bridge negotiates the methods and events that the connection's greeting advertises.
-  `gnoblin.version()` returns the API version.
+  `gnoblin.version().api` gives the control API version.

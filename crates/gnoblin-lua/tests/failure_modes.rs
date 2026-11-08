@@ -2686,3 +2686,55 @@ end)
     assert_eq!(pumped.handlers, 1);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
+
+#[test]
+fn version_is_an_immutable_record_of_the_build_identity() {
+    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+    let api = format!("{major}.{minor}.{patch}");
+    let config = Config::new("version");
+    config.write(
+        "init.lua",
+        &format!(
+            r#"
+local version = gnoblin.version()
+assert(type(version) == "table", "gnoblin.version() must return a record")
+local count = 0
+for name, value in pairs(version) do
+  count = count + 1
+  assert(type(value) == "string", name .. " must be a string")
+  assert(value ~= "", name .. " must not be empty")
+end
+assert(count == 8, "the record has eight fields, found " .. count)
+for name in string.gmatch("gnoblin gnome mutter lua api git_remote git_sha build_id", "%S+") do
+  assert(type(version[name]) == "string", name .. " is missing")
+end
+assert(version.lua == _VERSION, "lua is the linked runtime's version")
+assert(version.api == "{api}", "api is the IPC version, found " .. version.api)
+assert(not pcall(function() version.gnoblin = "changed" end), "the record must refuse assignment")
+assert(version.gnoblin ~= "changed", "a refused assignment must not change the field")
+assert(not pcall(function() version.extra = 1 end), "the record must refuse a new field")
+assert(gnoblin.version().gnoblin == version.gnoblin, "two reads describe one build")
+"#
+        ),
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(report.loaded, vec![config.root.join("init.lua")]);
+}
+
+#[test]
+fn version_takes_no_arguments() {
+    let config = Config::new("version-args");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(gnoblin.version, "extra")
+assert(not ok, "gnoblin.version must refuse an argument")
+assert(string.find(tostring(message), "gnoblin.version takes no arguments", 1, true), tostring(message))
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}

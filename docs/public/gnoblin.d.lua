@@ -103,6 +103,10 @@ function gnoblin.timers.after(seconds, callback) end
 ---@return number
 function gnoblin.timers.now() end
 
+--- The build identity: an immutable record of string fields `gnoblin`, `gnome`, `mutter`, `lua`, `api`, `git_remote`, `git_sha` and `build_id`. Missing values are `"unknown"`; remote credentials are removed. Read on each call.
+---@return table
+function gnoblin.version() end
+
 --- Child processes the runtime starts. `spawn` returns a `Process` at once; its end arrives later, through `wait()` or `kill()` operations.
 --- Start the program named by the first string of `argv`, found on PATH, with the rest as arguments. Options are `cwd`, `env`, `stdin`, `stdout`, `stderr`, `output_limit` and `timeout`. A bad argv or option is raised by name.
 ---@param argv string[]

@@ -128,6 +128,7 @@ mod lua_names;
 mod process;
 mod requests;
 pub mod role;
+mod session_api;
 
 /// The `gnoblin.d.lua` stub, and the writer that copies it out for an editor.
 pub use bindings::{stub, write_stub};

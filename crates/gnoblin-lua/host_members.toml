@@ -60,6 +60,12 @@ doc = "The caller's monotonic clock in seconds."
 returns = ["number"]
 
 [[member]]
+name = "version"
+kind = "function"
+doc = "The build identity: an immutable record of string fields `gnoblin`, `gnome`, `mutter`, `lua`, `api`, `git_remote`, `git_sha` and `build_id`. Missing values are `\"unknown\"`; remote credentials are removed. Read on each call."
+returns = ["table"]
+
+[[member]]
 name = "process"
 kind = "table"
 doc = "Child processes the runtime starts. `spawn` returns a `Process` at once; its end arrives later, through `wait()` or `kill()` operations."

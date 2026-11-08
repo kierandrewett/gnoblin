@@ -1107,18 +1107,6 @@ reason = "documented, not implemented; Visuals, tweens and named animations (S7)
 owner-slice = "S7"
 
 [[allow]]
-name = "gnoblin.version"
-doc = "docs/shell-api/errors.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
-
-[[allow]]
-name = "gnoblin.version"
-doc = "docs/shell-api/index.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
-
-[[allow]]
 name = "gnoblin.window.changed"
 doc = "docs/events/lifecycle.md"
 reason = "documented, not implemented; Global event bus (S2)"

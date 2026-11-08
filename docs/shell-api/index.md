@@ -1,6 +1,6 @@
 # Lua Runtime API
 
-> **Status:** not available yet: `gnoblin.animation`, `gnoblin.settings`, `gnoblin.settings.override`, `gnoblin.snapshot`, `gnoblin.version`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.animation`, `gnoblin.settings`, `gnoblin.settings.override`, `gnoblin.snapshot`. The sections that use them describe the target, not current behaviour.
 
 Use the Lua runtime API to read compositor state, handle events, and request session actions from a shell integration.
 
