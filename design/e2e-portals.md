@@ -49,26 +49,34 @@ Gnoblin does not serve these, and the file says so. The frontend uses the fallba
 no fallback installed returns `UnknownMethod`. That is the honest result, because Gnoblin does not
 claim a service it does not run.
 
-### F-P2: the second request from an unsandboxed caller is refused with no dialog (open)
+### F-P2: anonymous callers shared one consent answer (fixed in code, live proof open)
 
 Run 8 on a fresh instance. `wtype` returned 0 for every key.
 
 - Pass: request 1 draws the consent dialog. Escape answers it with `response=1` (`a consent answer arrived outcome=Refused`), and the dialog closes. A caller that vanishes tears its dialog down. The backend stays up with no restart.
-- Fail: request 2, from a second app, gets `response=2` at once with `the user refused this request`. No `asked portal.ui for consent` line follows, so no dialog is offered.
+- Fail: request 2, from a second app, got `response=2` at once with `the user refused this request`, and no dialog was offered.
 
-Cause, confirmed in code. `ConsentState::ask` (`consent.rs`) keys the authority requester by the pair:
+Cause. `ConsentState::ask` keyed the requester by `(bus_name, app_id)`. An unsandboxed caller
+has `app_id == ""`, so every unsandboxed caller shared one key, and the 120 s refusal cache applied
+to all of them at once.
 
-- `bus_name` and `app_id`, which is the key `ask()` passes to `gate()`.
-- `Refusal::Refused` comes only from `gate()` at consent.rs:711, when that requester's grant is `Consent::Refused`.
-- A new caller gets `NoGrant` and prompts. So request 2 maps to request 1's requester.
+Decision (Main): an empty `app_id` means no identity. The backend cannot tell unsandboxed callers
+apart, and it invents no attribution source.
 
-- `bus_name` is `sender(header)` (`iface/mod.rs`). [INFERENCE] From the requester mapping, the name is the same for both calls. The likely sender is the frontend's connection, but this is not logged; confirm by logging the sender before fixing.
-- `app_id` is `""` for both. The frontend passes it as empty for unsandboxed apps, and the log shows `app=`.
-- So the backend has no per-app identity for an unsandboxed caller. The 120 s refusal cache (`CONSENT_LIFETIME`, `main.rs`) is meant to hold for one caller. Here it holds for every unsandboxed caller at once.
+So an empty-`app_id` request never reuses a cached consent or refusal. Each one prompts on its own
+and queues behind open dialogs. The queue is bounded. When it is full the request fails with
+`Refusal::Busy` (`AtCapacity`). A non-empty `app_id` refusal is still cached for 120 s.
 
-The fix is a design decision, not a harness change: how an unsandboxed caller is identified. The design says identity comes from compositor attribution by PID (design/rust-compositor.md, about line 2538). Not implemented here, because it needs a choice of the attribution source. Escalated to Main.
+Fix: `consent.rs` skips the pending and gate lookups for an empty `app_id`. It tracks anonymous
+requests in their own count (`anonymous_requester`, `end_anonymous`).
 
-Still open: two queued requests answered in order, a Return/Tab+Return Allow with PNG, and the vanished-caller/teardown check after a grant. The last is partly proven (vanished caller tears down). Allow with PNG is blocked by this identity bug.
+`iface/mod.rs` maps `Busy` to a failed response. Regression tests in `tests/failure_modes.rs`
+(7, anonymous and named) were red before the fix and are green on Agent37
+(`PortalConsentLive-logs/green2.log`).
+
+Still open: a live run with two queued anonymous requests answered in order, and a Tab+Return
+Allow that returns `response=0` with a PNG. The harness is `PortalRole/e2e-live/live.sh`. This
+lane has not yet run it with the fixed build.
 
 FileChooser and the fallback sysroot are unchanged.
 

@@ -376,6 +376,9 @@ pub enum Refusal {
     },
     /// The user refused and the refusal still stands.
     Refused,
+    /// Too many prompts are already waiting, so this request was not offered. It is not the
+    /// user's answer, so nothing is remembered about it.
+    Busy,
     /// The session is locked, so capture and injection are refused.
     Locked,
     /// The interface cannot ask for this capability.
@@ -406,6 +409,10 @@ impl fmt::Display for Refusal {
             }
             Self::Pending { path } => write!(formatter, "`{path}` is already waiting for an answer"),
             Self::Refused => write!(formatter, "the user refused this request"),
+            Self::Busy => write!(
+                formatter,
+                "too many portal prompts are already waiting; try again once they are answered"
+            ),
             Self::Locked => write!(formatter, "the session is locked"),
             Self::NotServed { interface, capability } => write!(
                 formatter,
@@ -491,6 +498,9 @@ struct Waiting {
     provider: ClientId,
     deadline: Tick,
     wake: oneshot::Sender<ConsentOutcome>,
+    /// The requester given to a caller with no app id for this prompt alone. Nothing else
+    /// names it, so the grant it leaves is ended with the prompt.
+    anonymous: Option<RequesterId>,
 }
 
 /// The session table and the grants behind it.
@@ -698,23 +708,34 @@ impl Guard {
         if self.locked {
             return Err(Refusal::Locked);
         }
-        if self
-            .waiting
-            .values()
-            .any(|waiting| waiting.bus_name == bus_name && waiting.capability == Some(capability))
+        // A caller with no app id has no identity a decision could be shared under, so it
+        // never waits behind another prompt for its bus and is never answered from a
+        // cached grant or refusal: each of its requests prompts on its own.
+        let anonymous = session.owner.app_id.is_empty();
+        if !anonymous
+            && self
+                .waiting
+                .values()
+                .any(|waiting| waiting.bus_name == bus_name && waiting.capability == Some(capability))
         {
             return Err(Refusal::Pending { path: path.to_owned() });
         }
-        let requester = self.requester(&session.owner.bus_name, &session.owner.app_id);
-        match self.authority.gate(now, requester, capability) {
-            Decision::Allowed => return Ok(Pending::AlreadyGranted),
-            Decision::Denied(Denial::Refused) => return Err(Refusal::Refused),
-            Decision::Denied(Denial::Locked) => return Err(Refusal::Locked),
-            // A prompt for this caller and capability is already open in the authority.
-            Decision::Denied(Denial::NoConsent) => {
-                return Err(Refusal::Pending { path: path.to_owned() });
+        let requester = if anonymous {
+            self.anonymous_requester()
+        } else {
+            self.requester(&session.owner.bus_name, &session.owner.app_id)
+        };
+        if !anonymous {
+            match self.authority.gate(now, requester, capability) {
+                Decision::Allowed => return Ok(Pending::AlreadyGranted),
+                Decision::Denied(Denial::Refused) => return Err(Refusal::Refused),
+                Decision::Denied(Denial::Locked) => return Err(Refusal::Locked),
+                // A prompt for this caller and capability is already open in the authority.
+                Decision::Denied(Denial::NoConsent) => {
+                    return Err(Refusal::Pending { path: path.to_owned() });
+                }
+                Decision::Denied(_) => {}
             }
-            Decision::Denied(_) => {}
         }
 
         let prompt = Prompt::new(session.interface, &session.owner, capability, parent_window);
@@ -758,6 +779,7 @@ impl Guard {
                 bus_name: bus_name.to_owned(),
                 session: path.to_owned(),
                 capability: Some(capability),
+                anonymous: anonymous.then_some(requester),
                 provider: offer.provider,
                 deadline,
                 wake,
@@ -817,6 +839,7 @@ impl Guard {
                 bus_name: bus_name.to_owned(),
                 session: path.to_owned(),
                 capability: None,
+                anonymous: None,
                 provider: offer.provider,
                 deadline,
                 wake,
@@ -905,6 +928,9 @@ impl Guard {
                 let _ = self.resolve(effects);
             }
             self.host.withdraw(*request);
+            if let Some(anonymous) = waiting.anonymous {
+                self.end_anonymous(anonymous);
+            }
             let _ = waiting.wake.send(ConsentOutcome::Expired);
             log::info!(request = request.get(), "a consent prompt expired closed");
         }
@@ -1041,7 +1067,25 @@ impl Guard {
             return;
         };
         self.host.withdraw(request);
+        if let Some(anonymous) = waiting.anonymous {
+            self.end_anonymous(anonymous);
+        }
         let _ = waiting.wake.send(outcome);
+    }
+
+    /// A requester for one caller with no app id. It is never looked up again, so the
+    /// authority holds nothing for it once [`Self::end_anonymous`] has run.
+    fn anonymous_requester(&mut self) -> RequesterId {
+        let requester = RequesterId::new(self.next_requester);
+        self.next_requester += 1;
+        requester
+    }
+
+    /// End the grant an anonymous prompt left. Connection-ended events are untimed, so
+    /// the time passed to the authority is irrelevant here.
+    fn end_anonymous(&mut self, requester: RequesterId) {
+        let effects = self.authority.apply(Tick::ZERO, Event::RequesterGone { requester });
+        let _ = self.resolve(effects);
     }
 
     /// Apply the authority's effects, returning the decision a prompt resolved with.
@@ -1084,6 +1128,7 @@ fn refusal_for(denial: Denial) -> Refusal {
     match denial {
         Denial::Locked => Refusal::Locked,
         Denial::Refused => Refusal::Refused,
+        Denial::AtCapacity => Refusal::Busy,
         Denial::NoPortalUi => Refusal::NoProvider { slot: PORTAL_UI },
         Denial::ConsentExpired => Refusal::Refused,
         _ => Refusal::NoProvider { slot: PORTAL_UI },

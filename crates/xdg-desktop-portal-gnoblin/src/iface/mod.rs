@@ -464,6 +464,7 @@ pub fn refused(refusal: Refusal) -> fdo::Error {
         }
         Refusal::NoProvider { .. }
         | Refusal::Pending { .. }
+        | Refusal::Busy
         | Refusal::Refused
         | Refusal::Locked
         | Refusal::NotServed { .. }
