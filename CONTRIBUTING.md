@@ -146,6 +146,16 @@ make the new edit, then export with `--source-tree WORKTREE --against-index`.
 The `apply-patches` step (`cmake/source-step.cmake`) runs `scripts/manage-patches.py check`, then applies the patches in
 series order.
 
+## Mutter patch freeze
+
+D9 in [`design/rust-compositor.md`](design/rust-compositor.md), decided 2026-11-04:
+
+- Frozen: new Mutter patch series. New behaviour that needs a Mutter patch goes
+  to the Rust compositor instead.
+- Still accepted: bug, security and distro-compat fixes.
+- Anything else: open a GitHub issue on `kierandrewett/gnoblin` and add the
+  `mutter` label. The maintainer decides in the issue.
+
 ## Packaging
 
 Packages are not built by distribution recipes. `scripts/build-prefix.sh` builds Gnoblin into a

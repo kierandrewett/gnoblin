@@ -803,8 +803,6 @@ Open:
   against the reference and the performance baseline can be recorded.
 - The MSRV is measured at 1.97.0 (1.96.0 fails on `cranelift-assembler-x64` 0.137.1,
   which needs 1.97.0). `just msrv` and the CI `msrv` job check it.
-- The Mutter patch freeze announced in `CONTRIBUTING.md`; D9 is decided but the
-  announcement is not written.
 - The native dependency probe on every target image.
 - The `lua-api/*` phases landed or their design frozen.
 
