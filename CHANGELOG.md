@@ -233,6 +233,12 @@ console has no runtime`. The generic call that accepted one table for any unknow
 - The `prompts` configuration section and its `prompts.enabled` key are removed. A configuration that sets them is
   refused when it loads. `keyring.enabled` still turns the built-in keyring on and off.
 
+### Fixed
+
+- A `config.commit` that removes window rules is answered only after the compositor loop has applied the removal. Before,
+  a window the client mapped right after the answer could still be placed under the removed rule, for example maximised
+  at the output size, depending on the order the loop drained its queues.
+
 ### Added
 
 - `gnoblin.input.grab(options?)` takes the keyboard and returns a live `Grab` (bridge API 1.91). See

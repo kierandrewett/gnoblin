@@ -490,7 +490,10 @@ impl Server {
                             Command::VisualAccessibility(settings) => {
                                 state.apply_visual_accessibility_settings(*settings)
                             }
-                            Command::WindowRules(rules) => state.apply_window_rules(rules),
+                            Command::WindowRules { rules, reply } => {
+                                state.apply_window_rules(rules);
+                                let _ = reply.send(());
+                            }
                             Command::KeyboardSettings(keyboard) => state.apply_keyboard_settings(&keyboard),
                             Command::CursorSettings(cursor) => state.apply_cursor_settings(&cursor),
                             Command::InputSources(sources) => state.apply_input_sources(&sources),
@@ -1017,8 +1020,15 @@ impl ControlHandle {
 
     /// Replaces the window rules in force. Existing windows keep what they were given;
     /// the rules apply to windows taken into management from now on.
+    ///
+    /// Waits until the loop has applied them, so the caller's reply to a commit is ordered
+    /// after the rules: a window the client maps after that reply is never placed under the
+    /// rules the commit removed. A loop that does not answer within [`FOCUS_TIMEOUT`] is
+    /// stopping, so the wait gives up and returns without the rules being confirmed.
     pub fn set_window_rules(&self, rules: Vec<gnoblin_wm::Rule>) {
-        self.control.push(Command::WindowRules(rules));
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::WindowRules { rules, reply });
+        let _ = answer.recv_timeout(FOCUS_TIMEOUT);
     }
 
     /// Sets whether window property changes land at once instead of animating.
@@ -1304,8 +1314,12 @@ enum Command {
     },
     /// Whether window property changes land at once instead of animating.
     ReducedMotion(bool),
-    /// The window rules the configuration accepted, replacing the rules in force.
-    WindowRules(Vec<gnoblin_wm::Rule>),
+    /// The window rules the configuration accepted, replacing the rules in force. The loop
+    /// answers once they are applied.
+    WindowRules {
+        rules: Vec<gnoblin_wm::Rule>,
+        reply: std::sync::mpsc::SyncSender<()>,
+    },
     /// The keyboard repeat and XKB options the configuration accepted, applied in place.
     KeyboardSettings(Box<gnoblin_config::Keyboard>),
     /// The cursor theme, size and providers the configuration accepted, applied in place.
