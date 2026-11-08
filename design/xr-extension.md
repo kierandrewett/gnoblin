@@ -15,8 +15,9 @@ in source, in a specification or in a test.
    declares that windows intersect.
 3. Gnoblin keeps appearance, layout and input: it draws every panel buffer, states each panel's pose, size, space and
    order, and resolves every controller ray.
-4. The `gnoblin-xr` extension runs the OpenXR session and turns Gnoblin's latest panel set into layers unchanged; it
-   never edits, animates or keeps a position of its own.
+4. The `gnoblin-xr` extension runs the OpenXR session and turns Gnoblin's latest panel set into layers unchanged. It keeps
+   only a cache of that set, which it resubmits each frame, and it never edits, animates or originates a position;
+   Gnoblin stays the only authority.
 5. Head-locked bars, notifications and overlays live on an output attached to the viewer, which layer-shell clients
    choose like any other output, and a separate VR space is still one optional virtual output.
 
