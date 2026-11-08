@@ -26,10 +26,22 @@ const STARTER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/default-c
 /// The read deadline a role's client carries while its host runs a configuration.
 const HOST_PUMP: Duration = Duration::from_millis(100);
 
-/// The files the starter tree holds, which the run must evaluate: the entry point and the
-/// five `config/*.lua` files it loads. A new file that is not loaded would be silently unused,
-/// so the count is checked too.
-const STARTER_FILES: usize = 6;
+/// The files the starter tree holds, which the run must evaluate: the entry point and every
+/// `config/*.lua` file it loads. Counted from the tree, so a new file that is not loaded is
+/// caught rather than silently unused.
+fn starter_file_count(from: &Path) -> usize {
+    let mut count = 0;
+    for entry in fs::read_dir(from).expect("the starter tree is readable") {
+        let entry = entry.expect("a directory entry");
+        let path = entry.path();
+        if entry.file_type().expect("a file type").is_dir() {
+            count += starter_file_count(&path);
+        } else if path.extension().is_some_and(|extension| extension == "lua") {
+            count += 1;
+        }
+    }
+    count
+}
 
 fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).expect("a test can create a directory");
@@ -76,7 +88,7 @@ fn the_shipped_starter_config_loads_with_no_script_error_and_no_refused_key() {
     }
     assert_eq!(
         report.loaded.len(),
-        STARTER_FILES,
+        starter_file_count(Path::new(STARTER)),
         "the run evaluated {:?}; every starter file must load",
         report.loaded
     );

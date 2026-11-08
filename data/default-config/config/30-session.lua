@@ -1,16 +1,16 @@
 -- Session services and protocol defaults.
 gnoblin.configure({
     compositor = {
-        locate_pointer = false,
-        locate_pointer_key = "Control_L", -- XKB keysym name; "disabled" removes the trigger.
-        visual_bell = false,
-        audible_bell = true,
-        visual_bell_type = "fullscreen-flash", -- or "frame-flash"
+        ["locate-pointer"] = false,
+        ["locate-pointer-key"] = "Control_L", -- XKB keysym name; "disabled" removes the trigger.
+        ["visual-bell"] = false,
+        ["audible-bell"] = true,
+        ["visual-bell-type"] = "fullscreen-flash", -- or "frame-flash"
     },
 
     protocols = {},
 
-    layer_shell = {
-        preserve_active_window = true,
+    ["layer-shell"] = {
+        ["preserve-active-window"] = true,
     },
 })

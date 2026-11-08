@@ -106,8 +106,11 @@ and resolve conflicts between shortcuts.
 
 ## Pointer bindings
 
-The embedded config declares pointer callbacks in `config/50-pointer.lua`.
-Each named binding supplies a button accelerator and a Lua callback:
+The embedded config does not declare pointer bindings. The `keybindings` section is
+carried and not interpreted, and this build has no `begin_move` or `begin_resize`, so a
+pointer callback would do nothing. The shape below is the intended form for when pointer
+bindings are implemented. It is not live in this build, and `config/50-pointer.lua` was
+removed from the starter for that reason.
 
 ```lua
 gnoblin.configure {
@@ -131,9 +134,9 @@ gnoblin.configure {
 }
 ```
 
-The default callback selects the nearest corner in Lua. The native compositor
-starts the requested resize and enforces the window's size limits. Change the
-callback to select another edge or perform another supported window operation.
+In the intended form, the callback selects the nearest corner in Lua, and the native
+compositor starts the resize and enforces the window's size limits. Nothing in this
+build runs it.
 
 `Button1` is left, `Button2` middle and `Button3` right. Prefix the button with
 one or more modifier tokens. Ordinary clicks continue to reach apps.
