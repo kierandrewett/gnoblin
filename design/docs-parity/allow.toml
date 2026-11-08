@@ -765,12 +765,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.session.hibernate"
-doc = "docs/shell-api/session-runtime.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
 name = "gnoblin.session.lock"
 doc = "docs/shell-api/idle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
@@ -778,24 +772,6 @@ owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.session.lock"
-doc = "docs/shell-api/session-runtime.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.poweroff"
-doc = "docs/shell-api/session-runtime.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.reboot"
-doc = "docs/shell-api/session-runtime.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.suspend"
 doc = "docs/shell-api/session-runtime.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
