@@ -1273,6 +1273,7 @@ dependencies = [
  "gnoblin-lock",
  "gnoblin-types",
  "pipewire",
+ "png",
 ]
 
 [[package]]
@@ -1510,6 +1511,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-a11y",
  "gnoblin-backend",
+ "gnoblin-capture",
  "gnoblin-client",
  "gnoblin-config",
  "gnoblin-cursor",
