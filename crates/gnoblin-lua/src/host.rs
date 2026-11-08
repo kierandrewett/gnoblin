@@ -335,6 +335,16 @@ pub struct RunReport {
     pub errors: Vec<ScriptError>,
 }
 
+impl RunReport {
+    /// Log each script error as the file that stopped and the line it stopped at, so the log
+    /// names where the configuration broke. A file that stops keeps what it had already set.
+    pub fn log_errors(&self) {
+        for error in &self.errors {
+            crate::log::error!(area = "script", "{}", error.stop_notice());
+        }
+    }
+}
+
 /// The signal the compositor raises on `session` when `gnoblinctl config reload` asks for a
 /// reload. The name is the one `session.toml` declares.
 const RELOAD_REQUESTED: &str = "reload_requested";

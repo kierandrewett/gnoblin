@@ -58,6 +58,21 @@ impl ScriptError {
         &self.message
     }
 
+    /// The line a person reads when a file stops: `<file> stopped at line N: <message>`.
+    ///
+    /// The location is not repeated in the message, so it reads once. An error with no
+    /// location (a refusal the host built) is its message as it is.
+    pub fn stop_notice(&self) -> String {
+        match (&self.source, self.line) {
+            (Some(source), Some(line)) => {
+                let location = format!("{source}:{line}: ");
+                let rest = self.message.strip_prefix(&location).unwrap_or(&self.message);
+                format!("{source} stopped at line {line}: {rest}")
+            }
+            _ => self.message.clone(),
+        }
+    }
+
     /// The identity a repeat is recognised by.
     ///
     /// The location plus the first line of the message: the rest is a Lua

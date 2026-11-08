@@ -210,14 +210,14 @@ pub(super) fn install<T: Transport + 'static>(
         let shared = Rc::clone(&shared);
         gnoblin.set(
             "configure",
-            lua.create_function(move |_, settings: Table| crate::configure::declare(&shared, &settings))?,
+            lua.create_function(move |lua, settings: Table| crate::configure::declare(lua, &shared, &settings))?,
         )?;
     }
     {
         let shared = Rc::clone(&shared);
         gnoblin.set(
             "window_rule",
-            lua.create_function(move |_, rule: Table| crate::configure::append_rule(&shared, &rule))?,
+            lua.create_function(move |lua, rule: Table| crate::configure::append_rule(lua, &shared, &rule))?,
         )?;
     }
     {

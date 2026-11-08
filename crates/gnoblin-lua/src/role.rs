@@ -47,7 +47,7 @@ use gnoblin_proto::Version;
 use gnoblin_schema::Schema;
 use gnoblin_types::Tick;
 
-use crate::error::HostError;
+use crate::error::{HostError, ScriptError};
 use crate::extensions::ExtensionRegistry;
 use crate::host::{Host, ReloadOutcome, RunReport};
 use gnoblin_lua_sandbox::Limits;
@@ -208,6 +208,9 @@ fn commit<T: Transport + 'static>(
         },
         Err(problems) => return Err(refuse(report, reporter, &problems.to_string())),
     };
+    // A refused revision logs its script errors inside the refusal reason, so they are logged
+    // here only when the revision goes on.
+    report.log_errors();
     let revision = match host.client_mut().commit_config(&document) {
         Ok(revision) => revision,
         Err(error) => {
@@ -224,12 +227,15 @@ fn commit<T: Transport + 'static>(
 
 /// Refuse a configuration revision: log why, tell the guardian, and return the error.
 fn refuse(report: &RunReport, reporter: &mut Reporter, problems: &str) -> RoleError {
+    let mut parts: Vec<String> = report.errors.iter().map(ScriptError::stop_notice).collect();
+    parts.push(problems.to_owned());
     let reason = format!(
-        "the configuration in {} was not committed, and the last accepted one stays in force: {problems}",
-        report.path.path().display()
+        "the configuration in {} was not committed, and the last accepted one stays in force: {}",
+        report.path.path().display(),
+        parts.join("; ")
     );
-    // The guardian's log and the recovery state both need this: a runtime that exits
-    // saying nothing leaves the session degraded with no reason in it.
+    // The last accepted document stays in force, so the log is where a refused revision's
+    // reason survives.
     log::error!(area = "runtime", "{reason}");
     reporter.write(&report::config_rejected(0, &reason));
     RoleError::Invalid(reason)

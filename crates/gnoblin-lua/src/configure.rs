@@ -27,7 +27,7 @@ use std::rc::Rc;
 
 use gnoblin_client::Transport;
 use gnoblin_config::{Config, MAX_DEPTH, Value, merge};
-use mlua::{Error, Table, Value as LuaValue};
+use mlua::{Error, Lua, Table, Value as LuaValue};
 
 use crate::host::Shared;
 
@@ -40,16 +40,30 @@ pub(super) fn value_from_table(table: &Table) -> Result<Value, String> {
 ///
 /// Called from the Lua binding, so it must not call into Lua while the shared
 /// state is borrowed; everything Lua-shaped is done before the borrow.
-pub(super) fn declare<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, settings: &Table) -> Result<(), Error> {
-    let layer = value_from_table(settings).map_err(|reason| Error::runtime(format!("gnoblin.configure: {reason}")))?;
+pub(super) fn declare<T: Transport>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>, settings: &Table) -> Result<(), Error> {
+    let site = call_site(lua, shared);
+    let layer =
+        value_from_table(settings).map_err(|reason| Error::runtime(format!("{site}gnoblin.configure: {reason}")))?;
     let mut state = shared.borrow_mut();
     if !state.configuring {
-        return Err(Error::runtime(
-            "gnoblin.configure is only available while the configuration loads",
-        ));
+        return Err(Error::runtime(format!(
+            "{site}gnoblin.configure is only available while the configuration loads"
+        )));
     }
     let candidate = merge(state.document.clone(), layer);
-    accept(&mut state, candidate, "gnoblin.configure")
+    accept(&mut state, candidate, &site, "gnoblin.configure")
+}
+
+/// The `<file>:<line>: ` a refusal starts with, so the error names the line that made the call.
+///
+/// Empty when the call is not inside a file the host is loading.
+fn call_site<T: Transport>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -> String {
+    let file = shared.borrow().stack.last().map(|path| path.display().to_string());
+    let line = lua.inspect_stack(1, |debug| debug.current_line()).flatten();
+    match (file, line) {
+        (Some(file), Some(line)) => format!("{file}:{line}: "),
+        _ => String::new(),
+    }
 }
 
 /// Append one rule to the `window-rules` list, the way `gnoblin.window_rule` does.
@@ -58,17 +72,21 @@ pub(super) fn declare<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, settings: &
 /// [`merge`]: the existing list is read, the rule is pushed onto it, and the
 /// whole list is validated. The rule is the last entry, so a problem names
 /// `window-rules[N]` for the index the rule was given.
-pub(super) fn append_rule<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, rule: &Table) -> Result<(), Error> {
-    let rule = value_from_table(rule).map_err(|reason| Error::runtime(format!("gnoblin.window_rule: {reason}")))?;
+pub(super) fn append_rule<T: Transport>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>, rule: &Table) -> Result<(), Error> {
+    let site = call_site(lua, shared);
+    let rule =
+        value_from_table(rule).map_err(|reason| Error::runtime(format!("{site}gnoblin.window_rule: {reason}")))?;
     let mut state = shared.borrow_mut();
     if !state.configuring {
-        return Err(Error::runtime(
-            "gnoblin.window_rule is only available while the configuration loads",
-        ));
+        return Err(Error::runtime(format!(
+            "{site}gnoblin.window_rule is only available while the configuration loads"
+        )));
     }
     let mut candidate = state.document.clone();
     let Value::Map(root) = &mut candidate else {
-        return Err(Error::runtime("gnoblin.window_rule: the document is not a table"));
+        return Err(Error::runtime(format!(
+            "{site}gnoblin.window_rule: the document is not a table"
+        )));
     };
     match root
         .entry("window-rules".to_owned())
@@ -76,23 +94,23 @@ pub(super) fn append_rule<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, rule: &
     {
         Value::List(rules) => rules.push(rule),
         _ => {
-            return Err(Error::runtime(
-                "gnoblin.window_rule: window-rules is not a list in the document",
-            ));
+            return Err(Error::runtime(format!(
+                "{site}gnoblin.window_rule: window-rules is not a list in the document"
+            )));
         }
     }
-    accept(&mut state, candidate, "gnoblin.window_rule")
+    accept(&mut state, candidate, &site, "gnoblin.window_rule")
 }
 
 /// Validate a candidate document and make it the document, or refuse it whole.
-fn accept<T: Transport>(state: &mut Shared<T>, candidate: Value, call: &str) -> Result<(), Error> {
+fn accept<T: Transport>(state: &mut Shared<T>, candidate: Value, site: &str, call: &str) -> Result<(), Error> {
     match Config::from_value(candidate) {
         Ok(config) => {
             state.document = config.document().clone();
             Ok(())
         }
         Err(report) => {
-            let mut message = format!("{call}: the settings were not accepted:");
+            let mut message = format!("{site}{call}: the settings were not accepted:");
             for problem in report.problems() {
                 message.push_str("\n  ");
                 message.push_str(&problem.to_string());

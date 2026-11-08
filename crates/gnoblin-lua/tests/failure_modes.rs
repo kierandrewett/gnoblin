@@ -25,7 +25,7 @@ use gnoblin_model::{Fields, Graph, ObjectId, OperationId, OperationOutcome, Tick
 use gnoblin_proto::{CodecError, Envelope, Grant, Handshake, Version};
 use gnoblin_schema::Catalog;
 
-use gnoblin_lua::{Host, Limits, PUMP_EVENT_BATCH, ReloadOutcome};
+use gnoblin_lua::{Host, Limits, PUMP_EVENT_BATCH, ReloadOutcome, RunReport};
 
 const VERSION: Version = Version::new(0, 2, 0);
 
@@ -888,9 +888,73 @@ fn an_unknown_setting_is_refused_with_its_path() {
     let message = report.errors[0].message();
     assert!(message.contains("cursor.sise"), "{message}");
     assert!(message.contains("unknown setting"), "{message}");
+    assert!(
+        report.errors[0]
+            .source()
+            .is_some_and(|source| source.ends_with("init.lua")),
+        "{:?}",
+        report.errors[0].source()
+    );
+    assert_eq!(report.errors[0].line(), Some(1));
+    let notice = report.errors[0].stop_notice();
+    assert!(notice.contains("init.lua stopped at line 1"), "{notice}");
+    assert!(notice.contains("cursor.sise"), "{notice}");
     // The rejected call changed nothing, so what is left still validates.
     assert!(report.document.as_table().expect("a document").is_empty());
     assert!(report.config.is_ok(), "{:?}", report.config.err());
+}
+
+/// The text of every log event the run's script errors produce, one line each.
+fn logged_errors(report: &RunReport) -> String {
+    gnoblin_log::event::capture::logged(|| report.log_errors())
+        .iter()
+        .map(|event| format!("{} {}\n", event.message, event.fields_line()))
+        .collect()
+}
+
+#[test]
+fn a_refused_setting_is_logged_with_its_file_and_line() {
+    let config = Config::new("log-refused-setting");
+    config.write("init.lua", "gnoblin.configure { cursor = { sise = 24 } }\n");
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    let text = logged_errors(&report);
+    assert!(
+        text.contains("init.lua stopped at line 1"),
+        "the file and line are logged: {text}"
+    );
+    assert!(text.contains("cursor.sise"), "the setting path is logged: {text}");
+}
+
+#[test]
+fn a_file_that_stops_keeps_what_it_set_and_logs_the_line_it_stopped_at() {
+    let config = Config::new("log-partial");
+    config.write(
+        "init.lua",
+        "gnoblin.configure { cursor = { size = 24 } }\nlocal broken = nil + 1\ngnoblin.configure { cursor = { size = 12 } }\n",
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.config.is_ok(), "{:?}", report.config.err());
+    assert_eq!(report.errors.len(), 1, "{:#?}", report.errors);
+    assert_eq!(report.errors[0].line(), Some(2));
+    // The line after the error never ran, so the second call's 12 is not in the document.
+    let cursor = report
+        .document
+        .as_table()
+        .expect("a document")
+        .get("cursor")
+        .expect("cursor");
+    assert_eq!(
+        cursor
+            .as_table()
+            .expect("a table")
+            .get("size")
+            .and_then(Value::as_integer),
+        Some(24)
+    );
+    let text = logged_errors(&report);
+    assert!(text.contains("init.lua stopped at line 2"), "{text}");
 }
 
 #[test]
