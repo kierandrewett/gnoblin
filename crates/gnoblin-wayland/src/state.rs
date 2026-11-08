@@ -2438,7 +2438,7 @@ impl State {
 
     /// Queues the modal events an input edge becomes while a modal is set. Returns
     /// `false` for an edge that is not a modal event, which then routes as usual.
-    fn route_to_modal(&mut self, event: &InputEvent) -> bool {
+    pub(crate) fn route_to_modal(&mut self, event: &InputEvent) -> bool {
         match *event {
             InputEvent::Key { keycode, pressed } => {
                 let state = if pressed {
@@ -2508,7 +2508,7 @@ impl State {
     /// The lock gate runs before any client sees input, so a modal that is still stored
     /// during a lock must not be drawn over the cover or take the locker's keys. It is
     /// not cleared, so it reappears once the session unlocks.
-    fn active_modal(&self) -> Option<&Modal> {
+    pub(crate) fn active_modal(&self) -> Option<&Modal> {
         if self.lock.state() == LockState::Unlocked {
             self.modal.as_ref()
         } else {

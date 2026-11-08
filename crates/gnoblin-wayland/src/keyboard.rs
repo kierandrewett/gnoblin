@@ -63,6 +63,7 @@ use smithay::input::keyboard::{FilterResult, KeysymHandle, ModifiersState, XkbCo
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Serial;
 
+use gnoblin_backend::InputEvent;
 use gnoblin_input::{
     Chord, ChordKind, Event as RouterEvent, KeyState as RouterKeyState, Keysyms, Name, Router, ShortcutInhibit, Symbol,
     Target, Trigger,
@@ -584,6 +585,16 @@ impl State {
                 }
             },
         );
+    }
+
+    /// Delivers one key edge from a virtual keyboard. A modal that stands takes it, as it
+    /// takes a physical key in `input`; otherwise the edge goes through [`Self::dispatch_key`].
+    pub(crate) fn deliver_virtual_key(&mut self, keycode: u32, state: KeyState, serial: Serial, time: InputTime) {
+        let pressed = state == KeyState::Pressed;
+        if self.active_modal().is_some() && self.route_to_modal(&InputEvent::Key { keycode, pressed }) {
+            return;
+        }
+        self.dispatch_key(keycode, state, serial, time);
     }
 
     /// The router's half of one edge: a binding or a grab consumes it, a client edge is

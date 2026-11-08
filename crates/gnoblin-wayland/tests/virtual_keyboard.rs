@@ -10,7 +10,11 @@ mod owned;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 
-use gnoblin_wayland::ClientRole;
+use gnoblin_layers::InputPolicy;
+use gnoblin_render_frame::frame::Overlay;
+use gnoblin_render_frame::image::Image;
+use gnoblin_types::{KeyState, OutputId, Rect, Size};
+use gnoblin_wayland::{ClientRole, Modal, ModalEvent};
 use owned::{Connected, Session};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_seat, wl_shm, wl_shm_pool};
 use wayland_client::{Connection, QueueHandle};
@@ -201,5 +205,74 @@ fn an_unsupported_keymap_format_is_refused_and_leaves_no_keymap() {
         send_keymap(&keyboard, 7, KEYMAP.as_bytes(), KEYMAP.len() as u32);
         press(&keyboard, 30);
         client.expect_protocol_error("zwp_virtual_keyboard_v1", NO_KEYMAP);
+    });
+}
+
+/// A key release of `key` as the protocol sends it.
+fn release(keyboard: &ZwpVirtualKeyboardV1, key: u32) {
+    keyboard.key(0, key, 0);
+}
+
+/// The output the headless backend starts with.
+fn default_output() -> OutputId {
+    OutputId::new(0)
+}
+
+/// An opaque white modal over the default output, the shape a consent prompt takes.
+fn modal() -> Modal {
+    let size = Size { width: 2, height: 2 };
+    let image = Image::new(size, 8, vec![255; 16]).expect("a 2x2 image");
+    let overlay = Overlay::new(Rect::from_size(size), &image).expect("a non-empty overlay");
+    Modal::new(InputPolicy::ModalToOutput, default_output(), overlay)
+}
+
+#[test]
+fn a_virtual_keyboard_key_under_a_modal_goes_to_the_modal() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App);
+        let keyboard = keyboard(&client);
+        send_keymap(&keyboard, XKB_V1, KEYMAP.as_bytes(), KEYMAP.len() as u32);
+        handle.control.set_modal(Some(modal()));
+        client.roundtrip();
+        press(&keyboard, 30);
+        release(&keyboard, 30);
+        client.roundtrip();
+        assert_eq!(
+            handle.control.modal_events(),
+            Some(vec![
+                ModalEvent::Key {
+                    keycode: 30,
+                    state: KeyState::Pressed,
+                },
+                ModalEvent::Key {
+                    keycode: 30,
+                    state: KeyState::Released,
+                },
+            ]),
+            "the modal takes the virtual keyboard's edges, not the client"
+        );
+    });
+}
+
+#[test]
+fn a_key_held_when_its_keyboard_is_destroyed_is_released_to_the_modal() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App);
+        let keyboard = keyboard(&client);
+        send_keymap(&keyboard, XKB_V1, KEYMAP.as_bytes(), KEYMAP.len() as u32);
+        press(&keyboard, 30);
+        client.roundtrip();
+        handle.control.set_modal(Some(modal()));
+        client.roundtrip();
+        keyboard.destroy();
+        client.roundtrip();
+        assert_eq!(
+            handle.control.modal_events(),
+            Some(vec![ModalEvent::Key {
+                keycode: 30,
+                state: KeyState::Released,
+            }]),
+            "the release a destroyed keyboard sends is taken by the modal too"
+        );
     });
 }

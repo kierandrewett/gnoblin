@@ -34,9 +34,12 @@
 //! 8. A keymap sent the way `wtype` sends it, text with no NUL and a file position at EOF,
 //!    is read from the start and accepted: `a_keymap_sent_the_way_wtype_sends_it_is_accepted`.
 //!
-//! Destroying a keyboard that still holds keys releases them, and gives the layout keymap
-//! back. That path has no test of its own yet; it is covered by reading
-//! [`KeyboardUserData::destroyed`].
+//! Destroying a keyboard that still holds keys releases them through its keymap, so the
+//! router and any modal see the keys it saw pressed go up, and gives the layout keymap
+//! back. The modal case is `a_key_held_when_its_keyboard_is_destroyed_is_released_to_the_modal`;
+//! the keymap case is covered by reading [`KeyboardUserData::destroyed`].
+//! 9. A key under a modal goes to the modal, not the client:
+//!    `a_virtual_keyboard_key_under_a_modal_goes_to_the_modal`.
 
 use std::fs::File;
 use std::os::fd::OwnedFd;
@@ -201,7 +204,7 @@ impl Dispatch2<ZwpVirtualKeyboardV1, State> for KeyboardUserData {
                     }
                 };
                 let serial = SERIAL_COUNTER.next_serial();
-                state.dispatch_key(key, edge, serial, InputTime::from_millis(time));
+                state.deliver_virtual_key(key, edge, serial, InputTime::from_millis(time));
                 self.track(key, edge, time);
             }
             keyboard::Request::Modifiers {
@@ -234,7 +237,7 @@ impl Dispatch2<ZwpVirtualKeyboardV1, State> for KeyboardUserData {
             // it saw pressed go up.
             for key in keys {
                 let serial = SERIAL_COUNTER.next_serial();
-                state.dispatch_key(key, KeyState::Released, serial, InputTime::from_millis(time));
+                state.deliver_virtual_key(key, KeyState::Released, serial, InputTime::from_millis(time));
             }
         }
         state.release_virtual_keymap(self.id);

@@ -96,9 +96,10 @@
 //!   focus, the input method is told when one is enabled, and a `commit_string` reaches the
 //!   focused text input. A text input created on an already-focused surface is told it has
 //!   focus too, which Smithay alone does not do.
-//! - **`zwp_virtual_keyboard_v1`** — an injected key is routed through the same
-//!   [`State::dispatch_key`] as a physical one, so a binding still wins over an on-screen
-//!   keyboard.
+//! - **`zwp_virtual_keyboard_v1`** — an injected key goes through
+//!   [`State::deliver_virtual_key`]: a standing modal takes it as it takes a physical key, and
+//!   otherwise it is routed through the same [`State::dispatch_key`] path, so a binding still
+//!   wins over an on-screen keyboard.
 //! - **xkb layouts, per-window layout memory and the router.** The document's
 //!   `input-sources` become the keymap, a switch rebuilds it, a window remembers the layout
 //!   it had when focus left it and gets it back when focus returns, and key delivery
