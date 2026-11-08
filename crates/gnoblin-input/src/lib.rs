@@ -99,7 +99,7 @@ pub use gesture::{
 };
 pub use gesture_router::{
     GestureAction, GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats,
-    PinchDirection, When,
+    PinchDirection,
 };
 pub use gnoblin_types::{ButtonState, Edge, KeyCode, KeyState, Keysym, Modifiers, RequestId, Tick};
 pub use idle::Activity;

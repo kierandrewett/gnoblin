@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use crate::appearance::Accent;
 use crate::engine::{Parser, is_inherit};
 use crate::generated::{
-    AccelCurve, Appearance, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, GestureWhen, PadButton,
+    AccelCurve, Appearance, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, PadButton,
     PadButtonAction, Tablet, TouchpadGestures, WindowManagement, WindowRule, WindowRuleType, WindowRules, Workspace,
     Workspaces, Xwayland,
 };
@@ -382,19 +382,15 @@ pub(crate) fn gestures(section: &mut TouchpadGestures, _value: &Value, path: &Pa
     valid
 }
 
-/// Whether two gestures reserve the same movement in an overlapping context.
+/// Whether two gestures reserve the same movement.
 fn claims_same_movement(first: &Gesture, second: &Gesture) -> bool {
-    let same_motion = first.gesture == second.gesture
+    first.gesture == second.gesture
         && first.fingers == second.fingers
         && match (&first.path, &second.path) {
             (Some(path), Some(other)) => path == other,
             (None, None) => first.direction == second.direction,
             _ => false,
-        };
-    let overlapping = first.when.unwrap_or(GestureWhen::Unlocked) == GestureWhen::Any
-        || second.when.unwrap_or(GestureWhen::Unlocked) == GestureWhen::Any
-        || first.when == second.when;
-    same_motion && overlapping
+        }
 }
 
 /// `gesture`: the rules that depend on which kind of gesture this is.
@@ -471,9 +467,6 @@ pub(crate) fn gesture(section: &mut Gesture, map: &BTreeMap<String, Value>, path
         if section.threshold.is_none() {
             section.threshold = Some(0.12);
         }
-    }
-    if section.when.is_none() {
-        section.when = Some(GestureWhen::Unlocked);
     }
     let has_action = map.contains_key("action");
     let has_command = map.contains_key("command");

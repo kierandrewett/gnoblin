@@ -17,7 +17,6 @@ gnoblin.configure({
             fingers = 3,
             path = { { x = 0, y = 0 }, { x = 1, y = 0 } },
             action = "workspace.previous",
-            when = "unlocked",
         },
         {
             name = "workspace-next",
@@ -25,7 +24,6 @@ gnoblin.configure({
             fingers = 3,
             path = { { x = 0, y = 0 }, { x = -1, y = 0 } },
             action = "workspace.next",
-            when = "unlocked",
         },
     },
 })

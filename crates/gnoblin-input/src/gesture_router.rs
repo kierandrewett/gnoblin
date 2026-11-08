@@ -1,8 +1,8 @@
 //! Which `touchpad_gestures` binding claims a gesture.
 //!
 //! The published rules are short and strict: at gesture start Gnoblin reserves input
-//! when a binding matches the gesture type, the finger count and the active lock
-//! context, and at the end it runs the action or command only if the movement also
+//! when a binding matches the gesture type and the finger count while the session is
+//! unlocked, and at the end it runs the action or command only if the movement also
 //! matches the configured path or pinch direction and threshold. A reserved gesture
 //! whose movement does not match has no direct action and is not passed to another
 //! handler.
@@ -41,79 +41,6 @@ impl PinchDirection {
         }
     }
 }
-
-/// The session state a gesture binding applies in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum When {
-    /// In either state.
-    Any,
-    /// Only in an unlocked session.
-    Unlocked,
-    /// Only on the lock screen.
-    Locked,
-}
-
-impl When {
-    /// The documented spellings, including the two legacy names.
-    ///
-    /// One table for the aliases, because the C tree had `"normal"` and
-    /// `"unlock-screen"` handled in three separate files and they disagreed.
-    pub fn parse(text: &str) -> Result<Self, WhenError> {
-        match text {
-            "any" => Ok(Self::Any),
-            "unlocked" | "normal" => Ok(Self::Unlocked),
-            "locked" | "unlock-screen" => Ok(Self::Locked),
-            _ => Err(WhenError { text: text.to_owned() }),
-        }
-    }
-
-    /// Whether this value applies in `context`.
-    pub const fn matches(self, context: GestureLock) -> bool {
-        matches!(
-            (self, context),
-            (Self::Any, _) | (Self::Unlocked, GestureLock::Unlocked) | (Self::Locked, GestureLock::Locked)
-        )
-    }
-
-    /// Whether two values can both apply in one session state.
-    ///
-    /// `any` overlaps both single states, which is what makes "any" plus "unlocked" a
-    /// conflict rather than an ordering question.
-    pub const fn overlaps(self, other: Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Any, _) | (_, Self::Any) | (Self::Unlocked, Self::Unlocked) | (Self::Locked, Self::Locked)
-        )
-    }
-}
-
-impl fmt::Display for When {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Any => "any",
-            Self::Unlocked => "unlocked",
-            Self::Locked => "locked",
-        })
-    }
-}
-
-/// A `when` value that is not one of the documented spellings.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WhenError {
-    text: String,
-}
-
-impl fmt::Display for WhenError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "when \"{}\" is not a session state; use \"unlocked\", \"locked\", or \"any\"",
-            self.text
-        )
-    }
-}
-
-impl std::error::Error for WhenError {}
 
 /// Whether the session a gesture arrives in is locked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -155,7 +82,6 @@ pub struct GestureBinding {
     fingers: u8,
     matcher: Matcher,
     threshold: f64,
-    when: When,
     action: GestureAction,
 }
 
@@ -187,19 +113,16 @@ impl GestureBinding {
         self.threshold
     }
 
-    /// The session state it applies in.
-    pub const fn when(&self) -> When {
-        self.when
-    }
-
     /// What it runs.
     pub const fn action(&self) -> &GestureAction {
         &self.action
     }
 
-    /// Whether this binding reserves a gesture that began as given.
+    /// Whether this binding reserves a gesture that began as given. A binding never
+    /// reserves anything on the lock screen: the lock screen is the hard boundary, and
+    /// no binding runs while it is up.
     pub const fn claims(&self, kind: GestureKind, fingers: u8, context: GestureLock) -> bool {
-        self.fingers == fingers && self.matches_kind(kind) && self.when.matches(context)
+        matches!(context, GestureLock::Unlocked) && self.fingers == fingers && self.matches_kind(kind)
     }
 
     /// Whether a recognised kind is this binding's kind.
@@ -278,8 +201,6 @@ pub struct GestureSpec {
     pub tolerance: Option<f64>,
     /// The minimum movement.
     pub threshold: Option<f64>,
-    /// The session state. Defaults to `unlocked`, as documented.
-    pub when: Option<When>,
     /// The action or command, exactly one of which is required.
     pub action: Option<GestureAction>,
 }
@@ -305,7 +226,6 @@ impl GestureSpec {
         if matches!(&action, GestureAction::Command(arguments) if arguments.is_empty()) {
             return Err(GestureError::EmptyCommand);
         }
-        let when = self.when.unwrap_or(When::Unlocked);
         let matcher = match kind {
             GestureKind::Swipe => {
                 if self.direction.is_some() {
@@ -358,7 +278,6 @@ impl GestureSpec {
             fingers,
             matcher,
             threshold,
-            when,
             action,
         })
     }
@@ -564,8 +483,7 @@ impl GestureRouter {
     pub fn new(bindings: Vec<GestureBinding>) -> Result<Self, GestureError> {
         for (index, later) in bindings.iter().enumerate() {
             for earlier in bindings.iter().take(index) {
-                let same_gesture = earlier.kind() == later.kind() && earlier.fingers() == later.fingers();
-                if same_gesture && earlier.when().overlaps(later.when()) {
+                if earlier.kind() == later.kind() && earlier.fingers() == later.fingers() {
                     return Err(GestureError::Conflict {
                         first: earlier.name().clone(),
                         second: later.name().clone(),
@@ -604,8 +522,8 @@ impl GestureRouter {
     pub fn observe(&mut self, event: &GestureEvent, context: GestureLock) -> GestureRoute {
         match event.phase() {
             GesturePhase::Begin => {
-                // At most one binding can match: construction refuses two overlapping bindings
-                // of the same kind and finger count, so `position` cannot hide a tie.
+                // At most one binding can match: construction refuses two bindings of the same
+                // kind and finger count, so `position` cannot hide a tie.
                 let candidate = self
                     .bindings
                     .iter()
@@ -666,31 +584,28 @@ impl GestureRouter {
 mod tests {
     use super::{
         GestureAction, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, Matcher, PinchDirection,
-        When,
     };
     use crate::gesture::{GestureEvent, GestureKind, GesturePath};
     use crate::name::Name;
     use gnoblin_types::Tick;
 
-    fn swipe(name: &str, fingers: u8, path: Vec<(f64, f64)>, when: When, action: GestureAction) -> GestureSpec {
+    fn swipe(name: &str, fingers: u8, path: Vec<(f64, f64)>, action: GestureAction) -> GestureSpec {
         GestureSpec {
             name: name.to_owned(),
             gesture: Some(GestureKind::Swipe),
             fingers: Some(fingers),
             path: Some(path),
-            when: Some(when),
             action: Some(action),
             ..GestureSpec::default()
         }
     }
 
-    fn pinch(name: &str, fingers: u8, direction: PinchDirection, when: When) -> GestureSpec {
+    fn pinch(name: &str, fingers: u8, direction: PinchDirection) -> GestureSpec {
         GestureSpec {
             name: name.to_owned(),
             gesture: Some(GestureKind::Pinch),
             fingers: Some(fingers),
             direction: Some(direction),
-            when: Some(when),
             action: Some(GestureAction::Action("workspace.next".to_owned())),
             ..GestureSpec::default()
         }
@@ -724,10 +639,10 @@ mod tests {
 
     #[test]
     fn two_bindings_that_would_claim_one_gesture_are_refused() {
-        let first = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command())
+        let first = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], command())
             .validate()
             .expect("first");
-        let second = swipe("left", 3, vec![(0.0, 0.0), (-1.0, 0.0)], When::Any, command())
+        let second = swipe("left", 3, vec![(0.0, 0.0), (-1.0, 0.0)], command())
             .validate()
             .expect("second");
         let error = GestureRouter::new(vec![first, second]).expect_err("conflict");
@@ -743,41 +658,18 @@ mod tests {
     #[test]
     fn a_swipe_and_a_pinch_may_share_a_finger_count() {
         let bindings = vec![
-            swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command())
+            swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], command())
                 .validate()
                 .expect("swipe"),
-            pinch("out", 3, PinchDirection::Out, When::Unlocked)
-                .validate()
-                .expect("pinch"),
+            pinch("out", 3, PinchDirection::Out).validate().expect("pinch"),
         ];
         let router = GestureRouter::new(bindings).expect("no conflict");
         assert_eq!(router.bindings().len(), 2);
     }
 
     #[test]
-    fn an_unlocked_and_a_locked_binding_do_not_conflict() {
-        let bindings = vec![
-            swipe("unlocked", 4, vec![(0.0, 0.0), (0.0, 1.0)], When::Unlocked, command())
-                .validate()
-                .expect("unlocked"),
-            swipe("locked", 4, vec![(0.0, 0.0), (0.0, 1.0)], When::Locked, command())
-                .validate()
-                .expect("locked"),
-        ];
-        GestureRouter::new(bindings).expect("no conflict");
-        assert!(When::Unlocked.overlaps(When::Any));
-        assert!(!When::Unlocked.overlaps(When::Locked));
-    }
-
-    #[test]
     fn a_reserved_gesture_fires_only_when_its_path_matches() {
-        let spec = swipe(
-            "right",
-            3,
-            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
-            When::Unlocked,
-            command(),
-        );
+        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)], command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
 
         let route = router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
@@ -813,7 +705,7 @@ mod tests {
 
     #[test]
     fn a_short_gesture_does_not_reach_the_threshold() {
-        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
         router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         let route = router.observe(
@@ -825,12 +717,8 @@ mod tests {
 
     #[test]
     fn a_pinch_fires_in_its_configured_direction_only() {
-        let mut router = GestureRouter::new(vec![
-            pinch("out", 4, PinchDirection::Out, When::Unlocked)
-                .validate()
-                .expect("valid"),
-        ])
-        .expect("no conflict");
+        let mut router = GestureRouter::new(vec![pinch("out", 4, PinchDirection::Out).validate().expect("valid")])
+            .expect("no conflict");
         router.observe(&begin(GestureKind::Pinch, 4), GestureLock::Unlocked);
         let route = router.observe(&end(GestureKind::Pinch, 4, &[], 0.0, 0.5), GestureLock::Unlocked);
         assert_eq!(route, GestureRoute::MatchedNothing { binding: 0 });
@@ -841,21 +729,21 @@ mod tests {
     }
 
     #[test]
-    fn an_unmatched_context_leaves_the_gesture_to_the_client() {
-        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Locked, command());
+    fn a_locked_screen_leaves_every_binding_to_the_client() {
+        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
-        let route = router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
+        let route = router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Locked);
         assert_eq!(route, GestureRoute::Unclaimed);
         let route = router.observe(
             &end(GestureKind::Swipe, 3, &[(0.0, 0.0), (60.0, 0.0)], 60.0, 1.0),
-            GestureLock::Unlocked,
+            GestureLock::Locked,
         );
         assert_eq!(route, GestureRoute::Unclaimed);
     }
 
     #[test]
     fn a_cancel_releases_the_reservation() {
-        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        let spec = swipe("right", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         let mut router = GestureRouter::new(vec![spec.validate().expect("valid")]).expect("no conflict");
         router.observe(&begin(GestureKind::Swipe, 3), GestureLock::Unlocked);
         let cancel = GestureEvent::Cancel {
@@ -874,137 +762,110 @@ mod tests {
 
     #[test]
     fn validation_names_the_documented_limits() {
-        let mut spec = swipe("bad name", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        let mut spec = swipe("bad name", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         assert!(matches!(spec.validate(), Err(GestureError::Name(_))));
 
-        spec = swipe("fingers", 6, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("fingers", 6, vec![(0.0, 0.0), (1.0, 0.0)], command());
         assert_eq!(
             spec.validate().expect_err("fingers"),
             GestureError::FingersOutOfRange { fingers: 6 }
         );
 
-        spec = swipe("short", 3, vec![(0.0, 0.0)], When::Unlocked, command());
+        spec = swipe("short", 3, vec![(0.0, 0.0)], command());
         assert_eq!(
             spec.validate().expect_err("short"),
             GestureError::PathTooShort { points: 1 }
         );
 
-        spec = swipe("long", 3, vec![(0.0, 0.0); 17], When::Unlocked, command());
+        spec = swipe("long", 3, vec![(0.0, 0.0); 17], command());
         assert_eq!(
             spec.validate().expect_err("long"),
             GestureError::PathTooLong { points: 17 }
         );
 
-        spec = swipe("origin", 3, vec![(0.5, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("origin", 3, vec![(0.5, 0.0), (1.0, 0.0)], command());
         assert!(matches!(
             spec.validate().expect_err("origin"),
             GestureError::PathMustStartAtOrigin { .. }
         ));
 
-        spec = swipe("outside", 3, vec![(0.0, 0.0), (2.0, 0.0)], When::Unlocked, command());
+        spec = swipe("outside", 3, vec![(0.0, 0.0), (2.0, 0.0)], command());
         assert!(matches!(
             spec.validate().expect_err("range"),
             GestureError::PathPointOutOfRange { .. }
         ));
 
-        spec = swipe("tolerance", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("tolerance", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.tolerance = Some(0.9);
         assert!(matches!(
             spec.validate().expect_err("tolerance"),
             GestureError::ToleranceOutOfRange { .. }
         ));
 
-        spec = swipe("threshold", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("threshold", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.threshold = Some(4.0);
         assert!(matches!(
             spec.validate().expect_err("threshold"),
             GestureError::ThresholdOutOfRange { .. }
         ));
 
-        spec = swipe("action", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("action", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.action = None;
         assert_eq!(spec.validate().expect_err("action"), GestureError::MissingAction);
 
-        spec = swipe("command", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("command", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.action = Some(GestureAction::Command(Vec::new()));
         assert_eq!(spec.validate().expect_err("empty"), GestureError::EmptyCommand);
 
-        let mut pinch_with_path = pinch("path", 3, PinchDirection::In, When::Unlocked);
+        let mut pinch_with_path = pinch("path", 3, PinchDirection::In);
         pinch_with_path.path = Some(vec![(0.0, 0.0), (1.0, 0.0)]);
         assert_eq!(
             pinch_with_path.validate().expect_err("path on a pinch"),
             GestureError::UnexpectedPath
         );
 
-        let mut swipe_with_direction = swipe("direction", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        let mut swipe_with_direction = swipe("direction", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         swipe_with_direction.direction = Some(PinchDirection::Out);
         assert_eq!(
             swipe_with_direction.validate().expect_err("direction on a swipe"),
             GestureError::UnexpectedDirection
         );
 
-        let mut pinch_without_direction = pinch("no_direction", 3, PinchDirection::In, When::Unlocked);
+        let mut pinch_without_direction = pinch("no_direction", 3, PinchDirection::In);
         pinch_without_direction.direction = None;
         assert_eq!(
             pinch_without_direction.validate().expect_err("no direction"),
             GestureError::MissingDirection
         );
 
-        spec = swipe("gesture", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("gesture", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.gesture = None;
         assert_eq!(spec.validate().expect_err("gesture"), GestureError::MissingGesture);
 
-        spec = swipe(
-            "fingers_field",
-            3,
-            vec![(0.0, 0.0), (1.0, 0.0)],
-            When::Unlocked,
-            command(),
-        );
+        spec = swipe("fingers_field", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.fingers = None;
         assert_eq!(
             spec.validate().expect_err("fingers field"),
             GestureError::MissingFingers
         );
 
-        spec = swipe("path_field", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
+        spec = swipe("path_field", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
         spec.path = None;
         assert_eq!(spec.validate().expect_err("path field"), GestureError::MissingPath);
     }
 
     #[test]
     fn the_documented_defaults_apply() {
-        let binding = swipe("defaults", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command())
+        let binding = swipe("defaults", 3, vec![(0.0, 0.0), (1.0, 0.0)], command())
             .validate()
             .expect("valid");
         assert_eq!(binding.threshold(), super::DEFAULT_SWIPE_THRESHOLD);
-        assert_eq!(binding.when(), When::Unlocked);
         assert!(matches!(
             binding.matcher(),
             Matcher::Path { tolerance, .. } if *tolerance == super::DEFAULT_TOLERANCE
         ));
 
-        let binding = pinch("defaults", 4, PinchDirection::In, When::Any)
-            .validate()
-            .expect("valid");
+        let binding = pinch("defaults", 4, PinchDirection::In).validate().expect("valid");
         assert_eq!(binding.threshold(), super::DEFAULT_PINCH_THRESHOLD);
-
-        let mut absent = swipe("when", 3, vec![(0.0, 0.0), (1.0, 0.0)], When::Unlocked, command());
-        absent.when = None;
-        assert_eq!(
-            absent.validate().expect("valid").when(),
-            When::Unlocked,
-            "an omitted when means unlocked"
-        );
-    }
-
-    #[test]
-    fn the_when_aliases_are_one_table() {
-        assert_eq!(When::parse("normal").expect("legacy"), When::Unlocked);
-        assert_eq!(When::parse("unlock-screen").expect("legacy"), When::Locked);
-        assert_eq!(When::parse("any").expect("any"), When::Any);
-        assert!(When::parse("Normal").is_err(), "the spellings are exact");
-        assert!(When::parse("sometimes").is_err());
-        assert_eq!(When::Unlocked.to_string(), "unlocked");
     }
 }

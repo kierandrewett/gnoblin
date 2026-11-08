@@ -28,7 +28,7 @@ use gnoblin_input::{
     Activity, ButtonState, Contact, ContactPhase, Decision, Event, GestureAction, GestureConfig, GestureEvent,
     GestureKind, GestureLock, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState,
     Keysym, Modifiers, PinchDirection, PolicyQueue, Recogniser, Reply, RequestId, Routed, Router, Scope,
-    ShortcutInhibit, Submitted, Target, Tick, Trigger, When,
+    ShortcutInhibit, Submitted, Target, Tick, Trigger,
 };
 
 /// Sequences per test run.
@@ -108,7 +108,6 @@ impl Model {
                 gesture: Some(GestureKind::Swipe),
                 fingers: Some(2),
                 path: Some(vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]),
-                when: Some(When::Unlocked),
                 action: Some(GestureAction::Command(vec!["kgx".to_owned()])),
                 ..GestureSpec::default()
             }
@@ -119,7 +118,6 @@ impl Model {
                 gesture: Some(GestureKind::Pinch),
                 fingers: Some(2),
                 direction: Some(PinchDirection::Out),
-                when: Some(When::Any),
                 action: Some(GestureAction::Action("workspace.next".to_owned())),
                 ..GestureSpec::default()
             }

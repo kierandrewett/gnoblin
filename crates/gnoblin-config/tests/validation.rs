@@ -7,9 +7,7 @@
 
 mod support;
 
-use gnoblin_config::{
-    Blur, Config, Fault, FocusMode, GestureWhen, Inherit, LayoutSelector, MAX_DEPTH, Path, TapButtonMap, Value,
-};
+use gnoblin_config::{Blur, Config, Fault, FocusMode, Inherit, LayoutSelector, MAX_DEPTH, Path, TapButtonMap, Value};
 
 use support::{flag, int, kitchen_sink, list, number, table, text};
 
@@ -52,7 +50,6 @@ fn the_typed_values_are_available_without_reparsing() {
     let protocols = config.protocols.as_ref().expect("protocols");
     assert_eq!(protocols.toggles.len(), 1);
     let gesture = &config.touchpad_gestures[0];
-    assert_eq!(gesture.when, Some(GestureWhen::Unlocked), "when defaults to unlocked");
     assert_eq!(gesture.threshold, Some(48.0), "a swipe threshold defaults to 48");
     let mouse = config
         .input
@@ -253,6 +250,28 @@ fn a_gesture_needs_exactly_one_of_action_and_command() {
     let problems = problems(table([("touchpad-gestures", list(vec![gesture]))]));
     assert_eq!(problems.len(), 1);
     assert_eq!(problems[0].0, "touchpad-gestures[1]");
+}
+
+#[test]
+fn a_gesture_that_still_sets_when_is_refused_as_an_unknown_key() {
+    let gesture = table([
+        ("name", text("lock-screen")),
+        ("gesture", text("swipe")),
+        ("fingers", int(3)),
+        (
+            "path",
+            list(vec![
+                table([("x", number(0.0)), ("y", number(0.0))]),
+                table([("x", number(1.0)), ("y", number(0.0))]),
+            ]),
+        ),
+        ("action", text("workspace.next")),
+        ("when", text("locked")),
+    ]);
+    let problems = problems(table([("touchpad-gestures", list(vec![gesture]))]));
+    assert_eq!(problems.len(), 1);
+    assert_eq!(problems[0].0, "touchpad-gestures[1].when");
+    assert!(matches!(problems[0].1, Fault::UnknownKey { .. }));
 }
 
 #[test]

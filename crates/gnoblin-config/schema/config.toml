@@ -283,16 +283,6 @@ variants = [
 ]
 
 [[enum]]
-name = "GestureWhen"
-setting = "when"
-doc = "Which lock context a gesture applies in."
-variants = [
-    { spelling = "unlocked", doc = "Only when the session is unlocked." },
-    { spelling = "locked", doc = "Only on the lock screen." },
-    { spelling = "any", doc = "In either state." },
-]
-
-[[enum]]
 name = "GestureDirection"
 setting = "direction"
 doc = "The direction of a pinch gesture."
@@ -411,18 +401,6 @@ variants = [
 # One table, accepted until `removed_in`. A spelling must not also be a current
 # variant: the generator refuses that, because an alias that is already current
 # can never fire.
-
-[[alias]]
-setting = "when"
-spelling = "normal"
-canonical = "unlocked"
-removed_in = "0.3.0"
-
-[[alias]]
-setting = "when"
-spelling = "unlock-screen"
-canonical = "locked"
-removed_in = "0.3.0"
 
 [[alias]]
 setting = "focus-mode"
@@ -1429,15 +1407,6 @@ kind = "text-list"
 first_nonempty = true
 accepted = "a nonempty argv array whose first entry names the program"
 doc = "The command to start."
-since = "0.2.0"
-
-[[record.field]]
-key = "when"
-kind = "enum"
-enum = "GestureWhen"
-accepted = "one of unlocked, locked, any"
-default = { enum = "unlocked" }
-doc = "The lock context the gesture applies in."
 since = "0.2.0"
 
 [[record.field]]

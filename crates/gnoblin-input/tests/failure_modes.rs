@@ -7,7 +7,7 @@ use gnoblin_input::{
     Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Decision, Edge,
     EdgeBand, Expired, GestureAction, GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase,
     GestureRoute, GestureRouter, GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, PolicyQueue,
-    Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick, Trigger, When,
+    Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick, Trigger,
 };
 
 fn route(router: &mut Router, event: gnoblin_input::Event) -> Routed {
@@ -20,7 +20,6 @@ fn swipe_spec(label: &str, fingers: u8) -> GestureSpec {
         gesture: Some(GestureKind::Swipe),
         fingers: Some(fingers),
         path: Some(vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]),
-        when: Some(When::Unlocked),
         action: Some(GestureAction::Command(vec!["kgx".to_owned()])),
         ..GestureSpec::default()
     }
@@ -32,7 +31,6 @@ fn pinch_spec(label: &str, fingers: u8, direction: PinchDirection) -> GestureSpe
         gesture: Some(GestureKind::Pinch),
         fingers: Some(fingers),
         direction: Some(direction),
-        when: Some(When::Unlocked),
         action: Some(GestureAction::Action("workspace.next".to_owned())),
         ..GestureSpec::default()
     }
