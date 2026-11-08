@@ -925,6 +925,11 @@ mod gnoblin_objects {
             Ok(self.text(object, "version"))
         }
 
+        fn logout(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "session", "logout", gnoblin_model::Fields::new())
+        }
+
         fn lock_state(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "lock_state"))

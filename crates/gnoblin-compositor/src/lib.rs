@@ -124,6 +124,7 @@ pub use cursor::{
 pub use eis::EisGate;
 pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_config::{LogConsole, Logging, logging_from_environment};
+pub use gnoblin_proto::LOGOUT_EXIT_CODE;
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot, default_privileged_socket_path};
 pub use gnoblin_xwayland::xsettings::XSettings;
@@ -297,8 +298,18 @@ pub fn version() -> Version {
 /// The compositor process.
 pub struct Compositor;
 
+/// How a session ended, when [`Compositor::run`] returns without an error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionEnd {
+    /// The session stopped for a reason other than a logout.
+    Stopped,
+    /// A logout request ended the session. The session wrapper exits with the logout code, so
+    /// the guardian ends the session instead of restarting it.
+    LoggedOut,
+}
+
 impl Compositor {
-    /// Runs a session until it stops.
+    /// Runs a session until it stops, and reports whether a logout ended it.
     ///
     /// The Wayland loop runs on the calling thread — a calloop loop and the backend
     /// it drives cannot move between threads — so this returns only when the session
@@ -312,7 +323,7 @@ impl Compositor {
     /// [`Error::BackendRefused`] names a backend this build does not carry, and
     /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
     /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
-    pub fn run(mut config: SessionConfig) -> Result<(), Error> {
+    pub fn run(mut config: SessionConfig) -> Result<SessionEnd, Error> {
         // The schema is embedded at build time (see `schema.rs`), so a failure here is a
         // problem with this build rather than with the host configuration.
         let catalog = schema::catalog().map_err(Error::Schema)?;
@@ -433,7 +444,7 @@ impl Compositor {
         // The watcher is joined below, and it only returns once a stop is requested. The stop
         // is therefore requested after the loop ends, even when the loop stopped on its own.
         let stop = config.stop.clone();
-        let watcher = spawn_watcher(stop.clone(), control);
+        let watcher = spawn_watcher(stop.clone(), control.clone());
 
         // The loop's result is kept and returned after cleanup, so a loop error still stops the
         // EIS gate and shuts the IPC server down first.
@@ -450,7 +461,12 @@ impl Compositor {
         // The socket file is removed after both threads have stopped. A removal error is
         // ignored because the file may already be gone.
         let _ = std::fs::remove_file(&path);
-        loop_result.map_err(Error::Loop)
+        let session_end = if control.logged_out() {
+            SessionEnd::LoggedOut
+        } else {
+            SessionEnd::Stopped
+        };
+        loop_result.map(|()| session_end).map_err(Error::Loop)
     }
 }
 

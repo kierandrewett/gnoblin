@@ -169,3 +169,10 @@ kind = "function"
 object = "session"
 doc = "The session's state as the mirror holds it: `state` (always `running`), `lock_available` and `revision`. `lock_state` is present only while `lock_available` is true. Read on each call, as of the last pump."
 returns = ["table"]
+
+[[member]]
+name = "logout"
+kind = "function"
+object = "session"
+doc = "End the session. The operation finishes with `{accepted = true}` once the compositor confirms the request; then the compositor exits with the logout code, the supervisor exits successfully and the session wrapper returns to the login manager. A socket caller may receive EOF while the session closes."
+returns = ["gnoblin.Operation"]

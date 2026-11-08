@@ -78,7 +78,13 @@ fn lua_string(text: &str) -> String {
 /// Every member an instance accepts, sorted the way a refusal spells them.
 fn expected_members(object: &ObjectType) -> Vec<String> {
     let mut members: Vec<String> = object.properties.iter().map(|property| property.name.clone()).collect();
-    members.extend(object.methods.iter().map(|method| method.name.clone()));
+    members.extend(
+        object
+            .methods
+            .iter()
+            .filter(|method| !method.function)
+            .map(|method| method.name.clone()),
+    );
     members.push("alive".to_owned());
     if object.name == "window" {
         members.push("process".to_owned());
@@ -108,8 +114,13 @@ fn the_stub_matches_the_schema() {
                 );
             }
             for method in &object.methods {
+                let declared = if method.function {
+                    format!("function gnoblin.{}.{}(", object.name, method.name)
+                } else {
+                    format!("function {}:{}(", object.name, method.name)
+                };
                 assert!(
-                    stub.contains(&format!("function {}:{}(", object.name, method.name)),
+                    stub.contains(&declared),
                     "the stub has no method {class}:{}",
                     method.name
                 );
@@ -226,10 +237,18 @@ fn the_installed_tables_match_the_schema() {
             }
             for method in &object.methods {
                 let label = lua_string(&format!("{class}.{}", method.name));
-                script.push_str(&format!(
-                    "assert(type(instance.{method}) == \"function\", {label} .. \" is not callable\")\n",
-                    method = method.name
-                ));
+                if method.function {
+                    // A namespace function is on the class table only, never on an instance.
+                    script.push_str(&format!(
+                        "assert(type({class}.{name}) == \"function\", {label} .. \" is not callable\")\nassert(rawget(instance, \"{name}\") == nil, {label} .. \" is on an instance\")\n",
+                        name = method.name
+                    ));
+                } else {
+                    script.push_str(&format!(
+                        "assert(type(instance.{method}) == \"function\", {label} .. \" is not callable\")\n",
+                        method = method.name
+                    ));
+                }
             }
             assert!(object.signals.iter().all(|signal| !signal.name.is_empty()));
             let label = lua_string(&class);

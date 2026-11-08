@@ -465,10 +465,11 @@ fn stub_host_members(text: &mut String, members: &[HostMember], prefix: &str) {
     }
 }
 
-/// Write the functions declared on `object`, which the stub shows as methods on its class.
-fn stub_object_host_members(text: &mut String, host: &[HostMember], object: &str) {
+/// Write the namespace functions declared on `object`. They live on the class table, which the
+/// runtime reaches as `prefix` (for example `gnoblin.session`), so the stub names them by that path.
+fn stub_object_host_members(text: &mut String, host: &[HostMember], object: &str, prefix: &str) {
     for member in host.iter().filter(|member| member.object.as_deref() == Some(object)) {
-        stub_function(text, member, &format!("{object}:{}", member.name));
+        stub_function(text, member, &format!("{prefix}.{}", member.name));
     }
 }
 
@@ -559,8 +560,9 @@ fn rust_bindings(catalog: &Catalog) -> String {
             for method in &object.methods {
                 let _ = writeln!(
                     text,
-                    "            MethodSpec {{ name: {}, params: &[",
-                    text_literal(&method.name)
+                    "            MethodSpec {{ name: {}, function: {}, params: &[",
+                    text_literal(&method.name),
+                    method.function
                 );
                 for parameter in &method.params {
                     let _ = writeln!(
@@ -758,7 +760,8 @@ fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType, ho
         let _ = writeln!(text, "---@field process gnoblin.Process|nil");
     }
     let _ = writeln!(text, "local {} = {{}}", object.name);
-    for method in &object.methods {
+    // A namespace function is declared on the class table, with no receiver, by the host members.
+    for method in object.methods.iter().filter(|method| !method.function) {
         for parameter in &method.params {
             let _ = writeln!(text, "---@param {} {}", parameter.name, lua_type(&parameter.ty));
         }
@@ -776,7 +779,7 @@ fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType, ho
         let _ = writeln!(text, "---@return gnoblin.Subscription");
         let _ = writeln!(text, "function {}:on(name, callback) end", object.name);
     }
-    stub_object_host_members(text, host, &object.name.to_string());
+    stub_object_host_members(text, host, &object.name.to_string(), &class);
     // The collection a script reaches instances through: one per object type.
     let collection = format!("{class}Collection");
     let _ = writeln!(text, "---@class {collection}");

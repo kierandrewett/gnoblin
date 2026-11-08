@@ -563,7 +563,11 @@ function session:on(name, callback) end
 function session:on(name, callback) end
 --- The session's state as the mirror holds it: `state` (always `running`), `lock_available` and `revision`. `lock_state` is present only while `lock_available` is true. Read on each call, as of the last pump.
 ---@return table
-function session:status() end
+function gnoblin.session.status() end
+
+--- End the session. The operation finishes with `{accepted = true}` once the compositor confirms the request; then the compositor exits with the logout code, the supervisor exits successfully and the session wrapper returns to the login manager. A socket caller may receive EOF while the session closes.
+---@return gnoblin.Operation
+function gnoblin.session.logout() end
 
 ---@class gnoblin.sessionCollection
 ---@field by_id fun(id: integer): gnoblin.session|nil

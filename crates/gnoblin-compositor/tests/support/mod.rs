@@ -59,7 +59,7 @@ pub struct Session {
     wayland: PathBuf,
     stop: StopHandle,
     eis: EisGate,
-    thread: Option<JoinHandle<Result<(), gnoblin_compositor::Error>>>,
+    thread: Option<JoinHandle<Result<gnoblin_compositor::SessionEnd, gnoblin_compositor::Error>>>,
     /// The guardian's end of the control socket. The session holds it open so the compositor
     /// reads handovers rather than an early EOF; it is closed before the session is joined, so
     /// a stopping session never waits on a guardian still holding its end open.
@@ -280,7 +280,7 @@ impl Session {
             return Ok(());
         };
         match thread.join() {
-            Ok(result) => result,
+            Ok(result) => result.map(|_| ()),
             Err(payload) => std::panic::resume_unwind(payload),
         }
     }
@@ -324,7 +324,7 @@ pub fn config(directory: &Path, ipc: PathBuf) -> SessionConfig {
 #[track_caller]
 pub fn run_refused(config: SessionConfig) -> gnoblin_compositor::Error {
     match Compositor::run(config) {
-        Ok(()) => panic!("the compositor should have been refused"),
+        Ok(_) => panic!("the compositor should have been refused"),
         Err(error) => error,
     }
 }

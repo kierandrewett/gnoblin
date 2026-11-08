@@ -1559,6 +1559,9 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "lock" && method == "lock_session" => {
                 self.lock_call(client, envelope, object, &method, &arguments);
             }
+            (Some(ty), _, _, _) if ty == "session" && method == "logout" => {
+                self.session_call(client, envelope, object, &method, &arguments);
+            }
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
@@ -1689,6 +1692,30 @@ impl Dispatcher {
             }
         };
         self.finish(object, &operation, Some(outcome));
+    }
+
+    /// Serves `session.logout`: the loop is asked to stop and the session ends as a logout. The
+    /// operation completes `done` once the request is taken. The socket may close before the
+    /// caller reads the reply, because the session is ending.
+    fn session_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+    ) {
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        self.control.logout();
+        self.finish(object, &operation, Some(OperationOutcome::Done));
     }
 
     /// Serves `lock.lock_session`: the loop locks the session, and the operation completes `done`

@@ -449,6 +449,7 @@ impl Server {
             ping,
             screenshots: Screenshots::default(),
             global_scale: Mutex::new(None),
+            logout: std::sync::atomic::AtomicBool::new(false),
         });
         event_loop
             .handle()
@@ -762,6 +763,19 @@ impl ControlHandle {
     /// Stops the loop after the current iteration.
     pub fn stop(&self) {
         self.stop.stop();
+    }
+
+    /// Ends the session by logout: the loop stops after the current iteration, and
+    /// [`ControlHandle::logged_out`] reports the stop as a logout.
+    pub fn logout(&self) {
+        self.control.logout.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.stop.stop();
+    }
+
+    /// Whether the loop was stopped by [`ControlHandle::logout`].
+    #[must_use]
+    pub fn logged_out(&self) -> bool {
+        self.control.logout.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Queues an input event as if the backend had delivered it.
@@ -1383,6 +1397,8 @@ struct Control {
     /// [`None`] follows the system setting. The backend is owned by the loop, so a scale
     /// cannot be applied from the command queue, which has no backend.
     global_scale: Mutex<Option<Option<u32>>>,
+    /// Set when a logout ends the loop, so the caller can tell a logout from a stop.
+    logout: std::sync::atomic::AtomicBool,
 }
 
 impl Control {

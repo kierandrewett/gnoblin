@@ -263,6 +263,9 @@ pub struct Method {
     pub since: Version,
     /// True when the method is secret regardless of its parameters.
     pub secret: bool,
+    /// True when the method is a namespace function (`gnoblin.<object>.<name>()`), not an
+    /// instance method: the host installs it on the object's class table with no receiver.
+    pub function: bool,
     /// Request parameters, in declaration order.
     pub params: Vec<Field>,
 }

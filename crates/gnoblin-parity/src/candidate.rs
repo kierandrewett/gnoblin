@@ -89,7 +89,7 @@ fn live(detail: impl Into<String>) -> TargetError {
 /// One running session and the Wayland peer the steps keep between them.
 struct CandidateSession {
     peers: Option<Peers>,
-    thread: Option<JoinHandle<Result<(), gnoblin_compositor::Error>>>,
+    thread: Option<JoinHandle<Result<gnoblin_compositor::SessionEnd, gnoblin_compositor::Error>>>,
     stop: StopHandle,
     ipc: PathBuf,
     wayland: PathBuf,
@@ -166,7 +166,7 @@ impl CandidateSession {
             return Ok(());
         };
         match thread.join() {
-            Ok(result) => result,
+            Ok(result) => result.map(|_| ()),
             Err(payload) => std::panic::resume_unwind(payload),
         }
     }

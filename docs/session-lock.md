@@ -45,7 +45,7 @@ These sources send the request:
 
 A request does not prove the session is locked. The call reports whether a
 shell received the request. Read `lock_state` in `gnoblinctl status` or
-`gnoblin.session:status()` to see the real state.
+`gnoblin.session.status()` to see the real state.
 
 If no shell is subscribed, the call fails and says so. `gnoblinctl` exits with
 an error, and `ScreenSaver.Lock` returns the error

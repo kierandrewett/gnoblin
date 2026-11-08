@@ -183,7 +183,9 @@ fn compositor() -> Result<(), Exit> {
     gnoblin_compositor::configure_xwayland_from_environment(&mut config);
     gnoblin_compositor::configure_renderer_from_environment(&mut config);
     match gnoblin_compositor::Compositor::run(config) {
-        Ok(()) => Ok(()),
+        Ok(gnoblin_compositor::SessionEnd::Stopped) => Ok(()),
+        // The guardian reads this code as a logout and ends the session rather than restarting it.
+        Ok(gnoblin_compositor::SessionEnd::LoggedOut) => Err(Exit(gnoblin_compositor::LOGOUT_EXIT_CODE)),
         Err(error) => {
             log::error!("{error}");
             Err(Exit(1))

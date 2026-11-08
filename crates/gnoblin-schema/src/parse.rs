@@ -89,6 +89,10 @@ struct RawMethod {
     since: Option<String>,
     #[serde(default)]
     secret: bool,
+    /// A namespace function: the host reaches it as `gnoblin.<object>.<name>()`, not as a
+    /// method on each instance. The wire serves it as a method of the object all the same.
+    #[serde(default)]
+    function: bool,
     #[serde(default, rename = "param")]
     params: Vec<RawField>,
 }
@@ -289,6 +293,7 @@ fn parse_methods(
             name: raw_method.name.clone(),
             since,
             secret: raw_method.secret,
+            function: raw_method.function,
             params,
         });
     }

@@ -11,6 +11,14 @@ version = "0.2.0"
 name = "session"
 since = "0.2.0"
 
+# The namespace function `gnoblin.session.logout()`. It takes no arguments and returns an
+# operation that finishes with `{accepted = true}` or a refusal. It is a method on the object
+# all the same, so the wire needs no second route for it.
+[[object.method]]
+name = "logout"
+since = "0.2.0"
+function = true
+
 # The IPC version the compositor serves, which is exactly the Gnoblin version.
 [[object.property]]
 name = "version"

@@ -140,6 +140,8 @@ pub(super) struct MemberSpec {
 pub(super) struct MethodSpec {
     /// The schema name.
     pub(super) name: &'static str,
+    /// A namespace function on the class table: called with no receiver, not a method.
+    pub(super) function: bool,
     /// Its parameters, in the order a caller writes them.
     pub(super) params: &'static [MemberSpec],
 }
@@ -460,7 +462,12 @@ fn unknown(owner: &str, key: &str, accepted: &[&str]) -> Error {
 /// Every member name an instance accepts, for a refusal.
 fn members(spec: &ObjectSpec) -> Vec<&'static str> {
     let mut names: Vec<&'static str> = spec.properties.iter().map(|property| property.name).collect();
-    names.extend(spec.methods.iter().map(|method| method.name));
+    names.extend(
+        spec.methods
+            .iter()
+            .filter(|method| !method.function)
+            .map(|method| method.name),
+    );
     names.push("on");
     names.push("alive");
     if is_window(spec) {
@@ -518,6 +525,23 @@ fn install_class<T: Transport + 'static>(
             })?,
         )?;
     }
+    // A namespace function takes no receiver: it is called on the class table and sent to
+    // the live object of this type, so an instance never carries it.
+    for method in spec.methods.iter().filter(|method| method.function) {
+        let shared = Rc::clone(shared);
+        class.set(
+            method.name,
+            lua.create_function(move |lua, arguments: Variadic<Value>| {
+                let id = live_object(&shared, namespace, spec).ok_or_else(|| {
+                    Error::runtime(format!(
+                        "{namespace}.{}.{}() needs the {} object, which the session has not published yet",
+                        spec.name, method.name, spec.name
+                    ))
+                })?;
+                call_method(lua, &shared, spec, id, method, arguments)
+            })?,
+        )?;
+    }
     let meta = lua.create_table()?;
     let owner = format!("{namespace}.{}", spec.name);
     meta.set(
@@ -542,6 +566,16 @@ pub(super) fn holds<T: Transport>(
         .mirror
         .get(&object)
         .is_some_and(|view| view.ty().namespace() == namespace && view.ty().name() == spec.name)
+}
+
+/// The id of the live object of this type in the mirror, if the session has published one.
+fn live_object<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, namespace: &str, spec: &ObjectSpec) -> Option<ObjectId> {
+    shared
+        .borrow()
+        .mirror
+        .iter()
+        .find(|(_, view)| view.ty().namespace() == namespace && view.ty().name() == spec.name)
+        .map(|(id, _)| *id)
 }
 
 /// Install one object type's instance metatable.
@@ -659,7 +693,11 @@ fn index<T: Transport + 'static>(
     if is_window(spec) && key == "process" {
         return window_process(shared, id);
     }
-    if let Some(method) = spec.methods.iter().find(|method| method.name == key) {
+    if let Some(method) = spec
+        .methods
+        .iter()
+        .find(|method| !method.function && method.name == key)
+    {
         let shared = Rc::clone(shared);
         let function = lua.create_function(move |lua, arguments: Variadic<Value>| {
             call_method(lua, &shared, spec, id, method, arguments)

@@ -819,12 +819,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.session.logout"
-doc = "docs/shell-api/session-runtime.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
-
-[[allow]]
 name = "gnoblin.session.poweroff"
 doc = "docs/shell-api/session-runtime.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
