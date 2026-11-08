@@ -2434,6 +2434,15 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 
 **Decided 2026-11-05, on Kieran's direction, and amended the same day.** A deliberate deviation from the plan: Gnoblin serves every `org.freedesktop.impl.portal.*` interface a desktop needs, not only the ones `portals.conf` routes today. Gnoblin core negotiates a UI provider per interface and per request. When no provider handles the request, the built-in portal UI (egui in the compositor) serves it. D14's fail-closed rule for pickers and dialogs is replaced. Fail-closed remains only where a safety rule below demands it.
 
+**Amended 2026-11-08 (lead decision, for Kieran to confirm or change):**
+
+- The backend runs as a `portal` child of the guardian and holds the privileged pair, so it reaches `portal.ui` for consent.
+- It restarts with backoff, and skips with a named log if its binary is missing.
+- A second instance that finds the bus name taken exits quietly (`DO_NOT_QUEUE`) and does not degrade the session.
+- `portals.conf` routes only interfaces `gnoblin.portal` serves. The rest fall through to `gtk;kde`.
+- `Access.AccessDialog` is served through the `portal.ui` consent path.
+- Live evidence and the headless consent limit are in `design/e2e-portals.md`.
+
 #### Layers
 
 - **`xdg-desktop-portal-gnoblin` (relay, optional):** owns the D-Bus names and the per-request `Request` and `Session` object paths, validates the call shape, forwards each call as one typed IPC message (`portal-call`) to the compositor's `portal` module, and returns the reply. It has no policy and no UI, and holds no state beyond open calls. It connects to the compositor IPC like any client, and it is activated by `xdg-desktop-portal`, not by the services role.

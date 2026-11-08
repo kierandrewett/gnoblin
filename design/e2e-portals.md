@@ -1,71 +1,65 @@
 # Portal end-to-end results
 
-Live run on Agent37 (HEAD `d31a8ddd7`, debug build). The gnoblin session ran on a private
-session bus with `xdg-desktop-portal` (1.16) as the frontend and `xdg-desktop-portal-gnoblin`
-as the backend. Harness: `run.sh` in the PortalE2E lane logs, plus `backend_call.py` to call
-the backend directly.
+Live runs on Agent37 with a debug build of `rust-compositor`. The gnoblin session ran on a private
+session bus with `xdg-desktop-portal` 1.16 as the frontend.
+
+The guardian started `xdg-desktop-portal-gnoblin` as its `portal` child. That child holds the
+privileged pair.
+
+The harness is `e2e-live/live.sh guardian` in the PortalRole lane (not committed). Logs:
+`PortalStart-logs/live2.txt`.
 
 ## Results
 
-| Call                                               | Route           | Result                                                                                                                                                 |
-| -------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Settings.ReadAll(["org.freedesktop.appearance"])` | frontend        | PASS with a note: `{}`. The session sets no appearance value, so the backend returns no key. Its direct `Read color-scheme` answers `UnknownProperty`. |
-| `Screenshot.Screenshot`                            | frontend        | FAIL: the frontend never exports `org.freedesktop.portal.Screenshot`.                                                                                  |
-| `Screenshot.Screenshot`                            | backend, direct | Answers synchronously `(1, {})`. Response 1 is cancelled, because consent is refused (F-P2).                                                           |
-| `Secret.RetrieveSecret`                            | frontend        | Not exported. Expected by design: `portals.conf` refuses Secret and `design/keyring.md` says so.                                                       |
-| `FileChooser.OpenFile`                             | frontend        | FAIL: `UnknownMethod`. The frontend does not export FileChooser.                                                                                       |
+| Check                                                      | Route           | Result                                                                                                                                        |
+| ---------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guardian starts the backend as its child                   | session         | PASS. The portal's parent pid is the guardian. The log has `started portal`.                                                                  |
+| Backend owns `org.freedesktop.impl.portal.desktop.gnoblin` | session         | PASS.                                                                                                                                         |
+| Backend killed, guardian restarts it                       | session         | PASS. New pid, same guardian parent, restart after 250 ms (attempt 1 of 5).                                                                   |
+| Backend reaches `portal.ui` with its capability            | backend         | PASS. Two consent requests reached `portal.ui`. No `needs the portal-ui capability` refusal appears.                                          |
+| Frontend exports Screenshot (F-P1a)                        | frontend        | PASS. The frontend routes Screenshot to gnoblin, then provides `org.freedesktop.portal.Screenshot`. The call returns a request handle (rc 0). |
+| Frontend Screenshot returns a result                       | frontend        | NOT PROVEN (F-P2). Consent waits for a UI answer. Headless nobody answers, so the request ends with `response=2` when the caller leaves.      |
+| Direct backend `Screenshot`, `AccessDialog`                | backend, direct | Block until the caller's timeout (rc 124). This is consent waiting for an answer, which is correct.                                           |
+| `FileChooser.OpenFile`                                     | frontend        | Not re-run in this round. Routed to `gtk;kde` (F-P1b), so with no fallback installed it returns `UnknownMethod`.                              |
+| `Secret.RetrieveSecret`                                    | frontend        | Not exported. Expected: `portals.conf` refuses Secret and `design/keyring.md` says so.                                                        |
+
+A first attempt was contaminated by the harness, not the product. Its cleanup matched `gnoblin$`,
+which never matches the guardian (its argv is `gnoblin`).
+
+Stale guardians from earlier runs kept the bus name. The new portals then exited with `another
+portal serves this name`. The cleanup now kills by exact name and by `--role`. The clean run has
+zero such lines.
 
 ## Findings
 
-### F-P1: frontend exports fewer portals than `portals.conf` routes
+### F-P1a: frontend did not export Screenshot (fixed)
 
-- **F-P1a (confirmed live and in source).** Screenshot is routed to gnoblin in `portals.conf:49`,
-  but the frontend does not export it. Upstream xdp 1.16 `src/xdg-desktop-portal.c:288` gates
-  `screenshot_create` on `find_portal_implementation("org.freedesktop.impl.portal.Access") != NULL`.
-  `gnoblin.portal` lists 8 interfaces and no `Access`, so the frontend never exports Screenshot.
-  The frontend log confirms `Using gnoblin.portal for ...Screenshot` and then no export.
-  Fix candidate: add `org.freedesktop.impl.portal.Access` to `gnoblin.portal`, backed by a real
-  implementation or a deliberate `Access` stub, then re-run this scenario.
-- **F-P1b (confirmed live, by design per the `portals.conf` comment).** `gnoblin.portal` omits
-  FileChooser, AppChooser, Print, Wallpaper, Background, Account, Email, Notification, Lockdown
-  and DynamicLauncher, though `portals.conf` routes them to gnoblin. Those fall through, so
-  FileChooser returns `UnknownMethod`. Decide whether each should be listed, or whether the
-  routes should be removed.
+The frontend exports a portal only when its backend lists the `Access` interface. xdp 1.16 gates
+`screenshot_create` on it.
 
-### F-P2: the portal backend never gets a privileged connection, so consent can never succeed (confirmed live)
+`gnoblin.portal` now lists `Access`, backed by `AccessDialog` on the `portal.ui` consent path. Live,
+the frontend routes Access and Screenshot to gnoblin and exports Screenshot.
 
-- Live: the backend asks `portal.ui` for consent and the compositor refuses:
-  `portal.ui needs the portal-ui capability, which this connection does not hold`. The answer
-  is `Refused`, and the Screenshot request ends with response 1.
-- Source: `crates/gnoblin-session/src/supervisor.rs:504` grants a privileged socket only to
-  `runtime` and `services`. `crates/gnoblin-compositor/src/ipc/privileged.rs:90` grants
-  `portal` PortalUi and RetrieveSecret, but no `portal` role is ever started with a socket.
-  `crates/xdg-desktop-portal-gnoblin/src/host.rs:3-5` states that a bus activation has no
-  privileged connection and `NoShell` takes its place.
-- Lua cannot repair this. The runtime role (`privileged.rs`) has no `PortalUi`. The wire
-  `SLOT_CLAIM` is ungated in `server.rs`, but no Lua, CLI or `gnoblinctl` binding calls it. So a
-  Lua `portal.ui` handler cannot claim the slot.
-- **Design call, not fixed here.** Granting `PortalUi` to the backend would let the process that
-  asks for consent also answer it. The consent UI must be a separate process holding `PortalUi`,
-  started by the services role. That changes the supervisor plan and the portal-UI wiring, so it
-  is recorded as a finding and not patched.
+### F-P1b: fall-through interfaces (decided, routes made honest)
 
-### F-P3: Screenshot and FileChooser are unreachable, not wrong
+`portals.conf` routes Wallpaper, Background, FileChooser, AppChooser, Print, Account, Email,
+Notification, Lockdown and DynamicLauncher to `gtk;kde;*`.
 
-With F-P1 and F-P2 in place, Screenshot cannot succeed on this session, and FileChooser is not
-routed. Reachability is the blocker. Behaviour inside the backend is not yet proved past the
-consent refusal.
+Gnoblin does not serve these, and the file says so. The frontend uses the fallback, so a session with
+no fallback installed returns `UnknownMethod`. That is the honest result, because Gnoblin does not
+claim a service it does not run.
 
-## Observations (not verified as bugs)
+### F-P2: consent cannot finish headless (open, expected)
 
-- Appearance: the backend publishes `color-scheme`, `contrast` and `reduced-motion`, but a
-  session with no appearance config returns no key. The spec's default ("no preference") is not
-  synthesised. Confirm whether the compositor should always publish a default.
-- The harness `call.py` screenshot path raised a `dbus` `TypeError` on a non-string argument.
-  The direct `backend_call.py` path is the working one.
+Before this change, the backend was refused: `portal.ui needs the portal-ui capability`. The guardian
+now starts the backend as a privileged child, so it reaches `portal.ui`.
+
+The request then waits for a person to answer the compositor's consent dialog. A headless run has
+nobody to answer, so no picture is taken. Consent is working, and the run is not a success. A real
+success needs one answer from a UI session, which this harness cannot give.
 
 ## Next steps
 
-1. Decide F-P2 (separate consent UI process started by services, or another owner of `PortalUi`).
-2. Decide F-P1a (add `Access` to `gnoblin.portal`) and F-P1b (list or unroute the fall-through interfaces).
-3. Re-run the scenario after each decision.
+1. Run the consent path once in a session with a person or harness answering the dialog, to prove
+   the picture is returned.
+2. Install a `gtk` or `kde` fallback in the test sysroot, to prove FileChooser fall-through end to end.
