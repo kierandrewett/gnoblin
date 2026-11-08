@@ -28,6 +28,7 @@ pub enum Interface {
     Secret,
     OpenUri,
     Trash,
+    Access,
 }
 
 /// Returned by [`Interface::from_name`] for a name outside the contract table.
@@ -44,7 +45,7 @@ impl std::error::Error for UnknownInterface {}
 
 impl Interface {
     /// Every interface in the contract table, in table order.
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::ScreenCast,
         Self::Screenshot,
         Self::PickColor,
@@ -67,6 +68,7 @@ impl Interface {
         Self::Secret,
         Self::OpenUri,
         Self::Trash,
+        Self::Access,
     ];
 
     /// The D-Bus interface suffix (`FileChooser` for `org.freedesktop.impl.portal.FileChooser`).
@@ -95,6 +97,7 @@ impl Interface {
             Self::Secret => "Secret",
             Self::OpenUri => "OpenURI",
             Self::Trash => "Trash",
+            Self::Access => "Access",
         }
     }
 

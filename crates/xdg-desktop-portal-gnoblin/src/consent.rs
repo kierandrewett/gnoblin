@@ -122,6 +122,9 @@ pub enum Interface {
     Inhibit,
     /// `Secret`, which hands an app its per-app secret once the user allows it.
     Secret,
+    /// `Access`, the accessibility consent dialog (`AccessDialog`). It asks the user a
+    /// question and grants no capability, so it carries none.
+    Access,
 }
 
 impl Interface {
@@ -136,6 +139,7 @@ impl Interface {
             Self::GlobalShortcuts => "GlobalShortcuts",
             Self::Inhibit => "Inhibit",
             Self::Secret => "Secret",
+            Self::Access => "Access",
         }
     }
 
@@ -154,7 +158,7 @@ impl Interface {
             Self::ScreenCast | Self::Screenshot => &[PortalCapability::Capture],
             Self::RemoteDesktop | Self::InputCapture => &[PortalCapability::Capture, PortalCapability::InputInjection],
             Self::Secret => &[PortalCapability::Secret],
-            Self::GlobalShortcuts | Self::Inhibit => &[],
+            Self::GlobalShortcuts | Self::Inhibit | Self::Access => &[],
         }
     }
 

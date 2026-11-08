@@ -85,7 +85,8 @@ fn serves(interface: Interface, dialog: &Dialog) -> bool {
                 | Interface::Screenshot
                 | Interface::RemoteDesktop
                 | Interface::InputCapture
-                | Interface::Secret,
+                | Interface::Secret
+                | Interface::Access,
             Dialog::Consent(_),
         ) | (Interface::FileChooser, Dialog::Files(_))
             | (Interface::AppChooser, Dialog::App(_))

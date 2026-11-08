@@ -47,6 +47,7 @@ impl InterfaceContract for Interface {
                 | Self::DynamicLauncher
                 | Self::Background
                 | Self::Secret
+                | Self::Access
         )
     }
 }

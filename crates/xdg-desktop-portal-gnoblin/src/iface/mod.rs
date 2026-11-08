@@ -25,6 +25,8 @@
 //! returns. A stale handle is therefore an error the frontend can act on instead of a
 //! call that reaches a session nobody owns.
 
+/// Access: the accessibility consent dialog, asked of the `portal.ui` provider.
+pub mod access;
 /// Screenshot and ScreenCast: frame reads, gated by a capture grant.
 pub mod capture;
 /// Inhibit: the request handle and monitor sessions that hold an inhibition.
@@ -235,6 +237,13 @@ impl Portal {
             .at(
                 PATH,
                 inhibit::Inhibit::new(self.shared.clone(), self.connection.clone()),
+            )
+            .await
+            .map_err(bus)?;
+        object_server
+            .at(
+                PATH,
+                access::AccessPortal::new(self.shared.clone(), self.connection.clone()),
             )
             .await
             .map_err(bus)?;
@@ -606,11 +615,42 @@ pub async fn await_consent(
     };
     match pending {
         crate::consent::Pending::AlreadyGranted => Ok(ConsentOutcome::Granted),
+        pending => Ok(wait_on(portal, handle, pending).await),
+    }
+}
+
+/// One question that is not a grant, such as the accessibility dialog: asked of the
+/// `portal.ui` provider and waited on the same way as [`await_consent`].
+pub async fn await_question(
+    portal: &Portal,
+    handle: &str,
+    bus_name: &str,
+    path: &str,
+    title: String,
+    message: String,
+    parent_window: &str,
+) -> Result<ConsentOutcome, fdo::Error> {
+    let pending = {
+        let mut shared = portal.lock();
+        let now = shared.now();
+        shared
+            .guard
+            .ask_once(now, bus_name, path, title, message, parent_window)
+            .map_err(refused)?
+    };
+    Ok(wait_on(portal, handle, pending).await)
+}
+
+/// Record the offer under `handle`, wait for its answer, and release the handle, so a
+/// `Close` on the request can reach the wait while it lasts.
+async fn wait_on(portal: &Portal, handle: &str, pending: crate::consent::Pending) -> ConsentOutcome {
+    match pending {
+        crate::consent::Pending::AlreadyGranted => ConsentOutcome::Granted,
         crate::consent::Pending::Asked { request, answered } => {
             portal.handle(handle, Handle::Consent(request));
             let outcome = answered.await.unwrap_or(ConsentOutcome::Left);
             portal.release_handle(handle);
-            Ok(outcome)
+            outcome
         }
     }
 }
