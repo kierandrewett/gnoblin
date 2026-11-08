@@ -11,17 +11,17 @@ The harness is `e2e-live/live.sh guardian` in the PortalRole lane (not committed
 
 ## Results
 
-| Check                                                      | Route           | Result                                                                                                                                        |
-| ---------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Guardian starts the backend as its child                   | session         | PASS. The portal's parent pid is the guardian. The log has `started portal`.                                                                  |
-| Backend owns `org.freedesktop.impl.portal.desktop.gnoblin` | session         | PASS.                                                                                                                                         |
-| Backend killed, guardian restarts it                       | session         | PASS. New pid, same guardian parent, restart after 250 ms (attempt 1 of 5).                                                                   |
-| Backend reaches `portal.ui` with its capability            | backend         | PASS. Two consent requests reached `portal.ui`. No `needs the portal-ui capability` refusal appears.                                          |
-| Frontend exports Screenshot (F-P1a)                        | frontend        | PASS. The frontend routes Screenshot to gnoblin, then provides `org.freedesktop.portal.Screenshot`. The call returns a request handle (rc 0). |
-| Frontend Screenshot returns a result                       | frontend        | NOT PROVEN (F-P2). Consent waits for a UI answer. Headless nobody answers, so the request ends with `response=2` when the caller leaves.      |
-| Direct backend `Screenshot`, `AccessDialog`                | backend, direct | Block until the caller's timeout (rc 124). This is consent waiting for an answer, which is correct.                                           |
-| `FileChooser.OpenFile`                                     | frontend        | Not re-run in this round. Routed to `gtk;kde` (F-P1b), so with no fallback installed it returns `UnknownMethod`.                              |
-| `Secret.RetrieveSecret`                                    | frontend        | Not exported. Expected: `portals.conf` refuses Secret and `design/keyring.md` says so.                                                        |
+| Check                                                      | Route           | Result                                                                                                                                                      |
+| ---------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guardian starts the backend as its child                   | session         | PASS. The portal's parent pid is the guardian. The log has `started portal`.                                                                                |
+| Backend owns `org.freedesktop.impl.portal.desktop.gnoblin` | session         | PASS.                                                                                                                                                       |
+| Backend killed, guardian restarts it                       | session         | PASS. New pid, same guardian parent, restart after 250 ms (attempt 1 of 5).                                                                                 |
+| Backend reaches `portal.ui` with its capability            | backend         | PASS. Two consent requests reached `portal.ui`. No `needs the portal-ui capability` refusal appears.                                                        |
+| Frontend exports Screenshot (F-P1a)                        | frontend        | PASS. The frontend routes Screenshot to gnoblin, then provides `org.freedesktop.portal.Screenshot`. The call returns a request handle (rc 0).               |
+| Frontend Screenshot returns a result                       | frontend        | PARTIAL (F-P2). Request 1: dialog drawn, Escape gives `response=1`, dialog gone, vanished caller tears it down. Request 2 is refused with no dialog (F-P2). |
+| Direct backend `Screenshot`, `AccessDialog`                | backend, direct | Block until the caller's timeout (rc 124). This is consent waiting for an answer, which is correct.                                                         |
+| `FileChooser.OpenFile`                                     | frontend        | Not re-run in this round. Routed to `gtk;kde` (F-P1b), so with no fallback installed it returns `UnknownMethod`.                                            |
+| `Secret.RetrieveSecret`                                    | frontend        | Not exported. Expected: `portals.conf` refuses Secret and `design/keyring.md` says so.                                                                      |
 
 A first attempt was contaminated by the harness, not the product. Its cleanup matched `gnoblin$`,
 which never matches the guardian (its argv is `gnoblin`).
@@ -49,14 +49,28 @@ Gnoblin does not serve these, and the file says so. The frontend uses the fallba
 no fallback installed returns `UnknownMethod`. That is the honest result, because Gnoblin does not
 claim a service it does not run.
 
-### F-P2: consent cannot finish headless (open, expected)
+### F-P2: the second request from an unsandboxed caller is refused with no dialog (open)
 
-Before this change, the backend was refused: `portal.ui needs the portal-ui capability`. The guardian
-now starts the backend as a privileged child, so it reaches `portal.ui`.
+Run 8 on a fresh instance. `wtype` returned 0 for every key.
 
-The request then waits for a person to answer the compositor's consent dialog. A headless run has
-nobody to answer, so no picture is taken. Consent is working, and the run is not a success. A real
-success needs one answer from a UI session, which this harness cannot give.
+- Pass: request 1 draws the consent dialog. Escape answers it with `response=1` (`a consent answer arrived outcome=Refused`), and the dialog closes. A caller that vanishes tears its dialog down. The backend stays up with no restart.
+- Fail: request 2, from a second app, gets `response=2` at once with `the user refused this request`. No `asked portal.ui for consent` line follows, so no dialog is offered.
+
+Cause, confirmed in code. `ConsentState::ask` (`consent.rs`) keys the authority requester by the pair:
+
+- `bus_name` and `app_id`, which is the key `ask()` passes to `gate()`.
+- `Refusal::Refused` comes only from `gate()` at consent.rs:711, when that requester's grant is `Consent::Refused`.
+- A new caller gets `NoGrant` and prompts. So request 2 maps to request 1's requester.
+
+- `bus_name` is `sender(header)` (`iface/mod.rs`). [INFERENCE] From the requester mapping, the name is the same for both calls. The likely sender is the frontend's connection, but this is not logged; confirm by logging the sender before fixing.
+- `app_id` is `""` for both. The frontend passes it as empty for unsandboxed apps, and the log shows `app=`.
+- So the backend has no per-app identity for an unsandboxed caller. The 120 s refusal cache (`CONSENT_LIFETIME`, `main.rs`) is meant to hold for one caller. Here it holds for every unsandboxed caller at once.
+
+The fix is a design decision, not a harness change: how an unsandboxed caller is identified. The design says identity comes from compositor attribution by PID (design/rust-compositor.md, about line 2538). Not implemented here, because it needs a choice of the attribution source. Escalated to Main.
+
+Still open: two queued requests answered in order, a Return/Tab+Return Allow with PNG, and the vanished-caller/teardown check after a grant. The last is partly proven (vanished caller tears down). Allow with PNG is blocked by this identity bug.
+
+FileChooser and the fallback sysroot are unchanged.
 
 ## Next steps
 
