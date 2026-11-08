@@ -45,3 +45,23 @@ busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.
 ```
 
 A successful method reply means the compositor confirmed the session is locked. Check session lock state through the [Lua runtime API](/shell-api/session-runtime) to read the same state from the desktop side.
+
+## GNOME name
+
+The service also serves `org.gnome.ScreenSaver` at `/org/gnome/ScreenSaver` on the session bus. Both names answer from the same lock and idle state and share one inhibit table, so a cookie from `Inhibit` on either name is released by `UnInhibit` on either name.
+
+| Member               | Arguments                               | Result            | Errors and behavior                                                                                        |
+| -------------------- | --------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Inhibit`            | `application: string`, `reason: string` | `cookie: uint32`  | Same as the freedesktop name.                                                                              |
+| `UnInhibit`          | `cookie: uint32`                        | None              | Same as the freedesktop name.                                                                              |
+| `GetActive`          | None                                    | `active: boolean` | Same as the freedesktop name.                                                                              |
+| `SetActive`          | `active: boolean`                       | None              | `true` requests a lock and succeeds once confirmed; a refused lock is an error. `false` is `NotSupported`. |
+| `Lock`               | None                                    | None              | Same as the freedesktop name.                                                                              |
+| `GetActiveTime`      | None                                    | `seconds: uint32` | Same as the freedesktop name.                                                                              |
+| `GetSessionIdleTime` | None                                    | `seconds: uint32` | Same as the freedesktop name.                                                                              |
+
+On this name, `ActiveChanged` is emitted from `/org/gnome/ScreenSaver`, once for each change of the lock state.
+
+`SimulateUserActivity` is not on this name. Call it on `org.freedesktop.ScreenSaver`, where it is refused with `NotSupported`.
+
+The name is requested without queueing. When another owner holds `org.gnome.ScreenSaver`, the service logs the owner and does not take the name, and the freedesktop name is served as usual. The refusal is named in the service log.
