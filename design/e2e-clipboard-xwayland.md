@@ -117,8 +117,11 @@ Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
   caller). A fix is to report the refusal back to the runtime when the first boot
   has no store, or to re-check Xwayland settings after the first commit.
 - Status: the server now starts after the first commit that enables it
-  (`ecc7d6e8e`). The empty-store boot still logs the refusal above before any
-  commit, although no config has asked for X11 yet; that line is misleading.
+  (`ecc7d6e8e`). The startup `apply` (`xwayland.rs:55-75`) warns only for a value
+  the section states that cannot be run (`settings_for`, `xwayland.rs:80-92`).
+  With no section and a binary on `PATH`, X11 starts with the defaults and nothing
+  is logged. So the line at log line 26 is not a request for X11; it is the
+  refusal path, and which section caused it is `[INFERENCE]`, not re-traced.
   Fresh-store probe on Agent37: Xwayland ready at display 0 after commit 1, and
   a raw X11 setup request to `:0` was accepted.
 
