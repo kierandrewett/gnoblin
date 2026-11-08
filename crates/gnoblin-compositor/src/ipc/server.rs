@@ -1259,7 +1259,7 @@ impl Dispatcher {
                 // The X11 session follows the accepted document. An unchanged session is left running; a
                 // changed one restarts the server only when no X11 client is connected, else it is refused.
                 if let Some(desired) = xwayland
-                    && let Err(message) = self.xwayland.apply(&self.control, desired)
+                    && let Err(message) = self.xwayland.apply(&self.control, revision, desired)
                 {
                     log::warn!(area = "xwayland", %message, "the accepted xwayland settings were not applied; the running X11 session stays");
                 }
@@ -1288,7 +1288,8 @@ impl Dispatcher {
                 ));
             }
             Err(reason) => {
-                log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")
+                log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values");
+                self.xwayland.report(revision);
             }
         }
         log::info!(

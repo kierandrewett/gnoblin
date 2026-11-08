@@ -404,7 +404,7 @@ impl Compositor {
             config.privileged,
             config.guardian,
             &config.extensions,
-            xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory),
+            xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory, Arc::clone(&reporter)),
         )
         .map_err(Error::Ipc)?;
 

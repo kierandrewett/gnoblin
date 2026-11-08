@@ -773,6 +773,17 @@ fn supervise_child(
                     EventKind::ConfigRejected { revision, diagnostic },
                 )));
             }
+            report::Line::X11 { revision, pending } => {
+                let _ = events.send(LoopWake::Event(Event::new(
+                    tick(),
+                    EventKind::X11Settled {
+                        child,
+                        generation,
+                        revision,
+                        pending,
+                    },
+                )));
+            }
             report::Line::Unknown => {}
         }
     }

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::x11::{Restart, Start};
-use gnoblin_client::Reporter;
+use gnoblin_client::{Reporter, report};
 use gnoblin_config::{Config, SearchPaths, Store, Xwayland};
 
 use gnoblin_wayland::{ControlHandle, XwaylandSession};
@@ -197,12 +197,24 @@ pub(crate) struct XwaylandReconciler {
     path: Option<OsString>,
     /// Builds the session for a set of settings.
     factory: Factory,
+    /// Reports the X11 state to the guardian for each accepted revision.
+    reporter: Arc<Mutex<Reporter>>,
 }
 
 impl XwaylandReconciler {
     /// A reconciler whose loop was started with `applied`.
-    pub(crate) fn new(applied: Option<Settings>, path: Option<OsString>, factory: Factory) -> Self {
-        Self { applied, path, factory }
+    pub(crate) fn new(
+        applied: Option<Settings>,
+        path: Option<OsString>,
+        factory: Factory,
+        reporter: Arc<Mutex<Reporter>>,
+    ) -> Self {
+        Self {
+            applied,
+            path,
+            factory,
+            reporter,
+        }
     }
 
     /// The X11 settings `config` asks for: [`None`] when no binary is on the search path.
@@ -214,21 +226,51 @@ impl XwaylandReconciler {
         settings_for(config.xwayland.as_ref(), self.path.as_deref())
     }
 
-    /// Makes the loop run `desired`: a changed set starts a new session, and `None` stops the
-    /// running one. Unchanged settings do nothing.
+    /// Makes the loop run `desired` for configuration `revision`: a changed set starts a new
+    /// session, and `None` stops the running one. Unchanged settings do nothing. The X11 state
+    /// is reported either way, so an application waiting for `DISPLAY` knows whether to keep
+    /// waiting for this revision.
     ///
     /// # Errors
     ///
     /// The reason the loop refused the change, which leaves the running session as it was.
-    pub(crate) fn apply(&mut self, control: &ControlHandle, desired: Option<Settings>) -> Result<(), String> {
-        if desired == self.applied {
-            return Ok(());
-        }
-        let session = (self.factory)(desired.clone());
-        control.set_xwayland(session)?;
-        self.applied = desired;
-        Ok(())
+    pub(crate) fn apply(
+        &mut self,
+        control: &ControlHandle,
+        revision: u64,
+        desired: Option<Settings>,
+    ) -> Result<(), String> {
+        let result = if desired == self.applied {
+            Ok(())
+        } else {
+            let session = (self.factory)(desired.clone());
+            match control.set_xwayland(session) {
+                Ok(()) => {
+                    self.applied = desired;
+                    Ok(())
+                }
+                Err(message) => Err(message),
+            }
+        };
+        self.report(revision);
+        result
     }
+
+    /// Reports the X11 state still in force for `revision`, for a configuration that was
+    /// accepted without its X11 settings being applied.
+    pub(crate) fn report(&self, revision: u64) {
+        let line = x11_report(self.applied.as_ref(), revision);
+        self.reporter
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .write(&line);
+    }
+}
+
+/// The X11 state report for `revision`: `pending` while the running session is configured,
+/// which publishes `DISPLAY` once its server is ready, and `off` when there is no X11 session.
+fn x11_report(applied: Option<&Settings>, revision: u64) -> String {
+    report::x11(revision, applied.is_some())
 }
 
 #[cfg(test)]
@@ -340,5 +382,12 @@ mod tests {
         let mut config = SessionConfig::default();
         apply(&mut config, None, None);
         assert_eq!(config.xwayland, None);
+    }
+
+    #[test]
+    fn the_x11_report_names_the_revision_and_whether_x11_is_configured() {
+        let settings = Settings::default();
+        assert_eq!(x11_report(Some(&settings), 7), "x11 7 pending\n");
+        assert_eq!(x11_report(None, 7), "x11 7 off\n");
     }
 }

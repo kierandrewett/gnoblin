@@ -37,9 +37,9 @@ X11 client is connected. Otherwise the change is refused, the notice names the
 setting, and the server keeps its previous settings. Disabling X11 stops the
 server once its last client has gone.
 
-A child whose autostart entry the commit adds starts when that commit is
-accepted, which can be before the server is ready, so it gets no `DISPLAY`. An
-entry added by a later commit, after the server is ready, gets `DISPLAY`.
+A child whose autostart entry the commit adds waits up to 5 seconds for `DISPLAY`
+while the server starts, then starts without it and the log says so. An entry added by
+a later commit, after the server is ready, gets `DISPLAY` straight away.
 
 Gnoblin exposes the effective scale to X11 clients through XSettings and the
 `Xft.dpi` resource. If another XSettings manager already owns the XWayland

@@ -159,6 +159,28 @@ fn up() -> Guardian {
     guardian
 }
 
+/// A guardian whose session is up, but whose compositor published no DISPLAY: its X server is
+/// still starting, or there is none.
+fn up_without_display() -> Guardian {
+    let mut guardian = guardian();
+    guardian.apply(at(0, EventKind::Start));
+    let wayland = vec![("WAYLAND_DISPLAY".to_owned(), "wayland-1".to_owned())];
+    let compositor = generation(&guardian, COMPOSITOR);
+    guardian.apply(at(
+        1,
+        EventKind::Ready {
+            child: COMPOSITOR,
+            generation: compositor,
+            environment: wayland,
+        },
+    ));
+    ready(&mut guardian, SERVICES, 2);
+    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, FRONT, 4);
+    assert_eq!(guardian.session(), SessionState::Up);
+    guardian
+}
+
 /// Stop the session the way a cooperative caller does: report every signalled
 /// child's exit, and tick between ranks.
 fn stop_all(guardian: &mut Guardian) {
@@ -1070,6 +1092,7 @@ fn a_pending_application_the_configuration_drops_is_forgotten() {
 #[test]
 fn a_new_autostart_entry_gets_a_fresh_child_while_the_session_is_up() {
     let mut guardian = up();
+    x11_state(&mut guardian, 50, 2, false);
     let effects = guardian.apply(at(
         100,
         EventKind::ConfigAccepted {
@@ -1083,6 +1106,167 @@ fn a_new_autostart_entry_gets_a_fresh_child_while_the_session_is_up() {
     let added = ChildId::new(7);
     assert_eq!(guardian.status(added).expect("added child").name, "third.desktop");
     assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+/// The X11 state the compositor reports for configuration `revision`.
+fn x11_state(guardian: &mut Guardian, now: u64, revision: u64, pending: bool) -> Vec<crate::Effect> {
+    guardian.apply(at(
+        now,
+        EventKind::X11Settled {
+            child: COMPOSITOR,
+            generation: generation(guardian, COMPOSITOR),
+            revision,
+            pending,
+        },
+    ))
+}
+
+/// Accept revision `revision`, which enables one autostart application named `name`.
+fn accept_autostart(guardian: &mut Guardian, now: u64, revision: u64, name: &str) -> Vec<crate::Effect> {
+    guardian.apply(at(
+        now,
+        EventKind::ConfigAccepted {
+            revision,
+            autostart: vec![crate::AutostartEntry {
+                name: name.to_owned(),
+                command: vec![name.to_owned()],
+            }],
+        },
+    ))
+}
+
+#[test]
+fn an_autostart_application_waits_while_the_compositor_x11_server_is_pending() {
+    // Failure mode: an application that needs DISPLAY starts before the X server exists and
+    // cannot connect to it.
+    let mut guardian = up_without_display();
+    let _ = actions(x11_state(&mut guardian, 10, 2, true));
+    let added = ChildId::new(7);
+    let effects = accept_autostart(&mut guardian, 20, 2, "third.desktop");
+    assert!(
+        !spawns(effects).iter().any(|(child, _)| *child == added),
+        "the application waits for DISPLAY"
+    );
+    assert_eq!(state(&guardian, added), ChildState::Pending);
+    let effects = tick(&mut guardian, 4000);
+    assert!(
+        !spawns(effects).iter().any(|(child, _)| *child == added),
+        "still inside the 5 s wait"
+    );
+}
+
+#[test]
+fn a_display_published_while_an_application_waits_starts_it() {
+    let mut guardian = up_without_display();
+    let _ = actions(x11_state(&mut guardian, 10, 2, true));
+    let added = ChildId::new(7);
+    let _ = actions(accept_autostart(&mut guardian, 20, 2, "third.desktop"));
+    let effects = published_display(&mut guardian, 30, x11_display(":1"));
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+    assert_eq!(state(&guardian, added), ChildState::Running);
+}
+
+#[test]
+fn an_x11_server_that_settles_without_a_display_starts_the_application() {
+    // The compositor's X server failed or was disabled after it was pending: nothing will
+    // publish DISPLAY, so the application must not wait for it.
+    let mut guardian = up_without_display();
+    let _ = actions(x11_state(&mut guardian, 10, 2, true));
+    let added = ChildId::new(7);
+    let _ = actions(accept_autostart(&mut guardian, 20, 2, "third.desktop"));
+    let effects = x11_state(&mut guardian, 30, 2, false);
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+#[test]
+fn a_report_for_an_older_revision_does_not_release_the_wait() {
+    let mut guardian = up_without_display();
+    let _ = actions(x11_state(&mut guardian, 10, 1, false));
+    let added = ChildId::new(7);
+    let effects = accept_autostart(&mut guardian, 20, 2, "third.desktop");
+    assert!(
+        !spawns(effects).iter().any(|(child, _)| *child == added),
+        "revision 1 says nothing of revision 2"
+    );
+    let effects = x11_state(&mut guardian, 30, 2, false);
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+#[test]
+fn an_x11_report_from_another_child_does_not_release_the_wait() {
+    let mut guardian = up_without_display();
+    let _ = actions(x11_state(&mut guardian, 10, 2, true));
+    let added = ChildId::new(7);
+    let _ = actions(accept_autostart(&mut guardian, 20, 2, "third.desktop"));
+    let effects = guardian.apply(at(
+        30,
+        EventKind::X11Settled {
+            child: SERVICES,
+            generation: generation(&guardian, SERVICES),
+            revision: 2,
+            pending: false,
+        },
+    ));
+    assert!(!spawns(effects).iter().any(|(child, _)| *child == added));
+    assert_eq!(state(&guardian, added), ChildState::Pending);
+}
+
+#[test]
+fn an_application_waits_for_a_report_of_its_own_revision_then_starts_without_display_after_five_seconds() {
+    // Failure mode: the compositor never reports, so the application would wait forever. The
+    // wait is named and bounded, and the start is logged as one without DISPLAY.
+    let mut guardian = up_without_display();
+    let added = ChildId::new(7);
+    let effects = accept_autostart(&mut guardian, 100, 2, "third.desktop");
+    assert!(!spawns(effects).iter().any(|(child, _)| *child == added));
+    let effects = tick(&mut guardian, 5099);
+    assert!(
+        !spawns(effects).iter().any(|(child, _)| *child == added),
+        "the wait is 5 s"
+    );
+    let effects = tick(&mut guardian, 5100);
+    assert_eq!(level_of(&effects, "without DISPLAY"), Some(Level::Warning));
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+#[test]
+fn an_application_is_not_held_when_the_x11_server_is_off() {
+    let mut guardian = up();
+    let _ = actions(x11_state(&mut guardian, 10, 2, false));
+    let added = ChildId::new(7);
+    let effects = accept_autostart(&mut guardian, 20, 2, "third.desktop");
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+#[test]
+fn an_application_is_not_held_when_display_is_already_published() {
+    let mut guardian = up();
+    let _ = actions(published_display(&mut guardian, 10, x11_display(":1")));
+    let _ = actions(x11_state(&mut guardian, 15, 2, true));
+    let added = ChildId::new(7);
+    let effects = accept_autostart(&mut guardian, 20, 2, "third.desktop");
+    assert!(spawns(effects).iter().any(|(child, _)| *child == added));
+}
+
+#[test]
+fn a_held_application_the_configuration_drops_is_never_started() {
+    let mut guardian = up_without_display();
+    let _ = actions(x11_state(&mut guardian, 10, 2, true));
+    let added = ChildId::new(7);
+    let _ = actions(accept_autostart(&mut guardian, 20, 2, "third.desktop"));
+    let _ = actions(guardian.apply(at(
+        30,
+        EventKind::ConfigAccepted {
+            revision: 3,
+            autostart: Vec::new(),
+        },
+    )));
+    assert_eq!(state(&guardian, added), ChildState::Stopped);
+    let effects = tick(&mut guardian, 10_000);
+    assert!(
+        !spawns(effects).iter().any(|(child, _)| *child == added),
+        "a dropped application never starts"
+    );
 }
 
 #[test]

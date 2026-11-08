@@ -60,6 +60,19 @@ pub enum EventKind {
         /// The variables that changed, in its own order.
         environment: Vec<(String, String)>,
     },
+    /// The compositor's X11 state for one configuration revision. `pending` is true while its
+    /// X server is still starting, so an autostart application that needs `DISPLAY` waits.
+    /// Only the compositor reports it; any other child's report is ignored.
+    X11Settled {
+        /// Which child reported.
+        child: ChildId,
+        /// Which of its instances reported; a stale one is ignored.
+        generation: u64,
+        /// The configuration revision the state belongs to.
+        revision: u64,
+        /// Whether the X server is still starting.
+        pending: bool,
+    },
     /// A child's process ended.
     Exited {
         /// Which child.

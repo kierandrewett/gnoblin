@@ -54,6 +54,10 @@ pub const CONFIG_REJECTED: &str = "config-rejected";
 /// The first word of an autostart report, one per enabled entry of an accepted revision.
 pub const AUTOSTART: &str = "autostart";
 
+/// The first word of an X11 report: `pending` while the compositor runs an X server for the
+/// revision, which publishes `DISPLAY` once it is ready, or `off` when there is none.
+pub const X11: &str = "x11";
+
 /// One line of a child's report stream.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Line {
@@ -96,6 +100,14 @@ pub enum Line {
         /// The program and its arguments, run directly without a shell.
         command: Vec<String>,
     },
+    /// The compositor's X11 state for configuration `revision`: `pending` while it runs an X
+    /// server, so an autostart application that needs `DISPLAY` waits for it, `off` otherwise.
+    X11 {
+        /// The revision the report answers.
+        revision: u64,
+        /// Whether the X server is still starting.
+        pending: bool,
+    },
     /// A line this build does not know, which a later Gnoblin may have added.
     Unknown,
 }
@@ -129,6 +141,12 @@ fn environment_block(word: &str, environment: &[(String, String)]) -> String {
     }
     report.push('\n');
     report
+}
+
+/// The report of the compositor's X11 state for configuration `revision`.
+pub fn x11(revision: u64, pending: bool) -> String {
+    let state = if pending { "pending" } else { "off" };
+    format!("{X11} {revision} {state}\n")
 }
 
 /// The report that a configuration revision was accepted.
@@ -172,6 +190,20 @@ pub fn parse(line: &str) -> Line {
     let word = words.next().unwrap_or_default();
     let rest = words.next().unwrap_or_default();
     match word {
+        X11 => match rest.trim().split_once(' ') {
+            Some((revision, state)) => match (revision.parse(), state) {
+                (Ok(revision), "pending") => Line::X11 {
+                    revision,
+                    pending: true,
+                },
+                (Ok(revision), "off") => Line::X11 {
+                    revision,
+                    pending: false,
+                },
+                _ => Line::Unknown,
+            },
+            None => Line::Unknown,
+        },
         CONFIG_ACCEPTED => match rest.trim().parse() {
             Ok(revision) => Line::ConfigAccepted { revision },
             Err(_) => Line::Unknown,
@@ -257,7 +289,7 @@ fn parse_autostart(rest: &str) -> Option<Line> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Line, autostart, config_accepted, config_rejected, display, parse, ready};
+    use super::{Line, autostart, config_accepted, config_rejected, display, parse, ready, x11};
 
     #[test]
     fn a_ready_report_round_trips_its_environment() {
@@ -373,6 +405,34 @@ mod tests {
             "an escape must be hex"
         );
         assert_eq!(parse("autostart 3 panel %FF"), Line::Unknown, "arguments must be UTF-8");
+    }
+
+    #[test]
+    fn an_x11_report_round_trips_and_a_malformed_one_is_unknown() {
+        // The failure this prevents: an autostart application starts before the X server it
+        // needs exists, because the guardian never learns the server is still pending.
+        assert_eq!(x11(4, true), "x11 4 pending\n");
+        assert_eq!(
+            parse(&x11(4, true)),
+            Line::X11 {
+                revision: 4,
+                pending: true
+            }
+        );
+        assert_eq!(
+            parse(&x11(5, false)),
+            Line::X11 {
+                revision: 5,
+                pending: false
+            }
+        );
+        assert_eq!(parse("x11 4"), Line::Unknown, "a report needs its state");
+        assert_eq!(
+            parse("x11 4 starting"),
+            Line::Unknown,
+            "an unknown state is not pending"
+        );
+        assert_eq!(parse("x11 four pending"), Line::Unknown, "the revision must parse");
     }
 
     #[test]

@@ -15,6 +15,9 @@ use crate::recovery::{ConfigStatus, Recovery};
 use crate::state::{ChildState, ChildStatus, SessionState, StopCause, StopReason};
 use crate::time::{Tick, secs};
 
+/// How long an autostart application waits for DISPLAY, in milliseconds, before it starts without one.
+const DISPLAY_WAIT: u64 = 5_000;
+
 /// How the guardian behaves.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Rules {
@@ -74,6 +77,8 @@ struct Child {
     last_exit: Option<ExitStatus>,
     /// Why the child is `Stopping`, and whether it has been killed.
     stop: Option<StopPending>,
+    /// When a held autostart application that waits for DISPLAY starts without one.
+    display_deadline: Option<Tick>,
 }
 
 impl Child {
@@ -89,6 +94,7 @@ impl Child {
             restarts: 0,
             last_exit: None,
             stop: None,
+            display_deadline: None,
         }
     }
 
@@ -134,6 +140,11 @@ pub struct Guardian {
     /// Whether this session ever became usable, which decides whether its end
     /// counts as a failed start.
     reached_up: bool,
+    /// The X server state the compositor last reported, as `(revision, pending)`, for its
+    /// current instance.
+    x11: Option<(u64, bool)>,
+    /// The configuration revision the session accepted last.
+    accepted_revision: Option<u64>,
     /// The newest time any event carried.
     now: Tick,
     /// The identifier the next autostart child added by a configuration takes.
@@ -171,6 +182,8 @@ impl Guardian {
             stop: None,
             stop_reason: None,
             reached_up: false,
+            x11: None,
+            accepted_revision: None,
             now: Tick::ZERO,
             next_id,
         }
@@ -202,7 +215,13 @@ impl Guardian {
                 child,
                 generation,
                 environment,
-            } => self.display_published(child, generation, environment, &mut effects),
+            } => self.display_published(child, generation, environment, now, &mut effects),
+            EventKind::X11Settled {
+                child,
+                generation,
+                revision,
+                pending,
+            } => self.x11_settled(child, generation, revision, pending, now, &mut effects),
             EventKind::Exited {
                 child,
                 generation,
@@ -371,7 +390,7 @@ impl Guardian {
                 // child waiting for its restart is not usable.
                 ChildState::Starting | ChildState::Stopping | ChildState::Backoff => return,
                 ChildState::Pending => {
-                    self.spawn(index, now, effects);
+                    self.spawn_or_hold(index, now, effects);
                     if self.children[index].state == ChildState::Starting {
                         return;
                     }
@@ -409,6 +428,10 @@ impl Guardian {
 
     fn spawn(&mut self, index: usize, now: Tick, effects: &mut Vec<Effect>) {
         let environment = self.environment();
+        if self.children[index].spec.kind == ChildKind::Compositor {
+            // A new compositor instance has not reported its X server yet.
+            self.x11 = None;
+        }
         let child = &mut self.children[index];
         child.generation += 1;
         let needs_ready = child.spec.ready_within.is_some();
@@ -421,12 +444,100 @@ impl Guardian {
         child.ready_at = if needs_ready { None } else { Some(now) };
         child.restart_at = None;
         child.stop = None;
+        child.display_deadline = None;
         effects.push(Effect::Spawn {
             child: child.spec.id,
             generation: child.generation,
             name: child.spec.name.clone(),
             environment,
         });
+    }
+
+    /// Spawn a child, or hold an autostart application that needs a display until the compositor
+    /// has settled its X server for the accepted configuration. The hold is bounded by
+    /// `DISPLAY_WAIT`; `tick` starts a held application when it runs out.
+    fn spawn_or_hold(&mut self, index: usize, now: Tick, effects: &mut Vec<Effect>) {
+        if self.children[index].spec.kind != ChildKind::Autostart || !self.display_pending() {
+            self.spawn(index, now, effects);
+            return;
+        }
+        self.children[index]
+            .display_deadline
+            .get_or_insert(now.saturating_add(DISPLAY_WAIT));
+    }
+
+    /// Whether a display is still expected for the accepted configuration: none has been
+    /// published, and the compositor's X server for that revision has not settled. Before any
+    /// configuration is accepted nothing waits.
+    fn display_pending(&self) -> bool {
+        let Some(accepted) = self.accepted_revision else {
+            return false;
+        };
+        if self.published.iter().any(|(key, _)| key == "DISPLAY") {
+            return false;
+        }
+        match self.x11 {
+            Some((revision, pending)) if revision == accepted => pending,
+            _ => true,
+        }
+    }
+
+    /// Start every held application once no display is pending.
+    fn release_display_waits(&mut self, now: Tick, effects: &mut Vec<Effect>) {
+        if self.display_pending()
+            || !matches!(
+                self.session,
+                SessionState::Starting | SessionState::Up | SessionState::Degraded
+            )
+        {
+            return;
+        }
+        for index in 0..self.children.len() {
+            let child = &self.children[index];
+            if child.state == ChildState::Pending && child.display_deadline.is_some() {
+                self.spawn(index, now, effects);
+            }
+        }
+    }
+
+    /// Record the X server state the compositor reports for one configuration revision, and start
+    /// the applications that waited for it.
+    fn x11_settled(
+        &mut self,
+        child: ChildId,
+        generation: u64,
+        revision: u64,
+        pending: bool,
+        now: Tick,
+        effects: &mut Vec<Effect>,
+    ) {
+        let Some(index) = self.index(child) else {
+            note(
+                Level::Warning,
+                format!("[guardian] X11 state from unknown child {}; ignored", child.get()),
+                effects,
+            );
+            return;
+        };
+        let name = self.children[index].spec.name.clone();
+        if self.children[index].spec.kind != ChildKind::Compositor {
+            note(
+                Level::Warning,
+                format!("[guardian] {name} reported X11 state; only the compositor may; ignored"),
+                effects,
+            );
+            return;
+        }
+        if generation != self.children[index].generation {
+            note(
+                Level::Debug,
+                format!("[guardian] X11 state from an earlier {name} instance ignored"),
+                effects,
+            );
+            return;
+        }
+        self.x11 = Some((revision, pending));
+        self.release_display_waits(now, effects);
     }
 
     fn ready(
@@ -527,6 +638,7 @@ impl Guardian {
         }
         self.published = published;
         self.export_published(effects);
+        self.release_display_waits(now, effects);
     }
 
     /// Take a display the compositor published after its ready report, which it
@@ -537,6 +649,7 @@ impl Guardian {
         child: ChildId,
         generation: u64,
         environment: Vec<(String, String)>,
+        now: Tick,
         effects: &mut Vec<Effect>,
     ) {
         let Some(index) = self.index(child) else {
@@ -595,6 +708,7 @@ impl Guardian {
             effects,
         );
         self.export_published(effects);
+        self.release_display_waits(now, effects);
     }
 
     /// Export the published display to the session and to the D-Bus activation
@@ -800,6 +914,28 @@ impl Guardian {
                 return;
             }
             SessionState::Starting | SessionState::Up | SessionState::Degraded => {}
+        }
+
+        // An application held for a display that never came starts without one, and the log says so.
+        let mut expired = false;
+        for index in 0..self.children.len() {
+            let child = &self.children[index];
+            if child.state != ChildState::Pending || !child.display_deadline.is_some_and(|deadline| deadline <= now) {
+                continue;
+            }
+            note(
+                Level::Warning,
+                format!(
+                    "[guardian] {} starts without DISPLAY: none was published within {} ms",
+                    child.spec.name, DISPLAY_WAIT
+                ),
+                effects,
+            );
+            self.spawn(index, now, effects);
+            expired = true;
+        }
+        if expired {
+            self.ladder(now, effects);
         }
 
         let grace = self.rules.stop_grace;
@@ -1147,6 +1283,7 @@ impl Guardian {
             );
         }
         self.persist(effects);
+        self.accepted_revision = Some(revision);
         self.reconcile_autostart(&autostart, now, effects);
     }
 
@@ -1197,7 +1334,7 @@ impl Guardian {
             for index in 0..self.children.len() {
                 let child = &self.children[index];
                 if child.state == ChildState::Pending && child.spec.kind == ChildKind::Autostart {
-                    self.spawn(index, now, effects);
+                    self.spawn_or_hold(index, now, effects);
                 }
             }
         } else {
@@ -1214,6 +1351,7 @@ impl Guardian {
             // Never spawned, or waiting for a restart: there is no process to stop.
             child.state = ChildState::Stopped;
             child.restart_at = None;
+            child.display_deadline = None;
             note(
                 Level::Info,
                 format!("[guardian] {} removed by the configuration", child.spec.name),

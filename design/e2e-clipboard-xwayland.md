@@ -138,12 +138,11 @@ Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
 - The guardian publishes `DISPLAY` only after the server reports ready
   (`522b40f5a`). A child started after that gets it: a child added by the second
   commit got `DISPLAY=:0` in the fresh-store probe on Agent37.
-- An autostart entry added by the commit that enables X11 starts at accept time,
-  before ready, and gets no `DISPLAY`. `docs/config/configure/xwayland.md` says so.
-  Not fixed: making that entry wait for ready is a separate change.
-- Not checked: `gnoblin.process` children (`crates/gnoblin-lua/src/process.rs:480`)
-  get only their spec environment on top of the runtime's own, so they may lack
-  `DISPLAY`.
+- An autostart entry added by the commit that enables X11 now waits for the
+  server's `DISPLAY`: the compositor reports `x11 <revision> pending|off` for each
+  accepted revision, and the guardian holds the entry up to 5 seconds, then starts
+  it without `DISPLAY` with a warning. `docs/config/configure/xwayland.md` says so.
+- `gnoblin.process` children get `DISPLAY` from the session environment (step b).
 
 ## Not run
 
