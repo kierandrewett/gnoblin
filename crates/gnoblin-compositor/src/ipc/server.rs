@@ -697,6 +697,34 @@ impl Connection {
     }
 }
 
+/// When the dispatcher next owes a deadline sweep. Events that keep arriving faster than the
+/// tick do not postpone it: a sweep is due once a whole tick has passed since the last one.
+struct DeadlineClock {
+    next: Instant,
+}
+
+impl DeadlineClock {
+    fn new(now: Instant) -> Self {
+        Self {
+            next: now + DEADLINE_TICK,
+        }
+    }
+
+    /// How long the loop may wait for an event before a sweep is owed.
+    fn wait(&self, now: Instant) -> Duration {
+        self.next.saturating_duration_since(now)
+    }
+
+    /// Whether a sweep is due at `now`; when it is, the next one is scheduled a tick later.
+    fn due(&mut self, now: Instant) -> bool {
+        if now < self.next {
+            return false;
+        }
+        self.next = now + DEADLINE_TICK;
+        true
+    }
+}
+
 /// The one owner of the graph: everything a connection asks for runs here, in order.
 struct Dispatcher {
     /// The graph owner: every mutation and every published diff goes through it.
@@ -730,29 +758,20 @@ struct Dispatcher {
 impl Dispatcher {
     /// Serves events until the server is told to stop.
     fn run(mut self, events: Receiver<IpcEvent>) {
+        let mut clock = DeadlineClock::new(Instant::now());
         loop {
-            let event = match events.recv_timeout(DEADLINE_TICK) {
-                Ok(event) => event,
-                // A request that nobody answered within its deadline ends here, so the
-                // session never holds a prompt past the time its host asked for.
-                Err(RecvTimeoutError::Timeout) => {
-                    // Deadlines are checked on the timeout tick because nothing else wakes the
-                    // loop when every client goes quiet.
-                    let now = self.now();
-                    let expired = self.requests.tick(now);
-                    let reloads = self.reload.expire(now);
-                    self.deliver_replies(reloads);
-                    let replies = self.portal.tick(now);
-                    self.deliver_replies(replies);
-                    self.pump_portal();
-                    self.publish_slots();
-                    self.deliver(expired);
-                    self.flush();
-                    continue;
-                }
+            // The sweep is driven by the clock, not by a quiet queue: a client that keeps the
+            // loop busy must not postpone every deadline it is owed.
+            let event = match events.recv_timeout(clock.wait(Instant::now())) {
+                Ok(event) => Some(event),
+                Err(RecvTimeoutError::Timeout) => None,
                 // Every sender is gone: nothing can ask for anything any more.
                 Err(RecvTimeoutError::Disconnected) => break,
             };
+            if clock.due(Instant::now()) {
+                self.sweep_deadlines();
+            }
+            let Some(event) = event else { continue };
             match event {
                 IpcEvent::Accepted {
                     client,
@@ -784,6 +803,22 @@ impl Dispatcher {
         for client in self.connections.keys().copied().collect::<Vec<_>>() {
             self.close(client, true);
         }
+    }
+
+    /// Ends every request and reload whose deadline has passed, and delivers what that
+    /// settles. A request that nobody answered within its deadline ends here, so the session
+    /// never holds a prompt past the time its host asked for.
+    fn sweep_deadlines(&mut self) {
+        let now = self.now();
+        let expired = self.requests.tick(now);
+        let reloads = self.reload.expire(now);
+        self.deliver_replies(reloads);
+        let replies = self.portal.tick(now);
+        self.deliver_replies(replies);
+        self.pump_portal();
+        self.publish_slots();
+        self.deliver(expired);
+        self.flush();
     }
 
     /// Decodes and answers one frame.
@@ -2531,11 +2566,41 @@ fn spawn(name: &str, body: impl FnOnce() + Send + 'static, path: &Path) -> Resul
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
 
     use gnoblin_client::wire;
     use gnoblin_proto::Capability;
 
-    use super::{IpcEvent, events, required_capability, wake};
+    use super::{DEADLINE_TICK, DeadlineClock, IpcEvent, events, required_capability, wake};
+
+    /// The regression: deadlines were swept only on a quiet `recv_timeout`, so a client that
+    /// kept the loop busy starved every deadline and `config reload` never returned.
+    #[test]
+    fn events_faster_than_the_tick_still_make_a_sweep_due() {
+        let start = Instant::now();
+        let mut clock = DeadlineClock::new(start);
+        let step = Duration::from_millis(10);
+        let mut now = start;
+        let mut sweeps = 0;
+        for _ in 0..100 {
+            now += step;
+            if clock.due(now) {
+                sweeps += 1;
+            }
+        }
+        // One event every 10 ms for a second: a sweep every tick, never starved.
+        assert_eq!(sweeps, 1000 / DEADLINE_TICK.as_millis() as usize);
+    }
+
+    #[test]
+    fn a_quiet_loop_waits_out_the_tick_then_sweeps_once() {
+        let start = Instant::now();
+        let mut clock = DeadlineClock::new(start);
+        assert_eq!(clock.wait(start), DEADLINE_TICK);
+        assert!(!clock.due(start + DEADLINE_TICK - Duration::from_millis(1)));
+        assert!(clock.due(start + DEADLINE_TICK));
+        assert!(!clock.due(start + DEADLINE_TICK), "one sweep per tick");
+    }
 
     #[test]
     fn two_publishes_before_one_look_queue_one_wake_up() {
