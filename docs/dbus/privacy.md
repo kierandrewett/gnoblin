@@ -25,6 +25,6 @@ Gnoblin exports this interface on the session bus as `org.gnoblin.Privacy`, at `
 - **PipeWire goes away after it was read.** The connection is rebuilt and the state drops to unavailable. The change is emitted as an `ActivityChanged` signal.
 - **A capture node is removed or stops running.** Its activity is cleared. A node that reports an error drops only itself.
 
-## Test coverage
+## Status
 
-The state rules (which nodes count, removal, errors, connection loss, reset, and emitting only real changes) are unit-tested in `crates/gnoblin-service-privacy/src/model.rs`, with no bus and no PipeWire. The bus layer and the PipeWire thread have no test yet, and the interface has not been run against a real PipeWire daemon.
+The microphone state has been checked against a real PipeWire daemon. The camera state is covered by unit tests only, because no camera has been run against the interface. The interface reports the microphone and camera states; it does not report screen capture.
