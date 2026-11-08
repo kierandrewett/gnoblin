@@ -19,6 +19,33 @@ name = "logout"
 since = "0.2.0"
 function = true
 
+# The namespace function `gnoblin.session.poweroff()`. It takes no arguments and returns an
+# operation that finishes `done` once the init system accepts the request, or `failed` with the
+# error that says why it refused. The shell asks the user; the verb does not prompt.
+[[object.method]]
+name = "poweroff"
+since = "0.2.0"
+function = true
+
+# The namespace function `gnoblin.session.reboot()`. Same contract as `poweroff`.
+[[object.method]]
+name = "reboot"
+since = "0.2.0"
+function = true
+
+# The namespace function `gnoblin.session.suspend()`. Same contract as `poweroff`.
+[[object.method]]
+name = "suspend"
+since = "0.2.0"
+function = true
+
+# The namespace function `gnoblin.session.hibernate()`. Same contract as `poweroff`, and the
+# operation is refused `unsupported` when the machine reports it cannot hibernate.
+[[object.method]]
+name = "hibernate"
+since = "0.2.0"
+function = true
+
 # The IPC version the compositor serves, which is exactly the Gnoblin version.
 [[object.property]]
 name = "version"
@@ -147,4 +174,34 @@ since = "0.2.0"
 # silently ignoring the frame, so an old client reports what it needed.
 [[error]]
 name = "unknown-member"
+since = "0.2.0"
+
+# The init system refused the power request, or authorisation was denied.
+[[error]]
+name = "denied"
+since = "0.2.0"
+
+# The machine cannot carry out the power request, for example it cannot hibernate.
+[[error]]
+name = "unsupported"
+since = "0.2.0"
+
+# The init system is already running another power request.
+[[error]]
+name = "busy"
+since = "0.2.0"
+
+# No power backend is available in this session, for example the system bus is absent.
+[[error]]
+name = "unavailable"
+since = "0.2.0"
+
+# The init system did not answer in time.
+[[error]]
+name = "timed-out"
+since = "0.2.0"
+
+# The power request failed for a reason none of the other codes names.
+[[error]]
+name = "internal"
 since = "0.2.0"

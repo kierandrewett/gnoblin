@@ -101,6 +101,12 @@ pub struct LogindPower {
     manager: Box<dyn Login1Manager>,
 }
 
+impl std::fmt::Debug for LogindPower {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LogindPower").finish_non_exhaustive()
+    }
+}
+
 impl LogindPower {
     /// A backend that makes its calls through `manager`.
     #[must_use]

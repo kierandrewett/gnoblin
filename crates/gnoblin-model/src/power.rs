@@ -104,13 +104,13 @@ impl PowerError {
 
 impl std::fmt::Display for PowerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "logind could not {}: {}", self.verb.name(), self.detail)
+        write!(f, "the init system could not {}: {}", self.verb.name(), self.detail)
     }
 }
 
 /// Carries out one power verb. The compositor calls it on its IPC dispatch thread, so an
 /// implementation must return within its own bound rather than wait for the machine.
-pub trait PowerBackend: Send {
+pub trait PowerBackend: std::fmt::Debug + Send {
     /// Ask for `verb`. `Ok` means the init system accepted the request; the action may still be
     /// under way.
     ///
@@ -150,7 +150,7 @@ mod tests {
             assert_eq!(error.detail(), "org.example.Detail: text");
             assert_eq!(
                 error.to_string(),
-                "logind could not hibernate: org.example.Detail: text"
+                "the init system could not hibernate: org.example.Detail: text"
             );
         }
     }

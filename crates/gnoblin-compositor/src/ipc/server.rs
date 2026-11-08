@@ -214,6 +214,7 @@ impl IpcServer {
         guardian: Option<UnixStream>,
         routes: &[ExtensionRoute],
         xwayland: crate::xwayland::XwaylandReconciler,
+        power: Option<Box<dyn gnoblin_model::PowerBackend>>,
     ) -> Result<IpcServer, IpcError> {
         // Each connection's frame is encoded before anything is spawned, so a bad grant
         // list fails the whole start instead of leaving threads behind.
@@ -264,6 +265,7 @@ impl IpcServer {
             start: Instant::now(),
             extensions,
             xwayland,
+            power,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
@@ -758,6 +760,8 @@ struct Dispatcher {
     extensions: ExtensionRouter,
     /// The X11 session the accepted document asks for, and the loop that runs it.
     xwayland: crate::xwayland::XwaylandReconciler,
+    /// The power backend the power verbs reach; [`None`] refuses them `unavailable`.
+    power: Option<Box<dyn gnoblin_model::PowerBackend>>,
 }
 
 impl Dispatcher {
@@ -1571,6 +1575,11 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "session" && method == "logout" => {
                 self.session_call(client, envelope, object, &method, &arguments);
             }
+            (Some(ty), _, _, _) if ty == "session" && power_verb(&method).is_some() => {
+                if let Some(verb) = power_verb(&method) {
+                    self.power_call(client, envelope, object, verb, &arguments);
+                }
+            }
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
@@ -1725,6 +1734,39 @@ impl Dispatcher {
         self.reply_with_operation(client, envelope, &operation);
         self.control.logout();
         self.finish(object, &operation, Some(OperationOutcome::Done));
+    }
+
+    /// Runs a power verb through the backend this session was started with. The call is
+    /// recorded as an operation like the others: the backend's answer completes it, and a
+    /// refusal reaches the caller under the code the error carries.
+    fn power_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        verb: gnoblin_model::PowerVerb,
+        arguments: &gnoblin_model::Fields,
+    ) {
+        let operation = match self.store.graph_mut().call(object, verb.name(), arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let outcome = match self.power.as_mut() {
+            Some(backend) => match backend.perform(verb) {
+                Ok(()) => OperationOutcome::Done,
+                Err(error) => {
+                    log::warn!(area = "ipc", %error, "power verb refused");
+                    OperationOutcome::Failed(error.code())
+                }
+            },
+            None => OperationOutcome::Failed(POWER_UNAVAILABLE),
+        };
+        self.finish(object, &operation, Some(outcome));
     }
 
     /// Serves `lock.lock_session`: the loop locks the session, and the operation completes `done`
@@ -2723,6 +2765,20 @@ fn refusal_code(error: &ModelError) -> &'static str {
         _ => wire::code::UNKNOWN_MEMBER,
     }
 }
+
+/// The power verb a `session` method names, or [`None`] when the method is not one.
+fn power_verb(method: &str) -> Option<gnoblin_model::PowerVerb> {
+    match method {
+        "poweroff" => Some(gnoblin_model::PowerVerb::PowerOff),
+        "reboot" => Some(gnoblin_model::PowerVerb::Reboot),
+        "suspend" => Some(gnoblin_model::PowerVerb::Suspend),
+        "hibernate" => Some(gnoblin_model::PowerVerb::Hibernate),
+        _ => None,
+    }
+}
+
+/// The code a power verb completes with when this session was started with no power backend.
+const POWER_UNAVAILABLE: ErrorCode = ErrorCode::from_static("unavailable");
 
 /// The code a `lock` call completes with when the session is not confirmed locked.
 const NOT_LOCKED: ErrorCode = ErrorCode::from_static("not-locked");

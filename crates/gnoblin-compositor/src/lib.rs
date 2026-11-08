@@ -228,6 +228,10 @@ pub struct SessionConfig {
     /// The `layout` section: which layout each workspace runs. The default floats every
     /// workspace; [`configure_layouts_from_store`] fills it from the accepted document.
     pub layouts: LayoutSettings,
+    /// The power backend `gnoblin.session.poweroff()`, `reboot()`, `suspend()` and `hibernate()`
+    /// reach, or [`None`] for a session that links none: every power verb is then refused
+    /// `unavailable`. The binary passes the machine's init-system backend; a test passes a fake.
+    pub power: Option<Box<dyn gnoblin_model::PowerBackend>>,
 }
 
 /// A handle that stops a running session from another thread.
@@ -417,6 +421,7 @@ impl Compositor {
             config.guardian,
             &config.extensions,
             xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory, Arc::clone(&reporter)),
+            config.power.take(),
         )
         .map_err(Error::Ipc)?;
 

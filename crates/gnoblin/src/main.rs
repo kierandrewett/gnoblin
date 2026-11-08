@@ -159,6 +159,7 @@ fn compositor() -> Result<(), Exit> {
     let mut config = gnoblin_compositor::SessionConfig {
         privileged: gnoblin_compositor::Privileged::declared(),
         guardian,
+        power: Some(gnoblin_services::power::system_power_backend()),
         ..gnoblin_compositor::SessionConfig::default()
     };
     // The privileged socket is the one door a user-declared tool uses to reach screencopy.
