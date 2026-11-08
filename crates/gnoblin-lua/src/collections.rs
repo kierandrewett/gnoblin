@@ -11,7 +11,7 @@ use gnoblin_client::Transport;
 use gnoblin_model::ObjectId;
 use mlua::{Error, Function, Lua, Table, Value};
 
-use crate::bindings::{MemberSpec, ObjectSpec, Ty, find_namespace, find_object, holds, instance, to_lua};
+use crate::bindings::{self, MemberSpec, ObjectSpec, Ty, find_namespace, find_object, holds, instance, to_lua};
 use crate::host::Shared;
 
 /// The namespace of the core object types, which sit directly on `gnoblin`.
@@ -82,13 +82,27 @@ fn outputs<T: Transport + 'static>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -
     Ok(table)
 }
 
-/// `gnoblin.workspaces`: `list()` and `by_id(id)`.
+/// `gnoblin.workspaces`: `list()`, `by_id(id)` and `set_activate(name)`.
 fn workspaces<T: Transport + 'static>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -> mlua::Result<Table> {
     let spec = core_spec("workspace")?;
     let table = lua.create_table()?;
     table.set("list", list_function(lua, shared, spec)?)?;
     table.set("by_id", by_id_function(lua, shared, spec)?)?;
+    table.set("set_activate", set_activate_function(lua, shared)?)?;
     Ok(table)
+}
+
+/// A function that asks the window manager to make the configured workspace set `name` the
+/// live set. Refused when the session has not published its `workspace_set` object yet.
+fn set_activate_function<T: Transport + 'static>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -> mlua::Result<Function> {
+    let shared = Rc::clone(shared);
+    lua.create_function(move |lua, name: String| {
+        let spec = core_spec("workspace_set")?;
+        let object = ids_of(&shared, CORE, spec).first().copied().ok_or_else(|| {
+            Error::runtime("gnoblin.workspaces.set_activate() was refused: the session has no workspace_set object")
+        })?;
+        bindings::workspace_set_activate(lua, &shared, object, name)
+    })
 }
 
 /// The spec of a core object type, which the schema always declares.

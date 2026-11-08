@@ -841,6 +841,28 @@ fn call_method<T: Transport + 'static>(
     })
 }
 
+/// `gnoblin.workspaces.set_activate(name)`: sends `activate` to the `workspace_set` object
+/// `object` for the set `name`. The operation completes once the window manager shows the
+/// set's workspaces, the same as any other call on an object.
+pub(crate) fn workspace_set_activate<T: Transport + 'static>(
+    lua: &Lua,
+    shared: &Rc<RefCell<Shared<T>>>,
+    object: ObjectId,
+    name: String,
+) -> mlua::Result<AnyUserData> {
+    let mut fields = Fields::new();
+    fields.insert("name".to_owned(), ModelValue::Text(name));
+    let operation = shared
+        .borrow_mut()
+        .call(object, "activate", &fields)
+        .map_err(|error| Error::runtime(format!("gnoblin.workspaces.set_activate() was refused: {error}")))?;
+    lua.create_userdata(Operation {
+        shared: Rc::clone(shared),
+        operation,
+        method: "activate",
+    })
+}
+
 /// Whether a method takes a layout reference in place of its fields. Only `set_layout` on
 /// `workspace` and `output` does: the Lua call names the reference once, and the wire
 /// carries its `root`, `module`, `hash` and encoded `options`.
