@@ -268,28 +268,35 @@ impl Default for Config {
     }
 }
 
-/// Applies `global_scale` to the backend's outputs still at the identity scale and returns
-/// the outputs as the backend now reports them.
+/// Moves the backend's outputs from the `previous` global scale to the `next` one and returns
+/// whether anything changed. `None` is the identity scale, which is what an output has when no
+/// global scale is set.
 ///
-/// The backend is the one source of output scale, so the zwlr heads and the `wl_output`
-/// globals agree. An output the backend already scales keeps its scale, so a scale a client
-/// set through `zwlr_output_management_v1` or the IPC setter is not overwritten by the global
-/// value. A backend that refuses the change keeps the identity scale and says so in the log.
-fn apply_global_scale(backend: &mut dyn Backend<State>, global_scale: Option<u32>) -> Vec<gnoblin_backend::Output> {
-    if let Some(scale) = global_scale {
-        let targets: Vec<_> = backend
-            .outputs()
-            .iter()
-            .filter(|output| output.scale.is_identity())
-            .map(|output| (output.id, output.mode))
-            .collect();
-        for (id, mode) in targets {
-            if let Err(error) = backend.configure_output(id, mode, gnoblin_types::Scale::integral(scale)) {
-                log::warn!(area = "monitors", %error, "global-scale {scale} refused; the output keeps its scale");
-            }
+/// Only outputs still at the previous scale move, so a scale a client set through
+/// `zwlr_output_management_v1` or the IPC setter is not overwritten by a global change. The
+/// backend is the one source of output scale, so the zwlr heads and the `wl_output` globals
+/// agree. A backend that refuses the change keeps its scale and says so in the log.
+///
+/// The session start and a live commit both run this, so a document committed after the
+/// compositor started takes the same path as one read before it.
+fn apply_global_scale(backend: &mut dyn Backend<State>, previous: Option<u32>, next: Option<u32>) -> bool {
+    if previous == next {
+        return false;
+    }
+    let from = gnoblin_types::Scale::integral(previous.unwrap_or(1));
+    let to = gnoblin_types::Scale::integral(next.unwrap_or(1));
+    let targets: Vec<_> = backend
+        .outputs()
+        .iter()
+        .filter(|output| output.scale == from)
+        .map(|output| (output.id, output.mode))
+        .collect();
+    for (id, mode) in targets {
+        if let Err(error) = backend.configure_output(id, mode, to) {
+            log::warn!(area = "monitors", %error, "global-scale {} refused; the output keeps its scale", next.unwrap_or(1));
         }
     }
-    backend.outputs().to_vec()
+    true
 }
 
 /// A session that is ready to run.
@@ -302,6 +309,9 @@ pub struct Server {
     control: Arc<Control>,
     frames: Arc<Mutex<FrameStats>>,
     clock: Arc<dyn Clock>,
+    /// The global scale the outputs were last moved to, so a change moves them from the
+    /// scale they have now.
+    global_scale: Option<u32>,
 }
 
 impl Server {
@@ -355,7 +365,9 @@ impl Server {
 
         let window_process_override = config.window_process_override;
         let window_rules = config.window_rules;
-        let outputs = apply_global_scale(backend.as_mut(), config.monitors.global_scale);
+        let global_scale = config.monitors.global_scale;
+        apply_global_scale(backend.as_mut(), None, global_scale);
+        let outputs = backend.outputs().to_vec();
         let mut state = State::new(
             display,
             &outputs,
@@ -436,6 +448,7 @@ impl Server {
             queue: Mutex::new(VecDeque::new()),
             ping,
             screenshots: Screenshots::default(),
+            global_scale: Mutex::new(None),
         });
         event_loop
             .handle()
@@ -570,6 +583,7 @@ impl Server {
             control,
             frames: Arc::new(Mutex::new(FrameStats::default())),
             clock,
+            global_scale,
         })
     }
 
@@ -643,6 +657,7 @@ impl Server {
                 control,
                 frames,
                 clock,
+                mut global_scale,
                 ..
             } = self;
             // The loop's own handle, so a sandbox listener created during a dispatch
@@ -662,6 +677,17 @@ impl Server {
                     state.advance_motion(u32::try_from(elapsed).unwrap_or(u32::MAX));
                 }
                 last_turn = Some(now);
+                // A global scale a control handle asked for since the last turn moves the
+                // outputs before this turn's dispatch, so the heads it publishes are the ones
+                // this turn reports.
+                let scale_changed = match control.take_global_scale() {
+                    Some(next) => {
+                        let changed = apply_global_scale(backend.as_mut(), global_scale, next);
+                        global_scale = next;
+                        changed
+                    }
+                    None => false,
+                };
                 state.poll_liveness();
                 state.flush();
                 // A locker that dies sends no request, so the lock is told to look for
@@ -690,7 +716,7 @@ impl Server {
                 // this turn's frame is drawn.
                 state.poll_layouts();
                 let events = backend.dispatch(state);
-                let outputs_changed = events.iter().any(is_output_change);
+                let outputs_changed = scale_changed || events.iter().any(is_output_change);
                 if outputs_changed {
                     // A hotplug, a removal or a mode change: the whole layout is
                     // recomputed from the connected set, once, rather than patched
@@ -993,6 +1019,13 @@ impl ControlHandle {
         self.control.push(Command::ReducedMotion(reduced));
     }
 
+    /// Sets the global output scale to `scale`, or to the identity scale when `None`, from the
+    /// next loop turn. The outputs are moved there in place, so a document committed after
+    /// the session started takes effect without a restart.
+    pub fn set_global_scale(&self, scale: Option<u32>) {
+        self.control.request_global_scale(scale);
+    }
+
     /// The committed blur region a window's surface has, as the renderer's blur pass
     /// reads it.
     ///
@@ -1261,6 +1294,11 @@ struct Control {
     queue: Mutex<VecDeque<Command>>,
     ping: Ping,
     screenshots: Screenshots,
+    /// The global scale a control handle asked for and the loop has not applied yet. The
+    /// outer [`Option`] is whether there is a request; the inner one is the scale, where
+    /// [`None`] follows the system setting. The backend is owned by the loop, so a scale
+    /// cannot be applied from the command queue, which has no backend.
+    global_scale: Mutex<Option<Option<u32>>>,
 }
 
 impl Control {
@@ -1269,6 +1307,15 @@ impl Control {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push_back(command);
+        self.ping.ping();
+    }
+
+    fn take_global_scale(&self) -> Option<Option<u32>> {
+        self.global_scale.lock().unwrap_or_else(PoisonError::into_inner).take()
+    }
+
+    fn request_global_scale(&self, scale: Option<u32>) {
+        *self.global_scale.lock().unwrap_or_else(PoisonError::into_inner) = Some(scale);
         self.ping.ping();
     }
 

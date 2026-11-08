@@ -1196,6 +1196,10 @@ impl Dispatcher {
                     .and_then(|appearance| appearance.reduced_motion)
                     .unwrap_or(false);
                 self.control.set_reduced_motion(reduced_motion);
+                // The output scale is re-derived from the accepted document, so a scale set in
+                // init.lua after the session started takes effect on this commit.
+                self.control
+                    .set_global_scale(crate::monitors::settings_of(&config).global_scale);
                 if let Some(rules) = rules {
                     self.control.set_window_rules(rules);
                 }

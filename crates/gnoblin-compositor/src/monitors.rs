@@ -49,6 +49,13 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
     }
 }
 
+/// The host settings a whole accepted document asks for. A document with no `monitors`
+/// section keeps the defaults, so committing a document that drops the section returns the
+/// output scale to the identity.
+pub fn settings_of(config: &gnoblin_config::Config) -> MonitorSettings {
+    config.monitors.as_ref().map(settings).unwrap_or_default()
+}
+
 /// The host settings a `monitors` section asks for. An inherited or absent leaf is `None`,
 /// and a global scale of 0 is `None` because 0 follows the system setting.
 fn settings(section: &Monitors) -> MonitorSettings {
@@ -103,5 +110,18 @@ mod tests {
             ..Monitors::default()
         };
         assert_eq!(settings(&section).global_scale, None);
+    }
+
+    #[test]
+    fn a_committed_document_asks_for_its_global_scale() {
+        let config = gnoblin_config::Config::from_json_bytes(br#"{"monitors":{"global-scale":2}}"#)
+            .expect("a document with a monitors section decodes");
+        assert_eq!(settings_of(&config).global_scale, Some(2));
+    }
+
+    #[test]
+    fn a_committed_document_without_monitors_follows_the_system() {
+        let config = gnoblin_config::Config::from_json_bytes(b"{}").expect("an empty document decodes");
+        assert_eq!(settings_of(&config), MonitorSettings::default());
     }
 }

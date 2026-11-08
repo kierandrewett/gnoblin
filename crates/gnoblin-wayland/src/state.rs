@@ -1221,7 +1221,7 @@ impl State {
                 continue;
             };
             match self.outputs.iter().position(|entry| entry.backend == output.id) {
-                Some(index) => self.move_output(index, monitor.rect),
+                Some(index) => self.refresh_output(index, output, monitor.rect),
                 None => self.add_output(output, monitor.rect),
             }
         }
@@ -1312,6 +1312,24 @@ impl State {
             primary: false,
             rect: policy_rect,
         });
+    }
+
+    /// Brings a connected output's mode and scale up to what the backend now reports, then
+    /// applies its layout rectangle. The `wl_output` state is updated here, not only in
+    /// `add_output`, so a client hears a scale change without a restart.
+    fn refresh_output(&mut self, index: usize, output: &gnoblin_backend::Output, rect: Rect) {
+        let Some(entry) = self.outputs.get_mut(index) else {
+            return;
+        };
+        entry.mode = output.mode;
+        entry.scale = output.scale;
+        entry.output.change_current_state(
+            Some(smithay_mode(output)),
+            None,
+            Some(Self::smithay_scale(output.scale)),
+            None,
+        );
+        self.move_output(index, rect);
     }
 
     /// Applies a new layout rectangle to an output that is already connected.

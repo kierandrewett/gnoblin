@@ -33,6 +33,8 @@ struct Head {
 struct App {
     /// The serial of the first `done`, once received.
     done_serial: Option<u32>,
+    /// The scale the output last told the client it composes at.
+    wl_output_scale: Option<i32>,
     /// Whether the manager announced it is finished.
     finished: bool,
     /// Heads announced to the client.
@@ -92,6 +94,12 @@ impl Dispatch<ZwlrOutputHeadV1, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let zwlr_output_head_v1::Event::Finished = event {
+            // The manager retires a head object by finishing it; a later announcement brings a new one.
+            state.handles.retain(|known| known != head);
+            state.head_state.remove(&head.id());
+            return;
+        }
         let entry = state.head_state.entry(head.id()).or_default();
         match event {
             zwlr_output_head_v1::Event::Name { name } => entry.name = name,
@@ -140,7 +148,20 @@ wayland_client::delegate_noop!(App: ignore wl_compositor::WlCompositor);
 wayland_client::delegate_noop!(App: ignore wl_shm::WlShm);
 wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);
-wayland_client::delegate_noop!(App: ignore wl_output::WlOutput);
+impl Dispatch<wl_output::WlOutput, ()> for App {
+    fn event(
+        state: &mut Self,
+        _output: &wl_output::WlOutput,
+        event: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_output::Event::Scale { factor } = event {
+            state.wl_output_scale = Some(factor);
+        }
+    }
+}
 wayland_client::delegate_noop!(App: ignore ZwlrOutputModeV1);
 wayland_client::delegate_noop!(App: ignore ZwlrOutputConfigurationHeadV1);
 
@@ -286,5 +307,46 @@ fn an_explicit_scale_from_the_output_manager_wins_over_the_global_scale() {
             "the explicit scale is kept, got {:?}",
             heads.iter().map(|head| head.scale).collect::<Vec<_>>()
         );
+    });
+}
+
+#[test]
+fn a_global_scale_committed_after_start_reaches_the_published_heads() {
+    // The runtime commits its document after the compositor started, so the first boot has
+    // no saved global scale. A commit must still reach the outputs and the heads a client
+    // reads, not wait for the next session start.
+    Session::start_with_monitors(Some(ClientRole::Privileged), MonitorSettings::default()).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let _manager = bind_manager(&mut client);
+        let _output: wl_output::WlOutput = client
+            .globals
+            .bind(&client.qh, 1..=4, ())
+            .expect("a client sees the wl_output global");
+        client.wait_until("the wl_output scale at start", |state| state.wl_output_scale == Some(1));
+        assert!(
+            client
+                .state
+                .current()
+                .iter()
+                .all(|head| (head.scale - 1.0).abs() < f64::EPSILON)
+        );
+
+        handle.control.set_global_scale(Some(2));
+        client.wait_until("the committed scale", |state| {
+            let heads = state.current();
+            !heads.is_empty() && heads.iter().all(|head| (head.scale - 2.0).abs() < f64::EPSILON)
+        });
+        client.wait_until("the committed wl_output scale", |state| {
+            state.wl_output_scale == Some(2)
+        });
+
+        handle.control.set_global_scale(None);
+        client.wait_until("the scale the system setting gives", |state| {
+            let heads = state.current();
+            !heads.is_empty() && heads.iter().all(|head| (head.scale - 1.0).abs() < f64::EPSILON)
+        });
+        client.wait_until("the wl_output scale the system setting gives", |state| {
+            state.wl_output_scale == Some(1)
+        });
     });
 }
