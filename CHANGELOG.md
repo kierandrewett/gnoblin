@@ -232,6 +232,10 @@ console has no runtime`. The generic call that accepted one table for any unknow
   `docs/shell-api/passphrase-prompts.md`.
 - The `prompts` configuration section and its `prompts.enabled` key are removed. A configuration that sets them is
   refused when it loads. `keyring.enabled` still turns the built-in keyring on and off.
+- The `when` key of `touchpad_gestures` entries is removed, with its `"unlocked"`, `"locked"` and `"any"` values and the
+  legacy `"normal"` and `"unlock-screen"` spellings. A configuration that sets `when` is refused when it loads. Gesture
+  bindings run only while the session is unlocked and never reserve a gesture on the lock screen, so a binding meant for
+  the lock screen can no longer be written. Gestures there are left to the lock screen client.
 
 ### Fixed
 

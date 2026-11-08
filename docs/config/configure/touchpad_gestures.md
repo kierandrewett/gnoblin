@@ -33,7 +33,6 @@ gnoblin.configure {
             },
             tolerance = 0.2,
             command = {"kgx"},
-            when = "unlocked",
         },
     },
 }
@@ -51,7 +50,6 @@ gnoblin.configure {
             fingers = 4,
             direction = "out",
             command = {"kgx"},
-            when = "unlocked",
             threshold = 0.18,
         },
     },
@@ -62,23 +60,22 @@ Commands are argument arrays, not shell command strings. Gnoblin starts the
 program after the gesture ends, using the executable name or an absolute path.
 Set exactly one of `action` or `command` for each entry.
 
-| Field       | Accepted values                                           | Default and meaning                                                                                                                                                                                                         |
-| ----------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`      | Unique identifier, 1–64 letters, digits, `_`, or `-`      | Required. Used in validation errors and diagnostics.                                                                                                                                                                        |
-| `gesture`   | `"swipe"` or `"pinch"`                                    | Required.                                                                                                                                                                                                                   |
-| `fingers`   | Integer from 2 to 5                                       | Required.                                                                                                                                                                                                                   |
-| `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1 | Required for swipes. Starts at `{x = 0, y = 0}` and describes movement.                                                                                                                                                     |
-| `direction` | Pinch: `"in"` or `"out"`                                  | Required for pinches; do not set `path`.                                                                                                                                                                                    |
-| `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                                                                                                                                                          |
-| `action`    | One of the built-in actions below                         | Set this or `command`, but not both.                                                                                                                                                                                        |
-| `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                                                                                                                                                         |
-| `when`      | `"unlocked"`, `"locked"`, or `"any"`                      | Defaults to `"unlocked"`. `unlocked` applies in an unlocked session; `locked` applies on the lock screen; `any` applies in either state. `"normal"` and `"unlock-screen"` are legacy names for `"unlocked"` and `"locked"`. |
-| `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Minimum movement before the path can match.                                                                                                                                    |
+| Field       | Accepted values                                           | Default and meaning                                                                      |
+| ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`      | Unique identifier, 1–64 letters, digits, `_`, or `-`      | Required. Used in validation errors and diagnostics.                                     |
+| `gesture`   | `"swipe"` or `"pinch"`                                    | Required.                                                                                |
+| `fingers`   | Integer from 2 to 5                                       | Required.                                                                                |
+| `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1 | Required for swipes. Starts at `{x = 0, y = 0}` and describes movement.                  |
+| `direction` | Pinch: `"in"` or `"out"`                                  | Required for pinches; do not set `path`.                                                 |
+| `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                       |
+| `action`    | One of the built-in actions below                         | Set this or `command`, but not both.                                                     |
+| `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                      |
+| `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Minimum movement before the path can match. |
 
 At gesture start, Gnoblin reserves input when a binding matches the gesture
-type, finger count, and active lock context. At the end, it runs the action or
-command only if the movement also matches the configured path or pinch
-direction and threshold.
+type and finger count while the session is unlocked. Bindings never reserve
+gestures on the lock screen. At the end, it runs the action or command only if
+the movement also matches the configured path or pinch direction and threshold.
 
 A reserved gesture whose movement does not match has no direct action and is
 not passed to another Mutter gesture handler.
@@ -95,9 +92,8 @@ These actions run after a matching gesture ends:
 | `"window.minimize"`        | Minimize the focused window.               |
 | `"window.toggle-maximize"` | Toggle maximization of the focused window. |
 
-Workspace and window actions do nothing while the session is locked. Commands
-can be configured for either lock context; use care when starting programs
-while the screen is locked.
+Bindings never run while the session is locked. Gestures on the lock screen are
+left to the lock screen, so no action or command starts there.
 
 ## Handle gestures in a shell
 
