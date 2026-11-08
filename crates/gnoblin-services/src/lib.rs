@@ -24,6 +24,8 @@
 pub mod keyring;
 /// Client types the compat host links its compat adapters with. See the module docs.
 pub mod link;
+/// The logind power backend for `gnoblin.session.poweroff()`, `reboot()`, `suspend()` and `hibernate()`.
+pub mod power;
 /// The services role: adopts the privileged connection, claims slots and serves agents.
 pub mod role;
 
