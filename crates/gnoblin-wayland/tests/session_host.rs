@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_lock::ProtectionState;
-use gnoblin_wayland::{ClientRole, GnoblinSessionHostV1PowerAction, GnoblinSessionHostV1RequestKind};
+use gnoblin_model::PowerVerb;
+use gnoblin_wayland::{ClientRole, GnoblinSessionHostV1RequestKind};
 use owned::protocols::gnoblin_session_host_v1::gnoblin_session_host_v1;
 use owned::{Connected, Handle, Session, TIMEOUT};
 use wayland_client::protocol::{wl_keyboard, wl_seat, wl_surface};
@@ -525,9 +526,12 @@ fn a_power_request_carries_its_action() {
         client.roundtrip();
         let deadline = Instant::now() + TIMEOUT;
         loop {
-            if handle.control.host_requests().first().is_some_and(|request| {
-                request.kind == GnoblinSessionHostV1RequestKind::Power(GnoblinSessionHostV1PowerAction::Suspend)
-            }) {
+            if handle
+                .control
+                .host_requests()
+                .first()
+                .is_some_and(|request| request.kind == GnoblinSessionHostV1RequestKind::Power(PowerVerb::Suspend))
+            {
                 break;
             }
             assert!(

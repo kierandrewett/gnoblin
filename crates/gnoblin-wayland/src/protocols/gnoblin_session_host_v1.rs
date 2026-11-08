@@ -83,7 +83,7 @@ use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, R
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use gnoblin_lock::{Protection, ProtectionEffect, ProtectionEvent, ProtectionFailure, ProtectionState};
-use gnoblin_model::{RequestBroker, RequestError, RequestState};
+use gnoblin_model::{PowerVerb, RequestBroker, RequestError, RequestState};
 use gnoblin_types::{ClientId, OwnerId, RequestId, Tick, WindowId};
 
 use crate::State;
@@ -106,55 +106,6 @@ const REQUEST_DEADLINE_TURNS: u64 = 10_000;
 /// The longest output name an hint may carry, which bounds a session's memory.
 const MAX_HINT_NAME: usize = 128;
 
-/// What a session asked the machine to do.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum GnoblinSessionHostV1PowerAction {
-    /// Restart the machine.
-    Reboot,
-    /// Power it off.
-    PowerOff,
-    /// Suspend it.
-    Suspend,
-    /// Hibernate it.
-    Hibernate,
-}
-
-impl GnoblinSessionHostV1PowerAction {
-    /// The action a wire value names, or [`None`] for one the protocol does not.
-    #[must_use]
-    pub const fn from_wire(value: u32) -> Option<Self> {
-        Some(match value {
-            0 => Self::Reboot,
-            1 => Self::PowerOff,
-            2 => Self::Suspend,
-            3 => Self::Hibernate,
-            _ => return None,
-        })
-    }
-
-    /// The value the wire uses.
-    #[must_use]
-    pub const fn to_wire(self) -> u32 {
-        match self {
-            Self::Reboot => 0,
-            Self::PowerOff => 1,
-            Self::Suspend => 2,
-            Self::Hibernate => 3,
-        }
-    }
-
-    /// A stable lower-case name for logs, requests and tests.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Reboot => "reboot",
-            Self::PowerOff => "poweroff",
-            Self::Suspend => "suspend",
-            Self::Hibernate => "hibernate",
-        }
-    }
-}
-
 /// What a session asked the manager to decide.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GnoblinSessionHostV1RequestKind {
@@ -163,7 +114,7 @@ pub enum GnoblinSessionHostV1RequestKind {
     /// End this session.
     Logout,
     /// Do something to the machine.
-    Power(GnoblinSessionHostV1PowerAction),
+    Power(PowerVerb),
 }
 
 impl GnoblinSessionHostV1RequestKind {
@@ -173,7 +124,7 @@ impl GnoblinSessionHostV1RequestKind {
         match self {
             Self::Lock => "lock",
             Self::Logout => "logout",
-            Self::Power(action) => action.as_str(),
+            Self::Power(action) => action.name(),
         }
     }
 }
@@ -458,11 +409,11 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
             }
             host::Request::Power { action } => {
                 let action = match action {
-                    WEnum::Value(WirePowerAction::Reboot) => Some(GnoblinSessionHostV1PowerAction::Reboot),
-                    WEnum::Value(WirePowerAction::PowerOff) => Some(GnoblinSessionHostV1PowerAction::PowerOff),
-                    WEnum::Value(WirePowerAction::Suspend) => Some(GnoblinSessionHostV1PowerAction::Suspend),
-                    WEnum::Value(WirePowerAction::Hibernate) => Some(GnoblinSessionHostV1PowerAction::Hibernate),
-                    WEnum::Unknown(value) => GnoblinSessionHostV1PowerAction::from_wire(value),
+                    WEnum::Value(WirePowerAction::Reboot) => Some(PowerVerb::Reboot),
+                    WEnum::Value(WirePowerAction::PowerOff) => Some(PowerVerb::PowerOff),
+                    WEnum::Value(WirePowerAction::Suspend) => Some(PowerVerb::Suspend),
+                    WEnum::Value(WirePowerAction::Hibernate) => Some(PowerVerb::Hibernate),
+                    WEnum::Unknown(_) => None,
                 };
                 let Some(action) = action else {
                     resource.post_error(host::Error::InvalidPowerAction as u32, "unknown power action");
