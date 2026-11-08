@@ -54,6 +54,7 @@ use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTa
 
 use crate::State;
 use crate::selection_bridge::{PasteRoute, ToX11};
+use crate::xwayland::set_x11_selection_owner;
 
 use crate::log;
 
@@ -127,8 +128,8 @@ impl SelectionHandler for State {
             return;
         };
         let result = match change {
-            ToX11::Advertise(types) => wm.new_selection(ty, Some(types)),
-            ToX11::Withdraw => wm.new_selection(ty, None),
+            ToX11::Advertise(types) => set_x11_selection_owner(wm, ty, Some(types)),
+            ToX11::Withdraw => set_x11_selection_owner(wm, ty, None),
             ToX11::Nothing => return,
         };
         if let Err(error) = result {

@@ -615,6 +615,26 @@ impl State {
     }
 }
 
+/// Sets the X11 owner of `selection` (`None` gives it up), and does not return until the
+/// request has left for the X server.
+///
+/// Smithay's `new_selection` only queues `SetSelectionOwner` in the connection's write
+/// buffer. A reader that sends `ConvertSelection` before that buffer is written finds no
+/// owner and reads zero bytes. Waiting for any reply flushes the buffer first, so the
+/// read-only query below is the flush: its failure is logged and changes nothing, since
+/// the owner request was already written when the query ran.
+pub(crate) fn set_x11_selection_owner(
+    wm: &mut X11Wm,
+    selection: SelectionTarget,
+    mime_types: Option<Vec<String>>,
+) -> Result<(), smithay::reexports::x11rb::errors::ReplyOrIdError> {
+    wm.new_selection(selection, mime_types)?;
+    if let Err(error) = wm.get_randr_primary_output() {
+        log::warn!(area = "selection", %error, "the X11 write buffer could not be flushed");
+    }
+    Ok(())
+}
+
 impl XwmHandler for State {
     fn xwm_state(&mut self, xwm: XwmId) -> &mut X11Wm {
         // The X11 events only arrive through the window manager's own source, so the
