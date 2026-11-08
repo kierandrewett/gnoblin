@@ -569,6 +569,22 @@ function gnoblin.session.status() end
 ---@return gnoblin.Operation
 function gnoblin.session.logout() end
 
+--- Power the machine off. The operation finishes `done` once the init system accepts the request, or `failed` with the error that says why it refused. The shell asks the user first; this call does not prompt.
+---@return gnoblin.Operation
+function gnoblin.session.poweroff() end
+
+--- Reboot the machine. Same contract as `poweroff`: the operation finishes `done` or `failed`, and this call does not prompt.
+---@return gnoblin.Operation
+function gnoblin.session.reboot() end
+
+--- Suspend the machine to RAM. Same contract as `poweroff`: the operation finishes `done` or `failed`, and this call does not prompt.
+---@return gnoblin.Operation
+function gnoblin.session.suspend() end
+
+--- Hibernate the machine to disk. Same contract as `poweroff`. The operation is refused `unsupported` when the machine reports it cannot hibernate.
+---@return gnoblin.Operation
+function gnoblin.session.hibernate() end
+
 ---@class gnoblin.sessionCollection
 ---@field by_id fun(id: integer): gnoblin.session|nil
 ---@field all fun(): gnoblin.session[]

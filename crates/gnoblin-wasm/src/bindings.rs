@@ -973,6 +973,32 @@ mod gnoblin_objects {
             self.method(object, "session", "logout", gnoblin_model::Fields::new())
         }
 
+        fn poweroff(
+            &mut self,
+            handle: Resource<ObjectRep>,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "session", "poweroff", gnoblin_model::Fields::new())
+        }
+
+        fn reboot(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "session", "reboot", gnoblin_model::Fields::new())
+        }
+
+        fn suspend(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "session", "suspend", gnoblin_model::Fields::new())
+        }
+
+        fn hibernate(
+            &mut self,
+            handle: Resource<ObjectRep>,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "session", "hibernate", gnoblin_model::Fields::new())
+        }
+
         fn lock_state(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "lock_state"))

@@ -176,3 +176,31 @@ kind = "function"
 object = "session"
 doc = "End the session. The operation finishes with `{accepted = true}` once the compositor confirms the request; then the compositor exits with the logout code, the supervisor exits successfully and the session wrapper returns to the login manager. A socket caller may receive EOF while the session closes."
 returns = ["gnoblin.Operation"]
+
+[[member]]
+name = "poweroff"
+kind = "function"
+object = "session"
+doc = "Power the machine off. The operation finishes `done` once the init system accepts the request, or `failed` with the error that says why it refused. The shell asks the user first; this call does not prompt."
+returns = ["gnoblin.Operation"]
+
+[[member]]
+name = "reboot"
+kind = "function"
+object = "session"
+doc = "Reboot the machine. Same contract as `poweroff`: the operation finishes `done` or `failed`, and this call does not prompt."
+returns = ["gnoblin.Operation"]
+
+[[member]]
+name = "suspend"
+kind = "function"
+object = "session"
+doc = "Suspend the machine to RAM. Same contract as `poweroff`: the operation finishes `done` or `failed`, and this call does not prompt."
+returns = ["gnoblin.Operation"]
+
+[[member]]
+name = "hibernate"
+kind = "function"
+object = "session"
+doc = "Hibernate the machine to disk. Same contract as `poweroff`. The operation is refused `unsupported` when the machine reports it cannot hibernate."
+returns = ["gnoblin.Operation"]
