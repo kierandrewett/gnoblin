@@ -485,6 +485,38 @@ mod tests {
     }
 
     #[test]
+    fn tab_then_enter_allows_when_frames_are_drawn_between_keys() {
+        // The compositor draws the dialog between routed keys, so each key lands on a
+        // dialog that was just fitted and rasterised. The allow path must survive that.
+        let mut ui = PortalUi::new(640, 480);
+        start_consent(&mut ui, 1, "org.example.App", at(0));
+        ui.take_frame();
+        ui.tick(at(5_000));
+        ui.take_frame();
+        ui.key(ScreenKey::Tab, false);
+        ui.take_frame();
+        ui.key(ScreenKey::Enter, false);
+        assert!(matches!(outcome_of(&mut ui, 1), Verdict::Handled(_)));
+        assert_eq!(ui.active_request(), None);
+    }
+
+    #[test]
+    fn live_cadence_tab_then_enter_allows() {
+        let mut ui = PortalUi::new(1024, 768);
+        start_consent(&mut ui, 1, "org.example.App", at(0));
+        let mut t = 0;
+        while t < 5_000 {
+            t += 50;
+            ui.tick(at(t));
+            ui.take_frame();
+        }
+        ui.key(ScreenKey::Tab, false);
+        ui.take_frame();
+        ui.key(ScreenKey::Enter, false);
+        assert!(matches!(outcome_of(&mut ui, 1), Verdict::Handled(_)));
+    }
+
+    #[test]
     fn enter_on_default_focus_denies() {
         let mut ui = PortalUi::new(640, 480);
         start_consent(&mut ui, 1, "org.example.App", at(0));
