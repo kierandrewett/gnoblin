@@ -56,6 +56,11 @@ layouts (`master_stack.lua` and others) decline every request.
 
 ## Proposal
 
+Scope: this covers initial placement and initial order only. Ongoing restacking
+(raise on click, auto-raise, lower) stays in `gnoblin-wm` as input policy unless
+question 3 below is answered yes. The user asked that order and z-order follow the
+layout, so question 3 decides whether that part is in scope.
+
 1. **One new request: `Open`.** The wm sends `Open { window, size, parent }` to
    the workspace layout for every new toplevel that is not covered by another
    request. The reply is one `Placement` for that window (a rectangle or a full
