@@ -1669,6 +1669,7 @@ Each section below records the choice, its consequences, and the options conside
 | D29 | Window menu                  | **Decided 2026-11-07:** the core has a `menu_requested` signal and a `request_menu` method on `window`; any extension shows the menu. No menu model in core (see D29).                                                          |
 | D30 | Store                        | **Withdrawn 2026-11-07:** no generic store. `gnoblin-store`, `gnoblinctl store` and the store IPC are removed (see D30 below).                                                                                                  |
 | D31 | Multi-seat                   | **Proposed 2026-11-08, for Kieran to confirm:** full multi-seat (own keyboard, pointer, focus and cursor per seat) and per-device keybindings. See `multi-seat.md`.                                                             |
+| D32 | Request intercept            | **Proposed 2026-11-08, for Kieran to confirm:** an audit record for privileged requests, then extension observe and veto hooks that can only make a request stricter. See `request-intercept.md`.                               |
 
 ### D1: where scripts run
 
