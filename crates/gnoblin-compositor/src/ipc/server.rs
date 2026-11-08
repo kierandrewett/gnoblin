@@ -1203,6 +1203,14 @@ impl Dispatcher {
                 if let Some(rules) = rules {
                     self.control.set_window_rules(rules);
                 }
+                // The keyboard repeat and layouts are applied from the accepted document. A section the
+                // document does not name keeps what the seat already has, as at startup.
+                if let Some(keyboard) = config.input.as_ref().and_then(|input| input.keyboard.clone()) {
+                    self.control.set_keyboard_settings(keyboard);
+                }
+                if let Some(sources) = config.input_sources.clone() {
+                    self.control.set_input_sources(sources);
+                }
             }
             Err(reason) => {
                 log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")

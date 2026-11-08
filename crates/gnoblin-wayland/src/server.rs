@@ -487,6 +487,8 @@ impl Server {
                             }
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
                             Command::WindowRules(rules) => state.apply_window_rules(rules),
+                            Command::KeyboardSettings(keyboard) => state.apply_keyboard_settings(&keyboard),
+                            Command::InputSources(sources) => state.apply_input_sources(&sources),
                             Command::Focus { window, reply } => {
                                 // The answer is sent after the publish, so a caller that
                                 // reads the observation on the strength of it sees what
@@ -1061,6 +1063,17 @@ impl ControlHandle {
         self.control.push(Command::SelectSource(index));
     }
 
+    /// Applies the keyboard repeat and XKB options from the next loop turn. Clients that hold
+    /// the seat's keyboard see the new repeat rate and keymap without reconnecting.
+    pub fn set_keyboard_settings(&self, keyboard: gnoblin_config::Keyboard) {
+        self.control.push(Command::KeyboardSettings(Box::new(keyboard)));
+    }
+
+    /// Replaces the switchable layouts from the next loop turn, as a committed document does.
+    pub fn set_input_sources(&self, sources: gnoblin_config::InputSources) {
+        self.control.push(Command::InputSources(Box::new(sources)));
+    }
+
     /// Adds a key binding to the session's router.
     ///
     /// The chord is written the way the configuration writes it (`<Super>q`); a chord or
@@ -1270,6 +1283,10 @@ enum Command {
     ReducedMotion(bool),
     /// The window rules the configuration accepted, replacing the rules in force.
     WindowRules(Vec<gnoblin_wm::Rule>),
+    /// The keyboard repeat and XKB options the configuration accepted, applied in place.
+    KeyboardSettings(Box<gnoblin_config::Keyboard>),
+    /// The switchable layouts the configuration accepted, applied in place.
+    InputSources(Box<gnoblin_config::InputSources>),
     /// A tick of the session clock, in milliseconds.
     Advance(u64),
     /// A chosen keyboard layout.

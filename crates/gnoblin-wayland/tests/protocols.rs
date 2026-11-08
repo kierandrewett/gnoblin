@@ -17,7 +17,9 @@
 //! - `a_sandboxed_client_does_not_see_the_privileged_globals` — `protocols::wp_security_context_v1`
 //! - `a_bound_key_is_consumed_and_its_release_is_not_leaked`,
 //!   `a_keymap_change_under_a_held_key_keeps_its_target`,
-//!   `a_window_remembers_its_layout` — `keyboard`
+//!   `a_window_remembers_its_layout`,
+//!   `a_keyboard_repeat_committed_after_start_reaches_the_client`,
+//!   `a_layout_committed_after_start_reaches_the_client` — `keyboard`
 
 use std::io::{Read, Seek};
 use std::os::fd::AsFd;
@@ -238,6 +240,8 @@ struct App {
     keys: Vec<u32>,
     /// Every keymap the seat sent, in arrival order.
     keymaps: Vec<String>,
+    /// The rate and delay of the last `repeat_info` the seat sent a keyboard.
+    repeat_info: Option<(i32, i32)>,
     /// The `wl_keyboard` this connection created, once the seat offered one.
     keyboard: Option<wl_keyboard::WlKeyboard>,
     /// The `wl_pointer` this connection created, once the seat offered one.
@@ -536,6 +540,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
                 }
                 state.keymaps.push(text);
             }
+            wl_keyboard::Event::RepeatInfo { rate, delay } => state.repeat_info = Some((rate, delay)),
             _ => {}
         }
     }
@@ -1543,6 +1548,71 @@ fn point_only_in(target: gnoblin_types::Rect, others: &[gnoblin_types::Rect]) ->
         }
     }
     panic!("the window has no point that no other window covers");
+}
+
+#[test]
+fn a_keyboard_repeat_committed_after_start_reaches_the_client() {
+    // The runtime commits its document after the session started: a repeat rate and delay
+    // committed then must reach the keyboards clients already hold, not wait for a restart.
+    let session = Session::with_config(Config::default());
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Repeat");
+        client.wait_for(|state| state.repeat_info.is_some());
+
+        session.control.set_keyboard_settings(gnoblin_config::Keyboard {
+            delay: Some(gnoblin_config::Inherit::Value(250)),
+            repeat_interval: Some(gnoblin_config::Inherit::Value(50)),
+            ..Default::default()
+        });
+        // A 50 ms interval is 20 keys a second.
+        client.wait_for(|state| state.repeat_info == Some((20, 250)));
+
+        session.control.set_keyboard_settings(gnoblin_config::Keyboard {
+            repeat: Some(gnoblin_config::Inherit::Value(false)),
+            delay: Some(gnoblin_config::Inherit::Value(250)),
+            ..Default::default()
+        });
+        // Repeat turned off reaches the client as a rate of zero.
+        client.wait_for(|state| state.repeat_info == Some((0, 250)));
+    });
+}
+
+#[test]
+fn a_layout_committed_after_start_reaches_the_client() {
+    let source = |id: &str| gnoblin_config::InputSource {
+        r#type: Some(gnoblin_config::InputSourceType::Xkb),
+        id: Some(id.to_owned()),
+    };
+    let config = Config {
+        input_sources: Some(gnoblin_config::InputSources {
+            sources: Some(vec![source("us")]),
+            per_window: Some(false),
+        }),
+        ..Config::default()
+    };
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Layouts");
+        session.focused_window();
+        let first = client
+            .wait_for(|state| state.keymaps.len() == 1)
+            .last_keymap()
+            .expect("a keymap")
+            .to_owned();
+
+        session.control.set_input_sources(gnoblin_config::InputSources {
+            sources: Some(vec![source("gb")]),
+            per_window: Some(false),
+        });
+        let state = client.wait_for(|state| state.keymaps.len() == 2);
+        assert_ne!(
+            state.last_keymap(),
+            Some(first.as_str()),
+            "the committed layout is installed"
+        );
+    });
 }
 
 #[test]
