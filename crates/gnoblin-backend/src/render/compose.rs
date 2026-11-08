@@ -58,7 +58,7 @@
 //!    picture out, copied from its buffer before the client can free it:
 //!    `a_closing_window_is_drawn_from_its_picture`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
@@ -1085,15 +1085,17 @@ impl Composer {
     /// Sets the paint order, topmost first as `gnoblin-wm` reports it.
     pub fn set_stacking(&mut self, order: &[WindowId]) {
         let mut kept: Vec<WindowId> = Vec::with_capacity(self.order.len());
+        // Each window is kept once; a repeat later in the reversed order is dropped.
+        let mut seen: BTreeSet<WindowId> = BTreeSet::new();
         for window in order.iter().rev() {
-            if self.windows.contains_key(window) && !kept.contains(window) {
+            if self.windows.contains_key(window) && seen.insert(*window) {
                 kept.push(*window);
             }
         }
         // Windows the policy did not name keep their place, above the ones it did, so
         // a half-applied order cannot make a window disappear.
         for window in &self.order {
-            if !kept.contains(window) {
+            if seen.insert(*window) {
                 kept.push(*window);
             }
         }
@@ -1101,6 +1103,20 @@ impl Composer {
             return;
         }
         self.order = kept;
+        // Move every window whose z changed in one batch, so the siblings are sorted and
+        // damaged once for the whole order rather than once per window.
+        let changes: Vec<(NodeId, i32)> = self
+            .order
+            .iter()
+            .filter_map(|window| {
+                let node = self.windows.get(window)?.node?;
+                let z_order = self.z_order(*window);
+                (self.scene.z_order(node) != Some(z_order)).then_some((node, z_order))
+            })
+            .collect();
+        if !changes.is_empty() {
+            let _ = self.scene.set_z_orders(&changes);
+        }
         let windows: Vec<WindowId> = self.order.clone();
         for window in windows {
             self.sync(window, false);

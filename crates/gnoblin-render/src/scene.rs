@@ -515,30 +515,65 @@ impl Scene {
     /// Reordering can change which sibling covers which, so every sibling's
     /// bounds become damage even though their geometry is unchanged.
     pub fn set_z_order(&mut self, id: NodeId, z_order: i32) -> Result<(), SceneError> {
-        let parent = self.nodes.get(&id).ok_or(SceneError::UnknownNode(id))?.parent;
-        let mut siblings = match parent {
+        self.set_z_orders(&[(id, z_order)])
+    }
+
+    /// Move several nodes within their siblings' paint order in one pass.
+    ///
+    /// Each affected sibling list is sorted once and each sibling is damaged
+    /// once, however many of the changes land in it. Every id is checked before
+    /// anything changes, so an unknown node leaves the scene untouched.
+    pub fn set_z_orders(&mut self, changes: &[(NodeId, i32)]) -> Result<(), SceneError> {
+        if let Some((id, _)) = changes.iter().find(|(id, _)| !self.nodes.contains_key(id)) {
+            return Err(SceneError::UnknownNode(*id));
+        }
+        let parents: BTreeSet<Option<NodeId>> = changes.iter().map(|(id, _)| self.nodes[id].parent).collect();
+        let before: Vec<DamageSample> = parents
+            .iter()
+            .flat_map(|parent| self.siblings_of(*parent))
+            .filter_map(|node| self.sample(node))
+            .collect();
+        for (id, z_order) in changes {
+            self.nodes.get_mut(id).expect("node existence checked above").z_order = *z_order;
+        }
+        for parent in &parents {
+            let mut siblings = self.siblings_of(*parent);
+            sort_siblings(&mut siblings, &self.nodes);
+            self.set_siblings(*parent, siblings);
+        }
+        let after: Vec<DamageSample> = parents
+            .iter()
+            .flat_map(|parent| self.siblings_of(*parent))
+            .filter_map(|node| self.sample(node))
+            .collect();
+        for sample in before.into_iter().chain(after) {
+            self.push_sample(sample);
+        }
+        for (id, _) in changes {
+            self.dirty.insert(*id);
+            self.dirty.extend(self.ancestors(*id));
+        }
+        Ok(())
+    }
+
+    /// A parent's children in paint order, or the roots for `None`.
+    fn siblings_of(&self, parent: Option<NodeId>) -> Vec<NodeId> {
+        match parent {
             Some(parent) => self.nodes[&parent].children.clone(),
             None => self.roots.clone(),
-        };
-        let before: Vec<DamageSample> = siblings.iter().filter_map(|node| self.sample(*node)).collect();
-        self.nodes.get_mut(&id).expect("node existence checked above").z_order = z_order;
-        sort_siblings(&mut siblings, &self.nodes);
+        }
+    }
+
+    fn set_siblings(&mut self, parent: Option<NodeId>, siblings: Vec<NodeId>) {
         match parent {
             Some(parent) => {
                 self.nodes
                     .get_mut(&parent)
                     .expect("parent of an existing node exists")
-                    .children = siblings.clone();
+                    .children = siblings
             }
-            None => self.roots = siblings.clone(),
+            None => self.roots = siblings,
         }
-        let after: Vec<DamageSample> = siblings.iter().filter_map(|node| self.sample(*node)).collect();
-        for sample in before.into_iter().chain(after) {
-            self.push_sample(sample);
-        }
-        self.dirty.insert(id);
-        self.dirty.extend(self.ancestors(id));
-        Ok(())
     }
 
     /// Declare or replace an output rectangle.
@@ -1140,6 +1175,43 @@ mod tests {
         let output = damage.for_output(OutputId::new(0)).expect("output damage");
         assert!(output.covers(rect(0, 0, 100, 100)));
         assert!(output.covers(rect(50, 50, 100, 100)));
+    }
+
+    #[test]
+    fn a_batch_z_order_change_sorts_siblings_once_and_damages_each_of_them() {
+        let mut scene = scene_with_output();
+        let parent = NodeId::new(1);
+        scene
+            .insert(parent, NodeSpec::new(rect(0, 0, 400, 400)))
+            .expect("parent");
+        for (id, x, z) in [(2, 0, 0), (3, 120, 1), (4, 240, 2)] {
+            let mut child = NodeSpec::new(rect(x, 0, 100, 100));
+            child.parent = Some(parent);
+            child.z_order = z;
+            scene.insert(NodeId::new(id), child).expect("child");
+        }
+        scene.take_damage();
+        scene
+            .set_z_orders(&[(NodeId::new(2), 10), (NodeId::new(3), -1)])
+            .expect("reordered");
+        assert_eq!(
+            scene.children(parent),
+            Some(&[NodeId::new(3), NodeId::new(4), NodeId::new(2)][..])
+        );
+        let damage = scene.take_damage();
+        let output = damage.for_output(OutputId::new(0)).expect("output damage");
+        for x in [0, 120, 240] {
+            assert!(output.covers(rect(x, 0, 100, 100)));
+        }
+    }
+
+    #[test]
+    fn a_batch_z_order_change_refuses_an_unknown_node_and_changes_nothing() {
+        let mut scene = scene_with_output();
+        let node = NodeId::new(1);
+        scene.insert(node, NodeSpec::new(rect(0, 0, 100, 100))).expect("node");
+        assert!(scene.set_z_orders(&[(node, 5), (NodeId::new(9), 1)]).is_err());
+        assert_eq!(scene.z_order(node), Some(0));
     }
 
     #[test]
