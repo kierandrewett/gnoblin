@@ -196,6 +196,9 @@ pub enum Event {
 pub enum Rejection {
     /// The window id is already managed.
     DuplicateWindow(WindowId),
+    /// The window manager already manages `limit` windows, the most it accepts
+    /// ([`crate::MAX_WINDOWS`]). The window is not placed and has no layer record.
+    TooManyWindows { limit: usize },
     /// No such window is managed.
     UnknownWindow(WindowId),
     /// The output id is already connected.

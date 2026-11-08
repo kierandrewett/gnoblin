@@ -191,8 +191,13 @@ pub struct LayerRecord {
 /// registry, so its full name is free for a new registration.
 #[derive(Debug)]
 pub struct LayerRegistry {
-    /// The number of live layers one provider may hold.
+    /// The number of live layers one provider may hold, for any provider without
+    /// its own entry in `provider_limits`.
     limit: usize,
+    /// Per-provider limits that differ from `limit`. A provider with an entry here
+    /// may hold up to that many live layers instead. Only the compositor's own
+    /// window mirror uses one, because its count is the window cap.
+    provider_limits: BTreeMap<LayerProvider, usize>,
     /// The next handle to hand out. It only grows.
     next_handle: u64,
     /// The next registration sequence number. It only grows.
@@ -229,6 +234,7 @@ impl LayerRegistry {
     pub fn with_limit(limit: usize) -> Self {
         Self {
             limit,
+            provider_limits: BTreeMap::new(),
             next_handle: 1,
             next_sequence: 1,
             by_handle: BTreeMap::new(),
@@ -237,10 +243,27 @@ impl LayerRegistry {
         }
     }
 
-    /// The per-provider limit this registry enforces.
+    /// Gives `provider` its own limit instead of the registry default. Other
+    /// providers keep the default, so a built-in can hold more than an extension
+    /// without raising the bound for extensions.
+    #[must_use]
+    pub fn with_provider_limit(mut self, provider: LayerProvider, limit: usize) -> Self {
+        self.provider_limits.insert(provider, limit);
+        self
+    }
+
+    /// The default per-provider limit this registry enforces, for any provider
+    /// without its own limit.
     #[must_use]
     pub fn limit(&self) -> usize {
         self.limit
+    }
+
+    /// The number of live layers `provider` may hold: its own limit if it has one,
+    /// otherwise the registry default.
+    #[must_use]
+    pub fn limit_for(&self, provider: &LayerProvider) -> usize {
+        self.provider_limits.get(provider).copied().unwrap_or(self.limit)
     }
 
     /// Registers a layer for `provider` and returns its handle.
@@ -298,8 +321,9 @@ impl LayerRegistry {
             .values()
             .filter(|record| &record.provider == provider)
             .count();
-        if held >= self.limit {
-            return Err(RegisterError::LimitReached { limit: self.limit });
+        let limit = self.limit_for(provider);
+        if held >= limit {
+            return Err(RegisterError::LimitReached { limit });
         }
 
         let handle = LayerHandle(self.next_handle);
@@ -638,6 +662,40 @@ mod tests {
         );
         // Another provider still has room.
         reg.register(&ext("other"), spec("a", Band::Top)).unwrap();
+    }
+
+    #[test]
+    fn a_provider_limit_overrides_the_default_for_that_provider_only() {
+        let mut reg = LayerRegistry::with_limit(2).with_provider_limit(gnoblin(), 4);
+        assert_eq!(reg.limit_for(&gnoblin()), 4);
+        assert_eq!(reg.limit_for(&ext("bar")), 2);
+        for i in 0..4 {
+            reg.register(&gnoblin(), spec(&format!("w{i}"), Band::Windows)).unwrap();
+        }
+        assert_eq!(
+            reg.register(&gnoblin(), spec("w4", Band::Windows)),
+            Err(RegisterError::LimitReached { limit: 4 })
+        );
+        // The override does not lift an extension's limit.
+        reg.register(&ext("bar"), spec("a", Band::Top)).unwrap();
+        reg.register(&ext("bar"), spec("b", Band::Top)).unwrap();
+        assert_eq!(
+            reg.register(&ext("bar"), spec("c", Band::Top)),
+            Err(RegisterError::LimitReached { limit: 2 })
+        );
+    }
+
+    #[test]
+    fn an_extension_still_stops_at_the_default_limit() {
+        let mut reg = LayerRegistry::new();
+        for i in 0..DEFAULT_LIMIT {
+            reg.register(&ext("bar"), spec(&format!("l{i}"), Band::Top)).unwrap();
+        }
+        assert_eq!(
+            reg.register(&ext("bar"), spec("over", Band::Top)),
+            Err(RegisterError::LimitReached { limit: DEFAULT_LIMIT })
+        );
+        assert_eq!(reg.len(), DEFAULT_LIMIT);
     }
 
     #[test]

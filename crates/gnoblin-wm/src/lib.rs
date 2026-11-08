@@ -123,5 +123,5 @@ pub use rules::{
 pub use snapping::SnapZone;
 pub use tiled::{TiledEdges, tiled_edges};
 pub use window::{Window, WindowKind, WindowState};
-pub use wm::{Broken, CommandError, LayerRegisterError, Wm, WmOptions};
+pub use wm::{Broken, CommandError, LayerRegisterError, MAX_WINDOWS, Wm, WmOptions};
 pub use workspace_set::{WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError};

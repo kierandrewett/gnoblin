@@ -97,6 +97,14 @@ const DEFAULT_WINDOW_SIZE: Size = Size::new(800, 600);
 /// bounds the work done when a focused window closes.
 const HISTORY_LIMIT: usize = 64;
 
+/// The most windows the manager manages at once.
+///
+/// Each managed window has one `surface_toplevel` layer record, and the registry
+/// bounds the live records of the window manager's own provider to this same number.
+/// A window past the cap is refused with [`Rejection::TooManyWindows`] before any
+/// state changes, so the records and the windows they mirror never disagree.
+pub const MAX_WINDOWS: usize = 256;
+
 /// The configuration the window manager reads.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct WmOptions {
@@ -305,7 +313,7 @@ pub enum Broken {
 /// [`Wm::apply`] and read state back through the accessors. There is no interior
 /// mutability and no background work, so a caller can hold `&Wm` while it applies
 /// the returned effects.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Wm {
     options: WmOptions,
     outputs: Vec<Output>,
@@ -348,7 +356,22 @@ impl Wm {
     pub fn new(options: WmOptions) -> Self {
         Self {
             options,
-            ..Self::default()
+            outputs: Vec::new(),
+            workspaces: Workspaces::default(),
+            shown: BTreeMap::new(),
+            sets: Vec::new(),
+            last_shown: None,
+            windows: BTreeMap::new(),
+            stack: Stack::default(),
+            focus: None,
+            history: Vec::new(),
+            rules: Vec::new(),
+            layouts: Layouts::default(),
+            deferred: Vec::new(),
+            pointer: PointerFocus::default(),
+            auto_raise: None,
+            // The window manager's records may number as many as the windows it manages.
+            layers: LayerRegistry::new().with_provider_limit(wm_provider(), MAX_WINDOWS),
         }
     }
 
@@ -1240,6 +1263,9 @@ impl Wm {
     fn window_opened(&mut self, spec: WindowSpec) -> Vec<Effect> {
         if self.windows.contains_key(&spec.id) {
             return vec![Effect::rejected(Rejection::DuplicateWindow(spec.id))];
+        }
+        if self.windows.len() >= MAX_WINDOWS {
+            return vec![Effect::rejected(Rejection::TooManyWindows { limit: MAX_WINDOWS })];
         }
         let Some(active) = self.active_workspace() else {
             return vec![Effect::rejected(Rejection::NoWorkspace)];

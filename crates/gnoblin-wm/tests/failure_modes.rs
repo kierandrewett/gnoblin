@@ -3,9 +3,9 @@
 
 use gnoblin_types::{Insets, OutputId, Rect, Scale, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, Match, Pattern, PlacementMode, Rejection,
-    Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceDirection,
-    WorkspaceSelector, WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError,
+    ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, MAX_WINDOWS, Match, Pattern,
+    PlacementMode, Rejection, Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions,
+    WorkspaceDirection, WorkspaceSelector, WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -1889,5 +1889,38 @@ fn a_set_shows_each_named_workspace_on_its_own_output() {
     assert_eq!(wm.shown_workspace(OutputId::new(1)), Some(WorkspaceId::new(2)));
     assert!(wm.is_visible(window(1)));
     assert!(wm.is_visible(window(2)));
+    check(&wm);
+}
+
+#[test]
+fn every_window_up_to_the_cap_gets_a_surface_record() {
+    let mut wm = default_wm();
+    for raw in 1..=MAX_WINDOWS as u64 {
+        open(&mut wm, raw);
+    }
+    // Window 33 is past the old per-provider default of 32, and the cap itself must
+    // also get its record, or the mirror would lag the windows it mirrors.
+    for raw in [1, 33, 200, MAX_WINDOWS as u64] {
+        assert!(secure_of(&wm, raw).is_some(), "window {raw} has a surface record");
+    }
+    check(&wm);
+}
+
+#[test]
+fn a_window_past_the_cap_is_refused_and_leaves_no_record() {
+    let mut wm = default_wm();
+    for raw in 1..=MAX_WINDOWS as u64 {
+        open(&mut wm, raw);
+    }
+    let over = MAX_WINDOWS as u64 + 1;
+    let effects = wm.apply(Event::WindowOpened(WindowSpec::normal(window(over), "org.example.App")));
+    assert_eq!(
+        effects,
+        vec![Effect::Rejected {
+            reason: Rejection::TooManyWindows { limit: MAX_WINDOWS }
+        }]
+    );
+    assert_eq!(wm.windows().count(), MAX_WINDOWS);
+    assert!(secure_of(&wm, over).is_none());
     check(&wm);
 }

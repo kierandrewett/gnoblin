@@ -14,7 +14,7 @@ use crate::registry::RegisterError;
 pub const COMPOSITOR_CRATE: &str = "gnoblin-compositor";
 
 /// The party that registers and owns layers.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LayerProvider {
     /// A built-in Gnoblin crate, named by its crate name, such as `gnoblin-wayland`.
     Gnoblin(&'static str),
