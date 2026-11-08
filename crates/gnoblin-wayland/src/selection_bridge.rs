@@ -4,11 +4,11 @@
 //! Smithay moves the bytes. This module decides who may be asked for them. Each target
 //! (clipboard, primary) has one owner at a time:
 //!
-//! - [`Owner::Wayland`]: a Wayland client set the selection. X clients see its mime types
+//! - [`SelectionHolder::WaylandOwned`]: a Wayland client set the selection. X clients see its mime types
 //!   through the window manager, and an X read is answered by asking the Wayland source.
-//! - [`Owner::X11`]: an X client set the selection. The Wayland side holds a
+//! - [`SelectionHolder::X11Owned`]: an X client set the selection. The Wayland side holds a
 //!   compositor-owned source, and a Wayland paste is answered by asking the X client.
-//! - [`Owner::None`]: nothing is bridged. Reads and pastes are refused.
+//! - [`SelectionHolder::Unowned`]: nothing is bridged. Reads and pastes are refused.
 //!
 //! Setting a selection on one side never echoes back. Smithay reports a client-set
 //! Wayland selection only for a client request, so the compositor's own source does not
@@ -52,14 +52,14 @@ use smithay::wayland::selection::SelectionTarget;
 
 /// Who owns a selection target, as far as the bridge knows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum Owner {
+pub(crate) enum SelectionHolder {
     /// Nothing is bridged: reads and pastes are refused.
     #[default]
-    None,
+    Unowned,
     /// A Wayland client set the selection.
-    Wayland,
+    WaylandOwned,
     /// An X11 client set the selection.
-    X11,
+    X11Owned,
 }
 
 /// What the X11 side must be told after a Wayland change.
@@ -96,20 +96,20 @@ pub(crate) enum PasteRoute {
 /// The owner of each selection target.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct SelectionOwners {
-    clipboard: Owner,
-    primary: Owner,
+    clipboard: SelectionHolder,
+    primary: SelectionHolder,
 }
 
 impl SelectionOwners {
     /// The owner of a target.
-    pub(crate) fn owner(&self, target: SelectionTarget) -> Owner {
+    pub(crate) fn owner(&self, target: SelectionTarget) -> SelectionHolder {
         match target {
             SelectionTarget::Clipboard => self.clipboard,
             SelectionTarget::Primary => self.primary,
         }
     }
 
-    fn slot(&mut self, target: SelectionTarget) -> &mut Owner {
+    fn slot(&mut self, target: SelectionTarget) -> &mut SelectionHolder {
         match target {
             SelectionTarget::Clipboard => &mut self.clipboard,
             SelectionTarget::Primary => &mut self.primary,
@@ -129,13 +129,13 @@ impl SelectionOwners {
     ) -> ToX11 {
         match mime_types.filter(|types| allowed && !types.is_empty()) {
             Some(types) => {
-                *self.slot(target) = Owner::Wayland;
+                *self.slot(target) = SelectionHolder::WaylandOwned;
                 ToX11::Advertise(types.to_vec())
             }
             None => {
                 let slot = self.slot(target);
-                if *slot == Owner::Wayland {
-                    *slot = Owner::None;
+                if *slot == SelectionHolder::WaylandOwned {
+                    *slot = SelectionHolder::Unowned;
                     ToX11::Withdraw
                 } else {
                     ToX11::Nothing
@@ -153,7 +153,7 @@ impl SelectionOwners {
     ) -> ToWayland {
         let previous = std::mem::take(self.slot(target));
         if !allowed {
-            return if previous == Owner::X11 {
+            return if previous == SelectionHolder::X11Owned {
                 ToWayland::Clear
             } else {
                 ToWayland::Nothing
@@ -165,14 +165,14 @@ impl SelectionOwners {
             // has nothing to paste.
             return ToWayland::Clear;
         }
-        *self.slot(target) = Owner::X11;
+        *self.slot(target) = SelectionHolder::X11Owned;
         ToWayland::Offer(offered)
     }
 
     /// An X11 client gave up the selection.
     pub(crate) fn x11_cleared(&mut self, target: SelectionTarget) -> ToWayland {
-        if self.owner(target) == Owner::X11 {
-            *self.slot(target) = Owner::None;
+        if self.owner(target) == SelectionHolder::X11Owned {
+            *self.slot(target) = SelectionHolder::Unowned;
             ToWayland::Clear
         } else {
             ToWayland::Nothing
@@ -182,12 +182,12 @@ impl SelectionOwners {
     /// Whether an X11 client may read the selection: only a Wayland-owned one, and only
     /// while the session is not locked.
     pub(crate) fn allow_x11_read(&self, target: SelectionTarget, allowed: bool) -> bool {
-        allowed && self.owner(target) == Owner::Wayland
+        allowed && self.owner(target) == SelectionHolder::WaylandOwned
     }
 
     /// Where a Wayland paste from the compositor's own source is answered.
     pub(crate) fn paste_route(&self, target: SelectionTarget, allowed: bool) -> PasteRoute {
-        if allowed && self.owner(target) == Owner::X11 {
+        if allowed && self.owner(target) == SelectionHolder::X11Owned {
             PasteRoute::X11
         } else {
             PasteRoute::Refuse
@@ -237,7 +237,7 @@ mod tests {
             owners.wayland_changed(CLIPBOARD, Some(&types), true),
             ToX11::Advertise(types.clone())
         );
-        assert_eq!(owners.owner(CLIPBOARD), Owner::Wayland);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::WaylandOwned);
         assert!(owners.allow_x11_read(CLIPBOARD, true));
         // A Wayland paste of a Wayland copy is the protocol's own path, not the bridge's.
         assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Refuse);
@@ -252,7 +252,7 @@ mod tests {
             owners.x11_changed(CLIPBOARD, Some(&targets), true),
             ToWayland::Offer(names(&["text/plain;charset=utf-8"]))
         );
-        assert_eq!(owners.owner(CLIPBOARD), Owner::X11);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::X11Owned);
         assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::X11);
         assert!(!owners.allow_x11_read(CLIPBOARD, true));
     }
@@ -264,20 +264,20 @@ mod tests {
         let x11 = names(&["UTF8_STRING"]);
 
         owners.wayland_changed(CLIPBOARD, Some(&wayland), true);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::Wayland);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::WaylandOwned);
 
         assert_eq!(
             owners.x11_changed(CLIPBOARD, Some(&x11), true),
             ToWayland::Offer(names(&["text/plain;charset=utf-8"]))
         );
-        assert_eq!(owners.owner(CLIPBOARD), Owner::X11);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::X11Owned);
         assert!(!owners.allow_x11_read(CLIPBOARD, true));
 
         assert_eq!(
             owners.wayland_changed(CLIPBOARD, Some(&wayland), true),
             ToX11::Advertise(wayland.clone())
         );
-        assert_eq!(owners.owner(CLIPBOARD), Owner::Wayland);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::WaylandOwned);
         assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Refuse);
     }
 
@@ -288,7 +288,7 @@ mod tests {
         owners.wayland_changed(CLIPBOARD, Some(&types), true);
 
         assert_eq!(owners.wayland_changed(CLIPBOARD, None, true), ToX11::Withdraw);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
         assert!(!owners.allow_x11_read(CLIPBOARD, true));
     }
 
@@ -299,7 +299,7 @@ mod tests {
         owners.wayland_changed(CLIPBOARD, Some(&types), true);
 
         assert_eq!(owners.wayland_changed(CLIPBOARD, Some(&[]), true), ToX11::Withdraw);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
     }
 
     #[test]
@@ -311,7 +311,7 @@ mod tests {
         // The compositor's source can be replaced by a Wayland client's clear; the X11
         // owner stands, so nothing is withdrawn from X11 and its read stays X11's.
         assert_eq!(owners.wayland_changed(CLIPBOARD, None, true), ToX11::Nothing);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::X11);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::X11Owned);
         assert!(!owners.allow_x11_read(CLIPBOARD, true));
     }
 
@@ -324,12 +324,12 @@ mod tests {
         // A Wayland selection survives an X11 clear: the X11 side never owned it.
         owners.wayland_changed(CLIPBOARD, Some(&wayland), true);
         assert_eq!(owners.x11_cleared(CLIPBOARD), ToWayland::Nothing);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::Wayland);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::WaylandOwned);
 
         // An X11 selection is cleared once, when its owner gives it up.
         owners.x11_changed(CLIPBOARD, Some(&x11), true);
         assert_eq!(owners.x11_cleared(CLIPBOARD), ToWayland::Clear);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
         assert_eq!(owners.x11_cleared(CLIPBOARD), ToWayland::Nothing);
     }
 
@@ -344,7 +344,7 @@ mod tests {
             owners.x11_changed(CLIPBOARD, Some(&bookkeeping), true),
             ToWayland::Clear
         );
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
         assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Refuse);
     }
 
@@ -355,11 +355,11 @@ mod tests {
         let x11 = names(&["UTF8_STRING"]);
 
         assert_eq!(owners.wayland_changed(CLIPBOARD, Some(&types), false), ToX11::Nothing);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
         assert!(!owners.allow_x11_read(CLIPBOARD, false));
 
         assert_eq!(owners.x11_changed(CLIPBOARD, Some(&x11), false), ToWayland::Nothing);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
         assert_eq!(owners.paste_route(CLIPBOARD, false), PasteRoute::Refuse);
     }
 
@@ -371,7 +371,7 @@ mod tests {
 
         // A new X11 copy while locked clears the offer it replaced, and is not offered.
         assert_eq!(owners.x11_changed(CLIPBOARD, Some(&x11), false), ToWayland::Clear);
-        assert_eq!(owners.owner(CLIPBOARD), Owner::None);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
         assert_eq!(owners.paste_route(CLIPBOARD, false), PasteRoute::Refuse);
         assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Refuse);
     }
@@ -385,8 +385,8 @@ mod tests {
         owners.wayland_changed(CLIPBOARD, Some(&wayland), true);
         owners.x11_changed(PRIMARY, Some(&x11), true);
 
-        assert_eq!(owners.owner(CLIPBOARD), Owner::Wayland);
-        assert_eq!(owners.owner(PRIMARY), Owner::X11);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::WaylandOwned);
+        assert_eq!(owners.owner(PRIMARY), SelectionHolder::X11Owned);
         assert_eq!(owners.paste_route(PRIMARY, true), PasteRoute::X11);
         assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Refuse);
     }
