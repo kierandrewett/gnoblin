@@ -9,10 +9,10 @@
 //!
 //! A client sends its own keymap as `xkb_v1` text in a file descriptor. While a virtual
 //! keyboard owns the seat's keymap, the seat compiles that text; when the virtual keyboard
-//! is destroyed the seat gets its layout keymap back. The text is cut at its first NUL,
-//! because clients such as `wtype` count the terminating NUL in `size` and xkbcommon does
-//! not accept it. Any other keymap format is refused, and so is text xkbcommon cannot
-//! compile.
+//! is destroyed the seat gets its layout keymap back. The text is read from the start of the
+//! descriptor, whatever its file position, and cut at its first NUL: clients such as `wtype`
+//! count a terminating NUL in `size` without writing it, and xkbcommon does not accept it.
+//! Any other keymap format is refused, and so is text xkbcommon cannot compile.
 //!
 //! ## Failure modes
 //!
@@ -31,14 +31,16 @@
 //! 6. A keymap format other than `xkb_v1` is refused the same way:
 //!    `an_unsupported_keymap_format_is_refused_and_leaves_no_keymap`.
 //! 7. A privileged client sees the manager: `a_privileged_client_sees_the_virtual_keyboard_manager`.
+//! 8. A keymap sent the way `wtype` sends it, text with no NUL and a file position at EOF,
+//!    is read from the start and accepted: `a_keymap_sent_the_way_wtype_sends_it_is_accepted`.
 //!
 //! Destroying a keyboard that still holds keys releases them, and gives the layout keymap
 //! back. That path has no test of its own yet; it is covered by reading
 //! [`KeyboardUserData::destroyed`].
 
 use std::fs::File;
-use std::io::Read;
 use std::os::fd::OwnedFd;
+use std::os::unix::fs::FileExt;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use smithay::backend::input::InputTime;
@@ -262,22 +264,41 @@ impl KeyboardUserData {
 
 /// Reads the keymap a client sent: the descriptor's first `size` bytes, cut at the first NUL.
 ///
-/// A format other than `xkb_v1`, a descriptor shorter than `size`, or text that is not
-/// UTF-8 is refused with its reason. Whether xkbcommon compiles the text is decided when
-/// the seat takes it.
+/// A format other than `xkb_v1`, or text that is not UTF-8, is refused with its reason.
+/// Whether xkbcommon compiles the text is decided when the seat takes it.
 fn keymap_text(format: u32, fd: OwnedFd, size: u32) -> Result<String, &'static str> {
     if format != XKB_V1_FORMAT {
         return Err("the keymap format is not xkb_v1");
     }
-    let mut bytes = Vec::new();
-    File::from(fd)
-        .take(u64::from(size))
-        .read_to_end(&mut bytes)
-        .map_err(|_| "the keymap descriptor could not be read")?;
-    if bytes.len() != usize::try_from(size).unwrap_or(usize::MAX) {
-        return Err("the keymap descriptor is shorter than its size");
-    }
-    let end = bytes.iter().position(|&byte| byte == 0).unwrap_or(bytes.len());
-    bytes.truncate(end);
+    let bytes = read_keymap_bytes(&File::from(fd), size).map_err(|_| "the keymap descriptor could not be read")?;
     String::from_utf8(bytes).map_err(|_| "the keymap is not UTF-8")
+}
+
+/// Reads up to `size` bytes from the start of the descriptor, and stops at the first NUL.
+///
+/// The read starts at offset 0 and leaves the file position alone: a client such as `wtype`
+/// writes the keymap and sends the descriptor without rewinding it, so the position is at the
+/// end of the text. The descriptor may also be shorter than `size`, because `size` counts the
+/// terminating NUL and clients do not always write it; the end of the file then ends the
+/// keymap, as the zero-filled tail of a mapping would.
+fn read_keymap_bytes(file: &File, size: u32) -> std::io::Result<Vec<u8>> {
+    let limit = u64::from(size);
+    let mut bytes = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let mut offset = 0u64;
+    while offset < limit {
+        let want = usize::try_from((limit - offset).min(chunk.len() as u64)).unwrap_or(chunk.len());
+        let read = file.read_at(&mut chunk[..want], offset)?;
+        if read == 0 {
+            break;
+        }
+        offset += read as u64;
+        let text = &chunk[..read];
+        if let Some(nul) = text.iter().position(|&byte| byte == 0) {
+            bytes.extend_from_slice(&text[..nul]);
+            break;
+        }
+        bytes.extend_from_slice(text);
+    }
+    Ok(bytes)
 }

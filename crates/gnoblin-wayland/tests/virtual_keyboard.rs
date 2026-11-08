@@ -88,6 +88,16 @@ fn send_keymap(keyboard: &ZwpVirtualKeyboardV1, format: u32, bytes: &[u8], size:
     keyboard.keymap(format, fd, size);
 }
 
+/// Sends a keymap the way `wtype` does: the descriptor holds the keymap text with no NUL,
+/// its file position is left at the end of what was written, and `size` counts the NUL
+/// that is not there. Only a read from offset 0 sees the keymap.
+fn send_keymap_as_wtype(keyboard: &ZwpVirtualKeyboardV1, bytes: &[u8]) {
+    let mut file = tempfile::tempfile().expect("a temporary file for the keymap");
+    file.write_all(bytes).expect("the keymap is written");
+    let fd: BorrowedFd<'_> = file.as_fd();
+    keyboard.keymap(XKB_V1, fd, bytes.len() as u32 + 1);
+}
+
 /// A key press of `key` as the protocol sends it.
 fn press(keyboard: &ZwpVirtualKeyboardV1, key: u32) {
     keyboard.key(0, key, 1);
@@ -152,6 +162,21 @@ fn a_keymap_is_read_up_to_its_first_nul() {
         assert!(
             client.has("zwp_virtual_keyboard_manager_v1"),
             "the keymap ends at its NUL"
+        );
+    });
+}
+
+#[test]
+fn a_keymap_sent_the_way_wtype_sends_it_is_accepted() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App);
+        let keyboard = keyboard(&client);
+        send_keymap_as_wtype(&keyboard, KEYMAP.as_bytes());
+        press(&keyboard, 30);
+        client.roundtrip();
+        assert!(
+            client.has("zwp_virtual_keyboard_manager_v1"),
+            "a keymap one byte short of its size is still the keymap"
         );
     });
 }
