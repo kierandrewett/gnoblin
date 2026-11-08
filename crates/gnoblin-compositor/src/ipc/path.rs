@@ -150,7 +150,7 @@ fn prepare_directory(directory: &Path) -> Result<(), IpcError> {
 }
 
 /// Removes a socket file nothing is listening on, and refuses a live one.
-fn replace_stale_socket(path: &Path) -> Result<(), IpcError> {
+pub(crate) fn replace_stale_socket(path: &Path) -> Result<(), IpcError> {
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),

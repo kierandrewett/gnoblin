@@ -68,9 +68,15 @@ impl EisGate {
 
     /// Binds the endpoint at `path` and hands its input to `sink`.
     ///
-    /// The socket is made `0600` straight after the bind. The directory holding it is
-    /// already private, because the IPC socket path prepares it.
+    /// A socket file a crashed session left behind is replaced, as the IPC socket is; a live
+    /// one, or a file that is not a socket, is refused. The socket is made `0600` straight
+    /// after the bind. The directory holding it is already private, because the IPC socket
+    /// path prepares it.
     pub(crate) fn serve(&self, path: &Path, sink: InputSink) -> io::Result<()> {
+        crate::ipc::replace_stale_socket(path).map_err(|error| match error {
+            crate::ipc::IpcError::Io { source, .. } => source,
+            other => io::Error::new(io::ErrorKind::AddrInUse, other.to_string()),
+        })?;
         let options = Options {
             path: path.to_path_buf(),
             grant: Grant::pending(),

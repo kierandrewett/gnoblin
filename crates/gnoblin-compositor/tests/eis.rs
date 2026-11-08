@@ -7,7 +7,7 @@
 mod support;
 
 use std::os::unix::fs::PermissionsExt as _;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -236,5 +236,20 @@ fn an_ungranted_key_does_not_reach_a_wayland_client_and_a_granted_one_does() {
     });
     ungranted.key(KEY_A, true);
     wait_for_key(&mut app, KEY_A);
+    drop(session);
+}
+
+/// A crashed session leaves its `eis.sock` behind, with nothing listening on it. The next
+/// session replaces that file rather than refusing to start, as the IPC socket does.
+#[test]
+fn a_stale_socket_left_by_a_crashed_session_is_replaced() {
+    let directory = support::private_directory();
+    let stale = directory.path().join("eis.sock");
+    // Binding and dropping leaves the socket file on disk with no listener behind it.
+    drop(UnixListener::bind(&stale).expect("the stale socket"));
+    assert!(stale.exists(), "the stale socket file is on disk");
+
+    let session = Session::start_with(Some(directory.path().join("ipc.sock")));
+    assert!(stale.exists(), "the EIS socket is bound over the stale file");
     drop(session);
 }
