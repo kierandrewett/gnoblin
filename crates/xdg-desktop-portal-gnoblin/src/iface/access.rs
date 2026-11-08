@@ -38,6 +38,8 @@ impl AccessPortal {
     ///
     /// The handle is exported before the prompt, so the frontend can cancel the wait. The
     /// results dictionary is always empty: the dialog returns a response and nothing else.
+    // The argument list is the D-Bus method's signature, fixed by the spec.
+    #[allow(clippy::too_many_arguments)]
     async fn access_dialog(
         &self,
         #[zbus(header)] header: Header<'_>,
