@@ -156,6 +156,13 @@ doc = "The live workspace with this identity, or nil."
 params = [{ name = "id", type = "integer" }]
 returns = ["gnoblin.workspace|nil"]
 
+[[member.members]]
+name = "activate_set"
+kind = "function"
+doc = "Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name."
+params = [{ name = "name", type = "string" }]
+returns = ["gnoblin.Operation"]
+
 [[member]]
 name = "activate_set"
 kind = "function"

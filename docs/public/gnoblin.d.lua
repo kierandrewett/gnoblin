@@ -161,6 +161,11 @@ function gnoblin.workspaces.list() end
 ---@return gnoblin.workspace|nil
 function gnoblin.workspaces.by_id(id) end
 
+--- Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name.
+---@param name string
+---@return gnoblin.Operation
+function gnoblin.workspaces.activate_set(name) end
+
 --- The live objects of one kind that match a filter, as a Lua array in identity order. The kinds are `Window`, `Workspace` and `Output`. A table filter keeps the objects whose scalar fields equal every value given; a function filter keeps those it returns a truthy value for. An unknown kind or filter field is raised by name.
 ---@param kind string
 ---@param filter table|fun(object: table): boolean|nil
