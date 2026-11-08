@@ -41,12 +41,33 @@ the source, so an edit made after the configuration was checked is refused. An u
 `{}` when the command takes none. The layout answers with the placements the command produces. `refused` means the
 layout does not know the command, and `unknown-layout` means the workspace has no layout to ask.
 
+The shipped `gnoblin.layouts.strip` module places windows as columns in a strip wider than the screen, in the style of
+niri. Each column holds one or more windows, stacked or tabbed.
+
+A view offset decides which part of the strip is on screen, and columns outside the view keep their placements. A new
+window opens as a column after the focused one.
+
+Set the layout with `module = "gnoblin.layouts.strip"` and `root = "shipped"`. Its options are:
+
+- `column_width`, a fraction of the area from 0 to 1 (default `0.5`);
+- `centre`, one of `on-overflow` (default), `always` or `never`.
+
+Its commands take `params` as a JSON object:
+
+- `width`, with `preset` (`"1/3"`, `"1/2"`, `"2/3"` or `"1"`) or `px`, sets the focused column's width;
+- `consume` and `expel`, with an optional `window`, move a window into the column on its left or out into a new column;
+- `move_column`, with `direction` (`"left"` or `"right"`), swaps the focused column with its neighbour;
+- `fit_all` gives every column an equal share and scrolls to the start;
+- `toggle_tabbed` switches the focused column between stacked and tabbed;
+- `focus`, with `direction` (`"left"`, `"right"`, `"up"` or `"down"`), moves focus to the neighbouring window. With no
+  neighbour, focus stays where it is and the command still succeeds;
+- `scroll_to`, with `x`, sets the view offset in pixels. The offset is clamped to the strip.
+
 The workspace object signals:
 
 - `layout_changed`, with `layout`, when the workspace's layout changes;
 - `layout_failed`, with `layout` and `reason`, when a layout run fails. The workspace then runs floating until a run
-  succeeds. `reason` is one of `deadline`, `memory`, `error`, `refused-reply`, `vm-wedged`, `vm-down`,
-  `missing-module` or `invalid-params`.
+  succeeds. `reason` is one of `error`, `timeout`, `disabled`, `vm-wedged`, `invalid-reply` or `invalid-params`.
 
 ## Not in the schema yet
 

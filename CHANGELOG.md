@@ -4,6 +4,12 @@
 
 ### Added
 
+- The shipped `gnoblin.layouts.strip` layout places windows as columns in a strip wider than the screen, with a view
+  offset, stacked or tabbed columns, and the `width`, `consume`, `expel`, `move_column`, `fit_all`, `toggle_tabbed`,
+  `focus` and `scroll_to` commands. It replaces the scrolling layout, which is removed.
+- The window manager accepts up to `MAX_WINDOWS` (256) windows. A window past the cap is refused with
+  `TooManyWindows` before any state changes. Each provider in the layer registry has its own limit; extension
+  providers keep the default of 32.
 - Named workspace sets: the `workspace_sets` field of `gnoblin.configure` declares sets that name the workspace each
   output shows, checked as a whole list when the session starts. The window manager can make a set live, and a named
   output that is not connected falls back to the primary output with a logged warning. Declaring a set does not
@@ -29,6 +35,12 @@
   the session. The service takes the inhibitor again on resume. A logind lock on another session is ignored. Without a
   system bus the watch is skipped.
 - Window rules accept a workspace name declared in `workspaces`, in the `workspace = {id = ...}` target and the `workspace-id` match. A declared name resolves to its position. An undeclared name that is not a number is refused when the configuration is committed, with the field named. The declared list also sets the persistent workspace count.
+
+### Fixed
+
+- Window records past the 32nd window do not trip a debug assertion, because the window manager's layer provider has
+  its own limit.
+- The `layout_failed` signal's documented `reason` values now match the ones it emits.
 
 ### Changed
 

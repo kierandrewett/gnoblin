@@ -1273,3 +1273,9 @@ name = "gnoblin.input.pad-help-requested"
 doc = "docs/shell-api/tablet-pad-help.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.layouts.strip"
+doc = "docs/shell-api/workspaces.md"
+reason = "the shipped layout module name used as a config value, not a stub API member; the gate reads only docs/public/gnoblin.d.lua and has no module namespace"
+owner-slice = "docs wrong"
