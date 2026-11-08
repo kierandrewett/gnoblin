@@ -1,136 +1,133 @@
-# The layout owns placement
+# One layout script decides placement, order and z-order
 
-Status: proposal (D33). Nothing here is built. It answers one question: why is
-`new_window_placement` not handled by the layout, and what should own what.
+Status: proposal (D33, revised after the user's comments on the Doop frame).
+Nothing here is built.
 
 ## The problem
 
-D17 says a layout is the geometry authority for its workspace. D25 says the
-layout kind decides placement, and `LayoutKind::Floating` is documented as "The
-layout gives initial placement only" (`crates/gnoblin-wm/src/layout/kind.rs`).
-The code does not do that. For a new window the layout is never asked where it
-opens.
+D17 says a layout is the geometry authority for its workspace. The code does
+not follow that. `gnoblin-wm` keeps a second set of placement rules outside
+the layout, and the layout API has an escape hatch that makes them reachable.
+The result is edge cases on top of the one mechanism that should handle all of
+it.
 
-What happens today, in order, in `crates/gnoblin-wm/src/wm.rs`:
+Evidence, from `crates/gnoblin-wm/src` and `data/lua`:
 
-1. **Geometry.** `Wm` computes the initial rectangle itself with
-   `placement::place(self.options.placement, ...)` (about line 1219). The mode
-   comes from the config key `window_management.new_window_placement` and is one
-   of `free_space`, `center` or `cascade`. The workspace's layout is not
-   consulted. This runs for every normal window, including windows that a tiling
-   layout will move a moment later.
-2. **Transients.** A dialog is centred over its parent in the same function, by
-   a second, separate rule.
-3. **Z-order.** `self.stack.insert(window_id, layer, anchor)` (about line 1252)
-   decides where the window enters the stack. Later changes are `stack.raise` and
-   `stack.lower` from focus, click and auto-raise (lines 1451, 1669, 1683, 1692).
-   No layout is asked.
-4. **Order in a tiled set.** `arrange::params` builds the window list from
-   `windows.values()`, a map keyed by window id. A tiling layout therefore always
-   sees windows in creation order. It cannot say where a new window goes in the
-   order, such as "after the focused window" or "at the master".
-5. **Layout requests.** A layout only hears about a window through `Place`,
-   `Move` and `Leave` (`RequestKind`), sent by `request_kinds`. They cover tiled
-   windows only. A window under a floating layout never produces a request.
-6. **Floating.** D17 makes `floating` the layout that declines every request, so
-   "the wm's existing floating logic applies". That logic is items 1 to 3.
+- `wm.rs` (about line 1219) places every new window with
+  `placement::place(self.options.placement, ...)`. The mode comes from the
+  config key `window_management.new_window_placement`. No layout is asked.
+- The same function centres a dialog over its parent by a second rule.
+- `stack.insert` (about line 1252) sets the initial z-order. `stack.raise` and
+  `stack.lower` (lines 1451, 1669, 1683, 1692) change it on focus, click and
+  auto-raise. No layout is asked.
+- `arrange::params` lists tiled windows from `windows.values()`. That is a
+  `BTreeMap` keyed by window id, so a layout always sees creation order and
+  cannot choose a window's slot.
+- A layout is told only about tiled windows (`Place`, `Move`, `Leave`).
+- A layout can answer `Declined` (Lua `on_request` returning `nil`). The shipped
+  `floating.lua` does exactly that for every request, and `LayoutKind::Floating`
+  is documented as "the layout gives initial placement only". It gives none. A
+  decline means "the window manager's own rules apply". Those rules are the edge
+  case.
 
-So the placement rules for a floating desktop live in `gnoblin-wm` as config
-options, and the layout that is called "floating" owns none of them. A user who
-swaps `floating` for another layout keeps `new_window_placement` in config, where
-it means nothing for tiled windows and something for the rest. The shipped Lua
-layouts (`master_stack.lua` and others) decline every request.
+## The idea
 
-## What should own what
+There is no special case. One script handles all layout, including floating.
 
-| Thing                                                     | Owner today                             | Owner proposed                                                                             |
-| --------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Where a new window opens (rectangle or 3D transform)      | `gnoblin-wm`, from config               | The workspace layout                                                                       |
-| Where a dialog opens relative to its parent               | `gnoblin-wm`, fixed rule                | The workspace layout, with the parent as an input; default is centred over the parent      |
-| Where a new window enters the tiled order                 | Creation order, fixed                   | The workspace layout                                                                       |
-| Initial z-order of a new window                           | `stack.insert`, fixed                   | The workspace layout, as a hint the wm validates                                           |
-| `new_window_placement`                                    | wm config key                           | A parameter of the floating layout                                                         |
-| Raising and lowering after use (click, focus, auto-raise) | `gnoblin-wm` options                    | Stays in `gnoblin-wm`. These are input policy. A layout may refuse a raise (kiosk, tiling) |
-| Who gets focus when a window opens                        | `gnoblin-wm` option `focus_new_windows` | Stays. It is focus policy, not layout                                                      |
-| Edge tiling and snap                                      | `gnoblin-wm`                            | Stays for now. Snap is a user gesture, and a layout already hears `Move` and `Leave`       |
+- The layout is asked about every window, tiled or not, for every change that
+  affects placement: a window opens, moves, resizes, closes, is raised or
+  lowered, changes workspace or output, or gains focus.
+- It always answers with an arrangement: for each window its position (a
+  rectangle or a 3D transform), its size, whether it is visible, its opacity,
+  and the order of the list. The order of the list is the z-order. There is no
+  "decline".
+- `gnoblin-wm` validates the answer with `settle` and applies it. It decides
+  nothing about placement, order or stacking within a layer band.
 
-## Proposal
+### What this removes
 
-Scope: this covers initial placement and initial order only. Ongoing restacking
-(raise on click, auto-raise, lower) stays in `gnoblin-wm` as input policy unless
-question 3 below is answered yes. The user asked that order and z-order follow the
-layout, so question 3 decides whether that part is in scope.
+| Removed                                                        | Replaced by                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `Declined` and a Lua `on_request` that returns `nil`           | An answer, always                                                                                 |
+| `placement.rs` rules in the window manager                     | The floating layout                                                                               |
+| The config key `window_management.new_window_placement`        | An option of the floating layout (`placement = "free_space"`, `"center"` or `"cascade"`)          |
+| The fixed rule that centres a dialog over its parent           | The layout, which receives the parent as input; the floating default centres it                   |
+| Creation-order window list                                     | The order the layout last returned                                                                |
+| `stack.insert`, `raise`, `lower` decided in the window manager | The layout's order; a click or auto-raise is a request, and the layout answers with the new order |
+| A separate "managed" and "free" status for ordinary placement  | A window the layout does not move simply keeps its rectangle in its answer                        |
 
-1. **One new request: `Open`.** The wm sends `Open { window, size, parent }` to
-   the workspace layout for every new toplevel that is not covered by another
-   request. The reply is one `Placement` for that window (a rectangle or a full
-   3D transform), plus an optional stack hint.
-    - For a tiling layout, `Open` replaces the current `Place` for new windows. It
-      lets the layout choose the window's slot in the order.
-    - For a floating layout, `Open` returns the initial rectangle. It holds the
-      three modes now in `placement.rs`.
-    - A layout may decline. A declined `Open` falls back to the built-in rule that
-      exists today (centred, cascaded), so nothing regresses.
-2. **Floating owns the three modes.** The native `FloatingEngine` and the shipped
-   `gnoblin.layouts.floating` module accept a `placement` parameter with the
-   values `free_space`, `center` and `cascade`. The config key
-   `window_management.new_window_placement` stays as the default value of that
-   parameter, and a per-workspace layout parameter overrides it. The Rust code in
-   `placement.rs` moves with it and stays pure and bounded.
-3. **Order.** The tiled window list is ordered by an explicit position the layout
-   chose in `Open`, not by window id. The wm stores that order and passes it in
-   `Params`.
-4. **Z-order hint.** The `Open` reply may carry `stack: top | bottom | above(window)`.
-   The wm applies it through the existing validated stack functions. A reply that
-   names an unknown window is refused with a named error.
-5. **Transients.** The parent is an input to `Open`. The default reply, when the
-   layout declines, is the current centring.
-6. **Docs.** `docs/config/configure/window_management.md` describes
-   `new_window_placement` as "the default placement mode of the floating layout".
-   The layout guide documents `Open`, the stack hint and the parameter.
+### The floating layout
 
-## Why not leave it in the wm
+Floating becomes a real layout. The native `FloatingEngine` (D17: native Rust,
+equal to the shipped module, checked by a parity test) implements the contract
+and holds the three modes now in `placement.rs`. A new window gets a position by
+the option `placement`. A window the user moved keeps its rectangle. A raise
+request moves the window to the top of the order. A tiling layout answers the
+same requests differently: it ignores a raise, and it puts a new window after
+the focused one or at the master.
 
-- A layout cannot give a consistent experience if the wm places windows by a
-  different rule first. Under a tiling layout, every new window is placed once
-  by `placement::place` and then moved by the layout. The first step is wasted
-  work and, for `free_space`, a scan over the grid.
-- `new_window_placement = "center"` is meaningless under `master_stack`. A single
-  parameter on the layout that uses it is clearer.
-- A Lua layout author cannot implement "open next to the focused window" or "new
-  window becomes master" today.
+### Config
+
+The key `new_window_placement` is removed in one step, by the repository's
+clean-cutover rule. The config hook that reports removed settings
+(`crates/gnoblin-config/src/hooks.rs`) names the replacement. The default config
+and the docs move to the layout option. An existing config that sets the old key
+gets that one error naming the new option, not a silent change.
+
+### What stays in the window manager
+
+- **Layer bands.** A fullscreen window, a window marked above or below, and the
+  other state-driven bands stay compositor-owned. A fullscreen window must cover
+  the panels whatever a layout says. The layout orders windows inside a band.
+- **Input policy.** Click-to-focus, focus follows pointer, auto-raise delay and
+  `focus_new_windows` decide when a request is made and who takes focus. They do
+  not decide the order. A layout may also set focus through a layout effect (the
+  LayoutStrip lane is adding `LayoutEffect::Focus`).
+- **Validation and safety.** `settle` refuses an invalid answer.
+
+### Failure is not a decline
+
+If a layout errors, times out or returns an invalid answer, the last good
+arrangement stays in force and `LayoutFailed` is reported, as today. A window
+that opens while the layout is failing gets the built-in safety layout
+(`layout/fallback.rs`: centred, cascaded). That is a failure path with a visible
+error. It is not a second way to lay out windows.
+
+## What it needs
+
+1. The request set grows: `Open { window, size, parent }`, `Raise`, `Lower`, and
+   windows that are not tiled are no longer excluded from requests.
+2. The reply type loses `Declined`. The Lua loader refuses `nil` from
+   `on_request` with a named error, and the shipped layouts return an
+   arrangement.
+3. The wm keeps the layout's returned order and passes it in `Params`.
+4. `placement.rs` moves behind the native floating engine. The Lua `floating`
+   module and `FloatingEngine` keep their parity test.
+5. The config schema drops the key. Docs and the default config follow.
 
 ## Risks
 
-- The wm sends one more request for every new window. Each request waits for a
-  Lua worker, so the first frame of a new window could be late. Mitigation: the
-  layout runs on the existing deadline, and a late answer falls back to the
-  built-in rule. The window must never wait on a layout past the deadline.
-- Existing user configs set `new_window_placement`. The key stays and keeps its
-  meaning for the floating layout, so nothing breaks.
-- The shipped Lua layouts decline everything today. They need a default `Open`
-  reply, or the floating fallback applies.
-- Parity tests under `gnoblin-wm` for placement (free space, centre, cascade)
-  must pass unchanged against the new path.
+- One more question per new window. A layout runs on a worker with a deadline.
+  If it is late, the safety layout places the window and the window never waits.
+- Raise and focus requests now reach a layout. Under a 3D layout, depth and
+  z-order interact. Each layout decides, and the shipped ones document it.
+- Every shipped Lua layout must answer every request kind. That is a mechanical
+  change and covered by failure-mode tests first.
 
 ## Phases
 
-1. Add `RequestKind::Open` and the `Open` reply in `gnoblin-wm::layout`, with
-   failure-mode tests first: declined, late, invalid placement, unknown stack
-   hint, parent missing.
-2. Route new windows through it, with the built-in rule as the fallback. Move
-   `placement.rs` behind the native floating engine and give the shipped floating
-   module the same behaviour.
-3. Store the layout's order and pass it in `Params`.
-4. Add the stack hint.
-5. Update the shipped tiling layouts to answer `Open` (insert after the focused
-   window, new master, and so on) and update docs and changelog.
+1. Failure-mode tests first for the new contract: late answer, error, invalid
+   order, unknown window in an order, missing parent, empty workspace.
+2. Add the request kinds and the always-answer reply. Remove `Declined`. Update
+   the shipped layouts and the Lua loader.
+3. Route `Open` through the layout. Move `placement.rs` behind the floating
+   engine and add the `placement` option.
+4. Store and pass the layout's order. Route raise and lower through requests.
+5. Remove `new_window_placement`, migrate the default config, update docs and the
+   changelog.
 
-## Needs Kieran
+## Needs the user
 
-1. Is `new_window_placement` a parameter of the floating layout (proposed), or
-   should it be removed in favour of per-workspace layout parameters only?
-2. Should a dialog's placement relative to its parent be a layout decision (as
-   proposed), or stay a fixed compositor rule so dialogs never surprise anyone?
-3. Should raise and lower on click and auto-raise stay as compositor input policy
-   (as proposed), or become layout decisions too?
+One confirmation. Layer bands (fullscreen above panels, above and below states)
+stay compositor-owned, and the layout orders windows inside a band. This is the
+safe choice because a layout bug must never hide a fullscreen window or a panel.
