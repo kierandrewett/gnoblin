@@ -2507,3 +2507,25 @@ end)
     host.evaluate(&config.write("kill.lua", "JOB:kill()\n"))
         .expect("the child is stopped");
 }
+
+#[test]
+fn a_spawned_program_sees_the_spec_environment() {
+    let config = Config::new("process-env");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"sh", "-c", "printf %s \"$DISPLAY|$GNOBLIN_PRIVILEGED_DISPLAY\""}, {stdout = "capture", env = {DISPLAY = ":7"}})
+job:wait():on_complete(function(value, err)
+    assert(err == nil, "the program ran")
+    assert(value.stdout == ":7|", "the spec's DISPLAY wins and the privileged display is absent, was " .. tostring(value.stdout))
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert_eq!(pumped.handlers, 1);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}

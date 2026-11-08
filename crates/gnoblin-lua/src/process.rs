@@ -467,19 +467,31 @@ fn signal_error_code(error: &io::Error) -> &'static str {
     }
 }
 
-/// Start a process from a checked spec and hand back its pid and its waiter's requests.
-///
-/// Takes the spec by value, so the spec's buffers move into the threads that use them.
-/// The waiter reports its end on `events`, tagged with `id`.
-fn start(id: u64, spec: SpawnSpec, events: Sender<ProcessEvent>) -> io::Result<(u32, Sender<ProcessRequest>)> {
+/// The variable the compositor's guardian gives its privileged half. The runtime inherits its own
+/// environment, so this one is withdrawn from every child unless the spec names it.
+const PRIVILEGED_DISPLAY: &str = "GNOBLIN_PRIVILEGED_DISPLAY";
+
+/// The command for a checked spec: the runtime's environment, minus the privileged display, then
+/// the spec's own variables, which win.
+fn command(spec: &SpawnSpec) -> Command {
     let mut command = Command::new(&spec.argv[0]);
     command.args(&spec.argv[1..]);
     if let Some(cwd) = &spec.cwd {
         command.current_dir(cwd);
     }
+    command.env_remove(PRIVILEGED_DISPLAY);
     for (name, value) in &spec.env {
         command.env(name, value);
     }
+    command
+}
+
+/// Start a process from a checked spec and hand back its pid and its waiter's requests.
+///
+/// Takes the spec by value, so the spec's buffers move into the threads that use them.
+/// The waiter reports its end on `events`, tagged with `id`.
+fn start(id: u64, spec: SpawnSpec, events: Sender<ProcessEvent>) -> io::Result<(u32, Sender<ProcessRequest>)> {
+    let mut command = command(&spec);
     // A process group of its own: a kill or a timeout reaches what the program starts too.
     command.process_group(0);
     command.stdin(if spec.stdin.is_empty() {
@@ -784,4 +796,57 @@ fn result_table(lua: &Lua, ended: &Ended) -> mlua::Result<Table> {
     table.set("stderr", lua.create_string(&ended.stderr)?)?;
     table.set("stderr_truncated", ended.stderr_truncated)?;
     Ok(table)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+
+    use super::*;
+
+    fn spec_with_env(env: Vec<(String, String)>) -> SpawnSpec {
+        SpawnSpec {
+            argv: vec!["true".to_owned()],
+            cwd: None,
+            env,
+            stdin: Vec::new(),
+            stdout: StreamMode::Inherit,
+            stderr: StreamMode::Inherit,
+            output_limit: DEFAULT_OUTPUT_LIMIT as usize,
+            timeout: None,
+        }
+    }
+
+    /// The environment edits `command` will apply to the child: `None` is a removal.
+    fn edits(command: &Command) -> Vec<(OsString, Option<OsString>)> {
+        command
+            .get_envs()
+            .map(|(name, value)| (name.to_owned(), value.map(OsString::from)))
+            .collect()
+    }
+
+    #[test]
+    fn spec_environment_wins_and_the_privileged_display_never_reaches_a_child() {
+        let spec = spec_with_env(vec![("DISPLAY".to_owned(), ":7".to_owned())]);
+        let edits = edits(&command(&spec));
+        assert!(
+            edits.contains(&(OsString::from(PRIVILEGED_DISPLAY), None)),
+            "the privileged display is removed from the child: {edits:?}"
+        );
+        assert!(
+            edits.contains(&(OsString::from("DISPLAY"), Some(OsString::from(":7")))),
+            "the spec's DISPLAY is applied: {edits:?}"
+        );
+    }
+
+    #[test]
+    fn a_spec_that_names_the_privileged_display_still_sets_it() {
+        // An explicit request is the caller's choice; only the inherited value is withheld.
+        let spec = spec_with_env(vec![(PRIVILEGED_DISPLAY.to_owned(), ":9".to_owned())]);
+        let edits = edits(&command(&spec));
+        assert!(
+            edits.contains(&(OsString::from(PRIVILEGED_DISPLAY), Some(OsString::from(":9")))),
+            "the spec's privileged display is applied: {edits:?}"
+        );
+    }
 }
