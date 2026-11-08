@@ -652,9 +652,9 @@ impl<T: Transport + 'static> Host<T> {
     ///
     /// The handlers and timers of the previous document are dropped, because they
     /// belong to the document that declared them: keeping them would deliver one
-    /// signal once per reload. Everything the connection has queued is applied
-    /// first, so the configuration reads the graph as it is now rather than as it
-    /// was when the host subscribed.
+    /// signal once per reload. What the connection has queued is applied first, up to
+    /// one pump batch, so the configuration reads a recent graph rather than the one
+    /// from when the host subscribed. The rest waits for the next pump.
     fn reset_runtime(&mut self) -> Result<(), HostError> {
         {
             let mut shared = self.shared.borrow_mut();
@@ -667,16 +667,19 @@ impl<T: Transport + 'static> Host<T> {
             .set_named_registry_value(crate::bindings::CALLBACKS, callbacks)
             .map_err(HostError::Sandbox)?;
         let mut handlers = 0usize;
-        loop {
+        // The same bound as `pump`: a link that never runs dry must not hold the reload.
+        // Whatever is left stays in the inbox and reaches the new document through the next pump.
+        for _ in 0..PUMP_EVENT_BATCH {
             let next = self.shared.borrow_mut().client.next_event();
             match next {
                 Ok(event) => self.dispatch(event, &mut handlers),
                 // Nothing queued, or the connection ended: either way the drain is
                 // finished and the document is evaluated against the graph as it is.
-                Err(ClientError::Disconnected | ClientError::Idle) => return Ok(()),
+                Err(ClientError::Disconnected | ClientError::Idle) => break,
                 Err(error) => return Err(HostError::Client(error)),
             }
         }
+        Ok(())
     }
 
     /// Evaluate one file inside the configuration directory.

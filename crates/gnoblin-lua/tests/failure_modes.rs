@@ -1446,7 +1446,7 @@ impl gnoblin_proto::Transport for Churn {
         self.receives += 1;
         assert!(
             self.receives < RECEIVE_BOUND,
-            "the pump made {RECEIVE_BOUND} receives without stopping"
+            "the host made {RECEIVE_BOUND} receives without returning"
         );
         if let Some(envelope) = gnoblin_proto::Transport::receive(&mut self.link, fds)? {
             return Ok(Some(envelope));
@@ -1551,6 +1551,30 @@ fn a_reload_request_on_an_endless_link_is_seen_within_one_batch() {
     assert!(
         host.take_reload_request(),
         "the reload request queued behind the diffs was seen by the first pump"
+    );
+}
+
+#[test]
+fn a_reload_on_an_endless_link_returns_after_one_batch_of_the_drain() {
+    let config = Config::new("reload-endless");
+    config.write("init.lua", "gnoblin.timers.after(1, function() end)\n");
+    let Churning { mut host, armed } = churning_host(None);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    // The run's own drain is bounded, so the reload returns and the queued diffs stay
+    // in the inbox for the next pump, instead of the reload waiting on a link that never
+    // goes idle.
+    armed.set(true);
+    let outcome = host.reload_config(&config.paths()).expect("the reload runs");
+    assert!(
+        matches!(outcome, ReloadOutcome::Accepted(_)),
+        "an endless link must not stop a reload from being accepted"
+    );
+    let pumped = host.pump(Tick::new(2)).expect("a pump returns after the reload");
+    assert_eq!(
+        pumped.events, PUMP_EVENT_BATCH,
+        "the diffs the drain left queued are taken by the next pump"
     );
 }
 
