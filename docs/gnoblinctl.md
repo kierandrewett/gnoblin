@@ -1,1185 +1,280 @@
 # gnoblinctl
 
-Run `gnoblinctl --version` to read the installed build identity without a
-running session. It reports:
+`gnoblinctl` is the command-line client for a running Gnoblin session.
 
-- The Gnoblin version.
-- The UTC time of the build.
-- The Git commit, marked `(modified)` when the source tree had changes.
-- The Git remote.
-- The Lua and native API versions.
+It speaks IPC 0.2.0. A compositor at another IPC version is refused with
+exit 4, and the error names both versions. The list of commands is in the
+[command index](cli/index.md). This page covers how the client connects, what
+its exit codes mean, how to read logs, and how to script its output.
 
-`gnoblin --version` prints the same identity. Add `--json` to either command to
-save the complete build identity as JSON, which also has the build ID and the
-GNOME and component versions.
+## Version
 
-In a Git checkout, the command reads the source manifests, current commit, and
-tracking remote (or `origin`). In a release tarball, it reads the embedded
-source provenance.
+`gnoblinctl --version` prints the client's own version and needs no session:
 
-The installed command reads the identity recorded at build time. A modified
-source tree is marked beside its commit; the commit alone does not identify
-those local edits.
-
-`gnoblinctl version` reads the build identity through the running compositor
-API. It requires an active Gnoblin session.
-
-`gnoblinctl capabilities` prints each capability's ID, availability, and
-description in aligned columns.
-
-`gnoblinctl config show` prints one dotted key per line in alphabetical order.
-For example, `compositor.audible_bell` appears before `input_sources.per_window`.
-
-On a terminal, `gnoblinctl status` prints the session state as labeled fields:
+```sh
+gnoblinctl --version
+```
 
 ```text
-STATE           running
-LOCK STATE      unlocked
-LOCK AVAILABLE  yes
+gnoblinctl 0.2.0-alpha.0
 ```
 
-[Configuration reference](/config/configure)
-
-Control Gnoblin from a terminal or Lua configuration. Configure shell panels
-with the external shell's own tools.
-
-## Start here
-
-Run commands from a terminal inside Gnoblin:
-
-| Command                                        | Use it to                                                    |
-| ---------------------------------------------- | ------------------------------------------------------------ |
-| `gnoblinctl status`                            | Check the running session and lock-state availability        |
-| `gnoblinctl logout`                            | End the session and return to the login manager              |
-| `gnoblinctl session suspend`                   | Suspend the machine                                          |
-| `gnoblinctl session hibernate`                 | Hibernate the machine                                        |
-| `gnoblinctl session reboot`                    | Restart the machine                                          |
-| `gnoblinctl session poweroff`                  | Shut the machine down                                        |
-| `gnoblinctl session activity`                  | Read the idle-monitor sample                                 |
-| `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session   |
-| `gnoblinctl window list`                       | Find open windows and their IDs                              |
-| `gnoblinctl window match`                      | Show the values a window rule can match                      |
-| `gnoblinctl window thumbnail ID --output PATH` | Save a window thumbnail as a PNG                             |
-| `gnoblinctl layer list`                        | Find layer-surface namespaces                                |
-| `gnoblinctl output list`                       | Inspect output modes and renderer state                      |
-| `gnoblinctl input devices`                     | List detected input devices and capabilities                 |
-| `gnoblinctl input orientation-lock [VALUE]`    | Read or set the orientation lock                             |
-| `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows             |
-| `gnoblinctl config path`                       | Find the config file your session uses                       |
-| `gnoblinctl config default`                    | Print the bundled default `init.lua`                         |
-| `gnoblinctl init`                              | Create an editable default config tree from the binary       |
-| `gnoblinctl config restore-default`            | Back up and replace the config folder with embedded defaults |
-| `gnoblinctl config reload`                     | Validate and apply the complete configuration live           |
-| `gnoblinctl shortcut list`                     | List shortcuts registered by the native compositor           |
-| `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group          |
-| `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding              |
-| `gnoblinctl capabilities`                      | List compositor and protocol capabilities                    |
-| `gnoblinctl focus history`                     | List focused windows, most recent first                      |
-| `gnoblinctl focus policy`                      | Show the committed focus policy                              |
-| `gnoblinctl config show`                       | Show the committed settings snapshot                         |
-| `gnoblinctl lua`                               | Open a local Lua console for the session API                 |
-| `gnoblinctl ping`                              | Check whether the compositor control socket responds         |
-
-Run `gnoblinctl --help` for the commands and options, `gnoblinctl help window`
-for the actions of a command, and `gnoblinctl help window thumbnail` for the
-arguments of one action. Each command and action has a one-line description. A
-bare group lists its actions. A mistyped command or action names the closest
-match, as in `unknown command: windw (did you mean 'window'?)`.
-
-`man gnoblinctl` has the same commands and actions, generated from the same
-table as the help. `man gnoblin` covers the login command.
-
-If a Lua configuration reload is already in progress, API commands retry that
-temporary response until their `--timeout` expires. Other compositor errors are
-reported immediately, and uncertain actions are not retried.
-
-## Lua console
-
-Run `gnoblinctl lua` inside a Gnoblin session to inspect and control the live
-compositor with the Lua API. Enter one Lua statement or expression per line.
-Expressions print their result; tables print as JSON. Type `:help` for the
-console commands and `:quit` to exit.
-
-The console runs the same API as a Lua configuration. Each name, argument order
-and object is the same, so a line that works here works in a configuration.
-Calls are positional, and optional arguments come last. A name that the API
-does not have fails with `gnoblin.NAME is not part of the Lua API`.
-
-Three things differ, because the console is one process that ends with your
-script and holds no runtime:
-
-- A write waits for the compositor and returns the completed value, not an
-  `Operation`.
-- A record is a copy of one moment. It has no `on` or `watch`; follow a change
-  with `gnoblin.on(name, fn)`.
-- A name that needs a runtime raises `NAME is not available in gnoblinctl lua
-because the console has no runtime`. These are `gnoblin.timers`,
-  `gnoblin.process`, `gnoblin.tween`, `gnoblin.idle.watch`,
-  `gnoblin.input.grab`, `gnoblin.input.on`, `gnoblin.settings.override`,
-  `gnoblin.load`, `gnoblin.array`, `gnoblin.snapshot`, `gnoblin.configure`,
-  `gnoblin.window_rule`, `gnoblin.animation`, `Window:set_effect`,
-  `Window:present` and the `on` and `watch` methods of every record.
-
-`gnoblin.ease` and `gnoblin.lerp` work here. `gnoblin.config` holds only
-`path()`, `default()` and `restore_default()`, as in a configuration, and
-cannot be assigned to. Read settings with `gnoblin.settings`.
-
-Read build and source identity with `gnoblin.version()`:
-
-```lua
-local version = gnoblin.version()
-print(version.gnoblin, version.gnome, version.git_sha)
-```
-
-```lua
-=gnoblin.find("Window", {focused = true})
-=gnoblin.workspaces.list()
-:quit
-```
-
-Window reads return read-only records with the same properties and typed
-methods as the supervised runtime:
-
-```lua
-local window = gnoblin.windows.focused()
-if window then
-    print(window.id .. ": " .. window.title)
-    print(window:set_minimized(true).id)
-end
-```
-
-Window actions wait for compositor completion and return the completed value.
-They do not return an asynchronous `Operation` handle.
-
-Select objects with `gnoblin.find(kind, filter?)`:
-
-- The kinds are `Window`, `Workspace`, `LayerSurface`, `Output`, `Shortcut`,
-  `Launch` and `InputSource`. `Process` raises the no-runtime error.
-- A table filter names scalar fields of the kind and keeps the records that
-  equal every value.
-- A function filter keeps the records for which it returns true.
-- `gnoblin.windows.list()` and `gnoblin.layers.list()` take no filter.
-
-```lua
-local notes = gnoblin.find("Window", {app_id = "notes"})[1]
-local wide = gnoblin.find("Window", function(window)
-    return window.frame.width > 1000
-end)
-```
-
-`focus`, `begin_move`, and `begin_resize` require a [`Grant`](/shell-api/grants) from
-an event callback. The ordinary REPL cannot create one or call these methods.
-
-The same grant authorizes keyboard snapping. Inside the event callback, call
-`gnoblin.windows.snap_context(event.grant)`, then
-`context:commit(monitor, x, y, width, height)` to apply its frame. `monitor` is an
-`Output` or a monitor ID.
-
-In `gnoblinctl lua`, both calls wait for their results on the event connection.
-
-`gnoblin.focus.history(filter?)` returns the same read-only `Window` records,
-with the most recent focus first. Its optional filter accepts `workspace_id`,
-`monitor_id`, and `limit` (1–256):
-
-```lua
-for _, window in ipairs(gnoblin.focus.history { limit = 10 }) do
-    print(window.id, window.title)
-end
-```
-
-Read the committed focus behavior with `gnoblin.focus.policy()`:
-
-```lua
-local policy = gnoblin.focus.policy()
-print(policy.focus_mode, policy.focus_new_windows, policy.revision)
-```
-
-`gnoblin.settings` returns the committed settings snapshot as a deeply
-read-only value. Read nested options directly from the snapshot:
-
-```lua
-local settings = gnoblin.settings
-print(settings.window_management.focus_mode, settings.revision)
-```
-
-Reload the Lua configuration from the console when it changes. The operation
-returns a deeply read-only result; inspect it to see what was applied:
-
-```lua
-local result = gnoblin.runtime.reload_config()
-print(result.action, result.runtime_generation)
-```
-
-`gnoblin.privacy.state()` returns a deeply read-only `PrivacyState` record.
-Check `available` before reading an activity field; unavailable sources omit
-their activity value:
-
-```lua
-local privacy = gnoblin.privacy.state()
-if privacy.available.screen_sharing then
-    print(privacy.screen_sharing and "Sharing" or "Not sharing")
-end
-```
-
-The console can ask Mutter to stop tracked screen-sharing or recording
-sessions. The result reports how many stop requests were issued; it does not
-confirm that the sessions have closed:
-
-```lua
-local sharing = gnoblin.privacy.stop_sharing()
-local recording = gnoblin.privacy.stop_recording()
-print(sharing.requested, recording.requested)
-```
-
-`gnoblin.capabilities.list()` returns read-only `Capability` records with the
-capability ID, description, availability, revision, and an optional reason:
-
-```lua
-for _, capability in ipairs(gnoblin.capabilities.list()) do
-    print(capability.id, capability.available, capability.reason)
-end
-```
-
-Read launch feedback with `gnoblin.launches.list()`. It returns read-only
-`Launch` records. Each record carries its own `revision`, and `alive` is true
-while its `state` is `pending`:
-
-```lua
-for _, launch in ipairs(gnoblin.launches.list()) do
-    print(launch.application, launch.state, launch.revision)
-end
-```
-
-The console can also begin and finish launch feedback. `begin` returns the
-`Launch`. Call `launch:finish()` when the launch is cancelled or the
-application has started:
-
-```lua
-local launch = gnoblin.launches.begin("launcher-42", "org.example.Editor", {
-    timeout_ms = 3000,
-})
-print(launch.state)
-launch:finish()
-```
-
-A console `Launch` is a snapshot. It has no `on` signal; use
-`gnoblin.on("gnoblin.launch.changed", fn)` to follow a launch.
-
-`gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
-is unavailable, `lock_state` is omitted; that does not mean the session is
-unlocked. `revision` identifies the current lock-state snapshot and matches
-the revision on its corresponding lock-state event:
-
-```lua
-local status = gnoblin.session.status()
-print(status.state, status.revision)
-if status.lock_available then
-    print(status.lock_state)
-end
-```
-
-`gnoblin.input.grab` needs a configuration to receive the keys, so
-`gnoblinctl lua` cannot use it. See [Keyboard grabs](/shell-api/input-grab).
-
-`gnoblin.idle.watch(seconds)` needs a configuration to hold the watch, so
-`gnoblinctl lua` cannot use it. Read the idle-monitor sample from a terminal
-with `gnoblinctl session activity`. See [Idle watches](/shell-api/idle).
-
-`gnoblin.session.lock()` asks a subscribed shell client to show its lock UI.
-Its read-only result reports delivery, not that the compositor locked the
-session. Check `gnoblin.session.status()` for the confirmed lock state.
-`gnoblin.session.logout()` ends the session and returns `{accepted = true}`
-before the compositor shuts down:
-
-```lua
-local request = gnoblin.session.lock()
-print(request.dispatched, request.subscribers)
-```
-
-Workspace snapshots are available through `gnoblin.workspaces.list()`,
-`gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
-read-only `Workspace` records. The console also exposes the workspace
-operations available to configuration scripts:
-
-```lua
-local workspace = gnoblin.workspaces.by_id("web")
-if workspace then
-    workspace:activate()
-end
-```
-
-Workspace actions wait for compositor completion and return the completed
-value. The console supports `gnoblin.workspaces.create(name, options?)`,
-`next()` and `previous()`. Records add `workspace:activate()`,
-`workspace:rename(name)` and `workspace:remove()`. Window records add
-`window:move_to_workspace(workspace, options?)`.
-
-Creation accepts a nonempty name up to 80 characters. Options may hold `id` and
-`activate`. An optional ID must start with an ASCII letter or digit and contain
-up to 64 letters, digits, periods, underscores, or hyphens.
-
-A `workspace` argument to `move_to_workspace` is a string ID or a positive
-integer number. The `follow` option must be a boolean when supplied. The
-compositor rejects removal of configured, active, or nonempty workspaces.
-
-Input devices and sources are read-only `InputDevice` and `InputSource`
-records. Each record includes the revision of its snapshot. The current source
-is `nil` when Gnoblin cannot identify one. An `InputSource` has `select()`; a
-console record is a snapshot with no `on` signal:
-
-```lua
-for _, source in ipairs(gnoblin.input.sources()) do
-    if source.current then
-        print(source.name)
-    end
-end
-
-local selected = gnoblin.input.current_source():select()
-print(selected.name)
-```
-
-Source selection waits for Mutter or IBus to confirm the change and returns the
-completed `InputSource` record.
-
-Read displays with `gnoblin.outputs.list()`, `gnoblin.outputs.primary()` and
-`gnoblin.outputs.by_id(id)`. They return read-only `Output` records, or `nil`
-when no output matches.
-
-```lua
-for _, output in ipairs(gnoblin.outputs.list()) do
-    print(output.id, output.width, output.height, output.scale)
-end
-```
-
-A console script cannot hold an [override](/shell-api/overrides), because the
-script ends before anything could revoke it. `gnoblin.settings.override` and
-`window:set_effect` raise an error here. Make an override in a configuration.
-
-Output snapshots are available through `gnoblin.outputs.list()`,
-`gnoblin.outputs.primary()`, `gnoblin.outputs.by_id(id)`, and
-`gnoblin.outputs.renderer()`. `gnoblinctl output list` prints the output
-records; add `--json` for machine-readable output. During login, `renderer()`
-can return `nil` until the first output snapshot is published.
-
-Use `gnoblin.layers.list()` to read layer surfaces. Each result is a
-read-only `LayerSurface` record. Select some of them with `gnoblin.find`, which
-matches any scalar field exactly, such as `monitor_id`, `namespace` or `layer`
-(`background`, `bottom`, `top` or `overlay`):
-
-```lua
-for _, surface in ipairs(gnoblin.find("LayerSurface", {layer = "top"})) do
-    print(surface.namespace, surface.geometry.width)
-end
-```
-
-Read the effective animation and shadow policy for a layer namespace with
-`gnoblin.layers.animation_policy(namespace)`. It returns a deeply read-only
-`LayerAnimationPolicy` record:
-
-```lua
-local policy = gnoblin.layers.animation_policy("bingux-panel")
-print(policy.enter.animation, policy.exit.animation, policy.window_shadow)
-```
-
-A `Window` or `LayerSurface` previews and inspects its own animations:
-
-- `target:preview_animation(name, event?, autoplay?)` returns a read-only
-  `AnimationPreview` record.
-- The `seek`, `step`, `play` and `pause` methods of a preview return the
-  completed updated record. `stop` returns its completion result.
-- `target:inspect_animation(name, event?)` returns a read-only inspection
-  record.
-
-```lua
-local window = gnoblin.windows.focused()
-local preview = window:preview_animation("gnoblin-window-open", "open", false)
-preview = preview:seek(0.5)
-print(preview.progress)
-preview:stop()
-
-print(window:inspect_animation("gnoblin-window-open", "open").duration)
-```
-
-`gnoblin.shortcuts.configured()` and `gnoblin.shortcuts.actions(group?)` return
-read-only `ShortcutState` and `ShortcutAction` records. `actions` accepts an optional `wm`, `mutter`, or `wayland` group:
-
-```lua
-for _, shortcut in ipairs(gnoblin.shortcuts.configured()) do
-    print(shortcut.name, shortcut.binding, shortcut.enabled)
-end
-
-for _, action in ipairs(gnoblin.shortcuts.actions("wm")) do
-    print(action.id, action.default_bindings[1])
-end
-```
-
-Capture a shortcut from the terminal console. The call waits for the key press
-and returns the normalized accelerator. The timeout defaults to 30 seconds and
-can be set from 1 to 60 seconds; Escape cancels capture.
-
-```lua
-local captured = gnoblin.shortcuts.capture({timeout = 10})
-print(captured.accelerator)
-```
-
-To run a Lua file with the same API, pass its path:
+`gnoblinctl version` asks the running compositor for the Gnoblin version and the
+IPC version this connection speaks:
 
 ```sh
-gnoblinctl lua ./inspect.lua
+gnoblinctl version
 ```
-
-The Lua code runs in the local `gnoblinctl` process. Session calls go through
-the compositor's typed API, which validates methods and arguments. `gnoblinctl`
-never sends Lua source to the compositor.
-
-The console can subscribe to runtime events. `gnoblinctl lua` stays open while
-any subscription is active. A `once` subscription ends after its event; call
-`subscription:unsubscribe()` to stop a repeating listener. Press Ctrl+C to
-stop a script that continues listening.
-
-For worker health, read `gnoblin.runtime.status()` after subscribing to
-`gnoblin.runtime.status-changed`. The event reports recovery and accepted
-configuration-generation changes while the compositor socket is connected; see
-the [runtime health reference](/shell-api/session-runtime#runtime-health-and-reload) for its fields and reconnect
-behavior.
-
-To handle a location request, subscribe to
-`gnoblin.location.authorization-requested`. The event carries `event.request`,
-a `Request` of kind `location`, as it does in a configuration.
-
-Answer it with `request:answer(allow, accuracy?)`, or deny it with
-`request:cancel()`. The CLI can answer only a request received by an active
-subscription, and sends the reply over that same event connection. Requests
-expire after 25 seconds. This example denies the request; replace the decision
-with a consent prompt before approving access:
-
-```lua
-local subscription
-subscription = gnoblin.on("gnoblin.location.authorization-requested", function(event)
-    local result = event.request:cancel()
-    print(result.submitted)
-    subscription:unsubscribe()
-end)
-```
-
-`answer` takes `allow`, and an `accuracy` level that is no greater than the one
-the app requested (it defaults to that level):
-
-- The call returns a read-only result. `submitted` confirms Gnoblin accepted
-  and queued the answer.
-- `request.status` becomes `"answered"`. A second answer raises an error.
-- System settings can still limit approved accuracy.
-- The console makes a `Request` for location requests only.
-  `request:finished()` and `request:on` raise the no-runtime error.
-
-`gnoblinctl lua` can register, remove, and manage shortcut sessions:
-
-- `bind` returns a `Shortcut` with `unbind()` and `end_session(session_id)`.
-- `gnoblin.shortcuts.list()` returns the shortcuts that the script still binds.
-- The console `Shortcut` has no `on` signal. Follow it with
-  `gnoblin.on("gnoblin.shortcut.binding-activated", fn)`.
-
-Bindings created by the console belong to its compositor connection, so the
-process stays open while one of its bindings remains registered. Unbind the
-shortcut or exit the process to release it. See the
-[shortcut API reference](./shell-api/keyboard-shortcuts.md#capture-a-shortcut)
-for the accepted binding options.
-
-For example, save this as `shortcut.lua` and run `gnoblinctl lua ./shortcut.lua`:
-
-```lua
-local binding = gnoblin.shortcuts.bind("temporary-cli-shortcut", "<Alt>F12", {
-    hold = "alt",
-    mode = "modal",
-})
-
-local subscription
-subscription = gnoblin.on("gnoblin.shortcut.session.activated", function(event)
-    if event.id ~= binding.id then
-        return
-    end
-
-    binding:end_session(event.session_id)
-    binding:unbind()
-    subscription:unsubscribe()
-end)
-```
-
-The example ends the active modal session, removes its temporary binding, and
-lets the CLI exit. If you stop the process first, its connection closes and
-Gnoblin removes the binding.
-
-A Lua event listener can use the `Grant` delivered with a trusted event to
-focus a window or start an interactive move or resize. The grant is an opaque
-value that works once for each operation, and the console sends the request on the event's connection.
-`grant:narrow(scope, window?)` runs in the `gnoblinctl` process: the socket
-carries no narrowing, and a grant here has no `expires_at_us`.
-
-For example, save this as `focus.lua`, replacing the ID with one from
-`gnoblinctl window list`:
-
-```lua
-local window = gnoblin.windows.by_id("replace-with-window-id")
-assert(window, "window no longer exists")
-
-gnoblin.on("gnoblin.shortcut.activated", function(event)
-    if event.grant then
-        window:focus(event.grant)
-    end
-end)
-```
-
-Run it with `gnoblinctl lua ./focus.lua` while a configured shortcut emits
-`gnoblin.shortcut.activated`. Press Ctrl+C to stop the listener.
-
-WM window-menu requests carry a `Grant` in `event.grant`. It has the scopes
-`begin_move` and `begin_resize` for the window that raised the menu, and works once.
-
-Call `window:begin_move(event.grant)` or `window:begin_resize(edge, event.grant)` on that window.
-The console keeps its token private and sends the operation over the event's
-connection. Application-menu requests have no grant.
-
-## Graphical console
-
-With the built-in configuration, Alt+F2 opens the compositor’s Lua console.
-Escape closes it. The input box sits below the output; Enter runs a command
-and Shift+Enter inserts a newline. The console appears above application and
-shell layers.
-
-`gnoblin.console.toggle()` (Native API 1.77+) takes no arguments and queues a
-visibility toggle.
-It is unavailable while the session is locked. Bind it in a loaded Lua config:
-
-```lua
-gnoblin.configure {
-    keybindings = {
-        keyboard = {
-            console = {
-                binding = "<Alt>F2",
-                callback = function() gnoblin.console.toggle() end,
-            },
-        },
-    },
-}
-```
-
-Run `gnoblinctl reload` after saving. The console evaluates Lua against the
-active configuration runtime and sends reload requests through compositor
-control.
-
-Press Tab or choose **Complete** to list matching names from the active Lua
-environment. Completion supports globals and dotted member names, such as
-`gnoblin.windows.`. It does not evaluate the input or call Lua getters.
-
-Returned tables and window records have expandable property previews. Previews
-are read-only and bounded; cycles and omitted properties are marked. Expanding
-a preview does not execute Lua code.
-
-It keeps the last 200 submitted commands in
-`$XDG_STATE_HOME/gnoblin/console-history.ini`, or
-`~/.local/state/gnoblin/console-history.ini` when `XDG_STATE_HOME` is unset.
-The history is diagnostic state, separate from the Lua configuration. Its file
-is written asynchronously after a submitted command.
-
-## Windows
-
-```sh
-gnoblinctl window list
-gnoblinctl window minimize 42
-gnoblinctl window unminimize 42
-gnoblinctl window toggle-minimize 42
-gnoblinctl window restore 42
-gnoblinctl window maximize 42
-gnoblinctl window close 42
-gnoblinctl window thumbnail 42 --output window.png
-```
-
-The `window list` table has a `CLIENT TYPE` column that shows `wayland` or
-`x11` (an Xwayland client); `--json` reports the same value as `client_type`.
-
-Each ID from `window list` lasts for that window's lifetime, not across
-logins. Commands that accept `active` use the focused window's ID and fail
-without sending a request when no window is focused. `toggle-minimize` requires
-an explicit ID.
-`unminimize` removes minimization while preserving maximized state; `restore`
-returns the window to its normal size.
-
-`gnoblinctl window focus` is rejected because the command cannot create the
-grant that focusing a window requires.
-
-A Lua script can act on a trusted shortcut event. Subscribe to
-`gnoblin.shortcut.activated` and pass `event.grant` to the typed
-`Window` methods. The compositor still validates the grant and lets each
-operation run once. Interactive move or resize requires pointer interaction or a
-grant.
-
-To see the exact identity and title used by `gnoblin.window_rule`, run:
-
-```sh
-gnoblinctl window match
-gnoblinctl window match 42 --json
-```
-
-The result shows the GTK application ID, WM class, `rule_app_id` used by
-window rules, and `client_type` (`wayland` or `x11`). Gnoblin uses the GTK ID
-when available and otherwise uses the WM class.
-
-The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
-raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`
-shows a desktop-entry ID, which can differ.
-
-`restore` removes minimisation and maximization. `restore-or-minimize`
-unmaximizes a maximized window, restores its saved pre-snap frame, or minimizes
-it when neither state applies.
-
-`toggle-minimize` restores a minimized window or minimizes any other window.
-Use `unmaximize` and `unfullscreen` to clear those states directly. `close`
-requests a normal close, including unsaved-work prompts.
-
-`window thumbnail` saves a PNG for a stable window ID. By default, it requests
-an image up to 320 × 200 pixels. Set `--width` (1–480) and `--height` (1–320)
-to change those bounds. The compositor may return a smaller image to preserve
-the window's aspect ratio.
-
-The command requires `--output PATH` and prints the saved path and dimensions.
-Thumbnails are unavailable while the session is locked.
-
-Filter by focused state, exact desktop app ID or a case-insensitive substring
-of the title with `--focused`, `--app-id ID` or `--title TEXT`.
-
-## Layer surfaces
-
-List current layer-shell surfaces and their namespaces with:
-
-```sh
-gnoblinctl layer list
-```
-
-The command reads the API 1.37 `layers.list` snapshot and keeps the `layers`
-object in JSON output. Records include a state revision.
-
-In a terminal, the list shows each surface's ID, namespace, layer, monitor,
-geometry, anchors, and mapped state:
 
 ```text
-ID       NAMESPACE       LAYER  MONITOR ID  GEOMETRY        ANCHOR             MAPPED
--------  --------------  -----  ----------  --------------  -----------------  ------
-layer:4  bingux-dock     top    Virtual-1   1920x104+0+976  bottom,left,right  yes
-```
-
-Use a surface's `namespace` as the `layer` value in a window rule. The
-`animation surfaces` command reports the same surfaces for animation previews.
-
-## Input devices
-
-List input devices detected by the compositor with:
-
-```sh
-gnoblinctl input devices
-```
-
-Each record reports the device name and type, seat, available capabilities,
-and vendor or product IDs when the compositor provides them. Device IDs last
-only for the current compositor session. The command returns a one-time
-snapshot through the shared Lua read introduced in API 1.46. All supported
-socket client versions use this read, which requires the Lua supervisor.
-
-API 1.4 socket clients can also subscribe to device add and removal events.
-`gnoblinctl input list` reads the API 1.6 `input.sources` snapshot through the
-shared Lua read introduced in API 1.46. It prints the configured XKB sources.
-The terminal output is a headed table; an unavailable value is shown as `-`:
-
-```text
-ID  TYPE  NAME          CURRENT
---  ----  ------------  -------
-us  xkb   English (US)  yes
-```
-
-`gnoblinctl input current` reads `input.current_source` through the same Lua
-route. Its JSON record includes `available` and, when known, `source`.
-
-`gnoblinctl input select TYPE ID` calls `input.select`. It waits for
-Mutter to confirm the layout change.
-
-`gnoblinctl input orientation-lock` reads the current orientation-lock
-record through `input.orientation_lock`. Pass `on` or `off` to set the lock;
-pass `inherit` to clear the runtime override and restore the configured value
-or follow the system setting. This command does not write the config file.
-
-```sh
-gnoblinctl input orientation-lock
-gnoblinctl input orientation-lock on
-gnoblinctl input orientation-lock inherit
-```
-
-## Animations
-
-Use animation previews to inspect registered curves for compatible window and
-layer-shell targets. A preview starts paused and changes only the target's
-visual transform; it does not minimize or close the target.
-
-```sh
-gnoblinctl animation list
-gnoblinctl animation get gnome-open
-gnoblinctl animation surfaces
-gnoblinctl animation inspect gnome-open --window active
-session=$(gnoblinctl animation preview gnome-open --window active --format table | sed -n 's/^session: //p')
-gnoblinctl animation seek "$session" 50
-gnoblinctl animation step "$session" 16
-gnoblinctl animation play "$session"
-gnoblinctl animation pause "$session"
-gnoblinctl animation stop "$session"
-```
-
-`animation list` prints name, event, duration, easing curve, and preview
-availability in aligned columns. Empty fields appear as `-`.
-
-Omitting `--window` uses the active window. For layer-shell surfaces, choose
-`--layer ID` or `--namespace NAME`; a namespace must resolve to exactly one
-visible surface. `seek` accepts an integer percentage from 0 to 100; `step` advances
-by milliseconds.
-
-Seeking to 100% keeps the last frame visible until `stop`,
-which restores the target's original visual state. `inspect` accepts `--event EVENT` to inspect a particular event variant. `preview --autoplay` starts playback immediately.
-
-`animation surfaces` prints layer surface IDs, namespaces, and titles. Layer
-surfaces are not included in `window list`.
-
-The Lua console reads the same surfaces as read-only `LayerSurface` records
-through `gnoblin.layers.list()`, or `gnoblin.find("LayerSurface", filter)` for
-some of them:
-
-```lua
-for _, surface in ipairs(gnoblin.layers.list()) do
-    print(surface.id, surface.namespace, surface.title)
-end
-```
-
-Inspect the resolved animation for a visible target with
-`target:inspect_animation(name, event?)` on a `Window` or `LayerSurface`. The
-result and its nested tables are read-only:
-
-```lua
-local inspection = gnoblin.windows.focused():inspect_animation("gnome-open")
-print(inspection.event, inspection.duration)
-```
-
-`animation list` marks entries that current preview targets can run with
-`previewable`.
-
-`animation get NAME` prints the configured record for an exact name. It returns
-`null` when no animation matches. Use `--json` in scripts.
-
-Workspace and shadow animations run on internal compositor actors or effects,
-so the current CLI cannot preview them against a window or layer surface.
-
-See the [animation guide](/guides/animations) for custom curves, events and
-built-in presets.
-
-## Move and resize
-
-```sh
-gnoblinctl window move 42 100 80
-gnoblinctl window resize 42 900 600
-gnoblinctl window workspace 42 2
-gnoblinctl window monitor 42 DP-1
-```
-
-The move example places the window at `(100, 80)` on the desktop. Resize sets
-its outer size to 900 × 600 logical pixels, including the frame. Apps can
-constrain the result, and geometry operations reject states such as fullscreen
-or non-resizable windows.
-
-For a stable window ID, `window monitor` takes a connector ID from
-`gnoblinctl monitor list`. With the `active` window target, pass the current
-numeric `index` from that list. The CLI resolves the focused window and maps
-the index to a connector ID before sending the typed move request.
-
-## Workspaces and monitors
-
-```sh
-gnoblinctl workspace list
-gnoblinctl workspace create --name "Build"
-gnoblinctl workspace create --id build --name "Build" --activate
-gnoblinctl workspace rename --id build --name "Compile"
-gnoblinctl workspace remove --id build
-gnoblinctl workspace switch --number 2
-gnoblinctl workspace switch --id code
-gnoblinctl workspace next
-gnoblinctl workspace previous
-gnoblinctl workspace move-active --id code --follow
-gnoblinctl workspace move-active --number 2
-gnoblinctl monitor list
-```
-
-Workspace numbers are one-based positions and may change when dynamic
-workspaces are removed. Configured IDs follow their `MetaWorkspace` when
-reordered; generated IDs such as `@session-1` last for the session. Names are
-display labels. Use `workspace list` to see each ID, number, name, active state,
-and window count.
-
-Monitor IDs are active connector names such as `DP-1` and `eDP-1`. Use the
-exact ID from `gnoblinctl monitor list`. Each entry also has a current `index`
-that can change when outputs are added or removed. Cloned outputs use the
-lexicographically first active connector as their ID.
-
-`gnoblinctl monitor list` reads the API 1.37 `monitors.list` snapshot. Its JSON
-output keeps the `monitors` object, and each record includes its state revision.
-In a terminal, it shows connector, index, display name, resolution, position,
-scale, primary state, and enabled state:
-
-```text
-ID         INDEX  NAME               RESOLUTION  POSITION  SCALE  PRIMARY  ENABLED
-----------  -----  ------------------  ----------  --------  -----  -------  -------
-Virtual-1  0      Red Hat, Inc. 14"  1920x1080   0+0       1.0    yes      yes
-```
-
-The standalone compositor supports workspace list, create,
-rename, remove, switch, next, previous, and window moves by ID or number.
-Its list includes configured IDs and names, generated session IDs, active state,
-and window counts. To remove a temporary workspace, first switch away from it
-and move or close its windows. Edit the config to remove a configured workspace.
-
-`workspace create` requires `--name`:
-
-- `--id ID` assigns an ID for this session.
-- `--activate` switches to the new workspace.
-- Without `--id`, Gnoblin assigns a session-only ID such as `@session-1`.
-
-Runtime-created workspaces are temporary. `workspace rename` and
-`workspace remove` require exactly one of `--id` or `--number`. Gnoblin refuses
-to remove a persistent, active, or occupied workspace.
-
-Use `--number NUMBER` to select a workspace by its current one-based position.
-The positional form `workspace switch NUMBER` remains a legacy shorthand;
-prefer the explicit selector.
-`workspace move-active` moves the focused window and switches workspaces only
-when `--follow` is supplied. `window workspace` accepts an ID or a number:
-
-```sh
-gnoblinctl window workspace 42 --id code
-gnoblinctl window workspace 42 --number 2
-```
-
-## Capture a shortcut
-
-Run `gnoblinctl shortcut capture`, then press the key combination. The command
-prints it as a chord. Press Escape to cancel. Bare Super prints the
-special `Super` binding.
-
-The default timeout is 30 seconds. Set `--timeout` to an integer from 1 to 60
-seconds to change it. If a session lock, input-capture session, or stage grab
-starts during capture, the command reports cancellation and releases keyboard
-input to that owner.
-
-## List configured shortcuts
-
-Run `gnoblinctl shortcut list` to list shortcuts registered by the native
-compositor. External clients' shortcuts and disabled declarations are not
-included. The terminal table includes the name, binding, trigger, and enabled
-state. Multiple accelerators appear as a JSON array.
-
-JSON output retains the complete records. The command reads the shared Lua
-snapshot through API 1.40.
-The terminal view uses the same headed table style:
-
-```text
-NAME      BINDING       TRIGGER  ENABLED
---------  ------------  -------  -------
-terminal  <Super>e      press    yes
-```
-
-Use `--json` for structured output in a terminal or pipe:
-
-```sh
-gnoblinctl shortcut list --json
-```
-
-## List built-in shortcut actions
-
-Run `gnoblinctl shortcut actions` to list actions that can be assigned in Lua
-configuration. Pass `wm`, `mutter`, or `wayland` to show one group:
-
-```sh
-gnoblinctl shortcut actions wm
-```
-
-Use `--json` to preserve the complete action records in a pipe.
-The command reads the shared Lua API through `shortcuts.actions` (API 1.41).
-
-## Window actions
-
-Most actions without extra arguments accept an optional window ID; they use
-`active` if omitted. Typed actions resolve `active` to a stable ID before the
-operation. `toggle-minimize` and geometry actions require the ID and numbers
-shown.
-
-| Action                                   | Arguments after action                           | Effect                                                |
-| ---------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
-| `menu`                                   | `[ID]`                                           | Rejected; requires a trusted shell input context      |
-| `interactive-move`, `interactive-resize` | `[ID]`                                           | Rejected; requires a trusted shell input context      |
-| `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                            |
-| `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                |
-| `focus`                                  | `[ID]`                                           | Rejected; focusing requires a one-use trusted context |
-| `close`, `minimize`                      | `[ID]`                                           | Request close or minimize                             |
-| `restore-or-minimize`                    | `[ID]`                                           | Unmaximize, restore a saved snap frame, or minimize   |
-| `toggle-minimize`                        | `ID`                                             | Restore if minimized; otherwise minimize              |
-| `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                   |
-| `fullscreen`, `unfullscreen`             | `[ID]`                                           | Enter or leave fullscreen                             |
-| `move`                                   | `ID X Y`                                         | Set frame position; each coordinate: −100000–100000   |
-| `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768               |
-| `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                         |
-| `monitor`                                | `WINDOW MONITOR`                                 | Connector ID for a window ID; index for `active`      |
-
-`gnoblinctl` cannot create the one-use input context required by `menu` and
-interactive move or resize. These commands fail locally without sending a
-request. Start them from a shell input binding that receives the trusted
-context.
-
-The CLI uses typed native methods for actions with a typed equivalent, including
-when `active` is resolved to a stable ID. Menu and interactive actions remain
-separate because they need compositor input context. Shell clients can focus a
-clicked window with an XDG Activation token through the
-[compositor bridge](/bridge/input-and-focus#api-version-132-xdg-activation-focus-and-session-logout).
-
-## Session and policy commands
-
-| Command                                                           | Use                                                                                      |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `status`                                                          | Read live session state and lock availability (API 1.29+)                                |
-| `logout`                                                          | End the session and return to the login manager (API 1.32+)                              |
-| `session activity`                                                | Read the idle-monitor sample (API 1.24+)                                                 |
-| `session lock`                                                    | Ask a subscribed shell client to lock the session (API 1.21+)                            |
-| `ping`                                                            | Check whether the compositor control socket responds                                     |
-| `version`                                                         | Read the running compositor build identity                                               |
-| `config path`, `config default`, `config show`, `config reload`   | Find, print, inspect, or reload the active configuration                                 |
-| `reload`                                                          | Alias for `config reload`                                                                |
-| `capabilities`                                                    | List compositor and protocol capabilities                                                |
-| `focus history [--workspace-id ID] [--monitor-id ID] [--limit N]` | List recent windows in focus order; limit is 1–256, default 50 (API 1.19+)               |
-| `focus policy`                                                    | Read the committed focus behavior (API 1.19+)                                            |
-| `input list`, `input current`                                     | Inspect configured and selected keyboard sources                                         |
-| `input select TYPE ID`                                            | Select an exact source from `input list`                                                 |
-| `privacy`                                                         | Read the privacy activity sources available in this session                              |
-| `privacy stop-sharing`                                            | Ask Mutter to stop tracked screen-sharing sessions (API 1.31+)                           |
-| `privacy stop-recording`                                          | Ask Mutter to stop tracked recording sessions (API 1.31+)                                |
-| `launch status`                                                   | List pending launch feedback and its revision (API 1.39+)                                |
-| `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
-| `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
-
-`session activity` reports the native idle-monitor sample. If the
-session has no idle monitor, the response reports that activity data is
-unavailable. `session lock` requests a lock from a subscribed external shell
-client. A successful request means the client received it; use the session
-lock state to confirm that the screen is locked.
-
-The privacy stop commands ask Mutter to stop matching tracked sessions. Their
-`requested` count reports how many stop calls were issued; it does not confirm
-that the sessions have closed.
-
-In a standalone native session, `gnoblinctl config reload` validates and
-applies the complete configuration while the session runs. Native settings,
-policies, autostart entries and Lua callbacks update as one reload transaction.
-If loading or applying the candidate fails, Gnoblin keeps the previous
-configuration active. Windows mapped after a reload use the updated
-open-animation rules; windows already mapped do not replay their open animations.
-
-For example, to inspect a portal decision and change keyboard source:
-
-```sh
-gnoblinctl input list --json
-gnoblinctl input select xkb us
-```
-
-Use a source from `input list`. See [launch feedback](shell-api/launch-feedback.md).
-Launch feedback does not start an application.
-
-Run `gnoblinctl privacy` to see activity and availability for each source.
-Boolean values print as `yes` or `no`; unavailable sources have no activity
-value. Camera activity follows running PipeWire nodes marked with the `Camera`
-media role.
-
-Location activity follows GeoClue's service state and `InUse` property. If it
-is unavailable, check GeoClue's `[agent]` whitelist.
-
-On Fedora, install `gnoblin-geoclue-integration`. For source builds and other
-distributions, add Gnoblin to the existing whitelist and keep its other IDs.
-Add `--json` to print the `PrivacyState` record. It contains a revision, an
-availability flag for each source, and an activity value only when that source
-is available.
-
-The command uses the shared Lua read in API 1.47 and requires the Lua
-supervisor.
-
-| Source         | Availability field            | Optional activity field |
-| -------------- | ----------------------------- | ----------------------- |
-| Screen sharing | `available.screen_sharing`    | `screen_sharing`        |
-| Microphone     | `available.microphone_in_use` | `microphone_in_use`     |
-| Camera         | `available.camera_in_use`     | `camera_in_use`         |
-| Location       | `available.location_in_use`   | `location_in_use`       |
-
-See the [shortcuts guide](/guides/shortcuts#chord-syntax) for configuration
-examples.
-
-## Logs
-
-Run `gnoblinctl --json log` to print the logged records, oldest first. The compositor and the portal write them to `$XDG_STATE_HOME/gnoblin/log/gnoblin.jsonl`, and the command reads that file directly, so it works while the compositor is down.
-
-```sh
-gnoblinctl log --level WARN --limit 50
-gnoblinctl --json log --role compositor
-gnoblinctl log --since 2h --until 10m
-gnoblinctl log --since 2026-11-05T09:00:00Z
-gnoblinctl log --follow --level WARN --interval 2s
-```
-
-- `--dir DIR` reads another log directory.
-- `--level` keeps records at that level or above.
-- `--role` and `--target` match exactly.
-- `--limit` caps the count and defaults to 100.
-
-A missing log file is an error that names the path, so a mistyped `--dir` is not shown as an empty log.
-
-`--since` and `--until` bound the records by time. A bound is one of these forms:
-
-- an RFC 3339 timestamp, such as `2026-11-05T09:00:00Z`; or
-- an age counted back from now: `10m`, `2h` or `1d`.
-
-Any other bound is a usage error that names the value.
-
-- `--follow` keeps printing new records as they are written, until interrupted.
-- It checks `gnoblin.jsonl` every `--interval`, which is `500ms` or `2s` and defaults to `500ms`.
-- It follows the file across rotation.
-
-`--interval` needs `--follow`. `--follow` cannot be combined with `--until`, since a followed log has no end.
-
-## Output for scripts
-
-```sh
-gnoblinctl window list --json
-gnoblinctl input list --format table
-```
-
-Structured results use tables in a terminal and JSON in a pipe.
-`--json` forces JSON. Options work before or after the command.
-
-For example, `gnoblinctl window list --focused --json` returns this shape.
-The CLI keeps the `windows` object for compatibility. Each record comes from
-the API 1.37 window snapshot and uses the Lua API's snake_case fields:
-
-```json
-{
-    "windows": [
-        {
-            "id": "42",
-            "revision": 123,
-            "title": "Notes",
-            "app_id": "org.example.Editor.desktop",
-            "focused": true,
-            "minimized": false,
-            "workspace_id": "workspace-1",
-            "workspace_number": 1,
-            "monitor_id": "DP-1",
-            "frame": { "x": 100, "y": 80, "width": 900, "height": 600 }
-        }
-    ]
-}
-```
-
-Each record's `revision` identifies the compositor state represented by that
-record. Optional fields are omitted when Mutter does not provide them. Use
-`jq -r '.windows[].id'` to print the listed IDs.
-
-The snapshot includes window identity, focus and state, workspace and monitor
-location, geometry, and operation capabilities. See the [runtime API
-reference](/shell-api/windows#read-windows) for the fields and
-their availability.
-
-In the standalone session, `app_id` comes from the GTK app ID or WM class.
-
-With `jq` installed, print just the focused window ID:
-
-```sh
-gnoblinctl window list --focused --json | jq -r '.windows[].id'
-```
-
-A successful `gnoblinctl window minimize 42 --json` returns the affected
-stable ID:
-
-```json
-{ "id": "42" }
-```
-
-`gnoblinctl workspace list` reads the API 1.37 `workspaces.list` snapshot.
-Its JSON output keeps the `workspaces` object and the `windows` count field;
-each record also includes the snapshot revision:
-
-```json
-{
-    "workspaces": [
-        {
-            "id": "code",
-            "number": 1,
-            "name": "Code",
-            "active": true,
-            "windows": 2,
-            "revision": 123
-        },
-        {
-            "id": "web",
-            "number": 2,
-            "name": "Web",
-            "active": false,
-            "windows": 0,
-            "revision": 123
-        }
-    ]
-}
-```
-
-| Exit code | Meaning                          |
-| --------- | -------------------------------- |
-| 0         | Success                          |
-| 1         | Runtime failure; error on stderr |
-| 2         | Invalid arguments                |
-
-`--timeout SECONDS` accepts 1–60; default is 5.
-Uncertain actions are not retried automatically.
-
-A reply with `pending: true` means accepted, not finished.
-List state again to confirm the result. Window changes are rejected while locked.
-
-## Command-line completion
-
-```sh
-# Bash: ~/.bashrc
-eval "$(gnoblinctl completion bash)"
-
-# Zsh: ~/.zshrc, after compinit
-eval "$(gnoblinctl completion zsh)"
-
-# Fish
-gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
+gnoblin 0.2.0
+ipc 0.2.0
 ```
 
 ## Connection problems
 
-The installed CLI uses GLib, GIO and JSON-GLib. It sends commands through the
-[compositor bridge](bridge/index.md). Python is needed to build from
-source, but not to run `gnoblinctl`.
+Session commands connect to the compositor's IPC socket. The socket is
+`$GNOBLIN_IPC_SOCKET` when that is set, and otherwise
+`$XDG_RUNTIME_DIR/gnoblin/ipc.sock`. There are no command-line flags for the
+socket path.
 
-The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
-Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
+When the socket cannot be reached, the client exits 3 and names the path it
+tried:
 
-The bridge is built into Gnoblin. External shell
-integrations run as separate processes and use the bridge directly. Check
-`gnoblinctl ping`, the running Gnoblin version, and the session log. `ping`
-checks only whether the compositor control socket responds; it does not check
-external shell clients. The socket transport is described in the
-[bridge connection guide](/bridge/connection).
+```sh
+GNOBLIN_IPC_SOCKET=/nonexistent/ipc.sock gnoblinctl ping
+```
 
-## Outputs
+```text
+gnoblinctl: cannot-connect: cannot connect to /nonexistent/ipc.sock: No such file or directory (os error 2)
+```
 
-Run `gnoblinctl output list` to inspect connector IDs, physical modes, logical
-positions, and renderer information. Use `--json` for the complete snapshot,
-including nested mode and renderer records. `monitor list` retains its existing
-logical-monitor format.
+To diagnose it:
+
+1. Run `gnoblinctl ping`. Exit 0 with `pong` means the compositor answered.
+2. Check the socket path the client used. It is the value of
+   `GNOBLIN_IPC_SOCKET`, or `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`.
+3. If the compositor answers but a command exits 4, the compositor and the
+   client speak different IPC versions. Upgrade the one that is older.
+
+`gnoblinctl config validate FILE` does not connect to a session. It works
+before Gnoblin is running.
+
+## Exit codes
+
+Scripts can rely on these codes:
+
+| Code | Meaning                                                                        |
+| ---- | ------------------------------------------------------------------------------ |
+| 0    | The command did what it was asked.                                             |
+| 1    | The compositor answered with an error, or the command failed at runtime.       |
+| 2    | The command line was wrong. A usage message goes to standard error.            |
+| 3    | The compositor could not be reached. Start the session.                        |
+| 4    | The compositor speaks an IPC version this client cannot use. Upgrade one side. |
+
+A failed command prints one line to standard error, in this form:
+
+```text
+gnoblinctl: CODE: message
+```
+
+Asking for an object that is not the type the
+command names gives `object-unknown` and exit 1:
+
+```sh
+gnoblinctl window get 1
+```
+
+```text
+gnoblinctl: object-unknown: identity 1 is a gnoblin.session, not a gnoblin.window
+```
+
+A misspelt property or method is a usage error, so it exits 2 and lists the
+values that are accepted:
+
+```text
+$ gnoblinctl output get 6 nosuch
+```
+
+```text
+error: invalid value 'nosuch' for '[PROPERTY]'
+  [possible values: name, make, model, modes, mode, scale, transform, primary, enabled, x, y, width, height, layout]
+```
+
+## Session commands
+
+- `gnoblinctl ping` exits 0 and prints `pong` when the compositor answers the
+  handshake.
+- `gnoblinctl status` prints the session state, its revision and the lock.
+- `gnoblinctl version` prints the Gnoblin and IPC versions.
+- `gnoblinctl capabilities` lists every capability and whether this connection
+  holds it.
+
+```sh
+gnoblinctl status
+```
+
+```text
+state     running
+revision  1880
+lock      unlocked
+```
+
+With `--json`, `status` prints one object:
+
+```sh
+gnoblinctl status --json
+```
+
+```text
+{"lock_available":true,"lock_state":"unlocked","revision":1880,"state":"running"}
+```
+
+## Objects
+
+Each object the compositor exposes has a command named after its type, such as
+`output`, `window` or `workspace`. Every object type takes the same verbs:
+
+- `gnoblinctl OBJECT list` lists the live objects of that type.
+- `gnoblinctl OBJECT get ID [PROPERTY]` prints one object, or one property of it.
+- `gnoblinctl OBJECT watch [ID] [--count N]` prints observations as they arrive.
+  `--count N` stops after N observations. An object that emits no signal prints
+  nothing until it is stopped.
+- `gnoblinctl OBJECT call ID METHOD [NAME=VALUE]...` calls a declared method and
+  waits for its operation to finish.
+
+```sh
+gnoblinctl output list
+gnoblinctl output get 6 width
+```
+
+```text
+1024
+```
+
+`gnoblinctl OBJECT call --help` lists the methods that one type declares, with
+their possible values, and `gnoblinctl OBJECT --help` names its signals. The
+methods that exist are:
+
+- `output`: `set_layout`, `apply`
+- `window`: `focus`, `present`, `kill`, `close`, `set_minimized`,
+  `set_maximized`, `set_fullscreen`, `move`, `resize`, `set_workspace`,
+  `set_output`, `add_effect`, `request_menu`
+- `workspace`: `set_layout`, `layout_command`
+- `layers`: `register`
+
+`session` declares no methods. Its signals are `ready`, `bell` and
+`reload_requested`. The `window` signal `menu_requested` and the `workspace`
+signals `layout_changed` and `layout_failed` are declared in the same way.
+
+Calling a method takes its parameters by name. Leaving one out is refused with an
+error that names the ones the method needs:
+
+```sh
+gnoblinctl output call 6 set_layout
+```
+
+## Config
+
+- `gnoblinctl config get` prints the configuration the compositor last accepted.
+- `gnoblinctl config reload` asks the runtime to re-read its configuration.
+- `gnoblinctl config validate FILE` checks a file with the runtime's parser. It
+  needs no session.
+
+```sh
+gnoblinctl config validate FILE
+```
+
+```text
+valid
+```
+
+A file that does not parse exits 1 with `invalid-config`, and names the line:
+
+```text
+gnoblinctl: invalid-config: /home/node/cli-e2e/bad.lua:1: syntax error near 'is'
+```
+
+## Logs
+
+`gnoblinctl log` prints the records in `gnoblin.jsonl`, oldest first. The file
+is read from `--dir`, which defaults to `$XDG_STATE_HOME/gnoblin/log`.
+
+- `--level LEVEL` keeps records at this level or above: `TRACE`, `DEBUG`,
+  `INFO`, `WARN` or `ERROR`.
+- `--role ROLE` keeps records written by one process role, such as `compositor`.
+- `--target TARGET` keeps records whose event target matches exactly.
+- `--since TIME` and `--until TIME` bound the records by time. `TIME` is an
+  RFC 3339 timestamp such as `2026-11-06T09:00:00Z`, or an age such as `10m`,
+  `2h` or `1d`. Anything else exits 2.
+- `--limit N` prints the last N records that match, in the order they were written. The default is 100.
+- `--follow` keeps printing new records as they are written. It polls every
+  `--interval`, which is `500ms` or `2s` and defaults to `500ms`, until it is
+  interrupted.
+
+```sh
+gnoblinctl log --level WARN --since 10m --limit 50
+gnoblinctl log --follow --interval 2s
+```
+
+With `--json`, each record is one JSON object with the keys `component`,
+`fields`, `level`, `message`, `role`, `target` and `time_ms`:
+
+```sh
+gnoblinctl --json log --limit 1
+```
+
+If the log file does not exist, the command exits 1 and names the file it
+looked for:
+
+```sh
+gnoblinctl log --dir /nonexistent
+```
+
+```text
+gnoblinctl: log: no log file at /nonexistent/gnoblin.jsonl
+```
+
+## Output for scripts
+
+Add `--json` before or after any command for machine-readable output. Object
+commands return an `objects` array, or a `value` for a single property:
+
+```sh
+gnoblinctl --json output get 6 width
+```
+
+```text
+{"id":6,"property":"width","value":1024}
+```
+
+Read exit codes, not the text, to decide whether a command succeeded.
+
+## IPC dump
+
+`gnoblinctl ipc dump` decodes recorded IPC frames into readable lines. Secret
+payloads are dropped. It reads standard input when no file is given, or when
+the file is `-`:
+
+```sh
+gnoblinctl ipc dump FILE
+gnoblinctl ipc dump -
+```
+
+## Shell completion
+
+`gnoblinctl completions SHELL` writes a completion script for `bash`, `zsh` or
+`fish` to standard output. `--output PATH` writes it to a file instead:
+
+```sh
+gnoblinctl completions bash --output PATH
+gnoblinctl completions zsh --output PATH
+```
+
+Source the file from your shell's startup file, or copy it into the directory
+your shell reads completions from.
+
+## Help
+
+`gnoblinctl --help` lists the commands. `gnoblinctl COMMAND --help` describes one
+command and its arguments.
