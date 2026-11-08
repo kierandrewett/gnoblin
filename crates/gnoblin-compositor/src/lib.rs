@@ -190,6 +190,11 @@ pub struct SessionConfig {
     /// Only read when [`Self::xwayland`] is [`Some`]: without an X server there is no root window to
     /// publish on. The owner is asked for its values once the X11 window manager is up.
     pub xsettings: Option<Box<dyn gnoblin_xwayland::xsettings::XSettings>>,
+    /// The directory the `Xwayland` binary is looked for in, or [`None`] for `PATH`.
+    ///
+    /// A test points it at a directory with a fake server, so the session never reads the
+    /// process's own `PATH`. [`run`](Self::run) takes it once; every later start uses the same.
+    pub xwayland_path: Option<std::ffi::OsString>,
     /// How the Wayland session itself is configured: its socket, seat, workspaces
     /// and window management options.
     pub wayland: gnoblin_wayland::Config,
@@ -307,7 +312,7 @@ impl Compositor {
     /// [`Error::BackendRefused`] names a backend this build does not carry, and
     /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
     /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
-    pub fn run(config: SessionConfig) -> Result<(), Error> {
+    pub fn run(mut config: SessionConfig) -> Result<(), Error> {
         // The schema is embedded at build time (see `schema.rs`), so a failure here is a
         // problem with this build rather than with the host configuration.
         let catalog = schema::catalog().map_err(Error::Schema)?;
@@ -357,16 +362,15 @@ impl Compositor {
             observer: Some(observer),
             ..config.wayland
         };
-        let mut server = match config.xwayland {
+        // The X11 factory outlives this start: a commit that changes the `xwayland` table builds the
+        // next server through it, so the search path and the XSETTINGS owner stay the same.
+        let xwayland_path = config.xwayland_path.take().or_else(|| std::env::var_os("PATH"));
+        let mut xwayland_factory = xwayland::factory(xwayland_path.clone(), config.xsettings.take());
+        let applied = config.xwayland.clone();
+        let mut server = match xwayland_factory(applied.clone()) {
             // No X11: the server has no X server, no grab manager and no process.
             None => Server::new(backend, wayland),
-            Some(settings) => {
-                let supervisor =
-                    gnoblin_xwayland::Xwayland::with_settings(settings, std::env::var_os("PATH"), config.xsettings);
-                let (handle, windows) = supervisor.parts();
-                let session = gnoblin_wayland::XwaylandSession::new(Box::new(handle), Box::new(windows));
-                Server::with_xwayland(backend, wayland, session)
-            }
+            Some(session) => Server::with_xwayland(backend, wayland, session),
         }
         .map_err(Error::Wayland)?;
         let layouts = std::rc::Rc::new(layout::WorkspaceLayouts::new(config.layouts));
@@ -394,6 +398,7 @@ impl Compositor {
             config.privileged,
             config.guardian,
             &config.extensions,
+            xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory),
         )
         .map_err(Error::Ipc)?;
 

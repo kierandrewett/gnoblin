@@ -57,6 +57,7 @@ use smithay::input::Seat;
 use smithay::input::dnd::DndGrabHandler;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::Client;
+use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle, SERIAL_COUNTER};
 
@@ -67,7 +68,9 @@ use smithay::wayland::selection::data_device::{
 use smithay::wayland::selection::primary_selection::{
     clear_primary_selection, request_primary_client_selection, set_primary_selection,
 };
-use smithay::wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrab, XWaylandKeyboardGrabHandler};
+use smithay::wayland::xwayland_keyboard_grab::{
+    XWaylandKeyboardGrab, XWaylandKeyboardGrabHandler, XWaylandKeyboardGrabState,
+};
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::settings::Value as SettingValue;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, X11Surface, X11Wm, XwmId};
@@ -122,6 +125,9 @@ pub(crate) struct Running {
     process: Option<XWayland>,
     /// The Xwayland client, until the window manager starts on it.
     client: Option<Client>,
+    /// The Xwayland client's id, kept after the window manager takes the client, so a stop
+    /// can release it.
+    client_id: Option<ClientId>,
     /// The X11 window manager, once the server answered ready.
     wm: Option<X11Wm>,
     /// The X11 surfaces the manager holds, by policy identity.
@@ -164,6 +170,7 @@ impl Running {
             windows,
             process: None,
             client: None,
+            client_id: None,
             wm: None,
             surfaces: std::collections::BTreeMap::new(),
             next_start: None,
@@ -266,6 +273,7 @@ impl Running {
                 let number = process.display_number();
                 log::info!(area = "xwayland", display_number = number, "starting");
                 self.process = Some(process);
+                self.client_id = Some(client.id());
                 self.client = Some(client);
                 self.deadline = Some(now + self.session.startup_deadline());
             }
@@ -340,7 +348,11 @@ impl Running {
         // its event source before the process handle is dropped.
         self.wm = None;
         self.client = None;
+        let client = self.client_id.take();
         self.process = None;
+        if let Some(client) = client {
+            state.release_client(&client);
+        }
         self.deadline = None;
         self.dead = false;
         let gone: Vec<_> = self.surfaces.keys().copied().collect();
@@ -370,6 +382,52 @@ impl State {
     /// Builds the session state for the configured Xwayland session.
     pub(crate) fn start_xwayland(&mut self, session: XwaylandSession) {
         self.x11 = Some(Running::new(session.session, session.windows));
+    }
+
+    /// Replaces the X11 session with `session` from the loop: `None` stops the running server.
+    ///
+    /// A server with X11 windows open is kept and the call says why, so a window is never
+    /// closed under its client. The Xwayland-only globals are created the first time a session
+    /// is configured; once created they stay advertised, and no X11 client can bind them
+    /// without a server.
+    pub(crate) fn reconcile_xwayland(&mut self, session: Option<XwaylandSession>) -> Result<(), String> {
+        if self.x11.as_ref().is_some_and(|running| !running.surfaces.is_empty()) {
+            return Err("X11 windows are open; close them, then commit the settings again".to_owned());
+        }
+        // Dropping the running attempt drops its server, which ends the X server process.
+        let stopped = self.x11.as_ref().and_then(|running| running.client_id.clone());
+        self.x11 = None;
+        if let Some(client) = stopped {
+            self.release_client(&client);
+        }
+        let Some(session) = session else {
+            return Ok(());
+        };
+        if self.xwayland_shell_state.is_none() {
+            self.xwayland_shell_state = Some(XWaylandShellState::new::<Self>(&self.display_handle));
+        }
+        if self.keyboard_grab_state.is_none() {
+            self.keyboard_grab_state = Some(XWaylandKeyboardGrabState::new::<Self>(&self.display_handle));
+        }
+        self.start_xwayland(session);
+        Ok(())
+    }
+
+    /// Releases the client of a server that was just dropped. The server removes the
+    /// connection only in a cleanup that runs on a dispatch of that client, and nothing else
+    /// wakes the loop for it, so the old process would linger until some other client event.
+    fn release_client(&mut self, client: &ClientId) {
+        let Some(mut display) = self.take_display() else {
+            return;
+        };
+        let result = display.backend().dispatch_single_client(self, client.clone());
+        self.restore_display(display);
+        if let Err(error) = result {
+            log::warn!(
+                area = "xwayland",
+                "releasing the stopped Xwayland client failed: {error}"
+            );
+        }
     }
 
     /// Drives the session: one call per loop turn.

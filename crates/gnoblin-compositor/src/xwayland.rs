@@ -6,12 +6,15 @@
 //! that cannot be run is refused by naming its leaf, and the session starts without X11
 //! rather than with a different policy from the one written.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
+use std::sync::{Arc, Mutex, PoisonError};
 
-use gnoblin_config::{SearchPaths, Store, Xwayland};
+use gnoblin_config::{Config, SearchPaths, Store, Xwayland};
 
-use gnoblin_xwayland::{Settings, probe};
+use gnoblin_wayland::{ControlHandle, XwaylandSession};
+use gnoblin_xwayland::xsettings::{Setting, XSettings};
+use gnoblin_xwayland::{Settings, Xwayland as Supervisor, probe};
 
 use crate::SessionConfig;
 
@@ -84,6 +87,94 @@ fn settings_for(section: Option<&Xwayland>, path: Option<&OsStr>) -> Result<Opti
         return Ok(None);
     }
     Ok(Some(section.map_or_else(Settings::default, Settings::from_config)))
+}
+
+/// Builds the X11 session for the settings it is given, or none when they are [`None`].
+///
+/// The session is built on the thread that commits the configuration and then handed to the
+/// compositor loop, which starts the server. A session is built per start, so a restart gets a
+/// fresh supervisor and window policy.
+pub(crate) type Factory = Box<dyn FnMut(Option<Settings>) -> Option<XwaylandSession> + Send>;
+
+/// The factory for `path`, publishing `xsettings` to every server the session starts.
+pub(crate) fn factory(path: Option<OsString>, xsettings: Option<Box<dyn XSettings>>) -> Factory {
+    // One owner serves every server the session starts: a restart publishes the owner's values
+    // to the new server, and the owner keeps the record of what was published.
+    let owner = xsettings.map(|owner| Arc::new(Mutex::new(owner)));
+    Box::new(move |settings| {
+        let settings = settings?;
+        let owner: Option<Box<dyn XSettings>> = owner
+            .as_ref()
+            .map(|owner| Box::new(SharedOwner(Arc::clone(owner))) as Box<dyn XSettings>);
+        let (handle, windows) = Supervisor::with_settings(settings, path.clone(), owner).parts();
+        Some(XwaylandSession::new(Box::new(handle), Box::new(windows)))
+    })
+}
+
+/// An XSETTINGS owner the session shares across the servers it starts.
+#[derive(Debug)]
+struct SharedOwner(Arc<Mutex<Box<dyn XSettings>>>);
+
+impl SharedOwner {
+    fn with<T>(&self, use_owner: impl FnOnce(&mut dyn XSettings) -> T) -> T {
+        let mut owner = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        use_owner(owner.as_mut())
+    }
+}
+
+impl XSettings for SharedOwner {
+    fn settings(&mut self) -> Vec<(String, Setting)> {
+        self.with(|owner| owner.settings())
+    }
+
+    fn published(&mut self, result: Result<(), String>) {
+        self.with(|owner| owner.published(result));
+    }
+}
+
+/// The X11 session the accepted configuration asks for, and the one the loop is running.
+///
+/// The compositor loop owns the server; this keeps what was last sent to it, so a commit that
+/// leaves the X11 settings unchanged leaves the running server alone.
+pub(crate) struct XwaylandReconciler {
+    /// The settings of the session the loop was last given, [`None`] for no X11.
+    applied: Option<Settings>,
+    /// The search path the binary is looked for on, read once at startup.
+    path: Option<OsString>,
+    /// Builds the session for a set of settings.
+    factory: Factory,
+}
+
+impl XwaylandReconciler {
+    /// A reconciler whose loop was started with `applied`.
+    pub(crate) fn new(applied: Option<Settings>, path: Option<OsString>, factory: Factory) -> Self {
+        Self { applied, path, factory }
+    }
+
+    /// The X11 settings `config` asks for: [`None`] when no binary is on the search path.
+    ///
+    /// # Errors
+    ///
+    /// The leaf and the reason, when a value cannot be run (see [`settings_for`]).
+    pub(crate) fn desired(&self, config: &Config) -> Result<Option<Settings>, String> {
+        settings_for(config.xwayland.as_ref(), self.path.as_deref())
+    }
+
+    /// Makes the loop run `desired`: a changed set starts a new session, and `None` stops the
+    /// running one. Unchanged settings do nothing.
+    ///
+    /// # Errors
+    ///
+    /// The reason the loop refused the change, which leaves the running session as it was.
+    pub(crate) fn apply(&mut self, control: &ControlHandle, desired: Option<Settings>) -> Result<(), String> {
+        if desired == self.applied {
+            return Ok(());
+        }
+        let session = (self.factory)(desired.clone());
+        control.set_xwayland(session)?;
+        self.applied = desired;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

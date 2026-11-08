@@ -212,6 +212,7 @@ impl IpcServer {
         privileged: Vec<Privileged>,
         guardian: Option<UnixStream>,
         routes: &[ExtensionRoute],
+        xwayland: crate::xwayland::XwaylandReconciler,
     ) -> Result<IpcServer, IpcError> {
         // Each connection's frame is encoded before anything is spawned, so a bad grant
         // list fails the whole start instead of leaving threads behind.
@@ -261,6 +262,7 @@ impl IpcServer {
             readers: Arc::clone(&readers),
             start: Instant::now(),
             extensions,
+            xwayland,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
@@ -753,6 +755,8 @@ struct Dispatcher {
     start: Instant,
     /// The routing state of the loaded extensions: which connection serves and which may call each.
     extensions: ExtensionRouter,
+    /// The X11 session the accepted document asks for, and the loop that runs it.
+    xwayland: crate::xwayland::XwaylandReconciler,
 }
 
 impl Dispatcher {
@@ -1214,6 +1218,20 @@ impl Dispatcher {
             // A document that did not decode keeps the rules already in force.
             Err(_) => None,
         };
+        // The X11 session the document asks for is worked out before the document is recorded, so
+        // settings this process cannot run are refused and the last accepted document stays in force.
+        let xwayland = match config.as_ref().map(|config| self.xwayland.desired(config)) {
+            Ok(Ok(desired)) => Some(desired),
+            Ok(Err(message)) => {
+                log::warn!(area = "ipc", %message, "the committed xwayland settings were refused; the last accepted document stays in force");
+                self.refuse(client, envelope, wire::code::CONFIG_REJECTED, &message);
+                let answers = self.reload.finish(&ReloadVerdict::Rejected { message });
+                self.deliver_replies(answers);
+                return;
+            }
+            // A document that did not decode keeps the X11 session already in force.
+            Err(_) => None,
+        };
         // The request layer records the document before it is parsed, so the revision counts
         // every commit the runtime made, including one this process cannot decode. The
         // settings object then keeps its last good values.
@@ -1237,6 +1255,13 @@ impl Dispatcher {
                     .set_global_scale(crate::monitors::settings_of(&config).global_scale);
                 if let Some(rules) = rules {
                     self.control.set_window_rules(rules);
+                }
+                // The X11 session follows the accepted document. An unchanged session is left running; a
+                // changed one restarts the server only when no X11 client is connected, else it is refused.
+                if let Some(desired) = xwayland
+                    && let Err(message) = self.xwayland.apply(&self.control, desired)
+                {
+                    log::warn!(area = "xwayland", %message, "the accepted xwayland settings were not applied; the running X11 session stays");
                 }
                 // The keyboard repeat and layouts are applied from the accepted document. A section the
                 // document does not name keeps what the seat already has, as at startup.

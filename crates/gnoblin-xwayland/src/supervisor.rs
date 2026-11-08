@@ -37,6 +37,7 @@
 //!    the same failure path applies: `a_start_that_never_becomes_ready_fails`.
 
 use std::ffi::OsString;
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -232,12 +233,30 @@ impl Handle {
     }
 }
 
+/// The `PATH` a start runs Xwayland with: the directory the probe found the binary in, ahead
+/// of the compositor's own `PATH`.
+///
+/// Smithay starts the server by name, and the child's `PATH` decides which `Xwayland` that
+/// name is. Putting the probed directory first makes the process the one the probe checked,
+/// so an `Xwayland` earlier on the compositor's own `PATH` cannot take its place, and the
+/// rest of `PATH` stays for the helpers Xwayland runs.
+fn search_path_for(binary: &Path) -> Result<(String, String), String> {
+    let directory = binary.parent().unwrap_or(Path::new("."));
+    let directory = directory
+        .to_str()
+        .ok_or_else(|| format!("the Xwayland directory {} is not UTF-8", directory.display()))?;
+    let existing = std::env::var("PATH").unwrap_or_default();
+    Ok(("PATH".to_owned(), format!("{directory}:{existing}")))
+}
+
 impl gnoblin_backend::x11::Session for Handle {
     fn start(&mut self, _now: Instant) -> Start {
         let mut lifecycle = self.lock();
-        let launch = match probe(lifecycle.path.as_deref())
-            .and_then(|binary| lifecycle.settings.launch(None, Capabilities::of(&binary)))
-        {
+        let launch = match probe(lifecycle.path.as_deref()).and_then(|binary| {
+            let mut launch = lifecycle.settings.launch(None, Capabilities::of(&binary))?;
+            launch.env.push(search_path_for(&binary)?);
+            Ok(launch)
+        }) {
             Ok(launch) => launch,
             Err(reason) => {
                 lifecycle.status = Status::Disabled { reason: reason.clone() };

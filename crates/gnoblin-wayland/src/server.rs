@@ -494,6 +494,9 @@ impl Server {
                                 state.apply_window_rules(rules);
                                 let _ = reply.send(());
                             }
+                            Command::Xwayland { session, reply } => {
+                                let _ = reply.send(state.reconcile_xwayland(session));
+                            }
                             Command::KeyboardSettings(keyboard) => state.apply_keyboard_settings(&keyboard),
                             Command::CursorSettings(cursor) => state.apply_cursor_settings(&cursor),
                             Command::InputSources(sources) => state.apply_input_sources(&sources),
@@ -1031,6 +1034,22 @@ impl ControlHandle {
         let _ = answer.recv_timeout(FOCUS_TIMEOUT);
     }
 
+    /// Replaces the X11 session from the loop: `None` stops the running server, a session
+    /// starts a fresh one. Waits for the loop's answer, so the caller's reply to a commit is
+    /// ordered after the server is up or stopped.
+    ///
+    /// # Errors
+    ///
+    /// The reason the loop refused it: X11 windows are open, or the loop did not answer
+    /// within [`FOCUS_TIMEOUT`] because it is stopping.
+    pub fn set_xwayland(&self, session: Option<crate::xwayland::XwaylandSession>) -> Result<(), String> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::Xwayland { session, reply });
+        answer
+            .recv_timeout(FOCUS_TIMEOUT)
+            .unwrap_or_else(|_| Err("the compositor loop did not answer".to_owned()))
+    }
+
     /// Sets whether window property changes land at once instead of animating.
     pub fn set_reduced_motion(&self, reduced: bool) {
         self.control.push(Command::ReducedMotion(reduced));
@@ -1193,7 +1212,6 @@ impl ControlHandle {
 ///
 /// They share a queue because they share a wake-up: a test that moves a window and
 /// takes a screenshot must see both in the order it asked for them.
-#[derive(Clone)]
 enum Command {
     /// An input event, as the backend would have delivered it.
     Input(InputEvent),
@@ -1319,6 +1337,12 @@ enum Command {
     WindowRules {
         rules: Vec<gnoblin_wm::Rule>,
         reply: std::sync::mpsc::SyncSender<()>,
+    },
+    /// The X11 session the configuration accepted, replacing the running one (`None` stops
+    /// it). The loop answers once it is applied, or with the reason it was refused.
+    Xwayland {
+        session: Option<crate::xwayland::XwaylandSession>,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// The keyboard repeat and XKB options the configuration accepted, applied in place.
     KeyboardSettings(Box<gnoblin_config::Keyboard>),
