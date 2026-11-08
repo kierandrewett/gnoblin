@@ -75,6 +75,7 @@ fn run() -> Result<(), String> {
     check_reserved(&catalog)?;
     let host = load_host_members(&manifest.join(HOST_MEMBERS_FILE))?;
     check_names(&catalog, &host)?;
+    check_param_names(&catalog)?;
     // The version the runtime advertises in the IPC handshake is the schema's, which is
     // the version the compositor serves: the two sides are built from one tree, so a
     // literal here would be a second place to forget to bump.
@@ -187,6 +188,30 @@ fn check_names(catalog: &Catalog, host: &[HostMember]) -> Result<(), String> {
             check_lua_names(OWN_NAMESPACE, &owners, &host_names)?;
         } else {
             check_lua_names(&format!("require(\"{}\")", namespace.as_str()), &owners, &[])?;
+        }
+    }
+    Ok(())
+}
+
+/// Refuse a method parameter whose name is not a Lua identifier. The stub writes each name
+/// into a LuaCATS `---@param` and a Lua parameter list, so a keyword such as `local` would
+/// make the stub unreadable to the language server and to `stylua`.
+fn check_param_names(catalog: &Catalog) -> Result<(), String> {
+    for namespace in catalog.namespaces() {
+        for object in catalog.objects(&namespace) {
+            for method in &object.methods {
+                for parameter in &method.params {
+                    if !is_lua_identifier(&parameter.name) {
+                        return Err(format!(
+                            "{}.{}:{} takes a parameter `{}`, which is not a Lua identifier; rename it in the schema",
+                            namespace.as_str(),
+                            object.name,
+                            method.name,
+                            parameter.name
+                        ));
+                    }
+                }
+            }
         }
     }
     Ok(())
@@ -342,8 +367,31 @@ fn stub_function(text: &mut String, member: &HostMember, prefix: &str) {
         let _ = writeln!(text, "---@return {ret}");
     }
     let names: Vec<&str> = member.params.iter().map(|param| param.name.as_str()).collect();
-    let _ = writeln!(text, "function {prefix}.{}({}) end", member.name, names.join(", "));
+    push_function_decl(text, &format!("{prefix}.{}", member.name), &names);
     text.push('\n');
+}
+
+/// Write `function NAME(PARAMS) end` as stylua lays it out: on one line when that fits in 120
+/// columns, otherwise one parameter per line with `end` on its own line.
+fn push_function_decl(text: &mut String, name: &str, params: &[&str]) {
+    let one_line = format!("function {name}({}) end", params.join(", "));
+    if one_line.len() <= 120 {
+        let _ = writeln!(text, "{one_line}");
+        return;
+    }
+    let _ = writeln!(text, "function {name}(");
+    for (index, param) in params.iter().enumerate() {
+        let separator = if index + 1 < params.len() { "," } else { "" };
+        let _ = writeln!(text, "    {param}{separator}");
+    }
+    text.push_str(")\nend\n");
+}
+
+/// Start a new top-level block after a blank line, without doubling one already there.
+fn blank_line(text: &mut String) {
+    if !text.ends_with("\n\n") {
+        text.push('\n');
+    }
 }
 
 /// Ask cargo to rerun when any schema file changes.
@@ -554,7 +602,8 @@ fn stub_modules(text: &mut String, catalog: &Catalog) {
         } else {
             format!("{}Module", namespace.as_str())
         };
-        let _ = writeln!(text, "\n---@class {holder}");
+        blank_line(text);
+        let _ = writeln!(text, "---@class {holder}");
         for object in catalog.objects(&namespace) {
             let _ = writeln!(
                 text,
@@ -582,7 +631,8 @@ fn stub_modules(text: &mut String, catalog: &Catalog) {
 /// One object's class, properties, methods and signals.
 fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType) {
     let class = format!("{}.{}", namespace.as_str(), object.name);
-    let _ = writeln!(text, "\n---@class {class}");
+    blank_line(text);
+    let _ = writeln!(text, "---@class {class}");
     for property in &object.properties {
         let _ = writeln!(text, "---@field {} {}", property.name, lua_type(&property.ty));
     }
@@ -597,13 +647,8 @@ fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType) {
             let _ = writeln!(text, "---@param {} {}", parameter.name, lua_type(&parameter.ty));
         }
         let _ = writeln!(text, "---@return gnoblin.Operation");
-        let _ = writeln!(
-            text,
-            "function {}:{}({}) end",
-            object.name,
-            method.name,
-            parameter_list(&method.params)
-        );
+        let names: Vec<&str> = method.params.iter().map(|parameter| parameter.name.as_str()).collect();
+        push_function_decl(text, &format!("{}:{}", object.name, method.name), &names);
     }
     for signal in &object.signals {
         let _ = writeln!(text, "---@param name \"{}\"", signal.name);
@@ -620,15 +665,6 @@ fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType) {
     let _ = writeln!(text, "---@class {collection}");
     let _ = writeln!(text, "---@field by_id fun(id: integer): {class}|nil");
     let _ = writeln!(text, "---@field all fun(): {class}[]");
-}
-
-/// The parameter list of a stub signature.
-fn parameter_list(params: &[Field]) -> String {
-    params
-        .iter()
-        .map(|parameter| parameter.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// A table literal type for a signal's fields, so `:on` says what it receives.

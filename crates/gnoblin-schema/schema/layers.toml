@@ -14,8 +14,8 @@ version = "0.2.0"
 name = "layers"
 since = "0.2.0"
 
-# Register a window-scope layer named `local` above the window `target`. The full name is
-# the provider's namespace plus `local`, so a built-in cannot name a layer another provider
+# Register a window-scope layer named `name` above the window `target`. The full name is
+# the provider's namespace plus `name`, so a built-in cannot name a layer another provider
 # owns. The layer takes the window band, default order and passive input. The operation is
 # `done` once the layer is in the registry, or fails with `layer-refused` when the registry
 # or the stack refuses it, such as a duplicate name or a window the stack does not hold.
@@ -24,7 +24,7 @@ name = "register"
 since = "0.2.0"
 
 [[object.method.param]]
-name = "local"
+name = "name"
 type = "string"
 since = "0.2.0"
 
