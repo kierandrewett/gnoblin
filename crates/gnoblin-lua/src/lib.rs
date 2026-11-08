@@ -141,7 +141,7 @@ pub use extensions::{ExtensionRegistry, RegistryError};
 pub use gnoblin_client::Environment;
 /// The host, the report of one pump and the report of one configuration run, and the
 /// limit on nested loads.
-pub use host::{Host, MAX_LOADS, PumpReport, ReloadOutcome, RunReport};
+pub use host::{Host, MAX_LOADS, PUMP_EVENT_BATCH, PumpReport, ReloadOutcome, RunReport};
 
 /// The sandbox limits a host is sized with: the instruction budget, the memory limit and
 /// the per-entry deadline.

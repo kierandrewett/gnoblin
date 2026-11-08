@@ -399,6 +399,10 @@ pub struct Host<T: Transport> {
     limits: Limits,
 }
 
+/// The most events one [`Host::pump`] takes from the connection before it runs the due
+/// timers and deferred callbacks, so a busy compositor cannot starve them.
+pub const PUMP_EVENT_BATCH: usize = 256;
+
 impl<T: Transport + 'static> Host<T> {
     /// Connect the host to a live graph and build its sandbox.
     ///
@@ -710,7 +714,10 @@ impl<T: Transport + 'static> Host<T> {
         self.shared.borrow_mut().clock = now;
         let mut events = 0usize;
         let mut handlers = 0usize;
-        loop {
+        // A bounded batch: a connection that never runs dry must still let the timers
+        // fire and the caller check for a reload or a stop. What is left stays in the
+        // client's inbox, and the next pump takes it first.
+        while events < PUMP_EVENT_BATCH {
             let next = self.shared.borrow_mut().client.next_event();
             match next {
                 Ok(event) => {

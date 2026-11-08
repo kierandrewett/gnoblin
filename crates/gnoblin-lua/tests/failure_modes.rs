@@ -12,17 +12,20 @@
 //! - The handler count in a [`PumpReport`], which says what ran.
 //! - The server's graph, which shows what a handler asked the compositor to do.
 
+use std::cell::{Cell, RefCell};
 use std::fs;
+use std::os::fd::{BorrowedFd, OwnedFd};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use gnoblin_client::{Loopback, Server};
+use gnoblin_client::{Client, HandshakeError, Loopback, Server, Transport as ClientTransport};
 use gnoblin_config::{SearchPaths, Value};
 use gnoblin_model::{Fields, Graph, ObjectId, OperationId, OperationOutcome, Tick, TypeKey, Value as ModelValue};
-use gnoblin_proto::Version;
+use gnoblin_proto::{CodecError, Envelope, Grant, Handshake, Version};
 use gnoblin_schema::Catalog;
 
-use gnoblin_lua::{Host, Limits, ReloadOutcome};
+use gnoblin_lua::{Host, Limits, PUMP_EVENT_BATCH, ReloadOutcome};
 
 const VERSION: Version = Version::new(0, 2, 0);
 
@@ -1411,6 +1414,143 @@ end)
         server.graph().pending().count(),
         0,
         "the old callback did not call focus again"
+    );
+}
+
+/// A link that never runs dry: the first `armed` receive that finds the in-process queue
+/// empty changes the window's title, so the connection always has another diff waiting.
+///
+/// The handshake already ran on the server's own connect, so this wrapper accepts its
+/// own handshake without a second exchange and carries envelopes through the link.
+struct Churn {
+    link: Loopback,
+    server: Rc<RefCell<Server>>,
+    window: ObjectId,
+    armed: Rc<Cell<bool>>,
+    turn: u64,
+    receives: usize,
+    signal_at: Option<u64>,
+    session: ObjectId,
+}
+
+/// A bound on how many receives one pump may make, so a regression that never stops the
+/// pump fails the test instead of hanging it.
+const RECEIVE_BOUND: usize = 1_000_000;
+
+impl gnoblin_proto::Transport for Churn {
+    fn send(&mut self, envelope: &Envelope, fds: &[BorrowedFd<'_>]) -> Result<(), CodecError> {
+        gnoblin_proto::Transport::send(&mut self.link, envelope, fds)
+    }
+
+    fn receive(&mut self, fds: &mut Vec<OwnedFd>) -> Result<Option<Envelope>, CodecError> {
+        self.receives += 1;
+        assert!(
+            self.receives < RECEIVE_BOUND,
+            "the pump made {RECEIVE_BOUND} receives without stopping"
+        );
+        if let Some(envelope) = gnoblin_proto::Transport::receive(&mut self.link, fds)? {
+            return Ok(Some(envelope));
+        }
+        if !self.armed.get() {
+            return Ok(None);
+        }
+        self.turn += 1;
+        if self.signal_at == Some(self.turn) {
+            let mut fields = Fields::new();
+            fields.insert("generation".to_owned(), ModelValue::Uint(1));
+            self.server
+                .borrow_mut()
+                .signal(self.session, "reload_requested", fields)
+                .expect("reload_requested is a signal");
+        }
+        self.server
+            .borrow_mut()
+            .set(self.window, "title", ModelValue::Text(format!("turn {}", self.turn)))
+            .expect("title is a declared property");
+        gnoblin_proto::Transport::receive(&mut self.link, fds)
+    }
+}
+
+impl ClientTransport for Churn {
+    fn send_handshake(&mut self, _frame: &Handshake) -> Result<(), HandshakeError> {
+        Ok(())
+    }
+
+    fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {
+        Ok(Handshake::accept(VERSION))
+    }
+
+    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError> {
+        Ok(Vec::new())
+    }
+}
+
+/// A host on a link that never runs dry, with the server it is fed by and the switch that
+/// starts the churn.
+struct Churning {
+    host: Host<Churn>,
+    armed: Rc<Cell<bool>>,
+}
+
+fn churning_host(signal_at: Option<u64>) -> Churning {
+    let server = Rc::new(RefCell::new(Server::new(graph(), VERSION)));
+    let (window, session) = {
+        let mut server = server.borrow_mut();
+        let session = session(&mut server);
+        let window = open_window(&mut server, "First");
+        (window, session)
+    };
+    let client = server.borrow_mut().connect(VERSION).expect("the versions match");
+    let churn = Churn {
+        link: client.into_inner(),
+        server: Rc::clone(&server),
+        window,
+        armed: Rc::new(Cell::new(false)),
+        turn: 0,
+        receives: 0,
+        signal_at,
+        session,
+    };
+    let armed = Rc::clone(&churn.armed);
+    let client = Client::connect(churn, VERSION).expect("the versions match");
+    let host = Host::new(client, Limits::default()).expect("the host starts");
+    Churning { host, armed }
+}
+
+#[test]
+fn a_pump_returns_after_one_batch_even_when_events_never_stop() {
+    let config = Config::new("pump-batch");
+    config.write("init.lua", "gnoblin.timers.after(1, function() end)\n");
+    let Churning { mut host, armed } = churning_host(None);
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    armed.set(true);
+    let pumped = host.pump(Tick::new(1000)).expect("a pump returns");
+    assert_eq!(
+        pumped.events, PUMP_EVENT_BATCH,
+        "one pump takes exactly one batch from an endless link"
+    );
+    assert_eq!(
+        pumped.handlers, 1,
+        "the due timer fired in the same pump that the events came in"
+    );
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn a_reload_request_on_an_endless_link_is_seen_within_one_batch() {
+    let config = Config::new("pump-reload");
+    config.write("init.lua", "");
+    let Churning { mut host, armed } = churning_host(Some(3));
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    armed.set(true);
+    host.pump(Tick::new(1)).expect("a pump returns");
+    assert!(
+        host.take_reload_request(),
+        "the reload request queued behind the diffs was seen by the first pump"
     );
 }
 
