@@ -154,10 +154,10 @@ pub fn scan_doc(doc: &str, text: &str) -> Vec<Mention> {
                 continue;
             }
             let mut end = search;
-            while end < bytes.len() && (is_name_char(bytes[end]) || bytes[end] == b'.') {
+            while end < bytes.len() && (is_name_char(bytes[end]) || bytes[end] == b'.' || bytes[end] == b'-') {
                 end += 1;
             }
-            let token = line[start..end].trim_end_matches('.');
+            let token = line[start..end].trim_end_matches(['.', '-']);
             search = end;
             let file_suffix = [".lua", ".md", ".toml", ".json"]
                 .iter()
@@ -381,6 +381,16 @@ mod tests {
         names.sort_unstable();
         assert_eq!(names, [":move_to_workspace", "gnoblin.window.created"], "{mentions:?}");
         assert_eq!(mentions[0].line, 1);
+    }
+
+    #[test]
+    fn a_hyphenated_event_name_is_read_whole() {
+        let mentions = scan_doc(
+            "docs/events/a.md",
+            "Subscribe to `gnoblin.session.lock-state-changed`.\n",
+        );
+        let names: Vec<_> = mentions.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, ["gnoblin.session.lock-state-changed"], "{mentions:?}");
     }
 
     #[test]

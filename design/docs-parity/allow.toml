@@ -322,12 +322,6 @@ owner-slice = "S7"
 
 [[allow]]
 name = "gnoblin.appearance.color"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
-owner-slice = "S7"
-
-[[allow]]
-name = "gnoblin.appearance.color"
 doc = "docs/shell-api/appearance-animations.md"
 reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
 owner-slice = "S7"
@@ -448,12 +442,6 @@ owner-slice = "S4"
 
 [[allow]]
 name = "gnoblin.focus.policy"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Window method set, present and focus (S4)"
-owner-slice = "S4"
-
-[[allow]]
-name = "gnoblin.focus.policy"
 doc = "docs/shell-api/focus-activation.md"
 reason = "documented, not implemented; Window method set, present and focus (S4)"
 owner-slice = "S4"
@@ -485,12 +473,6 @@ owner-slice = "docs wrong"
 [[allow]]
 name = "gnoblin.input.current_source"
 doc = "docs/shell-api/input.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.device"
-doc = "docs/events/lifecycle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
 
@@ -592,12 +574,6 @@ owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.input.orientation"
-doc = "docs/events/lifecycle.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.orientation"
 doc = "docs/shell-api/input.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
@@ -616,12 +592,6 @@ owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.input.pad"
-doc = "docs/events/input-shortcuts.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.pad"
 doc = "docs/shell-api/input.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
@@ -634,19 +604,7 @@ owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.input.source"
-doc = "docs/events/lifecycle.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.source"
 doc = "docs/shell-api/input.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.sources"
-doc = "docs/events/lifecycle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
 
@@ -763,18 +721,6 @@ name = "gnoblin.listeners"
 doc = "docs/events/listen-all.md"
 reason = "documented, not implemented; Global event bus (S2)"
 owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.location.authorization"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
-owner-slice = "S6"
-
-[[allow]]
-name = "gnoblin.location.authorization"
-doc = "docs/events/session.md"
-reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
-owner-slice = "S6"
 
 [[allow]]
 name = "gnoblin.location.authorization"
@@ -928,18 +874,6 @@ owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.session.lock"
-doc = "docs/events/lifecycle.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.lock"
-doc = "docs/events/session.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.lock"
 doc = "docs/shell-api/idle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
@@ -965,12 +899,6 @@ owner-slice = "docs wrong"
 [[allow]]
 name = "gnoblin.session.reboot"
 doc = "docs/shell-api/session-runtime.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.session.state"
-doc = "docs/events/lifecycle.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
 
@@ -1061,18 +989,6 @@ owner-slice = "S8"
 [[allow]]
 name = "gnoblin.shortcut.activated"
 doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
-
-[[allow]]
-name = "gnoblin.shortcut.binding"
-doc = "docs/events/input-shortcuts.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
-
-[[allow]]
-name = "gnoblin.shortcut.binding"
-doc = "docs/events/lifecycle.md"
 reason = "documented, not implemented; Shortcuts and keybindings (S8)"
 owner-slice = "S8"
 
@@ -1201,24 +1117,6 @@ name = "gnoblin.version"
 doc = "docs/shell-api/index.md"
 reason = "documented, not implemented; gnoblinctl verbs (S10)"
 owner-slice = "S10"
-
-[[allow]]
-name = "gnoblin.window.activation"
-doc = "docs/events/desktop-state.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.activation"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.attention"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
 
 [[allow]]
 name = "gnoblin.window.changed"
@@ -1359,12 +1257,6 @@ reason = "documented, not implemented; Global event bus (S2)"
 owner-slice = "S2"
 
 [[allow]]
-name = "gnoblin.workspace.window"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
 name = "gnoblin.workspaces.active"
 doc = "docs/shell-api/workspaces.md"
 reason = "workspaces.md lists this as not available; the gate matches the mention, not a claim"
@@ -1373,5 +1265,263 @@ owner-slice = "docs wrong"
 [[allow]]
 name = "gnoblin.workspaces.next"
 doc = "docs/shell-api/errors.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.window.activation-denied"
+doc = "docs/events/desktop-state.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.pad-help-requested"
+doc = "docs/events/input-shortcuts.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.shortcut.binding-activated"
+doc = "docs/events/input-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.window.attention-changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2)"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.input.device-added"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.device-removed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.sources-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.source-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.orientation-lock-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.shortcut.binding-activated"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.binding-deactivated"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.location.authorization-requested"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.location.authorization-finished"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.session.lock-requested"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.session.state-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock-state-changed"
+doc = "docs/events/lifecycle.md"
+reason = "documented, not implemented; Global event bus (S2): planned in design/session-locking.md"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.runtime.status-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.appearance.color-scheme-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.window.activation-denied"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.focus.policy-changed"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.workspace.window-moved"
+doc = "docs/events/lifecycle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock-state-changed"
+doc = "docs/events/session.md"
+reason = "documented, not implemented; Global event bus (S2): planned in design/session-locking.md"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.location.authorization-requested"
+doc = "docs/events/session.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.appearance.color-scheme-changed"
+doc = "docs/shell-api/appearance-animations.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.focus.policy-changed"
+doc = "docs/shell-api/focus-activation.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.shortcut.binding-activated"
+doc = "docs/shell-api/grants.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.session.activity-changed"
+doc = "docs/shell-api/idle.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.orientation-lock-changed"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.pad-help-requested"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.device-added"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.device-removed"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.source-changed"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.input.sources-changed"
+doc = "docs/shell-api/input.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.shortcut.binding-activated"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.shortcut.binding-deactivated"
+doc = "docs/shell-api/keyboard-shortcuts.md"
+reason = "documented, not implemented; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = "gnoblin.location.authorization-requested"
+doc = "docs/shell-api/privacy.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.location.authorization-finished"
+doc = "docs/shell-api/privacy.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.runtime.status-changed"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.focus.policy-changed"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock-requested"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
+owner-slice = "S6"
+
+[[allow]]
+name = "gnoblin.session.activity-changed"
+doc = "docs/shell-api/session-runtime.md"
+reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = "gnoblin.session.lock-state-changed"
+doc = "docs/shell-api/session-runtime.md"
+reason = "documented, not implemented; Global event bus (S2): planned in design/session-locking.md"
+owner-slice = "S2"
+
+[[allow]]
+name = "gnoblin.input.pad-help-requested"
+doc = "docs/shell-api/tablet-pad-help.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
