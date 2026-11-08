@@ -25,6 +25,13 @@
 //! is a D-Bus error. `SimulateUserActivity` is refused, since the schema declares no
 //! member for it.
 //!
+//! # logind
+//!
+//! [`start`] also follows logind on the system bus, see [`logind`]. On `PrepareForSleep(true)`
+//! the session locks while a sleep delay inhibitor is still held, then the inhibitor is
+//! released; a `Lock` signal for this process's session locks it too. With no system bus or
+//! no logind the service serves without this, and logs that it does.
+//!
 //! # Failure modes first
 //!
 //! 1. **An `UnInhibit` for a cookie nobody holds, or one another sender owns** is refused
@@ -57,6 +64,16 @@
 //! 10. **The compositor refuses a hold** (its cap is reached): the `Inhibit` call fails and
 //!     no inhibit is recorded, so the sender's cookie count is not inflated:
 //!     `tests::a_refused_inhibit_leaves_no_entry`.
+//! 11. **The machine sleeps** with the session unlocked: the lock is requested while the sleep
+//!     delay inhibitor is still held, and the inhibitor is released after it:
+//!     `tests/logind.rs::a_sleep_locks_the_session_while_the_inhibitor_is_still_held`. A
+//!     refused lock still releases it: `tests/logind.rs::a_refused_lock_still_releases_the_sleep_inhibitor`.
+//!     A resume takes the inhibitor again: `tests/logind.rs::a_resume_takes_the_sleep_inhibitor_again_without_locking`.
+//! 12. **logind asks for our session to lock** (`loginctl lock-session`): it locks, and a lock
+//!     for another session does not: `tests/logind.rs::a_session_lock_on_our_own_session_locks_the_session`
+//!     and `tests/logind.rs::a_session_lock_on_another_session_is_ignored`.
+
+pub mod logind;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -553,11 +570,29 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
     };
     let service = ScreenSaver::new(Box::new(host.clone()));
     match service.register(&connection) {
-        Ok(()) => Some((service, connection)),
+        Ok(()) => {
+            watch_logind(&service);
+            Some((service, connection))
+        }
         Err(error) => {
             log::warn!(area = "services", %error, "the screensaver service could not be served");
             None
         }
+    }
+}
+
+/// Follow logind on the system bus, so the session locks before sleep and on request. The
+/// service serves without it when there is no system bus, or no logind on it.
+fn watch_logind(service: &ScreenSaver) {
+    let system = match block_on(Connection::system()) {
+        Ok(system) => system,
+        Err(error) => {
+            log::info!(area = "services", %error, "no system bus, so no logind lock before sleep");
+            return;
+        }
+    };
+    if let Err(error) = logind::watch(&system, service) {
+        log::warn!(area = "services", %error, "logind is not watched, so the session does not lock before sleep");
     }
 }
 
