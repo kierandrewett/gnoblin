@@ -30,12 +30,13 @@
 //! - **Damage** is the only region repainted. Every draw is clipped to the
 //!   intersection of the frame's damage and the layer, so an unchanged pixel is
 //!   never touched and a move cannot leave stale pixels behind.
-//! - **Corner radius and effect passes are not drawn here.** Pixman has no shader, so
-//!   a rounded corner, a shadow, a backdrop blur and a user shader are the GLES
-//!   renderer's work (D12: GLES now, Pixman for software). This path draws the
-//!   rectangle and leaves the properties it cannot honour alone instead of faking
-//!   them, which is what makes the two renderers comparable on the properties both
-//!   implement (placement, opacity, tint, damage).
+//! - **Corner radius is drawn here, by clipping.** A pixel is kept when its centre lies
+//!   inside the rounded rectangle, so the corners show what is behind them. Pixman has
+//!   no anti-aliased mask, so the edge is hard. A shadow, a backdrop blur and a user
+//!   shader are the GLES renderer's work (D12: GLES now, Pixman for software); this
+//!   path leaves them undrawn instead of faking them, which keeps the two renderers
+//!   comparable on the properties both implement (placement, opacity, tint, corners,
+//!   damage).
 //!
 //! # Failure modes
 //!
@@ -383,6 +384,13 @@ impl Software {
             if clipped.is_empty() {
                 continue;
             }
+            let radius = corner_radius(layer, scale);
+            if radius > 0.0 {
+                clip_to_shape(clipped, &corner_spans(dst.size, radius));
+                if clipped.is_empty() {
+                    continue;
+                }
+            }
             match layer {
                 Layer::Solid(solid) => pixman_frame
                     .draw_solid(dst, clipped, colour(tinted(solid.colour, solid.tint)))
@@ -459,6 +467,63 @@ fn layer_damage(
             clipped.push(Rectangle::new(part.loc - dst.loc, part.size));
         }
     }
+}
+
+/// The corner radius of a layer in physical pixels, 0 for square corners.
+///
+/// The radius is logical, so it is scaled the way GLES scales it: `corner * scale`.
+fn corner_radius(layer: &Layer, scale: Scale) -> f64 {
+    let logical = match layer {
+        Layer::Surface(surface) => surface.corner_radius,
+        Layer::Solid(solid) => solid.corner_radius,
+        Layer::Overlay(_) => 0.0,
+    };
+    f64::from(logical.max(0.0)) * scale.as_f64()
+}
+
+/// The rows of a rounded rectangle of `size` with corner `radius`, as one-pixel-high spans in
+/// the layer's own coordinates.
+///
+/// A pixel is inside when its centre is inside the rounded rectangle. That is the GLES shader's
+/// distance test without its anti-aliasing: the edge is hard, so a corner is the layer or the
+/// background and never a blend. Pixman has no mask to draw with, so the shape is written as the
+/// spans it covers and intersected with the damage.
+fn corner_spans(size: PhysicalSize<i32, Physical>, radius: f64) -> Vec<Rectangle<i32, Physical>> {
+    let (width, height) = (f64::from(size.w.max(0)), f64::from(size.h.max(0)));
+    // A radius past half a side is clamped, so the shape is at most a circle.
+    let radius = radius.min(width / 2.0).min(height / 2.0).max(0.0);
+    let mut spans = Vec::new();
+    for y in 0..size.h.max(0) {
+        let centre = f64::from(y) + 0.5;
+        // How far this row's centre lies inside a corner band, measured from the circle's centre row.
+        let depth = if centre < radius {
+            radius - centre
+        } else if centre > height - radius {
+            centre - (height - radius)
+        } else {
+            0.0
+        };
+        let inset = if depth > 0.0 {
+            radius - (radius * radius - depth * depth).max(0.0).sqrt()
+        } else {
+            0.0
+        };
+        let left = (inset - 0.5).ceil().clamp(0.0, width) as i32;
+        let right = (width - inset + 0.5).floor().clamp(0.0, width) as i32;
+        if right > left {
+            spans.push(Rectangle::new((left, y).into(), (right - left, 1).into()));
+        }
+    }
+    spans
+}
+
+/// Narrows the damage in `clipped` to the parts inside `shape`.
+fn clip_to_shape(clipped: &mut Vec<Rectangle<i32, Physical>>, shape: &[Rectangle<i32, Physical>]) {
+    let narrowed = clipped
+        .iter()
+        .flat_map(|rect| shape.iter().filter_map(move |span| rect.intersection(*span)))
+        .collect();
+    *clipped = narrowed;
 }
 
 /// Draws the overlay layer at its place in the list with nearest-neighbour scaling. A capture
@@ -1291,5 +1356,125 @@ mod tests {
                 assert_eq!(image.colour_at(x, y), Some([0, 0, 0, 0]), "pixel ({x}, {y})");
             }
         }
+    }
+
+    /// Rule: a corner radius clips a layer to a rounded rectangle, so the corner shows the
+    /// background behind it, as GLES draws it (`a_corner_radius_reveals_the_background`).
+    #[test]
+    fn a_rounded_solid_reveals_the_background_at_its_corners() {
+        let mut frame = OutputFrame::new();
+        frame.set_background(Color::from_rgba8(0, 0, 255, 255));
+        frame.push_damage(Rect::new(0, 0, 64, 64));
+        let mut solid = Solid::new(Rect::new(8, 8, 48, 48), Color::from_rgba8(255, 0, 0, 255));
+        solid.corner_radius = 12.0;
+        frame.push_layer(Layer::Solid(solid));
+        let mut software = Software::new(Size::new(64, 64)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        assert_eq!(
+            image.colour_at(9, 9),
+            Some([0, 0, 255, 255]),
+            "the corner is the background"
+        );
+        assert_eq!(
+            image.colour_at(32, 32),
+            Some([255, 0, 0, 255]),
+            "the centre is the layer"
+        );
+        assert_eq!(
+            image.colour_at(32, 9),
+            Some([255, 0, 0, 255]),
+            "the top edge is still the layer"
+        );
+        assert_eq!(
+            image.colour_at(9, 32),
+            Some([255, 0, 0, 255]),
+            "the left edge is still the layer"
+        );
+    }
+
+    /// Rule: a client's pixels are clipped by the same rounded rectangle, so a rounded window
+    /// shows the background at its corners and its own pixels everywhere else.
+    #[test]
+    fn a_rounded_surface_clips_the_client_pixels_and_keeps_the_middle() {
+        let image = Image::new(Size::new(16, 16), 64, [200, 100, 50, 255].repeat(16 * 16)).expect("an image");
+        let mut layer = snapshot_layer(image, Rect::new(0, 0, 16, 16));
+        let Layer::Surface(surface) = &mut layer else {
+            unreachable!("snapshot_layer builds a surface");
+        };
+        surface.corner_radius = 6.0;
+        let mut frame = OutputFrame::new();
+        frame.set_background(Color::from_rgba8(0, 0, 255, 255));
+        frame.push_damage(Rect::new(0, 0, 16, 16));
+        frame.push_layer(layer);
+        let mut software = Software::new(Size::new(16, 16)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let drawn = software.screenshot().expect("a readback");
+        assert_eq!(
+            drawn.colour_at(0, 0),
+            Some([0, 0, 255, 255]),
+            "the corner shows the background"
+        );
+        assert_eq!(
+            drawn.colour_at(8, 8),
+            Some([200, 100, 50, 255]),
+            "the middle is the client's pixel"
+        );
+        assert_eq!(
+            drawn.colour_at(0, 8),
+            Some([200, 100, 50, 255]),
+            "the left edge is the client's pixel"
+        );
+    }
+
+    /// Rule: the radius is logical, so at scale 2 a radius of 3 cuts the same corner as a radius
+    /// of 6 physical pixels, the GLES `radius = corner * scale` rule.
+    #[test]
+    fn a_corner_radius_is_logical_and_scales_with_the_output() {
+        let mut frame = OutputFrame::new();
+        frame.set_background(Color::from_rgba8(0, 0, 255, 255));
+        frame.push_damage(Rect::new(0, 0, 16, 16));
+        let mut solid = Solid::new(Rect::new(4, 4, 12, 12), Color::from_rgba8(255, 0, 0, 255));
+        solid.corner_radius = 3.0;
+        frame.push_layer(Layer::Solid(solid));
+        let mut software = Software::new(Size::new(32, 32)).expect("a software renderer at scale 2");
+        software.draw(&frame, Scale::from_percent(200)).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        assert_eq!(
+            image.colour_at(8, 8),
+            Some([0, 0, 255, 255]),
+            "the physical corner is the background"
+        );
+        assert_eq!(
+            image.colour_at(16, 16),
+            Some([255, 0, 0, 255]),
+            "the physical centre is the layer"
+        );
+    }
+
+    /// Failure mode: a radius bigger than half a side is clamped to a circle, never a shape that
+    /// runs past its own rectangle.
+    #[test]
+    fn an_oversized_radius_is_clamped_to_a_circle() {
+        let mut frame = OutputFrame::new();
+        frame.set_background(Color::from_rgba8(0, 0, 255, 255));
+        frame.push_damage(Rect::new(0, 0, 16, 16));
+        let mut solid = Solid::new(Rect::new(0, 0, 16, 16), Color::from_rgba8(255, 0, 0, 255));
+        solid.corner_radius = 100.0;
+        frame.push_layer(Layer::Solid(solid));
+        let mut software = Software::new(Size::new(16, 16)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        assert_eq!(
+            image.colour_at(0, 0),
+            Some([0, 0, 255, 255]),
+            "the corner of the square is outside the circle"
+        );
+        assert_eq!(
+            image.colour_at(8, 0),
+            Some([255, 0, 0, 255]),
+            "the top is on the circle's edge, inside"
+        );
+        assert_eq!(image.colour_at(8, 8), Some([255, 0, 0, 255]), "the centre is the layer");
     }
 }
