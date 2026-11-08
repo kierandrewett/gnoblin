@@ -1,71 +1,74 @@
 # End-to-end keyring unlock: run record
 
-Status: BLOCKED. The keyring unlock flow was never reached. Every run on the
-current `rust-compositor` build (origin tip `523ff0079`) stalled before the
-services role reported ready, so no `secret-tool store` call completed and no
-`prompt.secret` was offered or answered.
+Status: the store, lookup, search and clear flow runs end to end on the built-in
+keyring. Two results are open, see Findings: a first boot with
+`keyring.enabled = false` still serves the keyring, and the Secret Service
+prompt wrong-password path has only been shown through the existing-keyring
+variant.
 
-Logs are on the workstation in `~/dev/lanes/KeyringE2E-logs/`. The run used
-Agent37 instance `rp6h517btk`. It is deleted at the end of the run.
+The services stall recorded in the earlier blocked run is fixed; see
+`design/e2e-smoke.md`, "Services stall". Every run below reached `session ready`.
 
-## Plan (from the brief)
+Build: `rust-compositor` at `93152886e` (lane HEAD), built on Agent37 with
+`a37-gate.sh`. Agent37 instance `7sgzvn3ki4`, deleted at the end of the run.
+Scenario logs are in `~/dev/lanes/KeyringE2E-logs/rerun/`.
 
-1. Start a session with the guardian and the headless backend, as in
-   `design/e2e-smoke.md`.
-2. Store a libsecret item with `secret-tool store`. Expected D-Bus flow:
-   `OpenSession`, `ReadAlias(default)`, `CreateItem`, which returns
-   `('/', prompt)`, then `Prompt.Prompt`, then `prompt.secret` offered to the
-   claimant, which answers, then `Completed(false, item path)`.
-3. Run `secret-tool lookup` after the store has unlocked the collection.
-   Known limit, recorded as a finding and not a failure: `SearchItems` while the
-   collection is locked returns nothing, so a lookup before the first unlock
-   finds nothing. This limit was not verified in this run.
+## Method
 
-## Runs
+- Session: the guardian `gnoblin` with the headless backend, as in
+  `design/e2e-smoke.md`. Runtime dir `/home/node/e2e/run`.
+- Per-scenario config under `/home/node/e2e/<scenario>/config/gnoblin/init.lua`.
+  `main` has no keyring setting. `off` sets `keyring = { enabled = false }`.
+- A claimant process answers `prompt.secret` with the login password. The
+  wrong-password case answers with a different password.
+- Client: `secret-tool` built from `/home/node/e2e-src/secret-tool` (DH
+  algorithm, the same one libsecret uses by default).
+- Leak check: the secret value and both passwords are grepped in session logs,
+  claimant log, the tool outputs and the data directory. All counts were 0.
+- Harness: `.e2e/run.sh SCENARIO`, with two switches. `REUSE_DATA_FROM=<s>`
+  starts from another scenario's data and state dirs. The owner-pid parse was
+  fixed in this run. The harness is not committed.
 
-| Run | Scenario                            | Result                                                                | Evidence                                                    |
-| --- | ----------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- |
-| r2  | main, with store                    | BLOCKED: `secret-tool store` rc=124, services never ready             | `r2-main-stdout.txt`                                        |
-| r4  | main, with store                    | BLOCKED: same stall                                                   | `r4-session.log`, `r4-sample-7s.txt`, `r4-main-console.txt` |
-| r5  | no store step                       | BLOCKED: same stall, so the stall is not caused by the keyring prompt | `r5-nostore-services.txt`                                   |
-| r6  | no store step, probe                | BLOCKED: same stall                                                   | `r6-nostore-probe.txt`, `r6-nostore-session.log`            |
-| r7  | no store step, current build        | BLOCKED: same stall                                                   | `r7-nostore-session.log`                                    |
-| r8  | fresh IPC client during stall       | compositor answers                                                    | `r8-subscribe-probe.txt`                                    |
-| r9  | services process state during stall | all threads sleeping, fds listed                                      | `r9-stall-diag.txt`                                         |
+## Results
 
-Build for every run: `a37-gate.sh run rp6h517btk ... build -p gnoblin --locked`,
-which was already current. The full `--workspace` build was not needed for the
-runs.
+| Scenario                                 | Check                                                                                                                                                | Result                                                              | Evidence                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| main                                     | session ready, name owned, `store` rc=0, `lookup` rc=0, value matches, `search` rc=0, `clear` rc=0, lookup after clear rc=1                          | PASS                                                                | `rerun/main/steps.txt`, `rerun/main/session.log` |
+| main                                     | owner pid is the services role                                                                                                                       | PASS (after harness fix)                                            | `rerun/main/owner.txt`                           |
+| main                                     | leak check                                                                                                                                           | PASS, 0 matches                                                     | `rerun/main/leak-check.txt`                      |
+| wrongpw, fresh data dir                  | `store` rc=0                                                                                                                                         | NOT A WRONG-PASSWORD TEST: the wrong password created a new keyring | `rerun/wrongpw` (first attempt)                  |
+| wrongpw, `REUSE_DATA_FROM=main`          | session log: `password from the prompt did not unlock the keyring reason=WrongKey`, `store` rc=1 with `Error: "prompt was dismissed"`, `lookup` rc=1 | PASS (fails closed)                                                 | `rerun/wrongpw/session.log`, `store.err`         |
+| wrongpw                                  | leak check                                                                                                                                           | PASS, 0 matches                                                     | `rerun/wrongpw/leak-check.txt`                   |
+| nohandler                                | no prompt claimant: `store` rc=1 `Error: "prompt was dismissed"`, `lookup` rc=1 `no matching item`                                                   | PASS (fails closed)                                                 | `rerun/nohandler/store.err`, `lookup.err`        |
+| off, first boot                          | `keyring.enabled=false` ignored: keyring served, file created, store rc=0                                                                            | FAIL, see Finding F1                                                | `rerun/off-first/session.log`                    |
+| off, second boot (state from first boot) | no keyring log lines, `store` rc=1 `ServiceUnknown`, bus tree has no `org.freedesktop.secrets`                                                       | PASS                                                                | `rerun/off/session.log`, `rerun/off/store.err`   |
 
-## What the stall looks like
+The `off` evidence in `rerun/off` is the second boot. `rerun/off-first` is the
+first boot. `wrongpw` loads the wrong password file; `nohandler` starts no
+claimant at all.
 
-- The guardian kills the services child after 10 s with "did not report
-  ready". The services log shows the keyring, displayconfig and idle agents
-  starting, then nothing.
-- The stall is in the introspection adapter's start
-  (`crates/compat/gnoblin-compat-dbus-gnome-shell-introspect`, `agent.rs` start
-  calls `link_from_environment`). That path runs `UnixTransport::connect`,
-  `Client::connect` (no handshake timeout) and `IntrospectLink::connect`, which
-  calls `subscribe(Filter::All)`.
-- The compositor is not the blocked side. Compositor CPU rises during the stall.
-  The services process is idle, and its threads are in state `S` (sleeping).
-- r8: a separate client with the same connect, handshake and subscribe calls
-  connects, handshakes and subscribes in under 1 ms while services is stalled
-  (`t=546.752us handshake accepted`, `t=859.413us snapshot objects=7`). The IPC
-  socket is therefore accepting and answering.
-- So the blocked call is specific to the services process. The blocked syscall
-  is not identified. `strace` and `gdb` are not installed on Agent37, so the
-  blocking call was not captured. `/proc/<pid>/syscall` and `wchan` read empty.
+## Findings
 
-## Open
+- **F1 (open): `keyring.enabled = false` is ignored on first boot.**
+    - The services role reads the flag from `last-good-config.json` at start.
+    - The compositor saves the commit only after services start and report ready.
+    - On a first boot the file does not exist, so the default (on) applies.
+    - Evidence, `rerun/off-first/session.log`: services serve `org.freedesktop.secrets` and create a keyring file before `configuration revision 1 accepted`.
+    - On a second boot from the saved state the setting is honoured (`rerun/off`).
+    - Fix options, not chosen here: make services wait for the first commit, or save the commit before services start. This is a design question, so it was not changed here.
+- **F2 (harness, fixed): owner pid parse.** The owner pid was parsed from
+  `GetConnectionUnixProcessID`'s reply. The reply is `uint32 N`, so the digits
+  in the type name were kept. The harness now takes the number after
+  `uint32`. Earlier runs showed a wrong pid and are not used.
+- **F3 (fixed, 93152886e): keyring directory missing on first create.** A
+  first `store` failed with `ENOENT` because the keyring directory did not
+  exist. The fix creates the directory before the first file. The `main` run
+  above is the proof.
 
-- Identify the syscall the introspection adapter blocks in during services
-  start, which needs `strace` or `gdb` on Agent37 or an in-process trace.
-- After that is fixed, rerun the plan above. The keyring unlock flow, the
-  `prompt.secret` answer and the `SearchItems` limit remain unverified.
+## Not verified
 
-## Diagnostics kept out of the tree
-
-The probe `subscribe_probe.rs` and the harness scripts under the lane's `.e2e/`
-were used for these runs. They are not committed, because they are diagnostic
-only.
+- Clean-profile `SearchItems` on a locked collection (the limit from the
+  brief). The `main` run unlocks before search, so this was not exercised.
+- `prompt.secret` with a claimant that never answers. The `nohandler` run
+  covers the no-claimant case only.
+- Real DRM, PAM, a real login and gnome-keyring interop. Headless backend only.

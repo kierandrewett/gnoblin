@@ -100,6 +100,25 @@ denied (os error 13)` for every shape: 231 lines in `run3/session.stdout`, 915
   `zwlr_screencopy` or the image-copy-capture protocol, or extend the capture
   schema.
 
+## Services stall (fixed)
+
+Symptom: the guardian killed the services child after 10 s with "did not report
+ready". The services log showed the keyring, displayconfig and idle agents
+starting, then nothing.
+
+Root cause: the idle monitor adapter ran `block_on(watch_callers(..))` inside
+`start()`. `watch_callers` returns only when its bus connection ends, so
+`start()` never returned and services never reported ready.
+
+Fix: the caller watch runs on its own thread, as the other adapters already do
+(`crates/compat/gnoblin-compat-dbus-mutter-idlemonitor/src/agent.rs`, commit
+add424516). `start()` returns once the name is exported and the counter is
+published.
+
+Proof: the keyring rerun in `design/e2e-keyring.md` reached `session ready` in
+every scenario. In `~/dev/lanes/KeyringE2E-logs/rerun/off-first/session.log` the
+services role starts at line 12 and `session ready` is at line 28.
+
 ## Not covered
 
 - Real DRM and KMS output. Only the headless backend ran.
