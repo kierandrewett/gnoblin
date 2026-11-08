@@ -1,5 +1,5 @@
-//! The `workspace_set` object through the real session: `activate` completes `done` for a set
-//! the session has, and completes with the named code `unknown-set` for one it does not.
+//! The `workspace` object's `activate_set` through the real session: it completes `done` for a
+//! set the session has, and completes with the named code `unknown-set` for one it does not.
 //!
 //! The sets are the configuration's; the headless output is the only output. Nothing is
 //! mocked: the session, the socket and the window manager are real.
@@ -42,22 +42,25 @@ fn ipc(session: &Session) -> Client<UnixTransport> {
     .expect("the session accepts this build")
 }
 
-/// The `workspace_set` object's identity, read from a fresh snapshot.
-fn workspace_set_object(client: &mut Client<UnixTransport>) -> ObjectId {
+/// The `workspace` object's identity, read from a fresh snapshot. Any published workspace
+/// serves `activate_set`, so the first one is enough.
+fn workspace_object(client: &mut Client<UnixTransport>) -> ObjectId {
     let snapshot = client.subscribe(Filter::All).expect("the snapshot");
     snapshot
         .objects()
         .iter()
-        .find(|view| view.ty().to_string() == "gnoblin.workspace_set")
+        .find(|view| view.ty().to_string() == "gnoblin.workspace")
         .map(|view| view.id())
-        .expect("the workspace_set object")
+        .expect("a workspace object")
 }
 
-/// Calls `activate` with `name` and returns how the operation finished.
+/// Calls `activate_set` with `name` and returns how the operation finished.
 fn activate(client: &mut Client<UnixTransport>, object: ObjectId, name: &str) -> OperationOutcome {
     let mut arguments = Fields::new();
     arguments.insert("name".to_owned(), gnoblin_model::Value::Text(name.to_owned()));
-    let operation = client.call(object, "activate", &arguments).expect("the call is served");
+    let operation = client
+        .call(object, "activate_set", &arguments)
+        .expect("the call is served");
     client.await_operation(operation).expect("the completion")
 }
 
@@ -65,7 +68,7 @@ fn activate(client: &mut Client<UnixTransport>, object: ObjectId, name: &str) ->
 fn activating_a_set_the_session_does_not_have_fails_with_unknown_set() {
     let session = started(vec![set("work", 2)]);
     let mut client = ipc(&session);
-    let object = workspace_set_object(&mut client);
+    let object = workspace_object(&mut client);
     assert_eq!(
         activate(&mut client, object, "nope"),
         OperationOutcome::Failed(ErrorCode::from_static("unknown-set")),
@@ -76,7 +79,7 @@ fn activating_a_set_the_session_does_not_have_fails_with_unknown_set() {
 fn activating_a_defined_set_completes_done() {
     let session = started(vec![set("work", 2)]);
     let mut client = ipc(&session);
-    let object = workspace_set_object(&mut client);
+    let object = workspace_object(&mut client);
     assert_eq!(activate(&mut client, object, "work"), OperationOutcome::Done);
 }
 
@@ -84,7 +87,7 @@ fn activating_a_defined_set_completes_done() {
 fn activating_the_live_set_again_is_still_done() {
     let session = started(vec![set("work", 2)]);
     let mut client = ipc(&session);
-    let object = workspace_set_object(&mut client);
+    let object = workspace_object(&mut client);
     assert_eq!(activate(&mut client, object, "work"), OperationOutcome::Done);
     assert_eq!(activate(&mut client, object, "work"), OperationOutcome::Done);
 }

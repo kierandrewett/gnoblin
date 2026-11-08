@@ -71,6 +71,33 @@ name = "params"
 type = "string"
 since = "0.2.0"
 
+# The namespace function `gnoblin.workspaces.activate_set(name)`. It takes the name of a
+# workspace set from the configuration and returns an operation that finishes `done` once
+# the window manager shows that set's workspaces, including when the set is already live.
+# It is refused `unknown-set` when the configuration defines no set of that name. It is a
+# method on the object all the same, so the wire needs no second route for it.
+[[object.method]]
+name = "activate_set"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+# A workspace set was made live: `set` is its name. Raised on every workspace the session
+# holds, since each one is shown or hidden by the change.
+[[object.signal]]
+name = "set_activated"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "set"
+type = "string"
+since = "0.2.0"
+
+
 # The workspace's layout changed: a new name was set, or its output's default moved.
 [[object.signal]]
 name = "layout_changed"
@@ -132,4 +159,8 @@ since = "0.2.0"
 
 [[error]]
 name = "unknown-layout"
+since = "0.2.0"
+
+[[error]]
+name = "unknown-set"
 since = "0.2.0"

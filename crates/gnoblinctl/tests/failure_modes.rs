@@ -417,22 +417,21 @@ fn a_failed_operation_exits_1() {
     assert!(err.is_empty(), "{err}");
 }
 
-/// The one `workspace_set` object the session publishes, with its identity.
-fn workspace_sets() -> (Graph, ObjectId) {
+/// The one `workspace` object the session publishes; set activation is a verb on it.
+fn workspace() -> (Graph, ObjectId) {
     let mut graph = Graph::new(catalog());
     let object = graph
-        .create(TypeKey::gnoblin("workspace_set"), Fields::new())
-        .expect("workspace_set is in the schema");
+        .create(TypeKey::gnoblin("workspace"), Fields::new())
+        .expect("workspace is in the schema");
     (graph, object)
 }
 
 #[test]
 fn activating_a_set_exits_0_once_it_is_live() {
-    let (graph, object) = workspace_sets();
-    let id = object.get().to_string();
+    let (graph, _) = workspace();
     let steps = vec![Step::Complete(OperationOutcome::Done)];
     let (code, out, err) = run(
-        &["workspace_set", "call", &id, "activate", "name=main"],
+        &["workspace", "activate-set", "main"],
         ModelConnection::new(graph, steps),
     );
     assert_eq!(code, 0, "stderr: {err}");
@@ -441,13 +440,12 @@ fn activating_a_set_exits_0_once_it_is_live() {
 
 #[test]
 fn activating_an_unknown_set_exits_1() {
-    let (graph, object) = workspace_sets();
-    let id = object.get().to_string();
+    let (graph, _) = workspace();
     let steps = vec![Step::Complete(OperationOutcome::Failed(ErrorCode::from_static(
         "unknown-set",
     )))];
     let (code, out, err) = run(
-        &["--json", "workspace_set", "call", &id, "activate", "name=nosuch"],
+        &["--json", "workspace", "activate-set", "nosuch"],
         ModelConnection::new(graph, steps),
     );
     assert_eq!(code, 1);
@@ -456,8 +454,20 @@ fn activating_an_unknown_set_exits_1() {
 }
 
 #[test]
+fn activating_a_set_with_no_workspace_published_exits_1() {
+    let graph = Graph::new(catalog());
+    let (code, out, err) = run(
+        &["--json", "workspace", "activate-set", "main"],
+        ModelConnection::new(graph, Vec::new()),
+    );
+    assert_eq!(code, 1);
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("\"code\":\"no-workspace\""), "{err}");
+}
+
+#[test]
 fn activating_without_a_name_is_a_usage_error() {
-    let (code, out, err) = run(&["workspace_set", "call", "1", "activate"], nowhere());
+    let (code, out, err) = run(&["workspace", "activate-set"], nowhere());
     assert_eq!(code, 2, "a missing NAME is refused before connecting, stderr: {err}");
     assert!(out.is_empty(), "{out}");
     assert!(!err.is_empty(), "the refusal says what is missing");

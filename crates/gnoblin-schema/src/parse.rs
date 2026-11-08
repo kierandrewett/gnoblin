@@ -635,7 +635,6 @@ mod tests {
                 "settings",
                 "window",
                 "workspace",
-                "workspace_set",
             ]
         );
     }

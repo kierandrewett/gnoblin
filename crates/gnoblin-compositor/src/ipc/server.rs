@@ -1566,6 +1566,9 @@ impl Dispatcher {
             (Some(ty), _, Some(workspace), _) if ty == "workspace" && method == "layout_command" => {
                 self.layout_command_call(client, envelope, object, &method, &arguments, workspace);
             }
+            (Some(ty), _, _, _) if ty == "workspace" && method == "activate_set" => {
+                self.workspace_activate_set(client, envelope, object, &method, &arguments);
+            }
             (Some(ty), _, _, Some((_, name))) if ty == "output" && method == "set_layout" => {
                 self.set_output_layout(client, envelope, object, &method, &arguments, &name);
             }
@@ -1582,9 +1585,6 @@ impl Dispatcher {
             }
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
-            }
-            (Some(ty), _, _, _) if ty == "workspace_set" => {
-                self.workspace_set_call(client, envelope, object, &method, &arguments);
             }
             (Some(ty), _, _, _) if ty == "layers" => {
                 self.layers_call(client, envelope, object, &method, &arguments);
@@ -2215,10 +2215,11 @@ impl Dispatcher {
         self.finish_layout(object, &operation, answered);
     }
 
-    /// Serves `workspace_set.activate`: the configured set `name` becomes the live set. The
+    /// Serves `workspace.activate_set`: the configured set `name` becomes the live set. The
     /// operation completes `done` once the window manager shows the set's workspaces, and
-    /// fails with `unknown-set` when the configuration defines no set of that name.
-    fn workspace_set_call(
+    /// fails with `unknown-set` when the configuration defines no set of that name. On success
+    /// every published workspace raises `set_activated`, so a subscriber on any of them sees it.
+    fn workspace_activate_set(
         &mut self,
         client: ClientId,
         envelope: &Envelope,
@@ -2226,21 +2227,12 @@ impl Dispatcher {
         method: &str,
         arguments: &gnoblin_model::Fields,
     ) {
-        if method != "activate" {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::UNKNOWN_MEMBER,
-                "the workspace_set object has one method, activate",
-            );
-            return;
-        }
         let Some(name) = text_argument(arguments, "name") else {
             self.refuse(
                 client,
                 envelope,
                 wire::code::UNKNOWN_MEMBER,
-                "activate takes the set's name as text",
+                "activate_set takes the set's name as text",
             );
             return;
         };
@@ -2256,7 +2248,10 @@ impl Dispatcher {
         let answered = self.control.activate_workspace_set(&name);
         self.sync();
         let outcome = match answered {
-            Some(Ok(())) => OperationOutcome::Done,
+            Some(Ok(())) => {
+                self.store.raise_set_activated(&name);
+                OperationOutcome::Done
+            }
             Some(Err(WorkspaceSetRefusal::UnknownSet)) => {
                 OperationOutcome::Failed(ErrorCode::from_static("unknown-set"))
             }

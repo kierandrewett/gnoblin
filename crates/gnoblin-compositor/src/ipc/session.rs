@@ -108,6 +108,11 @@ mod member {
     pub const LAYOUT_CHANGED: &str = "layout_changed";
     /// The `layout_failed` signal, sent when a layout change is refused.
     pub const LAYOUT_FAILED: &str = "layout_failed";
+    /// The `workspace` object's set_activated signal, sent once per workspace when the window
+    /// manager makes a configured workspace set the live set.
+    pub const SET_ACTIVATED: &str = "set_activated";
+    /// The set_activated signal's field: the name of the set the window manager made live.
+    pub const SET: &str = "set";
     /// The `lock` object's locked property: whether the lock is holding the desktop.
     pub const LOCKED: &str = "locked";
     /// The `idle` object's idle_ms property: milliseconds since the last input event.
@@ -256,9 +261,6 @@ impl SessionSync {
         // The `layers` object carries no properties either: its one verb registers a layer
         // under the caller's own provider, which the compositor derives from the connection.
         graph.create(TypeKey::gnoblin("layers"), Fields::new())?;
-        // The `workspace_set` object carries no properties: its one verb switches the live set,
-        // and the configured sets are the window manager's to hold.
-        graph.create(TypeKey::gnoblin("workspace_set"), Fields::new())?;
         Ok(SessionSync {
             graph,
             session,
@@ -806,6 +808,19 @@ impl SessionSync {
             (member::REASON.to_owned(), Value::Text(reason.to_owned())),
         ]);
         self.graph.signal(object, member::LAYOUT_FAILED, fields).map(|_| ())
+    }
+
+    /// Raises `set_activated` on every published workspace object, naming the set the window
+    /// manager has made live. Every workspace carries the signal so a subscriber on any of them
+    /// sees the switch; a refused signal is logged and the others still go out.
+    pub fn raise_set_activated(&mut self, set: &str) {
+        let objects: Vec<ObjectId> = self.workspaces.values().map(|published| published.object).collect();
+        for object in objects {
+            let fields = Fields::from([(member::SET.to_owned(), Value::Text(set.to_owned()))]);
+            if let Err(error) = self.graph.signal(object, member::SET_ACTIVATED, fields) {
+                log::error!(area = "ipc", %error, "a workspace object declares no set_activated signal");
+            }
+        }
     }
 
     /// The graph, for a caller that reads state.

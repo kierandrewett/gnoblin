@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use gnoblin_client::{Loopback, Server};
 use gnoblin_config::SearchPaths;
-use gnoblin_model::{Fields, Graph, ObjectId, Tick, TypeKey};
+use gnoblin_model::{Fields, Graph, ObjectId, Tick, TypeKey, Value};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, ObjectType, Type};
 
@@ -351,16 +351,16 @@ assert(not refused, "a property cannot be assigned")
 }
 
 #[test]
-fn set_activate_is_refused_until_the_session_publishes_a_workspace_set() {
+fn activate_set_is_refused_until_the_session_publishes_a_workspace() {
     let mut server = Server::new(Graph::new(catalog()), VERSION);
     let client = server.connect(VERSION).expect("the versions match");
     let mut host = Host::new(client, Limits::default()).expect("the host starts");
-    let config = Config::new("set-activate-missing");
+    let config = Config::new("activate-set-missing");
     let paths = config.script(
         r#"
-local refused, message = pcall(gnoblin.workspaces.set_activate, "main")
-assert(not refused, "there is no workspace_set object to ask")
-assert(string.find(message, "no workspace_set object", 1, true), "it names the missing object, was " .. tostring(message))
+local refused, message = pcall(gnoblin.workspaces.activate_set, "main")
+assert(not refused, "there is no workspace object to ask")
+assert(string.find(message, "the workspace object", 1, true), "it names the missing object, was " .. tostring(message))
 "#,
     );
     let report = host.run_config(&paths).expect("the run starts");
@@ -368,17 +368,20 @@ assert(string.find(message, "no workspace_set object", 1, true), "it names the m
 }
 
 #[test]
-fn set_activate_answers_an_operation_for_the_workspace_set_object() {
+fn activate_set_answers_an_operation_on_the_live_workspace() {
     let mut server = Server::new(Graph::new(catalog()), VERSION);
+    let mut properties = Fields::new();
+    properties.insert("id".to_owned(), Value::Uint(1));
+    properties.insert("layout".to_owned(), Value::Text("floating".to_owned()));
     server
-        .create(TypeKey::gnoblin("workspace_set"), Fields::new())
-        .expect("the workspace_set type is in the schema");
+        .create(TypeKey::gnoblin("workspace"), properties)
+        .expect("the graph takes a workspace");
     let client = server.connect(VERSION).expect("the versions match");
     let mut host = Host::new(client, Limits::default()).expect("the host starts");
-    let config = Config::new("set-activate-operation");
+    let config = Config::new("activate-set-operation");
     let paths = config.script(
         r#"
-local operation = gnoblin.workspaces.set_activate("main")
+local operation = gnoblin.workspaces.activate_set("main")
 assert(type(operation) == "userdata", "the call answers an operation, was " .. type(operation))
 "#,
     );

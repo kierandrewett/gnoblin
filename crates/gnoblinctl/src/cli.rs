@@ -404,6 +404,20 @@ fn verb_commands() -> Vec<Command> {
                             .help("The configuration document to check."),
                     ),
             ),
+        Command::new("workspace")
+            .about("Workspace sets: make a configured set the live one.")
+            .subcommand_required(true)
+            .arg_required_else_help(true)
+            .subcommand(
+                Command::new("activate-set")
+                    .about("Make the configured workspace set NAME the live set, on every output.")
+                    .arg(
+                        Arg::new("name")
+                            .value_name("NAME")
+                            .required(true)
+                            .help("The workspace set to make live, as configured."),
+                    ),
+            ),
     ]
 }
 
@@ -444,6 +458,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
             json,
         },
         "config" => config_invocation(sub, json)?,
+        "workspace" => workspace_invocation(sub, json)?,
         command => {
             let object = tree::CliObject::find(command).expect("every subcommand comes from the generated tree");
             object_invocation(object, sub, json)?
@@ -487,6 +502,26 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
         other => unreachable!("clap refuses `config {other}`"),
     };
     Ok(Invocation::Verb { verb, json })
+}
+
+/// The `workspace` subcommands. `activate-set` is the one hand-written verb: it names the
+/// set, and the compositor finds the workspace to call. Every other subcommand is the
+/// schema object's, generated from the workspace type.
+fn workspace_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
+    let (name, sub) = matches.subcommand().expect("a subcommand is required");
+    match name {
+        "activate-set" => {
+            let set = sub.get_one::<String>("name").cloned().expect("clap requires the name");
+            Ok(Invocation::Verb {
+                verb: verbs::Verb::WorkspaceActivateSet { name: set },
+                json,
+            })
+        }
+        _ => {
+            let object = tree::CliObject::find("workspace").expect("the schema declares the `workspace` object");
+            object_invocation(object, matches, json)
+        }
+    }
 }
 
 /// A refusal of the `log` options, with the message the parser produced.

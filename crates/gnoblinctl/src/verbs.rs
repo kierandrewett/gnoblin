@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use gnoblin_client::{Capabilities, Capability, Client, Transport};
 use gnoblin_config::{SearchPaths, document::Config};
-use gnoblin_model::{Filter, ObjectView, Snapshot, TypeKey, Value};
+use gnoblin_model::{Fields, Filter, ObjectView, Snapshot, TypeKey, Value};
 use serde_json::{Value as Json, json};
 
 use crate::commands::Failure;
@@ -38,6 +38,9 @@ pub(crate) enum Verb {
     ConfigGet,
     /// Ask the runtime to re-read the configuration in place.
     ConfigReload,
+    /// Make the configured workspace set `name` the live set. The verb calls the method on
+    /// the first live workspace object; the set is shown on every output.
+    WorkspaceActivateSet { name: String },
     /// Check a configuration document on disk, without connecting.
     ConfigValidate { path: PathBuf },
 }
@@ -60,6 +63,7 @@ pub(crate) fn execute<T: Transport>(
         Verb::Capabilities => capabilities(client, json, out),
         Verb::ConfigGet => config_get(client, json, out),
         Verb::ConfigReload => config_reload(client, json, out),
+        Verb::WorkspaceActivateSet { name } => workspace_activate_set(client, name, json, out),
         Verb::ConfigValidate { path } => validate(path, json, out),
     };
     match outcome {
@@ -241,6 +245,27 @@ fn config_reload<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn
     };
     result.map_err(Failure::Io)?;
     Ok(0)
+}
+
+/// `workspace activate-set NAME`: the configured set `NAME` becomes the live set. The verb
+/// names no workspace, so the method goes to the first live workspace object; the compositor
+/// shows the set on every output whichever workspace carries the call.
+fn workspace_activate_set<T: Transport>(
+    client: &mut Client<T>,
+    name: &str,
+    json: bool,
+    out: &mut dyn Write,
+) -> Result<u8, Failure> {
+    let snapshot = client.subscribe(Filter::All).map_err(Failure::Client)?;
+    let Some(id) = find(&snapshot, "workspace").map(|view| view.id().get()) else {
+        return Err(Failure::Refusal {
+            code: "no-workspace".to_owned(),
+            message: "the compositor publishes no workspace to make a set live on".to_owned(),
+        });
+    };
+    let mut arguments = Fields::new();
+    arguments.insert("name".to_owned(), Value::Text(name.to_owned()));
+    crate::commands::call(client, id, "activate_set", &arguments, json, out)
 }
 
 /// The committed document as JSON. The compositor stores it opaquely, but the

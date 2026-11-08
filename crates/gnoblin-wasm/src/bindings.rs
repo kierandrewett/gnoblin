@@ -56,7 +56,6 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.settings": ObjectRep,
         "gnoblin:ipc/gnoblin.workspace": ObjectRep,
         "gnoblin:ipc/gnoblin.layers": ObjectRep,
-        "gnoblin:ipc/gnoblin.workspace-set": ObjectRep,
         "gnoblin:ipc/gnoblin.config": ObjectRep,
     },
     imports: { default: trappable },
@@ -441,13 +440,6 @@ mod gnoblin_objects {
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
         }
-
-        fn workspace_set_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
-            Ok(match self.open(id, "workspace_set") {
-                Ok(handle) => Ok(handle),
-                Err(refusal) => Err(gnoblin_error(refusal)),
-            })
-        }
     }
 
     impl gnoblin::ipc::gnoblin::HostOperation for StoreData {
@@ -511,6 +503,17 @@ mod gnoblin_objects {
             arguments.insert("name".to_owned(), Value::Text(name));
             arguments.insert("params".to_owned(), Value::Text(params));
             self.method(object, "workspace", "layout_command", arguments)
+        }
+
+        fn activate_set(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            name: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("name".to_owned(), Value::Text(name));
+            self.method(object, "workspace", "activate_set", arguments)
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
@@ -1273,28 +1276,6 @@ mod gnoblin_objects {
                 Ok(()) => Ok(true),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
-        }
-
-        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
-            let _ = self.table.delete(handle);
-            Ok(())
-        }
-    }
-
-    impl gnoblin::ipc::gnoblin::HostWorkspaceSet for StoreData {
-        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
-            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
-        }
-
-        fn activate(
-            &mut self,
-            handle: Resource<ObjectRep>,
-            name: String,
-        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
-            let object = self.object(&handle).expect("a handle this store issued");
-            let mut arguments = gnoblin_model::Fields::new();
-            arguments.insert("name".to_owned(), Value::Text(name));
-            self.method(object, "workspace_set", "activate", arguments)
         }
 
         fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {

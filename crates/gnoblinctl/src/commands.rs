@@ -174,7 +174,7 @@ fn watch<T: Transport>(
 }
 
 /// `call`: one method, and the single completion of the operation it returns.
-fn call<T: Transport>(
+pub(crate) fn call<T: Transport>(
     client: &mut Client<T>,
     raw: u64,
     method: &str,

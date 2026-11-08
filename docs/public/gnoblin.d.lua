@@ -755,6 +755,10 @@ function workspace:set_layout(root, module, hash, options) end
 ---@param params string
 ---@return gnoblin.Operation
 function workspace:layout_command(name, params) end
+---@param name "set_activated"
+---@param callback fun(fields: { set: string })
+---@return gnoblin.Subscription
+function workspace:on(name, callback) end
 ---@param name "layout_changed"
 ---@param callback fun(fields: { layout: string })
 ---@return gnoblin.Subscription
@@ -771,6 +775,11 @@ function workspace:on(name, callback) end
 ---@param callback fun(fields: { workspace_id: integer, last: gnoblin.workspace })
 ---@return gnoblin.Subscription
 function workspace:on(name, callback) end
+--- Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name.
+---@param name string
+---@return gnoblin.Operation
+function gnoblin.workspace.activate_set(name) end
+
 ---@class gnoblin.workspaceCollection
 ---@field by_id fun(id: integer): gnoblin.workspace|nil
 ---@field all fun(): gnoblin.workspace[]
