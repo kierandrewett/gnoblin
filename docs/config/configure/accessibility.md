@@ -18,12 +18,15 @@ gnoblin.configure {
 | Setting          | Accepted value                                                                   | Default |
 | ---------------- | -------------------------------------------------------------------------------- | ------- |
 | `magnifier`      | A boolean                                                                        | `false` |
-| `magnifier-zoom` | A number from 1 to 32                                                            | `2`     |
+| `magnifier-zoom` | A number from 1 to 16; a larger value is used as 16                              | `2`     |
 | `colour-filter`  | One of `none`, `invert`, `greyscale`, `protanopia`, `deuteranopia`, `tritanopia` | `none`  |
 
 `magnifier = true` shows each output magnified by `magnifier-zoom`, centred on the pointer
 while it is on that output. The view is kept inside the output, so it stops at the edges. A zoom
 of `1` leaves the output unchanged.
+
+A screenshot captures the last frame drawn for the output, so it includes the
+magnifier and the colour filter.
 
 `colour-filter` changes every colour on every output:
 

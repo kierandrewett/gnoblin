@@ -1279,16 +1279,16 @@ gnoblin-compat-qt-portal-settings. `xtask deps` enforces this list.
 
 Accessibility is its own lane, not a side effect of input and rendering.
 
-| Area                     | What Gnoblin provides                                                                      | Where                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: key watches and grabs                     | compositor, logic in `gnoblin-a11y`               |
-| Keyboard accessibility   | Sticky, slow, bounce and mouse keys; repeat settings                                       | `gnoblin-a11y` logic, `gnoblin-input`             |
-| Magnifier                | Full-output zoom centred on the pointer, per output                                        | `gnoblin-a11y` state, `gnoblin-render`            |
-| Colour filters           | Invert, greyscale, colour-blindness filters, high-contrast cursor                          | `gnoblin-render` passes                           |
-| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15)      | `gnoblin-render`, settings publish                |
-| Visual bell              | Screen or window flash for `xdg_system_bell`                                               | `gnoblin-render`                                  |
-| Accessible recovery UI   | The egui overlay (D5) exposes an AT-SPI tree through AccessKit [INFERENCE: check on Linux] | `gnoblin-diag`                                    |
-| Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                     | object model, `gnoblin-compat-wayland-gtk-shell1` |
+| Area                     | What Gnoblin provides                                                                                                                          | Where                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: grab table in `gnoblin-a11y`; the D-Bus service is not started yet ([status](a11y-status.md)) | compositor, logic in `gnoblin-a11y`               |
+| Keyboard accessibility   | Sticky, slow, bounce and mouse keys: state machines in `gnoblin-a11y`, not yet on the live key path ([status](a11y-status.md))                 | `gnoblin-a11y` logic                              |
+| Magnifier                | Full-output zoom centred on the pointer, per output; drawn on screen, and captures take the last drawn frame ([status](a11y-status.md))        | `gnoblin-render-frame`, `gnoblin-compositor`      |
+| Colour filters           | Invert, greyscale, colour-blindness filters, drawn on screen ([status](a11y-status.md))                                                        | `gnoblin-render` passes                           |
+| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15); end-to-end checks open ([status](a11y-status.md))       | `gnoblin-render`, settings publish                |
+| Visual bell              | Screen or window flash for `xdg_system_bell`; no test draws it yet ([status](a11y-status.md))                                                  | `gnoblin-wayland` state                           |
+| Accessible recovery UI   | The egui dialogs (D5) are meant to expose an AT-SPI tree through AccessKit; not built, AccessKit is off ([status](a11y-status.md))             | `gnoblin-portal-ui`                               |
+| Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                                                                         | object model, `gnoblin-compat-wayland-gtk-shell1` |
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
