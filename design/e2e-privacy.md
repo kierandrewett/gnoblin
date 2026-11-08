@@ -92,11 +92,13 @@ behaviour, but it means the log cannot show when the monitor came back. The
 
 - `design/e2e-privacy.md`: this record.
 - `design/services-status.md`: the PipeWire privacy row and gap now point here.
-- `docs/dbus/privacy.md`: the test coverage section now records the real-daemon run.
+- `docs/dbus/privacy.md`: the test coverage section is now a short status section.
 
 No product code changed. The run found no defect in the monitor, so no test was added.
 
 ## Cleanup
 
-Instance `jelho4ao8c` was brought down with `~/.local/bin/a37 down jelho4ao8c` and
-confirmed absent with `~/.local/bin/a37 list`.
+Instance `jelho4ao8c` was deleted with `~/dev/lanes/a37-gate.sh down jelho4ao8c`
+(`~/.local/bin/a37 down` only prints usage here). `~/.local/bin/a37 list` no longer
+shows it. Two other instances, `f20hz69zxt` and `xqot2in7jb`, belong to other lanes and
+were left running.
