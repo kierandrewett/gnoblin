@@ -1,7 +1,8 @@
 //! The services role: the D-Bus agents, in their own process.
 //!
 //! Design/rust-compositor.md, "Process model": the services role owns "polkit agent,
-//! GeoClue agent, passphrase prompts (`prompt.secret`), PipeWire privacy monitor,
+//! GeoClue agent, passphrase prompts (`prompt.secret`), PipeWire privacy monitor (not ported to Rust yet, see
+//! `design/services-status.md`),
 //! `org.freedesktop.ScreenSaver`, idle, inhibit", it is restartable, and "requests fail
 //! closed while it is down". This module is the role `gnoblin --role services` plays:
 //!
