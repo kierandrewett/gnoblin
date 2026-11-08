@@ -156,6 +156,9 @@ pub(super) struct Shared<T: Transport> {
     /// The request arrives as a signal while the pump observes the graph, so the caller acts on
     /// it once the pump returns.
     pub(super) reload_requested: bool,
+    /// Refused reloads this host has announced; the next `reload_failed` carries the count
+    /// after its own increment, so the first refusal is sequence 1.
+    pub(super) reload_failures: u64,
 }
 
 impl<T: Transport> Shared<T> {
@@ -379,16 +382,21 @@ struct Previous {
     callbacks: mlua::Table,
 }
 
-/// Why a reload was refused: every script error and the configuration problems, in one line.
-fn refusal(report: &RunReport) -> String {
+/// The problems a refused run reported, joined on one line.
+fn problems(report: &RunReport) -> String {
     let mut problems: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
     if let Err(invalid) = &report.config {
         problems.push(invalid.to_string());
     }
+    problems.join("; ")
+}
+
+/// Why a reload was refused: every script error and the configuration problems, in one line.
+fn refusal(report: &RunReport) -> String {
     format!(
         "the reload of {} was refused, and the last accepted configuration stays in force: {}",
         report.path.path().display(),
-        problems.join("; ")
+        problems(report)
     )
 }
 
@@ -463,6 +471,7 @@ impl<T: Transport + 'static> Host<T> {
             layouts: crate::layout::LayoutModuleLoader::new(limits),
             modules: None,
             reload_requested: false,
+            reload_failures: 0,
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {
@@ -619,15 +628,21 @@ impl<T: Transport + 'static> Host<T> {
             Ok(run) => run,
             Err(error) => {
                 self.restore(previous)?;
+                // The file is named only if it can be located; without a path there is nothing
+                // to name in the signal, so the refusal is returned without one.
+                if let Ok(path) = locate(paths) {
+                    self.announce_reload_failure(path.path(), &error.to_string());
+                }
                 return Err(error);
             }
         };
         if run.errors.is_empty() && run.config.is_ok() {
             return Ok(ReloadOutcome::Accepted(Box::new(run)));
         }
-        let reason = refusal(&run);
+        let problem = problems(&run);
         self.restore(previous)?;
-        Ok(ReloadOutcome::Rejected(reason))
+        self.announce_reload_failure(run.path.path(), &problem);
+        Ok(ReloadOutcome::Rejected(refusal(&run)))
     }
 
     /// Put back the state a rejected reload replaced.
@@ -642,6 +657,30 @@ impl<T: Transport + 'static> Host<T> {
         self.lua
             .set_named_registry_value(crate::bindings::CALLBACKS, previous.callbacks)
             .map_err(HostError::Sandbox)
+    }
+
+    /// Tell the handlers watching `gnoblin.config.reload_failed` that a reload was refused.
+    /// Called once the previous state is back, so the handlers that hear it are the ones
+    /// still in force. The sequence counts refusals this host has announced.
+    fn announce_reload_failure(&mut self, path: &Path, error: &str) {
+        let (sequence, time) = {
+            let mut shared = self.shared.borrow_mut();
+            shared.reload_failures += 1;
+            (shared.reload_failures, shared.clock.get())
+        };
+        let path = path.display().to_string();
+        let error = error.to_owned();
+        let mut handlers = 0;
+        self.run_global_signal("gnoblin", "config", "reload_failed", &mut handlers, move |lua| {
+            let table = lua.create_table()?;
+            table.set("name", "gnoblin.config.reload_failed")?;
+            table.set("path", path.as_str())?;
+            table.set("error", error.as_str())?;
+            let as_integer = |value: u64| i64::try_from(value).map_err(|error| mlua::Error::runtime(error.to_string()));
+            table.set("sequence", as_integer(sequence)?)?;
+            table.set("time", as_integer(time)?)?;
+            Ok(table)
+        });
     }
 
     /// Whether the compositor has asked for a reload since the last call. Taking the request
@@ -994,10 +1033,23 @@ impl<T: Transport + 'static> Host<T> {
     /// Run every global handler watching one request signal. The table is built per
     /// handler, as `run_signal` does, so one handler cannot change what the next receives.
     fn run_request_signal(&mut self, signal: &str, handlers: &mut usize, build: impl Fn(&Lua) -> mlua::Result<Table>) {
+        self.run_global_signal("gnoblin", "request", signal, handlers, build);
+    }
+
+    /// Run the handlers watching one global signal of `namespace.object_type`, each with the
+    /// table `build` makes. A `once` handler is removed before it runs.
+    fn run_global_signal(
+        &mut self,
+        namespace: &str,
+        object_type: &str,
+        signal: &str,
+        handlers: &mut usize,
+        build: impl Fn(&Lua) -> mlua::Result<Table>,
+    ) {
         let global = self
             .shared
             .borrow()
-            .global_signal_handlers("gnoblin", "request", signal);
+            .global_signal_handlers(namespace, object_type, signal);
         for id in global {
             let once = matches!(
                 self.shared.borrow().handlers.get(&id),

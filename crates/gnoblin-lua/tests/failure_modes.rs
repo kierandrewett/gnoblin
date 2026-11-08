@@ -1435,6 +1435,99 @@ end)
 }
 
 #[test]
+fn a_rejected_reload_dispatches_reload_failed_to_the_handlers_that_are_still_in_force() {
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Failed");
+    let config = Config::new("reload-failed");
+    let init = config.write(
+        "init.lua",
+        &format!(
+            r#"
+gnoblin.on("gnoblin.config.reload_failed", function(event)
+    assert(event.name == "gnoblin.config.reload_failed")
+    assert(type(event.path) == "string" and event.path:sub(-8) == "init.lua")
+    assert(type(event.error) == "string" and event.error ~= "")
+    assert(event.sequence == 1)
+    assert(type(event.time) == "number")
+    gnoblin.window.by_id({window}):focus()
+end)
+"#,
+            window = window.get()
+        ),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    fs::write(&init, "local broken = = 1\n").expect("a test can rewrite its file");
+    assert!(matches!(
+        host.reload_config(&config.paths()).expect("the reload runs"),
+        ReloadOutcome::Rejected(_)
+    ));
+    // The event ran against the restored handler, so its assertions held and its focus call is
+    // pending. A failed assertion would surface here as a pump error.
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    assert_eq!(
+        server.graph().pending().count(),
+        1,
+        "the handler ran once and called focus"
+    );
+}
+
+#[test]
+fn each_rejected_reload_raises_reload_failed_with_the_next_sequence() {
+    let (_server, mut host) = pair();
+    let config = Config::new("reload-failed-sequence");
+    let init = config.write(
+        "init.lua",
+        r#"
+local seen = 0
+gnoblin.on("gnoblin.config.reload_failed", function(event)
+    seen = seen + 1
+    assert(event.sequence == seen, "sequence follows the number of failures")
+end)
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    for _ in 0..2 {
+        fs::write(&init, "local broken = = 1\n").expect("a test can rewrite its file");
+        assert!(matches!(
+            host.reload_config(&config.paths()).expect("the reload runs"),
+            ReloadOutcome::Rejected(_)
+        ));
+    }
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn an_accepted_reload_does_not_raise_reload_failed() {
+    let (_server, mut host) = pair();
+    let config = Config::new("reload-failed-accepted");
+    let init = config.write("init.lua", "local ready = true\n");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    fs::write(
+        &init,
+        r#"
+gnoblin.on("gnoblin.config.reload_failed", function()
+    error("an accepted reload must not raise reload_failed")
+end)
+"#,
+    )
+    .expect("a test can rewrite its file");
+    assert!(matches!(
+        host.reload_config(&config.paths()).expect("the reload runs"),
+        ReloadOutcome::Accepted(_)
+    ));
+    let pumped = host.pump(Tick::new(1)).expect("the pump runs");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
 fn an_accepted_reload_replaces_the_handlers_and_drops_the_callbacks_of_the_old_run() {
     let (mut server, mut host) = pair();
     let session = session(&mut server);

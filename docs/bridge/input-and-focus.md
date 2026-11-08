@@ -253,12 +253,12 @@ API 1.20 clients can subscribe to config reload events:
 
 - `gnoblin.config.reloaded` includes `path`, `revision`, `sequence`, and
   monotonic-clock `time`.
-- `gnoblin.config.reload-failed` includes `path`, an error string, `sequence`,
+- `gnoblin.config.reload_failed` includes `path`, an error string, `sequence`,
   and monotonic-clock `time`.
 
 Lua listeners receive the same event fields.
 If a reload is already in progress, a second request returns an error. It does
-not emit `gnoblin.config.reload-failed` because Gnoblin has not loaded or
+not emit `gnoblin.config.reload_failed` because Gnoblin has not loaded or
 validated a second config.
 
 ### API 1.68: modal key focus contexts

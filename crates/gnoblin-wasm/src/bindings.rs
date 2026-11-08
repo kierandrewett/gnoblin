@@ -56,6 +56,7 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.settings": ObjectRep,
         "gnoblin:ipc/gnoblin.workspace": ObjectRep,
         "gnoblin:ipc/gnoblin.layers": ObjectRep,
+        "gnoblin:ipc/gnoblin.config": ObjectRep,
     },
     imports: { default: trappable },
 });
@@ -411,6 +412,13 @@ mod gnoblin_objects {
 
         fn workspace_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             Ok(match self.open(id, "workspace") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn config_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "config") {
                 Ok(handle) => Ok(handle),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
@@ -1183,6 +1191,24 @@ mod gnoblin_objects {
         ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             let object = self.object(&handle).expect("a handle this store issued");
             self.method(object, "lock", "lock_session", gnoblin_model::Fields::new())
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostConfig for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {

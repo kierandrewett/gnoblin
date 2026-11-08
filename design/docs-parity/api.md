@@ -127,7 +127,7 @@ gnoblin.capability.changed
 gnoblin.focus.policy-changed
 gnoblin.operation.completed
 gnoblin.config.reloaded
-gnoblin.config.reload-failed
+gnoblin.config.reload_failed
 gnoblin.workspace.created
 gnoblin.workspace.renamed
 gnoblin.workspace.changed

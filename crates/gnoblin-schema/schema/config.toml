@@ -1,0 +1,44 @@
+# The `config` object: the configuration's own lifecycle signals.
+#
+# The object has no properties or methods. Its one signal is raised inside the
+# Lua host, not sent by the compositor: when a reload is refused, the last accepted
+# configuration is restored and every handler it registered is told why. It is
+# declared here so the signal is a schema member, the way `request.finished` is,
+# and a script's `gnoblin.on` can name it with the same checks as any other signal.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "config"
+since = "0.2.0"
+
+# A reload was refused and the previous configuration stays in force. Raised once
+# per refused reload, after the previous document, handlers and timers are back.
+[[object.signal]]
+name = "reload_failed"
+since = "0.2.0"
+
+# The configuration file that was being reloaded.
+[[object.signal.field]]
+name = "path"
+type = "string"
+since = "0.2.0"
+
+# Why the reload was refused: the first validation or evaluation failure, or the
+# reason the reload could not run at all.
+[[object.signal.field]]
+name = "error"
+type = "string"
+since = "0.2.0"
+
+# How many refused reloads this host has reported, counted from 1 for each host.
+[[object.signal.field]]
+name = "sequence"
+type = "uint"
+since = "0.2.0"
+
+# The host's clock when the refusal was raised.
+[[object.signal.field]]
+name = "time"
+type = "uint"
+since = "0.2.0"

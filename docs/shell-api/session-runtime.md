@@ -138,7 +138,7 @@ if the Lua operation already reported successful staging.
 
 After the commit, the runtime also emits `gnoblin.focus.policy-changed` when the
 effective focus policy changed. This event carries the committed policy snapshot
-and configuration revision. A failed reload emits `gnoblin.config.reload-failed`
+and configuration revision. A failed reload emits `gnoblin.config.reload_failed`
 while the previous runtime remains active.
 
 ### Reload warnings

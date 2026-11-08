@@ -1495,7 +1495,7 @@ legacy. Mutter signal coverage can change with the pinned upstream version.
 | `gnoblin.input.orientation-lock-changed`      | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time`                         | Orientation-lock state or its source changes; native-control API 1.66.                                   |
 | `mutter.<object>.<signal>`                    | `source`, `signal`, typed `argN` fields, and window identity fields when applicable                    | Forwarded Mutter GObject signal.                                                                         |
 | `gnoblin.config.reloaded`                     | `path`, `sequence`, `time`; native reload also includes `revision`                                     | Config reload succeeds.                                                                                  |
-| `gnoblin.config.reload-failed`                | `path`, `error`, `sequence`, `time`                                                                    | Candidate load or apply fails; rejected overlapping requests report only through their operation result. |
+| `gnoblin.config.reload_failed`                | `path`, `error`, `sequence`, `time`                                                                    | Candidate load or apply fails; rejected overlapping requests report only through their operation result. |
 | `gnoblin.workspace.created`                   | `id`, `number`, `name`, `active`, `windows`, `persistent`                                              | Runtime workspace is created.                                                                            |
 | `gnoblin.workspace.renamed`                   | Same workspace fields                                                                                  | Workspace display name changes.                                                                          |
 | `gnoblin.workspace.removed`                   | Last workspace record; `number` is its former position                                                 | Temporary workspace is removed.                                                                          |
@@ -1611,7 +1611,7 @@ both axes. Other animation events do not include these workspace fields.
 | `gnoblin.portal.grant-removed` | `grant_id`, `kind` | A portal grant ends or is revoked. |
 | `gnoblin.launch.changed` | `launch: Launch` | Launch feedback state changes. |
 | `gnoblin.config.reloaded` | `path`, `revision`, `sequence`, `time` | Configuration loads and applies successfully. |
-| `gnoblin.config.reload-failed` | `path`, `error: string`, `sequence`, `time` | Candidate load or apply fails; rejected overlapping requests report only through their operation result. |
+| `gnoblin.config.reload_failed` | `path`, `error: string`, `sequence`, `time` | Candidate load or apply fails; rejected overlapping requests report only through their operation result. |
 | `gnoblin.operation.completed` | `operation_id`, `method`, `ok`, `value?`, `error?` | A mutating call finishes. |
 | `gnoblin.session.lock-state-changed` | `state: SessionLockState`, `revision`, `sequence`, `time` | Mutter reports a session-lock state transition; `revision` matches its state snapshot and request delivery is not lock confirmation. |
 | `gnoblin.session.activity-changed` | `available`, `idle`, `threshold_ms`, `idle_for_ms`, `revision`, `sequence`, `time` | Native idle-monitor state changes; `idle_for_ms` is sampled at the transition. |

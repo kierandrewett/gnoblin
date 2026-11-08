@@ -78,7 +78,7 @@ families.
 | `gnoblin.session.state-changed`      | `state`, `revision`, `sequence`, `time`            | The session moves from `starting` to `running` or `stopping`, or from `running` to `stopping`. Only in a session started by Gnoblin's supervisor. |
 | `gnoblin.runtime.status-changed`     | `state`, `generation`, `sequence`, `time`          | The worker state or accepted runtime generation changes; matches `gnoblin.runtime.status()`.                                                      |
 | `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
-| `gnoblin.config.reload-failed`       | `path`, `error`, `sequence`, `time`                | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
+| `gnoblin.config.reload_failed`       | `path`, `error`, `sequence`, `time`                | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
 
 #### Workspaces, outputs, and layers
 
