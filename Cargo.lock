@@ -1549,6 +1549,7 @@ dependencies = [
  "gnoblin-lua-pattern",
  "gnoblin-schema",
  "gnoblin-testkit",
+ "rustix 1.1.6",
  "serde_json",
 ]
 

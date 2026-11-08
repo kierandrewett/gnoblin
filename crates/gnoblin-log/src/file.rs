@@ -6,9 +6,9 @@
 //! sink's JSON mode writes, except that `time_ms` is a number and `fields` is one string.
 
 use std::fmt::Write as _;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -40,7 +40,10 @@ impl FileSink {
     /// the file never rotates. The open fails here, not on the first batch, so a binary that
     /// cannot write its log says so at startup.
     pub fn open(dir: &Path, max_bytes: Option<u64>) -> io::Result<Self> {
-        fs::create_dir_all(dir)?;
+        // The directories this creates are private to the user: the configuration store reads
+        // its document from the `gnoblin` directory above `log`, and a directory created with the
+        // umask's default mode would make that document refused as not private.
+        DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
         let sink = Self {
             dir: dir.to_owned(),
             max_bytes,

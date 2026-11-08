@@ -450,13 +450,10 @@ fn write_and_sync(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
 /// A stored document is only trustworthy when both the directory and the file
 /// are private to this user and owned by this user: a directory another account
 /// created would let that account swap the document between the check and the
-/// read. The process's own id comes from `/proc/self`, because reading it needs
-/// `geteuid`, which is a C call this workspace forbids without an FFI shim;
-/// Gnoblin runs on Linux, and a system without `/proc` fails closed.
+/// read. The process's own id is the kernel's effective uid, so a `/proc` whose
+/// owner does not match the process cannot make a private directory look foreign.
 fn check_private(path: &Path, directory: bool) -> Result<(), StoreError> {
-    let our_id = effective_uid().ok_or_else(|| StoreError::Insecure {
-        path: path.to_path_buf(),
-    })?;
+    let our_id = rustix::process::geteuid().as_raw();
     let metadata = fs::symlink_metadata(path).map_err(|error| StoreError::Io {
         action: "inspect",
         path: path.to_path_buf(),
@@ -477,12 +474,6 @@ fn check_private(path: &Path, directory: bool) -> Result<(), StoreError> {
     Err(StoreError::Insecure {
         path: path.to_path_buf(),
     })
-}
-
-/// The process's effective user id, from `/proc/self`.
-fn effective_uid() -> Option<u32> {
-    let metadata = fs::metadata("/proc/self").ok()?;
-    Some(std::os::unix::fs::MetadataExt::uid(&metadata))
 }
 
 #[cfg(test)]
