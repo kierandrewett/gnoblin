@@ -50,6 +50,8 @@ match them by ID here.
 | `workspace` | `{id = "code"}` or `{number = 1..1024}`, exactly one of the two    |
 | `maximise`  | Boolean; `true` maximises, `false` restores, when the rule applies |
 | `secure`    | Boolean; `true` makes the window secure while the rule matches     |
+| `opacity`   | Number from 0 to 1; multiplies window alpha while matched          |
+| `corners`   | `{radius = n}`, n >= 0 logical px; rounds window corners           |
 
 `workspace` places the window on that workspace. A `{id = ...}` target must
 exist; otherwise the window stays where it is and Gnoblin logs a warning.
@@ -66,6 +68,10 @@ reload removes the rule. The default is `false`.
 A secure window is masked in screen captures according to
 `capture.secure-treatment`: `mask`, the default, draws a neutral shape in its
 place; `omit` draws nothing.
+
+`opacity` multiplies the window's alpha while the rule matches. `corners` takes
+only `radius`, in logical pixels; `radius = 0` leaves the corners square. As
+with every field, the last matching rule that sets it wins.
 
 ## When rules apply
 
@@ -98,8 +104,6 @@ of a key is refused.
 | --------------------------- | -------------------------------------- |
 | `blur`                      | Needs the blur pass                    |
 | `blur-ignore-shadows`       | Needs the blur pass                    |
-| `opacity`                   | Needs the alpha pass                   |
-| `corners`                   | Needs the rounded-corner pass          |
 | `shader`, `shader-uniforms` | Needs the WASM shader host             |
 | `animation`                 | Needs the animation system             |
 | `frame`                     | Needs the layer-shell surface renderer |
@@ -109,11 +113,12 @@ of a key is refused.
 
 The older docs describe flat effect keys, which do not apply in this build:
 
-- `blur` and `opacity`
-- `corners`, `shader`, `animation` and `frame`
+- `blur`
+- `shader`, `animation` and `frame`
 
 None of them takes effect here. Remove them from `window_rule` tables, or the
-load fails. Keep the rules that set `workspace`, `maximise` or match keys.
+load fails. Keep the rules that set `workspace`, `maximise`, `opacity`,
+`corners` or match keys.
 
 The planned replacement is an ordered `effects` list on each rule. Each entry
 is one pass, added in stack order, so the author decides the order of blur,

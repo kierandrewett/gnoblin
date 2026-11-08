@@ -62,4 +62,4 @@ this short example; branch on `default` separately if your shell has its own
 default colors.
 
 See [Lua events](/events/) for the event fields and
-[window effects](/guides/window_effects) for border, shadow and blur options.
+[window effects](/guides/window_effects) for the window effects you can set today.

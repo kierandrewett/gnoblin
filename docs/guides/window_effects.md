@@ -7,21 +7,21 @@ is refused at load with a reason. The list of refused keys is in the
 
 ## What works now
 
-| Effect                 | Where it works                                  | Set from config?                  |
-| ---------------------- | ----------------------------------------------- | --------------------------------- |
-| Opacity, scale, offset | Animated tweens and open/close fades            | Not as a window rule (refused)    |
-| Rounded corners        | Software, GLES and Vulkan renderers (see below) | No. No config path sets a radius  |
-| Tint                   | Software, GLES and Vulkan renderers             | No window rule key                |
-| Blur behind a window   | GLES renderer only                              | No. Refused as `blur`             |
-| Shadow                 | GLES renderer only                              | No. Refused as `corners.shadow`   |
-| User fragment shaders  | GLES renderer mechanism only                    | No. Refused as `shader`           |
-| Native window frames   | Frame protocol, any renderer                    | Via `frame-renderers`, not a rule |
+| Effect                 | Where it works                                  | Set from config?                       |
+| ---------------------- | ----------------------------------------------- | -------------------------------------- |
+| Opacity, scale, offset | Animated tweens and open/close fades            | `opacity` rule: yes. Scale, offset: no |
+| Rounded corners        | Software, GLES and Vulkan renderers (see below) | `corners = {radius = n}` rule: yes     |
+| Tint                   | Software, GLES and Vulkan renderers             | No window rule key                     |
+| Blur behind a window   | GLES renderer only                              | No. Refused as `blur`                  |
+| Shadow                 | GLES renderer only                              | No. Refused as `corners.shadow`        |
+| User fragment shaders  | GLES renderer mechanism only                    | No. Refused as `shader`                |
+| Native window frames   | Frame protocol, any renderer                    | Via `frame-renderers`, not a rule      |
 
 "No config path" means the renderer can draw the effect, but nothing a user writes
-in `init.lua` reaches it. Rounded corners are drawn by the software renderer
-(clipped to the radius) and by GLES and Vulkan, but no production code sets a
-radius. The full per-renderer status, with test names, is in
-[`design/visuals-status.md`](../../design/visuals-status.md).
+in `init.lua` reaches it. Opacity and corner radius from a window rule reach the
+window's compositor node. Rounded corners are drawn by the software renderer
+(clipped to the radius) and by GLES and Vulkan. The full per-renderer status, with
+test names, is in [`design/visuals-status.md`](../../design/visuals-status.md).
 
 ## Window rules that do not apply
 
@@ -29,9 +29,7 @@ These keys are refused when the config loads. Remove them from your rules; they
 have no effect today:
 
 - `blur`, `blur-ignore-shadows`
-- `opacity`
-- `corners` (radius, smoothing, mode, `remove_csd`, border, shadow, and the
-  rest of the table)
+- `corners` keys other than `radius`, such as `corners.shadow` and `smoothing`
 - `shader`, `shader-uniforms`
 - `animation`
 - `frame`
@@ -51,4 +49,5 @@ described in [background effects](/background-effects).
 The design in [`design/rust-compositor.md`](../../design/rust-compositor.md)
 (D24 and D26) plans an ordered per-window effect stack, where blur follows the
 window's opacity and shadow, border and blur follow a window's alpha silhouette.
-None of this is configurable yet. Shaped windows are not implemented.
+Blur, shadow, border and shader are not configurable yet. Shaped windows are not
+implemented.

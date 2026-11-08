@@ -6,6 +6,9 @@ A fragment shader changes the colour of each pixel in a window. This example
 adds a subtle blue tint to application windows. It does not blur the background;
 use [window effects](/guides/window_effects#blur-and-opacity) for that.
 
+**Status:** this build refuses `shader` window rules at load, so the steps below
+will not load yet. They describe the planned mechanism.
+
 ## 1. Create the shader
 
 Save this as `~/.config/gnoblin/shaders/tint.frag`:

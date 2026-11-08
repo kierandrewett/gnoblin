@@ -85,10 +85,9 @@ stack), and the shaped-windows amendment in `design/rust-compositor.md`.
 `frame.rs:634` drops an unusable corner radius (test
 `an_unusable_corner_radius_is_dropped`, read).
 
-Production corner radius is set only by `set_window_corner_radius`
-(`gnoblin-backend/src/render/compose.rs:732`). Its only caller is the test
-`moving_a_translucent_rounded_window_damages_both_rectangles`
-(`compose.rs:2000`, call at `:2006`).
+Production corner radius is set by `Effect::Appearance` in
+`gnoblin-wayland/src/state.rs`, which calls `set_window_corner_radius`
+(`gnoblin-backend/src/render/compose.rs`), from a `corners.radius` window rule.
 
 ### Native frames (protocol)
 
@@ -105,48 +104,44 @@ frame protocol. `tests/window_frame.rs` covers:
 
 Status: done and tested as read. This lane did not run these tests.
 
-**The starter config likely fails to load (unverified, not run).**
-
-- `data/default-config/config/10-windows.lua:33-40` sets a window rule with `frame = {...}`.
-- `10-windows.lua:45-53` sets a second window rule with `corners = {...}` (radius 12, shadow).
-- `crates/gnoblin-config/src/hooks.rs:130` and `:134` refuse the `corners` and `frame` keys; `crates/gnoblin-config/tests/window_rules.rs:86` (`a_field_that_is_not_built_yet_is_refused_by_name`) asserts the refusal.
-- The refusals landed in `11912bc37`, an ancestor of this branch; both starter rules are still present.
-- [INFERENCE] The default config fails validation at this commit. A load test on Agent37 would confirm it.
+**Starter config: loads.** `data/default-config/config/10-windows.lua` sets an
+`opacity` rule and a `corners = {radius = ...}` rule, both accepted. The starter
+load test passes on Agent37 after `a9153b70b`, which fixes the spellings and
+removes the refused `frame` rule.
 
 ## Config keys
 
-| Key                                                                                                                | Where                                                | Status                                                                              |
-| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `blur` (enum `Blur`, `setting = "blur"`)                                                                           | `crates/gnoblin-config/schema/config.toml:29-32`     | Schema only (`auto`, `on`, `off`). Renderer use not traced.                         |
-| `frame-renderers`                                                                                                  | `schema/config.toml:2132`                            | Live. Parsed in `document.rs:164`, `hooks.rs:687`.                                  |
-| Window rule `blur`, `blur-ignore-shadows`, `opacity`, `corners`, `shader`, `shader-uniforms`, `animation`, `frame` | `hooks.rs:126-135`                                   | Refused at load, each with a reason. Asserted by `window_rules.rs:86`.              |
-| Window rule `match.layer`                                                                                          | `hooks.rs:172-176`, `docs/config/window_rule.md:106` | Refused (layer-shell selector not built).                                           |
-| Window rule `corners` table (radius, shadow)                                                                       | starter `10-windows.lua:47-51`                       | Refused by the loader. The starter comment says it gives soft corners and a shadow. |
-| `tint` (window rule)                                                                                               | none                                                 | No key in the schema or the refused list.                                           |
-| Per-window `effects` list (D26)                                                                                    | `design/rust-compositor.md` D26                      | Proposed, not built. No `effects` key in the schema.                                |
-| Corner radius from config                                                                                          | none                                                 | Absent. See "Shared code" above.                                                    |
+| Key                                                                                          | Where                                                | Status                                                                          |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `blur` (enum `Blur`, `setting = "blur"`)                                                     | `crates/gnoblin-config/schema/config.toml:29-32`     | Schema only (`auto`, `on`, `off`). Renderer use not traced.                     |
+| `frame-renderers`                                                                            | `schema/config.toml:2132`                            | Live. Parsed in `document.rs:164`, `hooks.rs:687`.                              |
+| Window rule `blur`, `blur-ignore-shadows`, `shader`, `shader-uniforms`, `animation`, `frame` | `hooks.rs:126-135`                                   | Refused at load, each with a reason. Asserted by `window_rules.rs:86`.          |
+| Window rule `match.layer`                                                                    | `hooks.rs:172-176`, `docs/config/window_rule.md:106` | Refused (layer-shell selector not built).                                       |
+| Window rule `corners` table                                                                  | `schema/config.toml` (RuleCorners)                   | `radius` accepted (>= 0). Other keys, such as `shadow`, are refused as unknown. |
+| `tint` (window rule)                                                                         | none                                                 | No key in the schema or the refused list.                                       |
+| Per-window `effects` list (D26)                                                              | `design/rust-compositor.md` D26                      | Proposed, not built. No `effects` key in the schema.                            |
+| Corner radius from config                                                                    | `corners.radius` window rule                         | Live. Applied by `Effect::Appearance` (`gnoblin-wayland/src/state.rs`).         |
 
 ## Docs coverage
 
-- `docs/guides/window_effects.md`: rewritten in this lane. The starter file does set a 12-pixel radius and a shadow (its comment says they show), but the loader refuses those keys. The old guide documented `corners`, `blur`, `opacity` and `shader` window-rule keys as live. The rewrite says which effects work, which keys are refused, and what is planned.
-- `docs/config/window_rule.md:90-122`: the refused-keys table is consistent with
-  `hooks.rs:126`. It conflicts with the starter's `frame` and `corners` tables (above).
-- `docs/guides/shaders.md:7` and `:30` (window-rule `shader` key): stale. The `shader`
-  key is refused. Not changed in this lane.
-- `docs/guides/theming.md:65`: says window effects cover "border, shadow and blur
-  options". Stale. Not changed in this lane.
+- `docs/guides/window_effects.md`: rewritten in this lane. It lists `opacity` and
+  `corners.radius` as accepted, and the rest of the window-rule effects as refused
+  or planned.
+- `docs/config/window_rule.md`: the refused-keys table matches `hooks.rs:126`.
+  `opacity` and `corners.radius` are documented as accepted.
+- `docs/guides/shaders.md`: status note added; the `shader` window-rule example is
+  refused at load.
+- `docs/guides/theming.md:65`: pointer corrected to the window effects guide.
 - `docs/background-effects.md`: the `ext_background_effect` blur-region protocol,
   separate from window rules. Not audited in detail.
 
 ## Gaps, in order
 
-1. The starter config likely does not load (`frame` and `corners` refused). Highest priority.
-   Verify by loading `data/default-config` on Agent37; fix the starter or the refusal.
-2. Corners are not reachable from config. `set_window_corner_radius` has no production
-   caller, so the corner clip is drawn only in tests.
-3. Shadow, blur, user shader and shaped windows have no config path. D26 (the
+1. Corner radius and opacity are settable from window rules (`corners.radius`,
+   `opacity`). The starter loads. The corner shadow keys and `frame` stay refused.
+2. Shadow, blur, user shader and shaped windows have no config path. D26 (the
    `effects` list) is the planned route. Only GLES draws shadow, blur and shader.
-4. Shaped windows: no silhouette source is chosen (the D26 amendment lists buffer
+3. Shaped windows: no silhouette source is chosen (the D26 amendment lists buffer
    alpha, opaque region, input region, radius). Not started.
-5. Parity follow-up: software shadow, blur and shader; Vulkan corners beyond the
+4. Parity follow-up: software shadow, blur and shader; Vulkan corners beyond the
    existing test. Not built in this lane.
