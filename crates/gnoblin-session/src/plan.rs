@@ -26,6 +26,9 @@ pub enum ChildKind {
     Services,
     /// `gnoblin --role runtime`: the Lua configuration host.
     Runtime,
+    /// `xdg-desktop-portal-gnoblin`: the portal backend. The guardian starts it so its bus
+    /// name exists before the front and autostart applications, and it is ready-gated for that.
+    Portal,
     /// The front a session manager starts in front of the session.
     Front,
     /// One autostart application, from the configuration's `autostart` table.
@@ -154,7 +157,7 @@ impl ChildSpec {
     pub fn new(id: ChildId, kind: ChildKind, name: impl Into<String>) -> Self {
         let restart = match kind {
             ChildKind::Compositor => Restart::EndsSession,
-            ChildKind::Runtime | ChildKind::Services => Restart::Backoff(Backoff::guardian()),
+            ChildKind::Runtime | ChildKind::Services | ChildKind::Portal => Restart::Backoff(Backoff::guardian()),
             ChildKind::Front | ChildKind::Autostart => Restart::Never,
         };
         Self {
@@ -258,15 +261,15 @@ impl Plan {
         Ok(Self { children })
     }
 
-    /// The session Gnoblin starts today: compositor, services, runtime, then the
-    /// front when the session manager asks for one, then each autostart entry
-    /// in configuration order.
+    /// The session Gnoblin starts today: compositor, services, runtime, then the portal when
+    /// the session has one, then the front when the session manager asks for one, then each
+    /// autostart entry in configuration order.
     ///
     /// Services start before the runtime because the runtime's user scripts can
     /// reach them during their own start, and because a session whose agents are
     /// missing must be visible before user policy runs. Identifiers are assigned
     /// `1..=n` in this order.
-    pub fn standard(front: bool, autostart: impl IntoIterator<Item = String>) -> Result<Self, PlanError> {
+    pub fn standard(front: bool, portal: bool, autostart: impl IntoIterator<Item = String>) -> Result<Self, PlanError> {
         let mut next = 1;
         let mut children = Vec::new();
         for (kind, name) in [
@@ -275,6 +278,10 @@ impl Plan {
             (ChildKind::Runtime, "runtime"),
         ] {
             children.push(ChildSpec::new(ChildId::new(next), kind, name));
+            next += 1;
+        }
+        if portal {
+            children.push(ChildSpec::new(ChildId::new(next), ChildKind::Portal, "portal"));
             next += 1;
         }
         if front {
@@ -306,5 +313,40 @@ impl Plan {
     #[must_use]
     pub fn spec(&self, id: ChildId) -> Option<&ChildSpec> {
         self.index(id).map(|index| &self.children[index])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(plan: &Plan) -> Vec<&str> {
+        plan.children().iter().map(|child| child.name.as_str()).collect()
+    }
+
+    #[test]
+    fn the_portal_starts_after_the_runtime_and_before_the_front_and_autostart() {
+        let plan = Plan::standard(true, true, ["app.desktop".to_owned()]).expect("valid plan");
+        assert_eq!(
+            names(&plan),
+            ["compositor", "services", "runtime", "portal", "front", "app.desktop"]
+        );
+    }
+
+    #[test]
+    fn without_a_portal_the_plan_is_the_session_it_was_before() {
+        let plan = Plan::standard(false, false, Vec::new()).expect("valid plan");
+        assert_eq!(names(&plan), ["compositor", "services", "runtime"]);
+    }
+
+    #[test]
+    fn the_portal_is_ready_gated_and_restarts_with_backoff() {
+        let spec = ChildSpec::new(ChildId::new(4), ChildKind::Portal, "portal");
+        assert!(
+            ChildKind::Portal.reports_ready(),
+            "a portal that never reports is a stalled session"
+        );
+        assert_eq!(spec.ready_within, Some(DEFAULT_READY_WITHIN));
+        assert_eq!(spec.restart, Restart::Backoff(Backoff::guardian()));
     }
 }

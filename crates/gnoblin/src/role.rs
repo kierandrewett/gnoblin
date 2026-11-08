@@ -156,7 +156,7 @@ mod tests {
     fn the_guardian_supervises_the_standard_plan() {
         // Built from the real plan, so this is the list a session starts today rather than a
         // description of it. The guardian role itself is `gnoblin-session`'s supervisor.
-        let plan = gnoblin_session::Plan::standard(false, Vec::new()).expect("the standard plan");
+        let plan = gnoblin_session::Plan::standard(false, false, Vec::new()).expect("the standard plan");
         let children: Vec<&str> = plan.children().iter().map(|child| child.name.as_str()).collect();
         for child in ["compositor", "services", "runtime"] {
             assert!(

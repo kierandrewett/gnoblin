@@ -41,7 +41,7 @@ impl Rng {
 }
 
 fn plan() -> Plan {
-    Plan::standard(true, ["first.desktop".to_owned(), "second.desktop".to_owned()]).expect("valid plan")
+    Plan::standard(true, false, ["first.desktop".to_owned(), "second.desktop".to_owned()]).expect("valid plan")
 }
 
 fn rules() -> Rules {

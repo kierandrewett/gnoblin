@@ -90,10 +90,15 @@ pub const TEST_FAST_VARIABLE: &str = "GNOBLIN_TEST_FAST";
 /// Set to `1` to log the raw output of the services role, see [`SupervisorConfig::raw_services`].
 pub const RAW_SERVICES_VARIABLE: &str = "GNOBLIN_LOG_RAW_SERVICES";
 
+/// The portal backend binary the guardian starts as its `portal` child.
+const PORTAL_PROGRAM: &str = "xdg-desktop-portal-gnoblin";
+
 /// How the guardian role runs.
 pub struct SupervisorConfig {
     /// The executable to start the children from, which is this binary.
     pub program: PathBuf,
+    /// The portal backend binary, when one is installed. Without it the plan has no portal child.
+    pub portal_program: Option<PathBuf>,
     /// The children to supervise.
     pub plan: Plan,
     /// How the guardian behaves: the stop grace, the safe-mode threshold, the environment.
@@ -129,7 +134,14 @@ impl SupervisorConfig {
             library_path: &library_path,
             data_dirs: &data_dirs,
         };
-        let mut plan = Plan::standard(false, Vec::new()).map_err(SupervisorError::Plan)?;
+        let portal_program = portal_beside(&program);
+        if portal_program.is_none() {
+            log(
+                Level::Warning,
+                "[guardian] xdg-desktop-portal-gnoblin is not installed; the session starts without its portal",
+            );
+        }
+        let mut plan = Plan::standard(false, portal_program.is_some(), Vec::new()).map_err(SupervisorError::Plan)?;
         let mut rules = Rules::standard(&inherited);
         let mut tick = Duration::from_millis(200);
         if std::env::var_os(TEST_FAST_VARIABLE).is_some() {
@@ -141,6 +153,7 @@ impl SupervisorConfig {
         let recovery_path = state_home().join("gnoblin").join("recovery");
         Ok(SupervisorConfig {
             program,
+            portal_program,
             plan,
             rules,
             recovery: read_recovery(&recovery_path),
@@ -442,6 +455,15 @@ impl Supervisor {
                 // A plan-declared entry without a command runs by name, as it always has.
                 None => Command::new(&spec.name),
             },
+            ChildKind::Portal => {
+                // The portal is planned only when its binary was found, so the binary is there to run.
+                let program = self
+                    .config
+                    .portal_program
+                    .as_ref()
+                    .expect("the portal child is planned only when its binary was found");
+                Command::new(program)
+            }
             ChildKind::Compositor | ChildKind::Runtime | ChildKind::Services | ChildKind::Front => {
                 let mut command = Command::new(&self.config.program);
                 let role = self.role_name(spec).unwrap_or_else(|| "guardian".to_owned());
@@ -458,6 +480,7 @@ impl Supervisor {
             ChildKind::Runtime => Some("runtime".to_owned()),
             ChildKind::Services => Some("services".to_owned()),
             ChildKind::Front => Some("front".to_owned()),
+            ChildKind::Portal => Some("portal".to_owned()),
             ChildKind::Autostart => None,
         }
     }
@@ -502,7 +525,24 @@ impl Supervisor {
 /// pair created for nothing is a descriptor a child cannot use. The table itself is the
 /// compositor's (`gnoblin-compositor`); this is the guardian's side of the same contract.
 fn privileged_role(role: &str) -> bool {
-    matches!(role, "runtime" | "services")
+    matches!(role, "runtime" | "services" | "portal")
+}
+
+/// The portal backend's binary: beside the guardian, in the prefix's `libexec`, or on the path.
+fn portal_beside(program: &Path) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let beside = program
+        .parent()
+        .into_iter()
+        .flat_map(|dir| [dir.to_path_buf(), dir.join("../libexec")]);
+    find_portal(beside.chain(std::env::split_paths(&path)))
+}
+
+/// The first directory that holds a regular file named as the portal backend.
+fn find_portal(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    dirs.into_iter()
+        .map(|dir| dir.join(PORTAL_PROGRAM))
+        .find(|candidate| candidate.is_file())
 }
 
 /// A plan whose restart ladders are short, for the test-only hook.
@@ -881,4 +921,35 @@ fn watch_signals(events: &Sender<LoopWake>) -> Result<(), SupervisorError> {
         })
         .map_err(SupervisorError::Signals)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod portal_tests {
+    use super::*;
+
+    #[test]
+    fn the_portal_is_granted_a_privileged_pair_and_the_other_roles_here_are_not() {
+        assert!(privileged_role("portal"));
+        assert!(!privileged_role("front"));
+        assert!(!privileged_role("guardian"));
+    }
+
+    #[test]
+    fn the_portal_binary_is_found_in_a_directory_that_holds_it() {
+        let dir = std::env::temp_dir().join(format!("gnoblin-portal-found-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a temporary directory");
+        let expected = dir.join(PORTAL_PROGRAM);
+        std::fs::write(&expected, b"").expect("a stand-in portal");
+        assert_eq!(find_portal([dir.clone()]), Some(expected));
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn a_portal_that_is_not_installed_is_skipped_and_not_faked() {
+        let dir = std::env::temp_dir().join(format!("gnoblin-portal-missing-{}", std::process::id()));
+        // A directory where the binary should be is not a binary.
+        std::fs::create_dir_all(dir.join(PORTAL_PROGRAM)).expect("a directory in the binary's place");
+        assert_eq!(find_portal([dir.clone()]), None);
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
 }
