@@ -86,6 +86,20 @@ const FLASH_MS: u32 = 150;
 /// The alpha a visual bell's flash starts at, before it fades.
 const FLASH_PEAK: f32 = 0.5;
 
+/// The smallest and largest uniform scale the shell may set on a window, as `set_scale` documents.
+const SHELL_SCALE_MIN: f32 = 0.01;
+const SHELL_SCALE_MAX: f32 = 10.0;
+
+/// The largest magnitude, in logical pixels, of each component the shell may offset a window by.
+const SHELL_OFFSET_LIMIT: f64 = 100_000.0;
+
+/// Why the composer refused a shell visual value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShellVisualError {
+    /// The value is not finite or lies outside the range the window methods document.
+    OutOfRange,
+}
+
 /// One visual bell flash in progress.
 ///
 /// It is a white rectangle drawn over everything on the output, fading out over
@@ -164,6 +178,13 @@ struct WindowNode {
     /// The opacity a matched window rule sets, one when none does. It multiplies the group
     /// opacity beside the placement opacity, which the layout rewrites on every placement.
     rule_opacity: f32,
+    /// The shell's opacity for the window, one when it set none. It multiplies the group
+    /// opacity in the target, beside the placement's, so a placement write never clobbers it.
+    shell_opacity: f32,
+    /// The shell's uniform scale about the window's centre, one when it set none.
+    shell_scale: f32,
+    /// The shell's offset in logical pixels, zero when it set none. It rides on the placement.
+    shell_offset: (f64, f64),
     /// Its effect chain, kept for the same reason and pushed to the node.
     effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
@@ -343,6 +364,9 @@ impl Composer {
                 content: None,
                 surface_alpha: 1.0,
                 rule_opacity: 1.0,
+                shell_opacity: 1.0,
+                shell_scale: 1.0,
+                shell_offset: (0.0, 0.0),
                 buffer: None,
                 closing: None,
                 slide: 0.0,
@@ -732,6 +756,69 @@ impl Composer {
             return;
         }
         entry.rule_opacity = opacity;
+        self.sync(window, true);
+    }
+
+    /// Sets the shell's opacity for a window, which multiplies its group opacity. A value
+    /// outside 0 to 1, or not finite, is refused and the window keeps its current opacity.
+    pub fn set_shell_opacity(&mut self, window: WindowId, opacity: f32) -> Result<(), ShellVisualError> {
+        if !(0.0..=1.0).contains(&opacity) {
+            return Err(ShellVisualError::OutOfRange);
+        }
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return Ok(());
+        };
+        if entry.shell_opacity != opacity {
+            entry.shell_opacity = opacity;
+            self.sync(window, true);
+        }
+        Ok(())
+    }
+
+    /// Sets the shell's uniform scale for a window, about its centre. A value outside 0.01 to
+    /// 10, or not finite, is refused and the window keeps its current scale.
+    pub fn set_shell_scale(&mut self, window: WindowId, scale: f32) -> Result<(), ShellVisualError> {
+        if !(SHELL_SCALE_MIN..=SHELL_SCALE_MAX).contains(&scale) {
+            return Err(ShellVisualError::OutOfRange);
+        }
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return Ok(());
+        };
+        if entry.shell_scale != scale {
+            entry.shell_scale = scale;
+            self.sync(window, true);
+        }
+        Ok(())
+    }
+
+    /// Sets the shell's offset for a window, in logical pixels. A component outside plus or
+    /// minus 100000, or not finite, refuses the whole offset and the window keeps its current one.
+    pub fn set_shell_offset(&mut self, window: WindowId, x: f64, y: f64) -> Result<(), ShellVisualError> {
+        if !(x.abs() <= SHELL_OFFSET_LIMIT && y.abs() <= SHELL_OFFSET_LIMIT) {
+            return Err(ShellVisualError::OutOfRange);
+        }
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return Ok(());
+        };
+        if entry.shell_offset != (x, y) {
+            entry.shell_offset = (x, y);
+            self.sync(window, true);
+        }
+        Ok(())
+    }
+
+    /// Puts a window's shell visuals back to their defaults: fully opaque, unscaled, unoffset.
+    pub fn reset_shell_visuals(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let defaults = (1.0, 1.0, (0.0, 0.0));
+        if (entry.shell_opacity, entry.shell_scale, entry.shell_offset) == defaults {
+            return;
+        }
+        entry.shell_opacity = 1.0;
+        entry.shell_scale = 1.0;
+        entry.shell_offset = (0.0, 0.0);
         self.sync(window, true);
     }
 
@@ -1137,12 +1224,19 @@ impl Composer {
 
     /// The transform a window's node should reach: its base transform placed at its geometry.
     fn target(entry: &WindowNode) -> VisualTransform {
+        // The shell's visuals live in their own fields and are folded in here, so a placement
+        // that rewrites the placement's own transform never clobbers them.
         let mut transform = entry.transform;
+        let (shell_x, shell_y) = entry.shell_offset;
         transform.base.offset = Vec3::new(
-            f64::from(entry.geometry.x) + entry.slide,
-            f64::from(entry.geometry.y),
+            f64::from(entry.geometry.x) + entry.slide + shell_x,
+            f64::from(entry.geometry.y) + shell_y,
             transform.base.offset.z,
         );
+        let scale = f64::from(entry.shell_scale);
+        transform.base.scale.x *= scale;
+        transform.base.scale.y *= scale;
+        transform.opacity *= entry.shell_opacity;
         transform
     }
 
@@ -2129,6 +2223,100 @@ mod tests {
         assert_eq!(composer.windows[&window].transform.opacity, 1.0);
         composer.set_window_opacity(window, -1.0);
         assert_eq!(composer.windows[&window].transform.opacity, 0.0);
+    }
+
+    #[test]
+    fn shell_opacity_multiplies_the_placement_opacity_and_survives_placement() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 100, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.set_reduced_motion(true);
+        composer.set_window_opacity(window, 0.5);
+        composer.set_shell_opacity(window, 0.5).expect("0.5 is in range");
+        assert_eq!(
+            drawn_pose(&composer, window).1,
+            0.25,
+            "the shell opacity multiplies the placement's"
+        );
+        composer.set_window_opacity(window, 0.8);
+        assert_eq!(
+            drawn_pose(&composer, window).1,
+            0.4,
+            "a placement write does not clobber the shell opacity"
+        );
+    }
+
+    #[test]
+    fn shell_offset_and_scale_survive_placement_and_reset_restores_the_window() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 100, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.set_reduced_motion(true);
+        composer.set_shell_offset(window, 10.0, -20.0).expect("in range");
+        assert_eq!(drawn_pose(&composer, window).0, Rect::new(110, 80, 40, 50));
+        composer.place_window_animated(window, Rect::new(200, 200, 40, 50), gnoblin_types::Transform::IDENTITY);
+        assert_eq!(
+            drawn_pose(&composer, window).0,
+            Rect::new(210, 180, 40, 50),
+            "a placement moves the window and the shell offset rides on top"
+        );
+        composer.set_shell_scale(window, 2.0).expect("in range");
+        assert_eq!(
+            drawn_pose(&composer, window).0,
+            Rect::new(190, 155, 80, 100),
+            "a shell scale of two is about the window's centre"
+        );
+        composer.set_shell_opacity(window, 0.5).expect("in range");
+        composer.reset_shell_visuals(window);
+        assert_eq!(
+            drawn_pose(&composer, window),
+            (Rect::new(200, 200, 40, 50), 1.0),
+            "reset puts the window back at its placement, fully opaque"
+        );
+    }
+
+    #[test]
+    fn shell_visual_values_out_of_range_are_refused_and_leave_the_window_unchanged() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(0, 0, 10, 10));
+        assert_eq!(
+            composer.set_shell_opacity(window, 1.5),
+            Err(ShellVisualError::OutOfRange)
+        );
+        assert_eq!(
+            composer.set_shell_opacity(window, f32::NAN),
+            Err(ShellVisualError::OutOfRange)
+        );
+        assert_eq!(
+            composer.set_shell_scale(window, 0.001),
+            Err(ShellVisualError::OutOfRange)
+        );
+        assert_eq!(
+            composer.set_shell_scale(window, 10.5),
+            Err(ShellVisualError::OutOfRange)
+        );
+        assert_eq!(
+            composer.set_shell_offset(window, 100_001.0, 0.0),
+            Err(ShellVisualError::OutOfRange)
+        );
+        assert_eq!(
+            composer.set_shell_offset(window, 0.0, f64::NAN),
+            Err(ShellVisualError::OutOfRange)
+        );
+        let node = &composer.windows[&window];
+        assert_eq!(
+            (node.shell_opacity, node.shell_scale, node.shell_offset),
+            (1.0, 1.0, (0.0, 0.0))
+        );
+        assert!(
+            composer.set_shell_opacity(window, 0.0).is_ok(),
+            "the documented bounds are accepted"
+        );
+        assert!(composer.set_shell_scale(window, 10.0).is_ok());
+        assert!(composer.set_shell_offset(window, -100_000.0, 100_000.0).is_ok());
     }
 
     // A workspace switch slides the windows it hides off the side the new workspace is not on,
