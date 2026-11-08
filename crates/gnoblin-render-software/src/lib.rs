@@ -303,6 +303,10 @@ impl Software {
     /// cleared target with an unblended copy, so nothing of the previous contents
     /// survives under transparent pixels.
     ///
+    /// The cursor's saved under-pixels were taken before this pass, so they are replaced
+    /// with the transformed pixels under the cursor. Without that, a capture without the
+    /// cursor would paste untransformed colour back over the transformed frame.
+    ///
     /// # Errors
     ///
     /// [`RenderError::Failed`] when pixman cannot read, upload or draw the buffer.
@@ -310,6 +314,18 @@ impl Software {
         let image = self.readback(true)?;
         let size = image.size();
         let packed = transform_pixels(&image, view, matrix);
+        if let Some(rect) = self.cursor_under_rect {
+            let clean = self.readback(false)?;
+            let clean = transform_pixels(&clean, view, matrix);
+            let stride = size.width as usize * 4;
+            let row = rect.size.w as usize * 4;
+            let x = rect.loc.x as usize * 4;
+            self.cursor_under.clear();
+            for line in 0..rect.size.h as usize {
+                let start = (rect.loc.y as usize + line) * stride + x;
+                self.cursor_under.extend_from_slice(&clean[start..start + row]);
+            }
+        }
         let Self {
             renderer,
             buffer,
@@ -336,6 +352,9 @@ impl Software {
         pixman_frame
             .render_texture_from_to(&texture, source, full, &[full], &[], Transform::Normal, 1.0)
             .map_err(failed)?;
+        // The pass is closed like the paint pass: the copy that follows reads the buffer
+        // and must see the transformed pixels, not a frame still queued.
+        let _sync = pixman_frame.finish().map_err(failed)?;
         Ok(())
     }
 

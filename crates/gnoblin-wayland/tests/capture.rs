@@ -1637,3 +1637,71 @@ fn a_reload_that_drops_the_secure_rule_unmasks_the_window() {
         }
     });
 }
+
+/// The red window's pixels under the colour filter: red inverts to cyan.
+const CYAN: u32 = 0xFF00_FFFF;
+
+/// Screencopies the output until the pixel inside the window reads `expected`, or fails.
+fn screencopy_window_pixel_until(capture: &mut Client, geometry: gnoblin_types::Rect, expected: u32) -> u32 {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let frame = capture.screencopy(0);
+        let (width, height, _stride, _format) = capture.screencopy_geometry();
+        let shm = Shm::new(capture, width, height, 0);
+        frame.copy(&shm.buffer);
+        let ready_before = capture.state.screencopy_ready;
+        capture.wait_until(
+            |state| state.screencopy_ready > ready_before,
+            "the screencopy frame ready",
+        );
+        let pixel = shm.pixel(geometry.x as u32 + 5, geometry.y as u32 + 5);
+        if pixel == expected || Instant::now() >= deadline {
+            return pixel;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn with_no_accessibility_section_the_window_pixels_are_not_filtered() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Red", "Red", 200, 150, RED);
+        let geometry = session.only_window();
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        let pixel = screencopy_window_pixel_until(&mut capture, geometry, RED);
+        assert_eq!(pixel, RED, "an empty last-good leaves the window's colours alone");
+    });
+}
+
+#[test]
+fn a_committed_colour_filter_applies_to_the_next_frame_without_a_restart() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Red", "Red", 200, 150, RED);
+        let geometry = session.only_window();
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        let before = screencopy_window_pixel_until(&mut capture, geometry, RED);
+        assert_eq!(before, RED, "the window starts unfiltered");
+
+        // The invert transform: each channel becomes 1 minus itself.
+        let invert = [
+            [-1.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, -1.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, -1.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ];
+        session
+            .control
+            .set_visual_accessibility(gnoblin_wayland::VisualAccessibilitySettings {
+                magnifier_zoom: None,
+                colour_matrix: Some(invert),
+            });
+        let after = screencopy_window_pixel_until(&mut capture, geometry, CYAN);
+        assert_eq!(after, CYAN, "the committed invert filter reaches the next frame");
+    });
+}

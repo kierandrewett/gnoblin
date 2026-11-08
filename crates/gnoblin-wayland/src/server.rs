@@ -486,6 +486,9 @@ impl Server {
                                 let _ = reply.send(state.layout_failure(workspace));
                             }
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
+                            Command::VisualAccessibility(settings) => {
+                                state.apply_visual_accessibility_settings(*settings)
+                            }
                             Command::WindowRules(rules) => state.apply_window_rules(rules),
                             Command::KeyboardSettings(keyboard) => state.apply_keyboard_settings(&keyboard),
                             Command::CursorSettings(cursor) => state.apply_cursor_settings(&cursor),
@@ -1029,6 +1032,12 @@ impl ControlHandle {
         self.control.request_global_scale(scale);
     }
 
+    /// Replaces the magnifier and colour filter from the next loop turn, as a committed
+    /// document does. Every output is repainted, so the next frame shows the new filter.
+    pub fn set_visual_accessibility(&self, settings: VisualAccessibilitySettings) {
+        self.control.push(Command::VisualAccessibility(Box::new(settings)));
+    }
+
     /// The committed blur region a window's surface has, as the renderer's blur pass
     /// reads it.
     ///
@@ -1294,6 +1303,8 @@ enum Command {
     KeyboardSettings(Box<gnoblin_config::Keyboard>),
     /// The cursor theme, size and providers the configuration accepted, applied in place.
     CursorSettings(Box<CursorSettings>),
+    /// The magnifier and colour filter the configuration accepted, replacing those in force.
+    VisualAccessibility(Box<VisualAccessibilitySettings>),
     /// The switchable layouts the configuration accepted, applied in place.
     InputSources(Box<gnoblin_config::InputSources>),
     /// A tick of the session clock, in milliseconds.

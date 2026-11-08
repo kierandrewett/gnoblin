@@ -1216,6 +1216,11 @@ impl Dispatcher {
                 self.control.set_cursor_settings(crate::cursor::cursor_settings(
                     config.cursor.clone().unwrap_or_default(),
                 ));
+                // The magnifier and colour filter are re-derived the same way, so removing the
+                // `accessibility` section turns them off on this commit.
+                let accessibility = config.accessibility.unwrap_or_default();
+                self.control
+                    .set_visual_accessibility(crate::accessibility::visual_accessibility_settings(&accessibility));
             }
             Err(reason) => {
                 log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")

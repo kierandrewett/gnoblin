@@ -69,7 +69,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 /// The magnifier is on only when `magnifier` is set and the zoom is above the identity; a zoom
 /// above the frame's ceiling is clamped to it, so a value the schema accepts is never dropped.
 /// The colour filter is applied only when it names a transform; `none` leaves colours alone.
-fn visual_accessibility_settings(section: &VisualAccessibility) -> VisualAccessibilitySettings {
+pub(crate) fn visual_accessibility_settings(section: &VisualAccessibility) -> VisualAccessibilitySettings {
     let magnifier_zoom = if section.magnifier.unwrap_or(false) {
         let zoom = section
             .magnifier_zoom

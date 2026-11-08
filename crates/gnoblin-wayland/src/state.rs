@@ -2419,6 +2419,14 @@ impl State {
         }
     }
 
+    /// Replaces the magnifier and colour filter in force and repaints every output, so the
+    /// next frame shows the change. A settings value the frame rejects is drawn unfiltered, as
+    /// at startup.
+    pub(crate) fn apply_visual_accessibility_settings(&mut self, settings: crate::server::VisualAccessibilitySettings) {
+        self.visual_accessibility = settings;
+        self.damage_outputs();
+    }
+
     /// Queues the modal events an input edge becomes while a modal is set. Returns
     /// `false` for an edge that is not a modal event, which then routes as usual.
     fn route_to_modal(&mut self, event: &InputEvent) -> bool {
@@ -3153,20 +3161,20 @@ impl Host for State {
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
-        // The accessibility is set before the frame is composed, so the composer draws this
-        // output's magnified view and colour transform. A locked session draws no
-        // accessibility, so the lock cover reads the same whatever the user has set.
+        // `compose` and `cover_frame` clear the frame, and clearing drops the magnified view
+        // and colour transform, so the settings are applied after them. A locked session
+        // draws no accessibility, so the lock cover reads the same whatever the user has set.
         let settings = if self.lock.state() == LockState::Unlocked {
             self.visual_accessibility
         } else {
             crate::server::VisualAccessibilitySettings::default()
         };
-        apply_visual_accessibility(settings, self.output_rect(output), self.pointer_position, frame);
         let changed = if self.lock.state() == LockState::Unlocked {
             self.composer.compose(output, frame)
         } else {
             self.cover_frame(output, frame)
         };
+        apply_visual_accessibility(settings, self.output_rect(output), self.pointer_position, frame);
         if changed {
             self.last_frame = Some((output, frame.damage().to_vec()));
             // The frame was described after the hide, so it can prove a cover: the
