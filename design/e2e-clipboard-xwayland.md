@@ -31,8 +31,8 @@ Logs are on the workstation in `~/dev/lanes/ClipboardXwaylandE2E-logs/`.
 | C     | privileged socket lists data-control and pastes           | PASS             | same, `clip-dbg-priv.txt`                                                  |
 | C2    | privileged copy is visible to an unprivileged paste       | PASS             | same                                                                       |
 | D     | named in-process tests: selection and clipboard admission | PASS, see note 3 | `D1-inprocess-selection-tests.log`, `D2-compat-mutter-clipboard-tests.log` |
-| E     | `xclip` sets the X11 clipboard, Wayland paste reads it    | FAIL             | `E-F-clip-checks-final.log`                                                |
-| F     | `wl-copy` sets the Wayland clipboard, `xclip` reads it    | FAIL             | same                                                                       |
+| E     | `xclip` sets the X11 clipboard, Wayland paste reads it    | PASS             | `I43-e2e-clipdeps.log` (E1, E2, P1, P2)                                    |
+| F     | `wl-copy` sets the Wayland clipboard, `xclip` reads it    | FAIL, F1 and F3  | `I43-e2e-clipdeps.log`; F2 PASS; see F1                                    |
 
 Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
 `ready area="xwayland" display_number=0`.
@@ -55,25 +55,35 @@ Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
 
 ## Findings
 
-### F1: X11 selections are not bridged to Wayland (E and F fail)
+### F1: X11 and Wayland selections are bridged; Wayland-to-X11 reads are intermittent
 
-- `crates/gnoblin-wayland/src/xwayland.rs:521` implements `XwmHandler for State`.
-  Between lines 521 and 676 it overrides none of `allow_selection_access`,
-  `send_selection`, `new_selection` or `cleared_selection`.
-- smithay 0.7.0 (`src/xwayland/xwm/mod.rs:369-388`, rev `65aa86fa`) gives those
-  methods defaults: `allow_selection_access` returns `false`, `new_selection` and
-  `cleared_selection` do nothing.
-- `crates/gnoblin-wayland/src/protocols/wl_data_device_manager.rs:105-119`:
-  `new_selection` updates only the compositor's own selection state and publishes
-  it. Nothing tells the XWM.
-- `E-F-final-session.log` has `Got X11 Error ... error_kind: Window, error_code: 3
-... major_opcode: 20` (BadWindow) on `GetProperty`/`ChangeProperty` for window
-  `6291457`, sequences 147 to 161 and 180.
-
-Fix (large, not done here): override the four XWM selection methods in
-`xwayland.rs`, forwarding X11 owner changes to `SelectionHandler` and serving
-Wayland selections to X11 readers through `send_selection`. This needs its own
-change with the E and F checks as tests.
+- The bridge is in `crates/gnoblin-wayland/src/selection_bridge.rs`: per-target
+  owner state, pure target-to-MIME mapping, ownership moves, and lock refusal.
+  Its unit tests live in the same file (ownership, clear, lock, mapping).
+  `xwayland.rs` wires the XWM selection hooks to it; `wl_data_device_manager.rs`
+  feeds Wayland selection changes into it.
+- Run on Agent37 (`I43-e2e-clipdeps.log`, `tests/xwayland-clipboard-e2e.sh`).
+  `src` is the sha256 prefix (16 hex) of the source bytes, `got` of the bytes
+  received.
+    - E1 PASS 19 bytes, `src=got=7d916bff01a814c7`.
+    - E2 PASS 512 bytes, `src=got=1e50eb4754c6d7cb`.
+    - P1 PASS 11 bytes, `src=got=2fc49f4086f88e47`.
+    - P2 PASS 512 bytes: an X11 primary copy leaves the clipboard alone.
+    - F1 FAIL: `src=77545c1a41f01819` (19 bytes), `got=e3b0c44298fc1c14` (0 bytes).
+    - F2 PASS 512 bytes, `src=got=1e50eb4754c6d7cb`.
+    - F3 FAIL: `src=3c2395a3298f8a47` (15 bytes), `got=e3b0c44298fc1c14` (0 bytes).
+    - C0 PASS 12 bytes; C1 PASS (cleared X11 selection pastes 0 bytes).
+    - `failures: 2`.
+- Diagnosis (`I44-f1-diag.log`, `I45-f1-mimes.log`): the Wayland source offers
+  `text/plain`, `text/plain;charset=utf-8`, `TEXT`, `STRING` and `UTF8_STRING`.
+  In I44 the `text/plain` read returned the text and a `UTF8_STRING` read
+  returned 0 bytes. In I45 the same `UTF8_STRING` read returned the text. So the
+  failure is intermittent and not a missing MIME mapping. It is not isolated.
+  The X11 log shows `BadWindow` on `ChangeProperty` for the XWM's own window
+  during these steps. `[INFERENCE]` a race in smithay's XWM selection path
+  (`src/xwayland/xwm/mod.rs`) is the likely cause; not confirmed.
+- Policy: ZERO smithay patches. Any fix must wrap smithay from this crate. The
+  F1 and F3 checks stay failing until that fix lands; the harness is not weakened.
 
 ### F2: Xwayland does not start on this binary with the default setting
 
