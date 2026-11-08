@@ -87,7 +87,11 @@ pub fn grants(role: &str) -> Capabilities {
             Capability::RegisterLayer,
             Capability::ReadConfig,
         ]),
-        "portal" => Capabilities::of(&[Capability::PortalUi, Capability::RetrieveSecret]),
+        "portal" => Capabilities::of(&[
+            Capability::PortalUi,
+            Capability::RetrieveSecret,
+            Capability::CaptureScreen,
+        ]),
         "input" => Capabilities::of(&[Capability::PortalInput]),
         _ => Capabilities::NONE,
     }
@@ -221,6 +225,10 @@ mod tests {
             "and asks for an app's secret"
         );
         assert!(!portal.contains(Capability::OfferRequest), "but offers no other slot");
+        assert!(
+            portal.contains(Capability::CaptureScreen),
+            "the relay asks for the pixels of a screenshot"
+        );
         assert!(!portal.contains(Capability::PortalInput), "and routes no keys");
 
         let input = grants("input");

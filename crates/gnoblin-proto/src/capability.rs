@@ -83,11 +83,17 @@ pub enum Capability {
     /// two parties that shape windows on the user's behalf. Any other connection is refused
     /// `denied` before the graph sees the call.
     WindowControl,
+    /// Take a screenshot of an output (`capture.screenshot`).
+    ///
+    /// This is the portal relay's connection, and the request returns the pixels of
+    /// what is on screen, so only the relay may ask for them. The compositor still
+    /// refuses while the session is locked, and masks secure windows.
+    CaptureScreen,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 10] = [
+    pub const ALL: [Capability; 11] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
@@ -98,6 +104,7 @@ impl Capability {
         Capability::ReadConfig,
         Capability::ReloadConfig,
         Capability::WindowControl,
+        Capability::CaptureScreen,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -113,6 +120,7 @@ impl Capability {
             Capability::ReadConfig => "read-config",
             Capability::ReloadConfig => "reload-config",
             Capability::WindowControl => "window-control",
+            Capability::CaptureScreen => "capture-screen",
         }
     }
 
@@ -129,6 +137,7 @@ impl Capability {
             Capability::ReadConfig => 1 << 7,
             Capability::ReloadConfig => 1 << 8,
             Capability::WindowControl => 1 << 9,
+            Capability::CaptureScreen => 1 << 10,
         }
     }
 
@@ -249,6 +258,21 @@ mod tests {
         assert_eq!(owner.to_string(), "read-config, reload-config");
         assert_eq!(Capability::from_name("read-config"), Some(Capability::ReadConfig));
         assert_eq!(Capability::from_name("reload-config"), Some(Capability::ReloadConfig));
+    }
+
+    #[test]
+    fn capturing_the_screen_is_its_own_capability() {
+        // The failure this prevents: a portal's screenshot request rides on a bit that
+        // another grant also carries, so a connection that may move windows or answer
+        // consent could read the pixels of every output.
+        assert_eq!(Capability::CaptureScreen.name(), "capture-screen");
+        assert_eq!(Capability::CaptureScreen.bit(), 1 << 10);
+        assert_eq!(Capability::from_name("capture-screen"), Some(Capability::CaptureScreen));
+        assert!(Capability::ALL.contains(&Capability::CaptureScreen));
+        let only = Capabilities::of(&[Capability::CaptureScreen]);
+        assert_eq!(only.to_string(), "capture-screen");
+        assert!(!only.contains(Capability::PortalUi));
+        assert!(!only.contains(Capability::WindowControl));
     }
 
     #[test]
