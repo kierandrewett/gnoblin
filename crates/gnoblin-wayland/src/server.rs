@@ -59,7 +59,7 @@ use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{
     MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
-    WindowVisualRefusal,
+    WindowVisualRefusal, WorkspaceSetRefusal,
 };
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
@@ -544,6 +544,9 @@ impl Server {
                             } => {
                                 let _ = reply.send(state.set_workspace_layout(workspace, &selector));
                             }
+                            Command::ActivateWorkspaceSet { name, reply } => {
+                                let _ = reply.send(state.activate_workspace_set(&name));
+                            }
                             Command::SetOutputLayout {
                                 output,
                                 selector,
@@ -898,6 +901,17 @@ impl ControlHandle {
         self.control.push(Command::SetWorkspaceLayout {
             workspace,
             selector: selector.clone(),
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Makes the configured workspace set `name` the live set. `None` when the loop did not
+    /// answer in time; otherwise the window manager's answer, `Ok` once the set is shown.
+    pub fn activate_workspace_set(&self, name: &str) -> Option<Result<(), WorkspaceSetRefusal>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::ActivateWorkspaceSet {
+            name: name.to_owned(),
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1285,6 +1299,11 @@ enum Command {
     /// A session lock request. The answer is sent once the lock settles: `true` when
     /// the session is `locked`, `false` when the lock is refused or the cover fails.
     Lock { reply: std::sync::mpsc::SyncSender<bool> },
+    /// A workspace set's activation; the answer is the refusal, if any.
+    ActivateWorkspaceSet {
+        name: String,
+        reply: std::sync::mpsc::SyncSender<Result<(), WorkspaceSetRefusal>>,
+    },
     /// A workspace's layout choice; the answer is the refusal, if any.
     SetWorkspaceLayout {
         workspace: WorkspaceId,

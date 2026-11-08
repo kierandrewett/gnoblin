@@ -81,7 +81,7 @@ use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, WindowChange,
-    WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
+    WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,
 };
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -1583,6 +1583,9 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
+            (Some(ty), _, _, _) if ty == "workspace_set" => {
+                self.workspace_set_call(client, envelope, object, &method, &arguments);
+            }
             (Some(ty), _, _, _) if ty == "layers" => {
                 self.layers_call(client, envelope, object, &method, &arguments);
             }
@@ -2210,6 +2213,60 @@ impl Dispatcher {
         let answered = self.control.set_workspace_layout(workspace, &selector);
         self.sync();
         self.finish_layout(object, &operation, answered);
+    }
+
+    /// Serves `workspace_set.activate`: the configured set `name` becomes the live set. The
+    /// operation completes `done` once the window manager shows the set's workspaces, and
+    /// fails with `unknown-set` when the configuration defines no set of that name.
+    fn workspace_set_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+    ) {
+        if method != "activate" {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::UNKNOWN_MEMBER,
+                "the workspace_set object has one method, activate",
+            );
+            return;
+        }
+        let Some(name) = text_argument(arguments, "name") else {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::UNKNOWN_MEMBER,
+                "activate takes the set's name as text",
+            );
+            return;
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let answered = self.control.activate_workspace_set(&name);
+        self.sync();
+        let outcome = match answered {
+            Some(Ok(())) => OperationOutcome::Done,
+            Some(Err(WorkspaceSetRefusal::UnknownSet)) => {
+                OperationOutcome::Failed(ErrorCode::from_static("unknown-set"))
+            }
+            // The window manager refused the set, or the loop did not answer in time: a set
+            // that is not shown is never reported as done.
+            Some(Err(WorkspaceSetRefusal::Refused)) | None => {
+                OperationOutcome::Failed(ErrorCode::from_static("refused"))
+            }
+        };
+        self.finish(object, &operation, Some(outcome));
     }
 
     /// Serves `workspace.layout_command`: the named command runs in the workspace's

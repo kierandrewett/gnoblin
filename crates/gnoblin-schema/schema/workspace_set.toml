@@ -1,0 +1,30 @@
+# The `workspace_set` object: the session's named workspace sets, as configured.
+#
+# A workspace set names a group of workspaces, one per output, that the window manager
+# shows together. The sets are the configuration's: the object carries no properties and
+# no identity worth keeping, and its one verb switches the session to a named set.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "workspace_set"
+since = "0.2.0"
+
+# Make the set `name` the live set. The operation is `done` once the window manager shows
+# the set's workspaces, including when the set was already live. It fails with
+# `unknown-set` when the configuration defines no set of that name.
+[[object.method]]
+name = "activate"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+# The configuration defines no workspace set with the requested name.
+[[error]]
+name = "unknown-set"
+since = "0.2.0"
+
+

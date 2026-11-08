@@ -256,6 +256,9 @@ impl SessionSync {
         // The `layers` object carries no properties either: its one verb registers a layer
         // under the caller's own provider, which the compositor derives from the connection.
         graph.create(TypeKey::gnoblin("layers"), Fields::new())?;
+        // The `workspace_set` object carries no properties: its one verb switches the live set,
+        // and the configured sets are the window manager's to hold.
+        graph.create(TypeKey::gnoblin("workspace_set"), Fields::new())?;
         Ok(SessionSync {
             graph,
             session,

@@ -330,6 +330,16 @@ pub enum WindowChangeRefusal {
     Refused,
 }
 
+/// Why the window manager did not make a workspace set the live set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceSetRefusal {
+    /// The configuration defines no workspace set with the requested name.
+    UnknownSet,
+    /// The window manager refuses the set for another reason, such as an output it
+    /// cannot place a workspace on.
+    Refused,
+}
+
 /// One change to how the compositor draws a window, as the shell's window methods set it.
 ///
 /// These are the shell's own values. The window rule's opacity and the placement animations
