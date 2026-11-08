@@ -1,7 +1,7 @@
 //! The portal process: one bus name, one privileged IPC connection, one service loop.
 //!
-//! Design/rust-compositor.md's "Portals" card says the services role starts this backend
-//! with a privileged connection. The bus can also start it on demand, through the
+//! The guardian starts this backend as a session child with a privileged connection, for the
+//! `portal` role. The bus can also start it on demand, through the
 //! `org.freedesktop.impl.portal.desktop.gnoblin` activation file, and then no privileged
 //! connection is passed. This file is the
 //! composition root that does the three things such a process must: own
@@ -21,7 +21,7 @@
 //!
 //! # What the connection is, in this build
 //!
-//! The services role passes the connection as an inherited descriptor when it starts this
+//! The guardian passes the connection as an inherited descriptor when it starts this
 //! process; otherwise the socket at `$GNOBLIN_IPC_SOCKET` (or `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`)
 //! is used, which is what a developer session has.
 //!
@@ -35,10 +35,11 @@
 use std::process::ExitCode;
 
 use futures_lite::future;
-use gnoblin_client::{Client, UnixTransport, inherited_stream, socket_path};
+use gnoblin_client::{Client, Reporter, UnixTransport, inherited_stream, socket_path};
 use gnoblin_types::Version;
 use xdg_desktop_portal_gnoblin::host::NoShell;
 use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Portal};
+use zbus::fdo::RequestNameReply;
 
 gnoblin_log::logger!(log = "portal");
 
@@ -132,9 +133,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // The name is requested after the objects exist, and without queueing: a second
         // portal for one session is a configuration mistake, and the one that lost says so
         // instead of waiting behind the winner.
-        connection
+        let mut reporter = Reporter::new(|name| std::env::var(name).ok());
+        match connection
             .request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE)
-            .await?;
+            .await
+        {
+            Ok(RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner) => {}
+            // Another portal serves this name. That is a second instance for the session: it
+            // leaves quietly, and it reports ready so the guardian's start sequence goes on.
+            Ok(RequestNameReply::Exists | RequestNameReply::InQueue) | Err(zbus::Error::NameTaken) => {
+                log::info!(name = BUS_NAME, "another portal serves this name; this instance exits");
+                reporter.ready(&[]);
+                return Ok(());
+            }
+            Err(error) => return Err(error.into()),
+        }
         log::info!(name = BUS_NAME, "serving the Gnoblin portal backend");
 
         if let Some(loop_) = loop_ {
@@ -144,6 +157,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .spawn(move || loop_.run(serving))
                 .map_err(|error| format!("the IPC loop could not be started: {error}"))?;
         }
+        // The guardian starts the front and the autostart applications only after this report.
+        reporter.ready(&[]);
 
         // The owner watch and the expiry loop run here. The bus closing is the end of the
         // process: a bus-activated backend has no other reason to outlive its session.
