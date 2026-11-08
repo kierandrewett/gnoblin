@@ -828,7 +828,14 @@ impl Guardian {
                 self.children[index].state = ChildState::Stopped;
                 self.children[index].deadline = None;
                 self.children[index].stop = None;
-                if status.success() {
+                let logout = up && status == ExitStatus::Exited(i32::from(gnoblin_proto::LOGOUT_EXIT_CODE));
+                if logout {
+                    note(
+                        Level::Debug,
+                        format!("[guardian] {name} left for a logout; the session ends"),
+                        effects,
+                    );
+                } else if status.success() {
                     note(
                         Level::Warning,
                         format!("[guardian] {name} exited cleanly; the session cannot continue without it"),
@@ -841,7 +848,9 @@ impl Guardian {
                         effects,
                     );
                 }
-                let reason = if up {
+                let reason = if logout {
+                    StopReason::Logout
+                } else if up {
                     StopReason::CompositorLost
                 } else {
                     StopReason::StartFailed

@@ -32,6 +32,7 @@
 mod capability;
 mod envelope;
 mod error;
+mod exit;
 mod frame;
 mod generated;
 mod grants;
@@ -46,6 +47,7 @@ mod version;
 pub use capability::{Capabilities, Capability};
 pub use envelope::{FLAG_SENSITIVE, UNKNOWN_MEMBER};
 pub use error::CodecError;
+pub use exit::LOGOUT_EXIT_CODE;
 pub use frame::{LENGTH_PREFIX_LEN, MAX_FRAME_LEN, StreamFrame, read_any, read_frame, write_frame};
 pub use generated::gnoblin;
 pub use generated::ipc::envelope::Kind;

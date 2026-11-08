@@ -362,6 +362,52 @@ fn dependants_stop_before_the_compositor() {
 }
 
 #[test]
+fn a_compositor_that_exits_with_the_logout_code_ends_the_session_as_a_logout() {
+    let mut guardian = up();
+    let mut now = 100;
+    let effects = exited(
+        &mut guardian,
+        COMPOSITOR,
+        ExitStatus::Exited(i32::from(gnoblin_proto::LOGOUT_EXIT_CODE)),
+        now,
+    );
+    assert_eq!(guardian.session(), SessionState::Stopping);
+    assert_eq!(guardian.stop_reason(), Some(StopReason::Logout));
+    assert!(
+        spawns(actions(effects.clone())).is_empty(),
+        "the compositor is never restarted"
+    );
+    let mut order = signals(effects);
+    for child in [SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES] {
+        now += 100;
+        let instance = generation(&guardian, child);
+        let effects = guardian.apply(at(
+            now,
+            EventKind::Exited {
+                child,
+                generation: instance,
+                status: ExitStatus::Exited(0),
+            },
+        ));
+        order.extend(signals(effects));
+    }
+    assert_eq!(
+        order,
+        vec![SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES],
+        "every client is stopped before the server it talks to, in the logout order"
+    );
+    assert_eq!(guardian.session(), SessionState::Ended);
+    assert_eq!(guardian.stop_reason(), Some(StopReason::Logout));
+}
+
+#[test]
+fn a_compositor_that_exits_cleanly_without_the_logout_code_is_still_a_lost_compositor() {
+    let mut guardian = up();
+    exited(&mut guardian, COMPOSITOR, ExitStatus::Exited(0), 100);
+    assert_eq!(guardian.stop_reason(), Some(StopReason::CompositorLost));
+}
+
+#[test]
 fn an_unready_child_is_killed_at_its_deadline() {
     let mut guardian = guardian();
     guardian.apply(at(0, EventKind::Start));
