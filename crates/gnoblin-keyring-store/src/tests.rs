@@ -115,6 +115,14 @@ fn create_refuses_to_replace_an_existing_file() {
 }
 
 #[test]
+fn create_makes_a_missing_parent_directory() {
+    let path = scratch("parent").join("gnoblin").join("keyring.db");
+    assert!(!path.parent().expect("parent").exists());
+    drop(Keyring::create(&path, &pass("login")).expect("creates under a new directory"));
+    assert!(Keyring::open(&path, &pass("login")).is_ok());
+}
+
+#[test]
 fn open_refuses_a_missing_file_without_creating_it() {
     let path = fresh_path("missing");
     assert!(matches!(

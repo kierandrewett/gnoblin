@@ -163,9 +163,12 @@ impl From<rusqlite::Error> for KeyringError {
 }
 
 impl Keyring {
-    /// Creates a new keyring file at `path`. The file must not exist: creating over one would
-    /// silently replace another keyring.
+    /// Creates a new keyring file at `path`, and its parent directory if it is missing. The file
+    /// must not exist: creating over one would silently replace another keyring.
     pub fn create(path: &Path, passphrase: &Passphrase) -> Result<Keyring, KeyringError> {
+        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(KeyringError::Io)?;
+        }
         std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
