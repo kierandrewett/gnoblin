@@ -231,8 +231,9 @@ that names an undeclared workspace, repeats a set name, has no workspaces or
 repeats an output refuses the whole list. No set applies and the log names the
 field.
 
-Declaring a set does not change what the outputs show yet. The session does not
-activate a set when it starts, and no Lua or command-line call activates one.
+Declaring a set does not change what the outputs show. The session does not activate a set when it starts.
+`gnoblin.workspaces.activate_set(name)` and `gnoblinctl workspace activate-set NAME` make a set live; see
+[Workspaces](/shell-api/workspaces#workspace-sets).
 
 ## Titlebar actions
 

@@ -68,6 +68,17 @@ The workspace object signals:
 - `layout_changed`, with `layout`, when the workspace's layout changes;
 - `layout_failed`, with `layout` and `reason`, when a layout run fails. The workspace then runs floating until a run
   succeeds. `reason` is one of `error`, `timeout`, `disabled`, `vm-wedged`, `invalid-reply` or `invalid-params`.
+- `set_activated`, with `set`, when the window manager makes a configured workspace set live. Every workspace the session holds raises it.
+
+## Workspace sets
+
+`gnoblin.workspaces.activate_set(name)` makes the configured workspace set `name` the live set. The sets are declared in the [window management](/config/configure/window_management) configuration. The call returns an operation that completes once the window manager shows the set's workspaces, including when the set is already live. An unknown name fails with `unknown-set`.
+
+```lua
+gnoblin.workspaces.activate_set("desk")
+```
+
+`gnoblinctl workspace activate-set desk` makes the same request from the command line.
 
 ## Not in the schema yet
 
