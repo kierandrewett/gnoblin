@@ -19,6 +19,9 @@ unsafe_code = "deny"
 all = { level = "deny", priority = -1 }
 
 [dependencies]
+# `zwp_virtual_keyboard_v1` is served here (the server half, from the same XML the client
+# half is generated from); the tests use the client half of it too.
+wayland-protocols-misc = { version = "0.3.12", features = ["client", "server"] }
 # The Wayland server itself, pinned to the revision in the root manifest (D7).
 # The safe API is enough for this slice, so the crate keeps the workspace's
 # `unsafe_code = "forbid"` and has no FFI shim module.
@@ -104,9 +107,6 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging", "uns
 # `zwlr_foreign_toplevel_manager_v1`'s client half, from the same wlroots XML the
 # server in `protocols::zwlr_foreign_toplevel_management_v1` is generated from.
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
-# `zwp_input_method_v2` and `zwp_virtual_keyboard_v1` live outside wayland-protocols:
-# they are the two misc protocols the text-input round trip needs on the client side.
-wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
 tempfile = "3.23.0"

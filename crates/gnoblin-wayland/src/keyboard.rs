@@ -116,6 +116,15 @@ pub(crate) const WINDOW_MENU_BINDING: &str = "window-menu";
 /// window's system menu on the desktops this compositor follows.
 pub(crate) const WINDOW_MENU_CHORD: &str = "<Alt>space";
 
+/// Which keymap the seat holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeymapOwner {
+    /// The layout compiled from the configuration's `input-sources`.
+    Layout,
+    /// The keymap a virtual keyboard sent, by that keyboard's id.
+    Virtual(u64),
+}
+
 /// The keyboard's bookkeeping: the sources, the memory and the router.
 #[derive(Debug)]
 pub(crate) struct KeyboardTables {
@@ -134,6 +143,12 @@ pub(crate) struct KeyboardTables {
     /// The command each configured shortcut runs, by name. A fired binding with no entry
     /// here is the window menu, or nothing.
     pub(crate) shortcut_commands: BTreeMap<String, Vec<String>>,
+    /// Which keymap the seat holds: the layout's, or a virtual keyboard's.
+    pub(crate) keymap_owner: KeymapOwner,
+    /// The keymap text each virtual keyboard sent, by its id, while it holds one.
+    pub(crate) virtual_keymaps: BTreeMap<u64, String>,
+    /// The id the next virtual keyboard takes.
+    pub(crate) next_virtual_id: u64,
 }
 
 impl Default for KeyboardTables {
@@ -159,6 +174,9 @@ impl Default for KeyboardTables {
             options: None,
             router,
             shortcut_commands: BTreeMap::new(),
+            keymap_owner: KeymapOwner::Layout,
+            virtual_keymaps: BTreeMap::new(),
+            next_virtual_id: 0,
         }
     }
 }
@@ -360,6 +378,10 @@ impl State {
 
     /// The keymap for the active source, compiled into the seat.
     fn rebuild_keymap(&mut self) {
+        // A virtual keyboard's keymap is the seat's until that keyboard releases it.
+        if self.keyboard_tables.keymap_owner != KeymapOwner::Layout {
+            return;
+        }
         let index = self.keyboard_tables.active;
         let Some(source) = self.keyboard_tables.sources.get(index).cloned() else {
             return;
@@ -405,6 +427,78 @@ impl State {
     #[must_use]
     pub fn input_sources(&self) -> usize {
         self.keyboard_tables.sources.len()
+    }
+
+    /// Makes a new virtual keyboard and returns its id. It holds no keymap until it sends
+    /// one, so its keys are refused before then.
+    pub(crate) fn new_virtual_keyboard(&mut self) -> u64 {
+        let id = self.keyboard_tables.next_virtual_id;
+        self.keyboard_tables.next_virtual_id += 1;
+        id
+    }
+
+    /// Compiles the keymap a virtual keyboard sent into the seat, and makes it the seat's
+    /// keymap. A keymap xkbcommon refuses is released instead, see
+    /// [`State::release_virtual_keymap`].
+    pub(crate) fn set_virtual_keymap(&mut self, id: u64, text: String) {
+        let handle = self.keyboard.clone();
+        match handle.set_keymap_from_string(self, text.clone()) {
+            Ok(()) => {
+                self.keyboard_tables.virtual_keymaps.insert(id, text);
+                self.keyboard_tables.keymap_owner = KeymapOwner::Virtual(id);
+                log::debug!(
+                    area = "keyboard",
+                    keyboard = id,
+                    "a virtual keyboard's keymap is the seat's"
+                );
+            }
+            Err(error) => {
+                log::warn!(
+                    area = "keyboard",
+                    ?error,
+                    keyboard = id,
+                    "a virtual keyboard's keymap was refused"
+                );
+                self.release_virtual_keymap(id);
+            }
+        }
+    }
+
+    /// Forgets a virtual keyboard's keymap. If it was the seat's, the seat gets its layout
+    /// keymap back, so the keys the keyboard leaves behind are not read with its map.
+    pub(crate) fn release_virtual_keymap(&mut self, id: u64) {
+        self.keyboard_tables.virtual_keymaps.remove(&id);
+        if self.keyboard_tables.keymap_owner != KeymapOwner::Virtual(id) {
+            return;
+        }
+        self.keyboard_tables.keymap_owner = KeymapOwner::Layout;
+        if self.keyboard_tables.sources.is_empty() {
+            let handle = self.keyboard.clone();
+            if let Err(error) = handle.set_xkb_config(self, XkbConfig::default()) {
+                log::warn!(area = "keyboard", ?error, "the default keymap was refused");
+            }
+        } else {
+            self.rebuild_keymap();
+        }
+    }
+
+    /// Makes a virtual keyboard's keymap the seat's when another keymap holds the seat.
+    /// `false` means the keyboard has no keymap, so its key is refused.
+    pub(crate) fn use_virtual_keymap(&mut self, id: u64) -> bool {
+        if self.keyboard_tables.keymap_owner != KeymapOwner::Virtual(id)
+            && let Some(text) = self.keyboard_tables.virtual_keymaps.get(&id).cloned()
+        {
+            self.set_virtual_keymap(id, text);
+        }
+        self.keyboard_tables.keymap_owner == KeymapOwner::Virtual(id)
+    }
+
+    /// Sets the modifier state a virtual keyboard reports to the seat.
+    pub(crate) fn set_modifier_state(&mut self, depressed: u32, latched: u32, locked: u32, group: u32) {
+        let handle = self.keyboard.clone();
+        handle.with_xkb_state(self, |mut context| {
+            context.set_modifier_mask(depressed, latched, locked, group);
+        });
     }
 
     /// Drops a closed window's layout memory.

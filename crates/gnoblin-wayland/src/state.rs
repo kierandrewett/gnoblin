@@ -54,7 +54,6 @@ use smithay::wayland::shm::ShmState;
 use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
 use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::viewporter::ViewporterState;
-use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xdg_system_bell::XdgSystemBellState;
 use smithay::wayland::xdg_toplevel_icon::{ToplevelIconCachedState, XdgToplevelIconManager};
@@ -418,9 +417,10 @@ pub struct State {
     /// Kept alive so `zwp_input_method_manager_v2` stays registered.
     #[allow(dead_code)]
     pub(crate) input_method_state: InputMethodManagerState,
-    /// Kept alive so `zwp_virtual_keyboard_manager_v1` stays registered.
+    /// Kept alive so `zwp_virtual_keyboard_manager_v1` stays registered; the bind is gated by
+    /// the access roster in [`crate::protocols::zwp_virtual_keyboard_v1`].
     #[allow(dead_code)]
-    pub(crate) virtual_keyboard_state: VirtualKeyboardManagerState,
+    pub(crate) virtual_keyboard_global: GlobalId,
 
     /// The seat the keyboard and pointer belong to, which is what the text-input and
     /// shortcut-inhibit handles hang off.
@@ -737,7 +737,7 @@ impl State {
         let alpha_modifier_state = crate::protocols::wp_alpha_modifier_v1::global(&display_handle);
         let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
         let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
-        let virtual_keyboard_state =
+        let virtual_keyboard_global =
             crate::protocols::zwp_virtual_keyboard_v1::virtual_keyboard_global(&display_handle, &access);
 
         let mut seat_state = SeatState::new();
@@ -795,7 +795,7 @@ impl State {
             output_manager,
             text_input_state,
             input_method_state,
-            virtual_keyboard_state,
+            virtual_keyboard_global,
             security_context_state,
             keyboard,
             pointer,
