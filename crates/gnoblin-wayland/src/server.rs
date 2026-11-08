@@ -486,6 +486,7 @@ impl Server {
                                 let _ = reply.send(state.layout_failure(workspace));
                             }
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
+                            Command::VisualBell(settings) => state.apply_visual_bell_settings(settings),
                             Command::VisualAccessibility(settings) => {
                                 state.apply_visual_accessibility_settings(*settings)
                             }
@@ -1038,6 +1039,12 @@ impl ControlHandle {
         self.control.push(Command::VisualAccessibility(Box::new(settings)));
     }
 
+    /// Replaces the visual bell from the next loop turn, as a committed document does. A
+    /// ring after this call flashes, or does not, by the new settings.
+    pub fn set_visual_bell(&self, settings: VisualBellSettings) {
+        self.control.push(Command::VisualBell(settings));
+    }
+
     /// The committed blur region a window's surface has, as the renderer's blur pass
     /// reads it.
     ///
@@ -1303,6 +1310,8 @@ enum Command {
     KeyboardSettings(Box<gnoblin_config::Keyboard>),
     /// The cursor theme, size and providers the configuration accepted, applied in place.
     CursorSettings(Box<CursorSettings>),
+    /// The visual bell the configuration accepted, replacing the one in force.
+    VisualBell(VisualBellSettings),
     /// The magnifier and colour filter the configuration accepted, replacing those in force.
     VisualAccessibility(Box<VisualAccessibilitySettings>),
     /// The switchable layouts the configuration accepted, applied in place.

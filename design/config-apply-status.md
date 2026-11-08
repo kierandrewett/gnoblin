@@ -19,13 +19,18 @@ There are two paths.
 
 The commit path applies these values live:
 
-| Section         | Key              | Live effect                                                                                                |
-| --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| `appearance`    | `reduced_motion` | Animations turn off or on in the compositor loop.                                                          |
-| `appearance`    | `color_scheme`   | Portal dialog scheme (`portal.configure`).                                                                 |
-| `monitors`      | `global_scale`   | Outputs still at the identity scale are set to it (`apply_global_scale`).                                  |
-| `window_rules`  | all              | Rules replaced (`control.set_window_rules`). A rule the session cannot carry out refuses the whole commit. |
-| settings object | all              | Published to subscribers (`store.publish_settings`).                                                       |
+| Section         | Key                                                              | Live effect                                                                                                |
+| --------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `appearance`    | `reduced_motion`                                                 | Animations turn off or on in the compositor loop.                                                          |
+| `appearance`    | `color_scheme`                                                   | Portal dialog scheme (`portal.configure`).                                                                 |
+| `monitors`      | `global_scale`                                                   | Outputs still at the identity scale are set to it (`apply_global_scale`).                                  |
+| `input`         | `keyboard` (`repeat`, `delay`, `repeat-interval`, `xkb-options`) | Repeat info is changed and the keymap rebuilt (`apply_keyboard_settings`).                                 |
+| `input-sources` | all                                                              | Switchable layouts replaced, active keymap rebuilt (`apply_input_sources`).                                |
+| `cursor`        | all                                                              | Theme, size and providers re-derived and applied (`apply_cursor_settings`).                                |
+| `accessibility` | visual keys                                                      | Magnifier and colour filter re-derived and applied.                                                        |
+| `compositor`    | `visual-bell`, `visual-bell-type`                                | Re-derived and applied to the next ring (`set_visual_bell`).                                               |
+| `window_rules`  | all                                                              | Rules replaced (`control.set_window_rules`). A rule the session cannot carry out refuses the whole commit. |
+| settings object | all                                                              | Published to subscribers (`store.publish_settings`).                                                       |
 
 Every other section is read only at start.
 
@@ -37,12 +42,12 @@ starts. A commit does not change it.
 | Section                       | Read at            | Applies on commit | Notes                                                                                                                                                                   |
 | ----------------------------- | ------------------ | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `layouts`                     | start              | no                | `configure_layouts_from_environment` in `main.rs`.                                                                                                                      |
-| `cursor`                      | start              | no                | `theme`, `size`, and `providers` are fixed for the process.                                                                                                             |
-| `bell`                        | start              | no                | `visual_bell` settings are copied into the Wayland server config once.                                                                                                  |
-| `accessibility`               | start              | no                | Read by `configure_accessibility_from_environment`.                                                                                                                     |
+| `cursor`                      | start, then commit | yes               | See above.                                                                                                                                                              |
+| `bell`                        | start, then commit | yes               | `visual-bell` and `visual-bell-type` in the `compositor` section. See above.                                                                                            |
+| `accessibility`               | start, then commit | yes               | Visual keys are applied on commit. See above.                                                                                                                           |
 | `window_management`           | start              | no                | Only `window_rules` is live, and it is handled separately above.                                                                                                        |
-| `input` (keyboard, xkb)       | start              | no                | Copied into `config.wayland.keyboard` by `session_tables`.                                                                                                              |
-| `input_sources`               | start              | no                | Copied into `config.wayland.input_sources` by `session_tables`.                                                                                                         |
+| `input` (keyboard, xkb)       | start, then commit | yes               | See above.                                                                                                                                                              |
+| `input_sources`               | start, then commit | yes               | See above.                                                                                                                                                              |
 | `monitors` (`global_scale`)   | start, then commit | yes               | See above.                                                                                                                                                              |
 | `monitors` (`privacy_screen`) | start              | no                | Parsed into `MonitorSettings`, but nothing in the session reads it. See the gap below.                                                                                  |
 | `xwayland`                    | start              | no                |                                                                                                                                                                         |
@@ -57,13 +62,12 @@ starts. A commit does not change it.
   `gnoblin-wayland`, `gnoblin-backend*`, or `gnoblin-compositor` reads it, so a
   document that sets it changes nothing, at start or on commit. Either wire it to
   the backend or remove the key from the schema. Not fixed in this change.
-- **Startup-only sections are silent.** A user who edits `cursor`, `bell`, or
-  `input` and commits sees the commit accepted, and nothing changes. The docs for
-  each section must say so. See the "When a change applies" sections.
+- **Startup-only sections are silent.** A user who edits `xwayland`, `renderer`,
+  `layouts`, `extensions`, or `window_management` (other than rules) and commits
+  sees the commit accepted, and nothing changes until the next start. Each such
+  section's docs must say "restart to apply".
 
 ## Next
 
-Each startup-only section needs a live path or an honest "restart to apply" in its
-docs. The order follows user impact: input layout and repeat, then the cursor,
-the accessibility visual state, and the bell. Each takes a failing test first on an
-empty last-good document.
+Any section still marked "start" needs either a live path with a failing test
+first on an empty last-good document, or an honest "restart to apply" in its docs.

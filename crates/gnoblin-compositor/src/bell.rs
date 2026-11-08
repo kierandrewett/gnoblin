@@ -45,7 +45,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 }
 
 /// The visual bell settings of an accepted `compositor` section.
-fn visual_bell_settings(section: &gnoblin_config::Compositor) -> VisualBellSettings {
+pub(crate) fn visual_bell_settings(section: &gnoblin_config::Compositor) -> VisualBellSettings {
     let defaults = VisualBellSettings::default();
     VisualBellSettings {
         enabled: section.visual_bell.unwrap_or(defaults.enabled),

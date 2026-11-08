@@ -2427,6 +2427,12 @@ impl State {
         self.damage_outputs();
     }
 
+    /// Replaces the visual bell. The next rung bell flashes by these settings, so no
+    /// restart is needed.
+    pub(crate) fn apply_visual_bell_settings(&mut self, settings: crate::server::VisualBellSettings) {
+        self.visual_bell = settings;
+    }
+
     /// Queues the modal events an input edge becomes while a modal is set. Returns
     /// `false` for an edge that is not a modal event, which then routes as usual.
     fn route_to_modal(&mut self, event: &InputEvent) -> bool {

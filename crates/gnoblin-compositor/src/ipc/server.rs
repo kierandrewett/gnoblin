@@ -1221,6 +1221,11 @@ impl Dispatcher {
                 let accessibility = config.accessibility.unwrap_or_default();
                 self.control
                     .set_visual_accessibility(crate::accessibility::visual_accessibility_settings(&accessibility));
+                // The visual bell is re-derived the same way, so removing the `compositor` section
+                // turns the flash off on this commit.
+                self.control.set_visual_bell(crate::bell::visual_bell_settings(
+                    &config.compositor.unwrap_or_default(),
+                ));
             }
             Err(reason) => {
                 log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")

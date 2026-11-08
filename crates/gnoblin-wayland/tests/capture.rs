@@ -48,6 +48,7 @@ use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::system_bell::v1::client::xdg_system_bell_v1;
 use wayland_protocols_wlr::screencopy::v1::client::{zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1};
 
 #[path = "owned/master.rs"]
@@ -1643,6 +1644,16 @@ const CYAN: u32 = 0xFF00_FFFF;
 
 /// Screencopies the output until the pixel inside the window reads `expected`, or fails.
 fn screencopy_window_pixel_until(capture: &mut Client, geometry: gnoblin_types::Rect, expected: u32) -> u32 {
+    screencopy_window_pixel_where(capture, geometry, |pixel| pixel == expected)
+}
+
+/// Screencopies the output until `done` accepts the pixel inside the window, or times out, and
+/// returns the pixel read last.
+fn screencopy_window_pixel_where(
+    capture: &mut Client,
+    geometry: gnoblin_types::Rect,
+    done: impl Fn(u32) -> bool,
+) -> u32 {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         let frame = capture.screencopy(0);
@@ -1655,7 +1666,7 @@ fn screencopy_window_pixel_until(capture: &mut Client, geometry: gnoblin_types::
             "the screencopy frame ready",
         );
         let pixel = shm.pixel(geometry.x as u32 + 5, geometry.y as u32 + 5);
-        if pixel == expected || Instant::now() >= deadline {
+        if done(pixel) || Instant::now() >= deadline {
             return pixel;
         }
         thread::sleep(Duration::from_millis(10));
@@ -1674,6 +1685,57 @@ fn with_no_accessibility_section_the_window_pixels_are_not_filtered() {
         let pixel = screencopy_window_pixel_until(&mut capture, geometry, RED);
         assert_eq!(pixel, RED, "an empty last-good leaves the window's colours alone");
     });
+}
+
+#[test]
+fn a_committed_visual_bell_flashes_the_next_ring_without_a_restart() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Red", "Red", 200, 150, RED);
+        let geometry = session.only_window();
+        let bell: xdg_system_bell_v1::XdgSystemBellV1 = app
+            .globals
+            .bind(&app.qh, 1..=1, ())
+            .expect("the session advertises xdg_system_bell_v1");
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        let before = screencopy_window_pixel_until(&mut capture, geometry, RED);
+        assert_eq!(before, RED, "the window starts unflashed");
+
+        // No visual bell is configured: a ring is counted and draws nothing.
+        bell.ring(None);
+        app.roundtrip();
+        session.wait_for(|snapshot| snapshot.bells() == 1);
+        let unflashed = screencopy_window_pixel_until(&mut capture, geometry, RED);
+        assert_eq!(unflashed, RED, "with no visual bell configured, a ring flashes nothing");
+
+        // The document now asks for a fullscreen flash; the next ring flashes without a restart.
+        session.control.set_visual_bell(gnoblin_wayland::VisualBellSettings {
+            enabled: true,
+            scope: gnoblin_wayland::VisualBellScope::Fullscreen,
+        });
+        bell.ring(None);
+        app.roundtrip();
+        session.wait_for(|snapshot| snapshot.bells() == 2);
+        let flashed = screencopy_window_pixel_where(&mut capture, geometry, |pixel| pixel != RED);
+        assert_ne!(
+            flashed, RED,
+            "the committed visual bell flashes the screen on the next ring"
+        );
+    });
+}
+
+impl Dispatch<xdg_system_bell_v1::XdgSystemBellV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &xdg_system_bell_v1::XdgSystemBellV1,
+        _: xdg_system_bell_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 #[test]
