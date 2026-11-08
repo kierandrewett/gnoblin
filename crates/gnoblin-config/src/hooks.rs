@@ -126,8 +126,6 @@ pub(crate) fn window_management(
 const REFUSED_RULE_KEYS: &[(&str, &str)] = &[
     ("blur", "effects need the blur pass (render)"),
     ("blur-ignore-shadows", "blur needs the blur pass (render)"),
-    ("opacity", "opacity needs the alpha pass (render)"),
-    ("corners", "corners need the rounded-corner pass (render)"),
     ("shader", "shaders need the WASM host"),
     ("shader-uniforms", "shader uniforms need the WASM host"),
     ("animation", "animations need the animation system"),

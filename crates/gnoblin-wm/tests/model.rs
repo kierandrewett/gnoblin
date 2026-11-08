@@ -116,6 +116,8 @@ fn rules(rng: &mut Rng) -> Vec<Rule> {
                 workspace: Some(selector),
                 maximise,
                 secure: None,
+                opacity: None,
+                corner_radius: None,
             },
         },
         Rule {

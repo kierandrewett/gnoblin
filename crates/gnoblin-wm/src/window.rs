@@ -60,7 +60,7 @@ pub struct WindowState {
 /// The fields are readable from outside the crate but the window manager owns them:
 /// readers get a shared reference and can never mutate a window behind the state
 /// machine's back.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Window {
     /// The caller's identity for this window.
     pub id: WindowId,
@@ -103,6 +103,9 @@ pub struct Window {
     /// The protocol the window arrived on. Window rules that select by client type read
     /// it, and it is fixed for the window's life.
     pub protocol: WindowProtocol,
+    /// The opacity and corner radius the matching window rules give the window. Derived
+    /// from the rules, never set directly; the default is an opaque square window.
+    pub appearance: WindowAppearance,
 }
 
 impl Window {
@@ -114,6 +117,24 @@ impl Window {
     #[must_use]
     pub fn is_visible(&self, active_workspace: Option<WorkspaceId>) -> bool {
         !self.state.minimised && self.output.is_some() && Some(self.workspace) == active_workspace
+    }
+}
+
+/// How a window is drawn beyond its geometry: its opacity and the radius of its corners.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct WindowAppearance {
+    /// Opacity from 0 (invisible) to 1 (opaque).
+    pub opacity: f32,
+    /// Corner radius in logical pixels; 0 draws square corners.
+    pub corner_radius: f32,
+}
+
+impl Default for WindowAppearance {
+    fn default() -> Self {
+        Self {
+            opacity: 1.0,
+            corner_radius: 0.0,
+        }
     }
 }
 
@@ -137,6 +158,7 @@ mod tests {
             applied_rules: 0,
             matched_rules: Vec::new(),
             protocol: WindowProtocol::Wayland,
+            appearance: WindowAppearance::default(),
         }
     }
 

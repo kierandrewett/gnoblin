@@ -80,7 +80,7 @@ use crate::rules::{Facts, Rule, RuleOutcome, matching, outcome_of, validate_list
 use crate::snapping::SnapZone;
 use crate::stack::{ClaimOrigin, Stack, StackItem, StackLayer};
 use crate::tiled::{TiledEdges, tiled_edges};
-use crate::window::{Window, WindowKind, WindowState};
+use crate::window::{Window, WindowAppearance, WindowKind, WindowState};
 use crate::workspace::Workspaces;
 
 /// Size used for a window that asks for none.
@@ -383,6 +383,7 @@ impl Wm {
         let mut effects = self.dispatch(event);
         self.sync_layer_visibility();
         effects.extend(self.sync_secure());
+        effects.extend(self.sync_appearance());
         effects
     }
 
@@ -700,6 +701,47 @@ impl Wm {
                     secure: after,
                 });
             }
+        }
+        effects
+    }
+
+    /// Derives every window's appearance from the rules that match it right now.
+    ///
+    /// Appearance is recomputed from scratch rather than merged like `apply_rules`, so
+    /// a window that stops matching a rule returns to the default. Only a change is
+    /// reported, which keeps the compositor from re-rendering an unchanged window.
+    fn sync_appearance(&mut self) -> Vec<Effect> {
+        let rules_use_appearance = self
+            .rules
+            .iter()
+            .any(|rule| rule.fields.opacity.is_some() || rule.fields.corner_radius.is_some());
+        let ids: Vec<WindowId> = self.windows.keys().copied().collect();
+        let mut effects = Vec::new();
+        for id in ids {
+            let Some(window) = self.windows.get(&id) else {
+                continue;
+            };
+            let desired = if rules_use_appearance {
+                let matched = matching(&self.rules, window, self.facts_for(window));
+                let outcome = outcome_of(&self.rules, &matched);
+                WindowAppearance {
+                    opacity: outcome.opacity.unwrap_or(1.0),
+                    corner_radius: outcome.corner_radius.unwrap_or(0.0),
+                }
+            } else {
+                WindowAppearance::default()
+            };
+            if desired == window.appearance {
+                continue;
+            }
+            if let Some(window) = self.windows.get_mut(&id) {
+                window.appearance = desired;
+            }
+            effects.push(Effect::Appearance {
+                window: id,
+                opacity: desired.opacity,
+                corner_radius: desired.corner_radius,
+            });
         }
         effects
     }
@@ -1197,6 +1239,7 @@ impl Wm {
             applied_rules: 0,
             matched_rules: Vec::new(),
             protocol: spec.protocol,
+            appearance: WindowAppearance::default(),
         };
         let mut effects = Vec::new();
         if !window.kind.is_transient() {

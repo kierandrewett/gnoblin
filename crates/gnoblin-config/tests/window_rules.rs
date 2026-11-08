@@ -8,7 +8,7 @@ mod support;
 
 use gnoblin_config::{Config, Fault, Value, WindowRuleType};
 
-use support::{flag, int, list, table, text};
+use support::{flag, int, list, number, table, text};
 
 fn problems(document: Value) -> Vec<(String, Fault)> {
     let report = Config::from_value(document).expect_err("the document must be refused");
@@ -84,7 +84,7 @@ fn an_empty_rule_selects_every_window() {
 
 #[test]
 fn a_field_that_is_not_built_yet_is_refused_by_name() {
-    for key in ["opacity", "corners", "shader", "shader-uniforms", "animation", "frame"] {
+    for key in ["shader", "shader-uniforms", "animation", "frame"] {
         let problems = problems(document(vec![table([(key, flag(true))])]));
         assert!(
             problems
@@ -93,6 +93,43 @@ fn a_field_that_is_not_built_yet_is_refused_by_name() {
             "{key} must be refused by name: {problems:?}"
         );
     }
+}
+
+#[test]
+fn a_rule_sets_opacity_and_corner_radius() {
+    let config = Config::from_value(document(vec![table([
+        ("match", table([("app-id", text("^foot$"))])),
+        ("opacity", number(0.8)),
+        ("corners", table([("radius", number(12.0))])),
+    ])]))
+    .expect("an opacity and a corner radius validate");
+    let rule = &config.window_rules[0];
+    assert_eq!(rule.opacity, Some(0.8));
+    assert_eq!(rule.corners.as_ref().and_then(|corners| corners.radius), Some(12.0));
+}
+
+#[test]
+fn an_opacity_outside_zero_to_one_is_refused_at_its_key() {
+    for value in [-0.1, 1.5] {
+        let problems = problems(document(vec![table([("opacity", number(value))])]));
+        assert!(
+            problems
+                .iter()
+                .any(|(path, fault)| path.ends_with("opacity") && matches!(fault, Fault::UnsupportedValue { .. })),
+            "opacity {value} is refused: {problems:?}"
+        );
+    }
+}
+
+#[test]
+fn a_corner_radius_below_zero_is_refused_at_its_key() {
+    let problems = problems(document(vec![table([("corners", table([("radius", number(-1.0))]))])]));
+    assert!(
+        problems
+            .iter()
+            .any(|(path, fault)| path.ends_with("radius") && matches!(fault, Fault::UnsupportedValue { .. })),
+        "a negative corner radius is refused: {problems:?}"
+    );
 }
 
 #[test]

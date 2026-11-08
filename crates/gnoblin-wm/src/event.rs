@@ -89,7 +89,7 @@ impl WindowSpec {
 }
 
 /// An event the caller feeds to [`crate::Wm::apply`].
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Event {
     /// An output connected with the given monitor rectangle.
     OutputConnected { output: OutputId, rect: Rect },

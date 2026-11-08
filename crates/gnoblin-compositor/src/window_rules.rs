@@ -54,6 +54,12 @@ fn convert_rule(index: usize, rule: &WindowRule) -> Result<Rule, String> {
             workspace,
             maximise: rule.maximise,
             secure: rule.secure,
+            opacity: rule.opacity.map(|opacity| opacity as f32),
+            corner_radius: rule
+                .corners
+                .as_ref()
+                .and_then(|corners| corners.radius)
+                .map(|radius| radius as f32),
         },
     })
 }
@@ -138,6 +144,8 @@ mod tests {
             workspace: None,
             maximise: Some(true),
             secure: None,
+            opacity: None,
+            corners: None,
         }
     }
 
@@ -154,6 +162,16 @@ mod tests {
         assert_eq!(rules[0].matcher.client_type, Some(WindowProtocol::X11));
         assert_eq!(rules[0].fields.workspace, Some(WorkspaceSelector::Number(2)));
         assert_eq!(rules[0].fields.maximise, Some(true));
+    }
+
+    #[test]
+    fn an_opacity_and_radius_carry_into_the_rule() {
+        let mut rule = rule_for("^firefox$");
+        rule.opacity = Some(0.5);
+        rule.corners = Some(gnoblin_config::RuleCorners { radius: Some(8.0) });
+        let rules = convert(&[rule]).expect("the rule converts");
+        assert_eq!(rules[0].fields.opacity, Some(0.5));
+        assert_eq!(rules[0].fields.corner_radius, Some(8.0));
     }
 
     #[test]

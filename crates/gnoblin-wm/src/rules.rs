@@ -153,7 +153,7 @@ pub enum WorkspaceSelector {
 
 /// The state a matching rule sets on the window. Each field that is `None` leaves the
 /// window's state alone.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct RuleFields {
     /// Moves the window to this workspace when it is first managed.
     pub workspace: Option<WorkspaceSelector>,
@@ -162,10 +162,16 @@ pub struct RuleFields {
     /// Marks the window's surface secure (`true`) or not (`false`) while the rule matches.
     /// Secure content is masked in every capture.
     pub secure: Option<bool>,
+    /// Sets the window's opacity while the rule matches: 0 is invisible, 1 is opaque.
+    /// Refused outside 0 to 1 by [`validate_list`].
+    pub opacity: Option<f32>,
+    /// Rounds the window's corners to this radius in logical pixels while the rule
+    /// matches. Refused unless finite and at least 0 by [`validate_list`].
+    pub corner_radius: Option<f32>,
 }
 
 /// One rule: the conditions that select a window and the state it is given.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct Rule {
     /// The conditions the rule requires.
     pub matcher: Match,
@@ -177,7 +183,7 @@ pub struct Rule {
 ///
 /// Later rules override earlier ones field by field, so each field holds the value of
 /// the last matching rule that set it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct RuleOutcome {
     /// How many rules matched, whether or not their fields can be carried out.
     pub matched: usize,
@@ -187,6 +193,10 @@ pub struct RuleOutcome {
     pub maximise: Option<bool>,
     /// The winning secure state. `None` when no matching rule sets it, which means not secure.
     pub secure: Option<bool>,
+    /// The winning opacity. `None` when no matching rule sets it, which means opaque.
+    pub opacity: Option<f32>,
+    /// The winning corner radius. `None` when no matching rule sets it, which means square.
+    pub corner_radius: Option<f32>,
 }
 
 /// The indices, in list order, of every rule that matches one window.
@@ -217,6 +227,12 @@ pub fn outcome_of(rules: &[Rule], indices: &[usize]) -> RuleOutcome {
         }
         if let Some(secure) = rule.fields.secure {
             outcome.secure = Some(secure);
+        }
+        if let Some(opacity) = rule.fields.opacity {
+            outcome.opacity = Some(opacity);
+        }
+        if let Some(radius) = rule.fields.corner_radius {
+            outcome.corner_radius = Some(radius);
         }
     }
     outcome
@@ -289,6 +305,28 @@ pub fn validate_list(rules: &[Rule]) -> Result<(), RuleError> {
                 reason: "must be at least 1, because workspaces are numbered from 1",
             });
         }
+        if entry
+            .fields
+            .opacity
+            .is_some_and(|opacity| !(0.0..=1.0).contains(&opacity))
+        {
+            return Err(RuleError::InvalidField {
+                rule,
+                field: "fields.opacity",
+                reason: "must be a number from 0 to 1",
+            });
+        }
+        if entry
+            .fields
+            .corner_radius
+            .is_some_and(|radius| !(radius.is_finite() && radius >= 0.0))
+        {
+            return Err(RuleError::InvalidField {
+                rule,
+                field: "fields.corner_radius",
+                reason: "must be a finite number of 0 or more",
+            });
+        }
     }
     Ok(())
 }
@@ -315,6 +353,7 @@ mod tests {
             applied_rules: 0,
             matched_rules: Vec::new(),
             protocol: WindowProtocol::Wayland,
+            appearance: crate::window::WindowAppearance::default(),
         }
     }
 
@@ -491,6 +530,8 @@ mod tests {
                     workspace: Some(WorkspaceSelector::Number(1)),
                     maximise: Some(true),
                     secure: None,
+                    opacity: None,
+                    corner_radius: None,
                 },
             ),
             rule(
@@ -502,6 +543,8 @@ mod tests {
                     workspace: Some(WorkspaceSelector::Number(3)),
                     maximise: None,
                     secure: None,
+                    opacity: None,
+                    corner_radius: None,
                 },
             ),
             rule(
@@ -510,6 +553,8 @@ mod tests {
                     workspace: Some(WorkspaceSelector::Number(2)),
                     maximise: Some(false),
                     secure: None,
+                    opacity: None,
+                    corner_radius: None,
                 },
             ),
         ];
@@ -575,6 +620,8 @@ mod tests {
                     workspace: Some(WorkspaceSelector::Number(0)),
                     maximise: None,
                     secure: None,
+                    opacity: None,
+                    corner_radius: None,
                 },
             ),
         ];

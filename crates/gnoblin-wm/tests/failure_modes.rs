@@ -293,6 +293,8 @@ fn rules_do_not_reapply_while_the_same_rules_match() {
                 workspace: Some(WorkspaceSelector::Id(WorkspaceId::new(2))),
                 maximise: Some(true),
                 secure: None,
+                opacity: None,
+                corner_radius: None,
             },
         )],
     );
@@ -1297,6 +1299,93 @@ fn a_non_matching_window_is_not_secure() {
         "an unmatched window raises no secure change"
     );
     assert_eq!(secure_of(&wm, 1), Some(false));
+    check(&wm);
+}
+
+// Opacity outside 0 to 1 is refused by name, and the rules already in force stay.
+#[test]
+fn an_out_of_range_opacity_is_refused_and_the_old_rules_stay() {
+    let mut wm = default_wm();
+    rules(&mut wm, vec![secret_rule()]);
+    let effects = wm.apply(Event::RulesChanged {
+        rules: vec![rule(
+            app("org.faded.App"),
+            RuleFields {
+                opacity: Some(1.5),
+                ..RuleFields::default()
+            },
+        )],
+    });
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            Effect::Rejected {
+                reason: Rejection::Rules(RuleError::InvalidField {
+                    field: "fields.opacity",
+                    ..
+                }),
+            }
+        )),
+        "an opacity of 1.5 is refused and names the field: {effects:?}"
+    );
+    check(&wm);
+}
+
+// A negative corner radius is refused by name, and never reaches the scene.
+#[test]
+fn a_negative_corner_radius_is_refused() {
+    let mut wm = default_wm();
+    let effects = wm.apply(Event::RulesChanged {
+        rules: vec![rule(
+            app("org.round.App"),
+            RuleFields {
+                corner_radius: Some(-4.0),
+                ..RuleFields::default()
+            },
+        )],
+    });
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            Effect::Rejected {
+                reason: Rejection::Rules(RuleError::InvalidField {
+                    field: "fields.corner_radius",
+                    ..
+                }),
+            }
+        )),
+        "a negative radius is refused and names the field: {effects:?}"
+    );
+    check(&wm);
+}
+
+// A window matching an appearance rule gets its opacity and radius, and the change is
+// announced once so the scene can apply it.
+#[test]
+fn a_matching_appearance_rule_announces_opacity_and_radius() {
+    let mut wm = default_wm();
+    rules(
+        &mut wm,
+        vec![rule(
+            app("org.faded.App"),
+            RuleFields {
+                opacity: Some(0.5),
+                corner_radius: Some(12.0),
+                ..RuleFields::default()
+            },
+        )],
+    );
+    let effects = wm.apply(Event::WindowOpened(
+        WindowSpec::normal(window(1), "org.faded.App").with_requested(Rect::new(0, 0, 600, 400)),
+    ));
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            Effect::Appearance { window: id, opacity, corner_radius }
+                if *id == window(1) && *opacity == 0.5 && *corner_radius == 12.0
+        )),
+        "the matched window gets opacity 0.5 and radius 12: {effects:?}"
+    );
     check(&wm);
 }
 

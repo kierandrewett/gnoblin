@@ -1613,6 +1613,19 @@ doc = "The protocol the client speaks. X11 means an Xwayland client."
 since = "0.2.0"
 
 [[record]]
+name = "RuleCorners"
+doc = "The corner options a window rule sets."
+
+[[record.field]]
+key = "radius"
+kind = "float"
+min = 0.0
+max = 1.7976931348623157e308
+accepted = "a number of 0 or more"
+doc = "The corner radius in logical pixels. 0 leaves the corners square."
+since = "0.2.0"
+
+[[record]]
 name = "RuleWorkspace"
 doc = "The workspace a window rule places a window on. Give exactly one of id or number."
 
@@ -1666,6 +1679,23 @@ key = "secure"
 kind = "bool"
 accepted = "a boolean"
 doc = "Whether a matching window's surface is secure: masked in every capture while the rule matches. Default false."
+since = "0.2.0"
+
+[[record.field]]
+key = "opacity"
+kind = "float"
+min = 0.0
+max = 1.0
+accepted = "a number from 0 to 1"
+doc = "The window's opacity while the rule matches: 0 is invisible, 1 is opaque. Default 1."
+since = "0.2.0"
+
+[[record.field]]
+key = "corners"
+kind = "record"
+record = "RuleCorners"
+accepted = "a table with a radius"
+doc = "Corner options for a matching window. radius is the only corner option built so far."
 since = "0.2.0"
 
 # --- Sections ---------------------------------------------------------------

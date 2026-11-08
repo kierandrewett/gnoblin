@@ -63,6 +63,16 @@ pub enum Effect {
         /// Whether its surface is secure now.
         secure: bool,
     },
+    /// A window's opacity or corner radius changed because a rule that matched it
+    /// changed. The compositor blends and rounds the window's surface with these values.
+    Appearance {
+        /// The window whose appearance changed.
+        window: WindowId,
+        /// Opacity from 0 (invisible) to 1 (opaque).
+        opacity: f32,
+        /// Corner radius in logical pixels; 0 draws square corners.
+        corner_radius: f32,
+    },
     /// The stacking order changed. The list is topmost first and holds every
     /// managed window exactly once.
     Stack {

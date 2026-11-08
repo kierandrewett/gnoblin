@@ -161,6 +161,9 @@ struct WindowNode {
     /// The client's `wp_alpha_modifier_v1` factor for its surface, one when it set none.
     /// It multiplies the window's group opacity when the window is drawn.
     surface_alpha: f32,
+    /// The opacity a matched window rule sets, one when none does. It multiplies the group
+    /// opacity beside the placement opacity, which the layout rewrites on every placement.
+    rule_opacity: f32,
     /// Its effect chain, kept for the same reason and pushed to the node.
     effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
@@ -339,6 +342,7 @@ impl Composer {
                 secure: false,
                 content: None,
                 surface_alpha: 1.0,
+                rule_opacity: 1.0,
                 buffer: None,
                 closing: None,
                 slide: 0.0,
@@ -710,6 +714,27 @@ impl Composer {
         self.sync(window, true);
     }
 
+    /// Sets a window's opacity from a matched window rule. It multiplies into the group
+    /// opacity beside the placement opacity and the client's surface factor.
+    ///
+    /// Placement writes `transform.opacity` on every layout, so a rule keeps its own factor:
+    /// writing the rule's value there would be overwritten by the next placement.
+    pub fn set_window_rule_opacity(&mut self, window: WindowId, opacity: f32) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let opacity = if opacity.is_finite() {
+            opacity.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        if entry.rule_opacity == opacity {
+            return;
+        }
+        entry.rule_opacity = opacity;
+        self.sync(window, true);
+    }
+
     /// Sets a window's multiplicative tint.
     pub fn set_window_tint(&mut self, window: WindowId, tint: Color) {
         let Some(entry) = self.windows.get_mut(&window) else {
@@ -1075,7 +1100,7 @@ impl Composer {
                 src: content.src,
                 dst,
                 transform: content.transform,
-                opacity: pose.transform.opacity * entry.surface_alpha,
+                opacity: pose.transform.opacity * entry.surface_alpha * entry.rule_opacity,
                 tint: pose.transform.tint,
                 corner_radius: pose.transform.corner_radius,
                 effects: entry.effects.clone(),

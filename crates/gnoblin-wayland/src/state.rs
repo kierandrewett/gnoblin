@@ -1358,6 +1358,14 @@ impl State {
                 Effect::SecureChanged { window, secure } => {
                     self.composer.set_window_secure(window, secure);
                 }
+                Effect::Appearance {
+                    window,
+                    opacity,
+                    corner_radius,
+                } => {
+                    self.composer.set_window_rule_opacity(window, opacity);
+                    self.composer.set_window_corner_radius(window, corner_radius);
+                }
                 Effect::Stack { order } => {
                     // The policy states the order topmost first; the scene keeps its
                     // paint order bottom first.
