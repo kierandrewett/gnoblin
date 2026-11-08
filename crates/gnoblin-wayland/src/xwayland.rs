@@ -418,12 +418,15 @@ impl State {
         if let (Some(window), Some(surface)) = (outcome.window, surface) {
             running.surfaces.insert(window, surface.clone());
             if !self.windows.contains_key(&window) {
-                let geometry = self.wm.window(window).map(|managed| managed.geometry);
+                // A deferred open has no geometry yet; the window is placed when the policy
+                // answers, as for a Wayland toplevel.
+                let geometry = self
+                    .wm
+                    .window(window)
+                    .map_or(gnoblin_types::Rect::EMPTY, |managed| managed.geometry);
                 self.windows
                     .insert(window, crate::state::WindowEntry::x11(surface.clone()));
-                if let Some(geometry) = geometry {
-                    self.composer.insert_window(window, geometry);
-                }
+                self.composer.insert_window(window, geometry);
             }
         }
         self.apply(outcome.effects);

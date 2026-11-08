@@ -36,13 +36,19 @@ use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
-use gnoblin_types::{OutputId, Rect, WindowId};
-use gnoblin_wayland::{Config, ControlHandle, FrameStats, LoopError, ObservedWindow, Server, SessionSnapshot};
+use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
+use gnoblin_wayland::{
+    Config, ControlHandle, FrameStats, LayoutControl, LoopError, ObservedWindow, Server, SessionSnapshot,
+};
+use gnoblin_wm::layout::{
+    Camera, Generation, Handled, Job, LayoutEffect, LayoutEngine, LayoutFailure, LayoutOutcome, Reply, Ticket,
+};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
@@ -146,8 +152,18 @@ struct Session {
 }
 
 impl Session {
-    /// Creates a session on a socket of its own.
+    /// Creates a session with motion off. Pixel tests read what a window looks like once it
+    /// has landed, not how it gets there; the loop's motion runs on real elapsed time, so
+    /// without this a window that maps would still be fading in when the probe reads it.
     fn start(backend: Headless) -> Self {
+        let session = Self::start_live(backend);
+        session.handle.control.set_reduced_motion(true);
+        session
+    }
+
+    /// Creates a session whose motion runs on real elapsed time, so a window whose content
+    /// arrives fades in over the open duration as it does on screen.
+    fn start_live(backend: Headless) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
@@ -161,11 +177,6 @@ impl Session {
             observation: server.observation(),
             frames: server.frames(),
         };
-        // Pixel tests read what a window looks like once it has landed, not how it gets
-        // there. The loop's motion runs on real elapsed time, so without this a window that
-        // maps would still be fading in when the probe reads it. Motion has its own tests in
-        // the renderer.
-        handle.control.set_reduced_motion(true);
         Self {
             directory,
             server,
@@ -379,6 +390,132 @@ fn wait_for_rect(session: &Handle, title: &str, rect: Rect) -> ObservedWindow {
     let observation =
         session.wait_for(|observation| observation.titled(title).is_some_and(|window| window.geometry == rect));
     observation.titled(title).expect("the window").clone()
+}
+
+/// Floats every window, as the production floating layout does: a window keeps its own
+/// geometry and the layout places nothing. The tiling fixtures place every window, so
+/// without this a window the layout floats is never reached.
+struct FloatingLayouts;
+
+impl LayoutControl for FloatingLayouts {
+    fn engine(&self, _workspace: WorkspaceId, _output: Option<&str>) -> Box<dyn LayoutEngine> {
+        Box::new(FloatingEngine { ready: None })
+    }
+
+    fn set_workspace(&self, _workspace: WorkspaceId, _selector: &gnoblin_config::LayoutSelector) -> Result<(), String> {
+        Err("the floating test layout takes no runtime choice".to_owned())
+    }
+
+    fn set_output(&self, _output: &str, _selector: &gnoblin_config::LayoutSelector) -> Result<(), String> {
+        Err("the floating test layout takes no runtime choice".to_owned())
+    }
+
+    fn layout_name(&self, _workspace: WorkspaceId, _output: Option<&str>) -> String {
+        "floating".to_owned()
+    }
+
+    fn output_layout(&self, _output: &str) -> String {
+        "floating".to_owned()
+    }
+}
+
+/// The engine behind [`FloatingLayouts`]: every run is ready at once and floats each window.
+struct FloatingEngine {
+    ready: Option<(Generation, Result<Reply, LayoutFailure>)>,
+}
+
+impl LayoutEngine for FloatingEngine {
+    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
+        gnoblin_wm::layout::LayoutKind::Floating
+    }
+
+    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
+        gnoblin_wm::layout::LayoutExtent::Output
+    }
+
+    fn declares(&self, _command: &str) -> bool {
+        false
+    }
+
+    fn submit(&mut self, job: Job, generation: Generation) -> Ticket {
+        let reply = match job {
+            Job::Arrange(params) => Reply::Handled(Handled {
+                placements: Vec::new(),
+                camera: Camera::Orthographic,
+                effects: params
+                    .windows()
+                    .iter()
+                    .map(|window| LayoutEffect::Float { window: window.id })
+                    .collect(),
+            }),
+            Job::Request(_) | Job::Command(..) => Reply::Declined,
+        };
+        self.ready = Some((generation, Ok(reply)));
+        Ticket::new(generation)
+    }
+
+    fn collect(&mut self, generation: Generation, _deadline: Instant) -> LayoutOutcome {
+        match self.ready.take() {
+            Some((ready, result)) if ready == generation => LayoutOutcome::Ready { generation, result },
+            other => {
+                self.ready = other;
+                LayoutOutcome::Pending
+            }
+        }
+    }
+}
+
+/// A floating window must be drawn once its open fade finishes. Every other pixel test runs
+/// with motion off, so none of them reaches a window that opens on real time.
+#[test]
+fn a_floating_window_is_drawn_once_its_open_fade_finishes() {
+    for_each_renderer(|backend| {
+        let mut session = Session::start_live(backend);
+        session.server.install_layouts(Rc::new(FloatingLayouts));
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Floating");
+            let before = session.stats().frames;
+            client.attach_solid(&window, 100, 100, RED);
+
+            // The centre of the window reads red only once its fade has finished: while the
+            // fade runs, the centre is a blend with the background.
+            let deadline = Instant::now() + TIMEOUT;
+            loop {
+                let observation =
+                    session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+                let geometry = observation.only().expect("one window").geometry;
+                let inside = centre(Rect::new(
+                    geometry.x,
+                    geometry.y,
+                    geometry.width.min(100),
+                    geometry.height.min(100),
+                ));
+                if session.probe(inside.x, inside.y) == RED {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "the floating window never reached full opacity; last geometry {geometry:?}"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert!(
+                session.stats().frames > before,
+                "the window's content and its fade were drawn as frames"
+            );
+
+            // Once the fade has settled, nothing requests another frame.
+            thread::sleep(Duration::from_millis(200));
+            let settled = session.stats().frames;
+            thread::sleep(Duration::from_millis(400));
+            assert_eq!(
+                session.stats().frames,
+                settled,
+                "a settled floating window draws no further frames"
+            );
+        });
+    });
 }
 
 #[test]

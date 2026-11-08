@@ -1702,10 +1702,11 @@ impl State {
         // activation event is sent from `toplevel_committed` for that reason.
         let effects = self.wm.apply(Event::WindowOpened(WindowSpec::normal(window, "")));
         // The scene learns the window before the effects are applied, so the initial
-        // configure's geometry has a window to place.
-        if let Some(managed) = self.wm.window(window) {
-            self.composer.insert_window(window, managed.geometry);
-        }
+        // configure's geometry has a window to place. A window the policy has deferred (a
+        // layout run answers the open later) has no geometry yet; it is inserted at the
+        // empty rectangle and placed when the policy's first placement or configure arrives.
+        let geometry = self.wm.window(window).map_or(Rect::EMPTY, |managed| managed.geometry);
+        self.composer.insert_window(window, geometry);
         self.apply(effects);
         log::debug!(area = "window", %window, surface = ?wl_surface.id(), "opened");
         self.publish();
