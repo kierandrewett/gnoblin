@@ -50,7 +50,7 @@ starts. A commit does not change it.
 | `input_sources`               | start, then commit | yes               | See above.                                                                                                                                                              |
 | `monitors` (`global_scale`)   | start, then commit | yes               | See above.                                                                                                                                                              |
 | `monitors` (`privacy_screen`) | start              | no                | Parsed into `MonitorSettings`, but nothing in the session reads it. See the gap below.                                                                                  |
-| `xwayland`                    | start              | no                |                                                                                                                                                                         |
+| `xwayland`                    | start, then commit | yes               | Applied on each accepted commit: start, restart when no X11 client is connected, or stop. See xwayland.md.                                                              |
 | `renderer`                    | start              | no                |                                                                                                                                                                         |
 | `extensions`                  | start              | no                | A refused extension is logged and left out; the session starts without it.                                                                                              |
 | `keyring` and `prompts`       | services start     | no                | The services role reads the saved last-good file before the runtime commits anything. A commit reaches it only after a restart. See `docs/config/configure/keyring.md`. |
@@ -73,8 +73,8 @@ starts. A commit does not change it.
 - **Orientation lock reload is unverified.** `docs/config/configure/input.md`
   says a reload reapplies it. The commit path does not touch it.
 
-- **Startup-only sections are silent.** A user who edits `xwayland`, `renderer`,
-  `layouts`, `extensions`, or `window_management` (other than rules) and commits
+- **Startup-only sections are silent.** A user who edits `renderer`, `layouts`,
+  `extensions`, or `window_management` (other than rules) and commits
   sees the commit accepted, and nothing changes until the next start. Each such
   section's docs must say "restart to apply".
 

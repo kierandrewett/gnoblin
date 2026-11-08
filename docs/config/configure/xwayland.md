@@ -31,8 +31,15 @@ not remove those built-in rules. Grab rules only permit a grab when
 XTEST extension, which lets clients synthesize input events. Mutter ignores a
 request to disable an extension when Xwayland was built without that extension.
 
-Xwayland settings are read when the session starts. Restart the session after
-changing them.
+Each accepted commit applies this section. An enabled server starts after the
+commit that enables it. A changed setting restarts a running server only when no
+X11 client is connected. Otherwise the change is refused, the notice names the
+setting, and the server keeps its previous settings. Disabling X11 stops the
+server once its last client has gone.
+
+A child whose autostart entry the commit adds starts when that commit is
+accepted, which can be before the server is ready, so it gets no `DISPLAY`. An
+entry added by a later commit, after the server is ready, gets `DISPLAY`.
 
 Gnoblin exposes the effective scale to X11 clients through XSettings and the
 `Xft.dpi` resource. If another XSettings manager already owns the XWayland

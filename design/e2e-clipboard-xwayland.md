@@ -116,6 +116,11 @@ Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
   is dropped without an error the user sees (`[INFERENCE]`: I did not trace every
   caller). A fix is to report the refusal back to the runtime when the first boot
   has no store, or to re-check Xwayland settings after the first commit.
+- Status: the server now starts after the first commit that enables it
+  (`ecc7d6e8e`). The empty-store boot still logs the refusal above before any
+  commit, although no config has asked for X11 yet; that line is misleading.
+  Fresh-store probe on Agent37: Xwayland ready at display 0 after commit 1, and
+  a raw X11 setup request to `:0` was accepted.
 
 ### F3: the stored document
 
@@ -124,6 +129,18 @@ Xwayland starts on the kept store: `E-F-final-xwayland-start.txt` shows
   The visible setting is stored, so the store is not empty.
 - Not run: an init file that sets nothing. The earlier `{"document":{}}` report
   is therefore not reproduced here.
+
+### F4: children started before the server is ready have no DISPLAY
+
+- The guardian publishes `DISPLAY` only after the server reports ready
+  (`522b40f5a`). A child started after that gets it: a child added by the second
+  commit got `DISPLAY=:0` in the fresh-store probe on Agent37.
+- An autostart entry added by the commit that enables X11 starts at accept time,
+  before ready, and gets no `DISPLAY`. `docs/config/configure/xwayland.md` says so.
+  Not fixed: making that entry wait for ready is a separate change.
+- Not checked: `gnoblin.process` children (`crates/gnoblin-lua/src/process.rs:480`)
+  get only their spec environment on top of the runtime's own, so they may lack
+  `DISPLAY`.
 
 ## Not run
 

@@ -87,9 +87,10 @@ and validate its type and accepted values in Gnoblin. At startup and reload,
 Mutter's central preference adapter maps the Lua snapshot into its existing
 in-memory preference slots and queues their normal change notifications. The
 Xwayland adapter covers grabs, grab access rules, disabled extensions,
-byte-swapped clients, and scaling; settings that affect Xwayland startup take
-effect on the next Xwayland start. In a Gnoblin session, Mutter ignores the
-matching GSettings change so the desktop value cannot override Lua policy.
+byte-swapped clients, and scaling. Its settings apply on the commit that changes
+them. A restart waits until no X11 client is connected. In a Gnoblin session,
+Mutter ignores the matching GSettings change so the desktop value cannot override
+Lua policy.
 Keep these mappings in the central adapter; do not add separate config lookups
 to consumers.
 
