@@ -17,6 +17,12 @@
 //! and the surviving track is always the newest. Applying tracks in ascending
 //! track id order is enough to make a frame independent of map iteration.
 //!
+//! # Curves
+//!
+//! A track follows either a named [`Easing`] or a [`SampledCurve`]. A sampled
+//! curve is validated when it is built, so starting one cannot fail on its
+//! timing. Evaluation is linear between samples and exact at both ends.
+//!
 //! # Every track ends
 //!
 //! The plan's rule is that every animation ends and reports `finished`, even
@@ -37,11 +43,35 @@
 use std::collections::BTreeMap;
 
 use gnoblin_animation::{
-    Easing, EasingError, PropertyError, PropertyValue, ValueKind, VisualProperty, VisualTransform,
+    Easing, EasingError, PropertyError, PropertyValue, SampledCurve, ValueKind, VisualProperty, VisualTransform,
 };
 use gnoblin_types::{NodeId, TrackId};
 
 use crate::scene::{Scene, SceneError};
+
+/// The timing a live track follows: a named easing or a sampled curve.
+#[derive(Clone, Debug, PartialEq)]
+enum Curve {
+    Named(Easing),
+    Sampled(SampledCurve),
+}
+
+impl Curve {
+    fn validate(&self) -> Result<(), TrackError> {
+        match self {
+            Self::Named(easing) => Ok(easing.validate()?),
+            // A sampled curve is validated when it is built.
+            Self::Sampled(_) => Ok(()),
+        }
+    }
+
+    fn apply(&self, progress: f64) -> f64 {
+        match self {
+            Self::Named(easing) => easing.apply(progress),
+            Self::Sampled(curve) => curve.apply(progress),
+        }
+    }
+}
 
 /// Where a track starts.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -191,7 +221,7 @@ impl From<SceneError> for TrackError {
 }
 
 /// One live track.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Track {
     node: NodeId,
     property: VisualProperty,
@@ -200,7 +230,7 @@ struct Track {
     duration_ms: u32,
     delay_ms: u32,
     elapsed_ms: u64,
-    easing: Easing,
+    curve: Curve,
     applied: PropertyValue,
 }
 
@@ -238,8 +268,26 @@ impl TweenPlayer {
     /// The starting value is applied immediately, so a delayed track holds the
     /// start value rather than the node's previous value.
     pub fn start(&mut self, scene: &mut Scene, spec: TrackSpec) -> Result<TrackId, TrackError> {
-        let resolved = self.validate(scene, &spec)?;
-        Ok(self.begin(scene, spec, resolved))
+        let curve = Curve::Named(spec.easing);
+        self.start_curve(scene, spec, curve)
+    }
+
+    /// Start a track that follows a sampled curve instead of a named easing.
+    ///
+    /// The curve is validated when it is built, so starting it can only fail on the
+    /// target itself. `spec.easing` is not read.
+    pub fn start_sampled(
+        &mut self,
+        scene: &mut Scene,
+        spec: TrackSpec,
+        curve: SampledCurve,
+    ) -> Result<TrackId, TrackError> {
+        self.start_curve(scene, spec, Curve::Sampled(curve))
+    }
+
+    fn start_curve(&mut self, scene: &mut Scene, spec: TrackSpec, curve: Curve) -> Result<TrackId, TrackError> {
+        let resolved = self.validate(scene, &spec, &curve)?;
+        Ok(self.begin(scene, spec, curve, resolved))
     }
 
     /// Advance every live track by the time that passed.
@@ -274,7 +322,7 @@ impl TweenPlayer {
                 continue;
             }
             let progress = (track.elapsed_ms - u64::from(track.delay_ms)) as f64 / f64::from(track.duration_ms);
-            let eased = track.easing.apply(progress) as f32;
+            let eased = track.curve.apply(progress) as f32;
             let Some(value) = track.from.lerp(track.to, eased) else {
                 self.ended.push(track.end(id, TrackEndReason::TargetGone));
                 continue;
@@ -328,6 +376,30 @@ impl TweenPlayer {
         duration_ms: u32,
         easing: Easing,
     ) -> Result<TrackId, TrackError> {
+        self.retarget_curve(scene, id, to, duration_ms, Curve::Named(easing))
+    }
+
+    /// Replace a track's target over a sampled curve; the start rule is that of
+    /// [`TweenPlayer::retarget`].
+    pub fn retarget_sampled(
+        &mut self,
+        scene: &mut Scene,
+        id: TrackId,
+        to: PropertyValue,
+        duration_ms: u32,
+        curve: SampledCurve,
+    ) -> Result<TrackId, TrackError> {
+        self.retarget_curve(scene, id, to, duration_ms, Curve::Sampled(curve))
+    }
+
+    fn retarget_curve(
+        &mut self,
+        scene: &mut Scene,
+        id: TrackId,
+        to: PropertyValue,
+        duration_ms: u32,
+        curve: Curve,
+    ) -> Result<TrackId, TrackError> {
         let Some(track) = self.tracks.get(&id) else {
             return Err(TrackError::UnknownTrack(id));
         };
@@ -345,13 +417,14 @@ impl TweenPlayer {
             to,
             duration_ms,
             delay_ms: 0,
-            easing,
+            // `curve` carries the timing; this spec's easing is not read.
+            easing: Easing::Linear,
         };
-        let resolved = self.validate(scene, &spec)?;
+        let resolved = self.validate(scene, &spec, &curve)?;
         if let Some(track) = self.tracks.remove(&id) {
             self.ended.push(track.end(id, TrackEndReason::Retargeted));
         }
-        Ok(self.begin(scene, spec, resolved))
+        Ok(self.begin(scene, spec, curve, resolved))
     }
 
     /// Take the terminal reports produced since the last call.
@@ -372,11 +445,16 @@ impl TweenPlayer {
     }
 
     /// Validate a spec against the scene without changing anything.
-    fn validate(&self, scene: &Scene, spec: &TrackSpec) -> Result<(PropertyValue, PropertyValue), TrackError> {
+    fn validate(
+        &self,
+        scene: &Scene,
+        spec: &TrackSpec,
+        curve: &Curve,
+    ) -> Result<(PropertyValue, PropertyValue), TrackError> {
         if !scene.contains(spec.node) {
             return Err(TrackError::UnknownNode(spec.node));
         }
-        spec.easing.validate()?;
+        curve.validate()?;
         let transform = scene.transform(spec.node).ok_or(TrackError::UnknownNode(spec.node))?;
         let to = apply_candidate(transform, spec.property, spec.to)?;
         let from = match spec.from {
@@ -394,7 +472,13 @@ impl TweenPlayer {
     }
 
     /// Start a spec that [`TweenPlayer::validate`] already accepted.
-    fn begin(&mut self, scene: &mut Scene, spec: TrackSpec, (from, to): (PropertyValue, PropertyValue)) -> TrackId {
+    fn begin(
+        &mut self,
+        scene: &mut Scene,
+        spec: TrackSpec,
+        curve: Curve,
+        (from, to): (PropertyValue, PropertyValue),
+    ) -> TrackId {
         let id = TrackId::new(self.next_track);
         self.next_track = self.next_track.saturating_add(1);
         let superseded = self.supersede(spec.node, spec.property);
@@ -438,7 +522,7 @@ impl TweenPlayer {
                 duration_ms: spec.duration_ms,
                 delay_ms: spec.delay_ms,
                 elapsed_ms: 0,
-                easing: spec.easing,
+                curve,
                 applied: from,
             },
         );
@@ -829,5 +913,134 @@ mod tests {
         player.advance(&mut scene, 10);
         assert_eq!(scene.transform(node).expect("transform").base.offset.x, 20.0);
         assert_eq!(scene.transform(node).expect("transform").base.offset.y, 0.0);
+    }
+
+    fn x_offset(scene: &Scene, node: NodeId) -> f64 {
+        scene.transform(node).expect("transform").base.offset.x
+    }
+
+    fn offset_track(curve: &[f64], duration_ms: u32) -> (Scene, NodeId, TweenPlayer, TrackId) {
+        let (mut scene, node) = scene_with_node();
+        let mut player = TweenPlayer::new();
+        let id = player
+            .start_sampled(
+                &mut scene,
+                TrackSpec {
+                    duration_ms,
+                    ..TrackSpec::new(node, VisualProperty::OffsetX, PropertyValue::number(100.0))
+                },
+                SampledCurve::new(curve.to_vec()).expect("curve"),
+            )
+            .expect("started");
+        (scene, node, player, id)
+    }
+
+    #[test]
+    fn sampled_curve_interpolates_linearly_between_its_samples() {
+        // [0, 0.5, 1] over 1 s: progress 0.25 lies halfway between 0 and 0.5.
+        let (mut scene, node, mut player, _) = offset_track(&[0.0, 0.5, 1.0], 1000);
+        player.advance(&mut scene, 250);
+        assert!((x_offset(&scene, node) - 25.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn sampled_curve_hits_both_endpoints_exactly() {
+        let (mut scene, node, mut player, _) = offset_track(&[0.0, 0.3, 0.9, 1.0], 1000);
+        assert_eq!(x_offset(&scene, node), 0.0, "start value is applied at once");
+        player.advance(&mut scene, 1000);
+        assert_eq!(x_offset(&scene, node), 100.0);
+        assert_eq!(player.take_ended()[0].reason, TrackEndReason::Completed);
+    }
+
+    #[test]
+    fn two_sample_sampled_curve_matches_linear_easing_frame_by_frame() {
+        let (mut scene_linear, node_linear) = scene_with_node();
+        let mut linear = TweenPlayer::new();
+        linear
+            .start(
+                &mut scene_linear,
+                TrackSpec {
+                    duration_ms: 800,
+                    ..TrackSpec::new(node_linear, VisualProperty::OffsetX, PropertyValue::number(100.0))
+                },
+            )
+            .expect("started");
+        let (mut scene_sampled, node_sampled, mut sampled, _) = offset_track(&[0.0, 1.0], 800);
+        for _ in 0..10 {
+            linear.advance(&mut scene_linear, 100);
+            sampled.advance(&mut scene_sampled, 100);
+            assert!((x_offset(&scene_linear, node_linear) - x_offset(&scene_sampled, node_sampled)).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn sampled_overshoot_is_reached_before_the_curve_settles() {
+        // Samples above 1 overshoot the target, as a spring does.
+        let (mut scene, node, mut player, _) = offset_track(&[0.0, 1.5, 1.0], 1000);
+        player.advance(&mut scene, 500);
+        assert!((x_offset(&scene, node) - 150.0).abs() < 1e-4);
+        player.advance(&mut scene, 500);
+        assert_eq!(x_offset(&scene, node), 100.0);
+    }
+
+    #[test]
+    fn sampled_zero_duration_completes_on_start() {
+        let (mut scene, node) = scene_with_node();
+        let mut player = TweenPlayer::new();
+        player
+            .start_sampled(
+                &mut scene,
+                TrackSpec::new(node, VisualProperty::OffsetX, PropertyValue::number(100.0)),
+                SampledCurve::new(vec![0.0, 0.5, 1.0]).expect("curve"),
+            )
+            .expect("started");
+        assert_eq!(x_offset(&scene, node), 100.0);
+        assert_eq!(player.active(), 0);
+    }
+
+    #[test]
+    fn retarget_sampled_starts_from_the_current_value_not_the_start() {
+        let (mut scene, node, mut player, first) = offset_track(&[0.0, 0.5, 1.0], 1000);
+        player.advance(&mut scene, 250);
+        let before = x_offset(&scene, node);
+        assert!(before > 0.0 && before < 100.0, "mid-flight");
+        let second = player
+            .retarget_sampled(
+                &mut scene,
+                first,
+                PropertyValue::number(0.0),
+                400,
+                SampledCurve::new(vec![0.0, 1.0]).expect("curve"),
+            )
+            .expect("retargeted");
+        assert_eq!(x_offset(&scene, node), before, "retarget applies no time");
+        player.advance(&mut scene, 200);
+        // Halfway through the new 400 ms linear track: midway between before and 0.
+        assert!((x_offset(&scene, node) - before / 2.0).abs() < 1e-3);
+        player.advance(&mut scene, 200);
+        assert_eq!(x_offset(&scene, node), 0.0);
+        let ended = player.take_ended();
+        assert_eq!(ended[0].reason, TrackEndReason::Retargeted);
+        assert_eq!(ended[0].value, PropertyValue::number(before as f32));
+        assert!(
+            ended
+                .iter()
+                .any(|end| end.track == second && end.reason == TrackEndReason::Completed)
+        );
+    }
+
+    #[test]
+    fn sampled_tracks_are_deterministic_at_the_same_frame_times() {
+        let frames = [16, 16, 33, 0, 100, 250, 7];
+        let run = |frames: &[u32]| {
+            let (mut scene, node, mut player, _) = offset_track(&[0.0, 1.4, 0.6, 1.0], 500);
+            let mut values = Vec::new();
+            for &frame in frames {
+                player.advance(&mut scene, frame);
+                values.push(x_offset(&scene, node).to_bits());
+            }
+            values
+        };
+        assert_eq!(run(&frames), run(&frames));
     }
 }
