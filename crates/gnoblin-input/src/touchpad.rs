@@ -55,7 +55,7 @@ pub struct TouchpadSample {
 
 /// The gesture in flight, if any.
 #[derive(Debug)]
-struct Active {
+struct ActiveTouchpad {
     kind: GestureKind,
     fingers: u8,
     begin: Tick,
@@ -69,7 +69,7 @@ struct Active {
 /// Keeps the touchpad's one gesture in flight and turns its samples into events.
 #[derive(Debug, Default)]
 pub struct TouchpadStream {
-    active: Option<Active>,
+    active: Option<ActiveTouchpad>,
 }
 
 impl TouchpadStream {
@@ -85,7 +85,7 @@ impl TouchpadStream {
         };
         match sample.phase {
             TouchpadPhase::Begin => {
-                self.active = Some(Active {
+                self.active = Some(ActiveTouchpad {
                     kind,
                     fingers: sample.fingers,
                     begin: tick,

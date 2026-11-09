@@ -8,7 +8,7 @@
 //! on real hardware is not proven by these tests; they cover the chain without a device.
 
 use crate::log;
-use gnoblin_backend::{TouchpadKind, TouchpadPhase, TouchpadSample};
+use gnoblin_backend::{RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample};
 use gnoblin_config::{Gesture, GestureAction as ConfigAction, GestureDirection, GestureKind as ConfigKind};
 use gnoblin_input::GestureAction;
 use gnoblin_input::GestureError;
@@ -63,7 +63,7 @@ impl TouchpadGestures {
 
     /// Routes one libinput sample. Returns the binding it fired, if any; every other
     /// outcome is logged here and dropped.
-    pub(crate) fn route(&mut self, tick: Tick, lock: GestureLock, sample: TouchpadSample) -> Option<Fire> {
+    pub(crate) fn route(&mut self, tick: Tick, lock: GestureLock, sample: RawTouchpadSample) -> Option<Fire> {
         let Some(router) = self.router.as_mut() else {
             log::debug!(
                 area = "touchpad",
@@ -169,19 +169,19 @@ fn action_name(action: ConfigAction) -> &'static str {
 }
 
 /// The backend's sample in the adapter's own units.
-fn input_sample(sample: TouchpadSample) -> InputSample {
+fn input_sample(sample: RawTouchpadSample) -> InputSample {
     InputSample {
         fingers: sample.fingers,
         phase: match sample.phase {
-            TouchpadPhase::Begin => InputPhase::Begin,
-            TouchpadPhase::Update => InputPhase::Update,
-            TouchpadPhase::End => InputPhase::End,
-            TouchpadPhase::Cancel => InputPhase::Cancel,
+            RawTouchpadPhase::Begin => InputPhase::Begin,
+            RawTouchpadPhase::Update => InputPhase::Update,
+            RawTouchpadPhase::End => InputPhase::End,
+            RawTouchpadPhase::Cancel => InputPhase::Cancel,
         },
         kind: match sample.kind {
-            TouchpadKind::Swipe => InputKind::Swipe,
-            TouchpadKind::Pinch => InputKind::Pinch,
-            TouchpadKind::Hold => InputKind::Hold,
+            RawTouchpadKind::Swipe => InputKind::Swipe,
+            RawTouchpadKind::Pinch => InputKind::Pinch,
+            RawTouchpadKind::Hold => InputKind::Hold,
         },
         dx: sample.dx,
         dy: sample.dy,
@@ -225,8 +225,8 @@ mod tests {
         }
     }
 
-    fn sample(fingers: u8, phase: TouchpadPhase, kind: TouchpadKind, dx: f64, scale: f64) -> TouchpadSample {
-        TouchpadSample {
+    fn sample(fingers: u8, phase: RawTouchpadPhase, kind: RawTouchpadKind, dx: f64, scale: f64) -> RawTouchpadSample {
+        RawTouchpadSample {
             device: 1,
             phase,
             kind,
@@ -242,24 +242,24 @@ mod tests {
         let mut fired = routes.route(
             Tick::new(1),
             lock,
-            sample(fingers, TouchpadPhase::Begin, TouchpadKind::Swipe, 0.0, 1.0),
+            sample(fingers, RawTouchpadPhase::Begin, RawTouchpadKind::Swipe, 0.0, 1.0),
         );
         for tick in 2..6 {
             fired = fired.or(routes.route(
                 Tick::new(tick),
                 lock,
-                sample(fingers, TouchpadPhase::Update, TouchpadKind::Swipe, 120.0, 1.0),
+                sample(fingers, RawTouchpadPhase::Update, RawTouchpadKind::Swipe, 120.0, 1.0),
             ));
         }
         let phase = if cancel {
-            TouchpadPhase::Cancel
+            RawTouchpadPhase::Cancel
         } else {
-            TouchpadPhase::End
+            RawTouchpadPhase::End
         };
         fired.or(routes.route(
             Tick::new(9),
             lock,
-            sample(fingers, phase, TouchpadKind::Swipe, 0.0, 1.0),
+            sample(fingers, phase, RawTouchpadKind::Swipe, 0.0, 1.0),
         ))
     }
 
@@ -310,10 +310,10 @@ mod tests {
         };
         let mut bound = routes(&[pinch]);
         let pinched = |routes: &mut TouchpadGestures| {
-            let begin = sample(4, TouchpadPhase::Begin, TouchpadKind::Pinch, 0.0, 1.0);
-            let end = sample(4, TouchpadPhase::End, TouchpadKind::Pinch, 0.0, 1.5);
+            let begin = sample(4, RawTouchpadPhase::Begin, RawTouchpadKind::Pinch, 0.0, 1.0);
+            let end = sample(4, RawTouchpadPhase::End, RawTouchpadKind::Pinch, 0.0, 1.5);
             routes.route(Tick::new(1), GestureLock::Unlocked, begin);
-            let spread = sample(4, TouchpadPhase::Update, TouchpadKind::Pinch, 0.0, 1.5);
+            let spread = sample(4, RawTouchpadPhase::Update, RawTouchpadKind::Pinch, 0.0, 1.5);
             routes.route(Tick::new(2), GestureLock::Unlocked, spread);
             routes.route(Tick::new(3), GestureLock::Unlocked, end)
         };
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn a_hold_is_dropped_without_reaching_a_binding() {
         let mut routes = routes(&[swipe_path("three", 3)]);
-        let hold = sample(3, TouchpadPhase::Begin, TouchpadKind::Hold, 0.0, 1.0);
+        let hold = sample(3, RawTouchpadPhase::Begin, RawTouchpadKind::Hold, 0.0, 1.0);
         assert_eq!(routes.route(Tick::new(1), GestureLock::Unlocked, hold), None);
     }
 

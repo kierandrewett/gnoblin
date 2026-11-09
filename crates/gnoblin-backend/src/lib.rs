@@ -362,18 +362,18 @@ pub enum InputEvent {
     /// A touchpad gesture sample.
     ///
     /// The seat never applies these; the policy layer routes them to gesture bindings.
-    Touchpad(TouchpadSample),
+    Touchpad(RawTouchpadSample),
 }
 
 /// One touchpad gesture sample, as the device's recogniser reported it.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct TouchpadSample {
+pub struct RawTouchpadSample {
     /// The backend's number for the device that produced it.
     pub device: u64,
     /// Where the sample sits in its gesture.
-    pub phase: TouchpadPhase,
+    pub phase: RawTouchpadPhase,
     /// The gesture's kind. A hold has no binding kind and is routed as nothing.
-    pub kind: TouchpadKind,
+    pub kind: RawTouchpadKind,
     /// The finger count, as stated by the gesture's begin.
     pub fingers: u8,
     /// Horizontal movement since the previous sample, in device units.
@@ -384,9 +384,9 @@ pub struct TouchpadSample {
     pub scale: f64,
 }
 
-/// Where a [`TouchpadSample`] sits in its gesture.
+/// Where a [`RawTouchpadSample`] sits in its gesture.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TouchpadPhase {
+pub enum RawTouchpadPhase {
     /// The gesture was recognised.
     Begin,
     /// Movement since the previous sample.
@@ -397,9 +397,9 @@ pub enum TouchpadPhase {
     Cancel,
 }
 
-/// Which gesture a [`TouchpadSample`] belongs to.
+/// Which gesture a [`RawTouchpadSample`] belongs to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TouchpadKind {
+pub enum RawTouchpadKind {
     /// Fingers moving together.
     Swipe,
     /// Fingers spreading or gathering.

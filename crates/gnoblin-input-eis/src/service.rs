@@ -336,7 +336,7 @@ impl fmt::Display for Violation {
 }
 
 /// What the protocol layer must do, in order.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     /// Advertise these capabilities on the seat, then send `ei_seat.done`.
     ///
@@ -379,7 +379,7 @@ pub enum Action {
 /// The field is private and the only constructor is in this module, so a producer
 /// cannot claim to be a device, and a session cannot lose the tag between here and the
 /// seat.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Injection {
     origin: Origin,
     event: InputEvent,

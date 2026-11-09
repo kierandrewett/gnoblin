@@ -1602,3 +1602,33 @@ left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotError"
 right = "xdg-desktop-portal-gnoblin::ScreenshotError"
 kind = "same-name"
 reason = "the compat crate's ScreenshotError is the gnome-shell Screenshot wire error; the portal's is the outcome of a compositor capture (refused, unavailable, write failed) that the portal maps to a portal response; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-backend::RawTouchpadKind"
+right = "gnoblin-input::TouchpadKind"
+kind = "same-shape"
+reason = "the backend's raw gesture kind is the device boundary; the input crate's kind is the routing vocabulary; the overlapping shape is the three gesture names"
+
+[[allow]]
+left = "gnoblin-backend::RawTouchpadPhase"
+right = "gnoblin-input::ContactPhase"
+kind = "same-shape"
+reason = "the backend's raw sample phase and the input crate's contact phase are different lifecycles that share the begin, update, end, cancel shape"
+
+[[allow]]
+left = "gnoblin-backend::RawTouchpadPhase"
+right = "gnoblin-input::GestureEvent"
+kind = "same-shape"
+reason = "the backend's raw sample phase and the input crate's gesture event are different types that share the begin, update, end, cancel shape"
+
+[[allow]]
+left = "gnoblin-backend::RawTouchpadPhase"
+right = "gnoblin-input::GesturePhase"
+kind = "same-shape"
+reason = "the backend's raw sample phase and the input crate's gesture phase are different types that share the begin, update, end, cancel shape"
+
+[[allow]]
+left = "gnoblin-backend::RawTouchpadPhase"
+right = "gnoblin-input::TouchpadPhase"
+kind = "same-shape"
+reason = "the backend's raw sample phase and the input crate's touchpad phase are different types that share the begin, update, end, cancel shape"
