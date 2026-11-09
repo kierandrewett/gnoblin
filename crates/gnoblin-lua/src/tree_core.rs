@@ -36,6 +36,7 @@ pub enum TreeValueKind {
     Double,
     Text,
     Node,
+    Nodes,
     ListDouble,
 }
 
@@ -49,6 +50,7 @@ impl TreeValueKind {
             Self::Double => "double",
             Self::Text => "text",
             Self::Node => "node",
+            Self::Nodes => "nodes",
             Self::ListDouble => "list_double",
         }
     }
@@ -221,6 +223,21 @@ impl TreeCore {
         }
     }
 
+    /// The children of `node` when `key` names a `nodes` property; `None` for any other key.
+    fn nodes_value(&self, node: NodeId, key: &str) -> Result<Option<Vec<NodeId>>, String> {
+        let class = self.class_of(node)?;
+        if self
+            .prop(&class, key)
+            .is_none_or(|prop| prop.kind != TreeValueKind::Nodes)
+        {
+            return Ok(None);
+        }
+        self.tick
+            .children(&self.mirror, node)
+            .map(|ids| Some(ids.to_vec()))
+            .ok_or_else(|| format!("no node {node}"))
+    }
+
     fn set(
         &mut self,
         node: NodeId,
@@ -294,6 +311,7 @@ fn from_lua(kind: TreeValueKind, value: Value) -> mlua::Result<LuaValue> {
             Value::Nil => LuaValue::Node(NIL),
             other => LuaValue::Node(u64::try_from(integer(&other).ok_or_else(wrong)?).map_err(|_| wrong())?),
         },
+        TreeValueKind::Nodes => return Err(wrong()),
         TreeValueKind::ListDouble => match value {
             Value::Table(table) => LuaValue::List(
                 table
@@ -365,7 +383,16 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
     table.set(
         "get",
         lua.create_function(move |lua, (node, key): (i64, String)| {
-            let value = shared.borrow().get(node_arg(node)?, &key).map_err(lua_err)?;
+            let node = node_arg(node)?;
+            let nodes = shared.borrow().nodes_value(node, &key).map_err(lua_err)?;
+            if let Some(ids) = nodes {
+                let ids = ids
+                    .into_iter()
+                    .map(|id| i64::try_from(id).map_err(lua_err))
+                    .collect::<mlua::Result<Vec<i64>>>()?;
+                return lua.create_sequence_from(ids).map(Value::Table);
+            }
+            let value = shared.borrow().get(node, &key).map_err(lua_err)?;
             value.map_or(Ok(Value::Nil), |value| to_lua(lua, &value))
         })?,
     )?;
