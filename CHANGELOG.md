@@ -56,6 +56,7 @@
 - Pointer picking goes through the scene: a press or pointer motion over a window that a layout turned or moved
   reaches the window where it is drawn, not the unrotated rectangle it was placed in. Stacking ties still go to the
   last-drawn window.
+- The composer's window nodes take their ids from `NodeIdAllocator` (`gnoblin-render`, `scene_ids.rs`), which starts at the compositor id base, never reuses an id and refuses exhaustion. Before, they started at 1, inside the shell's id range, so a shell node could collide with a window node (`duplicate-node`). A window whose node cannot be created is logged and not drawn, rather than dropped silently.
 
 ### Changed
 
