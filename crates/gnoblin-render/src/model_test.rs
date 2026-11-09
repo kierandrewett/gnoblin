@@ -161,7 +161,6 @@ fn the_scene_and_the_player_keep_their_invariants() {
                         20 + rng.below(300) as u32,
                     ));
                     spec.parent = parent;
-                    spec.z_order = rng.below(5) as i32 - 2;
                     spec.transform.base.offset = Vec3::new(rng.range(-100.0, 300.0), rng.range(-100.0, 300.0), 0.0);
                     spec.transform.base.scale = Vec3::new(rng.range(0.5, 1.5), rng.range(0.5, 1.5), 1.0);
                     spec.transform.base.rotation_degrees = Vec3::new(0.0, 0.0, rng.range(-30.0, 30.0));
@@ -275,7 +274,11 @@ fn the_scene_and_the_player_keep_their_invariants() {
             _ => {
                 if !nodes.is_empty() {
                     let id = nodes[rng.below(nodes.len())];
-                    scene.set_z_order(id, rng.below(7) as i32 - 3).expect("the node exists");
+                    if rng.below(2) == 0 {
+                        scene.raise(id).expect("the node exists");
+                    } else {
+                        scene.lower(id).expect("the node exists");
+                    }
                     mutations += 1;
                 }
             }

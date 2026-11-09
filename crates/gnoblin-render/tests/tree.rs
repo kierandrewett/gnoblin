@@ -48,7 +48,7 @@ fn assert_mat_close(actual: &Mat4, expected: &Mat4) {
     }
 }
 
-/// FNV-1a over the whole tree: every id, its parent, its children in order, its z-order and
+/// FNV-1a over the whole tree: every id, its parent, its children in paint order and
 /// its visual transform (the `Debug` form prints every field of it).
 fn tree_hash(scene: &Scene) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -64,7 +64,6 @@ fn tree_hash(scene: &Scene) -> u64 {
         feed(&node.get().to_le_bytes());
         feed(format!("{:?}", scene.parent(node)).as_bytes());
         feed(format!("{:?}", scene.children(node)).as_bytes());
-        feed(&scene.z_order(node).unwrap_or_default().to_le_bytes());
         feed(format!("{:?}", scene.transform(node)).as_bytes());
     }
     hash
@@ -150,7 +149,7 @@ fn operations_on_an_unknown_node_are_refused_and_change_nothing() {
     let before = scene.node_ids().collect::<Vec<_>>();
     assert!(matches!(scene.remove(id(99)), Err(SceneError::UnknownNode(node)) if node == id(99)));
     assert!(matches!(
-        scene.set_z_order(id(99), 3),
+        scene.move_to(id(99), 3),
         Err(SceneError::UnknownNode(node)) if node == id(99)
     ));
     assert!(matches!(
@@ -190,8 +189,7 @@ fn reparent_keeps_state_and_moves_paint_order() {
     scene
         .insert(id(4), child_of(id(3), rect(0, 0, 20, 20)))
         .expect("its child");
-    let mut above = child_of(id(2), rect(0, 0, 50, 50));
-    above.z_order = 5;
+    let above = child_of(id(2), rect(0, 0, 50, 50));
     scene.insert(id(5), above).expect("sibling above");
     scene.set_clip(id(3), true).expect("clip");
     scene
@@ -200,7 +198,7 @@ fn reparent_keeps_state_and_moves_paint_order() {
     let before = scene.absolute_bounds(id(3)).expect("bounds before the move");
     scene.take_damage();
 
-    scene.reparent(id(3), Some(id(2))).expect("reparent");
+    scene.reparent_at(id(3), Some(id(2)), 0).expect("reparent");
 
     assert_eq!(scene.parent(id(3)), Some(id(2)));
     assert!(
@@ -210,11 +208,10 @@ fn reparent_keeps_state_and_moves_paint_order() {
     assert_eq!(
         scene.children(id(2)),
         Some(&[id(3), id(5)][..]),
-        "the moved node must paint below the sibling above it"
+        "the moved node is placed first, so the sibling above it paints over it"
     );
     assert_eq!(scene.children(id(3)), Some(&[id(4)][..]), "its subtree moves with it");
     assert_eq!(scene.bounds(id(3)), Some(rect(10, 10, 100, 100)));
-    assert_eq!(scene.z_order(id(3)), Some(0));
     assert_eq!(scene.clip(id(3)), Some(true));
     assert_eq!(scene.composed_opacity(id(3)), Some(0.5));
 
@@ -382,32 +379,230 @@ fn a_child_draws_above_its_parent_when_they_overlap() {
 }
 
 #[test]
-fn a_child_stays_above_its_parent_even_with_a_lower_z_order() {
+fn a_child_stays_above_its_parent_when_the_parent_is_raised() {
     let mut scene = Scene::new();
     scene
         .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
         .expect("parent");
-    let mut child = child_of(id(1), rect(0, 0, 100, 100));
-    child.z_order = -5;
-    scene.insert(id(2), child).expect("child");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    scene.raise(id(1)).expect("raise");
     let hit = scene.hit_test(PointF::new(50.0, 50.0)).expect("hit");
     assert_eq!(hit.node, id(2));
 }
 
 #[test]
-fn the_sibling_with_the_higher_z_order_is_hit_whatever_the_insert_order() {
+fn the_later_sibling_is_hit_first_because_insert_order_is_paint_order() {
     let mut scene = Scene::new();
     scene
         .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
         .expect("parent");
-    let mut high = child_of(id(1), rect(0, 0, 100, 100));
-    high.z_order = 2;
-    scene.insert(id(2), high).expect("high");
-    let mut low = child_of(id(1), rect(0, 0, 100, 100));
-    low.z_order = 1;
-    scene.insert(id(3), low).expect("low");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("first");
+    scene
+        .insert(id(3), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("second");
+    assert_eq!(scene.children(id(1)), Some(&[id(2), id(3)][..]));
+    let hit = scene.hit_test(PointF::new(50.0, 50.0)).expect("hit");
+    assert_eq!(hit.node, id(3));
+}
+
+#[test]
+fn raise_moves_a_sibling_last_so_it_is_hit_first() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("first");
+    scene
+        .insert(id(3), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("second");
+    scene.raise(id(2)).expect("raise");
+    assert_eq!(scene.children(id(1)), Some(&[id(3), id(2)][..]));
     let hit = scene.hit_test(PointF::new(50.0, 50.0)).expect("hit");
     assert_eq!(hit.node, id(2));
+}
+
+#[test]
+fn lower_moves_a_sibling_first_so_the_others_are_hit_first() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("first");
+    scene
+        .insert(id(3), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("second");
+    scene.lower(id(3)).expect("lower");
+    assert_eq!(scene.children(id(1)), Some(&[id(3), id(2)][..]));
+    let hit = scene.hit_test(PointF::new(50.0, 50.0)).expect("hit");
+    assert_eq!(hit.node, id(2));
+}
+
+#[test]
+fn move_to_places_a_sibling_at_the_given_index() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    for child in 2..=4 {
+        scene
+            .insert(id(child), child_of(id(1), rect(0, 0, 100, 100)))
+            .expect("sibling");
+    }
+    scene.move_to(id(2), 2).expect("move");
+    assert_eq!(scene.children(id(1)), Some(&[id(3), id(4), id(2)][..]));
+}
+
+#[test]
+fn insert_at_places_a_new_sibling_at_the_given_index() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("first");
+    scene
+        .insert(id(3), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("second");
+    scene
+        .insert_at(id(4), child_of(id(1), rect(0, 0, 100, 100)), 0)
+        .expect("insert at the bottom");
+    assert_eq!(scene.children(id(1)), Some(&[id(4), id(2), id(3)][..]));
+    let hit = scene.hit_test(PointF::new(50.0, 50.0)).expect("hit");
+    assert_eq!(hit.node, id(3));
+}
+
+#[test]
+fn insert_at_an_index_past_the_end_is_refused_and_creates_no_node() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    let error = scene
+        .insert_at(id(3), child_of(id(1), rect(0, 0, 100, 100)), 5)
+        .expect_err("an index past the end must be refused");
+    assert!(matches!(error, SceneError::IndexOutOfRange { index: 5, len: 1 }));
+    assert!(!scene.contains(id(3)));
+}
+
+#[test]
+fn raise_lower_and_move_to_refuse_an_index_past_the_end_and_change_nothing() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    let before = tree_hash(&scene);
+    assert!(matches!(
+        scene.move_to(id(2), 1),
+        Err(SceneError::IndexOutOfRange { index: 1, len: 1 })
+    ));
+    assert_eq!(tree_hash(&scene), before);
+}
+
+#[test]
+fn set_order_permutes_siblings_and_refuses_anything_that_is_not_a_permutation() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    for child in 2..=4 {
+        scene
+            .insert(id(child), child_of(id(1), rect(0, 0, 100, 100)))
+            .expect("sibling");
+    }
+    scene
+        .set_order(Some(id(1)), &[id(4), id(2), id(3)])
+        .expect("permutation");
+    assert_eq!(scene.children(id(1)), Some(&[id(4), id(2), id(3)][..]));
+
+    for order in [
+        &[id(2), id(3)][..],
+        &[id(2), id(2), id(3)][..],
+        &[id(2), id(3), id(4), id(9)][..],
+    ] {
+        assert!(matches!(
+            scene.set_order(Some(id(1)), order),
+            Err(SceneError::NotAPermutation { parent: Some(parent) }) if parent == id(1)
+        ));
+    }
+    assert_eq!(scene.children(id(1)), Some(&[id(4), id(2), id(3)][..]));
+}
+
+#[test]
+fn set_order_reorders_the_roots() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("first root");
+    scene
+        .insert(id(2), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("second root");
+    scene.set_order(None, &[id(2), id(1)]).expect("permutation");
+    let hit = scene.hit_test(PointF::new(50.0, 50.0)).expect("hit");
+    assert_eq!(hit.node, id(1));
+}
+
+#[test]
+fn reparent_at_places_the_moved_node_at_the_given_index() {
+    let mut scene = Scene::new();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    scene
+        .insert(id(3), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    scene.insert(id(4), NodeSpec::new(rect(0, 0, 100, 100))).expect("root");
+    scene.reparent_at(id(4), Some(id(1)), 0).expect("reparent");
+    assert_eq!(scene.children(id(1)), Some(&[id(4), id(2), id(3)][..]));
+    assert_eq!(scene.parent(id(4)), Some(id(1)));
+    assert!(matches!(
+        scene.reparent_at(id(4), None, 3),
+        Err(SceneError::IndexOutOfRange { index: 3, len: 1 })
+    ));
+}
+
+#[test]
+fn raise_damages_the_sibling_at_its_old_and_new_position() {
+    let mut scene = scene_with_output();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 400, 400)))
+        .expect("parent");
+    scene.insert(id(2), child_of(id(1), rect(0, 0, 50, 50))).expect("first");
+    scene
+        .insert(id(3), child_of(id(1), rect(100, 100, 50, 50)))
+        .expect("second");
+    scene.take_damage();
+
+    scene.move_to(id(2), 1).expect("move");
+
+    let damage = scene.take_damage();
+    let output = damage
+        .outputs
+        .iter()
+        .find(|entry| entry.output == OutputId::new(0))
+        .expect("the output is damaged");
+    assert!(output.covers(rect(0, 0, 50, 50)), "old position not damaged");
+    assert!(
+        output.covers(rect(100, 100, 50, 50)),
+        "the sibling it passed is not damaged"
+    );
 }
 
 #[test]
@@ -577,14 +772,13 @@ fn damage_after_an_offset_write_covers_both_the_old_and_the_new_bounds() {
 fn apply_sequence(scene: &mut Scene) {
     scene.insert(id(1), NodeSpec::new(rect(0, 0, 640, 480))).expect("root");
     let mut panel = child_of(id(1), rect(10, 10, 200, 100));
-    panel.z_order = 2;
     panel.transform.base.offset = Vec3::new(4.0, 4.0, 0.0);
     scene.insert(id(2), panel).expect("panel");
     scene.insert(id(3), child_of(id(2), rect(0, 0, 50, 50))).expect("child");
     scene
         .set_property(id(3), VisualProperty::RotationZ, PropertyValue::Number(15.0))
         .expect("rotation");
-    scene.set_z_order(id(3), -1).expect("z");
+    scene.raise(id(3)).expect("raise");
     scene
         .set_property(id(2), VisualProperty::Opacity, PropertyValue::Number(0.5))
         .expect("opacity");
@@ -607,11 +801,11 @@ fn the_same_mutation_sequence_applied_twice_gives_an_identical_tree_hash() {
 }
 
 #[test]
-fn the_tree_hash_tells_apart_trees_that_differ_in_one_z_order() {
+fn the_tree_hash_tells_apart_trees_that_differ_in_one_sibling_order() {
     let mut first = Scene::new();
     apply_sequence(&mut first);
     let mut second = Scene::new();
     apply_sequence(&mut second);
-    second.set_z_order(id(1), 7).expect("z");
+    second.raise(id(4)).expect("raise");
     assert_ne!(tree_hash(&first), tree_hash(&second));
 }

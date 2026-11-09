@@ -17,8 +17,8 @@
 //!   visible and has committed content, because a node is what "these pixels are on
 //!   screen" means: a client that attaches no buffer has no node, is never drawn and
 //!   damages nothing.
-//! - **The stacking order**, bottom first, and each node's `z_order` so the scene's
-//!   own hit test and the frame agree about what is on top.
+//! - **The stacking order**, bottom first: the scene's sibling order, which is also
+//!   what its hit test and the frame use, so they agree about what is on top.
 //! - **The windows' visual transforms** (opacity, tint), kept here so a node can be
 //!   recreated at a new content size without losing the animation playing on it. The
 //!   client's and the rule's opacity factors fold into the opacity, so a frame draws each
@@ -1124,20 +1124,14 @@ impl Composer {
             return;
         }
         self.order = kept;
-        // Move every window whose z changed in one batch, so the siblings are sorted and
-        // damaged once for the whole order rather than once per window.
-        let changes: Vec<(NodeId, i32)> = self
+        // The scene's sibling order is the paint order. Only windows with a node are
+        // siblings in the scene, so the order is applied to those, bottom first.
+        let nodes: Vec<NodeId> = self
             .order
             .iter()
-            .filter_map(|window| {
-                let node = self.windows.get(window)?.node?;
-                let z_order = self.z_order(*window);
-                (self.scene.z_order(node) != Some(z_order)).then_some((node, z_order))
-            })
+            .filter_map(|window| self.windows.get(window)?.node)
             .collect();
-        if !changes.is_empty() {
-            let _ = self.scene.set_z_orders(&changes);
-        }
+        let _ = self.scene.set_order(None, &nodes);
         let windows: Vec<WindowId> = self.order.clone();
         for window in windows {
             self.sync(window, false);
@@ -1378,15 +1372,8 @@ impl Composer {
             return;
         };
         if entry.closing.is_some() {
-            // A closing window keeps its node and picture until its fade ends. Only its
-            // stacking position still follows the policy.
-            let node = entry.node;
-            let z_order = self.z_order(window);
-            if let Some(node) = node
-                && self.scene.z_order(node) != Some(z_order)
-            {
-                let _ = self.scene.set_z_order(node, z_order);
-            }
+            // A closing window keeps its node and picture until its fade ends. Its
+            // stacking position is the scene's sibling order, set by `set_stacking`.
             return;
         }
 
@@ -1411,7 +1398,6 @@ impl Composer {
         let node = entry.node;
         let transform = Self::target(entry);
         let effects = entry.effects.clone();
-        let z_order = self.z_order(window);
         let Some(content) = content else {
             if let Some(node) = node {
                 self.cancel_tracks(window);
@@ -1427,9 +1413,6 @@ impl Composer {
             Some(node) if self.scene.bounds(node) == Some(bounds) => {
                 if force && let Some(current) = self.scene.transform(node).copied() {
                     let _ = self.scene.set_transform(node, current);
-                }
-                if self.scene.z_order(node) != Some(z_order) {
-                    let _ = self.scene.set_z_order(node, z_order);
                 }
                 if self.scene.effects(node) != Some(&effects) {
                     let _ = self.scene.set_effects(node, effects.clone());
@@ -1454,7 +1437,6 @@ impl Composer {
                 self.next_node = self.next_node.saturating_add(1);
                 let spec = NodeSpec {
                     parent: None,
-                    z_order,
                     bounds,
                     transform: spec_transform,
                     effects,
@@ -1472,14 +1454,6 @@ impl Composer {
                     }
                 }
             }
-        }
-    }
-
-    /// A node's paint position, bottom first.
-    fn z_order(&self, window: WindowId) -> i32 {
-        match self.order.iter().position(|candidate| *candidate == window) {
-            Some(index) => i32::try_from(index).unwrap_or(i32::MAX),
-            None => i32::try_from(self.order.len()).unwrap_or(i32::MAX),
         }
     }
 

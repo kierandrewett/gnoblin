@@ -104,8 +104,6 @@ pub enum NodeKind {
 pub struct NodeSpec {
     /// The parent, or `None` for a root node.
     pub parent: Option<NodeId>,
-    /// Paint position among siblings; higher draws later, on top.
-    pub z_order: i32,
     /// The local rectangle the node occupies before its transform.
     pub bounds: Rect,
     /// The visual transform.
@@ -131,7 +129,6 @@ impl NodeSpec {
     pub fn new(bounds: Rect) -> Self {
         Self {
             parent: None,
-            z_order: 0,
             bounds,
             transform: VisualTransform::IDENTITY,
             effects: Effects::new(),
@@ -161,7 +158,6 @@ impl NodeSpec {
 pub struct Node {
     parent: Option<NodeId>,
     children: Vec<NodeId>,
-    z_order: i32,
     bounds: Rect,
     transform: VisualTransform,
     effects: Effects,
@@ -182,12 +178,6 @@ impl Node {
     #[must_use]
     pub fn children(&self) -> &[NodeId] {
         &self.children
-    }
-
-    /// Paint position among siblings.
-    #[must_use]
-    pub const fn z_order(&self) -> i32 {
-        self.z_order
     }
 
     /// The local rectangle, without the effect padding.
@@ -306,6 +296,18 @@ pub enum SceneError {
         /// The parent it was asked to move under.
         parent: NodeId,
     },
+    /// An index is past the end of the sibling list.
+    IndexOutOfRange {
+        /// The index asked for.
+        index: usize,
+        /// The number of siblings it was checked against.
+        len: usize,
+    },
+    /// A reorder did not name exactly the current children of its parent.
+    NotAPermutation {
+        /// The parent whose children were to be reordered, or `None` for the roots.
+        parent: Option<NodeId>,
+    },
     /// A camera cannot be honoured.
     Camera(CameraError),
     /// A property value was refused.
@@ -326,6 +328,11 @@ impl std::fmt::Display for SceneError {
             Self::Camera(error) => write!(formatter, "{error}"),
             Self::Property(error) => write!(formatter, "{error}"),
             Self::Cycle { node, parent } => write!(formatter, "moving {node} under {parent} would make a cycle"),
+            Self::IndexOutOfRange { index, len } => write!(formatter, "index {index} is past the {len} siblings"),
+            Self::NotAPermutation { parent: Some(parent) } => {
+                write!(formatter, "the order is not a permutation of {parent}'s children")
+            }
+            Self::NotAPermutation { parent: None } => write!(formatter, "the order is not a permutation of the roots"),
             Self::Effect(error) => write!(formatter, "{error}"),
         }
     }
@@ -437,11 +444,22 @@ impl Scene {
         }
     }
 
-    /// Insert a node, refusing an id that exists and a parent that does not.
+    /// Insert a node as the last child of its parent, or as the last root, so it
+    /// paints on top of its siblings. Refuses an id that exists and a parent that does not.
     ///
     /// The new node damages only itself: the pixels it adds were not on screen
     /// before, while a parent's existing pixels do not move.
-    pub fn insert(&mut self, id: NodeId, mut spec: NodeSpec) -> Result<(), SceneError> {
+    pub fn insert(&mut self, id: NodeId, spec: NodeSpec) -> Result<(), SceneError> {
+        self.insert_checked(id, spec, None)
+    }
+
+    /// Insert a node at `index` among its siblings: `0` paints first, below every
+    /// other sibling. An index past the end is refused; `len` itself means last.
+    pub fn insert_at(&mut self, id: NodeId, spec: NodeSpec, index: usize) -> Result<(), SceneError> {
+        self.insert_checked(id, spec, Some(index))
+    }
+
+    fn insert_checked(&mut self, id: NodeId, mut spec: NodeSpec, index: Option<usize>) -> Result<(), SceneError> {
         if self.nodes.contains_key(&id) {
             return Err(SceneError::DuplicateNode(id));
         }
@@ -452,10 +470,10 @@ impl Scene {
         {
             return Err(SceneError::UnknownParent(parent));
         }
+        let index = child_index(index, self.siblings_of(spec.parent).len())?;
         let node = Node {
             parent: spec.parent,
             children: Vec::new(),
-            z_order: spec.z_order,
             bounds: spec.bounds,
             transform: spec.transform,
             effects: spec.effects,
@@ -465,27 +483,7 @@ impl Scene {
             input: spec.input,
         };
         self.nodes.insert(id, node);
-        match spec.parent {
-            Some(parent) => {
-                let mut siblings = std::mem::take(
-                    &mut self
-                        .nodes
-                        .get_mut(&parent)
-                        .expect("parent existence checked above")
-                        .children,
-                );
-                siblings.push(id);
-                sort_siblings(&mut siblings, &self.nodes);
-                self.nodes
-                    .get_mut(&parent)
-                    .expect("parent existence checked above")
-                    .children = siblings;
-            }
-            None => {
-                self.roots.push(id);
-                sort_siblings(&mut self.roots, &self.nodes);
-            }
-        }
+        self.siblings_mut(spec.parent).insert(index, id);
         let sample = self.sample(id).expect("node was just inserted");
         self.push_sample(sample);
         self.dirty.insert(id);
@@ -529,15 +527,25 @@ impl Scene {
         Ok(removed)
     }
 
-    /// Move a node under a new parent, or to the root when `parent` is `None`.
+    /// Move a node under a new parent, or to the root when `parent` is `None`, as
+    /// that parent's last child: on top of its new siblings.
     ///
-    /// The node keeps its id, its state and its subtree. Its paint position among
-    /// the new siblings comes from its z-order, the same rule insert uses, so
-    /// siblings never disagree about which one paints first. A node cannot move
-    /// under itself or under one of its own descendants.
+    /// The node keeps its id, its state and its subtree. A node cannot move under
+    /// itself or under one of its own descendants.
     ///
     /// The subtree's bounds before the move and after it both become damage.
     pub fn reparent(&mut self, id: NodeId, parent: Option<NodeId>) -> Result<(), SceneError> {
+        self.attach(id, parent, None)
+    }
+
+    /// Move a node under a new parent at `index` among that parent's other children.
+    /// `index` counts the new siblings without the node itself, so it may equal their
+    /// number, which is the same as [`Scene::reparent`].
+    pub fn reparent_at(&mut self, id: NodeId, parent: Option<NodeId>, index: usize) -> Result<(), SceneError> {
+        self.attach(id, parent, Some(index))
+    }
+
+    fn attach(&mut self, id: NodeId, parent: Option<NodeId>, index: Option<usize>) -> Result<(), SceneError> {
         if !self.nodes.contains_key(&id) {
             return Err(SceneError::UnknownNode(id));
         }
@@ -550,38 +558,17 @@ impl Scene {
                 return Err(SceneError::Cycle { node: id, parent });
             }
         }
+        let others = self
+            .siblings_of(parent)
+            .iter()
+            .filter(|sibling| **sibling != id)
+            .count();
+        let index = child_index(index, others)?;
         let before: Vec<DamageSample> = subtree.iter().filter_map(|node| self.sample(*node)).collect();
         let old_parent = self.nodes[&id].parent;
-        match old_parent {
-            Some(old) => {
-                if let Some(node) = self.nodes.get_mut(&old) {
-                    node.children.retain(|child| *child != id);
-                }
-            }
-            None => self.roots.retain(|root| *root != id),
-        }
+        self.siblings_mut(old_parent).retain(|child| *child != id);
         self.nodes.get_mut(&id).expect("node existence checked above").parent = parent;
-        match parent {
-            Some(new_parent) => {
-                let mut siblings = std::mem::take(
-                    &mut self
-                        .nodes
-                        .get_mut(&new_parent)
-                        .expect("parent existence checked above")
-                        .children,
-                );
-                siblings.push(id);
-                sort_siblings(&mut siblings, &self.nodes);
-                self.nodes
-                    .get_mut(&new_parent)
-                    .expect("parent existence checked above")
-                    .children = siblings;
-            }
-            None => {
-                self.roots.push(id);
-                sort_siblings(&mut self.roots, &self.nodes);
-            }
-        }
+        self.siblings_mut(parent).insert(index, id);
         for sample in before {
             self.push_sample(sample);
         }
@@ -644,10 +631,10 @@ impl Scene {
         self.nodes.get(&id).map(Node::children)
     }
 
-    /// A node's paint position among its siblings.
+    /// The root nodes, bottom first: the last root paints on top of the others.
     #[must_use]
-    pub fn z_order(&self, id: NodeId) -> Option<i32> {
-        self.nodes.get(&id).map(Node::z_order)
+    pub fn root_ids(&self) -> &[NodeId] {
+        &self.roots
     }
 
     /// Set a node's transform.
@@ -758,69 +745,108 @@ impl Scene {
         Some(opacity)
     }
 
-    /// Move a node within its siblings' paint order.
-    ///
-    /// Reordering can change which sibling covers which, so every sibling's
-    /// bounds become damage even though their geometry is unchanged.
-    pub fn set_z_order(&mut self, id: NodeId, z_order: i32) -> Result<(), SceneError> {
-        self.set_z_orders(&[(id, z_order)])
+    /// Raise a node to paint last among its siblings, on top of all of them.
+    pub fn raise(&mut self, id: NodeId) -> Result<(), SceneError> {
+        let parent = self.parent_of_existing(id)?;
+        let last = self.siblings_of(parent).len() - 1;
+        self.move_to(id, last)
     }
 
-    /// Move several nodes within their siblings' paint order in one pass.
-    ///
-    /// Each affected sibling list is sorted once and each sibling is damaged
-    /// once, however many of the changes land in it. Every id is checked before
-    /// anything changes, so an unknown node leaves the scene untouched.
-    pub fn set_z_orders(&mut self, changes: &[(NodeId, i32)]) -> Result<(), SceneError> {
-        if let Some((id, _)) = changes.iter().find(|(id, _)| !self.nodes.contains_key(id)) {
-            return Err(SceneError::UnknownNode(*id));
+    /// Lower a node to paint first among its siblings, below all of them.
+    pub fn lower(&mut self, id: NodeId) -> Result<(), SceneError> {
+        self.move_to(id, 0)
+    }
+
+    /// Move a node to `index` among its siblings: `0` paints first and the last
+    /// index paints on top. An index past the last sibling is refused.
+    pub fn move_to(&mut self, id: NodeId, index: usize) -> Result<(), SceneError> {
+        let parent = self.parent_of_existing(id)?;
+        let mut order = self.siblings_of(parent).to_vec();
+        let len = order.len();
+        if index >= len {
+            return Err(SceneError::IndexOutOfRange { index, len });
         }
-        let parents: BTreeSet<Option<NodeId>> = changes.iter().map(|(id, _)| self.nodes[id].parent).collect();
-        let before: Vec<DamageSample> = parents
+        let from = order
             .iter()
-            .flat_map(|parent| self.siblings_of(*parent))
-            .filter_map(|node| self.sample(node))
-            .collect();
-        for (id, z_order) in changes {
-            self.nodes.get_mut(id).expect("node existence checked above").z_order = *z_order;
-        }
-        for parent in &parents {
-            let mut siblings = self.siblings_of(*parent);
-            sort_siblings(&mut siblings, &self.nodes);
-            self.set_siblings(*parent, siblings);
-        }
-        let after: Vec<DamageSample> = parents
-            .iter()
-            .flat_map(|parent| self.siblings_of(*parent))
-            .filter_map(|node| self.sample(node))
-            .collect();
-        for sample in before.into_iter().chain(after) {
-            self.push_sample(sample);
-        }
-        for (id, _) in changes {
-            self.dirty.insert(*id);
-            self.dirty.extend(self.ancestors(*id));
-        }
+            .position(|sibling| *sibling == id)
+            .expect("a node is among its siblings");
+        order.remove(from);
+        order.insert(index, id);
+        self.apply_order(parent, order);
         Ok(())
     }
 
-    /// A parent's children in paint order, or the roots for `None`.
-    fn siblings_of(&self, parent: Option<NodeId>) -> Vec<NodeId> {
-        match parent {
-            Some(parent) => self.nodes[&parent].children.clone(),
-            None => self.roots.clone(),
+    /// Replace a parent's children (or the roots for `None`) with `order`, which must
+    /// name each current child exactly once. Anything else is refused, so a bad
+    /// batch changes nothing.
+    pub fn set_order(&mut self, parent: Option<NodeId>, order: &[NodeId]) -> Result<(), SceneError> {
+        if let Some(parent) = parent
+            && !self.nodes.contains_key(&parent)
+        {
+            return Err(SceneError::UnknownParent(parent));
+        }
+        let current: BTreeSet<NodeId> = self.siblings_of(parent).iter().copied().collect();
+        let given: BTreeSet<NodeId> = order.iter().copied().collect();
+        if given.len() != order.len() || given != current {
+            return Err(SceneError::NotAPermutation { parent });
+        }
+        self.apply_order(parent, order.to_vec());
+        Ok(())
+    }
+
+    fn parent_of_existing(&self, id: NodeId) -> Result<Option<NodeId>, SceneError> {
+        self.nodes
+            .get(&id)
+            .map(|node| node.parent)
+            .ok_or(SceneError::UnknownNode(id))
+    }
+
+    /// Replace one parent's sibling order. Every sibling whose paint order against
+    /// another sibling flipped, with its subtree, is damaged before and after: those
+    /// are the only pixels whose top-most painter can change.
+    fn apply_order(&mut self, parent: Option<NodeId>, order: Vec<NodeId>) {
+        let position: BTreeMap<NodeId, usize> = order.iter().enumerate().map(|(index, id)| (*id, index)).collect();
+        let previous = self.siblings_of(parent).to_vec();
+        let mut flipped = BTreeSet::new();
+        for (index, earlier) in previous.iter().enumerate() {
+            for later in &previous[index + 1..] {
+                if position[earlier] > position[later] {
+                    flipped.insert(*earlier);
+                    flipped.insert(*later);
+                }
+            }
+        }
+        let damaged: Vec<NodeId> = flipped.iter().flat_map(|node| self.subtree_ids(*node)).collect();
+        let before: Vec<DamageSample> = damaged.iter().filter_map(|node| self.sample(*node)).collect();
+        *self.siblings_mut(parent) = order;
+        let after: Vec<DamageSample> = damaged.iter().filter_map(|node| self.sample(*node)).collect();
+        for sample in before.into_iter().chain(after) {
+            self.push_sample(sample);
+        }
+        for node in flipped {
+            self.dirty.insert(node);
+            self.dirty.extend(self.ancestors(node));
         }
     }
 
-    fn set_siblings(&mut self, parent: Option<NodeId>, siblings: Vec<NodeId>) {
+    /// A parent's children in paint order, or the roots for `None`.
+    fn siblings_of(&self, parent: Option<NodeId>) -> &[NodeId] {
+        match parent {
+            Some(parent) => &self.nodes[&parent].children,
+            None => &self.roots,
+        }
+    }
+
+    fn siblings_mut(&mut self, parent: Option<NodeId>) -> &mut Vec<NodeId> {
         match parent {
             Some(parent) => {
-                self.nodes
+                &mut self
+                    .nodes
                     .get_mut(&parent)
                     .expect("parent of an existing node exists")
-                    .children = siblings
+                    .children
             }
-            None => self.roots = siblings,
+            None => &mut self.roots,
         }
     }
 
@@ -1203,10 +1229,13 @@ fn project_bounds(world: &Mat4, rect: RectF) -> Option<RectF> {
     })
 }
 
-/// Sort sibling ids by paint order, breaking a tie by id so the result is a
-/// function of the scene and not of insertion order.
-fn sort_siblings(ids: &mut [NodeId], nodes: &BTreeMap<NodeId, Node>) {
-    ids.sort_by_key(|id| (nodes[id].z_order, *id));
+/// The index a child lands at: `None` means last, and an index past `len` is refused.
+fn child_index(index: Option<usize>, len: usize) -> Result<usize, SceneError> {
+    let index = index.unwrap_or(len);
+    if index > len {
+        return Err(SceneError::IndexOutOfRange { index, len });
+    }
+    Ok(index)
 }
 
 #[cfg(test)]
@@ -1428,7 +1457,7 @@ mod tests {
     }
 
     #[test]
-    fn a_z_order_change_damages_every_sibling() {
+    fn a_reorder_damages_every_sibling_whose_paint_order_changed() {
         let mut scene = scene_with_output();
         let parent = NodeId::new(1);
         scene
@@ -1439,10 +1468,11 @@ mod tests {
         scene.insert(NodeId::new(2), first).expect("first");
         let mut second = NodeSpec::new(rect(50, 50, 100, 100));
         second.parent = Some(parent);
-        second.z_order = 5;
         scene.insert(NodeId::new(3), second).expect("second");
         scene.take_damage();
-        scene.set_z_order(NodeId::new(2), 10).expect("reordered");
+        scene
+            .set_order(Some(parent), &[NodeId::new(3), NodeId::new(2)])
+            .expect("reordered");
         assert_eq!(scene.children(parent), Some(&[NodeId::new(3), NodeId::new(2)][..]));
         let damage = scene.take_damage();
         let output = damage.for_output(OutputId::new(0)).expect("output damage");
@@ -1451,25 +1481,24 @@ mod tests {
     }
 
     #[test]
-    fn a_batch_z_order_change_sorts_siblings_once_and_damages_each_of_them() {
+    fn a_batch_reorder_damages_each_sibling_it_passed() {
         let mut scene = scene_with_output();
         let parent = NodeId::new(1);
         scene
             .insert(parent, NodeSpec::new(rect(0, 0, 400, 400)))
             .expect("parent");
-        for (id, x, z) in [(2, 0, 0), (3, 120, 1), (4, 240, 2)] {
+        for (id, x) in [(2, 0), (3, 120), (4, 240)] {
             let mut child = NodeSpec::new(rect(x, 0, 100, 100));
             child.parent = Some(parent);
-            child.z_order = z;
             scene.insert(NodeId::new(id), child).expect("child");
         }
         scene.take_damage();
         scene
-            .set_z_orders(&[(NodeId::new(2), 10), (NodeId::new(3), -1)])
+            .set_order(Some(parent), &[NodeId::new(4), NodeId::new(3), NodeId::new(2)])
             .expect("reordered");
         assert_eq!(
             scene.children(parent),
-            Some(&[NodeId::new(3), NodeId::new(4), NodeId::new(2)][..])
+            Some(&[NodeId::new(4), NodeId::new(3), NodeId::new(2)][..])
         );
         let damage = scene.take_damage();
         let output = damage.for_output(OutputId::new(0)).expect("output damage");
@@ -1479,12 +1508,19 @@ mod tests {
     }
 
     #[test]
-    fn a_batch_z_order_change_refuses_an_unknown_node_and_changes_nothing() {
+    fn a_reorder_that_is_not_a_permutation_changes_nothing() {
         let mut scene = scene_with_output();
-        let node = NodeId::new(1);
-        scene.insert(node, NodeSpec::new(rect(0, 0, 100, 100))).expect("node");
-        assert!(scene.set_z_orders(&[(node, 5), (NodeId::new(9), 1)]).is_err());
-        assert_eq!(scene.z_order(node), Some(0));
+        let first = NodeId::new(1);
+        let second = NodeId::new(2);
+        scene.insert(first, NodeSpec::new(rect(0, 0, 100, 100))).expect("first");
+        scene
+            .insert(second, NodeSpec::new(rect(0, 0, 100, 100)))
+            .expect("second");
+        assert_eq!(
+            scene.set_order(None, &[first]),
+            Err(SceneError::NotAPermutation { parent: None })
+        );
+        assert_eq!(scene.roots, vec![first, second]);
     }
 
     #[test]
@@ -1526,7 +1562,6 @@ mod tests {
             Node {
                 parent: None,
                 children: vec![node],
-                z_order: 0,
                 bounds: rect(0, 0, 1920, 1080),
                 transform: VisualTransform::IDENTITY,
                 effects: Effects::new(),
@@ -1542,7 +1577,6 @@ mod tests {
             Node {
                 parent: Some(space),
                 children: Vec::new(),
-                z_order: 0,
                 bounds: rect(0, 0, 100, 100),
                 transform: VisualTransform::IDENTITY,
                 effects: Effects::new(),

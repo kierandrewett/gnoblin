@@ -118,8 +118,8 @@
 //!
 //! `model_test::the_scene_and_the_player_keep_their_invariants` drives a scene
 //! and a player through a deterministic sequence (a fixed-seed generator, no
-//! time, no threads) of inserts, removals, transforms, property writes, z-order
-//! changes, track starts, cancellations, retargets and ticks. After every step it
+//! time, no threads) of inserts, removals, transforms, property writes, sibling
+//! reorders, track starts, cancellations, retargets and ticks. After every step it
 //! asserts that the damage covers every node whose projected bounds changed, and
 //! at the end that every started track produced exactly one terminal report with
 //! its own id. It prints its counts with `--nocapture`.
