@@ -343,7 +343,7 @@ local function settle(m) -- every inherited default, sorted by name
         for k, p in pairs(t) do
             if not seen[k] then
                 seen[k] = true
-                if m.props[k].default ~= nil then
+                if m.props[k].default ~= nil and not m.props[k].readonly then
                     m.order[#m.order + 1] = k
                 end
             end
@@ -382,7 +382,7 @@ end
 for _, s in ipairs(core.classes()) do
     local c, m = declare(s.base and classes[s.base], s.name, s.name)
     for k, p in pairs(s.props) do
-        m.props[k] = { native = true, type = p.type, default = p.default }
+        m.props[k] = { native = true, type = p.type, default = p.default, readonly = p.readonly }
     end
     for _, sig in ipairs(s.signals) do
         m.signals[sig] = true

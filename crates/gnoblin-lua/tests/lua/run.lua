@@ -8,7 +8,7 @@ GNOBLIN_LUA_DIR = dir .. "/../../../../data/lua/gnoblin"
 package.path = dir .. "/?.lua;" .. package.path
 
 local failed = 0
-for _, file in ipairs({ "node_test" }) do
+for _, file in ipairs({ "node_test", "shell_test" }) do
     for _, c in ipairs(dofile(dir .. "/" .. file .. ".lua")) do
         local ok, err = pcall(c[2])
         print((ok and "PASS " or "FAIL ") .. c[1] .. (ok and "" or ": " .. tostring(err)))

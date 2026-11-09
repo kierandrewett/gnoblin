@@ -16,8 +16,8 @@ local SCHEMA = {
             opacity = { type = "number", default = 1 },
             visible = { type = "boolean", default = true },
             clip = { type = "boolean", default = false },
-            parent = { type = "node" },
-            children = { type = "nodes" },
+            parent = { type = "node", readonly = true },
+            children = { type = "nodes", readonly = true },
         },
         signals = {
             "ready",
@@ -59,7 +59,10 @@ local SCHEMA = {
     {
         name = "Workspace",
         base = "Node",
-        props = { active = { type = "boolean", default = false }, index = { type = "number", default = 0 } },
+        props = {
+            active = { type = "boolean", default = false },
+            index = { type = "number", default = 0, readonly = true },
+        },
         signals = { "activate" },
     },
     { name = "Lock", base = "Node" },

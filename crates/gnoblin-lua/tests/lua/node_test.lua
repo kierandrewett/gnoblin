@@ -367,6 +367,19 @@ return {
         end,
     },
 
+    -- Bug g: a native read-only property (a parent, a child list, an index) has no default to write at
+    -- construction, so `make` must skip it; writing it would raise in the host.
+    {
+        "a class over a native read-only property constructs without writing it",
+        function()
+            local _, host = H.fresh()
+            local ws = Workspace({ name = "1" })
+            root:add(ws)
+            H.check(type(ws.index) == "number", "index must read back as a number, got " .. tostring(ws.index))
+            H.check(#host.reports == 0, "reports: " .. table.concat(host.reports, "; "))
+        end,
+    },
+
     -- Bug f: extend checks its base when it is called, not when the class is declared.
     {
         "extend rejects a base that is not a class",
