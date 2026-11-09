@@ -67,6 +67,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
 use gnoblin_animation::{Easing, PropertyValue, VisualProperty, VisualTransform};
+use gnoblin_render::scene_ids::NodeIdAllocator;
 use gnoblin_render::{
     Damage, Effects, Mat4, NodeKind, NodeSpec, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
@@ -219,7 +220,8 @@ pub struct Composer {
     /// window that is not drawn yet still has a place for when it is.
     order: Vec<WindowId>,
     background: Color,
-    next_node: u64,
+    /// The ids of the nodes this composer creates, all in the compositor's range.
+    node_ids: NodeIdAllocator,
     /// The damage of the iteration being drawn, taken once by
     /// [`Composer::begin_frame`] and consumed output by output.
     damage: Option<Damage>,
@@ -254,7 +256,7 @@ impl Composer {
             windows: BTreeMap::new(),
             order: Vec::new(),
             background: Color::BLACK,
-            next_node: 1,
+            node_ids: NodeIdAllocator::new(),
             damage: None,
             motion: TweenPlayer::new(),
             tracks: BTreeMap::new(),
@@ -1430,6 +1432,12 @@ impl Composer {
                 // replaced so its bounds are the content's, and both the old and the
                 // new rectangle are damaged. A new node takes its target at once,
                 // except that a window which maps fades in from transparent.
+                // The id is taken before the old node goes, so an exhausted allocator
+                // leaves the window's current node in place.
+                let Some(id) = self.node_ids.allocate() else {
+                    log::warn!(area = "render", %window, "no compositor node id is left; the window keeps its node");
+                    return;
+                };
                 if let Some(node) = existing {
                     self.cancel_tracks(window);
                     let _ = self.scene.remove(node);
@@ -1439,8 +1447,6 @@ impl Composer {
                 if fades_in {
                     spec_transform.opacity = 0.0;
                 }
-                let id = NodeId::new(self.next_node);
-                self.next_node = self.next_node.saturating_add(1);
                 let spec = NodeSpec {
                     parent: None,
                     bounds,
@@ -1451,12 +1457,17 @@ impl Composer {
                     clip: false,
                     input: true,
                 };
-                if self.scene.insert(id, spec).is_ok() {
-                    if let Some(entry) = self.windows.get_mut(&window) {
-                        entry.node = Some(id);
+                match self.scene.insert(id, spec) {
+                    Ok(()) => {
+                        if let Some(entry) = self.windows.get_mut(&window) {
+                            entry.node = Some(id);
+                        }
+                        if fades_in {
+                            self.retarget(window, true);
+                        }
                     }
-                    if fades_in {
-                        self.retarget(window, true);
+                    Err(error) => {
+                        log::warn!(area = "render", %window, ?error, "the window's node is refused; it is not drawn");
                     }
                 }
             }
@@ -1554,6 +1565,67 @@ mod tests {
             frame.layers().is_empty(),
             "the node exists and damages its rectangle, but nothing can be drawn"
         );
+    }
+
+    // The composer's nodes are compositor-owned, so they live in the compositor's id range. A
+    // shell node may hold any id below the base, and must never block a window's node.
+    #[test]
+    fn every_node_the_composer_creates_has_a_compositor_id() {
+        let (mut composer, output) = screen();
+        for raw in 1..=3 {
+            let window = WindowId::new(raw);
+            composer.insert_window(window, Rect::new(10 * raw as i32, 10, 100, 100));
+            composer.set_window_content(window, Some(content()));
+        }
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        let ids: Vec<NodeId> = composer.with_scene(|scene| scene.node_ids().collect());
+        assert_eq!(ids.len(), 3, "one node per window with content");
+        for id in ids {
+            assert!(
+                id.get() >= gnoblin_render::scene_ids::COMPOSITOR_ID_BASE,
+                "composer node {id} is in the shell's id range"
+            );
+        }
+    }
+
+    #[test]
+    fn a_shell_node_on_the_composers_first_id_does_not_block_a_window() {
+        let (mut composer, _output) = screen();
+        let shell = NodeId::new(1);
+        composer.with_scene(|scene| {
+            scene
+                .insert_as(
+                    gnoblin_render::Actor::Shell,
+                    shell,
+                    NodeSpec::new(Rect::new(0, 0, 10, 10)),
+                )
+                .expect("the shell may insert a node below the base");
+        });
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.with_scene(|scene| {
+            assert!(scene.contains(shell), "the shell's node is untouched");
+            assert_eq!(scene.node_ids().count(), 2, "the window got a node of its own");
+        });
+    }
+
+    #[test]
+    fn a_window_node_id_is_never_reused_within_a_session() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let first = composer.with_scene(|scene| scene.node_ids().next()).expect("a node");
+        composer.remove_window(window);
+        let again = WindowId::new(2);
+        composer.insert_window(again, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(again, Some(content()));
+        let second = composer.with_scene(|scene| scene.node_ids().next()).expect("a node");
+        assert!(second.get() > first.get(), "{second} reuses or precedes {first}");
     }
 
     // A secure mark redraws the window, so a capture reads the new mark rather than a
