@@ -297,17 +297,11 @@ fn timing(op: &op::Properties) -> Option<Timing> {
 /// A call's arguments: little-endian `i64`s packed back to back. Bytes that do not make whole
 /// `i64`s are `bad-value`.
 fn call_args(bytes: &[u8]) -> Result<Vec<i64>, Code> {
-    let chunks = bytes.chunks_exact(8);
-    if !chunks.remainder().is_empty() {
+    let (chunks, rest) = bytes.as_chunks::<8>();
+    if !rest.is_empty() {
         return Err(Code::BadValue);
     }
-    chunks
-        .map(|chunk| {
-            <[u8; 8]>::try_from(chunk)
-                .map(i64::from_le_bytes)
-                .map_err(|_| Code::BadValue)
-        })
-        .collect()
+    Ok(chunks.iter().map(|chunk| i64::from_le_bytes(*chunk)).collect())
 }
 
 /// A value as the wire's typed fields: its kind, then the one field that carries it.
