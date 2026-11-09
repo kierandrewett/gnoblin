@@ -156,6 +156,9 @@ pub struct ObjectType {
     pub since: Version,
     /// Marks the whole object secret, as if every member were.
     pub secret: bool,
+    /// A record is a value, not an identity: a reference to it is the properties of
+    /// that value on the wire, not an object id. A record declares no methods or signals.
+    pub record: bool,
     /// Typed properties of the object.
     pub properties: Vec<Property>,
     /// Calls a client can make on the object.
@@ -187,6 +190,7 @@ impl ObjectType {
             base: self.base.clone(),
             since: self.since,
             secret: false,
+            record: self.record,
             properties: self
                 .properties
                 .iter()

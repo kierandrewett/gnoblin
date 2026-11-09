@@ -108,7 +108,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "nodes"
-type = "list<object:node>"
+type = "list<object:snapshot_node>"
 since = "0.2.0"
 
 # The result of a transaction. `failed_op` is -1 when it applied.
@@ -206,6 +206,7 @@ since = "0.2.0"
 [[object]]
 name = "op"
 since = "0.2.0"
+record = true
 
 # `set`, `insert`, `destroy`, `call` or `new`.
 [[object.property]]
@@ -312,6 +313,7 @@ since = "0.2.0"
 [[object]]
 name = "change"
 since = "0.2.0"
+record = true
 
 [[object.property]]
 name = "kind"
@@ -386,4 +388,31 @@ since = "0.2.0"
 [[object.property]]
 name = "removed"
 type = "list<uint>"
+since = "0.2.0"
+
+# One node of a snapshot: the shape of the tree, not the node's properties. A record, so a
+# snapshot carries values rather than identities.
+[[object]]
+name = "snapshot_node"
+since = "0.2.0"
+record = true
+
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "parent"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "index"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "class"
+type = "string"
 since = "0.2.0"

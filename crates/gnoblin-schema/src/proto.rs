@@ -178,9 +178,14 @@ fn render(catalog: &Catalog, namespace: &Namespace, version: Version) -> String 
     let _ = writeln!(text);
     let _ = writeln!(text, "package {namespace};");
 
+    let records: BTreeSet<String> = catalog
+        .objects(namespace)
+        .filter(|object| object.record)
+        .map(|object| object.name.clone())
+        .collect();
     for object in catalog.objects(namespace) {
         let _ = writeln!(text);
-        render_object(&mut text, object);
+        render_object(&mut text, object, &records);
     }
 
     let errors: Vec<&ErrorDecl> = catalog.errors(namespace).collect();
@@ -191,7 +196,7 @@ fn render(catalog: &Catalog, namespace: &Namespace, version: Version) -> String 
     text
 }
 
-fn render_object(text: &mut String, object: &ObjectType) {
+fn render_object(text: &mut String, object: &ObjectType, records: &BTreeSet<String>) {
     let secret = if object.secret { ", secret" } else { "" };
     let _ = writeln!(text, "// Object `{}`, since {}{secret}.", object.name, object.since);
     let _ = writeln!(text, "message {} {{", to_upper_camel(&object.name));
@@ -209,7 +214,7 @@ fn render_object(text: &mut String, object: &ObjectType) {
             if property.secret {
                 notes.push(SECRET_NOTE.to_owned());
             }
-            render_field(text, "    ", &property.name, index + 1, &property.ty, &notes);
+            render_field(text, "    ", &property.name, index + 1, &property.ty, &notes, records);
         }
         let _ = writeln!(text, "  }}");
     }
@@ -219,7 +224,7 @@ fn render_object(text: &mut String, object: &ObjectType) {
         let _ = writeln!(text);
         let _ = writeln!(text, "  // Method `{}`, since {}{secret}.", method.name, method.since);
         let name = format!("{}Args", to_upper_camel(&method.name));
-        render_message(text, &name, &method.params, "  ");
+        render_message(text, &name, &method.params, "  ", records);
     }
 
     for signal in &object.signals {
@@ -227,14 +232,14 @@ fn render_object(text: &mut String, object: &ObjectType) {
         let _ = writeln!(text);
         let _ = writeln!(text, "  // Signal `{}`, since {}{secret}.", signal.name, signal.since);
         let name = format!("{}Payload", to_upper_camel(&signal.name));
-        render_message(text, &name, &signal.fields, "  ");
+        render_message(text, &name, &signal.fields, "  ", records);
     }
 
     let _ = writeln!(text, "}}");
 }
 
 /// Render a nested message with `fields`, or an empty one on a single line.
-fn render_message(text: &mut String, name: &str, fields: &[Field], indent: &str) {
+fn render_message(text: &mut String, name: &str, fields: &[Field], indent: &str, records: &BTreeSet<String>) {
     if fields.is_empty() {
         let _ = writeln!(text, "{indent}message {name} {{}}");
         return;
@@ -246,13 +251,21 @@ fn render_message(text: &mut String, name: &str, fields: &[Field], indent: &str)
         if field.secret {
             notes.push(SECRET_NOTE.to_owned());
         }
-        render_field(text, &field_indent, &field.name, index + 1, &field.ty, &notes);
+        render_field(text, &field_indent, &field.name, index + 1, &field.ty, &notes, records);
     }
     let _ = writeln!(text, "{indent}}}");
 }
 
-fn render_field(text: &mut String, indent: &str, name: &str, tag: usize, ty: &Type, notes: &[String]) {
-    let (label, proto_type, note) = proto_type(ty);
+fn render_field(
+    text: &mut String,
+    indent: &str,
+    name: &str,
+    tag: usize,
+    ty: &Type,
+    notes: &[String],
+    records: &BTreeSet<String>,
+) {
+    let (label, proto_type, note) = proto_type(ty, records);
     let mut notes = notes.to_vec();
     if let Some(note) = note {
         notes.push(note);
@@ -271,7 +284,7 @@ fn render_field(text: &mut String, indent: &str, name: &str, tag: usize, ty: &Ty
 const SECRET_NOTE: &str = "secret: every frame carrying this field is flagged sensitive";
 
 /// The Protocol Buffers label, type and extra note for a schema type.
-fn proto_type(ty: &Type) -> (Option<&'static str>, String, Option<String>) {
+fn proto_type(ty: &Type, records: &BTreeSet<String>) -> (Option<&'static str>, String, Option<String>) {
     match ty {
         Type::Bool => (None, "bool".to_owned(), None),
         Type::Int => (None, "int64".to_owned(), None),
@@ -282,9 +295,16 @@ fn proto_type(ty: &Type) -> (Option<&'static str>, String, Option<String>) {
         // An object identity is a string here: the wire carries the id and the
         // schema carries the type, so a reader without the schema still knows it
         // is an identity rather than a title.
+        // A record is a value carried inline: its properties are the message, so a
+        // reference to it is that message, not an id.
+        Type::ObjectRef(name) if records.contains(name) => (
+            None,
+            format!("{}.Properties", to_upper_camel(name)),
+            Some(format!("record `{name}`: the properties of one value")),
+        ),
         Type::ObjectRef(name) => (None, "string".to_owned(), Some(format!("object id of `{name}`"))),
         Type::List(inner) => {
-            let (_, proto_type, note) = proto_type(inner);
+            let (_, proto_type, note) = proto_type(inner, records);
             (
                 Some("repeated"),
                 proto_type,

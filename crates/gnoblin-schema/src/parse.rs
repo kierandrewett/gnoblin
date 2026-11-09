@@ -82,6 +82,8 @@ struct RawObject {
     #[serde(default)]
     secret: bool,
     #[serde(default)]
+    record: bool,
+    #[serde(default)]
     base: Option<String>,
     #[serde(default, rename = "property")]
     properties: Vec<RawProperty>,
@@ -251,11 +253,15 @@ fn parse_objects(raw_objects: &[RawObject], version: Option<Version>, problems: 
         if let Some(base) = raw_object.base.as_deref().filter(|base| !is_lower_name(base)) {
             problems.push(format!("{owner}: base `{base}` must match [a-z][a-z0-9_]*"));
         }
+        if raw_object.record && (!raw_object.methods.is_empty() || !raw_object.signals.is_empty()) {
+            problems.push(format!("{owner}: a record declares no methods or signals"));
+        }
         objects.push(ObjectType {
             name: raw_object.name.clone(),
             base: raw_object.base.clone(),
             since,
             secret: raw_object.secret,
+            record: raw_object.record,
             properties,
             methods,
             signals,

@@ -485,7 +485,7 @@ object tree since 0.2.0 secret false
     field serial type uint since 0.2.0 secret false
     field chunk type uint since 0.2.0 secret false
     field last type bool since 0.2.0 secret false
-    field nodes type list<object:node> since 0.2.0 secret false
+    field nodes type list<object:snapshot_node> since 0.2.0 secret false
   signal reply since 0.2.0 secret false
     field serial type uint since 0.2.0 secret false
     field applied type bool since 0.2.0 secret false
@@ -540,6 +540,11 @@ object change since 0.2.0 secret false
   property value_node type uint since 0.2.0 secret false
   property value_list type list<double> since 0.2.0 secret false
   property removed type list<uint> since 0.2.0 secret false
+object snapshot_node since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type uint since 0.2.0 secret false
+  property index type int since 0.2.0 secret false
+  property class type string since 0.2.0 secret false
 object node since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -1908,8 +1913,8 @@ message Tree {
     uint64 base_serial = 1;
     // since 0.2.0
     uint64 serial = 2;
-    // since 0.2.0; list of object id of `op`
-    repeated string ops = 3;
+    // since 0.2.0; list of record `op`: the properties of one value
+    repeated Op.Properties ops = 3;
   }
 
   // Method `call`, since 0.2.0.
@@ -1942,8 +1947,8 @@ message Tree {
     uint64 chunk = 2;
     // since 0.2.0
     bool last = 3;
-    // since 0.2.0; list of object id of `node`
-    repeated string nodes = 4;
+    // since 0.2.0; list of record `snapshot_node`: the properties of one value
+    repeated SnapshotNode.Properties nodes = 4;
   }
 
   // Signal `reply`, since 0.2.0.
@@ -1964,8 +1969,8 @@ message Tree {
   message ChangesPayload {
     // since 0.2.0
     uint64 serial = 1;
-    // since 0.2.0; list of object id of `change`
-    repeated string changes = 2;
+    // since 0.2.0; list of record `change`: the properties of one value
+    repeated Change.Properties changes = 2;
   }
 
   // Signal `event`, since 0.2.0.
@@ -2070,6 +2075,21 @@ message Change {
     repeated double value_list = 14;
     // since 0.2.0; list
     repeated uint64 removed = 15;
+  }
+}
+
+// Object `snapshot_node`, since 0.2.0.
+message SnapshotNode {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0
+    uint64 parent = 2;
+    // since 0.2.0
+    int64 index = 3;
+    // since 0.2.0
+    string class = 4;
   }
 }
 
