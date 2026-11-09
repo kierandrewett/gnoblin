@@ -344,17 +344,16 @@ connection.
 
 Each frame, the compositor:
 
-1. Drains the transactions queued by the IPC thread, in arrival order (`ipc/server.rs:769` `run` owns the queue).
+1. Drains the transactions queued by the socket, in arrival order. `TreeFrame::drain` (`crates/gnoblin-wayland/src/tree_frame.rs`) runs first, before `Composer::begin_frame`, against the scene the composer draws.
 2. For each transaction in order: validates every op against the tree plus the earlier ops of the same transaction
    (so an op sees an earlier `new`). If every op validates, applies them all; otherwise applies nothing.
-3. If any transaction applied, publishes one change batch at the next serial.
+3. If any transaction applied, publishes one change batch at the next serial (`TreeFrame::take_batches`, `State::take_tree_batches`).
 4. Runs the normal frame: `take_dirty` (`scene.rs:883`), compose, `take_damage` (`scene.rs:940`).
 
 A transaction that arrives after step 1 waits for the next frame. The frame never waits for the shell. A late
 transaction draws one frame later, never at its origin first (plan 8.2 item 3, unverified line).
 
-The 4 ms budget (`state.rs:588`) bounds tree work. Each transaction is capped at 4096 ops; validation is linear in the
-ops. The per-op cost is unmeasured until step 4.
+The 4 ms budget (`TREE_FRAME_BUDGET`, `tree_frame.rs`) bounds tree work. A transaction that starts after the budget is spent waits, whole, at the front of the queue for the next frame, so order is kept; the first transaction of a frame always runs, so one longer than the budget still lands. Each transaction is capped at 4096 ops; validation is linear in the ops. The per-op cost is unmeasured until step 4.
 
 ### 4.3 Atomicity: whole transaction
 
@@ -659,8 +658,10 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 
 ### Slice 6: frame boundary wiring
 
-- **Crate and files:** `gnoblin-wayland`: `src/state.rs` (drain transactions at frame start; publish the batch before
-  compose).
+- **Status:** implemented in `gnoblin-wayland`: `src/tree_frame.rs` (`TreeFrame`, `TreeQueue`, `TreeBatch`) and `state.rs` (`Host::begin_frame` drains before composing; `State::tree_queue`, `set_tree_classes`, `take_tree_batches`). `Composer::with_scene` gives the drain the composer's scene. The owner socket submits through `TreeQueue` (slice 5 wiring); `ipc/` is untouched by this slice.
+- **Dependency direction:** `gnoblin-wayland` already depends on `gnoblin-backend` and `gnoblin-render`. `TreeHost` is not a trait in `ipc/tree.rs`; the host lives in `gnoblin-wayland`, so no new edge is needed.
+- **Known gap:** the composer's window node ids start at 1, and the tree's ids are checked for duplicates (`duplicate-node`). Until the tree and the composer share an id space, a tree node can collide with a window node.
+- **Known gap (stale base):** the frame checks a base serial by exact equality with the frame's starting serial, as `TreeSession::transact` does. Section 4.5 and F6 call for the per-id rule over `(base, current]`, which needs the last 64 batches' destroyed and moved ids. Neither the session nor the frame keeps them yet. A deferred transaction is admitted without a second base check, so a transaction deferred across a published batch applies where an arrival with the same base would be refused. Both belong to the slice that lands 4.5.
 - **Tests first:** F19 (a late transaction draws one frame later); one batch per changed frame; F29, F30, F35.
 - **Stays green:** frame-timing tests on the layout path (`state.rs:588`, `2162`).
 

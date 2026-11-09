@@ -333,6 +333,12 @@ impl Composer {
         self.damage = Some(self.scene.take_damage());
     }
 
+    /// Runs `f` against the scene the composer draws from. The tree's frame work edits it
+    /// here, before [`Composer::begin_frame`] takes the damage, so the edits draw this frame.
+    pub fn with_scene<R>(&mut self, f: impl FnOnce(&mut Scene) -> R) -> R {
+        f(&mut self.scene)
+    }
+
     /// Drops the damage of the iteration that just ended.
     pub fn end_frame(&mut self) {
         self.damage = None;

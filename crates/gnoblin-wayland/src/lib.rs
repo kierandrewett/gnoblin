@@ -196,6 +196,7 @@ mod selection_bridge;
 mod server;
 mod state;
 mod touchpad;
+mod tree_frame;
 mod xwayland;
 
 /// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.
@@ -233,6 +234,9 @@ pub use server::{
 pub use smithay::delegate_dispatch2;
 /// Smithay's dispatch traits, which the redirect adapters implement through this crate.
 pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
+/// The tree's frame boundary: the queue the shell's transactions wait in, and the batch a
+/// frame publishes for the shell's mirror.
+pub use tree_frame::{TREE_FRAME_BUDGET, TreeBatch, TreeFrame, TreeQueue};
 
 /// The identity and the window process a client's surface belongs to.
 pub use process::{ProcessIdentity, WindowProcess};

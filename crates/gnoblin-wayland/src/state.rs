@@ -70,6 +70,7 @@ use gnoblin_layers::{InputPolicy, LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
+use gnoblin_render::transaction::ClassInfo;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
@@ -98,6 +99,7 @@ use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
+use crate::tree_frame::{TreeBatch, TreeFrame, TreeQueue};
 
 use crate::log;
 
@@ -540,6 +542,8 @@ pub struct State {
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
     pub(crate) composer: Composer,
+    /// The tree's queue, schema and batches. Its transactions apply at the start of each frame.
+    pub(crate) tree: TreeFrame,
     /// The modal overlay, if one is set; it takes input from the clients while it stands.
     pub(crate) modal: Option<Modal>,
     /// The modal events queued since the last take, in the order they arrived.
@@ -845,6 +849,7 @@ impl State {
             held_buttons: 0,
             touch_points: HashMap::new(),
             composer: Composer::new(),
+            tree: TreeFrame::new(),
             modal: None,
             modal_events: Vec::new(),
             layout_failures: BTreeMap::new(),
@@ -3224,12 +3229,35 @@ pub(crate) fn committed_content(surface: &WlSurface) -> Option<(WlBuffer, Conten
     .flatten()
 }
 
+impl State {
+    /// The queue the shell's tree transactions wait in. The socket that carries them holds a
+    /// clone; the frame drains it at the start of each frame and never waits on it.
+    #[must_use]
+    pub fn tree_queue(&self) -> TreeQueue {
+        self.tree.queue()
+    }
+
+    /// Sets the schema the tree's transactions are checked against.
+    pub fn set_tree_classes(&mut self, classes: Box<dyn ClassInfo>) {
+        self.tree.set_classes(classes);
+    }
+
+    /// Takes the change batches frames published since the last take, in publication order.
+    pub fn take_tree_batches(&mut self) -> Vec<TreeBatch> {
+        self.tree.take_batches()
+    }
+}
+
 impl Host for State {
     fn begin_frame(&mut self) {
         // The pointer may have moved since the last frame; its old and new places are
         // damaged before the damage is taken.
         let redraw = std::mem::take(&mut self.cursor_shape_changed);
         self.update_cursor(redraw);
+        // The tree's transactions apply to the scene the composer draws from, before the
+        // damage is taken, so a transaction applied here draws in this frame.
+        let tree = &mut self.tree;
+        self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame();
