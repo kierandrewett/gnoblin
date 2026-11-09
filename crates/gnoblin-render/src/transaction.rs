@@ -593,7 +593,7 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
 }
 
 /// The visual property a schema key names, or `None` for a key the scene does not store.
-fn visual_property(key: &str) -> Option<VisualProperty> {
+pub fn visual_property(key: &str) -> Option<VisualProperty> {
     Some(match key {
         "opacity" => VisualProperty::Opacity,
         "offset_x" => VisualProperty::OffsetX,
