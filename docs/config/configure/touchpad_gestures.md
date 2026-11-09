@@ -82,7 +82,9 @@ not passed to another Mutter gesture handler.
 
 ## Built-in actions
 
-These actions run after a matching gesture ends:
+Built-in actions are listed below as not executed. The names are accepted by
+validation; when a matching gesture ends with one, Gnoblin logs a warning
+naming the action and runs nothing. Only `command` bindings run.
 
 | Action                     | Effect                                     |
 | -------------------------- | ------------------------------------------ |
@@ -94,6 +96,13 @@ These actions run after a matching gesture ends:
 
 Bindings never run while the session is locked. Gestures on the lock screen are
 left to the lock screen, so no action or command starts there.
+
+## Status and testing
+
+Command bindings are wired from libinput gesture events through the touchpad
+router to the configured command. The routing, cancel, lock, no-match and
+finger-count rules are covered by unit tests that feed synthetic samples. They
+have not been run against a touchpad: no hardware proof is claimed here.
 
 ## Handle gestures in a shell
 
