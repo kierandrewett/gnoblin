@@ -599,6 +599,21 @@ impl Scene {
         self.nodes.get(&id).map(Node::input)
     }
 
+    /// A node's effective opacity: its own opacity times every ancestor's, up to the
+    /// root, or `None` for an unknown node. A child of a half-transparent parent is
+    /// therefore at most half opaque, however opaque it is on its own.
+    #[must_use]
+    pub fn composed_opacity(&self, id: NodeId) -> Option<f32> {
+        let mut opacity = 1.0_f32;
+        let mut current = Some(id);
+        while let Some(node_id) = current {
+            let node = self.nodes.get(&node_id)?;
+            opacity *= node.transform.opacity;
+            current = node.parent;
+        }
+        Some(opacity)
+    }
+
     /// Move a node within its siblings' paint order.
     ///
     /// Reordering can change which sibling covers which, so every sibling's

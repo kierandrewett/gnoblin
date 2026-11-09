@@ -271,9 +271,24 @@ fn opacity_is_clamped_between_zero_and_one() {
 }
 
 #[test]
-#[ignore = "Scene exposes no composed opacity; the parent's opacity does not multiply the child's (design §5)"]
 fn opacity_multiplies_down_the_tree() {
-    panic!("Scene has no composed-opacity accessor: the node API must provide it");
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 400, 400))).expect("root");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    scene
+        .insert(id(3), child_of(id(2), rect(0, 0, 50, 50)))
+        .expect("grandchild");
+    for node in [id(1), id(2)] {
+        scene
+            .set_property(node, VisualProperty::Opacity, PropertyValue::Number(0.5))
+            .expect("opacity");
+    }
+    assert_eq!(scene.composed_opacity(id(1)), Some(0.5));
+    assert_eq!(scene.composed_opacity(id(2)), Some(0.25));
+    assert_eq!(scene.composed_opacity(id(3)), Some(0.25));
+    assert_eq!(scene.composed_opacity(id(99)), None);
 }
 
 #[test]
