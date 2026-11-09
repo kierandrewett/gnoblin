@@ -32,6 +32,7 @@
 
 pub mod derived;
 mod error;
+mod inherit;
 mod model;
 mod parse;
 pub mod proto;
@@ -39,7 +40,7 @@ pub mod proto;
 pub use error::SchemaError;
 pub use gnoblin_types::{InvalidVersion, Version};
 pub use model::{
-    Catalog, ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code,
-    is_lower_name,
+    Catalog, DefaultValue, ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type,
+    is_error_code, is_lower_name,
 };
 pub use parse::parse_schema;

@@ -24,10 +24,27 @@
 //! - a `since` is missing, is not three numbers, or is newer than the schema
 //!   version;
 //! - a name does not match its pattern, or a type names nothing known;
-//! - a field's `since` is earlier than the member that introduced it.
+//! - a field's `since` is earlier than the member that introduced it;
+//! - a `default` does not match its property's type;
+//! - a `base` is not a class name in the same namespace.
 //!
 //! Object references are resolved by [`crate::Catalog`], because a namespace may
 //! span several files.
+//!
+//! ## Keys added by node-core
+//!
+//! - `base = "<class>"` on an object: the class it derives from, in the same
+//!   namespace. The derived class gains the base's properties, methods and
+//!   signals, base members first. A property may redeclare a base property only
+//!   with the same type; no object may inherit from itself, directly or through
+//!   a chain.
+//! - `default = <value>` on a property: the value a read sees before anything has
+//!   set it. It must match the property's type.
+//! - `readonly = true` on a property: a `set` from a client is refused.
+//! - `animated = true` on a property: a `set` may carry a duration in seconds.
+//!
+//! `readonly` and `animated` are booleans and default to `false`. Every key a
+//! schema file has not declared is refused, so a misspelt key cannot pass silently.
 
 use std::collections::BTreeSet;
 
@@ -35,7 +52,8 @@ use serde::Deserialize;
 
 use crate::error::SchemaError;
 use crate::model::{
-    ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code, is_lower_name,
+    DefaultValue, ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code,
+    is_lower_name,
 };
 use gnoblin_types::Version;
 
@@ -63,6 +81,8 @@ struct RawObject {
     since: Option<String>,
     #[serde(default)]
     secret: bool,
+    #[serde(default)]
+    base: Option<String>,
     #[serde(default, rename = "property")]
     properties: Vec<RawProperty>,
     #[serde(default, rename = "method")]
@@ -80,6 +100,11 @@ struct RawProperty {
     since: Option<String>,
     #[serde(default)]
     secret: bool,
+    #[serde(default)]
+    readonly: bool,
+    #[serde(default)]
+    animated: bool,
+    default: Option<toml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -223,8 +248,12 @@ fn parse_objects(raw_objects: &[RawObject], version: Option<Version>, problems: 
         let methods = parse_methods(&raw_object.methods, &owner, since, version, &mut members, problems);
         let signals = parse_signals(&raw_object.signals, &owner, since, version, &mut members, problems);
 
+        if let Some(base) = raw_object.base.as_deref().filter(|base| !is_lower_name(base)) {
+            problems.push(format!("{owner}: base `{base}` must match [a-z][a-z0-9_]*"));
+        }
         objects.push(ObjectType {
             name: raw_object.name.clone(),
+            base: raw_object.base.clone(),
             since,
             secret: raw_object.secret,
             properties,
@@ -233,6 +262,28 @@ fn parse_objects(raw_objects: &[RawObject], version: Option<Version>, problems: 
         });
     }
     objects
+}
+
+/// Read a property's `default` as its declared type. TOML has no literal for an
+/// object reference or for bytes, so those refuse a default rather than invent one.
+fn default_value(ty: &Type, value: &toml::Value) -> Result<DefaultValue, String> {
+    match (ty, value) {
+        (Type::Bool, toml::Value::Boolean(flag)) => Ok(DefaultValue::Bool(*flag)),
+        (Type::Int, toml::Value::Integer(number)) => Ok(DefaultValue::Int(*number)),
+        (Type::Uint, toml::Value::Integer(number)) => u64::try_from(*number)
+            .map(DefaultValue::Uint)
+            .map_err(|_| format!("default `{number}` is negative, so it is not a `uint`")),
+        (Type::Double, toml::Value::Float(number)) => Ok(DefaultValue::Double(*number)),
+        (Type::Double, toml::Value::Integer(number)) => Ok(DefaultValue::Double(*number as f64)),
+        (Type::Text, toml::Value::String(text)) => Ok(DefaultValue::Text(text.clone())),
+        (Type::List(inner), toml::Value::Array(items)) => items
+            .iter()
+            .map(|item| default_value(inner, item))
+            .collect::<Result<Vec<_>, _>>()
+            .map(DefaultValue::List),
+        (Type::Bytes | Type::ObjectRef(_), _) => Err(format!("default is refused: `{ty}` has no TOML literal")),
+        _ => Err(format!("default `{value}` is not a `{ty}`")),
+    }
 }
 
 fn parse_properties(
@@ -258,11 +309,26 @@ fn parse_properties(
         let Some(since) = member_since(problems, raw_property.since.as_deref(), &owner, object_since, version) else {
             continue;
         };
+        let default = match raw_property
+            .default
+            .as_ref()
+            .map(|value| default_value(&ty, value))
+            .transpose()
+        {
+            Ok(default) => default,
+            Err(reason) => {
+                problems.push(format!("{owner}: {reason}"));
+                continue;
+            }
+        };
         properties.push(Property {
             name: raw_property.name.clone(),
             ty,
             since,
             secret: raw_property.secret,
+            default,
+            readonly: raw_property.readonly,
+            animated: raw_property.animated,
         });
     }
     properties

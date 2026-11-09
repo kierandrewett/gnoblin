@@ -149,6 +149,9 @@ pub struct Schema {
 pub struct ObjectType {
     /// The object's name as declared in the schema.
     pub name: String,
+    /// The base class this object extends, as declared. Its members are already
+    /// resolved into this object, so readers never walk the chain.
+    pub base: Option<String>,
     /// The version that added the object.
     pub since: Version,
     /// Marks the whole object secret, as if every member were.
@@ -181,6 +184,7 @@ impl ObjectType {
         }
         Some(ObjectType {
             name: self.name.clone(),
+            base: self.base.clone(),
             since: self.since,
             secret: false,
             properties: self
@@ -230,6 +234,24 @@ impl ObjectType {
     }
 }
 
+/// A property's default, read as the property's declared type. An object
+/// reference or bytes has no TOML literal, so those types take no default.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DefaultValue {
+    /// A boolean.
+    Bool(bool),
+    /// A signed integer.
+    Int(i64),
+    /// An unsigned integer.
+    Uint(u64),
+    /// An IEEE 754 double.
+    Double(f64),
+    /// A UTF-8 string.
+    Text(String),
+    /// A list, each item a default of the inner type.
+    List(Vec<DefaultValue>),
+}
+
 /// A typed property published in a property diff.
 #[derive(Clone, Debug)]
 pub struct Property {
@@ -241,6 +263,12 @@ pub struct Property {
     pub since: Version,
     /// True when the value must be redacted from unauthorised readers.
     pub secret: bool,
+    /// The value the property holds before any write, when the schema gives one.
+    pub default: Option<DefaultValue>,
+    /// True when a `set` on the property is refused `read-only`.
+    pub readonly: bool,
+    /// True when a `set` may carry `seconds` to animate the change; without it the set is refused `not-animated`.
+    pub animated: bool,
 }
 
 impl Property {
@@ -334,12 +362,14 @@ pub struct ErrorDecl {
 /// references are catalog checks, not per-file ones.
 #[derive(Clone, Debug)]
 pub struct Catalog {
+    /// The schemas as declared, before inheritance is resolved into them.
+    declared: Vec<Schema>,
     schemas: Vec<Schema>,
 }
 
 impl Catalog {
     /// Build a catalog from parsed schemas.
-    pub fn new(schemas: Vec<Schema>) -> Result<Catalog, SchemaError> {
+    pub fn new(mut schemas: Vec<Schema>) -> Result<Catalog, SchemaError> {
         let mut problems = Vec::new();
         let mut versions: BTreeMap<&str, (Version, &str)> = BTreeMap::new();
         let mut objects: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
@@ -401,13 +431,20 @@ impl Catalog {
             }
         }
 
+        // Resolution runs on a copy: `declared` keeps the schemas as written, so that
+        // `with_derived` can add members and rebuild from them without inheriting twice.
+        let declared = schemas.clone();
+        if let Err(inheritance) = crate::inherit::resolve(&mut schemas) {
+            problems.extend(inheritance);
+        }
+
         if !problems.is_empty() {
             return Err(SchemaError::Invalid {
                 source: "schema catalog".to_owned(),
                 problems,
             });
         }
-        Ok(Catalog { schemas })
+        Ok(Catalog { schemas, declared })
     }
 
     /// Read every `.toml` file in `dir`, in file-name order.
@@ -473,6 +510,11 @@ impl Catalog {
     /// The files in the catalog, in load order.
     pub fn schemas(&self) -> &[Schema] {
         &self.schemas
+    }
+
+    /// The files as declared, before inheritance: what a rebuild starts from.
+    pub(crate) fn declared(&self) -> &[Schema] {
+        &self.declared
     }
 
     /// Every namespace, sorted.

@@ -1,0 +1,1436 @@
+namespace gnoblin version 0.2.0
+error too-many-inhibitors since 0.2.0
+error idle-unavailable since 0.2.0
+error power-missing since 0.2.0
+error layer-refused since 0.2.0
+error not-locked since 0.2.0
+error unknown-member since 0.2.0
+error denied since 0.2.0
+error unsupported since 0.2.0
+error busy since 0.2.0
+error unavailable since 0.2.0
+error timed-out since 0.2.0
+error internal since 0.2.0
+error too-many-passes since 0.2.0
+error unknown-effect-kind since 0.2.0
+error not-floating since 0.2.0
+error transient-follows-parent since 0.2.0
+error refused since 0.2.0
+error unknown-layout since 0.2.0
+error unknown-set since 0.2.0
+object capture since 0.2.0 secret false
+  method open since 0.2.0 secret false function false
+    param session type uint since 0.2.0 secret false
+    param owner type string since 0.2.0 secret false
+    param remote_session type string since 0.2.0 secret false
+  method close since 0.2.0 secret false function false
+    param session type uint since 0.2.0 secret false
+object config since 0.2.0 secret false
+  signal reload_failed since 0.2.0 secret false
+    field path type string since 0.2.0 secret false
+    field error type string since 0.2.0 secret false
+    field sequence type uint since 0.2.0 secret false
+    field time type uint since 0.2.0 secret false
+  signal reloaded since 0.2.0 secret false
+    field path type string since 0.2.0 secret false
+    field revision type uint since 0.2.0 secret false
+    field warnings type list<string> since 0.2.0 secret false
+    field sequence type uint since 0.2.0 secret false
+    field time type uint since 0.2.0 secret false
+object effect since 0.2.0 secret false
+  property kind type string since 0.2.0 secret false
+  property enabled type bool since 0.2.0 secret false
+  property active type bool since 0.2.0 secret false
+  property reason type string since 0.2.0 secret false
+  property downscale type uint since 0.2.0 secret false
+  property passes type uint since 0.2.0 secret false
+  property algorithm type string since 0.2.0 secret false
+  property noise type double since 0.2.0 secret false
+  property brightness type double since 0.2.0 secret false
+  property contrast type double since 0.2.0 secret false
+  property saturation type double since 0.2.0 secret false
+  property tint type string since 0.2.0 secret false
+  property offset_x type double since 0.2.0 secret false
+  property offset_y type double since 0.2.0 secret false
+  property blur_radius type double since 0.2.0 secret false
+  property spread type double since 0.2.0 secret false
+  property colour type string since 0.2.0 secret false
+  property source type string since 0.2.0 secret false
+  property entry type string since 0.2.0 secret false
+  method remove since 0.2.0 secret false function false
+  signal closed since 0.2.0 secret false
+object eis since 0.2.0 secret false
+  method open since 0.2.0 secret false function false
+    param session type uint since 0.2.0 secret false
+    param owner type string since 0.2.0 secret false
+    param capabilities type uint since 0.2.0 secret false
+    param path type string since 0.2.0 secret false
+  method close since 0.2.0 secret false function false
+    param session type uint since 0.2.0 secret false
+object idle since 0.2.0 secret false
+  property idle_ms type uint since 0.2.0 secret false
+  property inhibitors type uint since 0.2.0 secret false
+  method inhibit since 0.2.0 secret false function false
+    param holder type string since 0.2.0 secret false
+  method uninhibit since 0.2.0 secret false function false
+    param holder type string since 0.2.0 secret false
+object layers since 0.2.0 secret false
+  method register since 0.2.0 secret false function false
+    param name type string since 0.2.0 secret false
+    param target type uint since 0.2.0 secret false
+object lock since 0.2.0 secret false
+  property locked type bool since 0.2.0 secret false
+  method lock_session since 0.2.0 secret false function false
+object operation since 0.2.0 secret false
+  signal completed since 0.2.0 secret false
+    field operation_id type uint since 0.2.0 secret false
+    field method type string since 0.2.0 secret false
+    field ok type bool since 0.2.0 secret false
+    field error type string since 0.2.0 secret false
+    field sequence type uint since 0.2.0 secret false
+    field time type uint since 0.2.0 secret false
+object output since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property make type string since 0.2.0 secret false
+  property model type string since 0.2.0 secret false
+  property modes type list<string> since 0.2.0 secret false
+  property mode type string since 0.2.0 secret false
+  property scale type double since 0.2.0 secret false
+  property transform type uint since 0.2.0 secret false
+  property primary type bool since 0.2.0 secret false
+  property enabled type bool since 0.2.0 secret false
+  property x type int since 0.2.0 secret false
+  property y type int since 0.2.0 secret false
+  property width type uint since 0.2.0 secret false
+  property height type uint since 0.2.0 secret false
+  property layout type string since 0.2.0 secret false
+  method apply since 0.2.0 secret false function false
+    param x type int since 0.2.0 secret false
+    param y type int since 0.2.0 secret false
+    param scale type double since 0.2.0 secret false
+    param transform type uint since 0.2.0 secret false
+    param primary type bool since 0.2.0 secret false
+    param enabled type bool since 0.2.0 secret false
+    param mode type string since 0.2.0 secret false
+  method set_layout since 0.2.0 secret false function false
+    param root type string since 0.2.0 secret false
+    param module type string since 0.2.0 secret false
+    param hash type string since 0.2.0 secret false
+    param options type bytes since 0.2.0 secret false
+  signal closed since 0.2.0 secret false
+  signal added since 0.2.0 secret false
+    field output_id type string since 0.2.0 secret false
+    field output type object:output since 0.2.0 secret false
+  signal changed since 0.2.0 secret false
+    field output_id type string since 0.2.0 secret false
+    field output type object:output since 0.2.0 secret false
+    field changed type list<string> since 0.2.0 secret false
+  signal removed since 0.2.0 secret false
+    field output_id type string since 0.2.0 secret false
+    field last type object:output since 0.2.0 secret false
+object portal_ui since 0.2.0 secret false
+  method file_chooser since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param mode type string since 0.2.0 secret false
+    param title type string since 0.2.0 secret false
+    param multiple type bool since 0.2.0 secret false
+    param filter_names type list<string> since 0.2.0 secret false
+    param filter_patterns type list<string> since 0.2.0 secret false
+    param current_filter type int since 0.2.0 secret false
+    param current_folder type string since 0.2.0 secret false
+    param current_name type string since 0.2.0 secret false
+    param choice_ids type list<string> since 0.2.0 secret false
+    param choice_labels type list<string> since 0.2.0 secret false
+  method app_chooser since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param content_type type string since 0.2.0 secret false
+    param last_choice type string since 0.2.0 secret false
+    param filter_text type string since 0.2.0 secret false
+    param choice_ids type list<string> since 0.2.0 secret false
+    param choice_labels type list<string> since 0.2.0 secret false
+  method print since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param title type string since 0.2.0 secret false
+    param choice_ids type list<string> since 0.2.0 secret false
+    param choice_labels type list<string> since 0.2.0 secret false
+    param copies type uint since 0.2.0 secret false
+    param max_copies type uint since 0.2.0 secret false
+    param pages type string since 0.2.0 secret false
+  method account since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param reason type string since 0.2.0 secret false
+    param name type string since 0.2.0 secret false
+    param avatar_uri type string since 0.2.0 secret false
+  method wallpaper since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param uri type string since 0.2.0 secret false
+    param options type string since 0.2.0 secret false
+  method background since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param reason type string since 0.2.0 secret false
+    param autostart_requested type bool since 0.2.0 secret false
+  method dynamic_launcher since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param name type string since 0.2.0 secret false
+    param icon type string since 0.2.0 secret false
+    param desktop_file_id type string since 0.2.0 secret false
+  method screen_cast since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param source_types type uint since 0.2.0 secret false
+    param cursor_mode type uint since 0.2.0 secret false
+    param multiple type bool since 0.2.0 secret false
+  method remote_desktop since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param device_types type uint since 0.2.0 secret false
+  method input_capture since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param capabilities type uint since 0.2.0 secret false
+  method screenshot since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param interactive type bool since 0.2.0 secret false
+  method pick_color since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+  method secret since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param app_id type string since 0.2.0 secret false
+    param deadline_ms type uint since 0.2.0 secret false
+    param label type string since 0.2.0 secret false
+  method cancel since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+object portal_outcome since 0.2.0 secret false
+  method handled since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param uris type list<string> since 0.2.0 secret false
+    param choice type string since 0.2.0 secret false
+    param remember type bool since 0.2.0 secret false
+    param copies type uint since 0.2.0 secret false
+    param pages type string since 0.2.0 secret false
+    param grant_bits type uint since 0.2.0 secret false
+    param cursor_mode type uint since 0.2.0 secret false
+  method cancelled since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param reason type string since 0.2.0 secret false
+  method declined since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+  method error since 0.2.0 secret false function false
+    param request_id type uint since 0.2.0 secret false
+    param code type string since 0.2.0 secret false
+    param message type string since 0.2.0 secret false
+object request since 0.2.0 secret false
+  method claim since 0.2.0 secret false function false
+    param request type uint since 0.2.0 secret false
+  method answer since 0.2.0 secret false function false
+    param request type uint since 0.2.0 secret false
+    param answer type bytes since 0.2.0 secret true
+  method decline since 0.2.0 secret false function false
+    param request type uint since 0.2.0 secret false
+  signal offered since 0.2.0 secret false
+    field request type uint since 0.2.0 secret false
+    field deadline type uint since 0.2.0 secret false
+    field slot type string since 0.2.0 secret false
+    field title type string since 0.2.0 secret false
+    field message type string since 0.2.0 secret false
+    field subject type bytes since 0.2.0 secret false
+  signal finished since 0.2.0 secret false
+    field request type uint since 0.2.0 secret false
+    field completion type string since 0.2.0 secret false
+    field reason type string since 0.2.0 secret false
+object session since 0.2.0 secret false
+  property version type string since 0.2.0 secret false
+  property slot_auth_polkit type string since 0.2.0 secret false
+  property slot_prompt_secret type string since 0.2.0 secret false
+  property slot_location_agent type string since 0.2.0 secret false
+  property slot_idle_policy type string since 0.2.0 secret false
+  property lock_state type string since 0.2.0 secret false
+  property lock_available type bool since 0.2.0 secret false
+  property lock_revision type uint since 0.2.0 secret false
+  method logout since 0.2.0 secret false function true
+  method poweroff since 0.2.0 secret false function true
+  method reboot since 0.2.0 secret false function true
+  method suspend since 0.2.0 secret false function true
+  method hibernate since 0.2.0 secret false function true
+  signal ready since 0.2.0 secret false
+  signal bell since 0.2.0 secret false
+    field count type uint since 0.2.0 secret false
+  signal reload_requested since 0.2.0 secret false
+    field generation type uint since 0.2.0 secret false
+  signal lock_state_changed since 0.2.0 secret false
+    field state type string since 0.2.0 secret false
+    field revision type uint since 0.2.0 secret false
+object settings since 0.2.0 secret false
+  property color_scheme type uint since 0.2.0 secret false
+  property accent_red type double since 0.2.0 secret false
+  property accent_green type double since 0.2.0 secret false
+  property accent_blue type double since 0.2.0 secret false
+  property contrast type uint since 0.2.0 secret false
+  property reduced_motion type uint since 0.2.0 secret false
+  property gtk_theme type string since 0.2.0 secret false
+  property icon_theme type string since 0.2.0 secret false
+  property cursor_theme type string since 0.2.0 secret false
+  property cursor_size type uint since 0.2.0 secret false
+  property font_name type string since 0.2.0 secret false
+  property document_font_name type string since 0.2.0 secret false
+  property monospace_font_name type string since 0.2.0 secret false
+  property text_scaling_factor type double since 0.2.0 secret false
+  property button_layout type string since 0.2.0 secret false
+  property enable_animations type bool since 0.2.0 secret false
+object window since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property title type string since 0.2.0 secret false
+  property app_id type string since 0.2.0 secret false
+  property focused type bool since 0.2.0 secret false
+  property x type int since 0.2.0 secret false
+  property y type int since 0.2.0 secret false
+  property width type uint since 0.2.0 secret false
+  property height type uint since 0.2.0 secret false
+  property icon type string since 0.2.0 secret false
+  property tag type string since 0.2.0 secret false
+  property modal type bool since 0.2.0 secret false
+  property unresponsive type bool since 0.2.0 secret false
+  property effects type list<object:effect> since 0.2.0 secret false
+  property pid type uint since 0.2.0 secret false
+  method focus since 0.2.0 secret false function false
+  method present since 0.2.0 secret false function false
+  method kill since 0.2.0 secret false function false
+  method close since 0.2.0 secret false function false
+  method set_minimized since 0.2.0 secret false function false
+    param value type bool since 0.2.0 secret false
+  method set_maximized since 0.2.0 secret false function false
+    param value type bool since 0.2.0 secret false
+  method set_fullscreen since 0.2.0 secret false function false
+    param value type bool since 0.2.0 secret false
+  method move since 0.2.0 secret false function false
+    param x type int since 0.2.0 secret false
+    param y type int since 0.2.0 secret false
+  method resize since 0.2.0 secret false function false
+    param width type uint since 0.2.0 secret false
+    param height type uint since 0.2.0 secret false
+  method set_opacity since 0.2.0 secret false function false
+    param opacity type double since 0.2.0 secret false
+  method set_scale since 0.2.0 secret false function false
+    param scale type double since 0.2.0 secret false
+  method set_offset since 0.2.0 secret false function false
+    param x type double since 0.2.0 secret false
+    param y type double since 0.2.0 secret false
+  method reset_visuals since 0.2.0 secret false function false
+  method set_workspace since 0.2.0 secret false function false
+    param workspace type object:workspace since 0.2.0 secret false
+  method set_output since 0.2.0 secret false function false
+    param output type object:output since 0.2.0 secret false
+  method add_effect since 0.2.0 secret false function false
+    param kind type string since 0.2.0 secret false
+    param downscale type uint since 0.2.0 secret false
+    param passes type uint since 0.2.0 secret false
+    param algorithm type string since 0.2.0 secret false
+    param noise type double since 0.2.0 secret false
+    param brightness type double since 0.2.0 secret false
+    param contrast type double since 0.2.0 secret false
+    param saturation type double since 0.2.0 secret false
+    param tint type string since 0.2.0 secret false
+    param offset_x type double since 0.2.0 secret false
+    param offset_y type double since 0.2.0 secret false
+    param blur_radius type double since 0.2.0 secret false
+    param spread type double since 0.2.0 secret false
+    param colour type string since 0.2.0 secret false
+    param source type string since 0.2.0 secret false
+    param entry type string since 0.2.0 secret false
+  method request_menu since 0.2.0 secret false function false
+    param x type int since 0.2.0 secret false
+    param y type int since 0.2.0 secret false
+    param width type uint since 0.2.0 secret false
+    param height type uint since 0.2.0 secret false
+  signal closed since 0.2.0 secret false
+  signal created since 0.2.0 secret false
+    field window type object:window since 0.2.0 secret false
+  signal changed since 0.2.0 secret false
+    field window_id type uint since 0.2.0 secret false
+    field changed type list<string> since 0.2.0 secret false
+    field window type object:window since 0.2.0 secret false
+  signal menu_requested since 0.2.0 secret false
+    field x type int since 0.2.0 secret false
+    field y type int since 0.2.0 secret false
+    field width type uint since 0.2.0 secret false
+    field height type uint since 0.2.0 secret false
+    field source type string since 0.2.0 secret false
+    field seat type string since 0.2.0 secret false
+object workspace since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property layout type string since 0.2.0 secret false
+  method set_layout since 0.2.0 secret false function false
+    param root type string since 0.2.0 secret false
+    param module type string since 0.2.0 secret false
+    param hash type string since 0.2.0 secret false
+    param options type bytes since 0.2.0 secret false
+  method layout_command since 0.2.0 secret false function false
+    param name type string since 0.2.0 secret false
+    param params type string since 0.2.0 secret false
+  method activate_set since 0.2.0 secret false function true
+    param name type string since 0.2.0 secret false
+  signal set_activated since 0.2.0 secret false
+    field set type string since 0.2.0 secret false
+  signal layout_changed since 0.2.0 secret false
+    field layout type string since 0.2.0 secret false
+  signal layout_failed since 0.2.0 secret false
+    field layout type string since 0.2.0 secret false
+    field reason type string since 0.2.0 secret false
+  signal created since 0.2.0 secret false
+    field workspace type object:workspace since 0.2.0 secret false
+  signal removed since 0.2.0 secret false
+    field workspace_id type uint since 0.2.0 secret false
+    field last type object:workspace since 0.2.0 secret false
+== proto ==
+-- gnoblin.proto
+// Generated from the object schema by gnoblin-proto's build script. Do not
+// edit: change the schema instead.
+//
+// Namespace: gnoblin
+// Version: 0.2.0
+// Schema: crates/gnoblin-schema/schema (capture.toml, config.toml, effect.toml, eis.toml, idle.toml, layers.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
+
+syntax = "proto3";
+
+package gnoblin;
+
+// Object `capture`, since 0.2.0.
+message Capture {
+  message Properties {}
+
+  // Method `open`, since 0.2.0.
+  message OpenArgs {
+    // since 0.2.0
+    uint64 session = 1;
+    // since 0.2.0
+    string owner = 2;
+    // since 0.2.0
+    string remote_session = 3;
+  }
+
+  // Method `close`, since 0.2.0.
+  message CloseArgs {
+    // since 0.2.0
+    uint64 session = 1;
+  }
+}
+
+// Object `config`, since 0.2.0.
+message Config {
+  message Properties {}
+
+  // Signal `reload_failed`, since 0.2.0.
+  message ReloadFailedPayload {
+    // since 0.2.0
+    string path = 1;
+    // since 0.2.0
+    string error = 2;
+    // since 0.2.0
+    uint64 sequence = 3;
+    // since 0.2.0
+    uint64 time = 4;
+  }
+
+  // Signal `reloaded`, since 0.2.0.
+  message ReloadedPayload {
+    // since 0.2.0
+    string path = 1;
+    // since 0.2.0
+    uint64 revision = 2;
+    // since 0.2.0; list
+    repeated string warnings = 3;
+    // since 0.2.0
+    uint64 sequence = 4;
+    // since 0.2.0
+    uint64 time = 5;
+  }
+}
+
+// Object `effect`, since 0.2.0.
+message Effect {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    string kind = 1;
+    // since 0.2.0
+    bool enabled = 2;
+    // since 0.2.0
+    bool active = 3;
+    // since 0.2.0
+    string reason = 4;
+    // since 0.2.0
+    uint64 downscale = 5;
+    // since 0.2.0
+    uint64 passes = 6;
+    // since 0.2.0
+    string algorithm = 7;
+    // since 0.2.0
+    double noise = 8;
+    // since 0.2.0
+    double brightness = 9;
+    // since 0.2.0
+    double contrast = 10;
+    // since 0.2.0
+    double saturation = 11;
+    // since 0.2.0
+    string tint = 12;
+    // since 0.2.0
+    double offset_x = 13;
+    // since 0.2.0
+    double offset_y = 14;
+    // since 0.2.0
+    double blur_radius = 15;
+    // since 0.2.0
+    double spread = 16;
+    // since 0.2.0
+    string colour = 17;
+    // since 0.2.0
+    string source = 18;
+    // since 0.2.0
+    string entry = 19;
+  }
+
+  // Method `remove`, since 0.2.0.
+  message RemoveArgs {}
+
+  // Signal `closed`, since 0.2.0.
+  message ClosedPayload {}
+}
+
+// Object `eis`, since 0.2.0.
+message Eis {
+  message Properties {}
+
+  // Method `open`, since 0.2.0.
+  message OpenArgs {
+    // since 0.2.0
+    uint64 session = 1;
+    // since 0.2.0
+    string owner = 2;
+    // since 0.2.0
+    uint64 capabilities = 3;
+    // since 0.2.0
+    string path = 4;
+  }
+
+  // Method `close`, since 0.2.0.
+  message CloseArgs {
+    // since 0.2.0
+    uint64 session = 1;
+  }
+}
+
+// Object `idle`, since 0.2.0.
+message Idle {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 idle_ms = 1;
+    // since 0.2.0
+    uint64 inhibitors = 2;
+  }
+
+  // Method `inhibit`, since 0.2.0.
+  message InhibitArgs {
+    // since 0.2.0
+    string holder = 1;
+  }
+
+  // Method `uninhibit`, since 0.2.0.
+  message UninhibitArgs {
+    // since 0.2.0
+    string holder = 1;
+  }
+}
+
+// Object `layers`, since 0.2.0.
+message Layers {
+  message Properties {}
+
+  // Method `register`, since 0.2.0.
+  message RegisterArgs {
+    // since 0.2.0
+    string name = 1;
+    // since 0.2.0
+    uint64 target = 2;
+  }
+}
+
+// Object `lock`, since 0.2.0.
+message Lock {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    bool locked = 1;
+  }
+
+  // Method `lock_session`, since 0.2.0.
+  message LockSessionArgs {}
+}
+
+// Object `operation`, since 0.2.0.
+message Operation {
+  message Properties {}
+
+  // Signal `completed`, since 0.2.0.
+  message CompletedPayload {
+    // since 0.2.0
+    uint64 operation_id = 1;
+    // since 0.2.0
+    string method = 2;
+    // since 0.2.0
+    bool ok = 3;
+    // since 0.2.0
+    string error = 4;
+    // since 0.2.0
+    uint64 sequence = 5;
+    // since 0.2.0
+    uint64 time = 6;
+  }
+}
+
+// Object `output`, since 0.2.0.
+message Output {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    string name = 1;
+    // since 0.2.0
+    string make = 2;
+    // since 0.2.0
+    string model = 3;
+    // since 0.2.0; list
+    repeated string modes = 4;
+    // since 0.2.0
+    string mode = 5;
+    // since 0.2.0
+    double scale = 6;
+    // since 0.2.0
+    uint64 transform = 7;
+    // since 0.2.0
+    bool primary = 8;
+    // since 0.2.0
+    bool enabled = 9;
+    // since 0.2.0
+    int64 x = 10;
+    // since 0.2.0
+    int64 y = 11;
+    // since 0.2.0
+    uint64 width = 12;
+    // since 0.2.0
+    uint64 height = 13;
+    // since 0.2.0
+    string layout = 14;
+  }
+
+  // Method `apply`, since 0.2.0.
+  message ApplyArgs {
+    // since 0.2.0
+    int64 x = 1;
+    // since 0.2.0
+    int64 y = 2;
+    // since 0.2.0
+    double scale = 3;
+    // since 0.2.0
+    uint64 transform = 4;
+    // since 0.2.0
+    bool primary = 5;
+    // since 0.2.0
+    bool enabled = 6;
+    // since 0.2.0
+    string mode = 7;
+  }
+
+  // Method `set_layout`, since 0.2.0.
+  message SetLayoutArgs {
+    // since 0.2.0
+    string root = 1;
+    // since 0.2.0
+    string module = 2;
+    // since 0.2.0
+    string hash = 3;
+    // since 0.2.0
+    bytes options = 4;
+  }
+
+  // Signal `closed`, since 0.2.0.
+  message ClosedPayload {}
+
+  // Signal `added`, since 0.2.0.
+  message AddedPayload {
+    // since 0.2.0
+    string output_id = 1;
+    // since 0.2.0; object id of `output`
+    string output = 2;
+  }
+
+  // Signal `changed`, since 0.2.0.
+  message ChangedPayload {
+    // since 0.2.0
+    string output_id = 1;
+    // since 0.2.0; object id of `output`
+    string output = 2;
+    // since 0.2.0; list
+    repeated string changed = 3;
+  }
+
+  // Signal `removed`, since 0.2.0.
+  message RemovedPayload {
+    // since 0.2.0
+    string output_id = 1;
+    // since 0.2.0; object id of `output`
+    string last = 2;
+  }
+}
+
+// Object `portal_ui`, since 0.2.0.
+message PortalUi {
+  message Properties {}
+
+  // Method `file_chooser`, since 0.2.0.
+  message FileChooserArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string mode = 4;
+    // since 0.2.0
+    string title = 5;
+    // since 0.2.0
+    bool multiple = 6;
+    // since 0.2.0; list
+    repeated string filter_names = 7;
+    // since 0.2.0; list
+    repeated string filter_patterns = 8;
+    // since 0.2.0
+    int64 current_filter = 9;
+    // since 0.2.0
+    string current_folder = 10;
+    // since 0.2.0
+    string current_name = 11;
+    // since 0.2.0; list
+    repeated string choice_ids = 12;
+    // since 0.2.0; list
+    repeated string choice_labels = 13;
+  }
+
+  // Method `app_chooser`, since 0.2.0.
+  message AppChooserArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string content_type = 4;
+    // since 0.2.0
+    string last_choice = 5;
+    // since 0.2.0
+    string filter_text = 6;
+    // since 0.2.0; list
+    repeated string choice_ids = 7;
+    // since 0.2.0; list
+    repeated string choice_labels = 8;
+  }
+
+  // Method `print`, since 0.2.0.
+  message PrintArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string title = 4;
+    // since 0.2.0; list
+    repeated string choice_ids = 5;
+    // since 0.2.0; list
+    repeated string choice_labels = 6;
+    // since 0.2.0
+    uint64 copies = 7;
+    // since 0.2.0
+    uint64 max_copies = 8;
+    // since 0.2.0
+    string pages = 9;
+  }
+
+  // Method `account`, since 0.2.0.
+  message AccountArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string reason = 4;
+    // since 0.2.0
+    string name = 5;
+    // since 0.2.0
+    string avatar_uri = 6;
+  }
+
+  // Method `wallpaper`, since 0.2.0.
+  message WallpaperArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string uri = 4;
+    // since 0.2.0
+    string options = 5;
+  }
+
+  // Method `background`, since 0.2.0.
+  message BackgroundArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string reason = 4;
+    // since 0.2.0
+    bool autostart_requested = 5;
+  }
+
+  // Method `dynamic_launcher`, since 0.2.0.
+  message DynamicLauncherArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string name = 4;
+    // since 0.2.0
+    string icon = 5;
+    // since 0.2.0
+    string desktop_file_id = 6;
+  }
+
+  // Method `screen_cast`, since 0.2.0.
+  message ScreenCastArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    uint64 source_types = 4;
+    // since 0.2.0
+    uint64 cursor_mode = 5;
+    // since 0.2.0
+    bool multiple = 6;
+  }
+
+  // Method `remote_desktop`, since 0.2.0.
+  message RemoteDesktopArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    uint64 device_types = 4;
+  }
+
+  // Method `input_capture`, since 0.2.0.
+  message InputCaptureArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    uint64 capabilities = 4;
+  }
+
+  // Method `screenshot`, since 0.2.0.
+  message ScreenshotArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    bool interactive = 4;
+  }
+
+  // Method `pick_color`, since 0.2.0.
+  message PickColorArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+  }
+
+  // Method `secret`, since 0.2.0.
+  message SecretArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string app_id = 2;
+    // since 0.2.0
+    uint64 deadline_ms = 3;
+    // since 0.2.0
+    string label = 4;
+  }
+
+  // Method `cancel`, since 0.2.0.
+  message CancelArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+  }
+}
+
+// Object `portal_outcome`, since 0.2.0.
+message PortalOutcome {
+  message Properties {}
+
+  // Method `handled`, since 0.2.0.
+  message HandledArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0; list
+    repeated string uris = 2;
+    // since 0.2.0
+    string choice = 3;
+    // since 0.2.0
+    bool remember = 4;
+    // since 0.2.0
+    uint64 copies = 5;
+    // since 0.2.0
+    string pages = 6;
+    // since 0.2.0
+    uint64 grant_bits = 7;
+    // since 0.2.0
+    uint64 cursor_mode = 8;
+  }
+
+  // Method `cancelled`, since 0.2.0.
+  message CancelledArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string reason = 2;
+  }
+
+  // Method `declined`, since 0.2.0.
+  message DeclinedArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+  }
+
+  // Method `error`, since 0.2.0.
+  message ErrorArgs {
+    // since 0.2.0
+    uint64 request_id = 1;
+    // since 0.2.0
+    string code = 2;
+    // since 0.2.0
+    string message = 3;
+  }
+}
+
+// Object `request`, since 0.2.0.
+message Request {
+  message Properties {}
+
+  // Method `claim`, since 0.2.0.
+  message ClaimArgs {
+    // since 0.2.0
+    uint64 request = 1;
+  }
+
+  // Method `answer`, since 0.2.0.
+  message AnswerArgs {
+    // since 0.2.0
+    uint64 request = 1;
+    // since 0.2.0; secret: every frame carrying this field is flagged sensitive
+    bytes answer = 2;
+  }
+
+  // Method `decline`, since 0.2.0.
+  message DeclineArgs {
+    // since 0.2.0
+    uint64 request = 1;
+  }
+
+  // Signal `offered`, since 0.2.0.
+  message OfferedPayload {
+    // since 0.2.0
+    uint64 request = 1;
+    // since 0.2.0
+    uint64 deadline = 2;
+    // since 0.2.0
+    string slot = 3;
+    // since 0.2.0
+    string title = 4;
+    // since 0.2.0
+    string message = 5;
+    // since 0.2.0
+    bytes subject = 6;
+  }
+
+  // Signal `finished`, since 0.2.0.
+  message FinishedPayload {
+    // since 0.2.0
+    uint64 request = 1;
+    // since 0.2.0
+    string completion = 2;
+    // since 0.2.0
+    string reason = 3;
+  }
+}
+
+// Object `session`, since 0.2.0.
+message Session {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    string version = 1;
+    // since 0.2.0
+    string slot_auth_polkit = 2;
+    // since 0.2.0
+    string slot_prompt_secret = 3;
+    // since 0.2.0
+    string slot_location_agent = 4;
+    // since 0.2.0
+    string slot_idle_policy = 5;
+    // since 0.2.0
+    string lock_state = 6;
+    // since 0.2.0
+    bool lock_available = 7;
+    // since 0.2.0
+    uint64 lock_revision = 8;
+  }
+
+  // Method `logout`, since 0.2.0.
+  message LogoutArgs {}
+
+  // Method `poweroff`, since 0.2.0.
+  message PoweroffArgs {}
+
+  // Method `reboot`, since 0.2.0.
+  message RebootArgs {}
+
+  // Method `suspend`, since 0.2.0.
+  message SuspendArgs {}
+
+  // Method `hibernate`, since 0.2.0.
+  message HibernateArgs {}
+
+  // Signal `ready`, since 0.2.0.
+  message ReadyPayload {}
+
+  // Signal `bell`, since 0.2.0.
+  message BellPayload {
+    // since 0.2.0
+    uint64 count = 1;
+  }
+
+  // Signal `reload_requested`, since 0.2.0.
+  message ReloadRequestedPayload {
+    // since 0.2.0
+    uint64 generation = 1;
+  }
+
+  // Signal `lock_state_changed`, since 0.2.0.
+  message LockStateChangedPayload {
+    // since 0.2.0
+    string state = 1;
+    // since 0.2.0
+    uint64 revision = 2;
+  }
+}
+
+// Object `settings`, since 0.2.0.
+message Settings {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 color_scheme = 1;
+    // since 0.2.0
+    double accent_red = 2;
+    // since 0.2.0
+    double accent_green = 3;
+    // since 0.2.0
+    double accent_blue = 4;
+    // since 0.2.0
+    uint64 contrast = 5;
+    // since 0.2.0
+    uint64 reduced_motion = 6;
+    // since 0.2.0
+    string gtk_theme = 7;
+    // since 0.2.0
+    string icon_theme = 8;
+    // since 0.2.0
+    string cursor_theme = 9;
+    // since 0.2.0
+    uint64 cursor_size = 10;
+    // since 0.2.0
+    string font_name = 11;
+    // since 0.2.0
+    string document_font_name = 12;
+    // since 0.2.0
+    string monospace_font_name = 13;
+    // since 0.2.0
+    double text_scaling_factor = 14;
+    // since 0.2.0
+    string button_layout = 15;
+    // since 0.2.0
+    bool enable_animations = 16;
+  }
+}
+
+// Object `window`, since 0.2.0.
+message Window {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0
+    string title = 2;
+    // since 0.2.0
+    string app_id = 3;
+    // since 0.2.0
+    bool focused = 4;
+    // since 0.2.0
+    int64 x = 5;
+    // since 0.2.0
+    int64 y = 6;
+    // since 0.2.0
+    uint64 width = 7;
+    // since 0.2.0
+    uint64 height = 8;
+    // since 0.2.0
+    string icon = 9;
+    // since 0.2.0
+    string tag = 10;
+    // since 0.2.0
+    bool modal = 11;
+    // since 0.2.0
+    bool unresponsive = 12;
+    // since 0.2.0; list of object id of `effect`
+    repeated string effects = 13;
+    // since 0.2.0
+    uint64 pid = 14;
+  }
+
+  // Method `focus`, since 0.2.0.
+  message FocusArgs {}
+
+  // Method `present`, since 0.2.0.
+  message PresentArgs {}
+
+  // Method `kill`, since 0.2.0.
+  message KillArgs {}
+
+  // Method `close`, since 0.2.0.
+  message CloseArgs {}
+
+  // Method `set_minimized`, since 0.2.0.
+  message SetMinimizedArgs {
+    // since 0.2.0
+    bool value = 1;
+  }
+
+  // Method `set_maximized`, since 0.2.0.
+  message SetMaximizedArgs {
+    // since 0.2.0
+    bool value = 1;
+  }
+
+  // Method `set_fullscreen`, since 0.2.0.
+  message SetFullscreenArgs {
+    // since 0.2.0
+    bool value = 1;
+  }
+
+  // Method `move`, since 0.2.0.
+  message MoveArgs {
+    // since 0.2.0
+    int64 x = 1;
+    // since 0.2.0
+    int64 y = 2;
+  }
+
+  // Method `resize`, since 0.2.0.
+  message ResizeArgs {
+    // since 0.2.0
+    uint64 width = 1;
+    // since 0.2.0
+    uint64 height = 2;
+  }
+
+  // Method `set_opacity`, since 0.2.0.
+  message SetOpacityArgs {
+    // since 0.2.0
+    double opacity = 1;
+  }
+
+  // Method `set_scale`, since 0.2.0.
+  message SetScaleArgs {
+    // since 0.2.0
+    double scale = 1;
+  }
+
+  // Method `set_offset`, since 0.2.0.
+  message SetOffsetArgs {
+    // since 0.2.0
+    double x = 1;
+    // since 0.2.0
+    double y = 2;
+  }
+
+  // Method `reset_visuals`, since 0.2.0.
+  message ResetVisualsArgs {}
+
+  // Method `set_workspace`, since 0.2.0.
+  message SetWorkspaceArgs {
+    // since 0.2.0; object id of `workspace`
+    string workspace = 1;
+  }
+
+  // Method `set_output`, since 0.2.0.
+  message SetOutputArgs {
+    // since 0.2.0; object id of `output`
+    string output = 1;
+  }
+
+  // Method `add_effect`, since 0.2.0.
+  message AddEffectArgs {
+    // since 0.2.0
+    string kind = 1;
+    // since 0.2.0
+    uint64 downscale = 2;
+    // since 0.2.0
+    uint64 passes = 3;
+    // since 0.2.0
+    string algorithm = 4;
+    // since 0.2.0
+    double noise = 5;
+    // since 0.2.0
+    double brightness = 6;
+    // since 0.2.0
+    double contrast = 7;
+    // since 0.2.0
+    double saturation = 8;
+    // since 0.2.0
+    string tint = 9;
+    // since 0.2.0
+    double offset_x = 10;
+    // since 0.2.0
+    double offset_y = 11;
+    // since 0.2.0
+    double blur_radius = 12;
+    // since 0.2.0
+    double spread = 13;
+    // since 0.2.0
+    string colour = 14;
+    // since 0.2.0
+    string source = 15;
+    // since 0.2.0
+    string entry = 16;
+  }
+
+  // Method `request_menu`, since 0.2.0.
+  message RequestMenuArgs {
+    // since 0.2.0
+    int64 x = 1;
+    // since 0.2.0
+    int64 y = 2;
+    // since 0.2.0
+    uint64 width = 3;
+    // since 0.2.0
+    uint64 height = 4;
+  }
+
+  // Signal `closed`, since 0.2.0.
+  message ClosedPayload {}
+
+  // Signal `created`, since 0.2.0.
+  message CreatedPayload {
+    // since 0.2.0; object id of `window`
+    string window = 1;
+  }
+
+  // Signal `changed`, since 0.2.0.
+  message ChangedPayload {
+    // since 0.2.0
+    uint64 window_id = 1;
+    // since 0.2.0; list
+    repeated string changed = 2;
+    // since 0.2.0; object id of `window`
+    string window = 3;
+  }
+
+  // Signal `menu_requested`, since 0.2.0.
+  message MenuRequestedPayload {
+    // since 0.2.0
+    int64 x = 1;
+    // since 0.2.0
+    int64 y = 2;
+    // since 0.2.0
+    uint64 width = 3;
+    // since 0.2.0
+    uint64 height = 4;
+    // since 0.2.0
+    string source = 5;
+    // since 0.2.0
+    string seat = 6;
+  }
+}
+
+// Object `workspace`, since 0.2.0.
+message Workspace {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0
+    string layout = 2;
+  }
+
+  // Method `set_layout`, since 0.2.0.
+  message SetLayoutArgs {
+    // since 0.2.0
+    string root = 1;
+    // since 0.2.0
+    string module = 2;
+    // since 0.2.0
+    string hash = 3;
+    // since 0.2.0
+    bytes options = 4;
+  }
+
+  // Method `layout_command`, since 0.2.0.
+  message LayoutCommandArgs {
+    // since 0.2.0
+    string name = 1;
+    // since 0.2.0
+    string params = 2;
+  }
+
+  // Method `activate_set`, since 0.2.0.
+  message ActivateSetArgs {
+    // since 0.2.0
+    string name = 1;
+  }
+
+  // Signal `set_activated`, since 0.2.0.
+  message SetActivatedPayload {
+    // since 0.2.0
+    string set = 1;
+  }
+
+  // Signal `layout_changed`, since 0.2.0.
+  message LayoutChangedPayload {
+    // since 0.2.0
+    string layout = 1;
+  }
+
+  // Signal `layout_failed`, since 0.2.0.
+  message LayoutFailedPayload {
+    // since 0.2.0
+    string layout = 1;
+    // since 0.2.0
+    string reason = 2;
+  }
+
+  // Signal `created`, since 0.2.0.
+  message CreatedPayload {
+    // since 0.2.0; object id of `workspace`
+    string workspace = 1;
+  }
+
+  // Signal `removed`, since 0.2.0.
+  message RemovedPayload {
+    // since 0.2.0
+    uint64 workspace_id = 1;
+    // since 0.2.0; object id of `workspace`
+    string last = 2;
+  }
+}
+
+// Error codes `gnoblin` returns, in the envelope's error frame.
+// The wire carries the code as text, so a peer reports one it does not know.
+enum GnoblinError {
+  GNOBLIN_UNSPECIFIED = 0;
+  // since 0.2.0
+  GNOBLIN_TOO_MANY_INHIBITORS = 1;
+  // since 0.2.0
+  GNOBLIN_IDLE_UNAVAILABLE = 2;
+  // since 0.2.0
+  GNOBLIN_POWER_MISSING = 3;
+  // since 0.2.0
+  GNOBLIN_LAYER_REFUSED = 4;
+  // since 0.2.0
+  GNOBLIN_NOT_LOCKED = 5;
+  // since 0.2.0
+  GNOBLIN_UNKNOWN_MEMBER = 6;
+  // since 0.2.0
+  GNOBLIN_DENIED = 7;
+  // since 0.2.0
+  GNOBLIN_UNSUPPORTED = 8;
+  // since 0.2.0
+  GNOBLIN_BUSY = 9;
+  // since 0.2.0
+  GNOBLIN_UNAVAILABLE = 10;
+  // since 0.2.0
+  GNOBLIN_TIMED_OUT = 11;
+  // since 0.2.0
+  GNOBLIN_INTERNAL = 12;
+  // since 0.2.0
+  GNOBLIN_TOO_MANY_PASSES = 13;
+  // since 0.2.0
+  GNOBLIN_UNKNOWN_EFFECT_KIND = 14;
+  // since 0.2.0
+  GNOBLIN_NOT_FLOATING = 15;
+  // since 0.2.0
+  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 16;
+  // since 0.2.0
+  GNOBLIN_REFUSED = 17;
+  // since 0.2.0
+  GNOBLIN_UNKNOWN_LAYOUT = 18;
+  // since 0.2.0
+  GNOBLIN_UNKNOWN_SET = 19;
+}
