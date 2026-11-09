@@ -33,6 +33,8 @@ mod requests;
 mod server;
 mod session;
 mod settings;
+#[allow(dead_code, reason = "the socket wiring that calls it lands in slice 5b")]
+mod tree;
 
 use std::path::PathBuf;
 
