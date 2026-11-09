@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
-use gnoblin_proto::tree::{change, op, snapshot_node};
+use gnoblin_proto::tree::{op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
 use support::{Session, Wire};
 

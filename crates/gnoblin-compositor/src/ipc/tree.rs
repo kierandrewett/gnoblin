@@ -100,7 +100,8 @@ impl<C: ClassInfo> TreeSession<C> {
         })
     }
 
-    /// The scene the session edits.
+    /// The scene the session edits. The unit tests read the scene directly to check the edit.
+    #[cfg(test)]
     #[must_use]
     pub const fn scene(&self) -> &Scene {
         &self.scene

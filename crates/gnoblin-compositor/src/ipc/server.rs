@@ -77,6 +77,7 @@ use gnoblin_config::{LayoutReference, LayoutRoot, LayoutSelector};
 use gnoblin_layers::provider::COMPOSITOR_CRATE;
 use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
+use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
@@ -88,6 +89,7 @@ use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
+use super::tree_host::{self, TreeHostHandle, attached_payload, changes_payload, reply_payload, snapshot_payloads};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
 use crate::log;
@@ -216,6 +218,8 @@ impl IpcServer {
         xwayland: crate::xwayland::XwaylandReconciler,
         power: Option<Box<dyn gnoblin_model::PowerBackend>>,
     ) -> Result<IpcServer, IpcError> {
+        // The tree is built before the socket is bound, so a failure leaves no socket behind.
+        let tree = TreeHostHandle::new().map_err(IpcError::Tree)?;
         // Each connection's frame is encoded before anything is spawned, so a bad grant
         // list fails the whole start instead of leaving threads behind.
         let no_grants: Arc<[u8]> = gnoblin_proto::encode_grants(&[]).map_err(IpcError::Grants)?.into();
@@ -264,6 +268,7 @@ impl IpcServer {
             readers: Arc::clone(&readers),
             start: Instant::now(),
             extensions,
+            tree,
             xwayland,
             power,
         };
@@ -758,6 +763,8 @@ struct Dispatcher {
     start: Instant,
     /// The routing state of the loaded extensions: which connection serves and which may call each.
     extensions: ExtensionRouter,
+    /// The shell's tree, served on the `tree` namespace.
+    tree: TreeHostHandle,
     /// The X11 session the accepted document asks for, and the loop that runs it.
     xwayland: crate::xwayland::XwaylandReconciler,
     /// The power backend the power verbs reach; [`None`] refuses them `unavailable`.
@@ -832,6 +839,10 @@ impl Dispatcher {
 
     /// Decodes and answers one frame.
     fn request(&mut self, client: ClientId, envelope: &Envelope) {
+        if envelope.namespace == tree_host::NAMESPACE {
+            self.tree_request(client, envelope);
+            return;
+        }
         if envelope.namespace != wire::NAMESPACE {
             let deliveries = self.extensions.route(client, envelope);
             self.deliver(deliveries);
@@ -1408,6 +1419,85 @@ impl Dispatcher {
                 wire::member::CONFIG_CURRENT,
                 envelope.request_id,
                 payload,
+            ));
+        }
+    }
+
+    /// Serves the `tree` namespace. Every member is answered on the connection that sent it.
+    fn tree_request(&mut self, client: ClientId, envelope: &Envelope) {
+        match envelope.member.as_str() {
+            tree_host::member::ATTACH => self.tree_attach(client, envelope),
+            tree_host::member::TRANSACT => self.tree_transact(client, envelope),
+            _ => self.refuse(
+                client,
+                envelope,
+                wire::code::UNKNOWN_MEMBER,
+                "this connection does not serve that member",
+            ),
+        }
+    }
+
+    /// `attach`: the connection becomes the shell when the tree is free. The reply is followed
+    /// by the whole snapshot, so the shell has a complete tree before any change reaches it.
+    fn tree_attach(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(args) = envelope.payload_as::<AttachArgs>() else {
+            self.refuse(client, envelope, MALFORMED, "the attach arguments do not decode");
+            return;
+        };
+        if args.version != 1 {
+            let message = format!("tree version {} is not served", args.version);
+            self.refuse(client, envelope, MALFORMED, &message);
+            return;
+        }
+        let is_owner = self.capabilities(client).contains(Capability::ReadConfig);
+        match self.tree.attach(client, is_owner) {
+            Ok(attached) => {
+                let snapshot = self.tree.snapshot();
+                let Some(connection) = self.connections.get_mut(&client) else {
+                    return;
+                };
+                connection.send(&Envelope::reply_message(
+                    tree_host::NAMESPACE,
+                    tree_host::member::ATTACH,
+                    envelope.request_id,
+                    &attached_payload(attached),
+                ));
+                for payload in snapshot_payloads(&snapshot) {
+                    connection.send(&Envelope::event_message(
+                        tree_host::NAMESPACE,
+                        tree_host::member::SNAPSHOT,
+                        &payload,
+                    ));
+                }
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code.as_str(), "the tree refused the attach"),
+        }
+    }
+
+    /// `transact`: the reply carries the serial and the verdict. The changes it made follow as
+    /// an event, so every change reaches the shell in the order it was applied.
+    fn tree_transact(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(args) = envelope.payload_as::<TransactArgs>() else {
+            self.refuse(client, envelope, MALFORMED, "the transact arguments do not decode");
+            return;
+        };
+        let reply = self.tree.transact(client, &args);
+        let Some(connection) = self.connections.get_mut(&client) else {
+            return;
+        };
+        connection.send(&Envelope::reply_message(
+            tree_host::NAMESPACE,
+            tree_host::member::TRANSACT,
+            envelope.request_id,
+            &reply_payload(&reply),
+        ));
+        if let Ok(applied) = &reply.result
+            && !applied.changes.is_empty()
+        {
+            connection.send(&Envelope::event_message(
+                tree_host::NAMESPACE,
+                tree_host::member::CHANGES,
+                &changes_payload(reply.serial, applied),
             ));
         }
     }
@@ -2561,6 +2651,7 @@ impl Dispatcher {
     /// belong to the role, and the next child handed the role is served with them. The writer is
     /// dropped rather than shut down, because the stream has already ended.
     fn lost(&mut self, client: ClientId) {
+        self.tree.detach(client);
         if let Some(connection) = self.connections.remove(&client) {
             for subscription in connection.subscriptions {
                 self.store.unsubscribe(subscription.id());
@@ -2577,6 +2668,7 @@ impl Dispatcher {
 
     /// Ends one connection: its subscriptions, its writer and its reader.
     fn close(&mut self, client: ClientId, shutdown: bool) {
+        self.tree.detach(client);
         let ended = self.extensions.ended(client);
         self.deliver(ended);
         let Some(connection) = self.connections.remove(&client) else {
@@ -2611,7 +2703,7 @@ impl Dispatcher {
 /// An error frame answering a request.
 fn refusal(envelope: &Envelope, code: &str, message: &str) -> Envelope {
     Envelope::error(
-        wire::NAMESPACE,
+        envelope.namespace.clone(),
         envelope.member.clone(),
         envelope.request_id,
         code,

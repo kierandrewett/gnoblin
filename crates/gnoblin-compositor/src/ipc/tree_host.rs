@@ -19,6 +19,15 @@ use super::tree::{TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession,
 /// The namespace the tree answers on.
 pub const NAMESPACE: &str = "tree";
 
+/// The members the tree answers on: `attach` and `transact` are requests, and
+/// `snapshot` and `changes` are the events that follow them.
+pub mod member {
+    pub const ATTACH: &str = "attach";
+    pub const TRANSACT: &str = "transact";
+    pub const SNAPSHOT: &str = "snapshot";
+    pub const CHANGES: &str = "changes";
+}
+
 /// The root node of the tree the compositor starts with. The shell places its windows under it.
 const ROOT: NodeId = NodeId::new(1);
 

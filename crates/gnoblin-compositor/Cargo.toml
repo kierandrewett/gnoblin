@@ -82,3 +82,5 @@ tempfile = "3.23.0"
 # The EI client the end-to-end EIS test speaks to the endpoint with, the same crate the
 # endpoint itself is written against.
 reis = { version = "0.7.1", default-features = false }
+# The protobuf codec the tree test decodes replies and events with.
+prost.workspace = true

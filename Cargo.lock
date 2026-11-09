@@ -1533,6 +1533,7 @@ dependencies = [
  "gnoblin-wm",
  "gnoblin-xwayland",
  "gnoblinctl",
+ "prost",
  "reis",
  "rustix 1.1.6",
  "tempfile",
