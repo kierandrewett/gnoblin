@@ -215,9 +215,30 @@ fn hit_test_ignores_nodes_with_input_unset() {
 }
 
 #[test]
-#[ignore = "Scene has no clip flag (design §5); child hits are not clipped to the parent rectangle"]
 fn clip_true_clips_child_hits_to_the_parent_rectangle() {
-    panic!("Scene has no clip flag: the node API must provide it");
+    let mut scene = scene_with_output();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    // The child reaches past the parent's right and bottom edges.
+    scene
+        .insert(id(2), child_of(id(1), rect(50, 50, 200, 200)))
+        .expect("child");
+    let hit = |scene: &Scene, x: f64, y: f64| scene.hit_test(PointF::new(x, y)).map(|hit| hit.node);
+
+    // Unclipped, a point past the parent's edge reaches the child.
+    assert_eq!(hit(&scene, 150.0, 150.0), Some(id(2)));
+
+    scene.set_clip(id(1), true).expect("clip the parent");
+    assert_eq!(scene.clip(id(1)), Some(true));
+    // Clipped, the same point no longer reaches the child.
+    assert_eq!(hit(&scene, 150.0, 150.0), None);
+    // A point inside both rectangles still reaches the child.
+    assert_eq!(hit(&scene, 60.0, 60.0), Some(id(2)));
+
+    scene.set_clip(id(1), false).expect("lift the clip");
+    assert_eq!(hit(&scene, 150.0, 150.0), Some(id(2)));
+    assert!(matches!(scene.set_clip(id(99), true), Err(SceneError::UnknownNode(node)) if node == id(99)));
 }
 
 #[test]

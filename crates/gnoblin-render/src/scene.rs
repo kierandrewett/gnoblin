@@ -911,10 +911,16 @@ impl Scene {
         }
         let world = frame.mul(&node.local_matrix());
         let child_frame = world.mul(&node.content_matrix());
+        let own = locate(&world, point);
+        // A clipping node passes no hit to its subtree from outside its rectangle.
+        let inside = own.is_some_and(|(local, _)| contains_point(node.bounds, local));
+        if node.clip && !inside {
+            return;
+        }
         for child in node.children.iter().rev() {
             self.hit_walk(*child, &child_frame, point, best);
         }
-        let Some((local, depth)) = locate(&world, point) else {
+        let Some((local, depth)) = own else {
             return;
         };
         if !contains_point(node.bounds, local) {
