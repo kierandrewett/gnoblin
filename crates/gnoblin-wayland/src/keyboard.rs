@@ -232,7 +232,7 @@ fn modifiers_of(state: &ModifiersState) -> Modifiers {
 ///
 /// The child is waited on from a helper thread so that it is reaped when it exits, rather
 /// than staying a zombie for the rest of the session.
-fn spawn_shortcut_command(name: &str, argv: &[String]) {
+pub(crate) fn spawn_shortcut_command(name: &str, argv: &[String]) {
     let Some((program, arguments)) = argv.split_first() else {
         return;
     };

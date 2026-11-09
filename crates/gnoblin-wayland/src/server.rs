@@ -210,6 +210,8 @@ pub struct Config {
     pub keyboard: Option<gnoblin_config::Keyboard>,
     /// The document's `shortcuts`: each named binding and the command it runs.
     pub shortcuts: Option<gnoblin_config::Shortcuts>,
+    /// The document's `touchpad-gestures`, in declaration order.
+    pub touchpad_gestures: Vec<gnoblin_config::Gesture>,
     /// A test seam: the process every window reports in place of its client's, so a test
     /// can name a process it chose. `None` reads each window's connection.
     pub window_process_override: Option<crate::WindowProcess>,
@@ -262,6 +264,7 @@ impl Default for Config {
             window_rules: Vec::new(),
             workspace_sets: Vec::new(),
             shortcuts: None,
+            touchpad_gestures: Vec::new(),
             titlebar_actions: TitlebarActions::default(),
             cursor: CursorSettings::default(),
             monitors: MonitorSettings::default(),
@@ -406,6 +409,10 @@ impl Server {
         }
         if let Some(shortcuts) = &config.shortcuts {
             state.apply_shortcuts(shortcuts);
+        }
+        match crate::touchpad::TouchpadGestures::from_config(&config.touchpad_gestures) {
+            Ok(gestures) => state.touchpad_gestures = gestures,
+            Err(error) => log::error!(area = "touchpad", "touchpad gestures refused, none will run: {error}"),
         }
         state.apply_window_rules(window_rules);
         state.apply_workspace_sets(workspace_sets);

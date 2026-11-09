@@ -195,6 +195,7 @@ mod protocols;
 mod selection_bridge;
 mod server;
 mod state;
+mod touchpad;
 mod xwayland;
 
 /// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.

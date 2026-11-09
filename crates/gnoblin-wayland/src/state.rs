@@ -505,6 +505,8 @@ pub struct State {
     pub(crate) tearing: Vec<(WlSurface, WpTearingControlV1Hint)>,
     /// The session clock, in milliseconds, which idle and the router read.
     pub(crate) clock: Tick,
+    /// The configured touchpad bindings and the gesture in flight.
+    pub(crate) touchpad_gestures: crate::touchpad::TouchpadGestures,
     /// The input activity the idle state is derived from.
     pub(crate) activity: Activity,
     /// The liveness pings and the clients that have missed them.
@@ -831,6 +833,7 @@ impl State {
             cursor_size: cursor.size,
             tearing: Vec::new(),
             clock: Tick::ZERO,
+            touchpad_gestures: crate::touchpad::TouchpadGestures::default(),
             activity: Activity::new(),
             liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
             wm: Wm::new(options),
@@ -2531,7 +2534,8 @@ impl State {
             | InputEvent::PointerMotionRelative { .. }
             | InputEvent::PointerLeave
             | InputEvent::PointerAxis { .. }
-            | InputEvent::Touch { .. } => {}
+            | InputEvent::Touch { .. }
+            | InputEvent::Touchpad(_) => {}
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => return false,
         }
         true
@@ -3401,6 +3405,18 @@ impl Host for State {
             }
             // A scroll that moved nothing sends nothing, so a client never sees an empty frame.
             InputEvent::PointerAxis { .. } => {}
+            // A gesture is routed to a configured binding and never to a client. While the session
+            // is locked it fires nothing: bindings do not run on the lock screen.
+            InputEvent::Touchpad(sample) => {
+                let lock = if self.lock.state() == LockState::Unlocked {
+                    gnoblin_input::GestureLock::Unlocked
+                } else {
+                    gnoblin_input::GestureLock::Locked
+                };
+                if let Some(fire) = self.touchpad_gestures.route(self.clock, lock, sample) {
+                    crate::touchpad::run(&fire);
+                }
+            }
             InputEvent::Touch {
                 output,
                 slot,
