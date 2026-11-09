@@ -6,7 +6,7 @@ use gnoblin_render::transaction::{
     ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, TreeTransaction, ValueType, validate_and_apply,
 };
 use gnoblin_render::{Actor, Scene};
-use gnoblin_schema::{Catalog, Namespace, ObjectType, Type as SchemaType};
+use gnoblin_schema::{Catalog, Namespace, ObjectType, SchemaError, Type as SchemaType};
 use gnoblin_types::NodeId;
 
 /// The largest snapshot chunk, in bytes of its estimated encoded size.
@@ -95,10 +95,11 @@ impl<C: ClassInfo> TreeSession<C> {
         self.serial
     }
 
-    /// Attach the shell. Only a privileged peer may attach; any other is refused
-    /// `not-privileged`. Each attach raises the epoch.
-    pub fn attach(&mut self, privileged: bool) -> Result<TreeAttached, TreeRefusal> {
-        if !privileged {
+    /// Attach the shell. Only the session owner's connection may attach, and `is_owner` is
+    /// that connection's classification from the owner grant (`owner_grants`). Any other is
+    /// refused `not-privileged`. Each attach raises the epoch.
+    pub fn attach(&mut self, is_owner: bool) -> Result<TreeAttached, TreeRefusal> {
+        if !is_owner {
             return Err(refusal(Code::NotPrivileged));
         }
         self.epoch += 1;
@@ -169,6 +170,17 @@ impl<C: ClassInfo> TreeSession<C> {
             serial: self.serial,
             result: Err(refusal(code)),
         }
+    }
+}
+
+/// The schema a connection may list. The owner's connection (`is_owner`) sees the whole
+/// catalog; any other gets the public catalog, which leaves `tree/` out, so it cannot name
+/// a tree member. The socket's schema listing reads this.
+pub fn tree_listing(is_owner: bool) -> Result<Catalog, SchemaError> {
+    if is_owner {
+        crate::schema::catalog()
+    } else {
+        crate::schema::public_catalog()
     }
 }
 
@@ -597,5 +609,21 @@ mod tests {
         assert_eq!(classes.property("node", "name"), None);
         assert_eq!(classes.property("node", "parent"), None);
         assert_eq!(classes.property("node", "tags"), None);
+    }
+
+    #[test]
+    fn tree_listing_hides_tree_from_peers() {
+        let tree = Namespace::parse("tree").expect("namespace");
+        let owner = tree_listing(true).expect("owner catalog");
+        assert!(
+            owner.objects(&tree).any(|object| object.name == "node"),
+            "the owner must see the tree classes"
+        );
+        let peer = tree_listing(false).expect("peer catalog");
+        assert_eq!(
+            peer.objects(&tree).count(),
+            0,
+            "a connection that is not the session owner must not list tree members"
+        );
     }
 }
