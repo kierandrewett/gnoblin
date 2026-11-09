@@ -116,6 +116,8 @@ pub use effect::{Effect, RuleRejection, WorkspaceDirection};
 pub use event::{Event, Rejection, WindowProtocol, WindowSpec};
 pub use output::Output;
 pub use placement::PlacementMode;
+// The golden table (`tests/placement_goldens.rs`) drives the free function directly. Removed with `placement.rs`.
+pub use placement::place as place_new_window;
 pub use pointer_focus::{FocusMode, POINTER_REST, PointerAction, PointerFocus};
 pub use rules::{
     MAX_RULES, Match, Pattern, PatternSyntaxError, Rule, RuleError, RuleFields, WorkspaceSelector, validate_list,
