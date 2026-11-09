@@ -4,7 +4,7 @@
 //!
 //! The compositor owns the tree. The shell holds a mirror rebuilt from a snapshot and
 //! advanced by change batches, each stamped with a serial. Writes made inside one tick
-//! are gathered by a [`TxBuilder`] that reads through its own overlay, so a write is
+//! are gathered by a [`LuaTxBuilder`] that reads through its own overlay, so a write is
 //! visible to later reads in the same tick without touching the mirror. Only a
 //! transaction the compositor applies changes the mirror, through the change batch it
 //! publishes; a refused transaction therefore leaves the mirror exactly as it was.
@@ -529,53 +529,56 @@ impl std::fmt::Display for TxError {
 
 impl std::error::Error for TxError {}
 
-/// Collects the writes of one tick. Reads go through an overlay on the mirror, so a write
-/// is visible to later reads in the same tick. The base mirror is borrowed and never changed.
-#[derive(Debug)]
-pub struct TxBuilder<'a> {
-    base: &'a LuaMirror,
+/// Collects the writes of one tick. The builder owns only its pending ops and an overlay of
+/// the nodes it wrote, so it can sit beside the mirror it reads in one struct without a
+/// self-reference. Every method that reads or writes takes the mirror the tick started from;
+/// reads see this tick's writes first, and that mirror is never changed.
+#[derive(Debug, Default)]
+pub struct LuaTxBuilder {
     overlay: BTreeMap<NodeId, Option<NodeRecord>>,
     ops: Vec<LuaOp>,
 }
 
-impl<'a> TxBuilder<'a> {
-    pub fn new(base: &'a LuaMirror) -> Self {
-        Self {
-            base,
-            overlay: BTreeMap::new(),
-            ops: Vec::new(),
-        }
+impl LuaTxBuilder {
+    /// An empty builder for one tick.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// The node as this tick sees it.
-    pub fn node(&self, id: NodeId) -> Option<&NodeRecord> {
+    /// The node as this tick sees it, against the mirror the tick started from.
+    pub fn node<'a>(&'a self, base: &'a LuaMirror, id: NodeId) -> Option<&'a NodeRecord> {
         match self.overlay.get(&id) {
             Some(entry) => entry.as_ref(),
-            None => self.base.node(id),
+            None => base.node(id),
         }
     }
 
     /// A property as this tick sees it.
-    pub fn value(&self, id: NodeId, key: &str) -> Option<&LuaValue> {
-        self.node(id)?.props.get(key)
+    pub fn get<'a>(&'a self, base: &'a LuaMirror, id: NodeId, key: &str) -> Option<&'a LuaValue> {
+        self.node(base, id)?.props.get(key)
+    }
+
+    /// The children of a node as this tick sees them, in order.
+    pub fn children<'a>(&'a self, base: &'a LuaMirror, id: NodeId) -> Option<&'a [NodeId]> {
+        self.node(base, id).map(|record| record.children.as_slice())
     }
 
     /// Copy a node into the overlay on first write, so the base is never touched.
-    fn touch(&mut self, id: NodeId) -> Option<&mut NodeRecord> {
-        if !self.overlay.contains_key(&id) {
-            let record = self.base.node(id)?.clone();
-            self.overlay.insert(id, Some(record));
+    fn touch(&mut self, base: &LuaMirror, id: NodeId) -> Option<&mut NodeRecord> {
+        if let std::collections::btree_map::Entry::Vacant(slot) = self.overlay.entry(id) {
+            let record = base.node(id)?.clone();
+            slot.insert(Some(record));
         }
         self.overlay.get_mut(&id)?.as_mut()
     }
 
-    fn require(&self, id: NodeId) -> Result<(), TxError> {
-        self.node(id).map(|_| ()).ok_or(TxError::UnknownNode(id))
+    fn require(&self, base: &LuaMirror, id: NodeId) -> Result<(), TxError> {
+        self.node(base, id).map(|_| ()).ok_or(TxError::UnknownNode(id))
     }
 
     /// Create a node with a pre-allocated id.
-    pub fn new_node(&mut self, id: NodeId, class: &str) -> Result<(), TxError> {
-        if self.node(id).is_some() || self.overlay.contains_key(&id) {
+    pub fn new_node(&mut self, base: &LuaMirror, id: NodeId, class: &str) -> Result<(), TxError> {
+        if self.node(base, id).is_some() || self.overlay.contains_key(&id) {
             return Err(TxError::Exists(id));
         }
         self.overlay.insert(
@@ -595,13 +598,14 @@ impl<'a> TxBuilder<'a> {
     /// Set a property. `seconds` and `samples` describe an animated set; `None` is instant.
     pub fn set(
         &mut self,
+        base: &LuaMirror,
         node: NodeId,
         key: &str,
         value: LuaValue,
         seconds: Option<f64>,
         samples: Option<Vec<f64>>,
     ) -> Result<(), TxError> {
-        let record = self.touch(node).ok_or(TxError::UnknownNode(node))?;
+        let record = self.touch(base, node).ok_or(TxError::UnknownNode(node))?;
         record.props.insert(key.to_owned(), value.clone());
         self.ops.push(LuaOp::Set {
             node,
@@ -614,25 +618,25 @@ impl<'a> TxBuilder<'a> {
     }
 
     /// Insert `node` under `parent` at `index`, moving it from its current parent.
-    pub fn insert(&mut self, node: NodeId, parent: NodeId, index: i64) -> Result<(), TxError> {
-        self.require(node)?;
-        self.require(parent)?;
-        if node == self.base.root() {
+    pub fn insert(&mut self, base: &LuaMirror, node: NodeId, parent: NodeId, index: i64) -> Result<(), TxError> {
+        self.require(base, node)?;
+        self.require(base, parent)?;
+        if node == base.root() {
             return Err(TxError::Root(node));
         }
-        if self.is_ancestor_or_self(node, parent) {
+        if self.is_ancestor_or_self(base, node, parent) {
             return Err(TxError::Cycle(node));
         }
-        if let Some(old) = self.node(node).map(|r| r.parent)
+        if let Some(old) = self.node(base, node).map(|r| r.parent)
             && old != NIL
-            && let Some(record) = self.touch(old)
+            && let Some(record) = self.touch(base, old)
         {
             record.children.retain(|child| *child != node);
         }
-        if let Some(record) = self.touch(node) {
+        if let Some(record) = self.touch(base, node) {
             record.parent = parent;
         }
-        if let Some(record) = self.touch(parent) {
+        if let Some(record) = self.touch(base, parent) {
             let at = usize::try_from(index).map_or(record.children.len(), |i| i.min(record.children.len()));
             record.children.insert(at, node);
         }
@@ -640,33 +644,33 @@ impl<'a> TxBuilder<'a> {
         Ok(())
     }
 
-    fn is_ancestor_or_self(&self, ancestor: NodeId, mut id: NodeId) -> bool {
+    fn is_ancestor_or_self(&self, base: &LuaMirror, ancestor: NodeId, mut id: NodeId) -> bool {
         while id != NIL {
             if id == ancestor {
                 return true;
             }
-            id = self.node(id).map_or(NIL, |r| r.parent);
+            id = self.node(base, id).map_or(NIL, |r| r.parent);
         }
         false
     }
 
     /// Destroy a node and its subtree. Returns the ids removed beneath it.
-    pub fn destroy(&mut self, node: NodeId) -> Result<Vec<NodeId>, TxError> {
-        self.require(node)?;
-        if node == self.base.root() {
+    pub fn destroy(&mut self, base: &LuaMirror, node: NodeId) -> Result<Vec<NodeId>, TxError> {
+        self.require(base, node)?;
+        if node == base.root() {
             return Err(TxError::Root(node));
         }
         let mut subtree = Vec::new();
         let mut pending = vec![node];
         while let Some(id) = pending.pop() {
-            if let Some(record) = self.node(id) {
+            if let Some(record) = self.node(base, id) {
                 pending.extend(record.children.iter().copied());
             }
             subtree.push(id);
         }
-        let parent = self.node(node).map_or(NIL, |r| r.parent);
+        let parent = self.node(base, node).map_or(NIL, |r| r.parent);
         if parent != NIL
-            && let Some(record) = self.touch(parent)
+            && let Some(record) = self.touch(base, parent)
         {
             record.children.retain(|child| *child != node);
         }
@@ -678,8 +682,8 @@ impl<'a> TxBuilder<'a> {
     }
 
     /// Call a method on a node. The answer arrives later, by token.
-    pub fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>) -> Result<(), TxError> {
-        self.require(node)?;
+    pub fn call(&mut self, base: &LuaMirror, node: NodeId, method: &str, args: Vec<u8>) -> Result<(), TxError> {
+        self.require(base, node)?;
         self.ops.push(LuaOp::Call {
             node,
             method: method.to_owned(),
@@ -696,10 +700,11 @@ impl<'a> TxBuilder<'a> {
         self.ops.is_empty()
     }
 
-    /// The transaction for these writes, stamped with the mirror's serial.
-    pub fn into_transaction(self, serial: u64) -> LuaTransaction {
+    /// The transaction for these writes, stamped with the serial of the mirror `base`, which
+    /// must be the mirror this tick started from.
+    pub fn into_transaction(self, base: &LuaMirror, serial: u64) -> LuaTransaction {
         LuaTransaction {
-            base_serial: self.base.serial(),
+            base_serial: base.serial(),
             serial,
             ops: self.ops,
         }
