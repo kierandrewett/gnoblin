@@ -923,7 +923,8 @@ impl Scene {
         let Some((local, depth)) = own else {
             return;
         };
-        if !contains_point(node.bounds, local) {
+        // An input-unset node passes the hit through to what lies under it.
+        if !node.input || !contains_point(node.bounds, local) {
             return;
         }
         let nearer = match best {

@@ -209,9 +209,27 @@ fn a_node_with_visible_false_and_its_subtree_are_not_hit() {
 }
 
 #[test]
-#[ignore = "Scene has no input flag (design §5); hit_test cannot skip nodes with input unset"]
 fn hit_test_ignores_nodes_with_input_unset() {
-    panic!("Scene has no input flag: the node API must provide it");
+    let mut scene = scene_with_output();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 100, 100)))
+        .expect("parent");
+    scene.insert(id(2), child_of(id(1), rect(0, 0, 50, 50))).expect("child");
+    let hit = |scene: &Scene, x: f64, y: f64| scene.hit_test(PointF::new(x, y)).map(|hit| hit.node);
+
+    // Input defaults to set, so existing callers keep hitting the child.
+    assert_eq!(scene.input(id(2)), Some(true));
+    assert_eq!(hit(&scene, 10.0, 10.0), Some(id(2)));
+
+    scene.set_input(id(2), false).expect("unset the child's input");
+    assert_eq!(scene.input(id(2)), Some(false));
+    // The child passes the hit through to the parent under it.
+    assert_eq!(hit(&scene, 10.0, 10.0), Some(id(1)));
+
+    scene.set_input(id(1), false).expect("unset the parent's input");
+    assert_eq!(hit(&scene, 10.0, 10.0), None);
+    assert_eq!(hit(&scene, 75.0, 75.0), None);
+    assert!(matches!(scene.set_input(id(99), false), Err(SceneError::UnknownNode(node)) if node == id(99)));
 }
 
 #[test]
