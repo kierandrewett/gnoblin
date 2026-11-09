@@ -1,0 +1,30 @@
+# The gnoblin-xr extension workspace (design/xr-extension.md, "What the extension
+# contains"). It ships as its own package, so it has its own lockfile and
+# dependency tree and is kept out of the root Gnoblin workspace, which excludes
+# `extensions`. The toolchain comes from the repository root's rust-toolchain.toml.
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/xr-runtime",
+    "crates/gnoblin-xr",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.0"
+license = "GPL-2.0-or-later"
+repository = "https://github.com/kierandrewett/gnoblin"
+publish = false
+
+# The same lint levels as the root workspace (Cargo.toml, [workspace.lints]).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[workspace.dependencies]
+serde_json = "1.0.154"
+rustix = { version = "1.1.6", features = ["process"] }

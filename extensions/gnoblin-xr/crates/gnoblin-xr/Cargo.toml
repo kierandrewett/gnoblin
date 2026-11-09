@@ -1,0 +1,12 @@
+[package]
+name = "gnoblin-xr"
+description = "The out-of-process OpenXR extension for Gnoblin: it reads the room node and submits OpenXR layers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

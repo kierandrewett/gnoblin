@@ -89,6 +89,8 @@ members = [
     "crates/xdg-desktop-portal-gnoblin",
     "xtask",
 ]
+# `extensions/` packages are separate workspaces with their own lockfiles and target dirs (design/xr-extension.md).
+exclude = ["extensions"]
 
 [workspace.package]
 # The rewrite ships as 0.2.0 and the IPC version is exactly the Gnoblin version,
