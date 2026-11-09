@@ -61,6 +61,10 @@ gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # The role test serves a real socketpair and a real client, so the shipped role is
 # exercised rather than a copy of its loop.
 tempfile = "3.23.0"
+# The placement goldens are read from `tests/shell/placement_cases.toml` (tests/floating.rs).
+toml.workspace = true
+# The golden table deserialises with serde's derive; the build script uses serde too, but a test is its own crate.
+serde.workspace = true
 
 [lints]
 workspace = true

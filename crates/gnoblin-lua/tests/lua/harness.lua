@@ -17,7 +17,8 @@ function H.boot(core, host)
 end
 
 -- The stock shell: ui, then floating (before init, which makes every Desk workspace a Floating), then init.
--- `sys` is the host's system table; the stub is inert.
+-- `sys` is the host's system table; the stub is inert. `H.floating` is the module floating.lua returns, so the
+-- pure placement function is `H.floating.place`.
 function H.load_shell()
     sys = sys or {
         spawn = function() end,
@@ -26,7 +27,7 @@ function H.load_shell()
         end,
     }
     dofile(GNOBLIN_LUA_DIR .. "/shell/ui.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/floating.lua")
+    H.floating = dofile(GNOBLIN_LUA_DIR .. "/shell/floating.lua")
     dofile(GNOBLIN_LUA_DIR .. "/shell/init.lua")
 end
 

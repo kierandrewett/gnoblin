@@ -1,0 +1,132 @@
+//! The stock floating placement (`data/lua/gnoblin/shell/floating.lua`) under the vendored Lua 5.5.
+//!
+//! Two checks. `floating_test.lua` holds the failure-mode cases. The golden table, generated from the Rust
+//! placement (`tests/shell/placement_cases.toml`, written by gnoblin-wm's `placement_goldens`), is replayed
+//! through the three classes, so each case proves the class method that the shell calls, not only the pure
+//! function.
+
+mod common;
+
+use mlua::{Function, Lua, Table, Value};
+use serde::Deserialize;
+
+const GOLDENS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/shell/placement_cases.toml");
+
+#[derive(Deserialize)]
+struct Golden {
+    case: Vec<Case>,
+}
+
+#[derive(Deserialize)]
+struct Case {
+    name: String,
+    mode: String,
+    size: Size,
+    area: Rect,
+    occupied: Vec<Rect>,
+    result: Rect,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+struct Rect {
+    x: i64,
+    y: i64,
+    w: i64,
+    h: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct Size {
+    w: i64,
+    h: i64,
+}
+
+/// The class the shell's floating placement dispatches a mode to. Each class's `place` method ignores
+/// `self` and runs its mode, so the golden's mode names map to the class that owns them.
+fn class_for(mode: &str) -> &'static str {
+    match mode {
+        "free_space" => "Floating",
+        "center" => "Centred",
+        "cascade" => "Cascade",
+        other => panic!("golden names an unknown mode {other:?}"),
+    }
+}
+
+fn rect_table(lua: &Lua, r: Rect) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    t.set("x", r.x)?;
+    t.set("y", r.y)?;
+    t.set("w", r.w)?;
+    t.set("h", r.h)?;
+    Ok(t)
+}
+
+fn read_rect(t: &Table) -> mlua::Result<Rect> {
+    Ok(Rect {
+        x: t.get("x")?,
+        y: t.get("y")?,
+        w: t.get("w")?,
+        h: t.get("h")?,
+    })
+}
+
+/// The Lua state with the stock shell loaded the way the native host loads it (`H.fresh`, `H.load_shell`),
+/// so `Floating`, `Cascade` and `Centred` are the globals the shell uses.
+fn shell_state() -> mlua::Result<Lua> {
+    let lua = common::lua_state()?;
+    lua.load("local H = require('harness'); H.fresh(); H.load_shell()")
+        .exec()?;
+    Ok(lua)
+}
+
+fn place_through_class(lua: &Lua, case: &Case) -> mlua::Result<Rect> {
+    let class: Table = lua.globals().get(class_for(&case.mode))?;
+    let place: Function = class.get("place")?;
+    let occupied = lua.create_table()?;
+    for (i, o) in case.occupied.iter().enumerate() {
+        occupied.raw_set(i + 1, rect_table(lua, *o)?)?;
+    }
+    let got: Table = place.call((
+        Value::Nil,
+        case.size.w,
+        case.size.h,
+        rect_table(lua, case.area)?,
+        occupied,
+    ))?;
+    read_rect(&got)
+}
+
+#[test]
+fn floating_lua_cases_pass_on_lua_55() -> mlua::Result<()> {
+    let lua = common::lua_state()?;
+    common::run_case_files(&lua, &["floating_test.lua"])
+}
+
+#[test]
+fn placement_goldens_match_through_the_lua_classes() -> mlua::Result<()> {
+    let text = std::fs::read_to_string(GOLDENS).expect("the placement golden table is readable");
+    let golden: Golden = toml::from_str(&text).expect("the placement golden table parses");
+    assert!(!golden.case.is_empty(), "the placement golden table has no cases");
+
+    let lua = shell_state()?;
+    let mut mismatches = Vec::new();
+    for case in &golden.case {
+        let got = place_through_class(&lua, case)?;
+        if got != case.result {
+            mismatches.push(format!(
+                "{}: {} gave {got:?}, golden says {:?}",
+                case.name,
+                class_for(&case.mode),
+                case.result
+            ));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "{} of {} placement goldens differ in Lua:\n{}",
+        mismatches.len(),
+        golden.case.len(),
+        mismatches.join("\n")
+    );
+    Ok(())
+}
