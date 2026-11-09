@@ -83,6 +83,15 @@ pub struct NodeSpec {
     pub effects: Effects,
     /// Whether the node draws content or projects a space.
     pub kind: NodeKind,
+    /// Whether the node and its subtree are drawn and hit. A hidden node is
+    /// neither, and neither is anything under it.
+    pub visible: bool,
+    /// Whether child hits are clipped to this node's rectangle. A point outside
+    /// it cannot hit a descendant, however the descendant is transformed.
+    pub clip: bool,
+    /// Whether the node can be the target of a hit. A node with input unset is
+    /// skipped, but its children are still tested.
+    pub input: bool,
 }
 
 impl NodeSpec {
@@ -96,6 +105,9 @@ impl NodeSpec {
             transform: VisualTransform::IDENTITY,
             effects: Effects::new(),
             kind: NodeKind::Visual,
+            visible: true,
+            clip: false,
+            input: true,
         }
     }
 
@@ -122,6 +134,9 @@ pub struct Node {
     transform: VisualTransform,
     effects: Effects,
     kind: NodeKind,
+    visible: bool,
+    clip: bool,
+    input: bool,
 }
 
 impl Node {
@@ -165,6 +180,24 @@ impl Node {
     #[must_use]
     pub const fn kind(&self) -> NodeKind {
         self.kind
+    }
+
+    /// Whether the node and its subtree are drawn and hit.
+    #[must_use]
+    pub const fn visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Whether child hits are clipped to this node's rectangle.
+    #[must_use]
+    pub const fn clip(&self) -> bool {
+        self.clip
+    }
+
+    /// Whether the node can be the target of a hit.
+    #[must_use]
+    pub const fn input(&self) -> bool {
+        self.input
     }
 
     /// The pivot a scale and rotation use, in the node's local space.
@@ -344,6 +377,9 @@ impl Scene {
             transform: spec.transform,
             effects: spec.effects,
             kind: spec.kind,
+            visible: spec.visible,
+            clip: spec.clip,
+            input: spec.input,
         };
         self.nodes.insert(id, node);
         match spec.parent {
@@ -508,6 +544,50 @@ impl Scene {
         }
         self.change(id, |node| node.effects = effects);
         Ok(())
+    }
+
+    /// Show or hide a node. A hidden node and its subtree are neither hit nor drawn.
+    pub fn set_visible(&mut self, id: NodeId, visible: bool) -> Result<(), SceneError> {
+        if !self.nodes.contains_key(&id) {
+            return Err(SceneError::UnknownNode(id));
+        }
+        self.change(id, |node| node.visible = visible);
+        Ok(())
+    }
+
+    /// Clip child hits to this node's rectangle, or lift the clip.
+    pub fn set_clip(&mut self, id: NodeId, clip: bool) -> Result<(), SceneError> {
+        if !self.nodes.contains_key(&id) {
+            return Err(SceneError::UnknownNode(id));
+        }
+        self.change(id, |node| node.clip = clip);
+        Ok(())
+    }
+
+    /// Let a node be the target of a hit, or make it pass hits through to what is under it.
+    /// Input does not change what is drawn, so it causes no damage.
+    pub fn set_input(&mut self, id: NodeId, input: bool) -> Result<(), SceneError> {
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        node.input = input;
+        Ok(())
+    }
+
+    /// Whether a node is visible, or `None` for an unknown node.
+    #[must_use]
+    pub fn visible(&self, id: NodeId) -> Option<bool> {
+        self.nodes.get(&id).map(Node::visible)
+    }
+
+    /// Whether a node clips its children's hits, or `None` for an unknown node.
+    #[must_use]
+    pub fn clip(&self, id: NodeId) -> Option<bool> {
+        self.nodes.get(&id).map(Node::clip)
+    }
+
+    /// Whether a node can be hit, or `None` for an unknown node.
+    #[must_use]
+    pub fn input(&self, id: NodeId) -> Option<bool> {
+        self.nodes.get(&id).map(Node::input)
     }
 
     /// Move a node within its siblings' paint order.
@@ -826,6 +906,9 @@ impl Scene {
         let Some(node) = self.nodes.get(&id) else {
             return;
         };
+        if !node.visible {
+            return;
+        }
         let world = frame.mul(&node.local_matrix());
         let child_frame = world.mul(&node.content_matrix());
         for child in node.children.iter().rev() {

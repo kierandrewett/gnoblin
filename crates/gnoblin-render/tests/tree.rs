@@ -182,9 +182,30 @@ fn reparent_keeps_state_and_moves_paint_order() {
 }
 
 #[test]
-#[ignore = "NodeSpec and Node have no visible flag (design §5); pinned until the node API adds one"]
 fn a_node_with_visible_false_and_its_subtree_are_not_hit() {
-    panic!("Scene has no visible flag: the node API must provide it");
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 400, 400))).expect("root");
+    scene
+        .insert(id(2), child_of(id(1), rect(0, 0, 100, 100)))
+        .expect("child");
+    scene
+        .insert(id(3), child_of(id(2), rect(0, 0, 50, 50)))
+        .expect("grandchild");
+    let hit = |scene: &Scene| scene.hit_test(PointF::new(10.0, 10.0)).map(|hit| hit.node);
+    assert_eq!(hit(&scene), Some(id(3)));
+
+    scene.set_visible(id(2), false).expect("hide the child");
+    assert_eq!(scene.visible(id(2)), Some(false));
+    // Hiding the child hides its subtree too: the root is what the point reaches.
+    assert_eq!(hit(&scene), Some(id(1)));
+
+    scene.set_visible(id(1), false).expect("hide the root");
+    assert_eq!(hit(&scene), None);
+
+    scene.set_visible(id(1), true).expect("show the root");
+    scene.set_visible(id(2), true).expect("show the child");
+    assert_eq!(hit(&scene), Some(id(3)));
+    assert!(matches!(scene.set_visible(id(99), false), Err(SceneError::UnknownNode(node)) if node == id(99)));
 }
 
 #[test]

@@ -1437,6 +1437,9 @@ impl Composer {
                     transform: spec_transform,
                     effects,
                     kind: NodeKind::Visual,
+                    visible: true,
+                    clip: false,
+                    input: true,
                 };
                 if self.scene.insert(id, spec).is_ok() {
                     if let Some(entry) = self.windows.get_mut(&window) {
