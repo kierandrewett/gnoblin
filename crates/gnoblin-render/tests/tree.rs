@@ -809,3 +809,198 @@ fn the_tree_hash_tells_apart_trees_that_differ_in_one_sibling_order() {
     second.raise(id(4)).expect("raise");
     assert_ne!(tree_hash(&first), tree_hash(&second));
 }
+
+// ---- Slice 3: ownership, caps, subtree removal (design/node-core.md §3, §8) ----
+//
+// Ids: the compositor allocates from `COMPOSITOR_ID_BASE` (bit 63 set); the shell's ids
+// are below `SHELL_ID_LIMIT` (bit 63 clear). Owner is the actor that inserted the node.
+// A node's `parented_by` is the actor that last gave it a parent (None when unparented).
+
+use gnoblin_render::Actor;
+use gnoblin_render::scene_ids::{COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES, SHELL_ID_LIMIT};
+
+fn cid(n: u64) -> NodeId {
+    NodeId::new(COMPOSITOR_ID_BASE + n)
+}
+
+#[test]
+fn id_ranges_cannot_collide() {
+    assert_eq!(SHELL_ID_LIMIT, 1 << 63);
+    assert_eq!(COMPOSITOR_ID_BASE, 1 << 63);
+    assert!(cid(1).get() >= COMPOSITOR_ID_BASE);
+    assert!(id(1).get() < SHELL_ID_LIMIT);
+}
+
+#[test]
+fn f8_op_on_destroyed_id_is_unknown_node() {
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))).unwrap();
+    scene.remove(id(1)).unwrap();
+    assert_eq!(scene.set_visible(id(1), false), Err(SceneError::UnknownNode(id(1))));
+}
+
+#[test]
+fn f10_reparent_into_own_subtree_is_cycle() {
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))).unwrap();
+    scene.insert(id(2), child_of(id(1), rect(0, 0, 5, 5))).unwrap();
+    assert_eq!(
+        scene.reparent(id(1), Some(id(2))),
+        Err(SceneError::Cycle {
+            node: id(1),
+            parent: id(2)
+        })
+    );
+}
+
+#[test]
+fn f13_coordinate_beyond_bound_is_out_of_bounds() {
+    let mut scene = scene_with_output();
+    let far = NodeSpec::new(rect(0, 0, 1 << 21, 10));
+    assert!(matches!(scene.insert(id(1), far), Err(SceneError::OutOfBounds { .. })));
+    assert!(!scene.contains(id(1)));
+}
+
+#[test]
+fn f14_nan_is_not_finite() {
+    let mut scene = scene_with_output();
+    let mut spec = NodeSpec::new(rect(0, 0, 10, 10));
+    spec.transform.base.translation = Vec3::new(f64::NAN, 0.0, 0.0);
+    assert!(matches!(scene.insert(id(1), spec), Err(SceneError::NonFinite { .. })));
+    assert!(!scene.contains(id(1)));
+}
+
+#[test]
+fn f15_insert_with_live_id_is_duplicate_node() {
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))).unwrap();
+    assert_eq!(
+        scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))),
+        Err(SceneError::DuplicateNode(id(1)))
+    );
+}
+
+#[test]
+fn f18_node_cap_refuses_with_too_many_nodes() {
+    assert_eq!(MAX_NODES, 65536);
+    let mut scene = Scene::new();
+    for n in 1..=MAX_NODES as u64 {
+        scene.insert(id(n), NodeSpec::new(rect(0, 0, 1, 1))).unwrap();
+    }
+    assert_eq!(
+        scene.insert(id(MAX_NODES as u64 + 1), NodeSpec::new(rect(0, 0, 1, 1))),
+        Err(SceneError::TooManyNodes)
+    );
+}
+
+#[test]
+fn f38_depth_cap_refuses_with_too_deep() {
+    assert_eq!(MAX_DEPTH, 256);
+    let mut scene = Scene::new();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 1, 1))).unwrap();
+    for depth in 2..=MAX_DEPTH as u64 {
+        scene
+            .insert(id(depth), child_of(id(depth - 1), rect(0, 0, 1, 1)))
+            .unwrap();
+    }
+    let too_deep = child_of(id(MAX_DEPTH as u64), rect(0, 0, 1, 1));
+    assert_eq!(scene.insert(id(1000), too_deep), Err(SceneError::TooDeep));
+    assert!(!scene.contains(id(1000)));
+}
+
+#[test]
+fn destroy_returns_removed_subtree_in_tree_order() {
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))).unwrap();
+    scene.insert(id(2), child_of(id(1), rect(0, 0, 5, 5))).unwrap();
+    scene.insert(id(3), child_of(id(1), rect(0, 0, 5, 5))).unwrap();
+    scene.insert(id(4), child_of(id(2), rect(0, 0, 2, 2))).unwrap();
+    assert_eq!(scene.remove(id(1)).unwrap(), vec![id(1), id(2), id(4), id(3)]);
+    assert_eq!(scene.node_ids().count(), 0);
+}
+
+#[test]
+fn shell_can_destroy_its_own_node() {
+    let mut scene = scene_with_output();
+    scene
+        .insert_as(Actor::Shell, id(10), NodeSpec::new(rect(0, 0, 10, 10)))
+        .unwrap();
+    assert_eq!(scene.remove_as(Actor::Shell, id(10)), Ok(vec![id(10)]));
+}
+
+#[test]
+fn shell_destroy_of_compositor_node_is_not_owner() {
+    let mut scene = scene_with_output();
+    scene.insert(cid(1), NodeSpec::new(rect(0, 0, 10, 10))).unwrap();
+    assert_eq!(scene.remove_as(Actor::Shell, cid(1)), Err(SceneError::NotOwner(cid(1))));
+    assert!(scene.contains(cid(1)));
+}
+
+#[test]
+fn shell_cannot_insert_under_compositor_id_range() {
+    let mut scene = scene_with_output();
+    assert_eq!(
+        scene.insert_as(Actor::Shell, cid(5), NodeSpec::new(rect(0, 0, 1, 1))),
+        Err(SceneError::NotOwner(cid(5)))
+    );
+}
+
+#[test]
+fn shell_moves_unparented_compositor_node() {
+    let mut scene = scene_with_output();
+    scene
+        .insert_as(Actor::Shell, id(10), NodeSpec::new(rect(0, 0, 100, 100)))
+        .unwrap();
+    scene.insert(cid(1), NodeSpec::new(rect(3, 4, 20, 30))).unwrap();
+    scene.reparent_as(Actor::Shell, cid(1), Some(id(10))).unwrap();
+    assert_eq!(scene.parent(cid(1)), Some(id(10)));
+}
+
+#[test]
+fn shell_cannot_move_compositor_parented_node_not_owner() {
+    let mut scene = scene_with_output();
+    scene.insert(cid(1), NodeSpec::new(rect(0, 0, 100, 100))).unwrap();
+    scene.insert(cid(2), child_of(cid(1), rect(0, 0, 10, 10))).unwrap();
+    scene
+        .insert_as(Actor::Shell, id(10), NodeSpec::new(rect(0, 0, 100, 100)))
+        .unwrap();
+    assert_eq!(
+        scene.reparent_as(Actor::Shell, cid(2), Some(id(10))),
+        Err(SceneError::NotOwner(cid(2)))
+    );
+    assert_eq!(scene.parent(cid(2)), Some(cid(1)));
+}
+
+#[test]
+fn shell_moves_node_it_parented() {
+    let mut scene = scene_with_output();
+    scene
+        .insert_as(Actor::Shell, id(10), NodeSpec::new(rect(0, 0, 100, 100)))
+        .unwrap();
+    scene
+        .insert_as(Actor::Shell, id(11), child_of(id(10), rect(0, 0, 5, 5)))
+        .unwrap();
+    scene.reparent_as(Actor::Shell, id(11), None).unwrap();
+    assert_eq!(scene.parent(id(11)), None);
+}
+
+#[test]
+fn reparent_keeps_id_and_geometry() {
+    let mut scene = scene_with_output();
+    scene
+        .insert_as(Actor::Shell, id(10), NodeSpec::new(rect(0, 0, 100, 100)))
+        .unwrap();
+    scene.insert(cid(1), NodeSpec::new(rect(7, 8, 20, 30))).unwrap();
+    let before = scene.bounds(cid(1));
+    scene.reparent_as(Actor::Shell, cid(1), Some(id(10))).unwrap();
+    assert!(scene.contains(cid(1)));
+    assert_eq!(scene.bounds(cid(1)), before);
+}
+
+#[test]
+fn shell_write_to_compositor_window_property_applies() {
+    let mut scene = scene_with_output();
+    scene.insert(cid(1), NodeSpec::new(rect(0, 0, 100, 100))).unwrap();
+    scene.set_visible_as(Actor::Shell, cid(1), false).unwrap();
+    assert_eq!(scene.visible(cid(1)), Some(false));
+}
