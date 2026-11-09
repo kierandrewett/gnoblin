@@ -170,7 +170,7 @@ fn refused_writes_name_the_check_and_never_reach_the_transaction() {
 fn insert_and_destroy_are_checked_and_a_destroyed_node_is_gone_for_the_rest_of_the_tick() {
     let (lua, _) = setup();
     assert!(refused(&lua, "core.destroy(1)").contains("is the root"));
-    assert!(refused(&lua, "core.insert(1, 2)").contains("root"));
+    assert!(refused(&lua, "core.insert(2, 1)").contains("root"));
     assert!(refused(&lua, "core.destroy(99)").contains("no node 99"));
     assert!(refused(&lua, r#"core.new("nope")"#).contains("no class nope"));
     check(

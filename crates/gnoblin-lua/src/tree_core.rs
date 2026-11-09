@@ -390,7 +390,7 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
     let shared = Rc::clone(core);
     table.set(
         "insert",
-        lua.create_function(move |_, (node, parent, index): (i64, i64, Option<i64>)| {
+        lua.create_function(move |_, (parent, node, index): (i64, i64, Option<i64>)| {
             shared
                 .borrow_mut()
                 .insert(node_arg(node)?, node_arg(parent)?, index.unwrap_or(-1))
