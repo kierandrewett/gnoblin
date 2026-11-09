@@ -81,6 +81,7 @@ use crate::camera::{Camera, CameraError, Projection};
 use crate::damage::{Damage, OutputDamage, merge_rects};
 use crate::effect::{EffectError, Effects};
 use crate::matrix::Mat4;
+use crate::scene_ids::{Actor, COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES};
 
 /// The default number of damage rectangles per output.
 ///
@@ -165,6 +166,8 @@ pub struct Node {
     visible: bool,
     clip: bool,
     input: bool,
+    owner: Actor,
+    parented_by: Option<Actor>,
 }
 
 impl Node {
@@ -220,6 +223,19 @@ impl Node {
     #[must_use]
     pub const fn input(&self) -> bool {
         self.input
+    }
+
+    /// The actor that created the node. Only it may destroy the node.
+    #[must_use]
+    pub const fn owner(&self) -> Actor {
+        self.owner
+    }
+
+    /// The actor that last gave the node a parent, or `None` while it is unparented.
+    /// The shell may not move a node the compositor parented.
+    #[must_use]
+    pub const fn parented_by(&self) -> Option<Actor> {
+        self.parented_by
     }
 
     /// The pivot a scale and rotation use, in the node's local space.
@@ -314,12 +330,21 @@ pub enum SceneError {
     Property(PropertyError),
     /// An effect or uniform was refused.
     Effect(EffectError),
+    /// The actor may not destroy or move this node: it belongs to another actor.
+    NotOwner(NodeId),
+    /// The scene already holds the maximum number of nodes.
+    TooManyNodes,
+    /// The node would sit deeper than the maximum depth.
+    TooDeep,
 }
 
 impl std::fmt::Display for SceneError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DuplicateNode(id) => write!(formatter, "node {id} already exists"),
+            Self::NotOwner(id) => write!(formatter, "node {id} belongs to another owner"),
+            Self::TooManyNodes => write!(formatter, "the scene is full"),
+            Self::TooDeep => write!(formatter, "the node would be too deep"),
             Self::UnknownNode(id) => write!(formatter, "no node {id}"),
             Self::UnknownParent(id) => write!(formatter, "no parent {id}"),
             Self::NonFinite { field } => write!(formatter, "`{field}` is not finite"),
@@ -448,27 +473,48 @@ impl Scene {
     /// paints on top of its siblings. Refuses an id that exists and a parent that does not.
     ///
     /// The new node damages only itself: the pixels it adds were not on screen
-    /// before, while a parent's existing pixels do not move.
+    /// before, while a parent's existing pixels do not move. The compositor is the owner.
     pub fn insert(&mut self, id: NodeId, spec: NodeSpec) -> Result<(), SceneError> {
-        self.insert_checked(id, spec, None)
+        self.insert_as(Actor::Compositor, id, spec)
+    }
+
+    /// [`Scene::insert`] on behalf of `actor`. The shell may insert only ids below
+    /// [`COMPOSITOR_ID_BASE`], and the node it creates is then the shell's to destroy.
+    pub fn insert_as(&mut self, actor: Actor, id: NodeId, spec: NodeSpec) -> Result<(), SceneError> {
+        self.insert_checked(actor, id, spec, None)
     }
 
     /// Insert a node at `index` among its siblings: `0` paints first, below every
     /// other sibling. An index past the end is refused; `len` itself means last.
     pub fn insert_at(&mut self, id: NodeId, spec: NodeSpec, index: usize) -> Result<(), SceneError> {
-        self.insert_checked(id, spec, Some(index))
+        self.insert_checked(Actor::Compositor, id, spec, Some(index))
     }
 
-    fn insert_checked(&mut self, id: NodeId, mut spec: NodeSpec, index: Option<usize>) -> Result<(), SceneError> {
+    fn insert_checked(
+        &mut self,
+        actor: Actor,
+        id: NodeId,
+        mut spec: NodeSpec,
+        index: Option<usize>,
+    ) -> Result<(), SceneError> {
+        if actor == Actor::Shell && id.get() >= COMPOSITOR_ID_BASE {
+            return Err(SceneError::NotOwner(id));
+        }
         if self.nodes.contains_key(&id) {
             return Err(SceneError::DuplicateNode(id));
         }
         clamp_opacity(&mut spec.transform);
         spec.validate()?;
+        if self.nodes.len() >= MAX_NODES {
+            return Err(SceneError::TooManyNodes);
+        }
         if let Some(parent) = spec.parent
             && !self.nodes.contains_key(&parent)
         {
             return Err(SceneError::UnknownParent(parent));
+        }
+        if spec.parent.is_some_and(|parent| self.depth_of(parent) >= MAX_DEPTH) {
+            return Err(SceneError::TooDeep);
         }
         let index = child_index(index, self.siblings_of(spec.parent).len())?;
         let node = Node {
@@ -481,6 +527,8 @@ impl Scene {
             visible: spec.visible,
             clip: spec.clip,
             input: spec.input,
+            owner: actor,
+            parented_by: spec.parent.map(|_| actor),
         };
         self.nodes.insert(id, node);
         self.siblings_mut(spec.parent).insert(index, id);
@@ -497,10 +545,25 @@ impl Scene {
     /// clear every pixel it and its descendants occupied, not just the rectangle
     /// the caller remembers.
     pub fn remove(&mut self, id: NodeId) -> Result<Vec<NodeId>, SceneError> {
+        self.remove_as(Actor::Compositor, id)
+    }
+
+    /// [`Scene::remove`] on behalf of `actor`. The shell may destroy only nodes it
+    /// created, and no subtree that holds a compositor-owned node.
+    pub fn remove_as(&mut self, actor: Actor, id: NodeId) -> Result<Vec<NodeId>, SceneError> {
         if !self.nodes.contains_key(&id) {
             return Err(SceneError::UnknownNode(id));
         }
         let removed = self.subtree_ids(id);
+        let foreign = removed
+            .iter()
+            .copied()
+            .find(|node| self.nodes.get(node).is_some_and(|n| n.owner == Actor::Compositor));
+        if actor == Actor::Shell
+            && let Some(foreign) = foreign
+        {
+            return Err(SceneError::NotOwner(foreign));
+        }
         let samples: Vec<DamageSample> = removed.iter().filter_map(|node| self.sample(*node)).collect();
         let parent = self.nodes[&id].parent;
         match parent {
@@ -531,23 +594,40 @@ impl Scene {
     /// that parent's last child: on top of its new siblings.
     ///
     /// The node keeps its id, its state and its subtree. A node cannot move under
-    /// itself or under one of its own descendants.
+    /// itself or under one of its own descendants, and no subtree may pass
+    /// [`MAX_DEPTH`].
     ///
     /// The subtree's bounds before the move and after it both become damage.
     pub fn reparent(&mut self, id: NodeId, parent: Option<NodeId>) -> Result<(), SceneError> {
-        self.attach(id, parent, None)
+        self.attach(Actor::Compositor, id, parent, None)
     }
 
     /// Move a node under a new parent at `index` among that parent's other children.
     /// `index` counts the new siblings without the node itself, so it may equal their
     /// number, which is the same as [`Scene::reparent`].
     pub fn reparent_at(&mut self, id: NodeId, parent: Option<NodeId>, index: usize) -> Result<(), SceneError> {
-        self.attach(id, parent, Some(index))
+        self.attach(Actor::Compositor, id, parent, Some(index))
     }
 
-    fn attach(&mut self, id: NodeId, parent: Option<NodeId>, index: Option<usize>) -> Result<(), SceneError> {
+    /// [`Scene::reparent`] on behalf of `actor`. The shell may move a node it
+    /// parented or one that is unparented; it may never move a node the compositor
+    /// parented.
+    pub fn reparent_as(&mut self, actor: Actor, id: NodeId, parent: Option<NodeId>) -> Result<(), SceneError> {
+        self.attach(actor, id, parent, None)
+    }
+
+    fn attach(
+        &mut self,
+        actor: Actor,
+        id: NodeId,
+        parent: Option<NodeId>,
+        index: Option<usize>,
+    ) -> Result<(), SceneError> {
         if !self.nodes.contains_key(&id) {
             return Err(SceneError::UnknownNode(id));
+        }
+        if actor == Actor::Shell && self.nodes[&id].parented_by == Some(Actor::Compositor) {
+            return Err(SceneError::NotOwner(id));
         }
         let subtree = self.subtree_ids(id);
         if let Some(parent) = parent {
@@ -556,6 +636,9 @@ impl Scene {
             }
             if subtree.contains(&parent) {
                 return Err(SceneError::Cycle { node: id, parent });
+            }
+            if self.depth_of(parent) + self.subtree_height(id) > MAX_DEPTH {
+                return Err(SceneError::TooDeep);
             }
         }
         let others = self
@@ -567,7 +650,9 @@ impl Scene {
         let before: Vec<DamageSample> = subtree.iter().filter_map(|node| self.sample(*node)).collect();
         let old_parent = self.nodes[&id].parent;
         self.siblings_mut(old_parent).retain(|child| *child != id);
-        self.nodes.get_mut(&id).expect("node existence checked above").parent = parent;
+        let node = self.nodes.get_mut(&id).expect("node existence checked above");
+        node.parent = parent;
+        node.parented_by = parent.map(|_| actor);
         self.siblings_mut(parent).insert(index, id);
         for sample in before {
             self.push_sample(sample);
@@ -582,6 +667,29 @@ impl Scene {
             self.dirty.extend(self.ancestors(ancestor));
         }
         Ok(())
+    }
+
+    /// How many nodes lie on the path from a root down to `id`, `id` included.
+    fn depth_of(&self, id: NodeId) -> usize {
+        let mut depth = 0;
+        let mut cursor = Some(id);
+        while let Some(node) = cursor {
+            depth += 1;
+            cursor = self.nodes.get(&node).and_then(Node::parent);
+        }
+        depth
+    }
+
+    /// How many levels the subtree at `id` spans, `id` included.
+    fn subtree_height(&self, id: NodeId) -> usize {
+        let below = self.nodes.get(&id).map_or(0, |node| {
+            node.children
+                .iter()
+                .map(|child| self.subtree_height(*child))
+                .max()
+                .unwrap_or(0)
+        });
+        1 + below
     }
 
     /// Whether a node exists.
@@ -1569,6 +1677,8 @@ mod tests {
                 visible: true,
                 clip: false,
                 input: true,
+                owner: Actor::Compositor,
+                parented_by: None,
             },
         );
         scene.roots.push(space);
@@ -1584,6 +1694,8 @@ mod tests {
                 visible: true,
                 clip: false,
                 input: true,
+                owner: Actor::Compositor,
+                parented_by: Some(Actor::Compositor),
             },
         );
         scene.dirty.clear();

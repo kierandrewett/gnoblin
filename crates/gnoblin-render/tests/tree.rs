@@ -865,7 +865,7 @@ fn f13_coordinate_beyond_bound_is_out_of_bounds() {
 fn f14_nan_is_not_finite() {
     let mut scene = scene_with_output();
     let mut spec = NodeSpec::new(rect(0, 0, 10, 10));
-    spec.transform.base.translation = Vec3::new(f64::NAN, 0.0, 0.0);
+    spec.transform.base.offset = Vec3::new(f64::NAN, 0.0, 0.0);
     assert!(matches!(scene.insert(id(1), spec), Err(SceneError::NonFinite { .. })));
     assert!(!scene.contains(id(1)));
 }
@@ -999,8 +999,17 @@ fn reparent_keeps_id_and_geometry() {
 
 #[test]
 fn shell_write_to_compositor_window_property_applies() {
+    // Ownership governs lifecycle and parentage only: the shell places and shows a
+    // compositor-owned window by writing its properties, and the write applies.
     let mut scene = scene_with_output();
     scene.insert(cid(1), NodeSpec::new(rect(0, 0, 100, 100))).unwrap();
-    scene.set_visible_as(Actor::Shell, cid(1), false).unwrap();
+    scene
+        .set_property(cid(1), VisualProperty::OffsetX, PropertyValue::Number(42.0))
+        .unwrap();
+    scene.set_visible(cid(1), false).unwrap();
     assert_eq!(scene.visible(cid(1)), Some(false));
+    assert_eq!(
+        scene.property(cid(1), VisualProperty::OffsetX),
+        Ok(PropertyValue::Number(42.0))
+    );
 }

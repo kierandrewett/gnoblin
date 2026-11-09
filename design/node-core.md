@@ -257,6 +257,15 @@ Methods: `engage()`, `release()`. Both are privileged and the owner grant decide
 
 ### 3.2 Ownership
 
+Ruling (owner of the design, overrides the table below where they disagree): windows and layer surfaces arrive
+unparented and the shell places them. The shell may insert or move any node that is unparented, or that the shell
+itself parented, and may destroy nodes it created. It may not move a node the compositor parented (popup, cursor, lock
+surface), nor destroy a compositor-owned node; both are refused `not-owner`. Moving or destroying the root is refused
+`root-immutable`. Ownership governs lifecycle and parentage only. Property writes are governed only by the schema's
+`readonly` flag, whoever owns the node: the shell may write `x`, `y`, `width`, `height`, `visible`, opacity and the
+other placement properties of a compositor-owned window, and may not write a read-only property (`title`, `app_id`,
+...), which is refused `read-only`.
+
 | Node                                                       | Created by         | Destroyed by                                        | Shell may `insert` it? |
 | ---------------------------------------------------------- | ------------------ | --------------------------------------------------- | ---------------------- |
 | `root`                                                     | compositor         | never                                               | no                     |

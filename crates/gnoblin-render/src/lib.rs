@@ -147,6 +147,7 @@ mod damage;
 mod effect;
 mod matrix;
 mod scene;
+pub mod scene_ids;
 mod tween;
 
 #[cfg(test)]
@@ -168,6 +169,8 @@ pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsuppo
 pub use matrix::Mat4;
 /// The node tree, its node kinds, hit results and the scene error type.
 pub use scene::{DEFAULT_DAMAGE_RECT_LIMIT, Hit, Node, NodeKind, NodeSpec, Scene, SceneError};
+/// Who may create, move and destroy a node: the compositor or the shell.
+pub use scene_ids::Actor;
 /// Animation tracks: the player, its specs and its terminal reports.
 pub use tween::{TrackEnd, TrackEndReason, TrackError, TrackSpec, TrackStart, TweenPlayer};
 
