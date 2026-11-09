@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! libinput event -> DeviceEvent (map::Mapper) -> InputEvent -> the compositor's seat
-//!                -> RawEvent (gestures, tablets) -> gnoblin-input's router
+//!                -> InputEvent::Touchpad (gestures) -> the policy's gesture router
 //! ```
 //!
 //! # Which device a configuration section is for
@@ -31,8 +31,8 @@
 //! 4. **An event is translated with the wrong scale.** libinput states absolute and touch
 //!    positions as fractions of the device's own range, so they pass through as they are and
 //!    the mapper places them on an output: `map::tests::an_absolute_point_lands_where_it_was_reported`.
-//! 5. **A gesture reaches the seat as a pointer click.** Gestures are [`RawEvent`]s and never
-//!    [`InputEvent`]s, so the router sees them and no client does.
+//! 5. **A gesture reaches the seat as a pointer click.** Gestures are [`InputEvent::Touchpad`]s
+//!    and never pointer events, so the router sees them and no client does.
 
 /// The translation rules: libinput device events become seat events, as pure logic over plain values.
 pub mod map;
@@ -46,8 +46,9 @@ use std::io;
 use std::rc::Rc;
 
 use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, Event, GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputEvent as BackendEvent,
-    KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
+    AbsolutePositionEvent, Axis, Event, GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent,
+    GestureSwipeUpdateEvent, InputEvent as BackendEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+    PointerMotionEvent, TouchEvent,
 };
 use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
 use smithay::backend::session::Session as _;
@@ -55,8 +56,7 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
 
-use crate::{RawEvent, RawGestureKind};
-use gnoblin_backend::{DeviceKind, InputEvent, InputSource, TouchPhase};
+use gnoblin_backend::{DeviceKind, InputEvent, InputSource, TouchPhase, TouchpadKind, TouchpadPhase, TouchpadSample};
 
 pub use map::{DeviceEvent, Mapper, Screen};
 pub use settings::{Accel, Applier, ButtonMap, Click, DeviceSettings, Scroll, Setting};
@@ -89,7 +89,7 @@ impl std::error::Error for LibinputError {}
 /// One device the seat knows about.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Device {
-    /// The backend's own number, which a [`RawEvent`] names.
+    /// The backend's own number, which a [`TouchpadSample`] names.
     pub id: u64,
     /// The kernel's name for the device, such as `"event7"`.
     pub sysname: String,
@@ -107,8 +107,6 @@ pub struct Libinput {
     mapper: Mapper,
     /// The contract's events, ready for [`InputSource::next_event`].
     ready: VecDeque<InputEvent>,
-    /// The events for `gnoblin-input`'s router.
-    raw: VecDeque<RawEvent>,
     /// The devices the seat has, in the order they arrived.
     devices: Vec<Device>,
     /// The number the next device is given.
@@ -161,7 +159,6 @@ impl Libinput {
             queue: Rc::new(RefCell::new(VecDeque::new())),
             mapper: Mapper::new(),
             ready: VecDeque::new(),
-            raw: VecDeque::new(),
             devices: Vec::new(),
             next: 1,
             suspended: false,
@@ -216,11 +213,6 @@ impl Libinput {
         self.mapper.set_screens(screens);
     }
 
-    /// The next event for `gnoblin-input`'s router, which the contract cannot carry.
-    pub fn next_raw(&mut self) -> Option<RawEvent> {
-        self.raw.pop_front()
-    }
-
     /// Stops delivering events until [`Libinput::resume`].
     ///
     /// A pause drops what is queued: a delta a device collected while another VT was on the
@@ -229,7 +221,6 @@ impl Libinput {
         self.suspended = true;
         self.queue.borrow_mut().clear();
         self.ready.clear();
-        self.raw.clear();
         for event in self.mapper.cancel() {
             self.ready.push_back(event);
         }
@@ -257,23 +248,33 @@ impl Libinput {
         }
     }
 
-    /// Queues one gesture event for the router, naming the device that produced it.
+    /// Queues one touchpad gesture sample, naming the device that produced it.
     ///
-    /// A device the seat has not announced has no number to name, so its gesture is dropped
+    /// A device the seat has not announced has no number to name, so its sample is dropped
     /// rather than attributed to another device.
-    fn gesture(&mut self, device: &libinput::Device, kind: RawGestureKind, begin: bool, end: bool, value: f64) {
+    fn gesture(
+        &mut self,
+        device: &libinput::Device,
+        kind: TouchpadKind,
+        phase: TouchpadPhase,
+        fingers: u8,
+        (dx, dy): (f64, f64),
+        scale: f64,
+    ) {
         let sysname = device.sysname().to_string();
         let Some(known) = self.devices.iter().find(|known| known.sysname == sysname) else {
             log::warn!(area = "input", sysname = %sysname, "a gesture from a device that was never announced");
             return;
         };
-        self.raw.push_back(RawEvent::Gesture {
+        self.ready.push_back(InputEvent::Touchpad(TouchpadSample {
             device: known.id,
+            phase,
             kind,
-            begin,
-            end,
-            value,
-        });
+            fingers,
+            dx,
+            dy,
+            scale,
+        }));
     }
 
     /// One queued event, as the contract's event and the router's.
@@ -377,29 +378,71 @@ impl Libinput {
                 }
             }
             BackendEvent::GestureSwipeBegin { event } => {
-                self.gesture(&event.device(), RawGestureKind::Swipe, true, false, 0.0);
+                let fingers = fingers_of(event.fingers());
+                self.gesture(
+                    &event.device(),
+                    TouchpadKind::Swipe,
+                    TouchpadPhase::Begin,
+                    fingers,
+                    (0.0, 0.0),
+                    1.0,
+                );
             }
             BackendEvent::GestureSwipeUpdate { event } => {
                 let delta = event.delta();
-                self.gesture(&event.device(), RawGestureKind::Swipe, false, false, -delta.y);
+                self.gesture(
+                    &event.device(),
+                    TouchpadKind::Swipe,
+                    TouchpadPhase::Update,
+                    0,
+                    (delta.x, -delta.y),
+                    1.0,
+                );
             }
             BackendEvent::GestureSwipeEnd { event } => {
-                self.gesture(&event.device(), RawGestureKind::Swipe, false, true, 0.0);
+                let phase = end_phase(event.cancelled());
+                self.gesture(&event.device(), TouchpadKind::Swipe, phase, 0, (0.0, 0.0), 1.0);
             }
             BackendEvent::GesturePinchBegin { event } => {
-                self.gesture(&event.device(), RawGestureKind::Pinch, true, false, 0.0);
+                let fingers = fingers_of(event.fingers());
+                self.gesture(
+                    &event.device(),
+                    TouchpadKind::Pinch,
+                    TouchpadPhase::Begin,
+                    fingers,
+                    (0.0, 0.0),
+                    1.0,
+                );
             }
             BackendEvent::GesturePinchUpdate { event } => {
-                self.gesture(&event.device(), RawGestureKind::Pinch, false, false, event.scale());
+                let scale = event.scale();
+                self.gesture(
+                    &event.device(),
+                    TouchpadKind::Pinch,
+                    TouchpadPhase::Update,
+                    0,
+                    (event.delta_x(), event.delta_y()),
+                    scale,
+                );
             }
             BackendEvent::GesturePinchEnd { event } => {
-                self.gesture(&event.device(), RawGestureKind::Pinch, false, true, 0.0);
+                let phase = end_phase(event.cancelled());
+                self.gesture(&event.device(), TouchpadKind::Pinch, phase, 0, (0.0, 0.0), 1.0);
             }
             BackendEvent::GestureHoldBegin { event } => {
-                self.gesture(&event.device(), RawGestureKind::Hold, true, false, 0.0);
+                let fingers = fingers_of(event.fingers());
+                self.gesture(
+                    &event.device(),
+                    TouchpadKind::Hold,
+                    TouchpadPhase::Begin,
+                    fingers,
+                    (0.0, 0.0),
+                    1.0,
+                );
             }
             BackendEvent::GestureHoldEnd { event } => {
-                self.gesture(&event.device(), RawGestureKind::Hold, false, true, 0.0);
+                let phase = end_phase(event.cancelled());
+                self.gesture(&event.device(), TouchpadKind::Hold, phase, 0, (0.0, 0.0), 1.0);
             }
             // A touch frame is the boundary between two atomic updates, which the seat applies
             // in order anyway; a tablet tool is read by `gnoblin-input` from the raw channel,
@@ -464,5 +507,19 @@ pub fn kind_of(device: &libinput::Device) -> DeviceKind {
         DeviceKind::Keyboard
     } else {
         DeviceKind::Mouse
+    }
+}
+
+/// The finger count libinput reports, clamped to the range a gesture can carry.
+fn fingers_of(fingers: u32) -> u8 {
+    u8::try_from(fingers).unwrap_or(u8::MAX)
+}
+
+/// The phase a gesture's end reports, given whether libinput cancelled it.
+fn end_phase(cancelled: bool) -> TouchpadPhase {
+    if cancelled {
+        TouchpadPhase::Cancel
+    } else {
+        TouchpadPhase::End
     }
 }

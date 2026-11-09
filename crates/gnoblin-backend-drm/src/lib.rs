@@ -462,7 +462,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
             .map_err(|error| control_error(output, error))
     }
 
-    fn dispatch(&mut self, _host: &mut S) -> Vec<BackendEvent> {
+    fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
         for event in self.gpu.seat().take_events() {
             match event {
                 SeatEvent::Paused => self.pause(),
@@ -477,6 +477,9 @@ impl<S: Host + 'static> Backend<S> for Drm {
         complete_flips(&mut self.channels, &crtcs);
         if let Input::Live(libinput) = &mut self.input {
             libinput.pump();
+        }
+        while let Some(event) = self.input.next_event() {
+            host.input(event);
         }
         events
     }
@@ -505,40 +508,6 @@ fn control_error(output: OutputId, error: gpu::ControlError) -> BackendError {
             BackendError::Unpresentable(output)
         }
     }
-}
-
-/// The input events a hardware seat produces beyond the contract's [`InputEvent`].
-///
-/// Tablets and gestures cannot be [`InputEvent`]s: a tablet tool carries pressure, tilt and a
-/// tool identity, and a gesture carries a phase and a scale, and none of them is a position a
-/// seat can apply. They are offered here instead, so `gnoblin-input`'s touchpad router and
-/// tablet handling read them from the same backend that produced the pointer events.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum RawEvent {
-    /// A gesture began, continued or ended on a touchpad.
-    Gesture {
-        /// The device that produced it.
-        device: u64,
-        /// Which recognised gesture it is.
-        kind: RawGestureKind,
-        /// Whether this is the first event of the gesture.
-        begin: bool,
-        /// Whether this is the last event of the gesture.
-        end: bool,
-        /// The gesture's frame rate in frames per second for a hold, the scale for a pinch.
-        value: f64,
-    },
-}
-
-/// Which gesture a [`RawEvent::Gesture`] reports.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RawGestureKind {
-    /// Two fingers swiping.
-    Swipe,
-    /// Two fingers pinching.
-    Pinch,
-    /// Fingers held still.
-    Hold,
 }
 
 #[cfg(test)]

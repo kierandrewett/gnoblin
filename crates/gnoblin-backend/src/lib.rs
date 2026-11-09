@@ -274,7 +274,7 @@ pub trait Target {
 /// button, a key or a scroll axis changed, and whether a touch point did. Tablet and
 /// gesture events arrive with the input slice and extend this enum rather than the
 /// trait.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum InputEvent {
     /// The pointer moved to a position in the output's logical space.
     PointerMotion {
@@ -359,6 +359,53 @@ pub enum InputEvent {
         /// The backend's number for the device, as the matching [`InputEvent::DeviceAdded`] stated.
         id: u64,
     },
+    /// A touchpad gesture sample.
+    ///
+    /// The seat never applies these; the policy layer routes them to gesture bindings.
+    Touchpad(TouchpadSample),
+}
+
+/// One touchpad gesture sample, as the device's recogniser reported it.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct TouchpadSample {
+    /// The backend's number for the device that produced it.
+    pub device: u64,
+    /// Where the sample sits in its gesture.
+    pub phase: TouchpadPhase,
+    /// The gesture's kind. A hold has no binding kind and is routed as nothing.
+    pub kind: TouchpadKind,
+    /// The finger count, as stated by the gesture's begin.
+    pub fingers: u8,
+    /// Horizontal movement since the previous sample, in device units.
+    pub dx: f64,
+    /// Vertical movement since the previous sample, in device units.
+    pub dy: f64,
+    /// Cumulative scale since the begin; one for a swipe.
+    pub scale: f64,
+}
+
+/// Where a [`TouchpadSample`] sits in its gesture.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TouchpadPhase {
+    /// The gesture was recognised.
+    Begin,
+    /// Movement since the previous sample.
+    Update,
+    /// The gesture ended normally.
+    End,
+    /// The gesture ended as cancelled.
+    Cancel,
+}
+
+/// Which gesture a [`TouchpadSample`] belongs to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TouchpadKind {
+    /// Fingers moving together.
+    Swipe,
+    /// Fingers spreading or gathering.
+    Pinch,
+    /// Fingers held still.
+    Hold,
 }
 
 /// What kind of device a setting applies to.
