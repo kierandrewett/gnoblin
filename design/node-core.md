@@ -710,6 +710,7 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 - **Tests first:** F40, F44; a class declared twice is an error at its line; a subclass's override is called with
   `Base.name(self)`.
 - **Stays green:** the runtime role tests (`role.rs`) and config tests.
+- **Status:** partial. `src/tree_core.rs` installs the `core` table over the shell's tree (`new`, `get`, `set`, `insert`, `destroy`, `call`, `root`, `classes`, `report`) and the class schema (`ClassSpec`, `PropSpec`, `TreeValueKind`); `tests/tree_core.rs` covers it. Not done: `node.lua` (varargs `core.call`, the return token), the class system (F40, F44 not verified) and the socket `TreeLink`.
 
 ### Slice 11: determinism gate
 
