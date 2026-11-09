@@ -292,7 +292,6 @@ fn opacity_multiplies_down_the_tree() {
 }
 
 #[test]
-#[ignore = "coordinates beyond 2^20 are accepted; design §8.2 requires a named refusal"]
 fn coordinates_beyond_two_to_the_twentieth_are_refused() {
     let mut scene = Scene::new();
     let far = NodeSpec::new(rect((1 << 20) + 1, 0, 10, 10));

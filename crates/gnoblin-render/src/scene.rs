@@ -113,6 +113,7 @@ impl NodeSpec {
 
     /// Validate every value this build must refuse before the node exists.
     fn validate(&self) -> Result<(), SceneError> {
+        check_rect_bounds(self.bounds)?;
         validate_transform(&self.transform)?;
         if let NodeKind::Space(camera) = self.kind {
             camera.validate(self.bounds.to_f64())?;
@@ -262,6 +263,11 @@ pub enum SceneError {
         /// The field that collapsed to zero.
         field: &'static str,
     },
+    /// A coordinate lies beyond [`BOUND`], so the renderer could overflow.
+    OutOfBounds {
+        /// The field that is too large.
+        field: &'static str,
+    },
     /// A camera cannot be honoured.
     Camera(CameraError),
     /// A property value was refused.
@@ -278,12 +284,18 @@ impl std::fmt::Display for SceneError {
             Self::UnknownParent(id) => write!(formatter, "no parent {id}"),
             Self::NonFinite { field } => write!(formatter, "`{field}` is not finite"),
             Self::NotInvertible { field } => write!(formatter, "`{field}` is not invertible (code unsupported-3d)"),
+            Self::OutOfBounds { field } => write!(formatter, "`{field}` is beyond the 2^20 bound"),
             Self::Camera(error) => write!(formatter, "{error}"),
             Self::Property(error) => write!(formatter, "{error}"),
             Self::Effect(error) => write!(formatter, "{error}"),
         }
     }
 }
+
+/// Largest magnitude a coordinate may have, in logical pixels, so no value overflows
+/// the renderer. Values beyond it are refused, never clamped, so a node cannot land
+/// somewhere its caller did not ask for.
+pub const BOUND: f64 = 1_048_576.0;
 
 /// Refuse a transform the scene cannot project through.
 ///
@@ -293,10 +305,35 @@ fn validate_transform(transform: &VisualTransform) -> Result<(), SceneError> {
     if !transform.is_finite() {
         return Err(SceneError::NonFinite { field: "transform" });
     }
+    let offset = transform.base.offset;
+    for (field, value) in [("offset.x", offset.x), ("offset.y", offset.y), ("offset.z", offset.z)] {
+        if value.abs() > BOUND {
+            return Err(SceneError::OutOfBounds { field });
+        }
+    }
     let scale = transform.base.scale;
     for (field, value) in [("scale.x", scale.x), ("scale.y", scale.y), ("scale.z", scale.z)] {
         if value == 0.0 {
             return Err(SceneError::NotInvertible { field });
+        }
+    }
+    Ok(())
+}
+
+/// Refuse a node rectangle whose origin or far edge lies beyond [`BOUND`].
+fn check_rect_bounds(rect: Rect) -> Result<(), SceneError> {
+    let left = f64::from(rect.x);
+    let top = f64::from(rect.y);
+    let right = left + f64::from(rect.width);
+    let bottom = top + f64::from(rect.height);
+    for (field, value) in [
+        ("bounds.x", left),
+        ("bounds.y", top),
+        ("bounds.right", right),
+        ("bounds.bottom", bottom),
+    ] {
+        if value.abs() > BOUND {
+            return Err(SceneError::OutOfBounds { field });
         }
     }
     Ok(())
@@ -1372,6 +1409,9 @@ mod tests {
                 transform: VisualTransform::IDENTITY,
                 effects: Effects::new(),
                 kind: NodeKind::Space(Camera::perspective(60.0, 0.1, 100.0)),
+                visible: true,
+                clip: false,
+                input: true,
             },
         );
         scene.roots.push(space);
@@ -1385,6 +1425,9 @@ mod tests {
                 transform: VisualTransform::IDENTITY,
                 effects: Effects::new(),
                 kind: NodeKind::Visual,
+                visible: true,
+                clip: false,
+                input: true,
             },
         );
         scene.dirty.clear();
