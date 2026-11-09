@@ -5,7 +5,7 @@ mod common;
 
 use common::tree_hash;
 use gnoblin_animation::{PropertyValue, VisualProperty};
-use gnoblin_render::scene_ids::{Actor, COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES};
+use gnoblin_render::scene_ids::{Actor, COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES, NodeIdAllocator};
 use gnoblin_render::transaction::{
     ClassInfo, Code, MAX_OPS, PropertyInfo, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
     ValueType, validate_and_apply,
@@ -652,4 +652,42 @@ fn every_refusal_code_has_the_table_4_4_spelling() {
     for (code, spelling) in table {
         assert_eq!(code.as_str(), spelling);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Node ids: the shell's range and the compositor's range never meet.
+
+#[test]
+fn a_shell_new_at_the_compositor_base_is_refused_not_owner() {
+    let mut scene = scene();
+    let refusal = refused(&mut scene, Actor::Shell, vec![new_window(COMPOSITOR_ID_BASE)]);
+    assert_refused(&refusal, 0, Code::NotOwner);
+}
+
+#[test]
+fn shell_ids_below_the_base_coexist_with_every_compositor_window() {
+    // The compositor's allocator is the only source of compositor ids, the root included.
+    let mut allocator = NodeIdAllocator::new();
+    let root = allocator.allocate().expect("the root id");
+    let mut scene = Scene::new();
+    scene.insert(root, NodeSpec::new(rect(0, 0, 1920, 1080))).unwrap();
+    scene.set_class(root, Some("Window".into())).unwrap();
+    scene.set_root(Some(root)).unwrap();
+
+    let shell_count: u64 = 8;
+    let ops = (1..=shell_count)
+        .map(new_window)
+        .chain((1..=shell_count).map(|raw| insert(id(raw), root)))
+        .collect();
+    validate_and_apply(&mut scene, &Table, Actor::Shell, &TreeTransaction::new(ops))
+        .expect("the shell's transaction applies");
+    for _ in 0..shell_count {
+        let node = allocator.allocate().expect("the compositor range is not exhausted");
+        let mut spec = NodeSpec::new(rect(0, 0, 100, 100));
+        spec.parent = Some(root);
+        scene
+            .insert(node, spec)
+            .expect("a compositor window must not collide with a shell node");
+    }
+    assert_eq!(scene.node_ids().count(), 1 + 2 * shell_count as usize);
 }
