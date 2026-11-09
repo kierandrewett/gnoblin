@@ -2574,6 +2574,89 @@ mod tests {
         );
     }
 
+    /// The opacity `window`'s surface is drawn at. `compose` multiplies the node's opacity by the
+    /// client's surface factor and the window rule's factor; this mirrors that product.
+    fn drawn_opacity(composer: &Composer, window: WindowId) -> f32 {
+        let entry = &composer.windows[&window];
+        let (_, opacity) = drawn_pose(composer, window);
+        opacity * entry.surface_alpha * entry.rule_opacity
+    }
+
+    #[test]
+    fn the_four_opacity_factors_multiply_into_the_drawn_opacity() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 100, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.set_reduced_motion(true);
+        composer.set_window_opacity(window, 0.5);
+        composer.set_shell_opacity(window, 0.5).expect("0.5 is in range");
+        composer.set_window_surface_alpha(window, 0.5);
+        composer.set_window_rule_opacity(window, 0.5);
+        assert_eq!(
+            drawn_opacity(&composer, window),
+            0.0625,
+            "the placement, shell, surface and rule opacities multiply"
+        );
+    }
+
+    #[test]
+    fn a_factor_change_lands_at_once_and_a_tween_runs_under_the_factors() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        // Let the fade-in land so the window starts opaque.
+        composer.advance_motion(200);
+        composer.set_window_surface_alpha(window, 0.5);
+        assert_eq!(drawn_opacity(&composer, window), 0.5, "a factor change lands at once");
+        composer.set_window_rule_opacity(window, 0.5);
+        assert_eq!(
+            drawn_opacity(&composer, window),
+            0.25,
+            "the rule's factor lands at once"
+        );
+        track_window(
+            &mut composer,
+            window,
+            VisualProperty::Opacity,
+            PropertyValue::Number(0.0),
+            200,
+        );
+        composer.advance_motion(100);
+        assert_eq!(
+            drawn_opacity(&composer, window),
+            0.125,
+            "halfway through the tween, under the factors"
+        );
+    }
+
+    #[test]
+    fn a_window_that_maps_under_a_factor_fades_in_to_the_factored_opacity() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_surface_alpha(window, 0.5);
+        composer.set_window_content(window, Some(content()));
+        assert_eq!(
+            drawn_opacity(&composer, window),
+            0.0,
+            "a newly mapped window starts transparent"
+        );
+        composer.advance_motion(100);
+        let halfway = drawn_opacity(&composer, window);
+        assert!(
+            halfway > 0.0 && halfway < 0.5,
+            "the fade is part way through, got {halfway}"
+        );
+        composer.advance_motion(100);
+        assert_eq!(
+            drawn_opacity(&composer, window),
+            0.5,
+            "the fade lands on the factored opacity exactly"
+        );
+    }
+
     #[test]
     fn a_tweened_offset_moves_the_drawn_rectangle() {
         let (mut composer, _output) = screen();
