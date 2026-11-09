@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
-    ClassInfo, PropertyInfo, TreeApplied, TreeOp, TreeRefusal, TreeTransaction, ValueType,
+    ClassInfo, Code, PropertyInfo, TreeApplied, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue, ValueType,
 };
 use gnoblin_render::{Actor, NodeSpec, Scene};
 use gnoblin_types::{NodeId, Rect};
@@ -284,4 +284,114 @@ fn a_frame_draws_with_no_shell_attached() {
     assert!(frame.take_batches().is_empty(), "no shell means no batches");
     assert_eq!(frame.serial(), 0);
     assert!(scene.contains(ROOT), "the scene is untouched and the frame still runs");
+}
+
+/// A transaction that sets `FIRST`'s opacity to `value`.
+fn set_first(value: f64) -> TreeTransaction {
+    TreeTransaction::new(vec![TreeOp::Set {
+        node: FIRST,
+        key: "opacity".to_owned(),
+        value: TreeValue::Double(value),
+        timing: None,
+    }])
+}
+
+/// The opacity targets published in `batches`, in order.
+fn published_opacities(batches: &[TreeBatch]) -> Vec<f64> {
+    batches
+        .iter()
+        .flat_map(|batch| batch.changes.iter())
+        .filter_map(|change| match change {
+            TreeChange::Set {
+                key,
+                value: TreeValue::Double(value),
+                ..
+            } if key == "opacity" => Some(*value),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_deferred_transaction_made_stale_by_an_earlier_one_is_refused_at_apply() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    // Frame one applies the add and defers the two sets behind it: the budget is spent.
+    submit(&frame, 0, add(FIRST), &replies);
+    submit(&frame, 1, set_first(0.25), &replies);
+    submit(&frame, 1, set_first(0.75), &replies);
+    frame.drain(&mut scene, clock(Duration::from_millis(5)));
+    assert_eq!(frame.serial(), 1);
+
+    // Frame two applies the earlier set, so the deferred set's base no longer holds for FIRST.
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert_eq!(frame.serial(), 2, "only the earlier set publishes");
+    let batches = frame.take_batches();
+    assert_eq!(
+        published_opacities(&batches),
+        vec![0.25],
+        "the stale set publishes nothing"
+    );
+    let replies = replies.lock().unwrap();
+    assert_eq!(replies.len(), 3);
+    assert_eq!(
+        replies[2].1,
+        Err(TreeRefusal {
+            failed_op: 0,
+            code: Code::StaleBase
+        }),
+        "the stale write to FIRST is refused at its first conflicting op"
+    );
+}
+
+#[test]
+fn a_deferred_transaction_that_stays_non_conflicting_applies_in_order() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    submit(&frame, 0, add(FIRST), &replies);
+    submit(&frame, 1, set_first(0.25), &replies);
+    submit(&frame, 1, add(SECOND), &replies);
+    frame.drain(&mut scene, clock(Duration::from_millis(5)));
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert!(scene.contains(SECOND), "a stale base that names only new nodes applies");
+    assert_eq!(
+        frame.serial(),
+        2,
+        "the earlier set and the add publish in one frame batch"
+    );
+    let batches = frame.take_batches();
+    assert_eq!(published_opacities(&batches), vec![0.25]);
+    assert!(replies.lock().unwrap().iter().all(|(_, result)| result.is_ok()));
+}
+
+#[test]
+fn two_stale_writes_to_one_node_in_one_frame_apply_once() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    submit(&frame, 0, add(FIRST), &replies);
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    // Both are fresh at arrival (base 1 is the current serial); the first applies and moves FIRST.
+    submit(&frame, 1, set_first(0.25), &replies);
+    submit(&frame, 1, set_first(0.75), &replies);
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert_eq!(frame.serial(), 2);
+    let batches = frame.take_batches();
+    assert_eq!(published_opacities(&batches), vec![0.25]);
+    let replies = replies.lock().unwrap();
+    assert!(replies[1].1.is_ok());
+    assert_eq!(
+        replies[2].1,
+        Err(TreeRefusal {
+            failed_op: 0,
+            code: Code::StaleBase
+        })
+    );
 }

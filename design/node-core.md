@@ -418,15 +418,12 @@ A property's value kind comes from its schema type. The mapping is `value_type` 
 The shell builds a transaction from its mirror at `base_serial`. The compositor may have sent newer batches since.
 
 - `base_serial == current`: apply.
-- `base_serial < current`, and no op names an id destroyed or moved in `(base_serial, current]`: apply. Anything the
-  shell did not write keeps the compositor's current value.
-- `base_serial < current`, and an op names such an id: refuse `stale-base`. The shell applies the newer batches and
-  decides again on its next tick.
+- `base_serial < current`, and no op names a node that a batch published in `(base_serial, current]` changed, or that an earlier transaction in the same frame changed: apply. Anything the shell did not write keeps the compositor's current value.
+- `base_serial < current`, and an op names such a node: refuse `stale-base`, with `failed_op` at the first conflicting op. The shell applies the newer batches and decides again on its next tick.
 - `base_serial > current`: refuse `invalid-serial` and close the connection.
 - A `base_serial` older than the last 64 batches: refuse `stale-base` (the mirror resyncs).
 
-Decision: the conflict check is per id, not per property. Two writes to different properties of one node never
-conflict. A busy frame does not force every write to retry.
+Decision: the conflict check is per node. Two transactions conflict only when they write the same node, whatever the property. Nodes a transaction creates never conflict. A busy frame does not force every write to retry, because only writes to the same node retry.
 
 ### 4.6 The mirror
 
@@ -679,7 +676,7 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 - **Status:** implemented in `gnoblin-wayland`: `src/tree_frame.rs` (`TreeFrame`, `TreeQueue`, `TreeBatch`) and `state.rs` (`Host::begin_frame` drains before composing; `State::tree_queue`, `set_tree_classes`, `take_tree_batches`). `Composer::with_scene` gives the drain the composer's scene. The owner socket submits through `TreeQueue` (slice 5 wiring); `ipc/` is untouched by this slice.
 - **Dependency direction:** `gnoblin-wayland` already depends on `gnoblin-backend` and `gnoblin-render`. `TreeHost` is not a trait in `ipc/tree.rs`; the host lives in `gnoblin-wayland`, so no new edge is needed.
 - **Fixed:** the composer allocates window node ids from `NodeIdAllocator` (`gnoblin-render/src/scene_ids.rs`). It starts at `COMPOSITOR_ID_BASE`, never reuses an id in a session and refuses exhaustion, so a window node is never in the shell's range and a tree node cannot collide with it. Tests: `every_node_the_composer_creates_has_a_compositor_id`, `a_shell_node_on_the_composers_first_id_does_not_block_a_window` and `a_window_node_id_is_never_reused_within_a_session` (`gnoblin-backend`); `a_shell_new_at_the_compositor_base_is_refused_not_owner` and `shell_ids_below_the_base_coexist_with_every_compositor_window` (`gnoblin-render`).
-- **Known gap (stale base):** the frame checks a base serial by exact equality with the frame's starting serial, as `TreeSession::transact` does. Section 4.5 and F6 call for the per-id rule over `(base, current]`, which needs the last 64 batches' destroyed and moved ids. Neither the session nor the frame keeps them yet. A deferred transaction is admitted without a second base check, so a transaction deferred across a published batch applies where an arrival with the same base would be refused. Both belong to the slice that lands 4.5.
+- **Stale base:** implemented. `gnoblin-render/src/tree_revision.rs` (`TreeRevisions`) keeps the nodes each of the last 64 batches changed. `TreeSession::transact` and the frame drain check each transaction at the moment it applies, against the batches published since its base and the changes already applied in the same frame. A deferred transaction is checked when it applies, not when it arrived.
 - **Tests first:** F19 (a late transaction draws one frame later); one batch per changed frame; F29, F30, F35.
 - **Stays green:** frame-timing tests on the layout path (`state.rs:588`, `2162`).
 
@@ -723,4 +720,4 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 
 1. **Class names beside old objects.** Lean: keep capitalised class names; delete each old object in its own step.
 2. **Caps.** 65536 nodes and depth 256 are guesses. Lean: fix now; revise on measurement in step 4.
-3. **Stale base.** Lean: keep the conflict check only; refusing every stale base costs a retry each busy frame.
+3. **Stale base.** Resolved: keep the conflict check, per node (section 4.5).

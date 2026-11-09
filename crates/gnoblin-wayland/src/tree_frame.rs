@@ -18,9 +18,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
-    Animation, ClassInfo, Code, PropertyInfo, TreeApplied, TreeCall, TreeChange, TreeRefusal, TreeTransaction,
+    Animation, ClassInfo, PropertyInfo, TreeApplied, TreeCall, TreeChange, TreeRefusal, TreeTransaction,
     validate_and_apply,
 };
+use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
 
 /// How long one frame may spend applying tree transactions. A transaction that starts
@@ -40,13 +41,6 @@ struct Submission {
     base: u64,
     transaction: TreeTransaction,
     reply: Reply,
-}
-
-/// One queued transaction, in the order it is answered: a refusal decided at the frame's
-/// start, or a transaction the frame may apply.
-enum TreeSlot {
-    Refused(Reply, TreeRefusal),
-    Admitted(Submission),
 }
 
 #[derive(Default)]
@@ -130,8 +124,10 @@ pub struct TreeFrame {
     classes: Box<dyn ClassInfo>,
     serial: u64,
     batches: Vec<TreeBatch>,
-    /// Transactions the budget deferred. Each was checked against its base when it arrived,
-    /// and runs first in the next frame.
+    /// The nodes each recent published batch changed, for the stale-base check.
+    revisions: TreeRevisions,
+    /// Transactions the budget deferred. Each is checked against its base when it applies, and
+    /// runs first in the next frame.
     deferred: VecDeque<Submission>,
 }
 
@@ -151,6 +147,7 @@ impl TreeFrame {
             serial: 0,
             batches: Vec::new(),
             deferred: VecDeque::new(),
+            revisions: TreeRevisions::new(),
         }
     }
 
@@ -191,56 +188,48 @@ impl TreeFrame {
             read(scene, frame_serial);
         }
 
-        // Deferred work came first and was checked when it arrived. Arrivals are checked now,
-        // against the serial this frame starts from; a stale one is refused here and never
-        // deferred, so no later frame re-checks it against a serial it was not built for.
-        let mut slots: VecDeque<TreeSlot> = self.deferred.drain(..).map(TreeSlot::Admitted).collect();
-        for submission in arrived {
-            if submission.base == frame_serial {
-                slots.push_back(TreeSlot::Admitted(submission));
-            } else {
-                let refusal = TreeRefusal {
-                    failed_op: -1,
-                    code: Code::StaleBase,
-                };
-                slots.push_back(TreeSlot::Refused(submission.reply, refusal));
-            }
-        }
-
+        // Deferred work came first, then arrivals in arrival order. Every transaction is checked
+        // when it applies, against the batches published since its base and the changes this
+        // frame has already applied. A stale one that conflicts is refused here; one that does not
+        // conflict still lands.
+        let mut queue: VecDeque<Submission> = self.deferred.drain(..).chain(arrived).collect();
         let mut batch = TreeBatch::default();
         let mut changed = false;
         let mut attempted = 0usize;
         let mut spent = false;
         let mut replies: Vec<(Reply, Result<TreeApplied, TreeRefusal>)> = Vec::new();
-        for slot in slots {
-            match slot {
-                TreeSlot::Refused(reply, refusal) => replies.push((reply, Err(refusal))),
-                TreeSlot::Admitted(submission) => {
-                    // The first transaction of a frame always runs; after it, the budget decides.
-                    spent = spent || (attempted > 0 && now().saturating_duration_since(start) >= TREE_FRAME_BUDGET);
-                    if spent {
-                        self.deferred.push_back(submission);
-                        continue;
-                    }
-                    attempted += 1;
-                    match validate_and_apply(scene, self.classes.as_ref(), Actor::Shell, &submission.transaction) {
-                        Ok(done) => {
-                            changed |=
-                                !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
-                            batch.changes.extend(done.changes.iter().cloned());
-                            batch.animations.extend(done.animations.iter().cloned());
-                            batch.calls.extend(done.calls.iter().cloned());
-                            replies.push((submission.reply, Ok(done)));
-                        }
-                        Err(refusal) => replies.push((submission.reply, Err(refusal))),
-                    }
+        while let Some(submission) = queue.pop_front() {
+            // The first transaction of a frame always runs; after it, the budget decides.
+            spent = spent || (attempted > 0 && now().saturating_duration_since(start) >= TREE_FRAME_BUDGET);
+            if spent {
+                self.deferred.push_back(submission);
+                continue;
+            }
+            attempted += 1;
+            let result =
+                match self
+                    .revisions
+                    .check(submission.base, self.serial, &batch.changes, &submission.transaction)
+                {
+                    Ok(()) => validate_and_apply(scene, self.classes.as_ref(), Actor::Shell, &submission.transaction),
+                    Err(refusal) => Err(refusal),
+                };
+            match result {
+                Ok(done) => {
+                    changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
+                    batch.changes.extend(done.changes.iter().cloned());
+                    batch.animations.extend(done.animations.iter().cloned());
+                    batch.calls.extend(done.calls.iter().cloned());
+                    replies.push((submission.reply, Ok(done)));
                 }
+                Err(refusal) => replies.push((submission.reply, Err(refusal))),
             }
         }
 
         if changed {
             self.serial += 1;
             batch.serial = self.serial;
+            self.revisions.record(self.serial, &batch.changes);
             self.batches.push(batch);
         }
         for (reply, result) in replies {

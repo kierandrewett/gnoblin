@@ -149,6 +149,7 @@ mod matrix;
 mod scene;
 pub mod scene_ids;
 pub mod transaction;
+pub mod tree_revision;
 mod tween;
 
 #[cfg(test)]

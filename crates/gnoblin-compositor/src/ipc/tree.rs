@@ -5,6 +5,7 @@
 use gnoblin_render::transaction::{
     ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, TreeTransaction, ValueType, validate_and_apply,
 };
+use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
 use gnoblin_schema::{Catalog, Namespace, ObjectType, SchemaError, Type as SchemaType};
 use gnoblin_types::NodeId;
@@ -66,6 +67,8 @@ pub struct TreeSession<C: ClassInfo> {
     root: NodeId,
     epoch: u32,
     serial: u64,
+    /// The nodes each recent serial changed, so a stale base is checked, not refused.
+    revisions: TreeRevisions,
     attached: bool,
 }
 
@@ -79,6 +82,7 @@ impl<C: ClassInfo> TreeSession<C> {
             root,
             epoch: 0,
             serial: 0,
+            revisions: TreeRevisions::new(),
             attached: false,
         })
     }
@@ -111,20 +115,26 @@ impl<C: ClassInfo> TreeSession<C> {
         })
     }
 
-    /// Apply `transaction` as the shell against the scene. `base` must be the current
-    /// serial. The batch is all-or-nothing: a refusal leaves the scene and serial untouched.
-    /// A committed batch that changed something advances the serial by one.
+    /// Apply `transaction` as the shell against the scene. `base` is the serial the shell
+    /// built it against. A stale base is refused only when the transaction names a node
+    /// changed since then (see [`TreeRevisions::check`]). The batch is all-or-nothing: a
+    /// refusal leaves the scene and serial untouched. A committed batch that changed
+    /// something advances the serial by one.
     pub fn transact(&mut self, base: u64, transaction: &TreeTransaction) -> TreeReply {
         if !self.attached {
             return self.refuse(Code::NotPrivileged);
         }
-        if base != self.serial {
-            return self.refuse(Code::StaleBase);
+        if let Err(refused) = self.revisions.check(base, self.serial, &[], transaction) {
+            return TreeReply {
+                serial: self.serial,
+                result: Err(refused),
+            };
         }
         match validate_and_apply(&mut self.scene, &self.classes, Actor::Shell, transaction) {
             Ok(applied) => {
                 if !applied.changes.is_empty() {
                     self.serial += 1;
+                    self.revisions.record(self.serial, &applied.changes);
                 }
                 TreeReply {
                     serial: self.serial,
