@@ -1632,3 +1632,9 @@ left = "gnoblin-backend::RawTouchpadPhase"
 right = "gnoblin-input::TouchpadPhase"
 kind = "same-shape"
 reason = "the backend's raw sample phase and the input crate's touchpad phase are different types that share the begin, update, end, cancel shape"
+
+[[allow]]
+left = "gnoblin-lua::MirrorChangeKind"
+right = "gnoblin-render::TreeChange"
+kind = "same-shape"
+reason = "the shell mirror's change tag names one step of a snapshot or change batch, while the render crate's tree change names a scene edit; both are a plain tag enum with no shared behaviour"
