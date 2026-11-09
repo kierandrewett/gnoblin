@@ -808,7 +808,7 @@ mod tests {
         let owner = TreeClasses::new(crate::schema::catalog().expect("the schema catalog loads"))
             .expect("the tree namespace is valid");
         let mut session = TreeSession::new(scene, owner, ROOT).expect("root is live");
-        session.attach(true).expect("privileged attach");
+        session.attach(TreeHolder::new(1), true).expect("privileged attach");
         let mut next = 0x1000_u64;
         let mut checked = 0;
         for object in classes.catalog.objects(&classes.namespace) {

@@ -216,3 +216,70 @@ fn a_stale_base_is_refused_and_the_tree_is_unchanged() {
     assert_eq!(reply.serial, 0, "the serial is unchanged");
     session.stop().expect("the session stops cleanly");
 }
+
+#[test]
+fn a_list_and_a_bool_set_travel_the_wire_and_come_back_in_the_change_batch() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "rotation".to_owned(),
+        value_kind: "list_double".to_owned(),
+        value_list: vec![0.0, 0.0, 45.0],
+        ..Default::default()
+    });
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "visible".to_owned(),
+        value_kind: "bool".to_owned(),
+        value_bool: false,
+        ..Default::default()
+    });
+    transact(&mut wire, 2, 0, 1, ops);
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(reply.applied, "the sets validate: {reply:?}");
+
+    let changes: ChangesPayload = event(&mut wire, "changes");
+    let rotation = changes
+        .changes
+        .iter()
+        .find(|change| change.kind == "set" && change.key == "rotation")
+        .expect("the rotation set is published");
+    assert_eq!(rotation.value_kind, "list_double");
+    assert_eq!(rotation.value_list, vec![0.0, 0.0, 45.0]);
+    let visible = changes
+        .changes
+        .iter()
+        .find(|change| change.kind == "set" && change.key == "visible")
+        .expect("the visible set is published");
+    assert_eq!(visible.value_kind, "bool");
+    assert!(!visible.value_bool);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_set_of_a_kind_the_wire_does_not_carry_is_refused_bad_value() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "visible".to_owned(),
+        value_kind: "bytes".to_owned(),
+        ..Default::default()
+    });
+    transact(&mut wire, 2, 0, 1, ops);
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied);
+    assert_eq!(reply.code, "bad-value");
+    assert_eq!(reply.failed_op, 2, "the third op is the bad one");
+    session.stop().expect("the session stops cleanly");
+}

@@ -169,17 +169,47 @@ fn change_properties(change: &TreeChange) -> change::Properties {
             ..Default::default()
         },
         TreeChange::Set { node, key, value } => {
-            let (value_kind, value_bool, value_uint, value_double) = value_fields(value);
-            change::Properties {
+            let mut properties = change::Properties {
                 kind: "set".to_owned(),
                 node: node.get(),
                 key: key.clone(),
-                value_kind: value_kind.to_owned(),
-                value_bool,
-                value_uint,
-                value_double,
                 ..Default::default()
+            };
+            match value {
+                TreeValue::Bool(value) => {
+                    "bool".clone_into(&mut properties.value_kind);
+                    properties.value_bool = *value;
+                }
+                TreeValue::Int(value) => {
+                    "int".clone_into(&mut properties.value_kind);
+                    properties.value_int = *value;
+                }
+                TreeValue::Uint(value) => {
+                    "uint".clone_into(&mut properties.value_kind);
+                    properties.value_uint = *value;
+                }
+                TreeValue::Double(value) => {
+                    "double".clone_into(&mut properties.value_kind);
+                    properties.value_double = *value;
+                }
+                TreeValue::Text(value) => {
+                    "text".clone_into(&mut properties.value_kind);
+                    properties.value_text.clone_from(value);
+                }
+                TreeValue::Node(value) => {
+                    "node".clone_into(&mut properties.value_kind);
+                    properties.value_node = value.map_or(0, NodeId::get);
+                }
+                TreeValue::ListDouble(value) => {
+                    "list_double".clone_into(&mut properties.value_kind);
+                    properties.value_list.clone_from(value);
+                }
+                // No wire field carries these two, and `set_value` refuses them as `bad-value`,
+                // so a shell can never write one; the kind names it for a direct caller.
+                TreeValue::Bytes(_) => "bytes".clone_into(&mut properties.value_kind),
+                TreeValue::ListText(_) => "list_text".clone_into(&mut properties.value_kind),
             }
+            properties
         }
         TreeChange::Destroyed { node, removed } => change::Properties {
             kind: "destroyed".to_owned(),
@@ -271,12 +301,19 @@ fn tree_op(op: &op::Properties) -> Result<TreeOp, Code> {
     })
 }
 
-/// The value a `set` writes. Only the kinds the transaction layer can carry are accepted.
+/// The value a `set` writes. The kinds the wire carries are bool, int, uint, double, text,
+/// node (`0` is nil) and a list of doubles; any other kind is `bad-value`.
 fn set_value(op: &op::Properties) -> Result<TreeValue, Code> {
     match op.value_kind.as_str() {
         "bool" => Ok(TreeValue::Bool(op.value_bool)),
+        "int" => Ok(TreeValue::Int(op.value_int)),
         "uint" => Ok(TreeValue::Uint(op.value_uint)),
         "double" => Ok(TreeValue::Double(op.value_double)),
+        "text" => Ok(TreeValue::Text(op.value_text.clone())),
+        "node" => Ok(TreeValue::Node(
+            (op.value_node != 0).then(|| NodeId::new(op.value_node)),
+        )),
+        "list_double" => Ok(TreeValue::ListDouble(op.value_list.clone())),
         _ => Err(Code::BadValue),
     }
 }
@@ -302,15 +339,6 @@ fn call_args(bytes: &[u8]) -> Result<Vec<i64>, Code> {
         return Err(Code::BadValue);
     }
     Ok(chunks.iter().map(|chunk| i64::from_le_bytes(*chunk)).collect())
-}
-
-/// A value as the wire's typed fields: its kind, then the one field that carries it.
-fn value_fields(value: &TreeValue) -> (&'static str, bool, u64, f64) {
-    match *value {
-        TreeValue::Bool(value) => ("bool", value, 0, 0.0),
-        TreeValue::Uint(value) => ("uint", false, value, 0.0),
-        TreeValue::Double(value) => ("double", false, 0, value),
-    }
 }
 
 fn wire_index(index: usize) -> i64 {
