@@ -129,6 +129,8 @@ pub struct TreeFrame {
     /// Transactions the budget deferred. Each is checked against its base when it applies, and
     /// runs first in the next frame.
     deferred: VecDeque<Submission>,
+    /// Changes the compositor made itself since the last frame, announced in the next batch ahead of the shell's changes.
+    compositor: Vec<TreeChange>,
 }
 
 impl Default for TreeFrame {
@@ -147,6 +149,7 @@ impl TreeFrame {
             serial: 0,
             batches: Vec::new(),
             deferred: VecDeque::new(),
+            compositor: Vec::new(),
             revisions: TreeRevisions::new(),
         }
     }
@@ -173,6 +176,12 @@ impl TreeFrame {
         std::mem::take(&mut self.batches)
     }
 
+    /// Records a change the compositor made to the scene itself. It is published in the next
+    /// batch that a frame builds, ahead of the shell's changes in that frame.
+    pub fn record(&mut self, change: TreeChange) {
+        self.compositor.push(change);
+    }
+
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
     /// order until the budget is spent, then one batch if anything changed, then the
     /// replies. `now` is read once at the start, and once before each transaction after
@@ -193,8 +202,12 @@ impl TreeFrame {
         // frame has already applied. A stale one that conflicts is refused here; one that does not
         // conflict still lands.
         let mut queue: VecDeque<Submission> = self.deferred.drain(..).chain(arrived).collect();
-        let mut batch = TreeBatch::default();
-        let mut changed = false;
+        // The compositor's own changes come first, so the shell sees a node before any change to it.
+        let mut batch = TreeBatch {
+            changes: std::mem::take(&mut self.compositor),
+            ..TreeBatch::default()
+        };
+        let mut changed = !batch.changes.is_empty();
         let mut attempted = 0usize;
         let mut spent = false;
         let mut replies: Vec<(Reply, Result<TreeApplied, TreeRefusal>)> = Vec::new();
