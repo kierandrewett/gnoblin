@@ -31,3 +31,9 @@ pub mod gnoblin {
 pub(crate) mod sensitive {
     include!(concat!(env!("OUT_DIR"), "/sensitive.rs"));
 }
+
+/// The tree namespace: the owner socket's wire types, one module per object.
+#[allow(clippy::all, dead_code)]
+pub mod tree {
+    include!(concat!(env!("OUT_DIR"), "/tree.rs"));
+}
