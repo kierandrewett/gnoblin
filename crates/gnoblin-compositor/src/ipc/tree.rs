@@ -2,8 +2,11 @@
 //! node API. It takes request values and returns message values. It owns no
 //! socket; slice 5b wires it to one.
 
-use gnoblin_render::transaction::{ClassInfo, Code, TreeApplied, TreeRefusal, TreeTransaction, validate_and_apply};
+use gnoblin_render::transaction::{
+    ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, TreeTransaction, ValueType, validate_and_apply,
+};
 use gnoblin_render::{Actor, Scene};
+use gnoblin_schema::{Catalog, Namespace, ObjectType, Type as SchemaType};
 use gnoblin_types::NodeId;
 
 /// The largest snapshot chunk, in bytes of its estimated encoded size.
@@ -169,6 +172,67 @@ impl<C: ClassInfo> TreeSession<C> {
     }
 }
 
+/// The schema facts for the `tree` namespace, read from the catalog. The shell hands this
+/// to the transaction layer as its [`ClassInfo`].
+#[derive(Debug)]
+pub struct TreeClasses {
+    catalog: Catalog,
+    namespace: Namespace,
+}
+
+impl TreeClasses {
+    /// Read the `tree` namespace of `catalog`. `Err` only when the namespace name is invalid.
+    pub fn new(catalog: Catalog) -> Result<Self, String> {
+        Ok(Self {
+            catalog,
+            namespace: Namespace::parse("tree")?,
+        })
+    }
+
+    /// The object type named `class` in the tree namespace. Its members already include
+    /// every inherited member, so the lookup never walks the chain.
+    fn object(&self, class: &str) -> Option<&ObjectType> {
+        self.catalog
+            .objects(&self.namespace)
+            .find(|object| object.name == class)
+    }
+}
+
+impl ClassInfo for TreeClasses {
+    fn has_class(&self, class: &str) -> bool {
+        self.object(class).is_some()
+    }
+
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        let property = self
+            .object(class)?
+            .properties
+            .iter()
+            .find(|property| property.name == key)?;
+        let kind = match property.ty {
+            SchemaType::Double => ValueType::Double,
+            SchemaType::Uint => ValueType::Uint,
+            SchemaType::Bool => ValueType::Bool,
+            // A `TreeValue` carries only these three kinds, so no write matches any other type.
+            _ => return None,
+        };
+        Some(PropertyInfo {
+            kind,
+            readonly: property.readonly,
+            animated: property.animated,
+        })
+    }
+
+    fn has_method(&self, class: &str, method: &str) -> bool {
+        self.object(class).is_some_and(|object| {
+            object
+                .methods
+                .iter()
+                .any(|candidate| candidate.name == method && !candidate.function)
+        })
+    }
+}
+
 /// A batch-level refusal: no op failed, the whole batch was turned away.
 const fn refusal(code: Code) -> TreeRefusal {
     TreeRefusal { failed_op: -1, code }
@@ -200,6 +264,7 @@ mod tests {
     use super::*;
     use gnoblin_render::NodeSpec;
     use gnoblin_render::transaction::{PropertyInfo, TreeOp, TreeValue, ValueType};
+    use gnoblin_schema::DefaultValue;
     use gnoblin_types::Rect;
 
     /// A schema with one class, `node`, holding one animatable double and one read-only double.
@@ -454,5 +519,83 @@ mod tests {
     fn new_refuses_a_root_that_is_not_in_the_scene() {
         let scene = Scene::new();
         assert!(TreeSession::new(scene, Table, ROOT).is_none());
+    }
+
+    #[test]
+    fn node_class_matches_schema() {
+        let classes = TreeClasses::new(crate::schema::catalog().expect("schema")).expect("tree namespace");
+        assert!(classes.has_class("node"));
+        assert!(!classes.has_class("no-such-class"));
+        let node = classes.object("node").expect("node class");
+
+        let defaults = [
+            ("id", None),
+            ("parent", None),
+            ("name", Some(DefaultValue::Text(String::new()))),
+            ("x", Some(DefaultValue::Double(0.0))),
+            ("y", Some(DefaultValue::Double(0.0))),
+            ("z", Some(DefaultValue::Double(0.0))),
+            ("rotation", Some(DefaultValue::List(vec![DefaultValue::Double(0.0); 3]))),
+            ("scale", Some(DefaultValue::List(vec![DefaultValue::Double(1.0); 3]))),
+            ("width", Some(DefaultValue::Double(0.0))),
+            ("height", Some(DefaultValue::Double(0.0))),
+            ("opacity", Some(DefaultValue::Double(1.0))),
+            ("visible", Some(DefaultValue::Bool(true))),
+            ("clip", Some(DefaultValue::Bool(false))),
+            ("input", Some(DefaultValue::Bool(true))),
+            ("secure", Some(DefaultValue::Bool(false))),
+            ("tags", Some(DefaultValue::List(Vec::new()))),
+        ];
+        assert_eq!(node.properties.len(), defaults.len());
+        for (key, default) in defaults {
+            let property = node.properties.iter().find(|property| property.name == key).expect(key);
+            assert_eq!(property.default, default, "{key}");
+        }
+
+        let readonly = ["id", "parent"];
+        let animated = ["x", "y", "z", "rotation", "scale", "width", "height", "opacity"];
+        for property in &node.properties {
+            assert_eq!(
+                property.readonly,
+                readonly.contains(&property.name.as_str()),
+                "{}",
+                property.name
+            );
+            assert_eq!(
+                property.animated,
+                animated.contains(&property.name.as_str()),
+                "{}",
+                property.name
+            );
+        }
+
+        assert_eq!(
+            classes.property("node", "x"),
+            Some(PropertyInfo {
+                kind: ValueType::Double,
+                readonly: false,
+                animated: true
+            })
+        );
+        assert_eq!(
+            classes.property("node", "id"),
+            Some(PropertyInfo {
+                kind: ValueType::Uint,
+                readonly: true,
+                animated: false
+            })
+        );
+        assert_eq!(
+            classes.property("node", "visible"),
+            Some(PropertyInfo {
+                kind: ValueType::Bool,
+                readonly: false,
+                animated: false
+            })
+        );
+        // Text, object and list properties have no `ValueType`, so they have no `PropertyInfo`.
+        assert_eq!(classes.property("node", "name"), None);
+        assert_eq!(classes.property("node", "parent"), None);
+        assert_eq!(classes.property("node", "tags"), None);
     }
 }
