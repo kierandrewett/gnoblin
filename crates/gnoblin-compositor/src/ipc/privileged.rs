@@ -111,6 +111,7 @@ pub fn owner_grants(peer_uid: Option<u32>, owner_uid: u32) -> Capabilities {
             Capability::ReadConfig,
             Capability::ReloadConfig,
             Capability::WindowControl,
+            Capability::TreeOwner,
         ]),
         _ => Capabilities::NONE,
     }
@@ -260,10 +261,13 @@ mod tests {
                 Capability::ReadConfig,
                 Capability::ReloadConfig,
                 Capability::WindowControl,
+                Capability::TreeOwner,
             ])
         );
         // The owner's CLI asks the runtime to reload; the runtime is the one that commits.
         assert!(!granted.contains(Capability::CommitConfig));
+        // The object tree is the owner's too, so a same-uid shell can read and change it.
+        assert!(granted.contains(Capability::TreeOwner));
     }
 
     #[test]
@@ -286,6 +290,31 @@ mod tests {
     }
 
     #[test]
+    fn the_tree_owner_capability_is_the_owner_grant_and_no_one_else_holds_it() {
+        // The failure this prevents: tree members reachable from a role or a plain socket,
+        // so a connection that was never the owner rewrites the object tree.
+        for role in ROLES {
+            assert!(
+                !grants(role).contains(Capability::TreeOwner),
+                "`{role}` holds tree-owner"
+            );
+        }
+        assert!(
+            !gnoblin_proto::Capabilities::NONE.contains(Capability::TreeOwner),
+            "the default peer set"
+        );
+        assert!(owner_grants(Some(1000), 1000).contains(Capability::TreeOwner));
+        assert!(
+            !owner_grants(Some(1001), 1000).contains(Capability::TreeOwner),
+            "another uid"
+        );
+        assert!(
+            !owner_grants(None, 1000).contains(Capability::TreeOwner),
+            "an unknown peer"
+        );
+    }
+
+    #[test]
     fn a_socket_pair_made_by_this_process_gets_the_owner_grant() {
         // The peer of a socket pair is this process, so its uid is the owner's: the kernel
         // answer `socket_grants` reads, end to end rather than through the pure function.
@@ -296,6 +325,7 @@ mod tests {
                 Capability::ReadConfig,
                 Capability::ReloadConfig,
                 Capability::WindowControl,
+                Capability::TreeOwner,
             ])
         );
     }

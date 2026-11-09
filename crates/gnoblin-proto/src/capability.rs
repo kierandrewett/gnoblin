@@ -89,11 +89,17 @@ pub enum Capability {
     /// what is on screen, so only the relay may ask for them. The compositor still
     /// refuses while the session is locked, and masks secure windows.
     CaptureScreen,
+    /// Read and change the object tree (the `tree` namespace's members).
+    ///
+    /// Granted to the session owner's ordinary socket connection, the same place as the
+    /// other owner grants. It is temporary: it is deleted with the other capabilities in
+    /// migration step 10. Any other connection is refused `not-privileged`.
+    TreeOwner,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 11] = [
+    pub const ALL: [Capability; 12] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
@@ -105,6 +111,7 @@ impl Capability {
         Capability::ReloadConfig,
         Capability::WindowControl,
         Capability::CaptureScreen,
+        Capability::TreeOwner,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -121,6 +128,7 @@ impl Capability {
             Capability::ReloadConfig => "reload-config",
             Capability::WindowControl => "window-control",
             Capability::CaptureScreen => "capture-screen",
+            Capability::TreeOwner => "tree-owner",
         }
     }
 
@@ -138,6 +146,7 @@ impl Capability {
             Capability::ReloadConfig => 1 << 8,
             Capability::WindowControl => 1 << 9,
             Capability::CaptureScreen => 1 << 10,
+            Capability::TreeOwner => 1 << 11,
         }
     }
 
@@ -273,6 +282,20 @@ mod tests {
         assert_eq!(only.to_string(), "capture-screen");
         assert!(!only.contains(Capability::PortalUi));
         assert!(!only.contains(Capability::WindowControl));
+    }
+
+    #[test]
+    fn the_tree_owner_capability_is_its_own_bit() {
+        // The failure this prevents: tree access rides on a bit another grant also
+        // carries, so a connection that may move windows could also rewrite the tree.
+        assert_eq!(Capability::TreeOwner.name(), "tree-owner");
+        assert_eq!(Capability::TreeOwner.bit(), 1 << 11);
+        assert_eq!(Capability::from_name("tree-owner"), Some(Capability::TreeOwner));
+        assert!(Capability::ALL.contains(&Capability::TreeOwner));
+        let only = Capabilities::of(&[Capability::TreeOwner]);
+        assert_eq!(only.to_string(), "tree-owner");
+        assert!(!only.contains(Capability::WindowControl));
+        assert!(!only.contains(Capability::ReadConfig));
     }
 
     #[test]
