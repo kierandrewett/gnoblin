@@ -40,6 +40,37 @@
 //! the point into each node's local space with the inverse of the same transform
 //! chain rendering uses. It is therefore impossible for a point to hit a node
 //! whose rendered pixels are elsewhere.
+//!
+//! # Flags
+//!
+//! - `visible` (default on): a hidden node and its subtree are neither hit nor
+//!   drawn. [`Scene::set_visible`] damages where the subtree was.
+//! - `clip` (default off): a point outside a clipping node's rectangle cannot hit
+//!   one of its descendants, however the descendant is transformed.
+//!   [`Scene::set_clip`] damages the subtree.
+//! - `input` (default on): [`Scene::hit_test`] skips a node whose input is unset,
+//!   but still tests its children, so the node passes hits through to what is under
+//!   it. [`Scene::set_input`] causes no damage, because nothing is drawn differently.
+//!
+//! # Opacity
+//!
+//! A node's opacity is clamped to `0..=1`, so an out-of-range write is repaired
+//! rather than refused. NaN is still refused. [`Scene::composed_opacity`] is the
+//! product of every opacity from the node up to the root.
+//!
+//! # Refusals
+//!
+//! Every refusal is a [`SceneError`] and leaves the scene untouched:
+//!
+//! - `NonFinite { field }`: a value is NaN or infinite.
+//! - `NotInvertible { field }`: a transform collapses to zero scale.
+//! - `OutOfBounds { field }`: a coordinate or rectangle edge lies beyond
+//!   `BOUND` (2^20), so the renderer could overflow.
+//! - `Cycle { node, parent }`: a move would put a node under itself or one of its
+//!   descendants. [`Scene::reparent`] moves a live node and its subtree.
+//! - `UnknownNode` and `UnknownParent`: the named id is not in the scene.
+//! - `DuplicateNode`: an insert reuses a live id.
+//!
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -263,7 +294,7 @@ pub enum SceneError {
         /// The field that collapsed to zero.
         field: &'static str,
     },
-    /// A coordinate lies beyond [`BOUND`], so the renderer could overflow.
+    /// A coordinate lies beyond `BOUND` (2^20), so the renderer could overflow.
     OutOfBounds {
         /// The field that is too large.
         field: &'static str,
