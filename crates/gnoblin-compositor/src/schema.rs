@@ -9,12 +9,23 @@
 //!
 //! `build.rs` loads the same directory with the same loader, so a schema the
 //! graph would refuse fails the build instead of the first session start.
+//!
+//! The `tree/` directory is the owner-socket vocabulary (design/node-core.md
+//! section 2.3). [`catalog`] holds every file and serves the owner connection;
+//! [`public_catalog`] leaves `tree/` out, the same exclusion the Lua, wasm and
+//! CLI builds make with `load_dir_except`, so a non-owner listing cannot name a
+//! tree member.
+
+use std::path::{Component, Path};
 
 use gnoblin_schema::{Catalog, SchemaError, parse_schema};
 
 include!(concat!(env!("OUT_DIR"), "/schema_files.rs"));
 
-/// The catalog every graph in this process validates against.
+/// The directory whose schema files only the session owner's connection may see.
+const OWNER_ONLY_DIR: &str = "tree";
+
+/// The catalog every graph in this process validates against, owner vocabulary included.
 ///
 /// # Errors
 ///
@@ -23,8 +34,31 @@ include!(concat!(env!("OUT_DIR"), "/schema_files.rs"));
 /// it is reported rather than unwrapped so a hand-edited build output is a
 /// message instead of a panic.
 pub fn catalog() -> Result<Catalog, SchemaError> {
+    load(|_| true)
+}
+
+/// The catalog a connection that is not the session owner's is shown: every
+/// embedded file except the owner-only `tree/` directory.
+///
+/// # Errors
+///
+/// As [`catalog`].
+pub fn public_catalog() -> Result<Catalog, SchemaError> {
+    load(|name| !is_owner_only(name))
+}
+
+/// Whether an embedded file name sits in the owner-only directory.
+fn is_owner_only(name: &str) -> bool {
+    Path::new(name)
+        .components()
+        .next()
+        .is_some_and(|first| first == Component::Normal(OWNER_ONLY_DIR.as_ref()))
+}
+
+fn load(keep: impl Fn(&str) -> bool) -> Result<Catalog, SchemaError> {
     let schemas = FILES
         .iter()
+        .filter(|(name, _)| keep(name))
         .map(|(name, text)| parse_schema(name, text))
         .collect::<Result<Vec<_>, _>>()?;
     Catalog::new(schemas)
@@ -32,9 +66,14 @@ pub fn catalog() -> Result<Catalog, SchemaError> {
 
 #[cfg(test)]
 mod tests {
-    use gnoblin_schema::Namespace;
+    use gnoblin_schema::{Catalog, Namespace};
 
-    use super::{FILES, catalog};
+    use super::{FILES, catalog, is_owner_only, public_catalog};
+
+    fn object_names(catalog: &Catalog, namespace: &str) -> Vec<String> {
+        let namespace = Namespace::parse(namespace).expect("a schema namespace");
+        catalog.objects(&namespace).map(|object| object.name.clone()).collect()
+    }
 
     #[test]
     fn the_embedded_schema_is_the_one_the_build_validated() {
@@ -57,6 +96,31 @@ mod tests {
             assert!(name.ends_with(".toml"), "{name} is a schema file");
             assert!(!text.is_empty(), "{name} is not empty");
         }
+    }
+
+    #[test]
+    fn a_public_listing_has_no_tree_members() {
+        // The owner-only `tree/` vocabulary (namespace `tree`) is in the owner catalog and
+        // absent from the public one, so a listing built from the public catalog cannot
+        // name a tree member (design/node-core.md section 2.3, F28).
+        assert!(
+            FILES.iter().any(|(name, _)| is_owner_only(name)),
+            "the build embeds the owner-only tree schema"
+        );
+        let owner = catalog().expect("the owner catalog loads");
+        let public = public_catalog().expect("the public catalog loads");
+        assert!(
+            object_names(&owner, "tree").iter().any(|name| name == "node"),
+            "the owner catalog declares the tree class `node`"
+        );
+        assert!(
+            object_names(&public, "tree").is_empty(),
+            "the public catalog declares no tree class"
+        );
+        assert!(
+            object_names(&public, "gnoblin").iter().any(|name| name == "window"),
+            "the public catalog keeps the ordinary objects"
+        );
     }
 
     #[test]
