@@ -134,6 +134,7 @@ mod session_api;
 mod session_status;
 pub mod shell_vm;
 pub mod tree_core;
+pub mod tree_link;
 pub mod tree_mirror;
 
 /// The `gnoblin.d.lua` stub, and the writer that copies it out for an editor.
