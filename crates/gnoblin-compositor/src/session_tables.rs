@@ -23,6 +23,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
             config.wayland.input_sources = stored.config.input_sources;
             config.wayland.shortcuts = stored.config.shortcuts;
+            config.wayland.touchpad_gestures = stored.config.touchpad_gestures;
             log::debug!("[session tables] loaded from the last accepted configuration");
         }
         Err(error) if error.is_absent() => {
@@ -95,6 +96,7 @@ mod tests {
         session.wayland.keyboard = config.input.and_then(|input| input.keyboard);
         session.wayland.input_sources = config.input_sources;
         session.wayland.shortcuts = config.shortcuts;
+        session.wayland.touchpad_gestures = config.touchpad_gestures;
         session
     }
 
