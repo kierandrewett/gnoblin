@@ -1033,7 +1033,7 @@ impl Composer {
     pub fn window_at(&self, point: PointF, accept: &dyn Fn(WindowId) -> bool) -> Option<(WindowId, PointF)> {
         let hit = self
             .scene
-            .hit_test_where(point, &|node| self.window_of(node).is_some_and(|window| accept(window)))?;
+            .hit_test_where(point, &|node| self.window_of(node).is_some_and(accept))?;
         Some((self.window_of(hit.node)?, hit.local))
     }
 
