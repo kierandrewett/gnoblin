@@ -1673,6 +1673,8 @@ Each section below records the choice, its consequences, and the options conside
 | D34 | XR extension                 | **Proposed 2026-11-08, for Kieran to confirm:** Gnoblin draws panels and states their poses; `gnoblin-xr` submits them as OpenXR layers and holds no positions. See `xr-extension.md`.                                                                                                                                                  |
 | D35 | Node API                     | **Proposed 2026-11-08, for Kieran to confirm:** one public scene tree of twelve node types replaces the window manager's placement, stacking and focus policy, the layout engine, layer bands, roles and grants; the shell is trusted Lua; D17, D22, D25 and D33 retracted and D34 folded in. See `node-api-refactor.md`.               |
 
+See `node-core.md` for the D35 step 3 protocol and schema contract.
+
 ### D1: where scripts run
 
 **Decided 2026-11-04: separate process.** The phase 0 measurements below still
