@@ -90,6 +90,7 @@ pub mod idle;
 pub mod name;
 pub mod policy;
 pub mod router;
+pub mod touchpad;
 
 pub use binding::{Binding, BindingId, BindingTable, Conflict, ConflictCode, Declaration, Insertion, Trigger};
 pub use chord::{Chord, ChordKind, Key, Keysyms, ParseError, Symbol};
