@@ -168,6 +168,7 @@ pub struct Node {
     input: bool,
     owner: Actor,
     parented_by: Option<Actor>,
+    class: Option<String>,
 }
 
 impl Node {
@@ -437,10 +438,11 @@ impl From<EffectError> for SceneError {
 }
 
 /// The scene graph for one session.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scene {
     nodes: BTreeMap<NodeId, Node>,
     roots: Vec<NodeId>,
+    root: Option<NodeId>,
     outputs: BTreeMap<OutputId, Rect>,
     dirty: BTreeSet<NodeId>,
     pending: Vec<Rect>,
@@ -461,6 +463,7 @@ impl Scene {
         Self {
             nodes: BTreeMap::new(),
             roots: Vec::new(),
+            root: None,
             outputs: BTreeMap::new(),
             dirty: BTreeSet::new(),
             pending: Vec::new(),
@@ -529,6 +532,7 @@ impl Scene {
             input: spec.input,
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
+            class: None,
         };
         self.nodes.insert(id, node);
         self.siblings_mut(spec.parent).insert(index, id);
@@ -574,6 +578,9 @@ impl Scene {
             }
             None => self.roots.retain(|root| *root != id),
         }
+        if self.root.is_some_and(|root| removed.contains(&root)) {
+            self.root = None;
+        }
         for node in &removed {
             self.nodes.remove(node);
         }
@@ -614,6 +621,17 @@ impl Scene {
     /// parented.
     pub fn reparent_as(&mut self, actor: Actor, id: NodeId, parent: Option<NodeId>) -> Result<(), SceneError> {
         self.attach(actor, id, parent, None)
+    }
+
+    /// [`Scene::reparent_as`] at `index` among the new siblings, or last when `index` is `None`.
+    pub fn reparent_as_at(
+        &mut self,
+        actor: Actor,
+        id: NodeId,
+        parent: Option<NodeId>,
+        index: Option<usize>,
+    ) -> Result<(), SceneError> {
+        self.attach(actor, id, parent, index)
     }
 
     fn attach(
@@ -817,6 +835,47 @@ impl Scene {
     pub fn set_input(&mut self, id: NodeId, input: bool) -> Result<(), SceneError> {
         let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
         node.input = input;
+        Ok(())
+    }
+
+    /// Set a node's own rectangle. The old and new rectangles become damage.
+    /// A rectangle past [`BOUND`] is refused, not clamped.
+    pub fn set_bounds(&mut self, id: NodeId, bounds: Rect) -> Result<(), SceneError> {
+        if !self.nodes.contains_key(&id) {
+            return Err(SceneError::UnknownNode(id));
+        }
+        check_rect_bounds(bounds)?;
+        self.change(id, |node| node.bounds = bounds);
+        Ok(())
+    }
+
+    /// The class the schema gives a node, or `None` when it has none.
+    #[must_use]
+    pub fn class(&self, id: NodeId) -> Option<&str> {
+        self.nodes.get(&id).and_then(|node| node.class.as_deref())
+    }
+
+    /// Set a node's class. The class is schema metadata and changes no pixels.
+    pub fn set_class(&mut self, id: NodeId, class: Option<String>) -> Result<(), SceneError> {
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        node.class = class;
+        Ok(())
+    }
+
+    /// The root node the shell attaches to, if one is set.
+    #[must_use]
+    pub const fn root(&self) -> Option<NodeId> {
+        self.root
+    }
+
+    /// Name the root node. The named node must exist.
+    pub fn set_root(&mut self, root: Option<NodeId>) -> Result<(), SceneError> {
+        if let Some(id) = root
+            && !self.nodes.contains_key(&id)
+        {
+            return Err(SceneError::UnknownNode(id));
+        }
+        self.root = root;
         Ok(())
     }
 

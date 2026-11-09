@@ -148,6 +148,7 @@ mod effect;
 mod matrix;
 mod scene;
 pub mod scene_ids;
+pub mod transaction;
 mod tween;
 
 #[cfg(test)]

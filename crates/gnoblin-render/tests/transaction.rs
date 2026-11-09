@@ -385,7 +385,7 @@ fn f18_new_past_65536_nodes_is_too_many_nodes() {
     let mut scene = scene();
     let root = id(ROOT);
     let mut raw = 1;
-    while scene.node_ids().count() < MAX_NODES {
+    while raw < MAX_NODES as u64 {
         shell_node(&mut scene, raw, root);
         raw += 1;
     }

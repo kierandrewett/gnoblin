@@ -995,3 +995,44 @@ fn shell_write_to_compositor_window_property_applies() {
         Ok(PropertyValue::Number(42.0))
     );
 }
+
+#[test]
+fn set_bounds_damages_the_old_and_the_new_rectangle() {
+    let mut scene = scene_with_output();
+    scene
+        .insert(id(1), NodeSpec::new(rect(100, 100, 50, 40)))
+        .expect("node");
+    scene.take_damage();
+    scene.set_bounds(id(1), rect(300, 100, 80, 40)).expect("bounds");
+    assert_eq!(scene.bounds(id(1)), Some(rect(300, 100, 80, 40)));
+    let damage = scene.take_damage();
+    let output = damage
+        .outputs
+        .iter()
+        .find(|entry| entry.output == OutputId::new(0))
+        .expect("the output is damaged");
+    assert!(output.covers(rect(100, 100, 50, 40)), "old bounds not damaged");
+    assert!(output.covers(rect(300, 100, 80, 40)), "new bounds not damaged");
+}
+
+#[test]
+fn set_bounds_on_an_unknown_node_is_unknown_node() {
+    let mut scene = scene_with_output();
+    assert_eq!(
+        scene.set_bounds(id(9), rect(0, 0, 10, 10)),
+        Err(SceneError::UnknownNode(id(9)))
+    );
+}
+
+#[test]
+fn set_bounds_beyond_2_pow_20_is_refused_and_changes_nothing() {
+    let mut scene = scene_with_output();
+    scene.insert(id(1), NodeSpec::new(rect(0, 0, 50, 40))).expect("node");
+    let before = tree_hash(&scene);
+    assert!(matches!(
+        scene.set_bounds(id(1), rect(0, 0, 2_000_000, 40)),
+        Err(SceneError::OutOfBounds { .. })
+    ));
+    assert_eq!(scene.bounds(id(1)), Some(rect(0, 0, 50, 40)));
+    assert_eq!(tree_hash(&scene), before);
+}
