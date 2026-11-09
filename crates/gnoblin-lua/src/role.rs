@@ -38,6 +38,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use crate::shell_role::{SHELL_VM_VARIABLE, ShellRole, ShellSlot};
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
@@ -187,8 +188,18 @@ impl RoleRunner {
         // anything that reads the document.
         reporter.ready(&[("GNOBLIN_CONFIG_REVISION".to_owned(), revision.to_string())]);
 
-        serve(&mut host, &stop, &self.paths, &self.stock, &mut reporter)
+        let mut shell = ShellSlot::from_env(&self.env, connect_unwired);
+        serve(&mut host, &stop, &self.paths, &self.stock, &mut reporter, &mut shell)
     }
+}
+
+/// The connector `GNOBLIN_SHELL_VM` reaches. The runtime is not yet handed the owner socket or
+/// the tree's classes, so a set variable is refused by name instead of being ignored.
+fn connect_unwired(dir: &std::path::Path) -> Result<ShellRole, crate::shell_vm::ShellVmError> {
+    Err(crate::shell_vm::ShellVmError::Link(format!(
+        "{SHELL_VM_VARIABLE} names {}, but the runtime is not handed the owner socket yet",
+        dir.display()
+    )))
 }
 
 /// Commit the validated document and tell the guardian the revision, returning the revision
@@ -400,11 +411,15 @@ fn serve<T: Transport + 'static>(
     paths: &SearchPaths,
     stock: &[Schema],
     reporter: &mut Reporter,
+    shell: &mut ShellSlot,
 ) -> Result<(), RoleError> {
     let start = Instant::now();
     while !stop() {
         if host.take_reload_request() {
             reload(host, paths, stock, reporter)?;
+        }
+        if let Err(ended) = shell.tick(start.elapsed().as_secs_f64()) {
+            log::error!(area = "runtime", "{ended}");
         }
         let now = Tick::new(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
         match host.pump(now) {
