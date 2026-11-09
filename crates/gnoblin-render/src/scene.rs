@@ -268,6 +268,13 @@ pub enum SceneError {
         /// The field that is too large.
         field: &'static str,
     },
+    /// A move would put a node under itself or one of its own descendants.
+    Cycle {
+        /// The node being moved.
+        node: NodeId,
+        /// The parent it was asked to move under.
+        parent: NodeId,
+    },
     /// A camera cannot be honoured.
     Camera(CameraError),
     /// A property value was refused.
@@ -287,6 +294,7 @@ impl std::fmt::Display for SceneError {
             Self::OutOfBounds { field } => write!(formatter, "`{field}` is beyond the 2^20 bound"),
             Self::Camera(error) => write!(formatter, "{error}"),
             Self::Property(error) => write!(formatter, "{error}"),
+            Self::Cycle { node, parent } => write!(formatter, "moving {node} under {parent} would make a cycle"),
             Self::Effect(error) => write!(formatter, "{error}"),
         }
     }
@@ -488,6 +496,74 @@ impl Scene {
             None => self.dirty.extend(self.roots.iter().copied()),
         }
         Ok(removed)
+    }
+
+    /// Move a node under a new parent, or to the root when `parent` is `None`.
+    ///
+    /// The node keeps its id, its state and its subtree. Its paint position among
+    /// the new siblings comes from its z-order, the same rule insert uses, so
+    /// siblings never disagree about which one paints first. A node cannot move
+    /// under itself or under one of its own descendants.
+    ///
+    /// The subtree's bounds before the move and after it both become damage.
+    pub fn reparent(&mut self, id: NodeId, parent: Option<NodeId>) -> Result<(), SceneError> {
+        if !self.nodes.contains_key(&id) {
+            return Err(SceneError::UnknownNode(id));
+        }
+        let subtree = self.subtree_ids(id);
+        if let Some(parent) = parent {
+            if !self.nodes.contains_key(&parent) {
+                return Err(SceneError::UnknownParent(parent));
+            }
+            if subtree.contains(&parent) {
+                return Err(SceneError::Cycle { node: id, parent });
+            }
+        }
+        let before: Vec<DamageSample> = subtree.iter().filter_map(|node| self.sample(*node)).collect();
+        let old_parent = self.nodes[&id].parent;
+        match old_parent {
+            Some(old) => {
+                if let Some(node) = self.nodes.get_mut(&old) {
+                    node.children.retain(|child| *child != id);
+                }
+            }
+            None => self.roots.retain(|root| *root != id),
+        }
+        self.nodes.get_mut(&id).expect("node existence checked above").parent = parent;
+        match parent {
+            Some(new_parent) => {
+                let mut siblings = std::mem::take(
+                    &mut self
+                        .nodes
+                        .get_mut(&new_parent)
+                        .expect("parent existence checked above")
+                        .children,
+                );
+                siblings.push(id);
+                sort_siblings(&mut siblings, &self.nodes);
+                self.nodes
+                    .get_mut(&new_parent)
+                    .expect("parent existence checked above")
+                    .children = siblings;
+            }
+            None => {
+                self.roots.push(id);
+                sort_siblings(&mut self.roots, &self.nodes);
+            }
+        }
+        for sample in before {
+            self.push_sample(sample);
+        }
+        let after: Vec<DamageSample> = subtree.iter().filter_map(|node| self.sample(*node)).collect();
+        for sample in after {
+            self.push_sample(sample);
+        }
+        self.dirty.extend(subtree);
+        for ancestor in [old_parent, parent].into_iter().flatten() {
+            self.dirty.insert(ancestor);
+            self.dirty.extend(self.ancestors(ancestor));
+        }
+        Ok(())
     }
 
     /// Whether a node exists.

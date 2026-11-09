@@ -173,12 +173,78 @@ fn an_empty_scene_hits_nothing() {
     assert_eq!(Scene::new().hit_test(PointF::new(0.0, 0.0)), None);
 }
 
-// Cases the tree does not express yet (design §5 and §8.2). Each is a finding.
+// Reparenting (design §5 and §8.2).
 
 #[test]
-#[ignore = "Scene has no reparent operation (design §5, §8.2); pinned until the node API adds one"]
 fn reparent_keeps_state_and_moves_paint_order() {
-    panic!("Scene has no reparent operation: the node API must provide it");
+    let mut scene = scene_with_output();
+    scene
+        .insert(id(1), NodeSpec::new(rect(0, 0, 400, 400)))
+        .expect("old parent");
+    let mut new_parent = NodeSpec::new(rect(0, 0, 400, 400));
+    new_parent.transform.base.offset = Vec3::new(500.0, 0.0, 0.0);
+    scene.insert(id(2), new_parent).expect("new parent");
+    scene
+        .insert(id(3), child_of(id(1), rect(10, 10, 100, 100)))
+        .expect("moving node");
+    scene
+        .insert(id(4), child_of(id(3), rect(0, 0, 20, 20)))
+        .expect("its child");
+    let mut above = child_of(id(2), rect(0, 0, 50, 50));
+    above.z_order = 5;
+    scene.insert(id(5), above).expect("sibling above");
+    scene.set_clip(id(3), true).expect("clip");
+    scene
+        .set_property(id(3), VisualProperty::Opacity, PropertyValue::Number(0.5))
+        .expect("opacity");
+    let before = scene.absolute_bounds(id(3)).expect("bounds before the move");
+    scene.take_damage();
+
+    scene.reparent(id(3), Some(id(2))).expect("reparent");
+
+    assert_eq!(scene.parent(id(3)), Some(id(2)));
+    assert!(
+        scene.children(id(1)).is_some_and(<[NodeId]>::is_empty),
+        "old parent keeps a child"
+    );
+    assert_eq!(
+        scene.children(id(2)),
+        Some(&[id(3), id(5)][..]),
+        "the moved node must paint below the sibling above it"
+    );
+    assert_eq!(scene.children(id(3)), Some(&[id(4)][..]), "its subtree moves with it");
+    assert_eq!(scene.bounds(id(3)), Some(rect(10, 10, 100, 100)));
+    assert_eq!(scene.z_order(id(3)), Some(0));
+    assert_eq!(scene.clip(id(3)), Some(true));
+    assert_eq!(scene.composed_opacity(id(3)), Some(0.5));
+
+    let after = scene.absolute_bounds(id(3)).expect("bounds after the move");
+    assert_ne!(before, after, "the move must change where the node is");
+    let damage = scene.take_damage();
+    let output = damage
+        .outputs
+        .iter()
+        .find(|entry| entry.output == OutputId::new(0))
+        .expect("the output is damaged");
+    assert!(output.covers(before), "old position not damaged");
+    assert!(output.covers(after), "new position not damaged");
+
+    // Refused moves change nothing: a cycle, an unknown node and an unknown parent.
+    let snapshot = tree_hash(&scene);
+    assert!(matches!(
+        scene.reparent(id(2), Some(id(4))),
+        Err(SceneError::Cycle { node, parent }) if node == id(2) && parent == id(4)
+    ));
+    assert!(matches!(
+        scene.reparent(id(3), Some(id(3))),
+        Err(SceneError::Cycle { .. })
+    ));
+    assert!(matches!(scene.reparent(id(99), None), Err(SceneError::UnknownNode(node)) if node == id(99)));
+    assert!(matches!(
+        scene.reparent(id(3), Some(id(99))),
+        Err(SceneError::UnknownParent(parent)) if parent == id(99)
+    ));
+    assert_eq!(tree_hash(&scene), snapshot);
 }
 
 #[test]
