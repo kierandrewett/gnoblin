@@ -4,6 +4,7 @@
 
 ### Added
 
+- The Lua module `gnoblin.shell.floating` (`data/lua/gnoblin/shell/floating.lua`) places floating windows in free space, cascade and centre, as the `Floating`, `Cascade` and `Centred` classes on the node class system. Its placement matches the 212 committed placement goldens. The compositor still places floating windows natively; the module is not loaded yet.
 - The shipped `gnoblin.layouts.strip` layout places windows as columns in a strip wider than the screen, with a view
   offset, stacked or tabbed columns, and the `width`, `consume`, `expel`, `move_column`, `fit_all`, `toggle_tabbed`,
   `focus` and `scroll_to` commands. It replaces the scrolling layout, which is removed.
