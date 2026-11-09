@@ -42,6 +42,9 @@
 - Window records past the 32nd window do not trip a debug assertion, because the window manager's layer provider has
   its own limit.
 - The `layout_failed` signal's documented `reason` values now match the ones it emits.
+- Pointer picking goes through the scene: a press or pointer motion over a window that a layout turned or moved
+  reaches the window where it is drawn, not the unrotated rectangle it was placed in. Stacking ties still go to the
+  last-drawn window.
 
 ### Changed
 

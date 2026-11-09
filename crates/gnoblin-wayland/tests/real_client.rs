@@ -1627,6 +1627,94 @@ fn a_window_turned_out_of_its_rectangle_receives_the_pointer_outside_it() {
 }
 
 #[test]
+fn a_press_reaches_a_window_turned_out_of_its_rectangle_where_it_is_drawn() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Spun));
+    let _made = install_scripted(&mut session, shape);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.create_window("org.gnoblin.Spun", "Spun");
+        settle_size(&mut client, (300, 200));
+        draw_configured(&mut client, &window);
+        let (matrix, _bounds) = drawn(session, window_id(session, "Spun"));
+
+        // The turned surface's corner is drawn above the unrotated rectangle, which starts at
+        // y = 100. A press there reaches the client: it gets the press and the release.
+        let at = drawn_at(&matrix, (20.0, 30.0));
+        assert!(
+            !Rect::new(100, 100, 300, 200).contains(at),
+            "{at:?} is outside the unrotated rectangle"
+        );
+        let before = client.state.pointer_buttons;
+        client.click(session, at);
+        client.wait_until("the press and release on the drawn content", |seen| {
+            seen.state.pointer_buttons >= before + 2
+        });
+    });
+}
+
+#[test]
+fn a_press_where_a_rotated_window_is_not_drawn_reaches_nothing() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Tilt));
+    let _made = install_scripted(&mut session, shape);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.create_window("org.gnoblin.Tilted", "Tilted");
+        settle_size(&mut client, (300, 200));
+        draw_configured(&mut client, &window);
+        let (_matrix, bounds) = drawn(session, window_id(session, "Tilted"));
+
+        // The 40 degree turn moved the window's left edge to about x = 135, so the corner inside
+        // the unrotated rectangle is not drawn, and a press there reaches nothing.
+        let corner = Point::new(101, 101);
+        assert!(
+            Rect::new(100, 100, 300, 200).contains(corner),
+            "the corner is inside the rectangle"
+        );
+        assert!(!bounds.contains(corner), "the corner is not drawn");
+        let before = client.state.pointer_buttons;
+        client.click(session, corner);
+        settle(session);
+        client.roundtrip();
+        assert_eq!(
+            client.state.pointer_buttons, before,
+            "a press where the window is not drawn reached it"
+        );
+    });
+}
+
+#[test]
+fn overlapping_windows_at_equal_depth_go_to_the_last_drawn_and_a_raise_moves_the_winner() {
+    let session = overlap_session(WmOptions::default(), Arc::new(ManualClock::new()));
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let _lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+
+        // Both windows are flat at the same depth and cover (250, 150). Right is drawn last, so it
+        // gets the pointer: its surface point is (50, 50), where Left's would be (150, 50).
+        let overlap = Point::new(250, 150);
+        assert_pointer_at(
+            point_at(session, &mut client, overlap),
+            (50.0, 50.0),
+            "the topmost window",
+        );
+
+        // Raising Left by a press on its exposed part makes it the last drawn, so the same point
+        // now reaches Left.
+        client.click(session, only_point_of(session, "Left"));
+        session.wait_for(|observation| topmost(observation) == Some("Left"));
+        assert_pointer_at(
+            point_at(session, &mut client, overlap),
+            (150.0, 50.0),
+            "the window raised above the other",
+        );
+    });
+}
+
+#[test]
 fn a_failing_engine_leaves_the_workspace_floating_and_reports_the_error() {
     let mut session = Session::start(Headless::new());
     let shape: SharedShape = Arc::new(Mutex::new(Shape::Fail));
