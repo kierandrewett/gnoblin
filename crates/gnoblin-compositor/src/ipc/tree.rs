@@ -59,6 +59,19 @@ pub struct TreeSnapshot {
     pub chunks: Vec<Vec<TreeSnapshotNode>>,
 }
 
+/// The connection that holds the tree. The server issues one per accepted connection, and
+/// a session compares them by value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TreeHolder(u64);
+
+impl TreeHolder {
+    /// The holder for the connection numbered `id`.
+    #[must_use]
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+}
+
 /// The shell's tree session over one scene.
 #[derive(Debug)]
 pub struct TreeSession<C: ClassInfo> {
@@ -69,7 +82,7 @@ pub struct TreeSession<C: ClassInfo> {
     serial: u64,
     /// The nodes each recent serial changed, so a stale base is checked, not refused.
     revisions: TreeRevisions,
-    attached: bool,
+    holder: Option<TreeHolder>,
 }
 
 impl<C: ClassInfo> TreeSession<C> {
@@ -83,7 +96,7 @@ impl<C: ClassInfo> TreeSession<C> {
             epoch: 0,
             serial: 0,
             revisions: TreeRevisions::new(),
-            attached: false,
+            holder: None,
         })
     }
 
@@ -99,20 +112,38 @@ impl<C: ClassInfo> TreeSession<C> {
         self.serial
     }
 
-    /// Attach the shell. Only the session owner's connection may attach, and `is_owner` is
-    /// that connection's classification from the owner grant (`owner_grants`). Any other is
-    /// refused `not-privileged`. Each attach raises the epoch.
-    pub fn attach(&mut self, is_owner: bool) -> Result<TreeAttached, TreeRefusal> {
+    /// Attach the shell from `holder`. Only the session owner's connection may attach, and
+    /// `is_owner` is that connection's classification from the owner grant (`owner_grants`).
+    /// Any other is refused `not-privileged`. A second holder while one is live is refused
+    /// `shell-already-attached`; the same holder attaching again gets a new epoch.
+    pub fn attach(&mut self, holder: TreeHolder, is_owner: bool) -> Result<TreeAttached, TreeRefusal> {
         if !is_owner {
             return Err(refusal(Code::NotPrivileged));
         }
+        if self.holder.is_some_and(|live| live != holder) {
+            return Err(refusal(Code::ShellAlreadyAttached));
+        }
         self.epoch += 1;
-        self.attached = true;
+        self.holder = Some(holder);
         Ok(TreeAttached {
             epoch: self.epoch,
             root: self.root,
             serial: self.serial,
         })
+    }
+
+    /// Release the hold `holder` has, when it is the holder. A detach from any other
+    /// connection changes nothing. The server calls this when a connection closes.
+    pub fn detach(&mut self, holder: TreeHolder) {
+        if self.holder == Some(holder) {
+            self.holder = None;
+        }
+    }
+
+    /// The connection holding the tree, if a shell is attached.
+    #[must_use]
+    pub const fn holder(&self) -> Option<TreeHolder> {
+        self.holder
     }
 
     /// Apply `transaction` as the shell against the scene. `base` is the serial the shell
@@ -121,7 +152,7 @@ impl<C: ClassInfo> TreeSession<C> {
     /// refusal leaves the scene and serial untouched. A committed batch that changed
     /// something advances the serial by one.
     pub fn transact(&mut self, base: u64, transaction: &TreeTransaction) -> TreeReply {
-        if !self.attached {
+        if self.holder.is_none() {
             return self.refuse(Code::NotPrivileged);
         }
         if let Err(refused) = self.revisions.check(base, self.serial, &[], transaction) {
@@ -361,6 +392,9 @@ mod tests {
     const CHILD: NodeId = NodeId::new(0x100);
     const OTHER: NodeId = NodeId::new(0x101);
 
+    const HOLDER: TreeHolder = TreeHolder::new(1);
+    const OTHER_HOLDER: TreeHolder = TreeHolder::new(2);
+
     /// A session whose scene holds one compositor-owned root, attached as privileged.
     fn attached_session() -> TreeSession<Table> {
         let mut scene = Scene::new();
@@ -369,7 +403,7 @@ mod tests {
             .expect("root inserts");
         scene.set_root(Some(ROOT)).expect("root names");
         let mut session = TreeSession::new(scene, Table, ROOT).expect("root is live");
-        session.attach(true).expect("privileged attach");
+        session.attach(HOLDER, true).expect("privileged attach");
         session
     }
 
@@ -405,23 +439,45 @@ mod tests {
             .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 1, 1)))
             .expect("root inserts");
         let mut fresh = TreeSession::new(scene, Table, ROOT).expect("root is live");
-        let refused = fresh.attach(false).expect_err("unprivileged attach refused");
+        let refused = fresh.attach(HOLDER, false).expect_err("unprivileged attach refused");
         assert_eq!(refused.code, Code::NotPrivileged);
         assert_eq!(refused.failed_op, -1);
         // A refused attach leaves the session unattached: a transaction is still refused.
         let reply = fresh.transact(0, &TreeTransaction::new(vec![create(CHILD)]));
         assert_eq!(reply.result.expect_err("unattached").code, Code::NotPrivileged);
-        assert!(session.attach(true).is_ok());
+        assert!(session.attach(HOLDER, true).is_ok());
     }
 
     #[test]
     fn attach_answers_with_epoch_root_and_serial_and_each_attach_raises_the_epoch() {
         let mut session = attached_session();
-        let first = session.attach(true).expect("attach");
-        let second = session.attach(true).expect("re-attach");
+        let first = session.attach(HOLDER, true).expect("attach");
+        let second = session.attach(HOLDER, true).expect("re-attach");
         assert_eq!(first.root, ROOT);
         assert_eq!(first.serial, 0);
         assert_eq!(second.epoch, first.epoch + 1);
+    }
+
+    #[test]
+    fn a_second_holder_is_refused_while_the_first_holds_the_tree() {
+        let mut session = attached_session();
+        let refused = session
+            .attach(OTHER_HOLDER, true)
+            .expect_err("a second holder is refused");
+        assert_eq!(refused.code, Code::ShellAlreadyAttached);
+        assert_eq!(session.holder(), Some(HOLDER));
+    }
+
+    #[test]
+    fn detach_by_the_holder_frees_the_tree_for_the_next_attach() {
+        let mut session = attached_session();
+        session.detach(OTHER_HOLDER);
+        assert_eq!(session.holder(), Some(HOLDER), "only the holder can release");
+        session.detach(HOLDER);
+        assert_eq!(session.holder(), None);
+        let next = session.attach(OTHER_HOLDER, true).expect("the freed tree attaches");
+        assert_eq!(next.epoch, 2);
+        assert_eq!(session.holder(), Some(OTHER_HOLDER));
     }
 
     #[test]
