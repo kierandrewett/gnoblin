@@ -302,6 +302,12 @@ fn validate_transform(transform: &VisualTransform) -> Result<(), SceneError> {
     Ok(())
 }
 
+/// Opacity is group alpha: an out-of-range value is clamped to 0 to 1, not refused.
+/// NaN stays NaN, so the finite check in validation still refuses it.
+fn clamp_opacity(transform: &mut VisualTransform) {
+    transform.opacity = transform.opacity.clamp(0.0, 1.0);
+}
+
 impl std::error::Error for SceneError {}
 
 impl From<CameraError> for SceneError {
@@ -359,10 +365,11 @@ impl Scene {
     ///
     /// The new node damages only itself: the pixels it adds were not on screen
     /// before, while a parent's existing pixels do not move.
-    pub fn insert(&mut self, id: NodeId, spec: NodeSpec) -> Result<(), SceneError> {
+    pub fn insert(&mut self, id: NodeId, mut spec: NodeSpec) -> Result<(), SceneError> {
         if self.nodes.contains_key(&id) {
             return Err(SceneError::DuplicateNode(id));
         }
+        clamp_opacity(&mut spec.transform);
         spec.validate()?;
         if let Some(parent) = spec.parent
             && !self.nodes.contains_key(&parent)
@@ -500,10 +507,11 @@ impl Scene {
     }
 
     /// Set a node's transform.
-    pub fn set_transform(&mut self, id: NodeId, transform: VisualTransform) -> Result<(), SceneError> {
+    pub fn set_transform(&mut self, id: NodeId, mut transform: VisualTransform) -> Result<(), SceneError> {
         if !self.nodes.contains_key(&id) {
             return Err(SceneError::UnknownNode(id));
         }
+        clamp_opacity(&mut transform);
         validate_transform(&transform)?;
         self.change(id, |node| node.transform = transform);
         Ok(())
@@ -529,6 +537,7 @@ impl Scene {
     ) -> Result<(), SceneError> {
         let mut candidate = *self.transform(id).ok_or(SceneError::UnknownNode(id))?;
         property.apply(&mut candidate, value)?;
+        clamp_opacity(&mut candidate);
         validate_transform(&candidate)?;
         self.change(id, |node| node.transform = candidate);
         Ok(())

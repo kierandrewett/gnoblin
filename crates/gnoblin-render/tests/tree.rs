@@ -260,7 +260,6 @@ fn clip_true_clips_child_hits_to_the_parent_rectangle() {
 }
 
 #[test]
-#[ignore = "opacity is stored unclamped: an out-of-range write is kept as-is (design §5)"]
 fn opacity_is_clamped_between_zero_and_one() {
     let mut scene = Scene::new();
     scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))).expect("node");
