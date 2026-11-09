@@ -6,8 +6,43 @@ local H = {}
 -- classes and the globals `root`, `Node`, `await` in the Lua state it runs in.
 function H.fresh()
     local core, host = require("fake_core")()
-    host.tick = assert(loadfile(GNOBLIN_LUA_DIR .. "/node.lua"))(core)
+    H.boot(core, host)
     return core, host
+end
+
+-- Loads node.lua over `core` as a fresh runtime. A restart does this again over the same core, so the native
+-- tree (the windows, the screen, the seat) survives it, as it does in Gnoblin.
+function H.boot(core, host)
+    host.tick = assert(loadfile(GNOBLIN_LUA_DIR .. "/node.lua"))(core)
+end
+
+-- The stock shell: ui, then floating (before init, which makes every Desk workspace a Floating), then init.
+-- `sys` is the host's system table; the stub is inert.
+function H.load_shell()
+    sys = sys or {
+        spawn = function() end,
+        date = function()
+            return ""
+        end,
+    }
+    dofile(GNOBLIN_LUA_DIR .. "/shell/ui.lua")
+    dofile(GNOBLIN_LUA_DIR .. "/shell/floating.lua")
+    dofile(GNOBLIN_LUA_DIR .. "/shell/init.lua")
+end
+
+-- The shell starts: every Screen gets `ready` first, so the Desk exists; then every Window, as a shell that comes
+-- up after its windows have mapped would see them. The Desk is built with the screen's size, so it places windows
+-- in its active workspace.
+function H.start_shell(host)
+    local screens, windows = {}, {}
+    for _, id in ipairs(host.ids("Screen")) do
+        screens[#screens + 1] = { type = "ready", target = id }
+    end
+    host.frame(0, screens)
+    for _, id in ipairs(host.ids("Window")) do
+        windows[#windows + 1] = { type = "ready", target = id }
+    end
+    host.frame(0, windows)
 end
 
 -- One frame at time `now` with the given events. Returns the host's wake time.
