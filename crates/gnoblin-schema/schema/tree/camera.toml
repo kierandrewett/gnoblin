@@ -1,0 +1,40 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `camera` class: a space that projects its children (design/node-core.md, section 2.4).
+[[object]]
+name = "camera"
+since = "0.2.0"
+base = "node"
+
+# `orthographic`, `perspective`, or `stereo` (stereo in step 12).
+[[object.property]]
+name = "projection"
+type = "string"
+since = "0.2.0"
+default = "orthographic"
+
+[[object.property]]
+name = "metres"
+type = "double"
+since = "0.2.0"
+default = 0.001
+
+[[object.property]]
+name = "near"
+type = "double"
+since = "0.2.0"
+default = 0.1
+
+[[object.property]]
+name = "far"
+type = "double"
+since = "0.2.0"
+default = 1000.0
+
+[[object.property]]
+name = "fov"
+type = "double"
+since = "0.2.0"
+default = 60.0
+animated = true

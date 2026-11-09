@@ -38,7 +38,10 @@ fn run() -> Result<(), String> {
 
     watch(&schema_dir)?;
 
-    let catalog = gnoblin_schema::Catalog::load_dir(&schema_dir)
+    // The owner-only `tree` namespace is left out of the public client, as the Lua surface leaves
+    // it out. Its classes repeat old object names (`window`, `workspace`), and the generator would
+    // rename the existing `window` command to `gnoblin-window`, breaking `gnoblinctl window`.
+    let catalog = gnoblin_schema::Catalog::load_dir_except(&schema_dir, &["tree"])
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
     let rendered = generate::render(&catalog, env!("CARGO_PKG_VERSION")).map_err(|problems| {
         format!(

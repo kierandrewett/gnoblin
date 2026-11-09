@@ -402,6 +402,309 @@ object workspace since 0.2.0 secret false
   signal removed since 0.2.0 secret false
     field workspace_id type uint since 0.2.0 secret false
     field last type object:workspace since 0.2.0 secret false
+namespace tree version 0.2.0
+object camera since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property projection type string since 0.2.0 secret false
+  property metres type double since 0.2.0 secret false
+  property near type double since 0.2.0 secret false
+  property far type double since 0.2.0 secret false
+  property fov type double since 0.2.0 secret false
+  signal destroyed since 0.2.0 secret false
+object canvas since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property content type bytes since 0.2.0 secret false
+  method measure since 0.2.0 secret false function false
+  signal destroyed since 0.2.0 secret false
+object lock since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property state type string since 0.2.0 secret false
+  signal destroyed since 0.2.0 secret false
+object tree since 0.2.0 secret false
+  method attach since 0.2.0 secret false function false
+    param version type uint since 0.2.0 secret false
+  method transact since 0.2.0 secret false function false
+    param base_serial type uint since 0.2.0 secret false
+    param serial type uint since 0.2.0 secret false
+    param ops type list<object:op> since 0.2.0 secret false
+  method call since 0.2.0 secret false function false
+    param node type uint since 0.2.0 secret false
+    param method type string since 0.2.0 secret false
+    param args type bytes since 0.2.0 secret false
+    param token type uint since 0.2.0 secret false
+  signal attached since 0.2.0 secret false
+    field epoch type uint since 0.2.0 secret false
+    field root type uint since 0.2.0 secret false
+    field serial type uint since 0.2.0 secret false
+  signal snapshot since 0.2.0 secret false
+    field serial type uint since 0.2.0 secret false
+    field chunk type uint since 0.2.0 secret false
+    field last type bool since 0.2.0 secret false
+    field nodes type list<object:node> since 0.2.0 secret false
+  signal reply since 0.2.0 secret false
+    field serial type uint since 0.2.0 secret false
+    field applied type bool since 0.2.0 secret false
+    field failed_op type int since 0.2.0 secret false
+    field code type string since 0.2.0 secret false
+    field removed type list<uint> since 0.2.0 secret false
+  signal changes since 0.2.0 secret false
+    field serial type uint since 0.2.0 secret false
+    field changes type list<object:change> since 0.2.0 secret false
+  signal event since 0.2.0 secret false
+    field frame type uint since 0.2.0 secret false
+    field seq type uint since 0.2.0 secret false
+    field node type uint since 0.2.0 secret false
+    field kind type string since 0.2.0 secret false
+  signal answer since 0.2.0 secret false
+    field token type uint since 0.2.0 secret false
+    field result type bytes since 0.2.0 secret false
+    field error type string since 0.2.0 secret false
+object op since 0.2.0 secret false
+  property kind type string since 0.2.0 secret false
+  property node type uint since 0.2.0 secret false
+  property class type string since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property key type string since 0.2.0 secret false
+  property value_kind type string since 0.2.0 secret false
+  property value_bool type bool since 0.2.0 secret false
+  property value_int type int since 0.2.0 secret false
+  property value_uint type uint since 0.2.0 secret false
+  property value_double type double since 0.2.0 secret false
+  property value_text type string since 0.2.0 secret false
+  property value_node type uint since 0.2.0 secret false
+  property value_list type list<double> since 0.2.0 secret false
+  property seconds type double since 0.2.0 secret false
+  property samples type list<double> since 0.2.0 secret false
+  property parent type uint since 0.2.0 secret false
+  property index type int since 0.2.0 secret false
+  property method type string since 0.2.0 secret false
+  property args type bytes since 0.2.0 secret false
+object change since 0.2.0 secret false
+  property kind type string since 0.2.0 secret false
+  property node type uint since 0.2.0 secret false
+  property class type string since 0.2.0 secret false
+  property parent type uint since 0.2.0 secret false
+  property index type int since 0.2.0 secret false
+  property key type string since 0.2.0 secret false
+  property value_kind type string since 0.2.0 secret false
+  property value_bool type bool since 0.2.0 secret false
+  property value_int type int since 0.2.0 secret false
+  property value_uint type uint since 0.2.0 secret false
+  property value_double type double since 0.2.0 secret false
+  property value_text type string since 0.2.0 secret false
+  property value_node type uint since 0.2.0 secret false
+  property value_list type list<double> since 0.2.0 secret false
+  property removed type list<uint> since 0.2.0 secret false
+object node since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  signal destroyed since 0.2.0 secret false
+object screen since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property source type object:node since 0.2.0 secret false
+  property fps type uint since 0.2.0 secret false
+  property make type string since 0.2.0 secret false
+  property model type string since 0.2.0 secret false
+  property screen_x type double since 0.2.0 secret false
+  property screen_y type double since 0.2.0 secret false
+  property screen_width type double since 0.2.0 secret false
+  property screen_height type double since 0.2.0 secret false
+  property transform type string since 0.2.0 secret false
+  property primary type bool since 0.2.0 secret false
+  property enabled type bool since 0.2.0 secret false
+  property mode type string since 0.2.0 secret false
+  method capture since 0.2.0 secret false function false
+  method apply since 0.2.0 secret false function false
+  signal destroyed since 0.2.0 secret false
+  signal mode_changed since 0.2.0 secret false
+object seat since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property focus type object:node since 0.2.0 secret false
+  property pointer_x type double since 0.2.0 secret false
+  property pointer_y type double since 0.2.0 secret false
+  property device type string since 0.2.0 secret false
+  method warp since 0.2.0 secret false function false
+  signal destroyed since 0.2.0 secret false
+object surface since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property role type string since 0.2.0 secret false
+  property mapped type bool since 0.2.0 secret false
+  property app_id type string since 0.2.0 secret false
+  signal destroyed since 0.2.0 secret false
+object view since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property source type object:node since 0.2.0 secret false
+  property fps type uint since 0.2.0 secret false
+  method capture since 0.2.0 secret false function false
+  signal destroyed since 0.2.0 secret false
+object window since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property title type string since 0.2.0 secret false
+  property app_id type string since 0.2.0 secret false
+  property focused type bool since 0.2.0 secret false
+  property fullscreen type bool since 0.2.0 secret false
+  property maximised type bool since 0.2.0 secret false
+  property minimised type bool since 0.2.0 secret false
+  property workspace type object:workspace since 0.2.0 secret false
+  method focus since 0.2.0 secret false function false
+  method close since 0.2.0 secret false function false
+  signal destroyed since 0.2.0 secret false
+object workspace since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property index type uint since 0.2.0 secret false
+  property active type bool since 0.2.0 secret false
+  property output type object:screen since 0.2.0 secret false
+  method activate since 0.2.0 secret false function false
+  signal destroyed since 0.2.0 secret false
 == proto ==
 -- gnoblin.proto
 // Generated from the object schema by gnoblin-proto's build script. Do not
@@ -1433,4 +1736,719 @@ enum GnoblinError {
   GNOBLIN_UNKNOWN_LAYOUT = 18;
   // since 0.2.0
   GNOBLIN_UNKNOWN_SET = 19;
+}
+-- tree.proto
+// Generated from the object schema by gnoblin-proto's build script. Do not
+// edit: change the schema instead.
+//
+// Namespace: tree
+// Version: 0.2.0
+// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, view.toml, window.toml, workspace.toml)
+
+syntax = "proto3";
+
+package tree;
+
+// Object `camera`, since 0.2.0.
+message Camera {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0
+    string projection = 17;
+    // since 0.2.0
+    double metres = 18;
+    // since 0.2.0
+    double near = 19;
+    // since 0.2.0
+    double far = 20;
+    // since 0.2.0
+    double fov = 21;
+  }
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `canvas`, since 0.2.0.
+message Canvas {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0
+    bytes content = 17;
+  }
+
+  // Method `measure`, since 0.2.0.
+  message MeasureArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `lock`, since 0.2.0.
+message Lock {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0
+    string state = 17;
+  }
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `tree`, since 0.2.0.
+message Tree {
+  message Properties {}
+
+  // Method `attach`, since 0.2.0.
+  message AttachArgs {
+    // since 0.2.0
+    uint64 version = 1;
+  }
+
+  // Method `transact`, since 0.2.0.
+  message TransactArgs {
+    // since 0.2.0
+    uint64 base_serial = 1;
+    // since 0.2.0
+    uint64 serial = 2;
+    // since 0.2.0; list of object id of `op`
+    repeated string ops = 3;
+  }
+
+  // Method `call`, since 0.2.0.
+  message CallArgs {
+    // since 0.2.0
+    uint64 node = 1;
+    // since 0.2.0
+    string method = 2;
+    // since 0.2.0
+    bytes args = 3;
+    // since 0.2.0
+    uint64 token = 4;
+  }
+
+  // Signal `attached`, since 0.2.0.
+  message AttachedPayload {
+    // since 0.2.0
+    uint64 epoch = 1;
+    // since 0.2.0
+    uint64 root = 2;
+    // since 0.2.0
+    uint64 serial = 3;
+  }
+
+  // Signal `snapshot`, since 0.2.0.
+  message SnapshotPayload {
+    // since 0.2.0
+    uint64 serial = 1;
+    // since 0.2.0
+    uint64 chunk = 2;
+    // since 0.2.0
+    bool last = 3;
+    // since 0.2.0; list of object id of `node`
+    repeated string nodes = 4;
+  }
+
+  // Signal `reply`, since 0.2.0.
+  message ReplyPayload {
+    // since 0.2.0
+    uint64 serial = 1;
+    // since 0.2.0
+    bool applied = 2;
+    // since 0.2.0
+    int64 failed_op = 3;
+    // since 0.2.0
+    string code = 4;
+    // since 0.2.0; list
+    repeated uint64 removed = 5;
+  }
+
+  // Signal `changes`, since 0.2.0.
+  message ChangesPayload {
+    // since 0.2.0
+    uint64 serial = 1;
+    // since 0.2.0; list of object id of `change`
+    repeated string changes = 2;
+  }
+
+  // Signal `event`, since 0.2.0.
+  message EventPayload {
+    // since 0.2.0
+    uint64 frame = 1;
+    // since 0.2.0
+    uint64 seq = 2;
+    // since 0.2.0
+    uint64 node = 3;
+    // since 0.2.0
+    string kind = 4;
+  }
+
+  // Signal `answer`, since 0.2.0.
+  message AnswerPayload {
+    // since 0.2.0
+    uint64 token = 1;
+    // since 0.2.0
+    bytes result = 2;
+    // since 0.2.0
+    string error = 3;
+  }
+}
+
+// Object `op`, since 0.2.0.
+message Op {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    string kind = 1;
+    // since 0.2.0
+    uint64 node = 2;
+    // since 0.2.0
+    string class = 3;
+    // since 0.2.0
+    uint64 id = 4;
+    // since 0.2.0
+    string key = 5;
+    // since 0.2.0
+    string value_kind = 6;
+    // since 0.2.0
+    bool value_bool = 7;
+    // since 0.2.0
+    int64 value_int = 8;
+    // since 0.2.0
+    uint64 value_uint = 9;
+    // since 0.2.0
+    double value_double = 10;
+    // since 0.2.0
+    string value_text = 11;
+    // since 0.2.0
+    uint64 value_node = 12;
+    // since 0.2.0; list
+    repeated double value_list = 13;
+    // since 0.2.0
+    double seconds = 14;
+    // since 0.2.0; list
+    repeated double samples = 15;
+    // since 0.2.0
+    uint64 parent = 16;
+    // since 0.2.0
+    int64 index = 17;
+    // since 0.2.0
+    string method = 18;
+    // since 0.2.0
+    bytes args = 19;
+  }
+}
+
+// Object `change`, since 0.2.0.
+message Change {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    string kind = 1;
+    // since 0.2.0
+    uint64 node = 2;
+    // since 0.2.0
+    string class = 3;
+    // since 0.2.0
+    uint64 parent = 4;
+    // since 0.2.0
+    int64 index = 5;
+    // since 0.2.0
+    string key = 6;
+    // since 0.2.0
+    string value_kind = 7;
+    // since 0.2.0
+    bool value_bool = 8;
+    // since 0.2.0
+    int64 value_int = 9;
+    // since 0.2.0
+    uint64 value_uint = 10;
+    // since 0.2.0
+    double value_double = 11;
+    // since 0.2.0
+    string value_text = 12;
+    // since 0.2.0
+    uint64 value_node = 13;
+    // since 0.2.0; list
+    repeated double value_list = 14;
+    // since 0.2.0; list
+    repeated uint64 removed = 15;
+  }
+}
+
+// Object `node`, since 0.2.0.
+message Node {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+  }
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `screen`, since 0.2.0.
+message Screen {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0; object id of `node`
+    string source = 17;
+    // since 0.2.0
+    uint64 fps = 18;
+    // since 0.2.0
+    string make = 19;
+    // since 0.2.0
+    string model = 20;
+    // since 0.2.0
+    double screen_x = 21;
+    // since 0.2.0
+    double screen_y = 22;
+    // since 0.2.0
+    double screen_width = 23;
+    // since 0.2.0
+    double screen_height = 24;
+    // since 0.2.0
+    string transform = 25;
+    // since 0.2.0
+    bool primary = 26;
+    // since 0.2.0
+    bool enabled = 27;
+    // since 0.2.0
+    string mode = 28;
+  }
+
+  // Method `capture`, since 0.2.0.
+  message CaptureArgs {}
+
+  // Method `apply`, since 0.2.0.
+  message ApplyArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+
+  // Signal `mode_changed`, since 0.2.0.
+  message ModeChangedPayload {}
+}
+
+// Object `seat`, since 0.2.0.
+message Seat {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0; object id of `node`
+    string focus = 17;
+    // since 0.2.0
+    double pointer_x = 18;
+    // since 0.2.0
+    double pointer_y = 19;
+    // since 0.2.0
+    string device = 20;
+  }
+
+  // Method `warp`, since 0.2.0.
+  message WarpArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `surface`, since 0.2.0.
+message Surface {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0
+    string role = 17;
+    // since 0.2.0
+    bool mapped = 18;
+    // since 0.2.0
+    string app_id = 19;
+  }
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `view`, since 0.2.0.
+message View {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0; object id of `node`
+    string source = 17;
+    // since 0.2.0
+    uint64 fps = 18;
+  }
+
+  // Method `capture`, since 0.2.0.
+  message CaptureArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `window`, since 0.2.0.
+message Window {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0
+    string title = 17;
+    // since 0.2.0
+    string app_id = 18;
+    // since 0.2.0
+    bool focused = 19;
+    // since 0.2.0
+    bool fullscreen = 20;
+    // since 0.2.0
+    bool maximised = 21;
+    // since 0.2.0
+    bool minimised = 22;
+    // since 0.2.0; object id of `workspace`
+    string workspace = 23;
+  }
+
+  // Method `focus`, since 0.2.0.
+  message FocusArgs {}
+
+  // Method `close`, since 0.2.0.
+  message CloseArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `workspace`, since 0.2.0.
+message Workspace {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0
+    uint64 index = 17;
+    // since 0.2.0
+    bool active = 18;
+    // since 0.2.0; object id of `screen`
+    string output = 19;
+  }
+
+  // Method `activate`, since 0.2.0.
+  message ActivateArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
 }

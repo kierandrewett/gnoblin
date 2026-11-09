@@ -153,7 +153,7 @@ impl Catalog {
     /// Fails when an event names an object or property the catalog does not declare,
     /// when the property is not a boolean, or when the object already declares the signal.
     pub fn with_derived(&self, events: &[DerivedEvent]) -> Result<Catalog, SchemaError> {
-        let mut schemas = self.declared().to_vec();
+        let mut schemas = self.declared_schemas().to_vec();
         let mut problems = Vec::new();
         for event in events {
             let label = format!("derived {}.{}", event.object, event.signal);

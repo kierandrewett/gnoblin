@@ -245,7 +245,7 @@ mod tests {
 
     fn catalog() -> Catalog {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-schema/schema");
-        Catalog::load_dir(&dir).expect("the checked-in schema loads")
+        Catalog::load_dir_except(&dir, &["tree"]).expect("the checked-in schema loads")
     }
 
     #[test]

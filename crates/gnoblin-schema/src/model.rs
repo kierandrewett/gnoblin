@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::SchemaError;
 use gnoblin_types::Version;
@@ -453,21 +453,17 @@ impl Catalog {
     /// on directory iteration order, or it would change between two builds of the
     /// same schema.
     pub fn load_dir(dir: &Path) -> Result<Catalog, SchemaError> {
-        let entries = std::fs::read_dir(dir).map_err(|source| SchemaError::Read {
-            path: dir.to_path_buf(),
-            source,
-        })?;
+        Self::load_dir_except(dir, &[])
+    }
+
+    /// Read every `.toml` file in `dir` except those under the `skip` subdirectories,
+    /// in file-name order. A skipped subdirectory is a schema the caller must not
+    /// expose, such as the owner-socket-only tree (design/node-core.md section 2.3).
+    pub fn load_dir_except(dir: &Path, skip: &[&str]) -> Result<Catalog, SchemaError> {
         let mut paths = Vec::new();
-        for entry in entries {
-            let entry = entry.map_err(|source| SchemaError::Read {
-                path: dir.to_path_buf(),
-                source,
-            })?;
-            let path = entry.path();
-            if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
-                paths.push(path);
-            }
-        }
+        Self::collect_toml(dir, &mut paths)?;
+        let skipped: Vec<PathBuf> = skip.iter().map(|name| dir.join(name)).collect();
+        paths.retain(|path| !skipped.iter().any(|root| path.starts_with(root)));
         paths.sort();
 
         let mut problems = Vec::new();
@@ -507,13 +503,36 @@ impl Catalog {
         Catalog::new(schemas)
     }
 
+    /// Push every `.toml` file under `dir` onto `paths`, descending into subdirectories.
+    fn collect_toml(dir: &Path, paths: &mut Vec<std::path::PathBuf>) -> Result<(), SchemaError> {
+        let entries = std::fs::read_dir(dir).map_err(|source| SchemaError::Read {
+            path: dir.to_path_buf(),
+            source,
+        })?;
+        for entry in entries {
+            let entry = entry.map_err(|source| SchemaError::Read {
+                path: dir.to_path_buf(),
+                source,
+            })?;
+            let path = entry.path();
+            if path.is_dir() {
+                Self::collect_toml(&path, paths)?;
+            } else if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
+                paths.push(path);
+            }
+        }
+        Ok(())
+    }
+
     /// The files in the catalog, in load order.
     pub fn schemas(&self) -> &[Schema] {
         &self.schemas
     }
 
-    /// The files as declared, before inheritance: what a rebuild starts from.
-    pub(crate) fn declared(&self) -> &[Schema] {
+    /// The files as declared, before inheritance: what a rebuild starts from, and
+    /// what an extension catalog must be built from so inherited members are not
+    /// declared twice.
+    pub fn declared_schemas(&self) -> &[Schema] {
         &self.declared
     }
 
@@ -594,6 +613,57 @@ mod tests {
         assert!(is_error_code("unknown-member"));
         assert!(!is_error_code("provider_gone"));
         assert!(!is_error_code("Provider-gone"));
+    }
+
+    #[test]
+    fn the_owner_only_tree_is_skipped_and_the_public_schema_is_kept() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
+        let all = super::Catalog::load_dir(&dir).expect("the schema loads");
+        let public = super::Catalog::load_dir_except(&dir, &["tree"]).expect("the public schema loads");
+
+        let tree = Namespace::parse("tree").expect("namespace");
+        let gnoblin = Namespace::parse("gnoblin").expect("namespace");
+        assert!(all.namespaces().contains(&tree), "the full catalog holds the tree");
+        assert!(
+            !public.namespaces().contains(&tree),
+            "the public catalog omits the tree"
+        );
+        assert!(
+            public.namespaces().contains(&gnoblin),
+            "the public catalog keeps gnoblin"
+        );
+        assert!(public.objects(&gnoblin).next().is_some());
+    }
+
+    #[test]
+    fn the_tree_node_defaults_and_flags_follow_section_two_four() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
+        let catalog = super::Catalog::load_dir(&dir).expect("the schema loads");
+        let tree = Namespace::parse("tree").expect("namespace");
+        let node = catalog
+            .objects(&tree)
+            .find(|object| object.name == "node")
+            .expect("the node class");
+        let property = |name: &str| {
+            node.properties
+                .iter()
+                .find(|property| property.name == name)
+                .unwrap_or_else(|| panic!("node has no {name}"))
+        };
+
+        // Read-only: the identity and the parent, which only `insert` changes.
+        assert!(property("id").readonly && property("parent").readonly);
+        // Animatable: a change of the local transform or rectangle may carry `seconds`.
+        for name in ["x", "y", "z", "rotation", "scale", "width"] {
+            assert!(property(name).animated, "{name} is animated");
+        }
+        // Defaults: the origin is 0.0 and the scale is the identity.
+        assert_eq!(property("x").default, Some(super::DefaultValue::Double(0.0)));
+        assert_eq!(property("name").default, Some(super::DefaultValue::Text(String::new())));
+        assert!(
+            property("id").default.is_none(),
+            "id has no default; the compositor assigns it"
+        );
     }
 
     #[test]

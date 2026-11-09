@@ -1,0 +1,67 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `window` class: a toplevel (xdg-shell, X11, foreign toplevel), derived from `node`
+# (design/node-core.md, section 2.4). It has every `node` property, then these.
+[[object]]
+name = "window"
+since = "0.2.0"
+base = "node"
+
+# Set by the client; not trusted for attribution.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# Set by the client.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# Written by the shell's focus policy.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# A client request; the shell may refuse it.
+[[object.property]]
+name = "fullscreen"
+type = "bool"
+since = "0.2.0"
+default = false
+
+[[object.property]]
+name = "maximised"
+type = "bool"
+since = "0.2.0"
+default = false
+
+[[object.property]]
+name = "minimised"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The workspace the window belongs to. Nil when it has none.
+[[object.property]]
+name = "workspace"
+type = "object:workspace"
+since = "0.2.0"
+
+# Give the window keyboard focus. The shell's focus policy decides.
+[[object.method]]
+name = "focus"
+since = "0.2.0"
+
+# Close the window.
+[[object.method]]
+name = "close"
+since = "0.2.0"

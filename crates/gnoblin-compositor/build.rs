@@ -71,18 +71,8 @@ fn run() -> Result<(), String> {
 /// that read the directory in whatever order it came back would produce a
 /// different catalog from the same tree.
 fn schema_files(dir: &Path) -> Result<Vec<(String, String)>, String> {
-    println!("cargo:rerun-if-changed={}", dir.display());
-    let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
     let mut paths = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
-        let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) != Some("toml") {
-            continue;
-        }
-        println!("cargo:rerun-if-changed={}", path.display());
-        paths.push(path);
-    }
+    collect_toml(dir, &mut paths)?;
     paths.sort();
     if paths.is_empty() {
         return Err(format!("no .toml schema files in {}", dir.display()));
@@ -90,11 +80,29 @@ fn schema_files(dir: &Path) -> Result<Vec<(String, String)>, String> {
     let mut files = Vec::with_capacity(paths.len());
     for path in paths {
         let name = path
-            .file_name()
+            .strip_prefix(dir)
+            .ok()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| format!("{} is not a UTF-8 file name", path.display()))?;
+            .ok_or_else(|| format!("{} is not a UTF-8 schema path", path.display()))?;
         let text = fs::read_to_string(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
         files.push((name.to_owned(), text));
     }
     Ok(files)
+}
+
+/// Push every `.toml` file under `dir` onto `paths`, descending into subdirectories.
+fn collect_toml(dir: &Path, paths: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
+    println!("cargo:rerun-if-changed={}", dir.display());
+    let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_toml(&path, paths)?;
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
+            println!("cargo:rerun-if-changed={}", path.display());
+            paths.push(path);
+        }
+    }
+    Ok(())
 }

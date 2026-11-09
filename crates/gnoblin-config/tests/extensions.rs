@@ -34,7 +34,7 @@ fn stock() -> Vec<Schema> {
     let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema"));
     Catalog::load_dir(dir)
         .expect("the stock catalog loads")
-        .schemas()
+        .declared_schemas()
         .to_vec()
 }
 

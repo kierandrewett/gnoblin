@@ -1,0 +1,389 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `tree` messages: the owner-socket protocol of the scene tree (design/node-core.md, sections 4.1 and 4.6).
+# Requests are methods (shell to compositor); events and replies are signals (compositor to shell).
+# The owner socket is the only transport for this namespace; it is not in the sensitive table.
+[[object]]
+name = "tree"
+since = "0.2.0"
+
+# Attach to the tree: returns the epoch, the root id and the serial of the snapshot.
+[[object.method]]
+name = "attach"
+since = "0.2.0"
+
+# The protocol version the shell speaks.
+[[object.method.param]]
+name = "version"
+type = "uint"
+since = "0.2.0"
+
+# Apply one transaction. `base_serial` is the last change batch the shell applied; `serial`
+# is the shell's transaction counter, monotone per connection.
+[[object.method]]
+name = "transact"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "base_serial"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "serial"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "ops"
+type = "list<object:op>"
+since = "0.2.0"
+
+# Call a method on a node. The answer comes back as `answer` with the same token.
+[[object.method]]
+name = "call"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "method"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "args"
+type = "bytes"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "token"
+type = "uint"
+since = "0.2.0"
+
+# The reply to `attach`: the epoch this shell holds, the root node id and the serial of the snapshot.
+# The schema has no typed method return, so the reply is a signal (design/node-core.md, section 4.1).
+[[object.signal]]
+name = "attached"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "epoch"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "root"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "serial"
+type = "uint"
+since = "0.2.0"
+
+# A chunk of the snapshot at serial `serial`. The last chunk has `last` set.
+[[object.signal]]
+name = "snapshot"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "serial"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "chunk"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "last"
+type = "bool"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "nodes"
+type = "list<object:node>"
+since = "0.2.0"
+
+# The result of a transaction. `failed_op` is -1 when it applied.
+[[object.signal]]
+name = "reply"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "serial"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "applied"
+type = "bool"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "failed_op"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "code"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "removed"
+type = "list<uint>"
+since = "0.2.0"
+
+# One change batch, published at the given serial.
+[[object.signal]]
+name = "changes"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "serial"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "changes"
+type = "list<object:change>"
+since = "0.2.0"
+
+# An input event for a node in a frame. The payload of the event is defined in slice 8.
+[[object.signal]]
+name = "event"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "frame"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "seq"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+# The answer to a `call`: `result` on success, `error` otherwise.
+[[object.signal]]
+name = "answer"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "token"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "result"
+type = "bytes"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "error"
+type = "string"
+since = "0.2.0"
+
+# One op in a transaction. The schema has no unions, so `kind` selects the fields that are
+# read; the others are ignored. Each `value_*` is read only when `value_kind` names it.
+[[object]]
+name = "op"
+since = "0.2.0"
+
+# `set`, `insert`, `destroy`, `call` or `new`.
+[[object.property]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "class"
+type = "string"
+since = "0.2.0"
+
+# The shell's pre-allocated id for a new node.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+# `bool`, `int`, `uint`, `double`, `text`, `node`, or `list_double`.
+[[object.property]]
+name = "value_kind"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_bool"
+type = "bool"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_int"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_uint"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_double"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_text"
+type = "string"
+since = "0.2.0"
+
+# A node id; zero is nil.
+[[object.property]]
+name = "value_node"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_list"
+type = "list<double>"
+since = "0.2.0"
+
+# Absent means an instant set.
+[[object.property]]
+name = "seconds"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "samples"
+type = "list<double>"
+since = "0.2.0"
+
+[[object.property]]
+name = "parent"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "index"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "method"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "args"
+type = "bytes"
+since = "0.2.0"
+
+# One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the
+# fields the kind does not use are zero or empty.
+[[object]]
+name = "change"
+since = "0.2.0"
+
+[[object.property]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "class"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "parent"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "index"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_kind"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_bool"
+type = "bool"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_int"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_uint"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_double"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_text"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_node"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "value_list"
+type = "list<double>"
+since = "0.2.0"
+
+[[object.property]]
+name = "removed"
+type = "list<uint>"
+since = "0.2.0"

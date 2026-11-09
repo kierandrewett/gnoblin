@@ -1,0 +1,89 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `screen` class: an output, derived from `view` (design/node-core.md, section 2.4). Created and destroyed by the compositor.
+[[object]]
+name = "screen"
+since = "0.2.0"
+base = "view"
+
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+[[object.property]]
+name = "make"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+[[object.property]]
+name = "model"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+[[object.property]]
+name = "screen_x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "screen_y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "screen_width"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+[[object.property]]
+name = "screen_height"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+[[object.property]]
+name = "transform"
+type = "string"
+since = "0.2.0"
+default = "normal"
+
+[[object.property]]
+name = "primary"
+type = "bool"
+since = "0.2.0"
+default = false
+
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# `WxH@Hz`.
+[[object.property]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Apply an output configuration.
+[[object.method]]
+name = "apply"
+since = "0.2.0"
+
+# Emitted when the screen's mode changes.
+[[object.signal]]
+name = "mode_changed"
+since = "0.2.0"

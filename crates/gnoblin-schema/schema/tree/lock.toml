@@ -1,0 +1,16 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `lock` class: the session lock. While `engaged`, the compositor draws only `lock` and routes input only to it (design/node-core.md, section 2.4).
+[[object]]
+name = "lock"
+since = "0.2.0"
+base = "node"
+
+# `not-locked`, `pending`, or `locked`.
+[[object.property]]
+name = "state"
+type = "string"
+since = "0.2.0"
+default = "not-locked"
+readonly = true

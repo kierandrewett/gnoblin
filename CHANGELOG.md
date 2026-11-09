@@ -5,6 +5,7 @@
 ### Added
 
 - The schema format accepts `base` on an object (a class in the same namespace it inherits from; its properties, methods and signals come first in the derived class, and a property may not change type), `default` on a property (checked against its type), and `readonly` and `animated` booleans on a property (default false). Every existing schema parses unchanged. Node-core step 3, slice 1; the tree classes come in slice 2.
+- The schema holds the ten node-core tree classes (`Node`, `Surface`, `Window`, `Canvas`, `View`, `Screen`, `Camera`, `Seat`, `Workspace`, `Lock`) and the `tree` owner-socket messages, in namespace `tree`. The owner socket is the only transport, so the Lua stub, bindings and stock files leave the tree out. Node-core step 3, slice 2; the compositor does not serve these messages yet.
 - The Lua module `gnoblin.shell.floating` (`data/lua/gnoblin/shell/floating.lua`) places floating windows in free space, cascade and centre, as the `Floating`, `Cascade` and `Centred` classes on the node class system. Its placement matches the 212 committed placement goldens. The compositor still places floating windows natively; the module is not loaded yet.
 - The shipped `gnoblin.layouts.strip` layout places windows as columns in a strip wider than the screen, with a view
   offset, stacked or tabbed columns, and the `width`, `consume`, `expel`, `move_column`, `fit_all`, `toggle_tabbed`,

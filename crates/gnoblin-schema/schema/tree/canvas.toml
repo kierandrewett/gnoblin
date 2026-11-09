@@ -1,0 +1,19 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `canvas` class: a visual that paints a paint list built by the shell (design/node-core.md, section 2.4).
+[[object]]
+name = "canvas"
+since = "0.2.0"
+base = "node"
+
+# Encoded paint list. Refused `bad-paint` if it does not decode.
+[[object.property]]
+name = "content"
+type = "bytes"
+since = "0.2.0"
+
+# Measure text at a size. Answered through `tree.answer`.
+[[object.method]]
+name = "measure"
+since = "0.2.0"

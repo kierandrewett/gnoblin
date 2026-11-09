@@ -121,7 +121,12 @@ fn watch(dir: &Path) -> Result<(), String> {
     let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
-        println!("cargo:rerun-if-changed={}", entry.path().display());
+        let path = entry.path();
+        if path.is_dir() {
+            watch(&path)?;
+        } else {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
     }
     Ok(())
 }

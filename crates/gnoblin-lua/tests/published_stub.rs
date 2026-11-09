@@ -30,3 +30,16 @@ fn the_published_stub_is_the_generated_stub() {
          GNOBLIN_WRITE_STUB=1 cargo test -p gnoblin-lua --test published_stub"
     );
 }
+
+/// The tree is owner-socket only (design/node-core.md section 2.3): no Lua stub may name it.
+#[test]
+fn the_published_stub_has_no_tree_members() {
+    assert!(
+        !PUBLISHED.contains("tree."),
+        "the published stub names an owner-only tree member"
+    );
+    assert!(
+        !gnoblin_lua::stub().contains("tree."),
+        "the generated stub names an owner-only tree member"
+    );
+}

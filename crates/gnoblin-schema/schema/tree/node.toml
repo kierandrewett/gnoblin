@@ -1,0 +1,137 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `node` class: every node of the scene tree, visual or not (design/node-core.md,
+# section 2.4). Every other tree class derives from it with `base = "node"`, so a
+# class has these properties, then its own. A node's children are not a property:
+# the mirror derives them from the tree.
+#
+# Animatable properties are marked `animated`: a `set` may carry `seconds`. The
+# others refuse a `set` with `seconds` as `not-animated`.
+[[object]]
+name = "node"
+since = "0.2.0"
+
+# The compositor's id for the node (node-core.md, section 3.1). Assigned at creation
+# and never reused. Read-only.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The node's parent. Nil only for `root`. Changed by `insert`, never by a `set`.
+[[object.property]]
+name = "parent"
+type = "object:node"
+since = "0.2.0"
+readonly = true
+
+# The `#name` selector key.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# Local translation along each axis.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+animated = true
+
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+animated = true
+
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+default = 0.0
+animated = true
+
+# Three components: rotation about each axis, in radians.
+[[object.property]]
+name = "rotation"
+type = "list<double>"
+since = "0.2.0"
+default = [0.0, 0.0, 0.0]
+animated = true
+
+# Three components: the scale along each axis.
+[[object.property]]
+name = "scale"
+type = "list<double>"
+since = "0.2.0"
+default = [1.0, 1.0, 1.0]
+animated = true
+
+# The local rectangle. Animated, because a resize is a change of the rectangle.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+default = 0.0
+animated = true
+
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+default = 0.0
+animated = true
+
+# Clamped to `[0, 1]` by the compositor.
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+default = 1.0
+animated = true
+
+# A hidden node and its subtree are neither drawn nor hit.
+[[object.property]]
+name = "visible"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Children are clipped to the node's rectangle.
+[[object.property]]
+name = "clip"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The node is skipped by the pick; its children are still tested.
+[[object.property]]
+name = "input"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Never captured by a `view`.
+[[object.property]]
+name = "secure"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The `.tag` selector keys.
+[[object.property]]
+name = "tags"
+type = "list<string>"
+since = "0.2.0"
+default = []
+
+# The node is gone: its subtree was destroyed with it. A client drops its view of the
+# object on this signal.
+[[object.signal]]
+name = "destroyed"
+since = "0.2.0"

@@ -23,7 +23,7 @@ const VERSION: Version = Version::new(0, 2, 0);
 fn catalog() -> Catalog {
     let schema = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema"));
     let derived = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/derived_events.toml"));
-    Catalog::load_dir(schema)
+    Catalog::load_dir_except(schema, &["tree"])
         .expect("the checked-in schema loads")
         .with_derived(&gnoblin_schema::derived::load(derived).expect("the derived events load"))
         .expect("the derived events join the schema")
@@ -179,13 +179,12 @@ fn value_for(ty: &Type, created: &[(String, String, ObjectId)]) -> gnoblin_model
         Type::Text => Value::Text("a value".to_owned()),
         Type::Bytes => Value::Bytes(vec![1, 2, 3]),
         Type::List(inner) => Value::List(vec![value_for(inner, created)]),
-        Type::ObjectRef(name) => {
-            let (_, _, id) = created
-                .iter()
-                .find(|(_, object, _)| object == name)
-                .unwrap_or_else(|| panic!("the test creates `{name}` before a property that refers to it"));
-            Value::Object(*id)
-        }
+        Type::ObjectRef(name) => match created.iter().find(|(_, object, _)| object == name) {
+            Some((_, _, id)) => Value::Object(*id),
+            // Not created yet: a forward or self reference, such as a root's nil `parent`.
+            // The graph checks only the value's variant, so the reference is a placeholder.
+            None => Value::Object(ObjectId::new(0)),
+        },
     }
 }
 
@@ -229,6 +228,7 @@ fn the_installed_tables_match_the_schema() {
                 .map(|(_, _, id)| id.get())
                 .expect("the object was created");
             let label = lua_string(&format!("{class}.by_id({id})"));
+            script.push_str("do\n");
             script.push_str(&format!(
                 "local instance = {class}.by_id({id})\nassert(instance ~= nil, {label} .. \" found nothing\")\n"
             ));
@@ -259,6 +259,7 @@ fn the_installed_tables_match_the_schema() {
             script.push_str(&format!(
                 "local class_ok, class_message = pcall(function() return {class}.no_such_member end)\nassert(not class_ok, {label} .. \" accepted a class member\")\nassert(string.match(tostring(class_message), \"all, by_id\") ~= nil, {label} .. \" class members: \" .. tostring(class_message))\n"
             ));
+            script.push_str("end\n");
         }
     }
     script.push_str(

@@ -1,0 +1,47 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `seat` class: an input seat (`wl_seat`, libei). Draws nothing (design/node-core.md, section 2.4).
+[[object]]
+name = "seat"
+since = "0.2.0"
+base = "node"
+
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Keyboard focus.
+[[object.property]]
+name = "focus"
+type = "object:node"
+since = "0.2.0"
+
+[[object.property]]
+name = "pointer_x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "pointer_y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+# Device identity for multi-seat.
+[[object.property]]
+name = "device"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# Move the pointer.
+[[object.method]]
+name = "warp"
+since = "0.2.0"

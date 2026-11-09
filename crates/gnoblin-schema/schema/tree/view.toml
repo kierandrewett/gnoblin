@@ -1,0 +1,26 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `view` class: draws another node's subtree as a texture. Replaces `capture` (design/node-core.md, section 2.4).
+[[object]]
+name = "view"
+since = "0.2.0"
+base = "node"
+
+# The captured subtree.
+[[object.property]]
+name = "source"
+type = "object:node"
+since = "0.2.0"
+
+# Zero is on demand.
+[[object.property]]
+name = "fps"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# Capture the subtree. Returns an operation id.
+[[object.method]]
+name = "capture"
+since = "0.2.0"

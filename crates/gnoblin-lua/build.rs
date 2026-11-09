@@ -45,6 +45,9 @@ const HOST_MEMBERS_FILE: &str = "host_members.toml";
 /// The events the host raises from a property change, declared in the crate's manifest.
 const DERIVED_FILE: &str = "derived_events.toml";
 
+/// The schema subdirectory served only on the owner socket, never to Lua.
+const OWNER_ONLY_DIR: &str = "tree";
+
 /// The namespace the compositor itself serves.
 const OWN_NAMESPACE: &str = "gnoblin";
 
@@ -75,7 +78,9 @@ fn run() -> Result<(), String> {
     // disappearing changes the directory and not the files already inside it.
     watch(&schema_dir)?;
 
-    let catalog = Catalog::load_dir(&schema_dir)
+    // The tree is owner-socket only (design/node-core.md section 2.3): no Lua module binds it,
+    // so it stays out of the bindings, the stub and the stock files alike.
+    let catalog = Catalog::load_dir_except(&schema_dir, &[OWNER_ONLY_DIR])
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
     // A derived event is a signal of its object, so the catalog the bindings, the stub
     // and the drift test read must include it.
@@ -155,15 +160,10 @@ fn rust_derived_events(events: &[derived::DerivedEvent]) -> String {
 /// Order is part of the contract: `Catalog` records the load order, so a build that read the
 /// directory in whatever order it came back would produce a different catalog from the same tree.
 fn schema_files(dir: &Path) -> Result<Vec<(String, String)>, String> {
-    let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
     let mut paths = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
-        let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
-            paths.push(path);
-        }
-    }
+    collect_toml(dir, &mut paths)?;
+    // The tree is owner-socket only (design/node-core.md section 2.3): no Lua module binds it.
+    paths.retain(|path| !path.starts_with(dir.join(OWNER_ONLY_DIR)));
     paths.sort();
     if paths.is_empty() {
         return Err(format!("no .toml schema files in {}", dir.display()));
@@ -171,13 +171,29 @@ fn schema_files(dir: &Path) -> Result<Vec<(String, String)>, String> {
     let mut files = Vec::with_capacity(paths.len());
     for path in paths {
         let name = path
-            .file_name()
+            .strip_prefix(dir)
+            .ok()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| format!("{} is not a UTF-8 file name", path.display()))?;
+            .ok_or_else(|| format!("{} is not a UTF-8 schema path", path.display()))?;
         let text = fs::read_to_string(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
         files.push((name.to_owned(), text));
     }
     Ok(files)
+}
+
+/// Push every `.toml` file under `dir` onto `paths`, descending into subdirectories.
+fn collect_toml(dir: &Path, paths: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_toml(&path, paths)?;
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
+            paths.push(path);
+        }
+    }
+    Ok(())
 }
 
 /// The Rust table of the checked-in schema files, which `check.rs` parses into the stock catalog.
@@ -511,14 +527,17 @@ fn blank_line(text: &mut String) {
     }
 }
 
-/// Ask cargo to rerun when any schema file changes.
+/// Ask cargo to rerun when any schema file changes, including the `tree/` subdirectory.
 fn watch(dir: &Path) -> Result<(), String> {
     println!("cargo:rerun-if-changed={}", dir.display());
     let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
-        if entry.path().extension().and_then(|extension| extension.to_str()) == Some("toml") {
-            println!("cargo:rerun-if-changed={}", entry.path().display());
+        let path = entry.path();
+        if path.is_dir() {
+            watch(&path)?;
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
+            println!("cargo:rerun-if-changed={}", path.display());
         }
     }
     Ok(())

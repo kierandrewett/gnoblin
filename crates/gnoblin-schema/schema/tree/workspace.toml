@@ -1,0 +1,30 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `workspace` class: a named set of windows on one screen (design/node-core.md, section 2.4). Created by the compositor.
+[[object]]
+name = "workspace"
+since = "0.2.0"
+base = "node"
+
+[[object.property]]
+name = "index"
+type = "uint"
+since = "0.2.0"
+
+# One active workspace per screen.
+[[object.property]]
+name = "active"
+type = "bool"
+since = "0.2.0"
+default = false
+
+[[object.property]]
+name = "output"
+type = "object:screen"
+since = "0.2.0"
+
+# Make this the active workspace of its screen.
+[[object.method]]
+name = "activate"
+since = "0.2.0"

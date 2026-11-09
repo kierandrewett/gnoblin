@@ -114,7 +114,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         }
     };
     let base = source.parent().unwrap_or_else(|| Path::new("."));
-    let loaded = load_extensions(stored.config.document(), base, catalog.schemas());
+    let loaded = load_extensions(stored.config.document(), base, catalog.declared_schemas());
     let privileged: Vec<&str> = config
         .privileged
         .iter()

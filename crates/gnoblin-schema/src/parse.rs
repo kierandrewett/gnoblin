@@ -678,7 +678,7 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
         let catalog = Catalog::load_dir(&dir).expect("checked-in schema files");
         let namespaces: Vec<String> = catalog.namespaces().iter().map(ToString::to_string).collect();
-        assert_eq!(namespaces, vec!["gnoblin".to_owned()]);
+        assert_eq!(namespaces, vec!["gnoblin".to_owned(), "tree".to_owned()]);
         let gnoblin = catalog.namespaces()[0].clone();
         assert_eq!(catalog.version(&gnoblin).expect("version").to_string(), "0.2.0");
         let objects: Vec<&str> = catalog.objects(&gnoblin).map(|object| object.name.as_str()).collect();

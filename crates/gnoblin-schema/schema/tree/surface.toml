@@ -1,0 +1,29 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `surface` class: a client surface that is not a toplevel (design/node-core.md, section 2.4).
+[[object]]
+name = "surface"
+since = "0.2.0"
+base = "node"
+
+# `popup`, `layer`, `lock`, `cursor`, or `drag`.
+[[object.property]]
+name = "role"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+[[object.property]]
+name = "mapped"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true

@@ -67,11 +67,13 @@ fn run() -> Result<(), String> {
     watch(&schema_dir)?;
     println!("cargo:rerun-if-changed=src/wit.rs");
 
-    let loaded = Catalog::load_dir(&schema_dir)
+    let loaded = Catalog::load_dir_except(&schema_dir, &["tree"])
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
     // The portal schema is the services-to-compositor wire (D19, `portal-call`), not an
     // API a module may call. Every object in the WIT is hand-implemented by the host, and
     // the portal has no module-facing implementation, so it is left out of the module surface.
+    // The owner-only `tree` namespace is left out too: it is the owner socket's surface, and its
+    // classes reuse names (`lock`) that the module surface already declares.
     let schemas: Vec<_> = loaded
         .schemas()
         .iter()

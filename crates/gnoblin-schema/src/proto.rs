@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn one_file_per_namespace() {
         let names: Vec<String> = proto_files(&catalog()).into_iter().map(|(name, _)| name).collect();
-        assert_eq!(names, vec!["gnoblin.proto".to_owned()]);
+        assert_eq!(names, vec!["gnoblin.proto".to_owned(), "tree.proto".to_owned()]);
     }
 
     #[test]
