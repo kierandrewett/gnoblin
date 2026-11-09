@@ -213,6 +213,8 @@ struct App {
     pointer_leaves: u32,
     /// How many pointer button events the client received.
     pointer_buttons: u32,
+    /// The surface point of the last pointer enter or motion, cleared when the pointer leaves.
+    pointer_at: Option<(f64, f64)>,
     /// How many pings the server sent.
     pings: u32,
     /// How many popup configures arrived.
@@ -393,17 +395,37 @@ impl Client {
     }
 }
 
-/// A point inside `title` that no other window covers, so a press there reaches it.
+/// The rectangle a window's drawn content covers on the output. Only drawn content takes
+/// pointer input, so a window's frame, which the client may not fill, is not the target.
+fn drawn_box(session: &Handle, window: WindowId) -> Rect {
+    let (matrix, bounds) = drawn(session, window);
+    let corners = [
+        (0.0, 0.0),
+        (f64::from(bounds.width), 0.0),
+        (0.0, f64::from(bounds.height)),
+        (f64::from(bounds.width), f64::from(bounds.height)),
+    ]
+    .map(|local| drawn_at(&matrix, local));
+    let left = corners.iter().map(|p| p.x).min().expect("four corners");
+    let top = corners.iter().map(|p| p.y).min().expect("four corners");
+    let right = corners.iter().map(|p| p.x).max().expect("four corners");
+    let bottom = corners.iter().map(|p| p.y).max().expect("four corners");
+    Rect::new(left, top, (right - left) as u32, (bottom - top) as u32)
+}
+
+/// A point inside `title`'s drawn content that no other window's drawn content covers, so a
+/// press there reaches it.
 ///
 /// Windows overlap and a newer one can cover the centre of an older one; a press must land
 /// where only the wanted window is.
 fn only_point_of(session: &Handle, title: &str) -> Point {
     let observation = session.wait_for(|observation| observation.titled(title).is_some());
-    let target = observation.titled(title).expect("the window").geometry;
+    let window = observation.titled(title).expect("the window").id;
+    let target = drawn_box(session, window);
     let others: Vec<_> = observation
         .windows()
-        .filter(|window| window.title != title)
-        .map(|window| window.geometry)
+        .filter(|other| other.title != title)
+        .map(|other| drawn_box(session, other.id))
         .collect();
     for y in (i64::from(target.y)..target.bottom()).step_by(8) {
         for x in (i64::from(target.x)..target.right()).step_by(8) {
@@ -1026,9 +1048,20 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter { .. } => state.pointer_enters += 1,
-            wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
+            wl_pointer::Event::Enter {
+                surface_x, surface_y, ..
+            } => {
+                state.pointer_enters += 1;
+                state.pointer_at = Some((surface_x, surface_y));
+            }
+            wl_pointer::Event::Leave { .. } => {
+                state.pointer_leaves += 1;
+                state.pointer_at = None;
+            }
             wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            wl_pointer::Event::Motion {
+                surface_x, surface_y, ..
+            } => state.pointer_at = Some((surface_x, surface_y)),
             _ => {}
         }
     }
@@ -1139,6 +1172,9 @@ enum Shape {
     /// Window `i` is at `(100 + 100 * i, 100)`, 300 by 200: each window overlaps the one
     /// below it, so the lower window keeps a strip that nothing covers.
     Overlap,
+    /// The flat rectangle at `(100, 100)`, 300 by 200, turned 30 degrees about Z: its corners
+    /// leave the unrotated rectangle.
+    Spun,
     /// The flat rectangle, rotated 40 degrees about Y and lifted 200 units in depth.
     Tilt,
     /// Every window is flat at `(100 * count, 0)`, 300 by 200: a placement moves
@@ -1199,6 +1235,17 @@ impl ScriptedEngine {
                     transform: Transform3::Trs {
                         position: Vec3::new(100.0, 100.0, 200.0),
                         rotation_degrees: Vec3::new(0.0, 40.0, 0.0),
+                        scale: Vec3::new(1.0, 1.0, 1.0),
+                    },
+                    ..Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0)
+                })
+                .collect(),
+            Shape::Spun => windows
+                .iter()
+                .map(|window| Placement {
+                    transform: Transform3::Trs {
+                        position: Vec3::new(100.0, 100.0, 0.0),
+                        rotation_degrees: Vec3::new(0.0, 0.0, 30.0),
                         scale: Vec3::new(1.0, 1.0, 1.0),
                     },
                     ..Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0)
@@ -1458,6 +1505,125 @@ fn a_rotated_z_offset_placement_reaches_the_renderer_as_a_3d_matrix() {
         tilt_bounds.width < flat_bounds.width,
         "a 40 degree turn about Y narrows the projected width: {tilt_bounds:?} against {flat_bounds:?}"
     );
+}
+
+/// Projects a surface-local point through a drawn matrix, the way the renderer places it.
+fn project(matrix: &gnoblin_render::Mat4, (u, v): (f64, f64)) -> (f64, f64) {
+    let [x, y, _, w] = matrix.apply([u, v, 0.0, 1.0]);
+    (x / w, y / w)
+}
+
+/// The global pixel the drawn matrix puts surface point `local` at, rounded to a pointer position.
+fn drawn_at(matrix: &gnoblin_render::Mat4, local: (f64, f64)) -> Point {
+    let (x, y) = project(matrix, local);
+    Point::new(x.round() as i32, y.round() as i32)
+}
+
+/// Checks that projecting a 300 by 200 surface through `matrix` reproduces the drawn bounds, so
+/// the predictions below use the same geometry the renderer draws with.
+fn assert_projection_matches(matrix: &gnoblin_render::Mat4, bounds: Rect) {
+    let corners = [(0.0, 0.0), (300.0, 0.0), (0.0, 200.0), (300.0, 200.0)].map(|local| project(matrix, local));
+    let min_x = corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
+    let max_x = corners.iter().map(|c| c.0).fold(f64::NEG_INFINITY, f64::max);
+    let min_y = corners.iter().map(|c| c.1).fold(f64::INFINITY, f64::min);
+    let max_y = corners.iter().map(|c| c.1).fold(f64::NEG_INFINITY, f64::max);
+    let projected = (min_x, min_y, max_x, max_y);
+    let drawn = (
+        bounds.x as f64,
+        bounds.y as f64,
+        bounds.right() as f64,
+        bounds.bottom() as f64,
+    );
+    assert!(
+        (projected.0 - drawn.0).abs() <= 1.0
+            && (projected.1 - drawn.1).abs() <= 1.0
+            && (projected.2 - drawn.2).abs() <= 1.0
+            && (projected.3 - drawn.3).abs() <= 1.0,
+        "the projection {projected:?} disagrees with the drawn bounds {drawn:?}"
+    );
+}
+
+/// Moves the pointer to `at`, lets the loop process it, and returns the surface point the client
+/// received, or `None` when the pointer is over no surface of the client.
+fn point_at(session: &Handle, client: &mut Client, at: Point) -> Option<(f64, f64)> {
+    client.inject_motion(session, at);
+    settle(session);
+    client.roundtrip();
+    client.state.pointer_at
+}
+
+/// Fails unless the client's pointer was at `got` and `want` is within two pixels of it.
+fn assert_pointer_at(got: Option<(f64, f64)>, want: (f64, f64), what: &str) {
+    let got = got.unwrap_or_else(|| panic!("{what}: the pointer reached no surface"));
+    assert!(
+        (got.0 - want.0).abs() <= 2.0 && (got.1 - want.1).abs() <= 2.0,
+        "{what}: the pointer reached {got:?}, the drawn geometry predicts {want:?}"
+    );
+}
+
+#[test]
+fn a_rotated_window_receives_the_pointer_where_it_is_drawn() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Tilt));
+    let _made = install_scripted(&mut session, shape);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.create_window("org.gnoblin.Tilted", "Tilted");
+        settle_size(&mut client, (300, 200));
+        draw_configured(&mut client, &window);
+        let (matrix, bounds) = drawn(session, window_id(session, "Tilted"));
+        assert_projection_matches(&matrix, bounds);
+
+        // Points the drawn window covers, but which the unrotated 300 by 200 rectangle does not
+        // place where the window is drawn: a point inside the rectangle that is not on the turned
+        // surface would be missed by the drawn geometry and hit by the stale rectangle.
+        for local in [(60.0, 40.0), (240.0, 160.0)] {
+            let at = drawn_at(&matrix, local);
+            assert_pointer_at(point_at(session, &mut client, at), local, &format!("the point {at:?}"));
+        }
+
+        // (101, 101) is inside the unrotated rectangle, but the 40 degree turn about Y moved the
+        // window's left edge to about x = 135, so the window is not drawn there.
+        let corner = Point::new(101, 101);
+        assert!(
+            Rect::new(100, 100, 300, 200).contains(corner),
+            "the corner is inside the rectangle"
+        );
+        assert!(
+            !bounds.contains(corner),
+            "the corner is outside the drawn window {bounds:?}"
+        );
+        assert_eq!(
+            point_at(session, &mut client, corner),
+            None,
+            "the rotated window does not receive a pointer where only its unrotated rectangle is"
+        );
+    });
+}
+
+#[test]
+fn a_window_turned_out_of_its_rectangle_receives_the_pointer_outside_it() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Spun));
+    let _made = install_scripted(&mut session, shape);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.create_window("org.gnoblin.Spun", "Spun");
+        settle_size(&mut client, (300, 200));
+        draw_configured(&mut client, &window);
+        let (matrix, bounds) = drawn(session, window_id(session, "Spun"));
+        assert_projection_matches(&matrix, bounds);
+
+        // The corner of the turned surface lies outside the unrotated rectangle, which ends at y = 100.
+        let local = (20.0, 30.0);
+        let at = drawn_at(&matrix, local);
+        assert!(
+            !Rect::new(100, 100, 300, 200).contains(at),
+            "{at:?} is outside the unrotated rectangle"
+        );
+        assert!(bounds.contains(at), "{at:?} is drawn");
+        assert_pointer_at(point_at(session, &mut client, at), local, &format!("the point {at:?}"));
+    });
 }
 
 #[test]

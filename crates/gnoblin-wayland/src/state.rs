@@ -71,7 +71,7 @@ use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
-use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
 
@@ -3017,24 +3017,24 @@ impl State {
         if self.lock.state() != LockState::Unlocked {
             return self.lock_surface_under(position);
         }
-        for window in self.wm.stack().iter() {
-            let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
-                continue;
-            };
-            if !self.wm.is_visible(*window) || self.window_is_covered(*window) {
-                continue;
-            }
-            let geometry = self.shown_geometry(managed);
-            let inside = position.x >= f64::from(geometry.x)
-                && position.y >= f64::from(geometry.y)
-                && position.x < geometry.right() as f64
-                && position.y < geometry.bottom() as f64;
-            if inside {
-                let origin = SmithayPoint::from((f64::from(geometry.x), f64::from(geometry.y)));
-                return entry.surface.wl_surface().map(|surface| (surface, origin));
-            }
-        }
-        None
+        // The scene holds each window where it is drawn, transforms included, so a rotated
+        // window is hit where it appears. A window is a candidate only while managed, shown and
+        // uncovered, as it always was.
+        let point = PointF::new(position.x, position.y);
+        let (window, local) = self.composer.window_at(point, &|window| {
+            self.wm.window(window).is_some()
+                && self.wm.is_visible(window)
+                && !self.window_is_covered(window)
+                && self
+                    .windows
+                    .get(&window)
+                    .is_some_and(|entry| entry.surface.wl_surface().is_some())
+        })?;
+        let surface = self.windows.get(&window)?.surface.wl_surface()?;
+        // The local point is the surface point under the pointer, so the origin that makes the
+        // surface-relative position come out as that point is the global position less it.
+        let origin = SmithayPoint::from((position.x - local.x, position.y - local.y));
+        Some((surface, origin))
     }
 }
 

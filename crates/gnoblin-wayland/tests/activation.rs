@@ -50,10 +50,8 @@ fn click_for_serial(client: &mut Client, session: &session::Handle, _window: &se
         .only()
         .expect("the clicked window is managed")
         .geometry;
-    let centre = gnoblin_types::Point::new(
-        geometry.x + (geometry.width / 2) as i32,
-        geometry.y + (geometry.height / 2) as i32,
-    );
+    // The buffer `map_window` draws sits at the frame origin; only it takes pointer input.
+    let centre = gnoblin_types::Point::new(geometry.x + 100, geometry.y + 75);
     session.click(centre);
     let deadline = Instant::now() + TIMEOUT;
     loop {

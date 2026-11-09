@@ -63,12 +63,18 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 const KEY_A: u32 = 30;
 const KEY_B: u32 = 48;
 
-/// The centre of a window, in the output's logical space.
+/// The centre of the buffer `map_window` draws, which sits at the window's frame origin.
+///
+/// The frame can be larger than the buffer, and only the drawn part takes pointer input, so
+/// aiming at the frame's centre would miss the window.
 fn centre(geometry: gnoblin_types::Rect) -> Point {
-    Point::new(
-        geometry.x + (geometry.width / 2) as i32,
-        geometry.y + (geometry.height / 2) as i32,
-    )
+    Point::new(geometry.x + 100, geometry.y + 75)
+}
+
+/// The rectangle of the buffer `map_window` draws, at the frame's origin. Only this part of
+/// a window takes pointer input.
+fn drawn_buffer(frame: gnoblin_types::Rect) -> gnoblin_types::Rect {
+    gnoblin_types::Rect::new(frame.x, frame.y, 200, 150)
 }
 
 /// What a worker thread can reach of a running session.
@@ -1682,8 +1688,8 @@ fn a_window_remembers_its_layout() {
         let second_geometry = geometry_of("org.gnoblin.Second");
         // The second window is mapped last, so it is topmost and focused. Each click lands
         // on a point only its own window covers, so the click reaches the window it names.
-        let first_only = point_only_in(first_geometry, &[second_geometry]);
-        let second_only = point_only_in(second_geometry, &[first_geometry]);
+        let first_only = point_only_in(drawn_buffer(first_geometry), &[drawn_buffer(second_geometry)]);
+        let second_only = point_only_in(drawn_buffer(second_geometry), &[drawn_buffer(first_geometry)]);
 
         // Focus the first window, then the second, which has no layout of its own: it keeps
         // the active one and sends no keymap.

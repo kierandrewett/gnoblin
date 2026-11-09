@@ -68,7 +68,7 @@ use gnoblin_animation::{Easing, PropertyValue, VisualProperty, VisualTransform};
 use gnoblin_render::{
     Damage, Effects, Mat4, NodeKind, NodeSpec, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
-use gnoblin_types::{Color, NodeId, OutputId, Rect, RectF, Size, TrackId, Vec3, WindowId};
+use gnoblin_types::{Color, NodeId, OutputId, PointF, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
@@ -1024,6 +1024,24 @@ impl Composer {
     pub fn window_projected_bounds(&self, window: WindowId) -> Option<Rect> {
         let node = self.windows.get(&window)?.node?;
         self.scene.absolute_bounds(node)
+    }
+
+    /// The window drawn under a point on the output plane, and the point in that window's local
+    /// space, which is the surface point the pointer is over. The topmost window wins, and a window
+    /// `accept` refuses passes the point through to what lies under it.
+    #[must_use]
+    pub fn window_at(&self, point: PointF, accept: &dyn Fn(WindowId) -> bool) -> Option<(WindowId, PointF)> {
+        let hit = self
+            .scene
+            .hit_test_where(point, &|node| self.window_of(node).is_some_and(|window| accept(window)))?;
+        Some((self.window_of(hit.node)?, hit.local))
+    }
+
+    /// The window whose node is `node`.
+    fn window_of(&self, node: NodeId) -> Option<WindowId> {
+        self.windows
+            .iter()
+            .find_map(|(window, entry)| (entry.node == Some(node)).then_some(*window))
     }
 
     /// Replaces a window's content, or clears it.

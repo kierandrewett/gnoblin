@@ -926,12 +926,20 @@ impl Scene {
     /// the topmost node in paint order.
     #[must_use]
     pub fn hit_test(&self, point: PointF) -> Option<Hit> {
+        self.hit_test_where(point, &|_| true)
+    }
+
+    /// The nearest input node containing a point on the output plane that `accept` admits.
+    /// A node it refuses passes the hit through to what lies under it, as an input-unset node
+    /// does. Equal depths go to the topmost node in paint order.
+    #[must_use]
+    pub fn hit_test_where(&self, point: PointF, accept: &dyn Fn(NodeId) -> bool) -> Option<Hit> {
         if !point.is_finite() {
             return None;
         }
         let mut best = None;
         for root in self.roots.iter().rev() {
-            self.hit_walk(*root, &Mat4::IDENTITY, point, &mut best);
+            self.hit_walk(*root, &Mat4::IDENTITY, point, accept, &mut best);
         }
         best.map(|(_, hit)| hit)
     }
@@ -1070,7 +1078,14 @@ impl Scene {
     /// Visit a node and its descendants, topmost first, keeping the nearest hit.
     /// A candidate replaces the current hit only when strictly nearer, so an equal
     /// depth goes to the topmost node in paint order.
-    fn hit_walk(&self, id: NodeId, frame: &Mat4, point: PointF, best: &mut Option<(f64, Hit)>) {
+    fn hit_walk(
+        &self,
+        id: NodeId,
+        frame: &Mat4,
+        point: PointF,
+        accept: &dyn Fn(NodeId) -> bool,
+        best: &mut Option<(f64, Hit)>,
+    ) {
         let Some(node) = self.nodes.get(&id) else {
             return;
         };
@@ -1086,13 +1101,13 @@ impl Scene {
             return;
         }
         for child in node.children.iter().rev() {
-            self.hit_walk(*child, &child_frame, point, best);
+            self.hit_walk(*child, &child_frame, point, accept, best);
         }
         let Some((local, depth)) = own else {
             return;
         };
-        // An input-unset node passes the hit through to what lies under it.
-        if !node.input || !contains_point(node.bounds, local) {
+        // An input-unset or refused node passes the hit through to what lies under it.
+        if !node.input || !contains_point(node.bounds, local) || !accept(id) {
             return;
         }
         let nearer = match best {
