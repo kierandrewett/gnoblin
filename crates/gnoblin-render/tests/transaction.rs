@@ -1,4 +1,4 @@
-//! Transaction validation and apply (design/node-core.md §4 and §8). Every refusal
+//! TreeTransaction validation and apply (design/node-core.md §4 and §8). Every refusal
 //! test asserts that the tree hash is unchanged: a refused transaction changes nothing.
 
 mod common;
@@ -7,8 +7,8 @@ use common::tree_hash;
 use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_render::scene_ids::{Actor, COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES};
 use gnoblin_render::transaction::{
-    Change, ClassInfo, Code, MAX_OPS, Op, PropertyInfo, Refusal, Timing, Transaction, Value, ValueType,
-    validate_and_apply,
+    ClassInfo, Code, MAX_OPS, PropertyInfo, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
+    ValueType, validate_and_apply,
 };
 use gnoblin_render::{NodeSpec, Scene, SceneError};
 use gnoblin_types::{NodeId, Rect};
@@ -76,42 +76,42 @@ fn shell_node(scene: &mut Scene, raw: u64, parent: NodeId) -> NodeId {
     node
 }
 
-fn set_number(node: NodeId, key: &str, value: f64) -> Op {
-    Op::Set {
+fn set_number(node: NodeId, key: &str, value: f64) -> TreeOp {
+    TreeOp::Set {
         node,
         key: key.into(),
-        value: Value::Double(value),
+        value: TreeValue::Double(value),
         timing: None,
     }
 }
 
-fn set_uint(node: NodeId, key: &str, value: u64) -> Op {
-    Op::Set {
+fn set_uint(node: NodeId, key: &str, value: u64) -> TreeOp {
+    TreeOp::Set {
         node,
         key: key.into(),
-        value: Value::Uint(value),
+        value: TreeValue::Uint(value),
         timing: None,
     }
 }
 
-fn set_bool(node: NodeId, key: &str, value: bool) -> Op {
-    Op::Set {
+fn set_bool(node: NodeId, key: &str, value: bool) -> TreeOp {
+    TreeOp::Set {
         node,
         key: key.into(),
-        value: Value::Bool(value),
+        value: TreeValue::Bool(value),
         timing: None,
     }
 }
 
-fn new_window(raw: u64) -> Op {
-    Op::New {
+fn new_window(raw: u64) -> TreeOp {
+    TreeOp::New {
         class: "Window".into(),
         id: id(raw),
     }
 }
 
-fn insert(node: NodeId, parent: NodeId) -> Op {
-    Op::Insert {
+fn insert(node: NodeId, parent: NodeId) -> TreeOp {
+    TreeOp::Insert {
         node,
         parent,
         index: None,
@@ -119,14 +119,14 @@ fn insert(node: NodeId, parent: NodeId) -> Op {
 }
 
 /// Run `ops` as `actor`, expect a refusal, and check that the tree is unchanged.
-fn refused(scene: &mut Scene, actor: Actor, ops: Vec<Op>) -> Refusal {
+fn refused(scene: &mut Scene, actor: Actor, ops: Vec<TreeOp>) -> TreeRefusal {
     let before = tree_hash(scene);
-    let result = validate_and_apply(scene, &Table, actor, &Transaction::new(ops));
+    let result = validate_and_apply(scene, &Table, actor, &TreeTransaction::new(ops));
     assert_eq!(tree_hash(scene), before, "a refused transaction must change nothing");
     result.expect_err("the transaction should be refused")
 }
 
-fn assert_refused(refusal: &Refusal, failed_op: i32, code: Code) {
+fn assert_refused(refusal: &TreeRefusal, failed_op: i32, code: Code) {
     assert_eq!(refusal.failed_op, failed_op, "failed_op");
     assert_eq!(refusal.code, code, "code");
 }
@@ -145,7 +145,7 @@ fn f8_op_on_destroyed_id_refuses_whole_transaction() {
         Actor::Shell,
         vec![
             set_number(window, "opacity", 0.5),
-            Op::Destroy { node: window },
+            TreeOp::Destroy { node: window },
             set_number(window, "opacity", 0.25),
         ],
     );
@@ -177,7 +177,7 @@ fn op_sees_an_earlier_new_in_the_same_transaction() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![
+        &TreeTransaction::new(vec![
             new_window(7),
             insert(id(7), root),
             set_number(id(7), "opacity", 0.5),
@@ -189,21 +189,26 @@ fn op_sees_an_earlier_new_in_the_same_transaction() {
         scene.property(id(7), VisualProperty::Opacity).unwrap(),
         PropertyValue::number(0.5)
     );
-    assert!(matches!(applied.changes[0], Change::Created { node, .. } if node == id(7)));
-    assert!(matches!(applied.changes[1], Change::Parented { node, parent, .. } if node == id(7) && parent == root));
+    assert!(matches!(applied.changes[0], TreeChange::Created { node, .. } if node == id(7)));
+    assert!(matches!(applied.changes[1], TreeChange::Parented { node, parent, .. } if node == id(7) && parent == root));
 }
 
 #[test]
 fn f39_second_transaction_sees_the_first_writes() {
     let mut scene = scene();
     let root = id(ROOT);
-    validate_and_apply(&mut scene, &Table, Actor::Shell, &Transaction::new(vec![new_window(7)]))
-        .expect("the first transaction creates the node");
     validate_and_apply(
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![insert(id(7), root)]),
+        &TreeTransaction::new(vec![new_window(7)]),
+    )
+    .expect("the first transaction creates the node");
+    validate_and_apply(
+        &mut scene,
+        &Table,
+        Actor::Shell,
+        &TreeTransaction::new(vec![insert(id(7), root)]),
     )
     .expect("the second transaction sees the node");
     assert_eq!(scene.parent(id(7)), Some(root));
@@ -218,7 +223,7 @@ fn a_valid_transaction_applies_every_op() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![set_number(window, "opacity", 0.5), set_bool(window, "clip", true)]),
+        &TreeTransaction::new(vec![set_number(window, "opacity", 0.5), set_bool(window, "clip", true)]),
     )
     .expect("both ops are valid");
     assert_eq!(scene.clip(window), Some(true));
@@ -238,12 +243,12 @@ fn destroy_reports_the_removed_subtree() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![Op::Destroy { node: parent }]),
+        &TreeTransaction::new(vec![TreeOp::Destroy { node: parent }]),
     )
     .expect("the shell destroys its own subtree");
     assert!(!scene.contains(child));
     assert!(
-        matches!(&applied.changes[0], Change::Destroyed { node, removed } if *node == parent && removed.len() == 2)
+        matches!(&applied.changes[0], TreeChange::Destroyed { node, removed } if *node == parent && removed.len() == 2)
     );
 }
 
@@ -269,7 +274,7 @@ fn f10_reparent_into_own_subtree_is_cycle() {
 fn f11_destroying_root_is_root_immutable() {
     let mut scene = scene();
     let root = id(ROOT);
-    let refusal = refused(&mut scene, Actor::Compositor, vec![Op::Destroy { node: root }]);
+    let refusal = refused(&mut scene, Actor::Compositor, vec![TreeOp::Destroy { node: root }]);
     assert_refused(&refusal, 0, Code::RootImmutable);
 }
 
@@ -290,7 +295,7 @@ fn f12_shell_destroying_a_compositor_node_is_not_owner() {
     let mut spec = NodeSpec::new(rect(0, 0, 100, 100));
     spec.parent = Some(root);
     scene.insert_as(Actor::Compositor, window, spec).unwrap();
-    let refusal = refused(&mut scene, Actor::Shell, vec![Op::Destroy { node: window }]);
+    let refusal = refused(&mut scene, Actor::Shell, vec![TreeOp::Destroy { node: window }]);
     assert_refused(&refusal, 0, Code::NotOwner);
 }
 
@@ -320,7 +325,7 @@ fn shell_writes_to_a_compositor_window_apply() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![
+        &TreeTransaction::new(vec![
             set_number(window, "opacity", 0.25),
             set_uint(window, "width", 300),
         ]),
@@ -377,7 +382,7 @@ fn f16_exactly_4096_ops_are_accepted() {
     let root = id(ROOT);
     let window = shell_node(&mut scene, 1, root);
     let ops = (0..MAX_OPS).map(|_| set_number(window, "opacity", 0.5)).collect();
-    validate_and_apply(&mut scene, &Table, Actor::Shell, &Transaction::new(ops)).expect("the limit is inclusive");
+    validate_and_apply(&mut scene, &Table, Actor::Shell, &TreeTransaction::new(ops)).expect("the limit is inclusive");
 }
 
 #[test]
@@ -433,7 +438,7 @@ fn f27_unknown_class_is_unknown_class() {
     let refusal = refused(
         &mut scene,
         Actor::Shell,
-        vec![Op::New {
+        vec![TreeOp::New {
             class: "Nope".into(),
             id: id(7),
         }],
@@ -458,7 +463,7 @@ fn f27_unknown_method_is_unknown_member() {
     let refusal = refused(
         &mut scene,
         Actor::Shell,
-        vec![Op::Call {
+        vec![TreeOp::TreeCall {
             node: window,
             method: "explode".into(),
             args: Vec::new(),
@@ -472,10 +477,10 @@ fn f31_seconds_on_a_non_animated_property_is_not_animated() {
     let mut scene = scene();
     let root = id(ROOT);
     let window = shell_node(&mut scene, 1, root);
-    let op = Op::Set {
+    let op = TreeOp::Set {
         node: window,
         key: "width".into(),
-        value: Value::Uint(300),
+        value: TreeValue::Uint(300),
         timing: Some(Timing {
             seconds: 0.5,
             samples: LINEAR.to_vec(),
@@ -497,10 +502,10 @@ fn f32_bad_samples_are_bad_curve() {
         vec![0.0, 1.5],
         vec![-0.5, 1.0],
     ] {
-        let op = Op::Set {
+        let op = TreeOp::Set {
             node: window,
             key: "opacity".into(),
-            value: Value::Double(1.0),
+            value: TreeValue::Double(1.0),
             timing: Some(Timing {
                 seconds: 0.5,
                 samples: samples.clone(),
@@ -517,10 +522,10 @@ fn f33_seconds_out_of_range_is_out_of_range() {
     let root = id(ROOT);
     let window = shell_node(&mut scene, 1, root);
     for seconds in [-1.0, 3600.5] {
-        let op = Op::Set {
+        let op = TreeOp::Set {
             node: window,
             key: "opacity".into(),
-            value: Value::Double(1.0),
+            value: TreeValue::Double(1.0),
             timing: Some(Timing {
                 seconds,
                 samples: LINEAR.to_vec(),
@@ -545,16 +550,16 @@ fn animated_set_is_validated_and_stored_in_applied() {
     let mut scene = scene();
     let root = id(ROOT);
     let window = shell_node(&mut scene, 1, root);
-    let op = Op::Set {
+    let op = TreeOp::Set {
         node: window,
         key: "opacity".into(),
-        value: Value::Double(0.0),
+        value: TreeValue::Double(0.0),
         timing: Some(Timing {
             seconds: 0.5,
             samples: LINEAR.to_vec(),
         }),
     };
-    let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, &Transaction::new(vec![op]))
+    let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, &TreeTransaction::new(vec![op]))
         .expect("a valid animated set applies");
     assert_eq!(applied.animations.len(), 1);
     assert_eq!(applied.animations[0].node, window);
@@ -575,7 +580,7 @@ fn call_is_validated_and_recorded_in_applied() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![Op::Call {
+        &TreeTransaction::new(vec![TreeOp::TreeCall {
             node: window,
             method: "focus".into(),
             args: vec![1, 2],
@@ -595,7 +600,7 @@ fn set_width_and_height_apply_through_the_bounds_setter() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &Transaction::new(vec![set_uint(window, "width", 300), set_uint(window, "height", 200)]),
+        &TreeTransaction::new(vec![set_uint(window, "width", 300), set_uint(window, "height", 200)]),
     )
     .expect("width and height are settable");
     assert_eq!(scene.bounds(window), Some(rect(0, 0, 300, 200)));

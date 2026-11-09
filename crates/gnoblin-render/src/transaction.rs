@@ -1,9 +1,9 @@
-//! Transaction validation and apply (design/node-core.md §4).
+//! TreeTransaction validation and apply (design/node-core.md §4).
 //!
-//! A transaction is a batch of [`Op`]s sent together. [`validate_and_apply`] checks
+//! A transaction is a batch of [`TreeOp`]s sent together. [`validate_and_apply`] checks
 //! each op in order against the scene as the earlier ops left it, and it applies the
 //! batch all or nothing. The first op that fails refuses the whole batch with a
-//! [`Refusal`] that names that op's index; the scene is then exactly as it was.
+//! [`TreeRefusal`] that names that op's index; the scene is then exactly as it was.
 //!
 //! # Atomicity
 //!
@@ -44,11 +44,11 @@
 //!
 //! # Animated `set`
 //!
-//! A `set` with a `timing` is validated and recorded in [`Applied::animations`]; the
+//! A `set` with a `timing` is validated and recorded in [`TreeApplied::animations`]; the
 //! scene's value is not written here. The compositor plays the track later. The
-//! change is still listed in [`Applied::changes`] so a mirror learns the target.
+//! change is still listed in [`TreeApplied::changes`] so a mirror learns the target.
 //!
-//! # Refusal codes
+//! # TreeRefusal codes
 //!
 //! [`Code::as_str`] gives each code's spelling in design/node-core.md table 4.4.
 //! Codes that belong to other slices (`stale-base`, `invalid-serial`,
@@ -154,14 +154,14 @@ impl Code {
 /// A refused transaction: the index of the op that failed (`-1` when the batch as a
 /// whole was refused) and why.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Refusal {
+pub struct TreeRefusal {
     /// The zero-based index of the failing op, or `-1` for the whole batch.
     pub failed_op: i32,
     /// The refusal code.
     pub code: Code,
 }
 
-impl std::fmt::Display for Refusal {
+impl std::fmt::Display for TreeRefusal {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "op {} refused: {}", self.failed_op, self.code.as_str())
     }
@@ -169,7 +169,7 @@ impl std::fmt::Display for Refusal {
 
 /// A value a `set` writes.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Value {
+pub enum TreeValue {
     /// A floating-point number.
     Double(f64),
     /// An unsigned integer.
@@ -200,7 +200,7 @@ pub struct Timing {
 
 /// One operation of a transaction.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Op {
+pub enum TreeOp {
     /// Write a property, optionally as an animation.
     Set {
         /// The target node.
@@ -208,7 +208,7 @@ pub enum Op {
         /// The property's key, as the schema names it.
         key: String,
         /// The value to write.
-        value: Value,
+        value: TreeValue,
         /// How to animate the write, or `None` to write it at once.
         timing: Option<Timing>,
     },
@@ -226,8 +226,8 @@ pub enum Op {
         /// The node to destroy.
         node: NodeId,
     },
-    /// Call a method on a node.
-    Call {
+    /// TreeCall a method on a node.
+    TreeCall {
         /// The target node.
         node: NodeId,
         /// The method's name, as the schema names it.
@@ -246,15 +246,15 @@ pub enum Op {
 
 /// A batch of ops applied together.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Transaction {
+pub struct TreeTransaction {
     /// The ops, in order.
-    pub ops: Vec<Op>,
+    pub ops: Vec<TreeOp>,
 }
 
-impl Transaction {
+impl TreeTransaction {
     /// A transaction of `ops`.
     #[must_use]
-    pub const fn new(ops: Vec<Op>) -> Self {
+    pub const fn new(ops: Vec<TreeOp>) -> Self {
         Self { ops }
     }
 }
@@ -284,7 +284,7 @@ pub trait ClassInfo {
 
 /// One applied change, in op order, for the mirror batch (design/node-core.md §4.6).
 #[derive(Clone, Debug, PartialEq)]
-pub enum Change {
+pub enum TreeChange {
     /// A node was created. It starts unparented, at `index` among the root nodes.
     Created {
         /// The new node.
@@ -310,7 +310,7 @@ pub enum Change {
         /// The property's key.
         key: String,
         /// The value.
-        value: Value,
+        value: TreeValue,
     },
     /// A node and its subtree were destroyed.
     Destroyed {
@@ -329,7 +329,7 @@ pub struct Animation {
     /// The property's key.
     pub key: String,
     /// The target value.
-    pub value: Value,
+    pub value: TreeValue,
     /// The duration in seconds.
     pub seconds: f64,
     /// The curve's samples.
@@ -338,7 +338,7 @@ pub struct Animation {
 
 /// A method call, validated and handed to the compositor to run.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Call {
+pub struct TreeCall {
     /// The target node.
     pub node: NodeId,
     /// The method's name.
@@ -349,13 +349,13 @@ pub struct Call {
 
 /// What a committed transaction changed.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Applied {
+pub struct TreeApplied {
     /// Every change, in op order.
-    pub changes: Vec<Change>,
+    pub changes: Vec<TreeChange>,
     /// Animated sets, for the compositor to play.
     pub animations: Vec<Animation>,
     /// Method calls, for the compositor to run.
-    pub calls: Vec<Call>,
+    pub calls: Vec<TreeCall>,
 }
 
 /// Validate every op of `transaction` as `actor` against `scene` and, when all pass,
@@ -363,24 +363,24 @@ pub struct Applied {
 ///
 /// # Errors
 ///
-/// Returns the first failing op's [`Refusal`]. A batch longer than [`MAX_OPS`] is
+/// Returns the first failing op's [`TreeRefusal`]. A batch longer than [`MAX_OPS`] is
 /// refused with `failed_op` `-1` before any op runs.
 pub fn validate_and_apply(
     scene: &mut Scene,
     classes: &dyn ClassInfo,
     actor: Actor,
-    transaction: &Transaction,
-) -> Result<Applied, Refusal> {
+    transaction: &TreeTransaction,
+) -> Result<TreeApplied, TreeRefusal> {
     if transaction.ops.len() > MAX_OPS {
-        return Err(Refusal {
+        return Err(TreeRefusal {
             failed_op: -1,
             code: Code::TooLarge,
         });
     }
     let mut work = scene.clone();
-    let mut applied = Applied::default();
+    let mut applied = TreeApplied::default();
     for (index, op) in transaction.ops.iter().enumerate() {
-        apply_op(&mut work, classes, actor, op, &mut applied).map_err(|code| Refusal {
+        apply_op(&mut work, classes, actor, op, &mut applied).map_err(|code| TreeRefusal {
             failed_op: i32::try_from(index).expect("the batch is bounded by MAX_OPS"),
             code,
         })?;
@@ -393,15 +393,15 @@ fn apply_op(
     work: &mut Scene,
     classes: &dyn ClassInfo,
     actor: Actor,
-    op: &Op,
-    applied: &mut Applied,
+    op: &TreeOp,
+    applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     match op {
-        Op::New { class, id } => new_node(work, classes, actor, class, *id, applied),
-        Op::Insert { node, parent, index } => insert_node(work, actor, *node, *parent, *index, applied),
-        Op::Destroy { node } => destroy_node(work, actor, *node, applied),
-        Op::Call { node, method, args } => call_method(work, classes, *node, method, args, applied),
-        Op::Set {
+        TreeOp::New { class, id } => new_node(work, classes, actor, class, *id, applied),
+        TreeOp::Insert { node, parent, index } => insert_node(work, actor, *node, *parent, *index, applied),
+        TreeOp::Destroy { node } => destroy_node(work, actor, *node, applied),
+        TreeOp::TreeCall { node, method, args } => call_method(work, classes, *node, method, args, applied),
+        TreeOp::Set {
             node,
             key,
             value,
@@ -416,7 +416,7 @@ fn new_node(
     actor: Actor,
     class: &str,
     id: NodeId,
-    applied: &mut Applied,
+    applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !classes.has_class(class) {
         return Err(Code::UnknownClass);
@@ -425,7 +425,7 @@ fn new_node(
         .map_err(|error| scene_code(&error))?;
     work.set_class(id, Some(class.to_owned()))
         .map_err(|error| scene_code(&error))?;
-    applied.changes.push(Change::Created {
+    applied.changes.push(TreeChange::Created {
         node: id,
         class: class.to_owned(),
         index: position(work, id),
@@ -439,7 +439,7 @@ fn insert_node(
     node: NodeId,
     parent: NodeId,
     index: Option<usize>,
-    applied: &mut Applied,
+    applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !work.contains(node) || !work.contains(parent) {
         return Err(Code::UnknownNode);
@@ -449,7 +449,7 @@ fn insert_node(
     }
     work.reparent_as_at(actor, node, Some(parent), index)
         .map_err(|error| scene_code(&error))?;
-    applied.changes.push(Change::Parented {
+    applied.changes.push(TreeChange::Parented {
         node,
         parent,
         index: position(work, node),
@@ -457,7 +457,7 @@ fn insert_node(
     Ok(())
 }
 
-fn destroy_node(work: &mut Scene, actor: Actor, node: NodeId, applied: &mut Applied) -> Result<(), Code> {
+fn destroy_node(work: &mut Scene, actor: Actor, node: NodeId, applied: &mut TreeApplied) -> Result<(), Code> {
     if !work.contains(node) {
         return Err(Code::UnknownNode);
     }
@@ -465,7 +465,7 @@ fn destroy_node(work: &mut Scene, actor: Actor, node: NodeId, applied: &mut Appl
         return Err(Code::RootImmutable);
     }
     let removed = work.remove_as(actor, node).map_err(|error| scene_code(&error))?;
-    applied.changes.push(Change::Destroyed { node, removed });
+    applied.changes.push(TreeChange::Destroyed { node, removed });
     Ok(())
 }
 
@@ -475,7 +475,7 @@ fn call_method(
     node: NodeId,
     method: &str,
     args: &[i64],
-    applied: &mut Applied,
+    applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !work.contains(node) {
         return Err(Code::UnknownNode);
@@ -484,7 +484,7 @@ fn call_method(
     if !classes.has_method(class, method) {
         return Err(Code::UnknownMember);
     }
-    applied.calls.push(Call {
+    applied.calls.push(TreeCall {
         node,
         method: method.to_owned(),
         args: args.to_vec(),
@@ -497,9 +497,9 @@ fn set_value(
     classes: &dyn ClassInfo,
     node: NodeId,
     key: &str,
-    value: &Value,
+    value: &TreeValue,
     timing: Option<&Timing>,
-    applied: &mut Applied,
+    applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !work.contains(node) {
         return Err(Code::UnknownNode);
@@ -513,12 +513,12 @@ fn set_value(
     if kind_of(value) != info.kind {
         return Err(Code::WrongType);
     }
-    if let Value::Double(number) = value
+    if let TreeValue::Double(number) = value
         && !number.is_finite()
     {
         return Err(Code::NotFinite);
     }
-    applied.changes.push(Change::Set {
+    applied.changes.push(TreeChange::Set {
         node,
         key: key.to_owned(),
         value: value.clone(),
@@ -568,9 +568,9 @@ fn check_timing(timing: &Timing) -> Result<(), Code> {
 }
 
 /// Write one validated, non-animated value into the scene.
-fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &Value) -> Result<(), Code> {
+fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> Result<(), Code> {
     let result = match (key, value) {
-        ("width" | "height", Value::Uint(amount)) => {
+        ("width" | "height", TreeValue::Uint(amount)) => {
             let amount = u32::try_from(*amount).map_err(|_| Code::OutOfBounds)?;
             let mut bounds = work.bounds(node).ok_or(Code::UnknownNode)?;
             if key == "width" {
@@ -580,10 +580,10 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &Value) -> Resu
             }
             work.set_bounds(node, bounds)
         }
-        ("visible", Value::Bool(on)) => work.set_visible(node, *on),
-        ("clip", Value::Bool(on)) => work.set_clip(node, *on),
-        ("input", Value::Bool(on)) => work.set_input(node, *on),
-        (key, Value::Double(number)) => {
+        ("visible", TreeValue::Bool(on)) => work.set_visible(node, *on),
+        ("clip", TreeValue::Bool(on)) => work.set_clip(node, *on),
+        ("input", TreeValue::Bool(on)) => work.set_input(node, *on),
+        (key, TreeValue::Double(number)) => {
             let property = visual_property(key).ok_or(Code::UnknownMember)?;
             work.set_property(node, property, PropertyValue::Number(*number as f32))
         }
@@ -609,11 +609,11 @@ fn visual_property(key: &str) -> Option<VisualProperty> {
     })
 }
 
-const fn kind_of(value: &Value) -> ValueType {
+const fn kind_of(value: &TreeValue) -> ValueType {
     match value {
-        Value::Double(_) => ValueType::Double,
-        Value::Uint(_) => ValueType::Uint,
-        Value::Bool(_) => ValueType::Bool,
+        TreeValue::Double(_) => ValueType::Double,
+        TreeValue::Uint(_) => ValueType::Uint,
+        TreeValue::Bool(_) => ValueType::Bool,
     }
 }
 

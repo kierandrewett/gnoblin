@@ -1738,6 +1738,7 @@ mod tests {
                 input: true,
                 owner: Actor::Compositor,
                 parented_by: None,
+                class: None,
             },
         );
         scene.roots.push(space);
@@ -1755,6 +1756,7 @@ mod tests {
                 input: true,
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
+                class: None,
             },
         );
         scene.dirty.clear();
