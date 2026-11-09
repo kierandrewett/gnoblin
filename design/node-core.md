@@ -670,6 +670,7 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 - **Tests first:** F1 to F4, F7, F17, F20, F25, F28, F43 over a socket with a fake shell client; attach returns the
   epoch; a snapshot chunks at 1 MiB.
 - **Stays green:** the owner dispatcher tests (`ipc/server.rs:1-70`, modes 1 to 8).
+- **Status:** implemented in `gnoblin-compositor`: `ipc/tree.rs` (`TreeSession`: attach, transact, drain, detach, the holder check), `ipc/tree_host.rs` (the `tree` namespace, `TreeHostHandle`) and `ipc/server.rs` (dispatch; one `Mutex<TreeSession>` on the server). The scene behind `TreeHostHandle` is a test implementation until slice 6's frame boundary supplies the real one. Calls and animations from an applied transaction are not dispatched yet.
 
 ### Slice 6: frame boundary wiring
 
