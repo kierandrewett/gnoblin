@@ -9,8 +9,12 @@
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
+use gnoblin_client::Client;
+use gnoblin_client::unix::{UnixTransport, socket_path};
+
+use crate::role::version;
 use crate::shell_vm::{ShellVm, ShellVmError};
-use crate::tree_core::ClassSpec;
+use crate::tree_core::{ClassSpec, tree_classes};
 use crate::tree_link::SocketTreeLink;
 
 /// The environment variable that turns the shell VM on, and names its Lua directory.
@@ -103,4 +107,22 @@ impl ShellSlot {
 pub fn connect_shell(dir: &Path, stream: UnixStream, classes: Vec<ClassSpec>) -> Result<ShellRole, ShellVmError> {
     let link = SocketTreeLink::new(stream).map_err(|error| ShellVmError::Link(error.to_string()))?;
     Ok(ShellRole::new(ShellVm::new(Box::new(link), dir, classes)?))
+}
+
+/// Connect to the owner socket `env` names, and boot the shell VM over `dir` on it.
+///
+/// The path is the one every client reads ([`socket_path`]: `GNOBLIN_IPC_SOCKET`, else the
+/// runtime directory's default socket). The handshake is the role's own: the version this
+/// build serves, sent as a client. The compositor grants the owner connection by the peer's
+/// credentials, so the session owner's second connection is the one that can attach the tree.
+pub fn connect_owner_socket(env: &dyn Fn(&str) -> Option<String>, dir: &Path) -> Result<ShellRole, ShellVmError> {
+    let path = socket_path(env).map_err(ShellVmError::Link)?;
+    let transport = UnixTransport::connect(&path)
+        .map_err(|error| ShellVmError::Link(format!("cannot connect to {}: {error}", path.display())))?;
+    let client = Client::connect(transport, version()).map_err(|error| ShellVmError::Link(error.to_string()))?;
+    let stream = client
+        .into_inner()
+        .into_stream()
+        .map_err(|error| ShellVmError::Link(error.to_string()))?;
+    connect_shell(dir, stream, tree_classes())
 }

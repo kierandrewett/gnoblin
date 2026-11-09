@@ -10,6 +10,7 @@
 //! until the last snapshot chunk arrives.
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use mlua::{Function, Lua, Table, Value};
 
@@ -18,6 +19,12 @@ use crate::tree_mirror::{LuaChange, LuaIncoming, LuaMirror, MirrorChangeKind, Sn
 
 /// The protocol version the VM attaches with.
 const ATTACH_VERSION: u64 = 1;
+
+/// How long the boot waits for the compositor's attach reply and its complete snapshot. The
+/// compositor is another process, so the reply can trail the attach by more than one poll.
+const BOOT_WAIT: Duration = Duration::from_secs(5);
+/// The pause between boot polls while the reply is still on its way.
+const BOOT_POLL: Duration = Duration::from_millis(5);
 
 /// Result alias for shell VM operations.
 pub type Result<T> = std::result::Result<T, ShellVmError>;
@@ -180,23 +187,30 @@ impl ShellVm {
         let mut snapshot_serial = 0;
         let mut rest = Vec::new();
         let mut complete = false;
-        for message in link.poll().map_err(|e| ShellVmError::Link(e.0))? {
-            match message {
-                LuaIncoming::Attached(a) => attached = Some(a),
-                LuaIncoming::Snapshot {
-                    serial,
-                    last,
-                    nodes: chunk,
-                    ..
-                } => {
-                    snapshot_serial = serial;
-                    nodes.extend(chunk);
-                    if last {
-                        complete = true;
+        let deadline = Instant::now() + BOOT_WAIT;
+        loop {
+            for message in link.poll().map_err(|e| ShellVmError::Link(e.0))? {
+                match message {
+                    LuaIncoming::Attached(a) => attached = Some(a),
+                    LuaIncoming::Snapshot {
+                        serial,
+                        last,
+                        nodes: chunk,
+                        ..
+                    } => {
+                        snapshot_serial = serial;
+                        nodes.extend(chunk);
+                        if last {
+                            complete = true;
+                        }
                     }
+                    other => rest.push(other),
                 }
-                other => rest.push(other),
             }
+            if (attached.is_some() && complete) || Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(BOOT_POLL);
         }
         let attached = attached.ok_or_else(|| ShellVmError::Link("compositor did not answer attach".to_owned()))?;
         if !complete {

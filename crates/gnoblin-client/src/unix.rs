@@ -121,6 +121,21 @@ impl UnixTransport {
             reader: BufReader::new(stream),
         })
     }
+
+    /// Give back the stream under the transport, for a caller that hands the socket to
+    /// another reader once the handshake and grants are done.
+    ///
+    /// # Errors
+    ///
+    /// When the reader holds bytes past the grants, which the caller would lose. A
+    /// session that has only handshaken never has any, because the compositor sends
+    /// nothing until the client asks for something.
+    pub fn into_stream(self) -> io::Result<UnixStream> {
+        if !self.reader.buffer().is_empty() {
+            return Err(io::Error::other("the session socket holds bytes past its grants"));
+        }
+        Ok(self.reader.into_inner())
+    }
 }
 
 impl gnoblin_proto::Transport for UnixTransport {
