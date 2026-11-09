@@ -20,7 +20,9 @@
 //! - **The stacking order**, bottom first, and each node's `z_order` so the scene's
 //!   own hit test and the frame agree about what is on top.
 //! - **The windows' visual transforms** (opacity, tint), kept here so a node can be
-//!   recreated at a new content size without losing the animation playing on it.
+//!   recreated at a new content size without losing the animation playing on it. The
+//!   client's and the rule's opacity factors fold into the opacity, so a frame draws each
+//!   window's node alone.
 //! - **The scene's damage**, taken once per iteration.
 //!
 //! # Coordinates
@@ -173,10 +175,10 @@ struct WindowNode {
     /// Its visual transform, kept across node recreation.
     transform: VisualTransform,
     /// The client's `wp_alpha_modifier_v1` factor for its surface, one when it set none.
-    /// It multiplies the window's group opacity when the window is drawn.
+    /// `target` folds it into the node's opacity.
     surface_alpha: f32,
-    /// The opacity a matched window rule sets, one when none does. It multiplies the group
-    /// opacity beside the placement opacity, which the layout rewrites on every placement.
+    /// The opacity a matched window rule sets, one when none does. `target` folds it into the
+    /// node's opacity beside the placement's, which the layout rewrites on every placement.
     rule_opacity: f32,
     /// The shell's opacity for the window, one when it set none. It multiplies the group
     /// opacity in the target, beside the placement's, so a placement write never clobbers it.
@@ -718,10 +720,11 @@ impl Composer {
         self.sync(window, true);
     }
 
-    /// Sets a window's `wp_alpha_modifier_v1` factor, which multiplies its group opacity.
+    /// Sets a window's `wp_alpha_modifier_v1` factor, which multiplies its node's opacity.
     ///
     /// A factor outside zero to one, or not finite, is clamped the same way as the group
-    /// opacity, so a bad value cannot poison the blend.
+    /// opacity, so a bad value cannot poison the blend. A closing window keeps the factor its
+    /// fade began with, as its placement does.
     pub fn set_window_surface_alpha(&mut self, window: WindowId, factor: f32) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
@@ -738,8 +741,8 @@ impl Composer {
         self.sync(window, true);
     }
 
-    /// Sets a window's opacity from a matched window rule. It multiplies into the group
-    /// opacity beside the placement opacity and the client's surface factor.
+    /// Sets a window's opacity from a matched window rule. It folds into the node's opacity
+    /// beside the placement opacity and the client's surface factor.
     ///
     /// Placement writes `transform.opacity` on every layout, so a rule keeps its own factor:
     /// writing the rule's value there would be overwritten by the next placement.
@@ -1221,7 +1224,7 @@ impl Composer {
                 src: content.src,
                 dst,
                 transform: content.transform,
-                opacity: pose.transform.opacity * entry.surface_alpha * entry.rule_opacity,
+                opacity: pose.transform.opacity,
                 tint: pose.transform.tint,
                 corner_radius: pose.transform.corner_radius,
                 effects: entry.effects.clone(),
@@ -1258,8 +1261,9 @@ impl Composer {
 
     /// The transform a window's node should reach: its base transform placed at its geometry.
     fn target(entry: &WindowNode) -> VisualTransform {
-        // The shell's visuals live in their own fields and are folded in here, so a placement
-        // that rewrites the placement's own transform never clobbers them.
+        // The shell's visuals and the client's and rule's factors live in their own fields and
+        // are folded in here, so a placement that rewrites the placement's own transform never
+        // clobbers them.
         let mut transform = entry.transform;
         let (shell_x, shell_y) = entry.shell_offset;
         transform.base.offset = Vec3::new(
@@ -1270,7 +1274,7 @@ impl Composer {
         let scale = f64::from(entry.shell_scale);
         transform.base.scale.x *= scale;
         transform.base.scale.y *= scale;
-        transform.opacity *= entry.shell_opacity;
+        transform.opacity *= entry.shell_opacity * entry.surface_alpha * entry.rule_opacity;
         transform
     }
 
@@ -1777,6 +1781,54 @@ mod tests {
             "its node is gone once the fade ends"
         );
         assert!(composer.tracks.is_empty(), "no track outlives the fade");
+    }
+
+    /// The opacity of the snapshot surface a frame draws for a closing window, after a fade
+    /// tick that moves the node so the frame has damage to draw.
+    fn closing_snapshot_opacity(surface_alpha: Option<f32>) -> f32 {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.unmap_with_snapshot(
+            window,
+            Some(Closing {
+                image: picture(),
+                content: content(),
+                on_end: CloseEnd::Hide,
+            }),
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        if let Some(factor) = surface_alpha {
+            composer.set_window_surface_alpha(window, factor);
+        }
+        composer.advance_motion(MOTION_MS / 4);
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        assert!(composer.compose(output, &mut frame), "the fade tick damages the frame");
+        composer.end_frame();
+        frame
+            .layers()
+            .iter()
+            .find_map(|layer| match layer {
+                Layer::Surface(Surface {
+                    source: SurfaceSource::Snapshot(_),
+                    opacity,
+                    ..
+                }) => Some(*opacity),
+                _ => None,
+            })
+            .expect("a closing window draws its snapshot")
+    }
+
+    #[test]
+    fn a_surface_factor_set_during_a_close_fade_does_not_change_the_fade() {
+        assert_eq!(
+            closing_snapshot_opacity(Some(0.5)),
+            closing_snapshot_opacity(None),
+            "a closing window keeps the opacity its fade drew, as its placement and shell already do"
+        );
     }
 
     #[test]
@@ -2574,12 +2626,10 @@ mod tests {
         );
     }
 
-    /// The opacity `window`'s surface is drawn at. `compose` multiplies the node's opacity by the
-    /// client's surface factor and the window rule's factor; this mirrors that product.
+    /// The opacity `window`'s surface is drawn at: the node's, which holds every factor the
+    /// window draws with, so this is what the frame draws.
     fn drawn_opacity(composer: &Composer, window: WindowId) -> f32 {
-        let entry = &composer.windows[&window];
-        let (_, opacity) = drawn_pose(composer, window);
-        opacity * entry.surface_alpha * entry.rule_opacity
+        drawn_pose(composer, window).1
     }
 
     #[test]

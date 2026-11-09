@@ -50,6 +50,10 @@
 
 ### Changed
 
+- A window's `wp_alpha_modifier_v1` factor and the opacity a window rule sets fold into the window's scene node, as
+  placement and shell opacity already do, so the composer draws the node's opacity alone. A closing window keeps the
+  factors it had when its close fade began, as it already kept its placement and shell visuals: setting one during the
+  close fade no longer changes the fade.
 - Log records are written to `gnoblin.jsonl` in the state directory, one JSON object per line. `gnoblinctl log` and
   `gnoblinctl log --follow` read that file. The `gnoblin-store` crate, the SQLite log store, `gnoblinctl store`, the
   store IPC verbs and the `--store` flag are removed. `gnoblin.jsonl` and the legacy `store` files are not deleted.
