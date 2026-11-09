@@ -33,8 +33,8 @@ mod requests;
 mod server;
 mod session;
 mod settings;
-#[allow(dead_code, reason = "the socket wiring that calls it lands in slice 5b")]
 mod tree;
+mod tree_host;
 
 use std::path::PathBuf;
 
@@ -66,6 +66,8 @@ pub enum IpcError {
     Io { path: PathBuf, source: std::io::Error },
     /// The extension grants cannot be encoded as a grants frame, so nothing is bound.
     Grants(gnoblin_proto::GrantsError),
+    /// The tree the shell serves could not be built, so nothing is bound.
+    Tree(String),
 }
 
 impl std::fmt::Display for IpcError {
@@ -90,6 +92,7 @@ impl std::fmt::Display for IpcError {
             IpcError::Bind { path, source } => write!(formatter, "cannot bind {}: {source}", path.display()),
             IpcError::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
             IpcError::Grants(source) => write!(formatter, "the extension grants are not valid: {source}"),
+            IpcError::Tree(reason) => write!(formatter, "the tree could not be built: {reason}"),
         }
     }
 }

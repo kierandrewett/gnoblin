@@ -62,6 +62,16 @@ impl Envelope {
         Envelope::build(namespace, member, request_id, Kind::Reply(Reply { payload }))
     }
 
+    /// The answer to a request, whose payload is a generated message.
+    pub fn reply_message<M: prost::Message>(
+        namespace: impl Into<String>,
+        member: impl Into<String>,
+        request_id: u64,
+        message: &M,
+    ) -> Envelope {
+        Envelope::reply(namespace, member, request_id, message.encode_to_vec())
+    }
+
     /// An unsolicited event. Request id is zero because nothing is waiting.
     pub fn event(namespace: impl Into<String>, member: impl Into<String>, payload: Vec<u8>) -> Envelope {
         Envelope::build(namespace, member, 0, Kind::Event(Event { payload }))
