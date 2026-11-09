@@ -393,9 +393,15 @@ fn op_text(op: &TreeOp) -> String {
 
 fn value_text(value: &TreeValue) -> String {
     match value {
-        TreeValue::Double(number) => format!("double:{number:?}"),
-        TreeValue::Uint(number) => format!("uint:{number}"),
         TreeValue::Bool(flag) => format!("bool:{flag}"),
+        TreeValue::Int(number) => format!("int:{number}"),
+        TreeValue::Uint(number) => format!("uint:{number}"),
+        TreeValue::Double(number) => format!("double:{number:?}"),
+        TreeValue::Text(text) => format!("text:{text}"),
+        TreeValue::Bytes(bytes) => format!("bytes:{bytes:?}"),
+        TreeValue::ListDouble(items) => format!("list_double:{items:?}"),
+        TreeValue::ListText(items) => format!("list_text:{items:?}"),
+        TreeValue::Node(node) => format!("node:{node:?}"),
     }
 }
 
@@ -446,18 +452,22 @@ impl<'a> Line<'a> {
         Ok(NodeId::new(self.number("a node id")?))
     }
 
+    /// The wire form carries the scalar kinds, with text written as one word. Byte strings,
+    /// lists and node references are not written in this format.
     fn value(&mut self) -> Result<TreeValue, ParseError> {
         let word = self.word("a value")?;
         let (kind, text) = word
             .split_once(':')
             .ok_or_else(|| self.error(format!("value `{word}` needs a kind, as in `double:0.5`")))?;
         let parsed = match kind {
-            "double" => text.parse().map(TreeValue::Double).ok(),
-            "uint" => text.parse().map(TreeValue::Uint).ok(),
             "bool" => text.parse().map(TreeValue::Bool).ok(),
+            "int" => text.parse().map(TreeValue::Int).ok(),
+            "uint" => text.parse().map(TreeValue::Uint).ok(),
+            "double" => text.parse().map(TreeValue::Double).ok(),
+            "text" => Some(TreeValue::Text(text.to_owned())),
             _ => None,
         };
-        parsed.ok_or_else(|| self.error(format!("value `{word}` is not a valid double, uint or bool")))
+        parsed.ok_or_else(|| self.error(format!("value `{word}` is not a valid bool, int, uint, double or text")))
     }
 
     fn finish(&self) -> Result<(), ParseError> {
@@ -541,9 +551,8 @@ impl ClassInfo for Table {
             return None;
         }
         let (kind, readonly, animated) = match key {
-            "opacity" | "offset_x" | "offset_y" | "offset_z" | "rotation_x" | "rotation_y" | "rotation_z"
-            | "scale_x" | "scale_y" | "scale_z" => (ValueType::Double, false, true),
-            "width" | "height" => (ValueType::Uint, false, false),
+            "opacity" | "x" | "y" | "z" => (ValueType::Double, false, true),
+            "width" | "height" => (ValueType::Double, false, false),
             "visible" | "clip" | "input" => (ValueType::Bool, false, false),
             "id" => (ValueType::Uint, true, false),
             _ => return None,
@@ -750,20 +759,9 @@ impl XorShift {
     }
 }
 
-const DOUBLE_KEYS: [&str; 10] = [
-    "opacity",
-    "offset_x",
-    "offset_y",
-    "offset_z",
-    "rotation_x",
-    "rotation_y",
-    "rotation_z",
-    "scale_x",
-    "scale_y",
-    "scale_z",
-];
+const DOUBLE_KEYS: [&str; 4] = ["opacity", "x", "y", "z"];
 const BOOL_KEYS: [&str; 3] = ["visible", "clip", "input"];
-const UINT_KEYS: [&str; 2] = ["width", "height"];
+const SIZE_KEYS: [&str; 2] = ["width", "height"];
 const SECONDS: [f64; 4] = [0.1, 0.25, 0.5, 1.0];
 const CURVES: [&[f64]; 2] = [&[0.0, 0.5, 1.0], &[0.0, 0.25, 0.75, 1.0]];
 
@@ -842,11 +840,11 @@ impl Generator {
                 }
             }
             60..=74 => {
-                let key = UINT_KEYS[self.rng.below(UINT_KEYS.len() as u64) as usize];
+                let key = SIZE_KEYS[self.rng.below(SIZE_KEYS.len() as u64) as usize];
                 TreeOp::Set {
                     node,
                     key: key.into(),
-                    value: TreeValue::Uint(self.rng.below(1500) + 1),
+                    value: TreeValue::Double((self.rng.below(1500) + 1) as f64),
                     timing: None,
                 }
             }
@@ -964,20 +962,15 @@ fn script(opacity: f64) -> Session {
                         parent: root,
                         index: None,
                     },
-                    set(A, "width", TreeValue::Uint(300), None),
-                    set(A, "height", TreeValue::Uint(200), None),
+                    set(A, "width", TreeValue::Double(300.0), None),
+                    set(A, "height", TreeValue::Double(200.0), None),
                 ])],
             ),
             frame(
                 16,
                 vec![
                     Input::Pointer { x: 50.0, y: 50.0 },
-                    compositor(vec![set(
-                        B,
-                        "offset_x",
-                        TreeValue::Double(10.0),
-                        timed(0.5, &[0.0, 0.5, 1.0]),
-                    )]),
+                    compositor(vec![set(B, "x", TreeValue::Double(10.0), timed(0.5, &[0.0, 0.5, 1.0]))]),
                 ],
             ),
             frame(
@@ -988,7 +981,7 @@ fn script(opacity: f64) -> Session {
                 48,
                 vec![compositor(vec![set(
                     B,
-                    "offset_x",
+                    "x",
                     TreeValue::Double(20.0),
                     timed(0.25, &[0.0, 1.0]),
                 )])],
@@ -1024,7 +1017,7 @@ fn script(opacity: f64) -> Session {
 fn refused_frame_session() -> Session {
     let mut session = script(0.25);
     session.frames[3].inputs.push(compositor(vec![
-        set(B, "offset_x", TreeValue::Double(-300.0), timed(0.5, &[0.0, 1.0])),
+        set(B, "x", TreeValue::Double(-300.0), timed(0.5, &[0.0, 1.0])),
         set(A, "width", TreeValue::Bool(true), None),
     ]));
     session

@@ -184,6 +184,24 @@ pub fn tree_listing(is_owner: bool) -> Result<Catalog, SchemaError> {
     }
 }
 
+/// The transaction kind a schema type maps to, or `None` when the tree cannot hold it.
+fn value_type(ty: &SchemaType) -> Option<ValueType> {
+    Some(match ty {
+        SchemaType::Bool => ValueType::Bool,
+        SchemaType::Int => ValueType::Int,
+        SchemaType::Uint => ValueType::Uint,
+        SchemaType::Double => ValueType::Double,
+        SchemaType::Text => ValueType::Text,
+        SchemaType::Bytes => ValueType::Bytes,
+        SchemaType::ObjectRef(class) => ValueType::Node(class.clone()),
+        SchemaType::List(inner) => match inner.as_ref() {
+            SchemaType::Double => ValueType::ListDouble,
+            SchemaType::Text => ValueType::ListText,
+            _ => return None,
+        },
+    })
+}
+
 /// The schema facts for the `tree` namespace, read from the catalog. The shell hands this
 /// to the transaction layer as its [`ClassInfo`].
 #[derive(Debug)]
@@ -193,12 +211,28 @@ pub struct TreeClasses {
 }
 
 impl TreeClasses {
-    /// Read the `tree` namespace of `catalog`. `Err` only when the namespace name is invalid.
+    /// Read the `tree` namespace of `catalog`. Every property of every class must have a
+    /// [`ValueType`]; `Err` names the first one that does not, and `Err` also covers an
+    /// invalid namespace name.
     pub fn new(catalog: Catalog) -> Result<Self, String> {
-        Ok(Self {
+        let classes = Self {
             catalog,
             namespace: Namespace::parse("tree")?,
-        })
+        };
+        for object in classes.catalog.objects(&classes.namespace) {
+            if !classes.is_a(&object.name, "node") {
+                continue;
+            }
+            for property in &object.properties {
+                if value_type(&property.ty).is_none() {
+                    return Err(format!(
+                        "{}.{} has schema type {:?}, which the tree cannot hold",
+                        object.name, property.name, property.ty
+                    ));
+                }
+            }
+        }
+        Ok(classes)
     }
 
     /// The object type named `class` in the tree namespace. Its members already include
@@ -221,27 +255,29 @@ impl ClassInfo for TreeClasses {
             .properties
             .iter()
             .find(|property| property.name == key)?;
-        let kind = match property.ty {
-            SchemaType::Double => ValueType::Double,
-            SchemaType::Uint => ValueType::Uint,
-            SchemaType::Bool => ValueType::Bool,
-            // A `TreeValue` carries only these three kinds, so no write matches any other type.
-            _ => return None,
-        };
         Some(PropertyInfo {
-            kind,
+            kind: value_type(&property.ty)?,
             readonly: property.readonly,
             animated: property.animated,
         })
     }
 
+    fn is_a(&self, class: &str, ancestor: &str) -> bool {
+        // The chain is bounded by the object count, so a cyclic schema cannot loop here.
+        let mut current = Some(class);
+        for _ in 0..=self.catalog.objects(&self.namespace).count() {
+            match current {
+                Some(name) if name == ancestor => return true,
+                Some(name) => current = self.object(name).and_then(|object| object.base.as_deref()),
+                None => return false,
+            }
+        }
+        false
+    }
+
     fn has_method(&self, class: &str, method: &str) -> bool {
-        self.object(class).is_some_and(|object| {
-            object
-                .methods
-                .iter()
-                .any(|candidate| candidate.name == method && !candidate.function)
-        })
+        self.object(class)
+            .is_some_and(|object| object.methods.iter().any(|candidate| candidate.name == method))
     }
 }
 
@@ -605,10 +641,32 @@ mod tests {
                 animated: false
             })
         );
-        // Text, object and list properties have no `ValueType`, so they have no `PropertyInfo`.
-        assert_eq!(classes.property("node", "name"), None);
-        assert_eq!(classes.property("node", "parent"), None);
-        assert_eq!(classes.property("node", "tags"), None);
+        // Every schema type of a class property has a kind.
+        assert_eq!(
+            classes.property("node", "name"),
+            Some(PropertyInfo {
+                kind: ValueType::Text,
+                readonly: false,
+                animated: false
+            })
+        );
+        assert_eq!(
+            classes.property("node", "parent"),
+            Some(PropertyInfo {
+                kind: ValueType::Node("node".to_owned()),
+                readonly: true,
+                animated: false
+            })
+        );
+        assert_eq!(
+            classes.property("node", "tags"),
+            Some(PropertyInfo {
+                kind: ValueType::ListText,
+                readonly: false,
+                animated: false
+            })
+        );
+        assert_eq!(classes.property("node", "no-such-property"), None);
     }
 
     #[test]
@@ -625,5 +683,167 @@ mod tests {
             0,
             "a connection that is not the session owner must not list tree members"
         );
+    }
+
+    /// Every property of every tree class in the real catalog maps to a [`ValueType`], so a
+    /// `set` can name any of them, and the mapped kind and flags match the schema.
+    #[test]
+    fn every_tree_property_has_a_property_info() {
+        let classes = TreeClasses::new(crate::schema::catalog().expect("the schema catalog loads"))
+            .expect("the tree namespace is valid");
+        let mut checked = 0;
+        for object in classes.catalog.objects(&classes.namespace) {
+            if !classes.is_a(&object.name, "node") {
+                continue;
+            }
+            for property in &object.properties {
+                let info = classes.property(&object.name, &property.name).unwrap_or_else(|| {
+                    panic!(
+                        "{}.{} ({:?}) has no PropertyInfo",
+                        object.name, property.name, property.ty
+                    )
+                });
+                assert_eq!(info.readonly, property.readonly, "{}.{}", object.name, property.name);
+                assert_eq!(info.animated, property.animated, "{}.{}", object.name, property.name);
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "the tree namespace has class properties");
+    }
+
+    /// The default value of each kind, for a `set` that names a property of that kind.
+    fn default_value(kind: &ValueType) -> TreeValue {
+        match kind {
+            ValueType::Bool => TreeValue::Bool(false),
+            ValueType::Int => TreeValue::Int(0),
+            ValueType::Uint => TreeValue::Uint(0),
+            ValueType::Double => TreeValue::Double(1.0),
+            ValueType::Text => TreeValue::Text(String::new()),
+            ValueType::Bytes => TreeValue::Bytes(Vec::new()),
+            ValueType::Node(_) => TreeValue::Node(None),
+            ValueType::ListDouble => TreeValue::ListDouble(vec![1.0; 3]),
+            ValueType::ListText => TreeValue::ListText(Vec::new()),
+        }
+    }
+
+    /// Every property of every node class in the real catalog accepts a value of its own kind
+    /// through `set`, and a readonly property refuses it as `read-only`. Each class is created
+    /// under the root, then its properties are set one transaction at a time.
+    #[test]
+    fn every_tree_property_accepts_a_value_of_its_own_kind() {
+        let classes = TreeClasses::new(crate::schema::catalog().expect("the schema catalog loads"))
+            .expect("the tree namespace is valid");
+        let mut scene = Scene::new();
+        scene
+            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+            .expect("root inserts");
+        scene.set_root(Some(ROOT)).expect("root names");
+        let owner = TreeClasses::new(crate::schema::catalog().expect("the schema catalog loads"))
+            .expect("the tree namespace is valid");
+        let mut session = TreeSession::new(scene, owner, ROOT).expect("root is live");
+        session.attach(true).expect("privileged attach");
+        let mut next = 0x1000_u64;
+        let mut checked = 0;
+        for object in classes.catalog.objects(&classes.namespace) {
+            if !classes.is_a(&object.name, "node") {
+                continue;
+            }
+            let node = NodeId::new(next);
+            next += 1;
+            let base = session.serial();
+            let create = TreeTransaction::new(vec![
+                TreeOp::New {
+                    class: object.name.clone(),
+                    id: node,
+                },
+                TreeOp::Insert {
+                    node,
+                    parent: ROOT,
+                    index: None,
+                },
+            ]);
+            let created = session.transact(base, &create).result;
+            assert!(created.is_ok(), "{} new: {created:?}", object.name);
+            for property in &object.properties {
+                let info = classes
+                    .property(&object.name, &property.name)
+                    .unwrap_or_else(|| panic!("{}.{} has no PropertyInfo", object.name, property.name));
+                let base = session.serial();
+                let set = TreeTransaction::new(vec![TreeOp::Set {
+                    node,
+                    key: property.name.clone(),
+                    value: default_value(&info.kind),
+                    timing: None,
+                }]);
+                let result = session.transact(base, &set).result;
+                if info.readonly {
+                    let refusal = result.expect_err("a readonly property refuses set");
+                    assert_eq!(refusal.code, Code::ReadOnly, "{}.{}", object.name, property.name);
+                } else {
+                    assert!(
+                        result.is_ok(),
+                        "{}.{} ({:?}) refused its own kind: {result:?}",
+                        object.name,
+                        property.name,
+                        info.kind
+                    );
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "the tree namespace has class properties");
+    }
+
+    /// A catalog built from one inline schema file, for cases the real catalog does not show.
+    fn synthetic_catalog(source: &str) -> Catalog {
+        let schema = gnoblin_schema::parse_schema("synthetic.toml", source).expect("the schema parses");
+        Catalog::new(vec![schema]).expect("the catalog builds")
+    }
+
+    /// A namespace function is a method the host installs without a receiver. `has_method`
+    /// reports it like any other method, so a call to it is not refused as unknown.
+    #[test]
+    fn has_method_sees_namespace_functions() {
+        let classes = TreeClasses::new(synthetic_catalog(
+            r#"
+namespace = "tree"
+version = "0.2.0"
+
+[[object]]
+name = "node"
+since = "0.2.0"
+
+[[object.method]]
+name = "ping"
+since = "0.2.0"
+function = true
+"#,
+        ))
+        .expect("the tree namespace is valid");
+        assert!(classes.has_method("node", "ping"), "a namespace function is a method");
+        assert!(!classes.has_method("node", "missing"), "an unknown method is not one");
+    }
+
+    /// A property whose schema type has no value kind fails the catalog load, so the gap
+    /// cannot reach a `set` at run time.
+    #[test]
+    fn unmapped_schema_type_is_a_construction_error() {
+        let error = TreeClasses::new(synthetic_catalog(
+            r#"
+namespace = "tree"
+version = "0.2.0"
+
+[[object]]
+name = "node"
+since = "0.2.0"
+
+[[object.property]]
+name = "nums"
+type = "list<uint>"
+since = "0.2.0"
+"#,
+        ))
+        .expect_err("list<uint> has no value kind");
+        assert!(error.contains("node.nums"), "the error names the property: {error}");
     }
 }

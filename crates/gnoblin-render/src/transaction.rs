@@ -19,8 +19,10 @@
 //!
 //! - `set`: node exists (`unknown-node`); the class has the property
 //!   (`unknown-member`); it is not `readonly` (`read-only`); the value's kind matches
-//!   the property's (`wrong-type`); a number is finite (`not-finite`); then, for a
-//!   `timing`, the property is animated (`not-animated`), `seconds` is finite and in
+//!   the property's (`wrong-type`); a number is finite (`not-finite`); a text, byte
+//!   string or list is within its cap (`too-large`); a node reference names a live node
+//!   of the property's class (`unknown-node`, `wrong-type`); then, for a `timing`, the
+//!   property is an animated double (`not-animated`), `seconds` is finite and in
 //!   `(0, 3600]` (`not-finite`, `out-of-range`), the samples are finite
 //!   (`not-finite`) and form a curve from 0 to 1, monotonic and within `[0, 1]`
 //!   (`bad-curve`).
@@ -67,6 +69,15 @@ pub const MAX_OPS: usize = 4096;
 
 /// The longest animation a `set` may ask for, in seconds.
 const MAX_SECONDS: f64 = 3600.0;
+
+/// The longest text value, in bytes. A longer one is refused `too-large`.
+pub const MAX_TEXT_BYTES: usize = 64 * 1024;
+
+/// The largest byte string, in bytes. A larger one is refused `too-large`.
+pub const MAX_BYTES: usize = 1 << 20;
+
+/// The most items in one list value. A longer list is refused `too-large`.
+pub const MAX_LIST: usize = 4096;
 
 /// A refusal code, spelled as in design/node-core.md table 4.4 by [`Code::as_str`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,23 +181,47 @@ impl std::fmt::Display for TreeRefusal {
 /// A value a `set` writes.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TreeValue {
-    /// A floating-point number.
-    Double(f64),
-    /// An unsigned integer.
-    Uint(u64),
     /// A boolean.
     Bool(bool),
+    /// A signed 64-bit integer.
+    Int(i64),
+    /// An unsigned 64-bit integer.
+    Uint(u64),
+    /// A floating-point number.
+    Double(f64),
+    /// A string.
+    Text(String),
+    /// A byte string.
+    Bytes(Vec<u8>),
+    /// A list of numbers.
+    ListDouble(Vec<f64>),
+    /// A list of strings.
+    ListText(Vec<String>),
+    /// A node reference, or `None` for nil.
+    Node(Option<NodeId>),
 }
 
-/// The kind of a property's value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The kind of a property's value. `Node` names the class a reference must be of.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValueType {
-    /// A floating-point number.
-    Double,
-    /// An unsigned integer.
-    Uint,
     /// A boolean.
     Bool,
+    /// A signed 64-bit integer.
+    Int,
+    /// An unsigned 64-bit integer.
+    Uint,
+    /// A finite floating-point number.
+    Double,
+    /// A UTF-8 string of at most [`MAX_TEXT_BYTES`] bytes.
+    Text,
+    /// A byte string of at most [`MAX_BYTES`] bytes.
+    Bytes,
+    /// A list of at most [`MAX_LIST`] finite numbers.
+    ListDouble,
+    /// A list of at most [`MAX_LIST`] strings, each at most [`MAX_TEXT_BYTES`] bytes.
+    ListText,
+    /// A reference to a live node whose class is this class or derives from it, or nil.
+    Node(String),
 }
 
 /// An animation's timing: its duration and its curve's samples.
@@ -260,7 +295,7 @@ impl TreeTransaction {
 }
 
 /// What the schema says about one property.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PropertyInfo {
     /// The kind of value the property holds.
     pub kind: ValueType,
@@ -276,6 +311,10 @@ pub struct PropertyInfo {
 pub trait ClassInfo {
     /// Whether the schema has a class of this name.
     fn has_class(&self, class: &str) -> bool;
+    /// Whether `class` is `ancestor` or derives from it. A class is its own ancestor.
+    fn is_a(&self, class: &str, ancestor: &str) -> bool {
+        class == ancestor
+    }
     /// The property of `class` named `key`, or `None` when the class has none.
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo>;
     /// Whether `class` has a method named `method`.
@@ -510,21 +549,14 @@ fn set_value(
     if info.readonly {
         return Err(Code::ReadOnly);
     }
-    if kind_of(value) != info.kind {
-        return Err(Code::WrongType);
-    }
-    if let TreeValue::Double(number) = value
-        && !number.is_finite()
-    {
-        return Err(Code::NotFinite);
-    }
+    check_value(work, classes, value, &info.kind)?;
     applied.changes.push(TreeChange::Set {
         node,
         key: key.to_owned(),
         value: value.clone(),
     });
     if let Some(timing) = timing {
-        if !info.animated {
+        if !info.animated || info.kind != ValueType::Double {
             return Err(Code::NotAnimated);
         }
         check_timing(timing)?;
@@ -567,11 +599,59 @@ fn check_timing(timing: &Timing) -> Result<(), Code> {
     Ok(())
 }
 
-/// Write one validated, non-animated value into the scene.
+/// Check a value against its property's kind and caps. `work` resolves node references.
+fn check_value(work: &Scene, classes: &dyn ClassInfo, value: &TreeValue, kind: &ValueType) -> Result<(), Code> {
+    match (value, kind) {
+        (TreeValue::Bool(_), ValueType::Bool)
+        | (TreeValue::Int(_), ValueType::Int)
+        | (TreeValue::Uint(_), ValueType::Uint) => Ok(()),
+        (TreeValue::Double(number), ValueType::Double) => finite(*number),
+        (TreeValue::Text(text), ValueType::Text) => size_within(text.len(), MAX_TEXT_BYTES),
+        (TreeValue::Bytes(bytes), ValueType::Bytes) => size_within(bytes.len(), MAX_BYTES),
+        (TreeValue::ListDouble(items), ValueType::ListDouble) => {
+            size_within(items.len(), MAX_LIST)?;
+            items.iter().try_for_each(|item| finite(*item))
+        }
+        (TreeValue::ListText(items), ValueType::ListText) => {
+            size_within(items.len(), MAX_LIST)?;
+            items
+                .iter()
+                .try_for_each(|item| size_within(item.len(), MAX_TEXT_BYTES))
+        }
+        (TreeValue::Node(target), ValueType::Node(class)) => match target {
+            None => Ok(()),
+            Some(id) if !work.contains(*id) => Err(Code::UnknownNode),
+            Some(id) if classes.is_a(work.class(*id).unwrap_or(""), class) => Ok(()),
+            Some(_) => Err(Code::WrongType),
+        },
+        _ => Err(Code::WrongType),
+    }
+}
+
+fn finite(number: f64) -> Result<(), Code> {
+    if number.is_finite() {
+        Ok(())
+    } else {
+        Err(Code::NotFinite)
+    }
+}
+
+fn size_within(len: usize, cap: usize) -> Result<(), Code> {
+    if len <= cap { Ok(()) } else { Err(Code::TooLarge) }
+}
+
+/// Write one validated, non-animated value into the scene. A property the scene does not
+/// store is accepted and listed as changed, but the scene keeps no copy of it.
 fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> Result<(), Code> {
+    if let TreeValue::ListDouble(axes) = value
+        && matches!(key, "rotation" | "scale")
+        && axes.len() != 3
+    {
+        return Err(Code::BadValue);
+    }
     let result = match (key, value) {
-        ("width" | "height", TreeValue::Uint(amount)) => {
-            let amount = u32::try_from(*amount).map_err(|_| Code::OutOfBounds)?;
+        ("width" | "height", TreeValue::Double(amount)) => {
+            let amount = whole_size(*amount)?;
             let mut bounds = work.bounds(node).ok_or(Code::UnknownNode)?;
             if key == "width" {
                 bounds.width = amount;
@@ -583,38 +663,65 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
         ("visible", TreeValue::Bool(on)) => work.set_visible(node, *on),
         ("clip", TreeValue::Bool(on)) => work.set_clip(node, *on),
         ("input", TreeValue::Bool(on)) => work.set_input(node, *on),
-        (key, TreeValue::Double(number)) => {
-            let property = visual_property(key).ok_or(Code::UnknownMember)?;
-            work.set_property(node, property, PropertyValue::Number(*number as f32))
-        }
+        ("rotation", TreeValue::ListDouble(axes)) => set_axes(
+            work,
+            node,
+            axes,
+            [
+                VisualProperty::RotationX,
+                VisualProperty::RotationY,
+                VisualProperty::RotationZ,
+            ],
+        ),
+        ("scale", TreeValue::ListDouble(axes)) => set_axes(
+            work,
+            node,
+            axes,
+            [VisualProperty::ScaleX, VisualProperty::ScaleY, VisualProperty::ScaleZ],
+        ),
+        (key, TreeValue::Double(number)) => match visual_property(key) {
+            Some(property) => work.set_property(node, property, PropertyValue::Number(*number as f32)),
+            None => Ok(()),
+        },
+        _ if !is_stored(key) => Ok(()),
         _ => return Err(Code::WrongType),
     };
     result.map_err(|error| scene_code(&error))
 }
 
-/// The visual property a schema key names, or `None` for a key the scene does not store.
+/// Whether the scene stores `key`. A `set` to any other key is accepted and listed as changed.
+fn is_stored(key: &str) -> bool {
+    matches!(
+        key,
+        "width" | "height" | "visible" | "clip" | "input" | "rotation" | "scale"
+    ) || visual_property(key).is_some()
+}
+
+fn set_axes(work: &mut Scene, node: NodeId, axes: &[f64], properties: [VisualProperty; 3]) -> Result<(), SceneError> {
+    for (property, value) in properties.into_iter().zip(axes) {
+        work.set_property(node, property, PropertyValue::Number(*value as f32))?;
+    }
+    Ok(())
+}
+
+/// A width or height: a whole, non-negative number that fits the scene's bounds.
+fn whole_size(amount: f64) -> Result<u32, Code> {
+    if amount.fract() != 0.0 || amount < 0.0 {
+        return Err(Code::BadValue);
+    }
+    u32::try_from(amount as u64).map_err(|_| Code::OutOfBounds)
+}
+
+/// The scene's visual property a schema key maps to, or `None` for a key the scene does
+/// not store.
 pub fn visual_property(key: &str) -> Option<VisualProperty> {
     Some(match key {
         "opacity" => VisualProperty::Opacity,
-        "offset_x" => VisualProperty::OffsetX,
-        "offset_y" => VisualProperty::OffsetY,
-        "offset_z" => VisualProperty::OffsetZ,
-        "rotation_x" => VisualProperty::RotationX,
-        "rotation_y" => VisualProperty::RotationY,
-        "rotation_z" => VisualProperty::RotationZ,
-        "scale_x" => VisualProperty::ScaleX,
-        "scale_y" => VisualProperty::ScaleY,
-        "scale_z" => VisualProperty::ScaleZ,
+        "x" => VisualProperty::OffsetX,
+        "y" => VisualProperty::OffsetY,
+        "z" => VisualProperty::OffsetZ,
         _ => return None,
     })
-}
-
-const fn kind_of(value: &TreeValue) -> ValueType {
-    match value {
-        TreeValue::Double(_) => ValueType::Double,
-        TreeValue::Uint(_) => ValueType::Uint,
-        TreeValue::Bool(_) => ValueType::Bool,
-    }
 }
 
 /// The position of `node` among its parent's children, or among the root nodes.

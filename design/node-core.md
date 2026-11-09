@@ -395,6 +395,24 @@ Each refusal is one `Error.code` (`envelope.proto:64`, kebab case):
 | `bad-paint`              | `Canvas.content` does not decode                   | section 2.4                    |
 | `bad-value`              | `value_kind` does not match the value field's type | section 4.1                    |
 
+### 4.4a Value kinds and caps
+
+A property's value kind comes from its schema type. The mapping is `value_type` in `ipc/tree.rs`; the checks are in `transaction.rs`.
+
+| Schema type    | Value kind   | Checks                                                                                           |
+| -------------- | ------------ | ------------------------------------------------------------------------------------------------ |
+| `bool`         | `Bool`       | kind matches (`wrong-type`)                                                                      |
+| `int`          | `Int`        | kind matches (`wrong-type`)                                                                      |
+| `uint`         | `Uint`       | kind matches (`wrong-type`)                                                                      |
+| `double`       | `Double`     | kind matches (`wrong-type`); finite (`not-finite`)                                               |
+| `string`       | `Text`       | kind matches (`wrong-type`); at most 64 KiB (`too-large`)                                        |
+| `bytes`        | `Bytes`      | kind matches (`wrong-type`); at most 1 MiB (`too-large`)                                         |
+| `list<double>` | `ListDouble` | kind matches (`wrong-type`); at most 4096 items (`too-large`); each finite (`not-finite`)        |
+| `list<string>` | `ListText`   | kind matches (`wrong-type`); at most 4096 items (`too-large`); each at most 64 KiB (`too-large`) |
+| `object:<C>`   | `Node(C)`    | names a live node whose class is `C` or a subclass, or nil (`unknown-node`, `wrong-type`)        |
+
+`TreeClasses::new` checks every property of every `Node` subclass in the catalog and refuses to build when a schema type has no value kind (for example `list<uint>`). That is a load-time error, never a silent gap at set time. A read-only property refuses every write (`read-only`).
+
 ### 4.5 Stale base
 
 The shell builds a transaction from its mirror at `base_serial`. The compositor may have sent newer batches since.

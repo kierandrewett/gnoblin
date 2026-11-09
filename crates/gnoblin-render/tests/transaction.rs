@@ -26,9 +26,8 @@ impl ClassInfo for Table {
             return None;
         }
         let (kind, readonly, animated) = match key {
-            "opacity" | "offset_x" | "offset_y" | "offset_z" | "rotation_x" | "rotation_y" | "rotation_z"
-            | "scale_x" | "scale_y" | "scale_z" => (ValueType::Double, false, true),
-            "width" | "height" => (ValueType::Uint, false, false),
+            "opacity" | "x" | "y" | "z" => (ValueType::Double, false, true),
+            "width" | "height" => (ValueType::Double, false, false),
             "visible" | "clip" | "input" => (ValueType::Bool, false, false),
             "id" => (ValueType::Uint, true, false),
             _ => return None,
@@ -327,7 +326,7 @@ fn shell_writes_to_a_compositor_window_apply() {
         Actor::Shell,
         &TreeTransaction::new(vec![
             set_number(window, "opacity", 0.25),
-            set_uint(window, "width", 300),
+            set_number(window, "width", 300.0),
         ]),
     )
     .expect("property writes are governed by readonly, not by ownership");
@@ -343,8 +342,17 @@ fn f13_coordinate_beyond_2_pow_20_is_out_of_bounds() {
     let mut scene = scene();
     let root = id(ROOT);
     let window = shell_node(&mut scene, 1, root);
-    let refusal = refused(&mut scene, Actor::Shell, vec![set_uint(window, "width", 2_000_000)]);
+    let refusal = refused(&mut scene, Actor::Shell, vec![set_number(window, "width", 2_000_000.0)]);
     assert_refused(&refusal, 0, Code::OutOfBounds);
+}
+
+#[test]
+fn width_as_uint_is_wrong_type() {
+    let mut scene = scene();
+    let root = id(ROOT);
+    let window = shell_node(&mut scene, 1, root);
+    let refusal = refused(&mut scene, Actor::Shell, vec![set_uint(window, "width", 300)]);
+    assert_refused(&refusal, 0, Code::WrongType);
 }
 
 #[test]
@@ -480,7 +488,7 @@ fn f31_seconds_on_a_non_animated_property_is_not_animated() {
     let op = TreeOp::Set {
         node: window,
         key: "width".into(),
-        value: TreeValue::Uint(300),
+        value: TreeValue::Double(300.0),
         timing: Some(Timing {
             seconds: 0.5,
             samples: LINEAR.to_vec(),
@@ -600,7 +608,10 @@ fn set_width_and_height_apply_through_the_bounds_setter() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![set_uint(window, "width", 300), set_uint(window, "height", 200)]),
+        &TreeTransaction::new(vec![
+            set_number(window, "width", 300.0),
+            set_number(window, "height", 200.0),
+        ]),
     )
     .expect("width and height are settable");
     assert_eq!(scene.bounds(window), Some(rect(0, 0, 300, 200)));
