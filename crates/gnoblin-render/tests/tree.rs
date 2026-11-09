@@ -9,6 +9,9 @@ use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_render::{Mat4, NodeSpec, Scene, SceneError};
 use gnoblin_types::{NodeId, OutputId, PointF, Rect, Vec3};
 
+mod common;
+use common::tree_hash;
+
 fn id(raw: u64) -> NodeId {
     NodeId::new(raw)
 }
@@ -46,27 +49,6 @@ fn assert_mat_close(actual: &Mat4, expected: &Mat4) {
             assert!((a - b).abs() < 1e-9, "matrix differs: {actual:?} vs {expected:?}");
         }
     }
-}
-
-/// FNV-1a over the whole tree: every id, its parent, its children in paint order and
-/// its visual transform (the `Debug` form prints every field of it).
-fn tree_hash(scene: &Scene) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut feed = |bytes: &[u8]| {
-        for byte in bytes {
-            hash ^= u64::from(*byte);
-            hash = hash.wrapping_mul(0x0100_0000_01b3);
-        }
-    };
-    let mut ids: Vec<NodeId> = scene.node_ids().collect();
-    ids.sort();
-    for node in ids {
-        feed(&node.get().to_le_bytes());
-        feed(format!("{:?}", scene.parent(node)).as_bytes());
-        feed(format!("{:?}", scene.children(node)).as_bytes());
-        feed(format!("{:?}", scene.transform(node)).as_bytes());
-    }
-    hash
 }
 
 // ---------------------------------------------------------------------------
