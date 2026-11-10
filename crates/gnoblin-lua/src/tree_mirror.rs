@@ -13,7 +13,10 @@
 //! on it in `tree_core`.
 
 use std::collections::BTreeMap;
+
 use std::fmt::Write as _;
+
+use gnoblin_proto::tree::effect;
 
 /// A node id. Zero is nil.
 pub type NodeId = u64;
@@ -31,6 +34,8 @@ pub enum LuaValue {
     Text(String),
     Node(NodeId),
     List(Vec<f64>),
+    Texts(Vec<String>),
+    Effects(Vec<effect::Properties>),
 }
 
 impl LuaValue {
@@ -43,6 +48,8 @@ impl LuaValue {
             Self::Text(v) => format!("text {v:?}"),
             Self::Node(v) => format!("node {v}"),
             Self::List(v) => format!("list {v:?}"),
+            Self::Texts(v) => format!("texts {v:?}"),
+            Self::Effects(v) => format!("effects {v:?}"),
         }
     }
 }

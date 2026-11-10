@@ -293,6 +293,8 @@ fn tree_kind(ty: &Type) -> Option<&'static str> {
         Type::Text => "Text",
         Type::ObjectRef(_) => "Node",
         Type::List(inner) if **inner == Type::Double => "ListDouble",
+        Type::List(inner) if **inner == Type::Text => "ListText",
+        Type::List(inner) if matches!(&**inner, Type::ObjectRef(name) if name == "effect") => "ListEffect",
         Type::Bytes | Type::List(_) => return None,
     })
 }
@@ -321,6 +323,8 @@ fn lua_default(default: &DefaultValue, kind: &str, class: &str, name: &str) -> R
             let literals: Vec<String> = values.iter().map(|value| format!("{value:?}")).collect();
             format!("LuaValue::List(vec![{}])", literals.join(", "))
         }
+        (DefaultValue::List(items), "ListText") if items.is_empty() => "LuaValue::Texts(Vec::new())".to_owned(),
+        (DefaultValue::List(items), "ListEffect") if items.is_empty() => "LuaValue::Effects(Vec::new())".to_owned(),
         _ => return Err(mismatch()),
     })
 }

@@ -18,6 +18,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use gnoblin_proto::tree::effect;
 use mlua::{Lua, Table, Value};
 
 use crate::tree_mirror::{LuaMirror, LuaTransaction, LuaTxBuilder, LuaValue, NIL, NodeId};
@@ -42,6 +43,8 @@ pub enum TreeValueKind {
     Node,
     Nodes,
     ListDouble,
+    ListText,
+    ListEffect,
 }
 
 impl TreeValueKind {
@@ -56,6 +59,8 @@ impl TreeValueKind {
             Self::Node => "node",
             Self::Nodes => "nodes",
             Self::ListDouble => "list_double",
+            Self::ListText => "list_text",
+            Self::ListEffect => "list_effect",
         }
     }
 }
@@ -292,6 +297,116 @@ fn integer(value: &Value) -> Option<i64> {
     }
 }
 
+/// A string from a Lua value, or the error a write is refused with.
+fn expect_text(value: Value, name: &str) -> mlua::Result<String> {
+    match value {
+        Value::String(s) => Ok(s.to_str()?.to_string()),
+        _ => Err(lua_err(format!("effect {name} must be a string"))),
+    }
+}
+
+fn expect_bool(value: Value, name: &str) -> mlua::Result<bool> {
+    match value {
+        Value::Boolean(b) => Ok(b),
+        _ => Err(lua_err(format!("effect {name} must be a boolean"))),
+    }
+}
+
+fn expect_double(value: Value, name: &str) -> mlua::Result<f64> {
+    match value {
+        Value::Number(f) => Ok(f),
+        Value::Integer(i) => Ok(i as f64),
+        _ => Err(lua_err(format!("effect {name} must be a number"))),
+    }
+}
+
+fn expect_uint(value: Value, name: &str) -> mlua::Result<u64> {
+    integer(&value)
+        .and_then(|i| u64::try_from(i).ok())
+        .ok_or_else(|| lua_err(format!("effect {name} must be a non-negative integer")))
+}
+
+/// One `effect` from a Lua table. Fields left out take the defaults `EffectSpec` uses; an
+/// unknown field is refused, and so is a kind other than `blur` or `shadow`.
+fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
+    let mut props = effect::Properties {
+        kind: String::new(),
+        enabled: true,
+        downscale: 2,
+        passes: 3,
+        algorithm: "kawase".to_owned(),
+        noise: 0.0,
+        brightness: 1.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        tint: String::new(),
+        offset_x: 0.0,
+        offset_y: 0.0,
+        blur_radius: 12.0,
+        spread: 0.0,
+        colour: "#00000080".to_owned(),
+        source: String::new(),
+        entry: String::new(),
+    };
+    for pair in table.pairs::<Value, Value>() {
+        let (key, value) = pair?;
+        let Value::String(key) = key else {
+            return Err(lua_err("an effect has only named fields"));
+        };
+        let name = key.to_str()?.to_string();
+        match name.as_str() {
+            "kind" => props.kind = expect_text(value, &name)?,
+            "enabled" => props.enabled = expect_bool(value, &name)?,
+            "downscale" => props.downscale = expect_uint(value, &name)?,
+            "passes" => props.passes = expect_uint(value, &name)?,
+            "algorithm" => props.algorithm = expect_text(value, &name)?,
+            "noise" => props.noise = expect_double(value, &name)?,
+            "brightness" => props.brightness = expect_double(value, &name)?,
+            "contrast" => props.contrast = expect_double(value, &name)?,
+            "saturation" => props.saturation = expect_double(value, &name)?,
+            "tint" => props.tint = expect_text(value, &name)?,
+            "offset_x" => props.offset_x = expect_double(value, &name)?,
+            "offset_y" => props.offset_y = expect_double(value, &name)?,
+            "blur_radius" => props.blur_radius = expect_double(value, &name)?,
+            "spread" => props.spread = expect_double(value, &name)?,
+            "colour" => props.colour = expect_text(value, &name)?,
+            "source" => props.source = expect_text(value, &name)?,
+            "entry" => props.entry = expect_text(value, &name)?,
+            other => return Err(lua_err(format!("an effect has no field {other}"))),
+        }
+    }
+    if props.kind != "blur" && props.kind != "shadow" {
+        return Err(lua_err(format!(
+            "an effect's kind is blur or shadow, not {:?}",
+            props.kind
+        )));
+    }
+    Ok(props)
+}
+
+/// One `effect` as a Lua table, with every field set.
+fn effect_to_lua(lua: &Lua, props: &effect::Properties) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    table.raw_set("kind", props.kind.as_str())?;
+    table.raw_set("enabled", props.enabled)?;
+    table.raw_set("downscale", props.downscale)?;
+    table.raw_set("passes", props.passes)?;
+    table.raw_set("algorithm", props.algorithm.as_str())?;
+    table.raw_set("noise", props.noise)?;
+    table.raw_set("brightness", props.brightness)?;
+    table.raw_set("contrast", props.contrast)?;
+    table.raw_set("saturation", props.saturation)?;
+    table.raw_set("tint", props.tint.as_str())?;
+    table.raw_set("offset_x", props.offset_x)?;
+    table.raw_set("offset_y", props.offset_y)?;
+    table.raw_set("blur_radius", props.blur_radius)?;
+    table.raw_set("spread", props.spread)?;
+    table.raw_set("colour", props.colour.as_str())?;
+    table.raw_set("source", props.source.as_str())?;
+    table.raw_set("entry", props.entry.as_str())?;
+    Ok(table)
+}
+
 /// A Lua value as a property of `kind`, or the error the write is refused with.
 fn from_lua(kind: TreeValueKind, value: Value) -> mlua::Result<LuaValue> {
     let wrong = || lua_err(format!("expected a {}", kind.name()));
@@ -325,6 +440,30 @@ fn from_lua(kind: TreeValueKind, value: Value) -> mlua::Result<LuaValue> {
             ),
             _ => return Err(wrong()),
         },
+        TreeValueKind::ListText => match value {
+            Value::Table(table) => LuaValue::Texts(
+                table
+                    .sequence_values::<Value>()
+                    .map(|item| match item? {
+                        Value::String(s) => Ok(s.to_str()?.to_string()),
+                        _ => Err(wrong()),
+                    })
+                    .collect::<mlua::Result<Vec<String>>>()?,
+            ),
+            _ => return Err(wrong()),
+        },
+        TreeValueKind::ListEffect => match value {
+            Value::Table(table) => LuaValue::Effects(
+                table
+                    .sequence_values::<Value>()
+                    .map(|item| match item? {
+                        Value::Table(item_table) => effect_from_lua(&item_table),
+                        _ => Err(wrong()),
+                    })
+                    .collect::<mlua::Result<Vec<_>>>()?,
+            ),
+            _ => return Err(wrong()),
+        },
     })
 }
 
@@ -342,6 +481,20 @@ fn to_lua(lua: &Lua, value: &LuaValue) -> mlua::Result<Value> {
             let table = lua.create_table()?;
             for (index, item) in items.iter().enumerate() {
                 table.raw_set(index + 1, *item)?;
+            }
+            Value::Table(table)
+        }
+        LuaValue::Texts(items) => {
+            let table = lua.create_table()?;
+            for (index, item) in items.iter().enumerate() {
+                table.raw_set(index + 1, item.as_str())?;
+            }
+            Value::Table(table)
+        }
+        LuaValue::Effects(items) => {
+            let table = lua.create_table()?;
+            for (index, item) in items.iter().enumerate() {
+                table.raw_set(index + 1, effect_to_lua(lua, item)?)?;
             }
             Value::Table(table)
         }

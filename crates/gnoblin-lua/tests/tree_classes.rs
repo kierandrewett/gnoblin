@@ -69,6 +69,8 @@ fn expected_kind(ty: &Type) -> Option<TreeValueKind> {
         Type::Text => TreeValueKind::Text,
         Type::ObjectRef(_) => TreeValueKind::Node,
         Type::List(inner) if **inner == Type::Double => TreeValueKind::ListDouble,
+        Type::List(inner) if **inner == Type::Text => TreeValueKind::ListText,
+        Type::List(inner) if matches!(&**inner, Type::ObjectRef(name) if name == "effect") => TreeValueKind::ListEffect,
         Type::Bytes | Type::List(_) => return None,
     })
 }
@@ -83,6 +85,8 @@ fn expected_default(default: &DefaultValue, kind: TreeValueKind) -> LuaValue {
         (DefaultValue::Int(value), TreeValueKind::Double) => LuaValue::Double(*value as f64),
         (DefaultValue::Uint(value), TreeValueKind::Double) => LuaValue::Double(*value as f64),
         (DefaultValue::Text(value), TreeValueKind::Text) => LuaValue::Text(value.clone()),
+        (DefaultValue::List(items), TreeValueKind::ListText) if items.is_empty() => LuaValue::Texts(Vec::new()),
+        (DefaultValue::List(items), TreeValueKind::ListEffect) if items.is_empty() => LuaValue::Effects(Vec::new()),
         (DefaultValue::List(items), TreeValueKind::ListDouble) => LuaValue::List(
             items
                 .iter()
@@ -104,8 +108,7 @@ fn by_name(mut props: Vec<PropSpec>) -> Vec<PropSpec> {
 }
 
 /// The node class of design/node-core.md section 2.4, as the schema declares it, plus the
-/// synthetic `children` the mirror derives. `tags` (`list<string>`) and `effects`
-/// (`list<object:effect>`) have no wire kind, so they are not generated.
+/// synthetic `children` the mirror derives. Every property the node class declares is generated.
 fn documented_node() -> Vec<PropSpec> {
     use TreeValueKind as K;
     let spec = |name: &str, kind, readonly, default| PropSpec {
@@ -135,6 +138,8 @@ fn documented_node() -> Vec<PropSpec> {
         spec("clip", K::Bool, false, Some(LuaValue::Bool(false))),
         spec("input", K::Bool, false, Some(LuaValue::Bool(true))),
         spec("secure", K::Bool, false, Some(LuaValue::Bool(false))),
+        spec("tags", K::ListText, false, Some(LuaValue::Texts(Vec::new()))),
+        spec("effects", K::ListEffect, false, Some(LuaValue::Effects(Vec::new()))),
         spec("children", K::Nodes, true, None),
     ])
 }

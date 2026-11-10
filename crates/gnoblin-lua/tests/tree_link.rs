@@ -401,3 +401,61 @@ fn a_frame_cut_short_by_the_compositor_is_a_link_error() {
     drop(server);
     link.poll().expect_err("a truncated frame fails the link");
 }
+
+#[test]
+fn list_text_and_list_effect_changes_decode_to_their_lua_values() {
+    let (mut link, mut server) = pair();
+    let blur = gnoblin_proto::tree::effect::Properties {
+        kind: "blur".to_owned(),
+        enabled: true,
+        blur_radius: 4.0,
+        ..Default::default()
+    };
+    send(
+        &mut server,
+        &Envelope::event_message(
+            "tree",
+            "changes",
+            &ChangesPayload {
+                serial: 1,
+                changes: vec![
+                    change::Properties {
+                        kind: "set".to_owned(),
+                        node: 1000,
+                        key: "tags".to_owned(),
+                        value_kind: "list_text".to_owned(),
+                        value_texts: vec!["a".to_owned(), "b".to_owned()],
+                        ..Default::default()
+                    },
+                    change::Properties {
+                        kind: "set".to_owned(),
+                        node: 1000,
+                        key: "effects".to_owned(),
+                        value_kind: "list_effect".to_owned(),
+                        value_effects: vec![blur.clone()],
+                        ..Default::default()
+                    },
+                ],
+            },
+        ),
+    );
+
+    assert_eq!(
+        drain(&mut link),
+        vec![LuaIncoming::Changes {
+            serial: 1,
+            changes: vec![
+                LuaChange {
+                    key: "tags".to_owned(),
+                    value: Some(LuaValue::Texts(vec!["a".to_owned(), "b".to_owned()])),
+                    ..bare(MirrorChangeKind::Set, 1000)
+                },
+                LuaChange {
+                    key: "effects".to_owned(),
+                    value: Some(LuaValue::Effects(vec![blur])),
+                    ..bare(MirrorChangeKind::Set, 1000)
+                },
+            ],
+        }]
+    );
+}
