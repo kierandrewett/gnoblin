@@ -1192,6 +1192,18 @@ impl Scene {
         std::mem::take(&mut self.dirty)
     }
 
+    /// Marks a node and its ancestors dirty without changing any property or damaging pixels,
+    /// for content the scene does not hold (a window's buffer) that something derived from the
+    /// node, such as a View's picture, must re-read.
+    pub fn mark_dirty(&mut self, id: NodeId) -> Result<(), SceneError> {
+        if !self.nodes.contains_key(&id) {
+            return Err(SceneError::UnknownNode(id));
+        }
+        self.dirty.insert(id);
+        self.dirty.extend(self.ancestors(id));
+        Ok(())
+    }
+
     /// The camera projection that applies to a node's subtree.
     ///
     /// The nearest ancestor space wins, and a plain desktop has no space, so the
@@ -1961,6 +1973,19 @@ mod tests {
         assert_eq!(scene.source(NodeId::new(2)), None);
         assert_eq!(scene.camera(NodeId::new(2)), Some(NodeId::new(1)));
         assert!(scene.set_source(NodeId::new(9), None).is_err());
+    }
+
+    #[test]
+    fn a_marked_node_is_dirty_until_taken_and_an_unknown_one_is_refused() {
+        let mut scene = Scene::new();
+        scene
+            .insert(NodeId::new(1), NodeSpec::new(rect(0, 0, 100, 100)))
+            .expect("root");
+        scene.take_dirty();
+        scene.mark_dirty(NodeId::new(1)).expect("a node that exists");
+        assert!(scene.take_dirty().contains(&NodeId::new(1)));
+        assert!(scene.take_dirty().is_empty());
+        assert!(scene.mark_dirty(NodeId::new(9)).is_err());
     }
 
     #[test]

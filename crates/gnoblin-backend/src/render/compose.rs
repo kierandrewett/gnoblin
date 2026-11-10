@@ -77,6 +77,7 @@ use gnoblin_types::{Color, NodeId, OutputId, PointF, Rect, RectF, Size, TrackId,
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
+use gnoblin_render_software::{ViewCamera, ViewProjection, render_view};
 use gnoblin_wm::WorkspaceDirection;
 
 use crate::log;
@@ -96,6 +97,22 @@ const SHELL_SCALE_MAX: f32 = 10.0;
 
 /// The largest magnitude, in logical pixels, of each component the shell may offset a window by.
 const SHELL_OFFSET_LIMIT: f64 = 100_000.0;
+
+/// The orthographic camera's distance from the image plane, in logical pixels.
+const VIEW_ORTHO_DEPTH: f64 = 100.0;
+/// The near and far eye depths a View draws between when its camera sets neither.
+const VIEW_NEAR: f64 = 0.1;
+const VIEW_FAR: f64 = 10_000.0;
+/// The vertical field of view of a perspective camera that sets none, in degrees.
+const VIEW_FOV: f64 = 60.0;
+
+/// A View node's rendered picture: the size it was drawn at, and the image of its source
+/// subtree, or `None` when it has no source or the source cannot be drawn.
+#[derive(Debug)]
+struct ViewPicture {
+    size: Size,
+    image: Option<Arc<Image>>,
+}
 
 /// Why the composer refused a shell visual value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -252,6 +269,9 @@ pub struct Composer {
     /// Whether the shell held the tree at the last placement check. While it does, the composer
     /// leaves the node's x and y to the shell.
     placing: bool,
+    /// The pictures of the View nodes, each rendered from its source subtree and kept until
+    /// that subtree, its camera or the view itself changes.
+    views: BTreeMap<NodeId, ViewPicture>,
 }
 
 impl Default for Composer {
@@ -287,6 +307,7 @@ impl Composer {
             workspace_slide: None,
             tree_changes: Vec::new(),
             placing: false,
+            views: BTreeMap::new(),
         }
     }
 
@@ -355,7 +376,136 @@ impl Composer {
     /// time, and a second `take_damage` would find an empty scene and leave every
     /// output after the first stale.
     pub fn begin_frame(&mut self) {
+        let dirty = self.scene.take_dirty();
+        self.render_views(&dirty);
         self.damage = Some(self.scene.take_damage());
+    }
+
+    /// Re-renders the View nodes whose picture is stale and damages the pixels each one
+    /// redraws. A view is stale when it has no picture yet, changed size, or when it, or a
+    /// node in its source or camera subtree, is in `dirty`.
+    fn render_views(&mut self, dirty: &BTreeSet<NodeId>) {
+        let views = self.view_nodes();
+        self.views.retain(|view, _| views.contains(view));
+        for view in views {
+            let Some(bounds) = self.scene.bounds(view) else {
+                continue;
+            };
+            let size = Size::new(bounds.width, bounds.height);
+            let inputs: Vec<NodeId> = self
+                .scene
+                .source(view)
+                .into_iter()
+                .chain(self.scene.camera(view))
+                .flat_map(|root| self.subtree(root))
+                .collect();
+            let stale = dirty.contains(&view)
+                || inputs.iter().any(|node| dirty.contains(node))
+                || self.views.get(&view).is_none_or(|picture| picture.size != size);
+            if !stale {
+                continue;
+            }
+            let image = self.draw_view(view, size);
+            self.views.insert(view, ViewPicture { size, image });
+            if let Some(bounds) = self.scene.absolute_bounds(view) {
+                self.scene.damage_rect(bounds);
+            }
+        }
+    }
+
+    /// The image of a View's source subtree through its camera, or `None` when the view has no
+    /// source, the source is missing, or the source contains the view itself.
+    fn draw_view(&self, view: NodeId, size: Size) -> Option<Arc<Image>> {
+        let source = self.scene.source(view)?;
+        self.scene.node(source)?;
+        let nodes: BTreeSet<NodeId> = self.subtree(source).into_iter().collect();
+        if nodes.contains(&view) {
+            log::debug!(area = "render", %view, "a view inside its own source draws nothing");
+            return None;
+        }
+        let camera = self.view_camera(view, size);
+        let pictures = self.window_pictures(&nodes);
+        Some(render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image())
+    }
+
+    /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A
+    /// buffer that cannot be read (a DMA-BUF, say) leaves its window out, so it draws nothing.
+    fn window_pictures(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, Image> {
+        self.windows
+            .values()
+            .filter_map(|entry| {
+                let node = entry.node.filter(|node| nodes.contains(node))?;
+                let image = shm::readback(entry.buffer.as_ref()?).ok()?;
+                Some((node, image))
+            })
+            .collect()
+    }
+
+    /// The camera a View draws through. Without a camera node the view is orthographic, with
+    /// its origin at the top left and its image centred on the camera's axis. A camera node's
+    /// own transform is its pose; its `projection` text and `fov`, `near` and `far` numbers
+    /// choose the projection and clip planes.
+    fn view_camera(&self, view: NodeId, size: Size) -> ViewCamera {
+        let camera = self
+            .scene
+            .camera(view)
+            .filter(|camera| self.scene.node(*camera).is_some());
+        let Some(camera) = camera else {
+            return ViewCamera {
+                position: Vec3 {
+                    x: f64::from(size.width) / 2.0,
+                    y: f64::from(size.height) / 2.0,
+                    z: VIEW_ORTHO_DEPTH,
+                },
+                rotation_degrees: Vec3::default(),
+                projection: ViewProjection::Orthographic,
+                near: VIEW_NEAR,
+                far: VIEW_FAR,
+            };
+        };
+        let (position, rotation_degrees) = self
+            .scene
+            .transform(camera)
+            .map_or((Vec3::default(), Vec3::default()), |transform| {
+                (transform.base.offset, transform.base.rotation_degrees)
+            });
+        let projection = match self.scene.text(camera, "projection") {
+            Some("perspective") => ViewProjection::Perspective {
+                vertical_fov_degrees: self.scene.number(camera, "fov").unwrap_or(VIEW_FOV),
+            },
+            _ => ViewProjection::Orthographic,
+        };
+        ViewCamera {
+            position,
+            rotation_degrees,
+            projection,
+            near: self.scene.number(camera, "near").unwrap_or(VIEW_NEAR),
+            far: self.scene.number(camera, "far").unwrap_or(VIEW_FAR),
+        }
+    }
+
+    /// Every View node in the scene, found from the roots down.
+    fn view_nodes(&self) -> BTreeSet<NodeId> {
+        let mut views = BTreeSet::new();
+        let mut stack: Vec<NodeId> = self.scene.root_ids().to_vec();
+        while let Some(node) = stack.pop() {
+            if self.scene.class(node) == Some("View") {
+                views.insert(node);
+            }
+            stack.extend(self.scene.children(node).unwrap_or(&[]));
+        }
+        views
+    }
+
+    /// `root` and every node below it.
+    fn subtree(&self, root: NodeId) -> Vec<NodeId> {
+        let mut nodes = Vec::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            nodes.push(node);
+            stack.extend(self.scene.children(node).unwrap_or(&[]));
+        }
+        nodes
     }
 
     /// Runs `f` against the scene the composer draws from. The tree's frame work edits it
@@ -1224,7 +1374,12 @@ impl Composer {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
+        let node = entry.node;
         entry.buffer = buffer;
+        // A View that draws this window re-reads its pixels from the new buffer.
+        if let Some(node) = node {
+            let _ = self.scene.mark_dirty(node);
+        }
     }
 
     /// Sets the paint order, topmost first as `gnoblin-wm` reports it.
@@ -1357,6 +1512,40 @@ impl Composer {
                 effects: entry.effects.clone(),
                 model,
                 secure: entry.secure,
+            }));
+        }
+        // A View draws its source's picture at its own rectangle, above the windows it is
+        // painted over and below the visual bell.
+        for view in self.view_nodes() {
+            let Some(picture) = self.views.get(&view) else {
+                continue;
+            };
+            let Some(image) = picture.image.as_ref() else {
+                continue;
+            };
+            let Some(bounds) = self.scene.absolute_bounds(view) else {
+                continue;
+            };
+            let placed = Rect::new(bounds.x, bounds.y, picture.size.width, picture.size.height);
+            if placed.intersection(rect).is_none() {
+                continue;
+            }
+            frame.push_layer(Layer::Surface(Surface {
+                source: SurfaceSource::Snapshot(Arc::clone(image)),
+                src: RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    width: f64::from(picture.size.width),
+                    height: f64::from(picture.size.height),
+                },
+                dst: local(placed, rect),
+                transform: Transform::Normal,
+                opacity: 1.0,
+                tint: Color::new(1.0, 1.0, 1.0, 1.0),
+                corner_radius: 0.0,
+                effects: Effects::new(),
+                model: None,
+                secure: false,
             }));
         }
         if let Some(flash) = self.flash {
@@ -1855,6 +2044,113 @@ mod tests {
     fn picture() -> Arc<Image> {
         let bytes = vec![0xff; 40 * 50 * 4];
         Arc::new(Image::new(Size::new(40, 50), 40 * 4, bytes).expect("a picture the size of its window"))
+    }
+
+    /// Adds a View at (10, 20), 40 by 30, under `parent` or the root, sourced from `source`.
+    fn add_view(composer: &mut Composer, view: NodeId, parent: Option<NodeId>, source: Option<NodeId>) {
+        composer.with_scene(|scene| {
+            let mut spec = NodeSpec::new(Rect::new(10, 20, 40, 30));
+            spec.parent = parent;
+            scene.insert(view, spec).expect("a view node");
+            scene
+                .set_class(view, Some("View".to_owned()))
+                .expect("the view's class");
+            scene.set_source(view, source).expect("the view's source");
+        });
+    }
+
+    /// Adds the root of a view's source subtree: a plain node at `rect`.
+    fn add_source(composer: &mut Composer, source: NodeId, rect: Rect) {
+        composer.with_scene(|scene| scene.insert(source, NodeSpec::new(rect)).expect("a source node"));
+    }
+
+    /// The placement of each View picture the next frame for `output` carries.
+    fn view_layers(composer: &mut Composer, output: OutputId) -> Vec<Rect> {
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Surface(surface) if matches!(surface.source, SurfaceSource::Snapshot(_)) => Some(surface.dst),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_view_with_a_source_draws_its_picture_where_it_sits() {
+        let (mut composer, output) = screen();
+        let source = NodeId::new(2);
+        add_source(&mut composer, source, Rect::new(0, 0, 40, 30));
+        add_view(&mut composer, NodeId::new(1), None, Some(source));
+        assert_eq!(view_layers(&mut composer, output), vec![Rect::new(10, 20, 40, 30)]);
+    }
+
+    #[test]
+    fn a_view_without_a_source_draws_no_picture() {
+        let (mut composer, output) = screen();
+        add_view(&mut composer, NodeId::new(1), None, None);
+        assert!(view_layers(&mut composer, output).is_empty());
+    }
+
+    #[test]
+    fn a_view_inside_its_own_source_draws_no_picture() {
+        let (mut composer, output) = screen();
+        let source = NodeId::new(2);
+        add_source(&mut composer, source, Rect::new(0, 0, 40, 30));
+        add_view(&mut composer, NodeId::new(1), Some(source), Some(source));
+        assert!(view_layers(&mut composer, output).is_empty());
+    }
+
+    #[test]
+    fn a_view_redraws_only_when_its_source_changes() {
+        let (mut composer, output) = screen();
+        let source = NodeId::new(2);
+        add_source(&mut composer, source, Rect::new(0, 0, 40, 30));
+        add_view(&mut composer, NodeId::new(1), None, Some(source));
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "a new view damages its pixels"
+        );
+        assert!(
+            damage_of(&mut composer, output).is_none(),
+            "an unchanged view draws nothing new"
+        );
+        composer.with_scene(|scene| {
+            scene
+                .set_bounds(source, Rect::new(0, 0, 20, 20))
+                .expect("the source resizes")
+        });
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "a source change re-renders the view"
+        );
+    }
+
+    #[test]
+    fn a_view_of_a_window_redraws_when_the_window_node_is_marked_dirty() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(0, 0, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        let node = composer.window_node(window).expect("the window's scene node");
+        add_view(&mut composer, NodeId::new(1), None, Some(node));
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "a new view damages its pixels"
+        );
+        assert!(
+            damage_of(&mut composer, output).is_none(),
+            "an unchanged view draws nothing new"
+        );
+        composer.with_scene(|scene| scene.mark_dirty(node).expect("the window node"));
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "a new window buffer re-renders the view"
+        );
     }
 
     #[test]
