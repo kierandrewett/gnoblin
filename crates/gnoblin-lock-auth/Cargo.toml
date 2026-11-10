@@ -1,0 +1,23 @@
+[package]
+name = "gnoblin-lock-auth"
+description = "Password checks for the session lock: a PAM authenticator, a scripted fake, and the retry limiter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# libpam is loaded with dlopen rather than linked, so building and testing the crate needs no
+# libpam development package, and a machine without PAM reports `Failed` instead of failing to link.
+libloading.workspace = true
+# The password copies handed to PAM are wiped on drop.
+zeroize.workspace = true
+
+# The workspace lint table forbids unsafe, which the libpam boundary needs, so this crate sets its
+# own levels. Only the `ffi` module may allow unsafe_code.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

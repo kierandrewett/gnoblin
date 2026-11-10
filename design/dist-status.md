@@ -28,6 +28,7 @@ cargo xtask dist uninstall --prefix /usr/local [--destdir DIR]
 | `bin/gnoblin`, `bin/gnoblinctl`                                                        | build directory                     |
 | `libexec/xdg-desktop-portal-gnoblin`                                                   | build directory                     |
 | `lib/security/pam_gnoblin_keyring.so`                                                  | build directory                     |
+| `lib/pam.d/gnoblin-lock`                                                               | `data/pam.d/gnoblin-lock`           |
 | `lib/systemd/user/gnoblin-session.target`                                              | `data/session/systemd-user/`        |
 | `share/wayland-sessions/gnoblin.desktop` (template)                                    | `data/session/`                     |
 | `share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service` (template) | portal crate `data/`                |

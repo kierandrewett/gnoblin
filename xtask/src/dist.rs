@@ -101,6 +101,12 @@ const ITEMS: &[InstallItem] = &[
         template: false,
     },
     InstallItem::File {
+        from: InstallSource::Repo("data/pam.d/gnoblin-lock"),
+        to: "lib/pam.d/gnoblin-lock",
+        mode: FileMode::Data,
+        template: false,
+    },
+    InstallItem::File {
         from: InstallSource::Repo("data/session/gnoblin.desktop"),
         to: "share/wayland-sessions/gnoblin.desktop",
         mode: FileMode::Data,
@@ -742,6 +748,7 @@ mod tests {
             "bin/gnoblinctl",
             "libexec/xdg-desktop-portal-gnoblin",
             "lib/security/pam_gnoblin_keyring.so",
+            "lib/pam.d/gnoblin-lock",
             "share/gnoblin/default-config/init.lua",
             "share/gnoblin/lua/gnoblin/layouts/dwindle.lua",
             "share/xdg-desktop-portal/gnoblin-portals.conf",

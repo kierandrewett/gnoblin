@@ -1633,6 +1633,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-lock-auth"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "libloading",
+ "zeroize",
+]
+
+[[package]]
 name = "gnoblin-log"
 version = "0.2.0-alpha.0"
 dependencies = [

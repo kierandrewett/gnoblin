@@ -1,0 +1,5 @@
+#%PAM-1.0
+# The session lock checks passwords through this service. It accepts what a console login accepts,
+# so it reads the system login stack rather than repeating it.
+auth     include    login
+account  include    login

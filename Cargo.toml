@@ -55,6 +55,7 @@ members = [
     "crates/gnoblin-service-keyring",
     "crates/gnoblin-layers",
     "crates/gnoblin-lock",
+    "crates/gnoblin-lock-auth",
     "crates/gnoblin-log",
     "crates/gnoblin-lua",
     "crates/gnoblin-lua-sandbox",
@@ -255,6 +256,7 @@ unicode-width = "0.2.3"
 # directory that account controls. It is already in the graph (calloop uses it), and
 # it is the smallest safe way to ask the kernel who this process is `libc` would
 # need `unsafe`, which the workspace forbids.
+libloading = "0.8.9"
 rustix = { version = "1.1.6", features = ["process"] }
 
 # The shared primitives: geometry, transform, scale, identities, ticks and error
