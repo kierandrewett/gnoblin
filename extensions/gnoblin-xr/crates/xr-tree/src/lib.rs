@@ -7,8 +7,9 @@
 //! The model keeps only what the planner reads: the node graph, the transform and
 //! visibility properties, and the View and camera fields. Other properties are ignored.
 //! The wire gives rotation in radians and the model holds degrees, which is what
-//! `xr-scene` reads. A camera projection of `perspective` becomes
-//! [`CameraProjection::Orthographic`], because `xr-scene` has no third projection.
+//! `xr-scene` reads. The protocol's `stereo` becomes [`CameraProjection::Stereo`].
+//! A projection of `perspective` becomes [`CameraProjection::Orthographic`]: it is not
+//! `stereo`, and `xr-scene` has no perspective projection of its own.
 //! A camera's `metres` defaults to `0.001`, as the schema does.
 
 use std::collections::BTreeMap;
