@@ -272,6 +272,8 @@ pub struct Composer {
     tree_changes: Vec<TreeChange>,
     /// Window nodes created since the last take, announced to the shell as ready.
     tree_ready: Vec<NodeId>,
+    /// The compositor's seat node for the main wl_seat, once added. It holds the pointer and focus.
+    main_seat: Option<NodeId>,
     /// Whether the shell held the tree at the last placement check. While it does, the composer
     /// leaves the node's x and y to the shell.
     placing: bool,
@@ -313,6 +315,7 @@ impl Composer {
             workspace_slide: None,
             tree_changes: Vec::new(),
             tree_ready: Vec::new(),
+            main_seat: None,
             placing: false,
             views: BTreeMap::new(),
         }
@@ -1380,6 +1383,80 @@ impl Composer {
         self.windows.get(&window).and_then(|entry| entry.node)
     }
 
+    /// Adds the compositor's seat node for the main wl_seat, a child of the root. The shell
+    /// cannot destroy or move it. Its name is text only, so it is not a second wl_seat global.
+    pub fn add_main_seat(&mut self, name: &str) -> Option<NodeId> {
+        if let Some(seat) = self.main_seat {
+            return Some(seat);
+        }
+        let id = self.node_ids.allocate()?;
+        let root = *self.scene.root_ids().first()?;
+        let mut spec = NodeSpec::new(Rect::new(0, 0, 0, 0));
+        spec.parent = Some(root);
+        spec.input = false;
+        self.scene.insert(id, spec).ok()?;
+        let _ = self.scene.set_class(id, Some("seat".to_owned()));
+        let _ = self.scene.set_text(id, "name", name.to_owned());
+        let _ = self.scene.set_number(id, "pointer_x", 0.0);
+        let _ = self.scene.set_number(id, "pointer_y", 0.0);
+        let index = self.scene.root_ids().iter().position(|root| *root == id).unwrap_or(0);
+        self.tree_changes.push(TreeChange::Created {
+            node: id,
+            class: "seat".to_owned(),
+            index,
+        });
+        self.main_seat = Some(id);
+        Some(id)
+    }
+
+    /// Publishes the pointer's layout position on the main seat. Only a change is published.
+    pub fn set_main_seat_pointer(&mut self, x: f64, y: f64) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        for (key, value) in [("pointer_x", x), ("pointer_y", y)] {
+            if self.scene.number(seat, key) == Some(value) {
+                continue;
+            }
+            let _ = self.scene.set_number(seat, key, value);
+            self.tree_changes.push(TreeChange::Set {
+                node: seat,
+                key: key.to_owned(),
+                value: TreeValue::Double(value),
+            });
+        }
+    }
+
+    /// Publishes the window that holds keyboard focus on the main seat, or none. Only a change
+    /// is published.
+    pub fn set_main_seat_focus(&mut self, window: Option<WindowId>) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        let target = window.and_then(|window| self.window_node(window));
+        if self.scene.reference(seat, "focus") == target {
+            return;
+        }
+        let _ = self.scene.set_reference(seat, "focus", target);
+        self.tree_changes.push(TreeChange::Set {
+            node: seat,
+            key: "focus".to_owned(),
+            value: TreeValue::Node(target),
+        });
+    }
+
+    /// The node the main seat's `focus` names, which the shell may have written.
+    #[must_use]
+    pub fn main_seat_focus(&self) -> Option<NodeId> {
+        self.main_seat.and_then(|seat| self.scene.reference(seat, "focus"))
+    }
+
+    /// The window whose node the main seat's `focus` names.
+    #[must_use]
+    pub fn main_seat_focus_window(&self) -> Option<WindowId> {
+        self.main_seat_focus().and_then(|node| self.window_of_node(node))
+    }
+
     /// The managed window that is the scene node `node`, when one is.
     #[must_use]
     pub fn window_of_node(&self, node: NodeId) -> Option<WindowId> {
@@ -1937,6 +2014,7 @@ mod tests {
     use gnoblin_types::{Point, WindowId};
 
     use super::*;
+    use gnoblin_render::Actor;
 
     fn content() -> Content {
         Content {
@@ -3624,6 +3702,76 @@ mod tests {
             covers(&damage, Rect::new(0, 0, 800, 600)),
             "the whole output is repainted"
         );
+    }
+
+    #[test]
+    fn the_main_seat_is_a_compositor_node_under_the_root() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        let root = composer.with_scene(|scene| scene.root_ids()[0]);
+        let (parent, class, name) = composer.with_scene(|scene| {
+            (
+                scene.parent(seat),
+                scene.class(seat).map(str::to_owned),
+                scene.text(seat, "name").map(str::to_owned),
+            )
+        });
+        let shell_remove = composer.with_scene(|scene| scene.remove_as(Actor::Shell, seat).is_err());
+        assert_eq!(parent, Some(root));
+        assert_eq!(class.as_deref(), Some("seat"));
+        assert_eq!(name.as_deref(), Some("seat0"));
+        assert!(shell_remove, "the shell may not destroy the compositor's seat");
+        assert_eq!(composer.add_main_seat("seat0"), Some(seat), "one main seat");
+        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Created { node, class, .. } if *node == seat && class == "seat"
+        )));
+    }
+
+    #[test]
+    fn the_main_seat_publishes_the_pointer_only_when_it_moves() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        composer.take_tree_changes();
+        composer.set_main_seat_pointer(3.0, 4.0);
+        let changes = composer.take_tree_changes();
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Double(v) } if *node == seat && key == "pointer_x" && *v == 3.0
+        )));
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Double(v) } if *node == seat && key == "pointer_y" && *v == 4.0
+        )));
+        composer.set_main_seat_pointer(3.0, 4.0);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged pointer is not republished"
+        );
+    }
+
+    #[test]
+    fn the_main_seat_publishes_the_focused_window_node() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        composer.take_tree_changes();
+        composer.set_main_seat_focus(Some(window));
+        assert_eq!(composer.main_seat_focus(), Some(node));
+        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node: set, key, value: TreeValue::Node(Some(target)) }
+                if *set == seat && key == "focus" && *target == node
+        )));
+        composer.set_main_seat_focus(None);
+        assert_eq!(composer.main_seat_focus(), None);
+        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node: set, key, value: TreeValue::Node(None) } if *set == seat && key == "focus"
+        )));
     }
 
     #[test]
