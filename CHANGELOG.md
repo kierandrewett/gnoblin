@@ -15,6 +15,8 @@
 
 ### Added
 
+- The owner-only global `gnoblin_view_source_manager_v1` (protocol `protocols/gnoblin-view-source-v1.xml`) is offered to the owner's privileged connection and to nothing else: an application, a sandbox and a trusted service do not see it. Its `create_source(node)` returns an `ext_image_capture_source_v1` for a View node, the source `ext-image-copy-capture` reads a View's picture from. A node that is not a View of the scene is a protocol error `invalid_node`. The frame loop publishes the set of View nodes into the capture tables each frame, so a View created and named in the same loop iteration is refused until the next. Tests in `crates/gnoblin-wayland/tests/view_source.rs` (`the_owner_sees_the_view_source_global`, `an_ordinary_application_does_not_see_the_view_source_global`, `a_trusted_service_does_not_see_the_view_source_global`, `a_source_for_a_node_that_is_not_a_view_is_a_protocol_error`).
+
 - Window nodes publish their `x`, `y`, `width` and `height` as `set` changes when they change: the size is the content size, the position is the placed frame origin.
 - A window node announces `ready` to the shell once, in the batch after it is created with content: a `tree.event` with kind `ready` and the node id. Test `a_window_is_announced_ready_once_when_it_first_has_a_node` and `a_window_node_is_announced_ready_once_in_the_batch_that_follows_its_mapping`. Node-core step 2.
 - Window nodes publish `focused`, `fullscreen`, `maximised` and `minimised` as `set` changes: `focused` comes from the keyboard focus, the others from the window manager state. All four are written together, and only when one of them changes. Test `a_window_state_is_published_only_when_it_changes`. Node-core step 3.

@@ -100,6 +100,10 @@ pub enum Global {
     OutputPower,
     /// `zwlr_output_manager_v1`: a client reads the outputs and asks for a new layout.
     OutputManagement,
+    /// `gnoblin_view_source_manager_v1`: a client takes a capture source for a View and
+    /// so reads that View's pixels. Only the owner's privileged connection sees it: a
+    /// trusted service does not get another View's pixels.
+    ViewSource,
 }
 
 impl Global {
@@ -124,7 +128,8 @@ impl Global {
             | Self::GammaControl
             | Self::OutputPower
             | Self::OutputManagement
-            | Self::SessionHost => true,
+            | Self::SessionHost
+            | Self::ViewSource => true,
             // The seat's privileged halves are how an input method and an on-screen
             // keyboard are implemented: the method is a process the session runs, and the
             // virtual keyboard is what an on-screen keyboard or an accessibility tool
@@ -148,6 +153,7 @@ impl Global {
             Self::ImageCopyCapture => "ext_image_copy_capture_manager_v1",
             Self::GnoblinWindowFrameV1Frame => "gnoblin_window_frame_manager_v1",
             Self::SessionHost => "gnoblin_session_host_v1",
+            Self::ViewSource => "gnoblin_view_source_manager_v1",
             Self::InputMethod => "zwp_input_method_manager_v2",
             Self::VirtualKeyboard => "zwp_virtual_keyboard_manager_v1",
             Self::BackgroundEffect => "ext_background_effect_manager_v1",
@@ -180,7 +186,7 @@ impl Global {
             Self::GammaControl => gnoblin_config::Protocol::WlrGammaControl,
             Self::OutputPower => gnoblin_config::Protocol::WlrOutputPowerManagement,
             Self::OutputManagement => gnoblin_config::Protocol::WlrOutputManagement,
-            Self::GnoblinWindowFrameV1Frame | Self::SessionHost => return true,
+            Self::GnoblinWindowFrameV1Frame | Self::SessionHost | Self::ViewSource => return true,
             // The schema has no switch for the seat's privileged halves: an input method
             // and a virtual keyboard are always on offer to a connection that earned
             // them, which is the roster's decision and not the document's.
@@ -240,7 +246,10 @@ impl ClientRole {
 pub const fn decide(role: ClientRole, global: Global) -> bool {
     match role {
         ClientRole::Sandboxed => false,
-        ClientRole::Privileged | ClientRole::Trusted => true,
+        ClientRole::Privileged => true,
+        // A trusted service reaches every privileged global except the view-source one,
+        // which belongs to the owner's own connection.
+        ClientRole::Trusted => !matches!(global, Global::ViewSource),
         // Narrow on purpose: the process behind these roles is a renderer or a session,
         // never the session's own management, so one global is the whole of what it may
         // reach.
@@ -462,6 +471,7 @@ mod tests {
         Global::ImageCopyCapture,
         Global::GnoblinWindowFrameV1Frame,
         Global::SessionHost,
+        Global::ViewSource,
         Global::InputMethod,
         Global::VirtualKeyboard,
         Global::BackgroundEffect,
@@ -494,11 +504,35 @@ mod tests {
 
     #[test]
     fn the_two_earned_roles_see_every_privileged_global() {
-        for role in [ClientRole::Privileged, ClientRole::Trusted] {
-            for global in ALL {
-                assert!(decide(role, *global), "{} must see {}", role.as_str(), global.as_str());
+        for global in ALL {
+            assert!(
+                decide(ClientRole::Privileged, *global),
+                "privileged must see {}",
+                global.as_str()
+            );
+            if *global == Global::ViewSource {
+                continue;
             }
+            assert!(
+                decide(ClientRole::Trusted, *global),
+                "trusted must see {}",
+                global.as_str()
+            );
         }
+    }
+
+    #[test]
+    fn the_view_source_global_is_the_owners_alone() {
+        // A capture source reads a View's pixels; a trusted service must not, so only
+        // the owner's privileged connection gets the manager.
+        assert!(decide(ClientRole::Privileged, Global::ViewSource));
+        assert!(!decide(ClientRole::Trusted, Global::ViewSource));
+        assert!(!decide(ClientRole::Unprivileged, Global::ViewSource));
+        assert!(!decide(ClientRole::Sandboxed, Global::ViewSource));
+        assert!(!decide(ClientRole::FrameRenderer, Global::ViewSource));
+        assert!(!decide(ClientRole::SessionHost, Global::ViewSource));
+        assert!(Global::ViewSource.is_privileged());
+        assert!(Global::ViewSource.is_advertised(&gnoblin_config::Protocols::default()));
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! [`crate::table`]; this module is the value they act on.
 
 use gnoblin_lock::CaptureStream;
-use gnoblin_types::{ClientId, OutputId, Rect, Tick, WindowId};
+use gnoblin_types::{ClientId, NodeId, OutputId, Rect, Tick, WindowId};
 
 use crate::format::Format;
 
@@ -67,6 +67,9 @@ pub enum Target {
     Output(OutputId),
     /// One window, which follows the window as it moves and ends with it.
     Window(WindowId),
+    /// One View node of the scene, whose picture the composer draws. A View has no cursor,
+    /// so `capture{cursor}` has no effect on it.
+    View(NodeId),
 }
 
 impl std::fmt::Display for Target {
@@ -74,6 +77,7 @@ impl std::fmt::Display for Target {
         match self {
             Self::Output(id) => write!(formatter, "output {id}"),
             Self::Window(id) => write!(formatter, "window {id}"),
+            Self::View(node) => write!(formatter, "view {node:?}"),
         }
     }
 }

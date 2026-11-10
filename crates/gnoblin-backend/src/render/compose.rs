@@ -1439,6 +1439,27 @@ impl Composer {
         self.scene.view_shown_nodes()
     }
 
+    /// Every View node in the scene, with the size it is drawn at. A capture source names a
+    /// View by its node, so the capture side reads each View's current size from here.
+    #[must_use]
+    pub fn views(&self) -> Vec<(NodeId, Size)> {
+        self.view_nodes()
+            .into_iter()
+            .filter_map(|view| {
+                let bounds = self.scene.bounds(view)?;
+                Some((view, Size::new(bounds.width, bounds.height)))
+            })
+            .collect()
+    }
+
+    /// The size a View node is drawn at, or `None` when `node` is not a View of the scene.
+    #[must_use]
+    pub fn view_size(&self, node: NodeId) -> Option<Size> {
+        self.views()
+            .into_iter()
+            .find_map(|(view, size)| (view == node).then_some(size))
+    }
+
     /// The scene node of a window, once the composer has given it one.
     #[must_use]
     pub fn window_node(&self, window: WindowId) -> Option<NodeId> {

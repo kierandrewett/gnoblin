@@ -79,7 +79,7 @@ use gnoblin_capture::{
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm::copy_into;
-use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
+use gnoblin_types::{ClientId, NodeId, OutputId, Point, Rect, Size, Tick, WindowId};
 
 use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
@@ -110,6 +110,8 @@ pub(super) struct Targets {
     outputs: BTreeMap<OutputId, Size>,
     /// Every window: the output it is drawn on and its physical origin in that frame.
     windows: BTreeMap<WindowId, CapturedPlacement>,
+    /// Every View, at the size it is drawn, in physical pixels.
+    views: BTreeMap<NodeId, Size>,
 }
 
 /// Where a window is drawn.
@@ -132,6 +134,7 @@ impl Targets {
                 .windows
                 .get(&window)
                 .map(|placement| Rect::from_size(placement.size)),
+            Target::View(view) => self.views.get(&view).map(|size| Rect::from_size(*size)),
         }
     }
 
@@ -140,13 +143,14 @@ impl Targets {
         match target {
             Target::Output(output) => Some(output),
             Target::Window(window) => self.windows.get(&window).map(|placement| placement.output),
+            Target::View(_) => None,
         }
     }
 
     /// Where a target's own origin sits in its output's frame.
     fn origin(&self, target: Target) -> Point {
         match target {
-            Target::Output(_) => Point::new(0, 0),
+            Target::Output(_) | Target::View(_) => Point::new(0, 0),
             Target::Window(window) => self
                 .windows
                 .get(&window)
@@ -173,6 +177,9 @@ pub(crate) struct CaptureTables {
     pub(super) tick: Tick,
     /// The `ext-image-capture-source-v1` objects, mapped to what they capture.
     pub(super) sources: BTreeMap<usize, Target>,
+    /// The Views the frame loop published, at the size each is drawn. A view-source
+    /// `create_source` is refused for any node not in this set.
+    pub(super) views: BTreeMap<NodeId, Size>,
     /// The sessions `ext-image-copy-capture` created, kept alive so their clients keep
     /// their constraints and hear `stopped` when they end.
     pub(super) sessions: Vec<CaptureSession>,
@@ -223,11 +230,13 @@ impl CaptureTables {
                 access: Arc::clone(access),
             },
         );
+        super::gnoblin_view_source_v1::create_global(display, access);
         Self {
             table: Table::new(),
             pixels: BTreeMap::new(),
             tick: Tick::ZERO,
             sources: BTreeMap::new(),
+            views: BTreeMap::new(),
             sessions: Vec::new(),
             screencopy_frames: Vec::new(),
             owners: HashMap::new(),
@@ -462,6 +471,7 @@ impl State {
     /// lock has covered.
     pub(crate) fn poll_capture(&mut self) {
         self.capture.tick = self.capture.tick.saturating_add(1);
+        self.capture.views = self.composer.views().into_iter().collect();
         if !self.capture_allowed() && self.capture.stop_all() {
             self.publish();
         }
@@ -520,7 +530,10 @@ impl State {
 
     /// Where every target is now.
     pub(super) fn capture_targets(&self) -> Targets {
-        let mut targets = Targets::default();
+        let mut targets = Targets {
+            views: self.capture.views.clone(),
+            ..Targets::default()
+        };
         for output in self.output_ids() {
             let (Some(rect), Some(scale)) = (self.output_rect(output), self.output_scale(output)) else {
                 continue;

@@ -396,6 +396,24 @@ pub mod protocols {
 
         wayland_scanner::generate_client_code!("../../protocols/gnoblin-session-host-v1.xml");
     }
+
+    /// `gnoblin_view_source_v1`.
+    pub mod gnoblin_view_source_v1 {
+        use wayland_client;
+        pub use wayland_protocols::ext::image_capture_source::v1::client::ext_image_capture_source_v1;
+
+        pub mod __interfaces {
+            use super::wayland_client::backend as wayland_backend;
+            use wayland_protocols::ext::image_capture_source::v1::client::__interfaces::*;
+
+            wayland_scanner::generate_interfaces!("../../protocols/gnoblin-view-source-v1.xml");
+        }
+
+        #[allow(unused_imports)]
+        use self::__interfaces::*;
+
+        wayland_scanner::generate_client_code!("../../protocols/gnoblin-view-source-v1.xml");
+    }
 }
 
 /// How many distinct colours a screenshot contains, so a test can tell "one

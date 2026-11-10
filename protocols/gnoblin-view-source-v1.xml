@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gnoblin-view-source-v1.xml: Gnoblin-owned protocol, version history.
+
+  New in the Rust compositor. It makes a View node capturable: the owner
+  connection names a View by its node id and captures the View's picture
+  through the standard ext-image-copy-capture path.
+
+  1  Initial version.
+-->
+<protocol name="gnoblin_view_source_v1">
+  <copyright>Copyright 2026 Gnoblin contributors. MIT license.</copyright>
+  <interface name="gnoblin_view_source_manager_v1" version="1">
+    <description summary="capture sources for View nodes">
+      Offered only on the owner's privileged socket, the one the session's own
+      processes connect on. An application's connection never sees this global,
+      so no application can read a View's pixels through it.
+
+      A source names one View node of the tree by its node id. A capture session
+      on that source yields the View's picture at the View's size, in the same
+      formats and on the same copy path as an output capture. The picture is
+      redelivered when the View redraws. `capture{cursor}` has no effect on a
+      View, which has no cursor.
+
+      A capture of a View is refused while the session is locked, exactly as an
+      output capture is.
+    </description>
+
+    <enum name="error">
+      <entry name="invalid_node" value="0" summary="the node is unknown or is not a View"/>
+    </enum>
+
+    <request name="create_source">
+      <description summary="create a capture source for a View node">
+        Creates an ext_image_capture_source_v1 that names the View node with the
+        given id. The node must be a View that exists in the tree when the
+        request arrives; otherwise the client gets an invalid_node protocol error.
+      </description>
+      <arg name="id" type="new_id" interface="ext_image_capture_source_v1"/>
+      <arg name="node" type="uint" summary="the node id of a View"/>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the manager">
+        Sources already created stay valid until they are destroyed themselves.
+      </description>
+    </request>
+  </interface>
+</protocol>

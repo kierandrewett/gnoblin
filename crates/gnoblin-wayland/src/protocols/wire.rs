@@ -59,3 +59,23 @@ pub(crate) mod session_host {
 
     wayland_scanner::generate_server_code!("../../protocols/gnoblin-session-host-v1.xml");
 }
+
+/// `gnoblin_view_source_v1`: the owner-only source of View captures.
+pub(crate) mod view_source {
+    use smithay::reexports::wayland_protocols::ext::image_capture_source::v1::server::ext_image_capture_source_v1;
+    use smithay::reexports::wayland_server;
+    use wayland_server::backend as wayland_backend;
+
+    /// Interface descriptors generated from the view source XML.
+    pub(crate) mod __interfaces {
+        use super::wayland_backend;
+        use smithay::reexports::wayland_protocols::ext::image_capture_source::v1::server::__interfaces::*;
+
+        wayland_scanner::generate_interfaces!("../../protocols/gnoblin-view-source-v1.xml");
+    }
+
+    #[allow(unused_imports)]
+    use self::__interfaces::*;
+
+    wayland_scanner::generate_server_code!("../../protocols/gnoblin-view-source-v1.xml");
+}
