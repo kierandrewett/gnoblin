@@ -107,8 +107,6 @@ error: invalid value 'nosuch' for '[PROPERTY]'
   handshake.
 - `gnoblinctl status` prints the session state, its revision and the lock.
 - `gnoblinctl version` prints the Gnoblin and IPC versions.
-- `gnoblinctl capabilities` lists every capability and whether this connection
-  holds it.
 
 ```sh
 gnoblinctl status

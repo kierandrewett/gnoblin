@@ -38,7 +38,7 @@ Polkit allows one agent per session. Stop any other agent, such as
 `polkit-gnome`, `polkit-mate`, or a shell's own agent, or do not start it,
 before you turn this on. If another agent owns the session, Gnoblin cannot
 register, and the `auth-agent` capability reports `polkit_unavailable`. Check
-the capability with `gnoblinctl capabilities`.
+the capability with `gnoblin.capabilities.list()`.
 
 The `auth-agent` capability reports `auth_disabled` while `polkit_agent` is
 `false`. In that state Gnoblin leaves the role free for an agent that you start

@@ -10,7 +10,6 @@ codes, connection rules, logs and output formats are in the
 gnoblinctl ping
 gnoblinctl status
 gnoblinctl version
-gnoblinctl capabilities
 ```
 
 ## Configuration

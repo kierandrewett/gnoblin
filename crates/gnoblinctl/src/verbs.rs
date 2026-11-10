@@ -1,5 +1,4 @@
-//! The verbs that are not object actions: `status`, `version`, `ping`,
-//! `capabilities` and `config`.
+//! The verbs that are not object actions: `status`, `version`, `ping` and `config`.
 //!
 //! The object verbs are generated from the schema because an object's members are
 //! the schema's to declare. These are different: each one asks the session a fixed
@@ -16,7 +15,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use gnoblin_client::{Capabilities, Capability, Client, Transport};
+use gnoblin_client::{Client, Transport};
 use gnoblin_config::{SearchPaths, document::Config};
 use gnoblin_model::{Fields, Filter, ObjectView, Snapshot, TypeKey, Value};
 use serde_json::{Value as Json, json};
@@ -32,8 +31,6 @@ pub(crate) enum Verb {
     Status,
     /// The Gnoblin version and the IPC version this connection speaks.
     Version,
-    /// Every capability, and whether this connection holds it.
-    Capabilities,
     /// The configuration document the compositor last accepted.
     ConfigGet,
     /// Ask the runtime to re-read the configuration in place.
@@ -60,7 +57,6 @@ pub(crate) fn execute<T: Transport>(
         Verb::Ping => ping(json, out),
         Verb::Status => status(client, json, out),
         Verb::Version => version(client, json, out),
-        Verb::Capabilities => capabilities(client, json, out),
         Verb::ConfigGet => config_get(client, json, out),
         Verb::ConfigReload => config_reload(client, json, out),
         Verb::WorkspaceActivateSet { name } => workspace_activate_set(client, name, json, out),
@@ -163,42 +159,6 @@ fn version<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write
     };
     result.map_err(Failure::Io)?;
     Ok(0)
-}
-
-/// `capabilities`: every capability, granted or not, in the plan's order.
-fn capabilities<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
-    let granted = client.capabilities();
-    let rows = capability_rows(granted);
-    let result = if json {
-        let list: Vec<Json> = rows
-            .iter()
-            .map(|(name, held)| json!({"name": name, "granted": held}))
-            .collect();
-        writeln!(out, "{}", Json::Array(list))
-    } else {
-        write!(out, "{}", capability_table(&rows))
-    };
-    result.map_err(Failure::Io)?;
-    Ok(0)
-}
-
-/// Each capability's name with whether `granted` holds it.
-fn capability_rows(granted: Capabilities) -> Vec<(&'static str, bool)> {
-    Capability::ALL
-        .into_iter()
-        .map(|capability| (capability.name(), granted.contains(capability)))
-        .collect()
-}
-
-/// The text table: one capability per line, `yes` or `no` for whether it is held.
-fn capability_table(rows: &[(&'static str, bool)]) -> String {
-    let width = rows.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
-    let mut text = format!("{:<width$}  granted\n", "capability");
-    for (name, held) in rows {
-        let answer = if *held { "yes" } else { "no" };
-        text.push_str(&format!("{name:<width$}  {answer}\n"));
-    }
-    text
 }
 
 /// `config get`: the document the compositor last accepted, with its revision.
@@ -351,45 +311,6 @@ fn find<'a>(snapshot: &'a Snapshot, name: &str) -> Option<&'a ObjectView> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_capability_table_names_every_capability_and_its_grant() {
-        let rows = capability_rows(Capabilities::NONE);
-        assert_eq!(rows.len(), Capability::ALL.len());
-        assert!(rows.iter().all(|(_, held)| !held), "nothing is granted by NONE");
-        let table = capability_table(&rows);
-        assert!(table.starts_with("capability"), "{table}");
-        let width = "retrieve-secret".len();
-        assert!(table.contains(&format!("{:<width$}  no\n", "offer-request")), "{table}");
-        assert!(table.contains(&format!("{:<width$}  no\n", "portal-input")), "{table}");
-    }
-
-    #[test]
-    fn a_granted_capability_is_marked_yes() {
-        let granted = Capabilities::of(&[Capability::CommitConfig]);
-        let table = capability_table(&capability_rows(granted));
-        let width = "retrieve-secret".len();
-        assert!(
-            table.contains(&format!("{:<width$}  yes\n", "commit-config")),
-            "{table}"
-        );
-        assert!(table.contains(&format!("{:<width$}  no\n", "offer-request")), "{table}");
-    }
-
-    #[test]
-    fn the_session_owner_sees_read_and_reload_granted_and_commit_refused() {
-        // The CLI is the session owner's ordinary connection: it reads and reloads, and the
-        // table must say it cannot commit, so `gnoblinctl capabilities` matches what is refused.
-        let granted = Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]);
-        let table = capability_table(&capability_rows(granted));
-        let width = "retrieve-secret".len();
-        assert!(table.contains(&format!("{:<width$}  yes\n", "read-config")), "{table}");
-        assert!(
-            table.contains(&format!("{:<width$}  yes\n", "reload-config")),
-            "{table}"
-        );
-        assert!(table.contains(&format!("{:<width$}  no\n", "commit-config")), "{table}");
-    }
 
     #[test]
     fn a_committed_document_must_be_json() {

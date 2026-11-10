@@ -39,6 +39,7 @@
 
 ### Removed
 
+- `gnoblinctl capabilities` is removed. It printed the IPC capability set and whether this connection held each one. Use `gnoblinctl status` for the session, and `gnoblin.capabilities.list()` in a shell for the shell-API capabilities.
 - The `gnoblin-wasm` crate is removed: the WASM module host (the wasmtime runtime and the generated WIT host API). No crate depended on it. `window-rules[N].shader` and `shader-uniforms` are still refused at load, now with the reason `shaders need the shader pass (render)` in place of `shaders need the WASM host`. The refusal is still tested in `crates/gnoblin-config/tests/window_rules.rs`. The `wasmtime` crate and the Cranelift packages only it used are dropped from `Cargo.lock`.
 
 ### Added

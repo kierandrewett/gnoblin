@@ -383,7 +383,6 @@ fn verb_commands() -> Vec<Command> {
         Command::new("ping").about("Exit 0 when the compositor answers the handshake."),
         Command::new("status").about("The session's state, its revision and the lock."),
         Command::new("version").about("The Gnoblin version and the IPC version this connection speaks."),
-        Command::new("capabilities").about("Every capability, and whether this connection holds it."),
         Command::new("config")
             .about("Read or reload the configuration, or check a file against the runtime's parser.")
             .subcommand_required(true)
@@ -451,10 +450,6 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         },
         "version" => Invocation::Verb {
             verb: verbs::Verb::Version,
-            json,
-        },
-        "capabilities" => Invocation::Verb {
-            verb: verbs::Verb::Capabilities,
             json,
         },
         "config" => config_invocation(sub, json)?,

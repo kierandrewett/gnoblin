@@ -36,7 +36,7 @@ const VERSION: Version = Version::new(0, 2, 0);
 
 /// The verbs written by hand rather than generated from the schema. They are not
 /// object commands, so the drift check must not expect a schema object behind them.
-const HAND_WRITTEN: &[&str] = &["ping", "status", "version", "capabilities"];
+const HAND_WRITTEN: &[&str] = &["ping", "status", "version"];
 
 /// A unique path under the temporary directory.
 fn scratch(suffix: &str) -> PathBuf {
@@ -319,39 +319,6 @@ fn status_as_json_marks_the_lock_unavailable_not_unlocked() {
     assert_eq!(document["state"], "running");
     assert_eq!(document["lock_available"], false);
     assert!(document["lock_state"].is_null(), "{out}");
-}
-
-#[test]
-fn capabilities_lists_every_capability_and_grants_none_on_the_ordinary_socket() {
-    let (graph, _, _) = two_windows();
-    let (code, out, err) = run(&["capabilities"], ModelConnection::new(graph, Vec::new()));
-    assert_eq!(code, 0, "stderr: {err}");
-    assert!(out.starts_with("capability"), "{out}");
-    assert!(out.contains("offer-request    no\n"), "{out}");
-    assert!(out.contains("commit-config    no\n"), "{out}");
-    assert!(
-        out.contains("register-layer   no\n"),
-        "the name column is padded to the longest name:\n{out}"
-    );
-    assert!(!out.contains("yes"), "the loopback grants nothing:\n{out}");
-}
-
-#[test]
-fn capabilities_as_json_is_one_row_per_capability() {
-    let (graph, _, _) = two_windows();
-    let (code, out, err) = run(&["--json", "capabilities"], ModelConnection::new(graph, Vec::new()));
-    assert_eq!(code, 0, "stderr: {err}");
-    let rows: Vec<serde_json::Value> = serde_json::from_str(&out).expect("one JSON array");
-    assert_eq!(rows.len(), 11);
-    assert_eq!(rows[0]["name"], "offer-request");
-    assert_eq!(rows[0]["granted"], false);
-    assert_eq!(rows[4]["name"], "portal-input");
-    assert_eq!(rows[5]["name"], "register-layer");
-    assert_eq!(rows[6]["name"], "retrieve-secret");
-    assert_eq!(rows[7]["name"], "read-config");
-    assert_eq!(rows[8]["name"], "reload-config");
-    assert_eq!(rows[9]["name"], "window-control");
-    assert_eq!(rows[10]["name"], "capture-screen");
 }
 
 #[test]

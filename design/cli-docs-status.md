@@ -4,25 +4,25 @@ Audit of the `gnoblinctl` examples in the user docs against a live headless sess
 
 ## Verified live
 
-| Example                                                      | Doc           | Live result                                    | rc  | Verdict |
-| ------------------------------------------------------------ | ------------- | ---------------------------------------------- | --- | ------- |
-| `gnoblinctl --version`                                       | gnoblinctl.md | prints client version                          | 0   | matches |
-| `gnoblinctl version`                                         | gnoblinctl.md | Gnoblin and IPC versions                       | 0   | matches |
-| `GNOBLIN_IPC_SOCKET=/nonexistent/ipc.sock gnoblinctl ping`   | gnoblinctl.md | `cannot-connect` names the path                | 3   | matches |
-| `gnoblinctl ping`, `status`, `status --json`, `capabilities` | gnoblinctl.md | answered; JSON keys as documented              | 0   | matches |
-| `gnoblinctl output list`, `output get 6 width`               | gnoblinctl.md | object list; property value                    | 0   | matches |
-| `gnoblinctl output get 6 nosuch`                             | gnoblinctl.md | usage error lists possible values              | 2   | matches |
-| `gnoblinctl output call 6 set_layout`, `apply` (no params)   | gnoblinctl.md | refused, names required parameters             | 2   | matches |
-| `gnoblinctl window call ID nope`                             | gnoblinctl.md | clap error                                     | 2   | matches |
-| `gnoblinctl session/window/workspace --help`                 | gnoblinctl.md | declared signals match the doc                 | 0   | matches |
-| `gnoblinctl config validate` (valid file)                    | gnoblinctl.md | `valid`                                        | 0   | matches |
-| `gnoblinctl config validate` (missing file)                  | gnoblinctl.md | `io: cannot read ...`                          | 1   | matches |
-| `gnoblinctl --json log --limit 1`                            | gnoblinctl.md | record keys as documented                      | 0   | matches |
-| `gnoblinctl log --dir /nonexistent`                          | gnoblinctl.md | exact documented message                       | 1   | matches |
-| `gnoblinctl ipc dump FILE` (missing file)                    | gnoblinctl.md | error names the file                           | 1   | matches |
-| `gnoblinctl ipc dump -` (stdin)                              | gnoblinctl.md | prints decoded frames                          | 0   | matches |
-| `gnoblinctl completions bash`                                | gnoblinctl.md | completion script                              | 0   | matches |
-| `timeout 3 gnoblinctl output watch --count 1`                | gnoblinctl.md | no signal in 3 s; prints nothing until stopped | 124 | matches |
+| Example                                                    | Doc           | Live result                                    | rc  | Verdict |
+| ---------------------------------------------------------- | ------------- | ---------------------------------------------- | --- | ------- |
+| `gnoblinctl --version`                                     | gnoblinctl.md | prints client version                          | 0   | matches |
+| `gnoblinctl version`                                       | gnoblinctl.md | Gnoblin and IPC versions                       | 0   | matches |
+| `GNOBLIN_IPC_SOCKET=/nonexistent/ipc.sock gnoblinctl ping` | gnoblinctl.md | `cannot-connect` names the path                | 3   | matches |
+| `gnoblinctl ping`, `status`, `status --json`               | gnoblinctl.md | answered; JSON keys as documented              | 0   | matches |
+| `gnoblinctl output list`, `output get 6 width`             | gnoblinctl.md | object list; property value                    | 0   | matches |
+| `gnoblinctl output get 6 nosuch`                           | gnoblinctl.md | usage error lists possible values              | 2   | matches |
+| `gnoblinctl output call 6 set_layout`, `apply` (no params) | gnoblinctl.md | refused, names required parameters             | 2   | matches |
+| `gnoblinctl window call ID nope`                           | gnoblinctl.md | clap error                                     | 2   | matches |
+| `gnoblinctl session/window/workspace --help`               | gnoblinctl.md | declared signals match the doc                 | 0   | matches |
+| `gnoblinctl config validate` (valid file)                  | gnoblinctl.md | `valid`                                        | 0   | matches |
+| `gnoblinctl config validate` (missing file)                | gnoblinctl.md | `io: cannot read ...`                          | 1   | matches |
+| `gnoblinctl --json log --limit 1`                          | gnoblinctl.md | record keys as documented                      | 0   | matches |
+| `gnoblinctl log --dir /nonexistent`                        | gnoblinctl.md | exact documented message                       | 1   | matches |
+| `gnoblinctl ipc dump FILE` (missing file)                  | gnoblinctl.md | error names the file                           | 1   | matches |
+| `gnoblinctl ipc dump -` (stdin)                            | gnoblinctl.md | prints decoded frames                          | 0   | matches |
+| `gnoblinctl completions bash`                              | gnoblinctl.md | completion script                              | 0   | matches |
+| `timeout 3 gnoblinctl output watch --count 1`              | gnoblinctl.md | no signal in 3 s; prints nothing until stopped | 124 | matches |
 
 ## Checked by the drift test only
 
