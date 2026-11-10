@@ -62,7 +62,7 @@ use gnoblin_layers::{
     Band, EndReason, LayerHandle, LayerName, LayerProvider, LayerRecord, LayerRegistry, LayerScope, LayerSpec,
     LocalName, ProviderId, RegisterError,
 };
-use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
+use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId, cascade_position};
 
 use crate::activation::{ActivationDecision, NewWindowFocus};
 use crate::arrange::{self, Layouts};
@@ -89,12 +89,6 @@ use crate::workspace_set::{self, WorkspaceSet, WorkspaceSetError};
 /// manager needs a rectangle that it can reason about. The value is small enough to
 /// fit any output and large enough to receive input.
 const DEFAULT_WINDOW_SIZE: Size = Size::new(800, 600);
-
-/// Diagonal step, in logical pixels, of the placement used when no shell publishes one.
-const FALLBACK_CASCADE_OFFSET: i32 = 32;
-
-/// Number of distinct cascade positions before the fallback wraps around.
-const FALLBACK_CASCADE_STEPS: usize = 32;
 
 /// How many windows the focus history remembers.
 ///
@@ -1314,14 +1308,8 @@ impl Wm {
                         other.output == Some(fallback_output) && other.workspace == workspace && !other.state.minimised
                     })
                     .count();
-                let step = i32::try_from(visible % FALLBACK_CASCADE_STEPS).unwrap_or(0) + 1;
-                let offset = FALLBACK_CASCADE_OFFSET.saturating_mul(step);
-                let geometry = Rect::from_size(size)
-                    .translate(
-                        fallback_area.x.saturating_add(offset),
-                        fallback_area.y.saturating_add(offset),
-                    )
-                    .clamp_inside(fallback_area);
+                let (x, y) = cascade_position(visible, fallback_area, size);
+                let geometry = Rect::new(x, y, size.width, size.height);
                 (workspace, Some(fallback_output), geometry, None)
             }
         };
