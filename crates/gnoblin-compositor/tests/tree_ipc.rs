@@ -55,16 +55,40 @@ fn event<M: prost::Message + Default>(wire: &mut Wire, member: &str) -> M {
 fn attach_and_snapshot(wire: &mut Wire, request_id: u64) -> (AttachedPayload, Vec<snapshot_node::Properties>) {
     attach(wire, request_id);
     let attached: AttachedPayload = reply(wire, "attach");
+    let nodes = snapshot_nodes(wire, attached.serial);
+    (attached, nodes)
+}
+
+/// The nodes of the snapshot that follows an attach reply, which must all be at `serial`.
+fn snapshot_nodes(wire: &mut Wire, serial: u64) -> Vec<snapshot_node::Properties> {
     let mut nodes = Vec::new();
     loop {
         let chunk: SnapshotPayload = event(wire, "snapshot");
-        assert_eq!(chunk.serial, attached.serial, "the snapshot is at the attach serial");
+        assert_eq!(chunk.serial, serial, "the snapshot is at the attach serial");
         nodes.extend(chunk.nodes);
         if chunk.last {
             break;
         }
     }
-    (attached, nodes)
+    nodes
+}
+
+/// Attaches until a refused attach succeeds, so the previous holder's close has been seen. Returns
+/// the wire, which holds the tree until it is dropped, with the attachment and its snapshot.
+fn attach_once_released(session: &Session, request_id: u64) -> (Wire, AttachedPayload, Vec<snapshot_node::Properties>) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let mut wire = Wire::connect(session.socket());
+        attach(&mut wire, request_id);
+        let envelope = wire.receive().expect("a frame");
+        if envelope.error_code().is_none() {
+            let attached: AttachedPayload = envelope.payload_as().expect("the payload decodes");
+            let nodes = snapshot_nodes(&mut wire, attached.serial);
+            return (wire, attached, nodes);
+        }
+        assert!(Instant::now() < deadline, "the hold was never released");
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 /// Create one node of class `node` under `parent`, with the shell's pre-allocated `id`.
@@ -185,12 +209,12 @@ fn a_transaction_is_applied_and_its_changes_are_published_at_the_next_serial() {
     let (attached, _) = attach_and_snapshot(&mut wire, 1);
 
     transact(&mut wire, 2, 0, 1, create(1000, attached.root));
+    let changes: ChangesPayload = event(&mut wire, "changes");
     let reply: ReplyPayload = reply(&mut wire, "transact");
     assert!(reply.applied, "the transaction applies");
     assert_eq!(reply.failed_op, -1);
     assert_eq!(reply.serial, 1, "a batch that changed something advances the serial");
 
-    let changes: ChangesPayload = event(&mut wire, "changes");
     assert_eq!(changes.serial, 1);
     assert!(
         changes
@@ -241,10 +265,10 @@ fn a_list_and_a_bool_set_travel_the_wire_and_come_back_in_the_change_batch() {
         ..Default::default()
     });
     transact(&mut wire, 2, 0, 1, ops);
+    let changes: ChangesPayload = event(&mut wire, "changes");
     let reply: ReplyPayload = reply(&mut wire, "transact");
     assert!(reply.applied, "the sets validate: {reply:?}");
 
-    let changes: ChangesPayload = event(&mut wire, "changes");
     let rotation = changes
         .changes
         .iter()
@@ -281,5 +305,50 @@ fn a_set_of_a_kind_the_wire_does_not_carry_is_refused_bad_value() {
     assert!(!reply.applied);
     assert_eq!(reply.code, "bad-value");
     assert_eq!(reply.failed_op, 2, "the third op is the bad one");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_transaction_is_visible_in_the_snapshot_of_the_next_attach() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    transact(&mut wire, 2, 0, 1, create(1000, attached.root));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let applied: ReplyPayload = reply(&mut wire, "transact");
+    assert!(applied.applied, "the transaction applies");
+
+    attach(&mut wire, 3);
+    let reattached: AttachedPayload = reply(&mut wire, "attach");
+    assert_eq!(
+        reattached.serial, 1,
+        "the attach starts from the serial the transaction published"
+    );
+    let nodes = snapshot_nodes(&mut wire, reattached.serial);
+    assert!(
+        nodes.iter().any(|node| node.id == 1000 && node.parent == attached.root),
+        "the snapshot holds the created node under the root: {nodes:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_detached_shell_leaves_its_nodes_in_the_tree() {
+    let session = Session::start();
+    let mut first = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut first, 1);
+
+    transact(&mut first, 2, 0, 1, create(1000, attached.root));
+    let _: ChangesPayload = event(&mut first, "changes");
+    let _: ReplyPayload = reply(&mut first, "transact");
+    drop(first);
+
+    let (_holder, reattached, nodes) = attach_once_released(&session, 3);
+    assert_eq!(reattached.serial, 1, "the tree keeps the serial the shell left it at");
+    assert!(
+        nodes.iter().any(|node| node.id == 1000 && node.parent == attached.root),
+        "the next shell's snapshot still holds the node: {nodes:?}"
+    );
     session.stop().expect("the session stops cleanly");
 }
