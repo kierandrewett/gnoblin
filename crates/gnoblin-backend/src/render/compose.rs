@@ -308,6 +308,10 @@ impl Composer {
             .insert(root, NodeSpec::new(Rect::new(0, 0, 100, 100)))
             .expect("the root is a fresh node");
         scene.set_root(Some(root)).expect("the root was just inserted");
+        // The root is the generic `Node` of the tree schema: the shell's stock classes resolve it by name.
+        scene
+            .set_class(root, Some("Node".to_owned()))
+            .expect("the root was just inserted");
         Self {
             scene,
             windows: BTreeMap::new(),
