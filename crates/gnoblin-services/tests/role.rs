@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gnoblin_client::wire;
 use gnoblin_model::{RequestId, Tick};
-use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
+use gnoblin_proto::{Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_services::{Buses, Role};
 
 /// The version this test's peer advertises.
@@ -38,7 +38,7 @@ struct Peer {
 }
 
 impl Peer {
-    /// Answer the client's hello with the grant a services connection holds.
+    /// Answer the client's hello with an accept: the owner connection is the gate, not a grant.
     fn accept(stream: UnixStream) -> Peer {
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(10)))
@@ -49,8 +49,7 @@ impl Peer {
         };
         let hello = peer.handshake();
         assert_eq!(hello.kind, HandshakeKind::Hello, "the role opens with a hello");
-        let grant = Capabilities::of(&[Capability::OfferRequest]);
-        let answer = Handshake::grant(gnoblin_proto::Version::new(VERSION.0, VERSION.1, VERSION.2), grant);
+        let answer = Handshake::accept(gnoblin_proto::Version::new(VERSION.0, VERSION.1, VERSION.2));
         peer.stream.write_all(&answer.encode()).expect("the accept");
         peer.stream.flush().expect("the accept");
         gnoblin_proto::write_grants(&mut peer.stream, &[]).expect("the grants frame after the accept");

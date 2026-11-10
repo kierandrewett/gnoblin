@@ -38,9 +38,14 @@
 
 - Frame callbacks reach a window that only a visible `View` shows, not only one on a monitor. A View shows the subtree under its `source` when the View and its ancestors are visible with non-zero opacity. A mapped window on neither a monitor nor such a View gets no frame callback; before, output-less mapped windows got them. Unit tests `a_visible_view_shows_its_source_subtree_and_a_hidden_one_shows_nothing` and the other `view` tests in `gnoblin-render` cover the visibility rules and a View inside its own source. Compositor-level callback tests are not added: there is no harness for the shell tree.
 
+- The IPC trust boundary is the session owner's socket connection: a peer whose uid is the compositor's own (`SO_PEERCRED`, never the handshake). The owner-only members (`config.commit`, `config.reject`, `config.current`, `config.reload`, `portal.ui`, `portal.cancel`, `portal.key`, `capture.screen`, and offering a request slot) are refused `denied` to any other connection. The `runtime`, `services`, `portal` and `input` IPC roles are gone, so every program running as the owner's uid has the same IPC powers, including `config.commit`. Wayland `ClientRole`s are unchanged.
+
 ### Removed
 
 - `gnoblinctl capabilities` is removed. It printed the IPC capability set and whether this connection held each one. Use `gnoblinctl status` for the session, and `gnoblin.capabilities.list()` in a shell for the shell-API capabilities.
+
+- The IPC capability set and the per-role grants are removed. The handshake carries no capability field, and `gnoblin-proto`'s `Capability` type (`capability.rs`) and the role table in `privileged.rs` are deleted. The grants frame (`gnoblin-proto` `grants.rs`) stays only until the D22 extension routing that uses it is removed.
+
 - The `gnoblin-wasm` crate is removed: the WASM module host (the wasmtime runtime and the generated WIT host API). No crate depended on it. `window-rules[N].shader` and `shader-uniforms` are still refused at load, now with the reason `shaders need the shader pass (render)` in place of `shaders need the WASM host`. The refusal is still tested in `crates/gnoblin-config/tests/window_rules.rs`. The `wasmtime` crate and the Cranelift packages only it used are dropped from `Cargo.lock`.
 
 ### Added

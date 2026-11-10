@@ -9,34 +9,31 @@
 //!
 //! # Failure modes first
 //!
-//! 1. **A plain socket connection uses a privileged member.** Every one of them is refused
-//!    with `denied`: `a_socket_client_cannot_use_a_privileged_member`.
-//! 2. **A privileged connection calls a member its role does not grant.** The runtime cannot
-//!    offer a request and the services role cannot commit a configuration:
-//!    `a_role_cannot_use_another_role_s_capability`.
-//! 3. **A request is offered to a slot nobody provides, and its host waits for the deadline.**
+//! 1. **An owner connection is served every privileged member it calls.** Every connection
+//!    the owner's uid makes is an owner connection, so it commits and reads the configuration:
+//!    `the_owner_connection_is_served_the_privileged_members`. A connection from any other uid
+//!    is refused `not-owner`, which the compositor's unit tests cover.
+//! 2. **A request is offered to a slot nobody provides, and its host waits for the deadline.**
 //!    The offer is refused with `no-provider` naming the slot, at once:
 //!    `an_offer_to_a_slot_with_no_provider_is_refused`.
-//! 4. **An offer never reaches the provider, or its answer never reaches the host.** The
+//! 3. **An offer never reaches the provider, or its answer never reaches the host.** The
 //!    offer arrives with its proposition, the provider claims and answers, and only the host
 //!    that offered it reads the answer:
 //!    `a_shell_claims_answers_and_the_answer_reaches_the_host`.
-//! 5. **A configuration does not survive the connection that committed it.** The compositor
+//! 4. **A configuration does not survive the connection that committed it.** The compositor
 //!    keeps the last accepted document, so a new connection reads it back:
 //!    `a_committed_configuration_outlives_the_connection`.
-//! 6. **A claim nobody made is published anyway.** The session object carries `none` for a
+//! 5. **A claim nobody made is published anyway.** The session object carries `none` for a
 //!    slot with no provider and `shell` for the one a shell claimed:
 //!    `the_session_publishes_who_provides_each_slot`.
 
 mod support;
 
-use std::path::Path;
 use std::time::Duration;
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Event, code};
 use gnoblin_model::{Filter, Observation, Provider, Value};
-use gnoblin_proto::Capability;
 use gnoblin_types::Version;
 
 use support::{Session, TIMEOUT, wait_for};
@@ -75,76 +72,21 @@ fn refusal(error: ClientError) -> (String, String) {
 }
 
 #[test]
-fn a_socket_client_cannot_use_a_privileged_member() {
-    // The failure this prevents: a shell, a portal or anything else that can reach the
-    // socket commits a configuration or offers a prompt, because privilege was a property of
-    // the request rather than of the connection. The session owner's own socket connection
-    // is the one ordinary connection that reads the configuration and asks for a reload, and
-    // it still cannot commit: the reload is performed by the runtime.
+fn the_owner_connection_is_served_the_privileged_members() {
+    // The failure this prevents: the session owner's own connection is refused a privileged
+    // member it calls, so its commit or read fails. Every connection the owner's uid makes is
+    // an owner connection (`requires_owner`). The refusal of a connection from another uid is
+    // the compositor's unit test `config_members_require_the_owner_connection`.
     let (session, _ends) = Session::start_privileged(&["runtime", "services"]);
     let mut client = socket_client(&session);
+    let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
+    assert_eq!(client.commit_config(&document).expect("the owner commits"), 1);
     assert_eq!(
-        client.capabilities(),
-        gnoblin_proto::Capabilities::of(&[
-            Capability::ReadConfig,
-            Capability::ReloadConfig,
-            Capability::WindowControl,
-        ]),
-        "the owner's socket connection reads, reloads and changes window state, and holds nothing else"
+        client.configuration().expect("the owner reads the configuration"),
+        Some((1, document))
     );
-
-    let (code, message) = refusal(
-        client
-            .offer("auth.polkit", "Title", "Message", b"", Duration::from_secs(5))
-            .expect_err("an ordinary connection cannot offer"),
-    );
-    assert_eq!(code, code::DENIED);
-    assert!(message.contains("offer-request"), "{message}");
-
-    let (code, message) = refusal(
-        client
-            .commit_config(b"{}")
-            .expect_err("an ordinary connection cannot commit"),
-    );
-    assert_eq!(code, code::DENIED);
-    assert!(message.contains("commit-config"), "{message}");
-
-    // Reading the configuration is the owner's, so it is not refused for want of a capability.
-    client
-        .configuration()
-        .expect("the owner's connection reads the configuration");
-
-    // And the session is unharmed: the refusal is this connection's, not the compositor's.
     let listed = session.ctl(&["session", "list"]).ok();
     assert!(!listed.out.trim().is_empty(), "the session object is still served");
-}
-
-#[test]
-fn a_role_cannot_use_another_role_s_capability() {
-    let (session, mut ends) = Session::start_privileged(&["runtime", "services"]);
-    let mut runtime = role_client(&mut ends, "runtime");
-    let mut services = role_client(&mut ends, "services");
-
-    assert!(runtime.capabilities().contains(Capability::CommitConfig));
-    assert!(!runtime.capabilities().contains(Capability::OfferRequest));
-    assert!(services.capabilities().contains(Capability::OfferRequest));
-    assert!(!services.capabilities().contains(Capability::CommitConfig));
-
-    // The runtime offers nothing: prompts are the services role's or a shell's.
-    let (code, _) = refusal(
-        runtime
-            .offer("prompt.secret", "t", "m", b"", Duration::from_secs(1))
-            .expect_err("the runtime cannot offer"),
-    );
-    assert_eq!(code, code::DENIED);
-    // The services role commits nothing: the configuration is the runtime's.
-    let (code, _) = refusal(
-        services
-            .commit_config(b"{}")
-            .expect_err("the services role cannot commit"),
-    );
-    assert_eq!(code, code::DENIED);
-    drop(session);
 }
 
 #[test]
@@ -244,7 +186,7 @@ fn a_restarted_runtime_is_served_on_a_fresh_pair() {
     // The failure this prevents: the runtime dies, the guardian starts a new one, and the
     // compositor refuses it because the role already connected. The guardian gives every spawn
     // its own socket pair, so the restarted runtime's handshake arrives on a stream the compositor
-    // has never served. The role keeps its grant and the document it committed.
+    // has never served. The role keeps the document it committed.
     let (session, mut ends) = Session::start_privileged(&["runtime"]);
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
     let (_role, stream) = ends.pop().expect("the runtime's end");
@@ -261,10 +203,6 @@ fn a_restarted_runtime_is_served_on_a_fresh_pair() {
     let restarted = session.spawn_child("runtime");
     let mut again = Client::connect(UnixTransport::from_stream(restarted).expect("a transport"), version())
         .expect("the restarted runtime handshakes on its own pair");
-    assert!(
-        again.capabilities().contains(Capability::CommitConfig),
-        "the role keeps its grant across a restart"
-    );
     assert_eq!(
         again.configuration().expect("the configuration"),
         Some((1, document.clone())),
@@ -298,49 +236,6 @@ fn the_session_publishes_who_provides_each_slot() {
         Some(&Value::Text("none".to_owned())),
         "a slot nobody provides says so"
     );
-}
-
-/// A test that a plain socket never grants a privileged capability, however it asks: the grant is
-/// the compositor's decision from the peer's kernel uid, not something the hello can claim. The
-/// session owner's connection is granted the configuration reads and reload request, and nothing
-/// that commits.
-#[test]
-fn a_handshake_cannot_ask_for_a_grant() {
-    let (session, _ends) = Session::start_privileged(&["services"]);
-    let stream = std::os::unix::net::UnixStream::connect(session.socket()).expect("the session listens");
-    let mut handshake = gnoblin_proto::Handshake::hello(version());
-    handshake.capabilities = gnoblin_proto::Capabilities::of(&[Capability::CommitConfig]);
-    {
-        use std::io::Write as _;
-        let mut writer = &stream;
-        writer.write_all(&handshake.encode()).expect("the hello");
-        writer.flush().expect("the hello");
-    }
-    let mut frame = [0u8; gnoblin_proto::HANDSHAKE_LEN];
-    {
-        use std::io::Read as _;
-        let mut reader = &stream;
-        reader.read_exact(&mut frame).expect("the answer");
-    }
-    let answer = gnoblin_proto::Handshake::decode(&frame).expect("a handshake");
-    {
-        let mut reader = &stream;
-        gnoblin_proto::read_grants(&mut reader).expect("the grants frame after the accept");
-    }
-    assert_eq!(
-        answer.capabilities,
-        gnoblin_proto::Capabilities::of(&[
-            Capability::ReadConfig,
-            Capability::ReloadConfig,
-            Capability::WindowControl,
-        ]),
-        "the compositor grants the owner's socket reads and reloads, whatever the hello asked for"
-    );
-    assert!(
-        !answer.capabilities.contains(Capability::CommitConfig),
-        "a hello asking for commit is not granted it: {answer:?}"
-    );
-    let _ = Path::new("");
 }
 
 #[test]
@@ -436,7 +331,7 @@ fn the_owner_reload_with_no_runtime_is_refused_by_name_and_commits_nothing() {
 
 #[test]
 fn the_owner_reload_reaches_the_runtime_which_commits_the_answer() {
-    // The failure this prevents: the reload is granted but never reaches the runtime, or the
+    // The failure this prevents: the reload is accepted but never reaches the runtime, or the
     // compositor commits on the runtime's behalf. The CLI's reload blocks until the runtime
     // answers, so it runs on its own thread while the runtime watches the session for the
     // request and commits.

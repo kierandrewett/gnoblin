@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-proto"
-description = "IPC wire codec, handshake, capabilities, version negotiation, and the client and server traits."
+description = "IPC wire codec, handshake, version negotiation, and the client and server traits."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

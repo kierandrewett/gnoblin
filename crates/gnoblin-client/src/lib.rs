@@ -18,11 +18,11 @@
 //! - **Claim.** A [`Request`] is offered, exactly one owner claims it, and it
 //!   finishes once with a completion that carries no answer value
 //!   ([`Client::claim`], [`Client::answer`]).
-//! - **Offer.** A privileged connection offers a request to the slot that owns it
-//!   and reads the one answer ([`Client::offer`], [`Client::claim_slot`],
-//!   [`Client::commit_config`]). What a connection may do is the compositor's
-//!   [`Capabilities`] grant, read from the handshake; an ordinary socket connection
-//!   holds none.
+//! - **Offer.** A privileged connection, the session owner's, offers a request to the
+//!   slot that owns it and reads the one answer ([`Client::offer`],
+//!   [`Client::claim_slot`], [`Client::commit_config`]). The compositor decides who is
+//!   the owner from the socket's peer credentials; an ordinary connection from another
+//!   user, or a connection that is not the owner's, is refused those members.
 //!
 //! The client's public vocabulary is `gnoblin-model`'s: identities, values,
 //! observations, snapshots and operations. Nothing here renames them, which is what
@@ -102,9 +102,7 @@ pub use unix::{DEFAULT_SOCKET, RUNTIME_VARIABLE, SOCKET_VARIABLE, UnixTransport,
 #[cfg(unix)]
 pub use wire::{NAMESPACE, code, member};
 
-// The capability vocabulary and the descriptor names a privileged connection uses are
-// the wire's, not this crate's: the compositor grants them and the handshake carries
-// them, so re-exporting them here means a role names one crate for the whole of its
-// connection.
+// The descriptor names a privileged connection uses are the wire's, not this crate's:
+// re-exporting them here means a role names one crate for the whole of its connection.
 #[cfg(unix)]
-pub use gnoblin_proto::{Capabilities, Capability, privilege, report};
+pub use gnoblin_proto::{privilege, report};

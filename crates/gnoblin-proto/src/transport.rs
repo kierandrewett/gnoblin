@@ -13,9 +13,8 @@
 //! rule) is written and tested against byte streams, so nothing above it changes
 //! when the descriptor path lands.
 //!
-//! A descriptor here is an identity, not a capability the receiver may use: the
-//! compositor still checks that the connection may ask for what the descriptor
-//! carries.
+//! A descriptor here is an identity, not a grant: the compositor decides what the
+//! connection may call from the owner predicate, not from what arrived with it.
 
 /// The connection seam that carries frames and their descriptors. Unix only, because
 /// descriptor passing is a Unix mechanism.

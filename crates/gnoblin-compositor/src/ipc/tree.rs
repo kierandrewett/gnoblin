@@ -101,7 +101,7 @@ pub struct TreeAttachment {
 
 impl TreeSession {
     /// Attach the shell from `holder`. Only the session owner's connection may attach, and
-    /// `is_owner` is that connection's classification from the owner grant (`owner_grants`).
+    /// `is_owner` is whether that connection is the session owner's (`ipc::privileged`).
     /// Any other is refused `not-owner`. A second holder while one is live is refused
     /// `shell-already-attached`; the same holder attaching again gets a new epoch.
     pub fn attach(&mut self, holder: TreeHolder, is_owner: bool) -> Result<TreeAttachment, TreeRefusal> {

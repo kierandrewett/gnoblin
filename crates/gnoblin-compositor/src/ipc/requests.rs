@@ -202,19 +202,19 @@ impl Requests {
 
     /// Claim a slot, so offers for it come to this connection.
     ///
-    /// `secret.derive` is internal: only the services role, providing it, may claim it. A
-    /// shell's claim is refused, so no shell can answer the consent that releases app secrets.
+    /// `secret.derive` is internal: only the session owner's connection, providing it, may
+    /// claim it. A shell's claim is refused, so no shell can answer the consent that releases app secrets.
     pub(crate) fn claim_slot(
         &mut self,
         owner: ClientId,
         slot: CapabilitySlot,
         provider: Provider,
-        services_role: bool,
+        owner_connection: bool,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
-        if slot == CapabilitySlot::SecretDerive && (!services_role || provider != Provider::Services) {
+        if slot == CapabilitySlot::SecretDerive && (!owner_connection || provider != Provider::Services) {
             return Err(RequestRefusal {
                 code: wire::code::DENIED,
-                message: "`secret.derive` is internal: only the services role may claim it".to_owned(),
+                message: "`secret.derive` is internal: only the session owner's connection may claim it".to_owned(),
             });
         }
         self.slots
@@ -508,7 +508,7 @@ mod tests {
             .expect_err("a shell claim is refused");
         assert_eq!(refusal.code, wire::code::DENIED);
         assert!(
-            refusal.message.contains("only the services role"),
+            refusal.message.contains("only the session owner's connection"),
             "{}",
             refusal.message
         );

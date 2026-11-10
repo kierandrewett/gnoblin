@@ -1,44 +1,41 @@
-//! The privileged connections the guardian hands this compositor, and what each may do.
+//! The privileged connections the guardian hands this compositor, and who may use them.
 //!
 //! Design/rust-compositor.md, "Process model": "Runtime and services connect over an
-//! inherited file descriptor that carries extra capabilities: trusted input contexts,
-//! input policy decisions, request handling and configuration commits", and "One IPC"
-//! repeats it for the request layer. The guardian is the parent of every privileged
-//! child, so it keeps one control socket open to this process for the whole session.
-//! Each child's connection is sent down that socket as a handover that names the role
-//! it was made for, and a child that restarts is handed a fresh connection the same way.
-//! This module is this process's half: it reads those handovers and says what each role
-//! is allowed to do.
+//! inherited file descriptor". "One IPC" repeats it for the request layer. The guardian is
+//! the parent of every privileged child, so it keeps one control socket open to this process
+//! for the whole session. Each child's connection is sent down that socket as a handover
+//! that names the role it was made for, and a child that restarts is handed a fresh
+//! connection the same way. This module is this process's half: it reads those handovers
+//! and says which connections are the session owner's.
 //!
-//! # Why the grant is the role's, and why it lives here
+//! # One predicate: the owner connection
 //!
-//! A capability is a consequence of *which role the connection was made for*, and the
-//! guardian's only statement about that is the role name in the handover. The table below
-//! is therefore the compositor's, not the guardian's: the process that grants a power
-//! decides who gets it, and a guardian that named a role this table does not know grants
-//! nothing.
+//! A connection is either the *owner* or it is not. The owner is every connection the
+//! guardian handed over (the runtime, the services, the portal and input relays: all of them
+//! are same-user helpers the guardian started), and every connection that reaches the
+//! ordinary socket from the session owner's uid, read from the kernel (`SO_PEERCRED`). A
+//! handover naming a role this build does not know is dropped with a warning rather than
+//! served, because the guardian meant to hand over a power and would otherwise get an
+//! ordinary connection silently. Any other connection, including another uid, root, or a
+//! peer whose credentials cannot be read, is not the owner and is refused the owner's
+//! members with `denied`.
 //!
-//! # Deny by default
-//!
-//! A handover whose role grants nothing is dropped with a warning rather than served
-//! unprivileged, because the guardian meant to hand over a power and the connection would
-//! silently be an ordinary one. A connection that reaches the ordinary socket is granted
-//! from its kernel peer uid, never from anything the client says (`socket_grants`). The
-//! session owner's connections get the configuration reads and the reload request; no
-//! other uid gets anything.
+//! The predicate is the only gate for owner members: there are no per-role capability
+//! sets. The Wayland-level client roles (`ClientRole::View`, `ClientRole::FrameRenderer`)
+//! are a separate mechanism and are unaffected.
 
 use std::io;
 use std::os::unix::net::UnixStream;
 
 use gnoblin_client::{Inherited, inherited_stream};
-use gnoblin_proto::{Capabilities, Capability, Grant, privilege};
+use gnoblin_proto::{Grant, privilege};
 
 use crate::log;
 
-/// The roles the table grants something to, in the order the server starts them.
+/// The roles a guardian may hand over, in the order the server starts them.
 ///
-/// Every role here has a non-empty grant and every grant has a role here. The test below
-/// keeps the two in step, so a role added to [`grants`] cannot be forgotten at startup.
+/// A handover naming a role outside this list is dropped. Every role here is an owner
+/// connection; the list only says which names the guardian may use.
 pub const ROLES: [&str; 4] = ["input", "portal", "runtime", "services"];
 
 /// One privileged role this process serves, and the extension grants it advertises.
@@ -68,64 +65,24 @@ impl Privileged {
     }
 }
 
-/// What a role's connection may do.
+/// Whether a connection whose peer uid is `peer_uid` is the session owner's.
 ///
-/// The runtime commits the configuration and decides input policy (D1: the script
-/// runtime is a separate process and the compositor runs no Lua); the services role
-/// offers the requests its agents need decided. No other role is privileged, and a
-/// name this table does not have grants nothing.
-pub fn grants(role: &str) -> Capabilities {
-    match role {
-        "runtime" => Capabilities::of(&[
-            Capability::CommitConfig,
-            Capability::ReadConfig,
-            Capability::InputPolicy,
-            Capability::WindowControl,
-        ]),
-        "services" => Capabilities::of(&[
-            Capability::OfferRequest,
-            Capability::RegisterLayer,
-            Capability::ReadConfig,
-        ]),
-        "portal" => Capabilities::of(&[
-            Capability::PortalUi,
-            Capability::RetrieveSecret,
-            Capability::CaptureScreen,
-        ]),
-        "input" => Capabilities::of(&[Capability::PortalInput]),
-        _ => Capabilities::NONE,
-    }
+/// `None` (no peer credentials) is not the owner. The owner is the uid the compositor runs
+/// as: the socket lives in that uid's 0700 runtime directory.
+pub fn owner_of(peer_uid: Option<u32>, owner_uid: u32) -> bool {
+    peer_uid == Some(owner_uid)
 }
 
-/// What a connection accepted from the ordinary socket is granted, from its peer's uid.
-///
-/// The session owner's own connections may read the configuration, ask for a reload and
-/// change window state (close, minimise, maximise, fullscreen): the CLI does these, and a
-/// reload still goes through the runtime, which is the one that commits. Commit itself
-/// stays with the runtime role, so a same-uid shell cannot write
-/// the document the runtime evaluates. Any other uid, or a peer whose credentials cannot
-/// be read, is granted nothing.
-pub fn owner_grants(peer_uid: Option<u32>, owner_uid: u32) -> Capabilities {
-    match peer_uid {
-        Some(uid) if uid == owner_uid => Capabilities::of(&[
-            Capability::ReadConfig,
-            Capability::ReloadConfig,
-            Capability::WindowControl,
-        ]),
-        _ => Capabilities::NONE,
-    }
-}
-
-/// The grant for a connection accepted from the ordinary socket, read from the kernel.
+/// Whether a connection accepted from the ordinary socket is the session owner's, read from
+/// the kernel.
 ///
 /// `SO_PEERCRED` is the peer's uid as the kernel recorded it at `connect`, not anything the
-/// client sent, so the grant cannot be claimed by a handshake. The compositor's own uid is
-/// the session owner's: the socket lives in the owner's 0700 runtime directory.
-pub fn socket_grants(stream: &UnixStream) -> Capabilities {
+/// client sent, so the answer cannot be claimed by a handshake.
+pub fn socket_is_owner(stream: &UnixStream) -> bool {
     let peer = rustix::net::sockopt::socket_peercred(stream)
         .ok()
         .map(|cred| cred.uid.as_raw());
-    owner_grants(peer, rustix::process::getuid().as_raw())
+    owner_of(peer, rustix::process::getuid().as_raw())
 }
 
 /// Read handovers from `control` until the guardian closes it, passing each accepted
@@ -135,10 +92,10 @@ pub fn socket_grants(stream: &UnixStream) -> Capabilities {
 /// socket the guardian passed in, and the tests give it a socket pair they made. It runs
 /// on its own thread, so a blocked read never holds up the serving threads.
 ///
-/// A handover naming a role the table grants nothing to is dropped, which closes its
-/// descriptor, and logged. A message that was read but refused is logged and skipped,
-/// because the control socket is still usable. Only a read error ends the loop, since the
-/// socket itself is then unusable and carrying on would mean serving nothing silently.
+/// A handover naming a role outside [`ROLES`] is dropped, which closes its descriptor, and
+/// logged. A message that was read but refused is logged and skipped, because the control
+/// socket is still usable. Only a read error ends the loop, since the socket itself is then
+/// unusable and carrying on would mean serving nothing silently.
 ///
 /// Returns when the guardian closes the control socket, which is how a session ends.
 pub fn receive_handovers(control: &UnixStream, mut adopt: impl FnMut(String, UnixStream)) {
@@ -147,11 +104,11 @@ pub fn receive_handovers(control: &UnixStream, mut adopt: impl FnMut(String, Uni
             Ok(None) => return,
             Ok(Some(handover)) => {
                 let role = handover.role;
-                if grants(&role).is_empty() {
+                if !ROLES.contains(&role.as_str()) {
                     log::warn!(
                         area = "ipc",
                         role = %role,
-                        "dropping a handover for a role this build grants nothing to"
+                        "dropping a handover for a role this build does not know"
                     );
                     continue;
                 }
@@ -185,118 +142,31 @@ pub fn guardian_from_environment() -> Result<Option<UnixStream>, Inherited> {
 
 #[cfg(test)]
 mod tests {
-    use gnoblin_proto::Capability;
-
-    use super::{ROLES, grants, owner_grants, socket_grants};
+    use super::{ROLES, owner_of, socket_is_owner};
 
     #[test]
-    fn the_capabilities_are_the_plan_s_two_privileged_roles() {
-        let runtime = grants("runtime");
-        assert!(
-            runtime.contains(Capability::CommitConfig),
-            "the runtime commits the configuration"
-        );
-        assert!(runtime.contains(Capability::InputPolicy), "and decides input policy");
-        assert!(
-            runtime.contains(Capability::ReadConfig),
-            "and reads back what it committed, as it did before read-config was split out"
-        );
-        assert!(
-            !runtime.contains(Capability::OfferRequest),
-            "the runtime offers no requests: prompts belong to a shell or the services role"
-        );
-
-        let services = grants("services");
-        assert!(services.contains(Capability::OfferRequest));
-        assert!(
-            !services.contains(Capability::CommitConfig),
-            "the services role commits no configuration"
-        );
-
-        assert!(
-            services.contains(Capability::ReadConfig),
-            "the services role reads the accepted configuration to decide keyring.enabled"
-        );
-
-        let portal = grants("portal");
-        assert!(portal.contains(Capability::PortalUi), "the relay asks for a dialog");
-        assert!(
-            portal.contains(Capability::RetrieveSecret),
-            "and asks for an app's secret"
-        );
-        assert!(!portal.contains(Capability::OfferRequest), "but offers no other slot");
-        assert!(
-            portal.contains(Capability::CaptureScreen),
-            "the relay asks for the pixels of a screenshot"
-        );
-        assert!(!portal.contains(Capability::PortalInput), "and routes no keys");
-
-        let input = grants("input");
-        assert!(input.contains(Capability::PortalInput), "the input relay routes keys");
-        assert!(!input.contains(Capability::PortalUi), "and opens no dialog");
-
-        // Deny by default: every other role, including one a newer guardian invented.
-        for role in ["compositor", "invented", "guardian", "runtime2", ""] {
-            assert_eq!(grants(role), gnoblin_proto::Capabilities::NONE, "`{role}`");
-        }
+    fn the_owner_is_the_uid_the_compositor_runs_as() {
+        assert!(owner_of(Some(1000), 1000), "the owner's own uid");
+        assert!(!owner_of(Some(1001), 1000), "another uid");
+        assert!(!owner_of(Some(0), 1000), "root is not the owner");
+        assert!(!owner_of(None, 1000), "a peer whose credentials cannot be read");
     }
 
     #[test]
-    fn the_declared_roles_are_exactly_the_roles_that_are_granted_something() {
-        for role in ROLES {
-            assert!(!grants(role).is_empty(), "`{role}` is declared but grants nothing");
-        }
-        for role in ["runtime", "services", "portal", "input"] {
-            assert!(ROLES.contains(&role), "`{role}` is granted but never declared");
-        }
-    }
-
-    #[test]
-    fn the_session_owner_reads_and_reloads_the_configuration_and_cannot_commit_it() {
-        let granted = owner_grants(Some(1000), 1000);
-        assert_eq!(
-            granted,
-            gnoblin_proto::Capabilities::of(&[
-                Capability::ReadConfig,
-                Capability::ReloadConfig,
-                Capability::WindowControl,
-            ])
-        );
-        // The owner's CLI asks the runtime to reload; the runtime is the one that commits.
-        assert!(!granted.contains(Capability::CommitConfig));
-    }
-
-    #[test]
-    fn another_user_root_and_an_unknown_peer_are_granted_nothing() {
-        assert_eq!(
-            owner_grants(Some(1001), 1000),
-            gnoblin_proto::Capabilities::NONE,
-            "another uid"
-        );
-        assert_eq!(
-            owner_grants(Some(0), 1000),
-            gnoblin_proto::Capabilities::NONE,
-            "root is not the owner"
-        );
-        assert_eq!(
-            owner_grants(None, 1000),
-            gnoblin_proto::Capabilities::NONE,
-            "no peer credentials"
-        );
-    }
-
-    #[test]
-    fn a_socket_pair_made_by_this_process_gets_the_owner_grant() {
+    fn a_socket_pair_made_by_this_process_is_the_owner() {
         // The peer of a socket pair is this process, so its uid is the owner's: the kernel
-        // answer `socket_grants` reads, end to end rather than through the pure function.
+        // answer `socket_is_owner` reads, end to end rather than through the pure function.
         let (ours, _theirs) = std::os::unix::net::UnixStream::pair().expect("a socket pair");
-        assert_eq!(
-            socket_grants(&ours),
-            gnoblin_proto::Capabilities::of(&[
-                Capability::ReadConfig,
-                Capability::ReloadConfig,
-                Capability::WindowControl,
-            ])
-        );
+        assert!(socket_is_owner(&ours));
+    }
+
+    #[test]
+    fn the_roles_the_guardian_may_hand_over_are_the_declared_ones() {
+        for role in ["runtime", "services", "portal", "input"] {
+            assert!(ROLES.contains(&role), "`{role}` is a handover role");
+        }
+        for role in ["compositor", "invented", "guardian", "runtime2", ""] {
+            assert!(!ROLES.contains(&role), "`{role}` is not a handover role");
+        }
     }
 }

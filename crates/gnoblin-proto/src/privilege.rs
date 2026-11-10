@@ -1,17 +1,16 @@
 //! Where the process model's inherited descriptors are named, and how they are handed over.
 //!
 //! Design/rust-compositor.md, "Process model": the runtime and the services role
-//! connect to the compositor "over an inherited file descriptor that carries extra
-//! capabilities". The guardian is what creates the descriptor (it is the parent of
-//! both processes), and a descriptor can only cross an `exec` as a number in the
+//! connect to the compositor "over an inherited file descriptor". The guardian is what
+//! creates the descriptor (it is the parent of both processes), and a descriptor can only
 //! environment, so the name of that number is part of the IPC's contract rather than
 //! of one process.
 //!
 //! Two variables, both built from the constants here so the spelling exists once:
 //!
 //! - [`FD_VARIABLE`] carries the descriptor a privileged child is given. The child
-//!   reads it, adopts the connection, and the handshake tells it what the compositor
-//!   granted ([`crate::Capability`]).
+//!   reads it and adopts the connection. The compositor serves that connection as the
+//!   session owner's, because the guardian started it under the owner's uid.
 //! - [`CONTROL_VARIABLE`] carries the guardian's control socket into the compositor.
 //!   It is how a fresh pair reaches the compositor, one message per spawn: see
 //!   [`handover_payload`] and [`handover_role`].
@@ -24,8 +23,8 @@
 //! A descriptor in the environment is only accessible when `FD_CLOEXEC` is clear, so
 //! the guardian clears it for exactly the descriptor a child is given and for exactly
 //! the one spawn it is given in. Nothing else in the environment is privileged: a
-//! client that connects to the socket by path holds
-//! [`Capabilities::NONE`](crate::Capabilities::NONE) however it was started.
+//! client that connects to the socket by path is served as the session owner's only if
+//! its kernel peer uid is the owner's (see the compositor's owner predicate).
 
 use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
@@ -50,18 +49,16 @@ pub const CONTROL_VARIABLE: &str = "GNOBLIN_IPC_CONTROL_FD";
 /// The payload of one handover message: the role the stream is for.
 ///
 /// The stream itself travels as `SCM_RIGHTS` ancillary data; the payload says which
-/// role it belongs to. A role name is the only thing the compositor needs to choose
-/// the grants, and it is what the compositor checks against the roles it expects.
+/// role it belongs to. The name tells the compositor which helper the stream came from.
 pub fn handover_payload(role: &str) -> &[u8] {
     role.as_bytes()
 }
 
 /// The role a handover payload names, or `None` for a payload that names none.
 ///
-/// `None` for an empty payload and for bytes that are not UTF-8, because a stream whose
-/// role cannot be read must not be given any role's grants. The caller closes the
-/// stream rather than guessing, since a guessed role would hand it another child's
-/// capabilities.
+/// `None` for an empty payload and for bytes that are not UTF-8, so a stream whose role
+/// cannot be read is closed rather than guessed at: a guessed role would hand it another
+/// helper's identity.
 pub fn handover_role(payload: &[u8]) -> Option<&str> {
     std::str::from_utf8(payload).ok().filter(|role| !role.is_empty())
 }

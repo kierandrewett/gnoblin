@@ -23,7 +23,7 @@ compositor's report of what changed, sent once per changed frame. **Mirror**: th
 | Frames               | `crates/gnoblin-proto/src/frame.rs:22,25,31`                                      | 4-byte prefix; 16 MiB cap, refused above it                                                                     |
 | Handshake            | `crates/gnoblin-proto/src/handshake.rs:27,31,69,148`                              | `GNBL` magic; 20-byte frames; version `0.2.0`                                                                   |
 | Owner dispatcher     | `crates/gnoblin-compositor/src/ipc/server.rs:1-70,769,1196,1472,1501`             | One thread owns the graph; the module doc lists eight failure modes (30-57)                                     |
-| Privileged grants    | `crates/gnoblin-compositor/src/ipc/privileged.rs:102-110`                         | The owner's own connections see and call every member                                                           |
+| Owner connection     | `crates/gnoblin-compositor/src/ipc/privileged.rs:72,81`                           | The peer uid from `SO_PEERCRED` decides; the owner's connections see and call every owner member                |
 | Scene tree           | `crates/gnoblin-render/src/scene.rs:94,104,409-444,501,540,654,676,691,765,928`   | `NodeKind` (Visual or Space), `NodeSpec`, `insert`, `remove` (returns subtree), `reparent`, setters, `hit_test` |
 | Scene bound          | `crates/gnoblin-render/src/scene.rs:279,297,337`                                  | `SceneError` (`NonFinite`, `OutOfBounds`, `DuplicateNode`, `Cycle`); `BOUND = 2^20`                             |
 | Scene dirty set      | `crates/gnoblin-render/src/scene.rs:410,413,883,940`                              | `BTreeMap` of nodes; `BTreeSet` of dirty ids; `take_dirty`; `take_damage`                                       |
@@ -227,7 +227,7 @@ Method: `activate()`.
 | `state`   | `string` | `"not-locked"` | readonly | `not-locked`, `pending`, `locked`             |
 | `engaged` | `bool`   | `false`        | readonly | true from the moment the lock client takes it |
 
-Methods: `engage()`, `release()`. Both are privileged and the owner grant decides (`privileged.rs:102-110`).
+Methods: `engage()`, `release()`. Both are privileged: the owner connection decides who may call them (`ipc/privileged.rs`).
 
 ### 2.5 Old objects and the new classes
 

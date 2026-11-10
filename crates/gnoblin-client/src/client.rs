@@ -28,7 +28,7 @@ use gnoblin_model::{
     DeclineReason, Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, Provider, RequestCompletion,
     RequestId, Snapshot, Tick,
 };
-use gnoblin_proto::{Capabilities, Envelope, Grant, Handshake, HandshakeKind, Kind, Mismatch, Version};
+use gnoblin_proto::{Envelope, Grant, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
 use crate::error::{ClientError, ConnectError, HandshakeError, WireError};
 use crate::transport::Transport;
@@ -152,7 +152,6 @@ impl std::fmt::Debug for Event {
 pub struct Client<T: Transport> {
     transport: T,
     version: Version,
-    capabilities: Capabilities,
     grants: Vec<Grant>,
     next_request: u64,
     /// Requests sent whose reply has not yet been taken. A reply for an id not in
@@ -183,9 +182,6 @@ impl<T: Transport> Client<T> {
                 Ok(Client {
                     transport,
                     version: answer.version,
-                    // What the compositor granted travels on the accept frame; a
-                    // refusal carried none, so an ordinary connection holds nothing.
-                    capabilities: answer.capabilities,
                     grants,
                     next_request: 1,
                     pending: BTreeSet::new(),
@@ -217,17 +213,6 @@ impl<T: Transport> Client<T> {
     /// negotiated.
     pub fn version(&self) -> Version {
         self.version
-    }
-
-    /// The capabilities this connection was granted.
-    ///
-    /// It is the compositor's decision, read from the handshake, and it is empty for
-    /// every connection that reached the ordinary socket. A client uses it to report
-    /// what it can do rather than to check itself: the compositor refuses a member a
-    /// connection does not hold the capability for, so a client that guessed wrong
-    /// learns it from that refusal.
-    pub fn capabilities(&self) -> Capabilities {
-        self.capabilities
     }
 
     /// Take any descriptors that arrived beside frames.
@@ -744,7 +729,7 @@ mod routing_tests {
 
     use gnoblin_proto::{CodecError, Envelope, Transport, Version};
 
-    use super::{Capabilities, Client, PortalOutcome, PortalTicket, wire};
+    use super::{Client, PortalOutcome, PortalTicket, wire};
     use crate::error::ClientError;
 
     /// A transport that replays scripted frames and records what the client sent.
@@ -789,7 +774,6 @@ mod routing_tests {
         Client {
             transport: script,
             version: Version::new(0, 2, 0),
-            capabilities: Capabilities::NONE,
             grants: Vec::new(),
             next_request: 1,
             pending: Default::default(),

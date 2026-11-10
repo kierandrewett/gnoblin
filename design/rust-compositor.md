@@ -185,33 +185,35 @@ agents out of the compositor process. `gnoblin-idle` folds into the services
 role. The roles stay in one executable, as `design/monolithic-compositor.md`
 requires; `gnoblinctl` and the portal stay separate binaries.
 
-### Capabilities and who holds them
+### Trust: the session owner's connection
 
-A connection holds only the capabilities its source grants, and the compositor
-decides the source. Three sources exist:
+The IPC trust boundary is the session owner's socket connection, and nothing
+finer. The compositor reads the peer uid from `SO_PEERCRED` when it accepts a
+connection, never from the handshake. A connection whose uid is the
+compositor's own is the owner connection. The socket sits in the owner's 0700
+runtime directory, so only the owner reaches it normally, and the uid check
+holds even if that changes. Another uid, and a peer whose credentials cannot be
+read, are not the owner.
 
-- **Privileged roles** hold their role's grant from `privileged.rs`: `runtime`
-  holds `commit-config`, `read-config` (it reads back what it committed),
-  `input-policy` and `window-control`; `services` holds `offer-request` and
-  `register-layer`; `portal` holds `portal-ui`; and `input` holds `portal-input`.
-- **The session owner's socket connection** holds `read-config`, `reload-config` and
-  `window-control`. The compositor reads the peer's uid from `SO_PEERCRED` when it
-  accepts the connection, never from the handshake. The socket sits in the
-  owner's 0700 runtime directory, so only the owner reaches it normally, and the
-  uid check holds even if that changes.
-- **Anything else** holds nothing. That includes another uid, and a peer whose
-  credentials cannot be read.
+The owner connection serves every owner member: the config members
+(`config.commit`, `config.reject`, `config.current`, `config.reload`), the
+portal members (`portal.ui`, `portal.cancel`, `portal.key`), `capture.screen`,
+and the tree attach. Offering a request slot is also owner-only. Any other
+connection is refused a config, portal or capture member with `denied` and the
+message "needs the session owner's connection"; a tree attach from another
+connection is refused `not-owner`.
 
-`read-config` and `reload-config` are separate from `commit-config` on purpose.
-Reading the configuration is not a write. A reload is a request: the compositor
-hands it to the runtime, which parses the document and then either commits it
-(`config.commit`) or rejects it (`config.reject`). With no runtime connected, a
-reload is refused `no-runtime` and nothing is committed. So the owner's CLI can
-read the document and ask for a reload, but cannot write the document the runtime
-evaluates. `commit-config` stays with the runtime role alone.
+There are no per-program grants and no roles. The old split into `runtime`,
+`services`, `portal` and `input`, each with its own member set, is gone: those
+were all guardian-launched helpers of the same user, so the split protected
+nothing. A program running as the owner's uid can commit configuration and
+offer a request slot. That is the trust the design accepts: the owner's session
+trusts the programs the owner runs. The handshake carries no grant.
 
-A refusal names the missing capability, for example: `config.current` needs the
-`read-config` capability, which this connection does not hold.
+Wayland access is separate and unchanged. A connection the guardian starts as a
+`ClientRole` (`View`, `FrameRenderer`) sees only the globals that role allows
+(`crates/gnoblin-wayland/src/access.rs`). That is a per-client Wayland decision,
+not an IPC grant.
 
 ### One IPC
 
@@ -470,7 +472,7 @@ gnoblin/
     gnoblin/                  the executable: role dispatch (guardian, compositor, runtime, services); no extension role (D21)
     gnoblin-schema/           object types, properties, methods, signals, errors, `since` versions
     gnoblin-types/            shared primitives: geometry, scale, transform, identity, tick, version, error code
-    gnoblin-proto/            wire codec, handshake, capabilities, versioning; client and server traits
+    gnoblin-proto/            wire codec, handshake, versioning; client and server traits
     gnoblin-client/           Rust client library (gnoblinctl, runtime, services, portal, tests, Bingux)
     gnoblin-model/            live object graph, revisions, property diffs, subscriptions
     gnoblin-config/           configuration document, validation, merge, salvage, last-good store, extension manifest parse and hash check (D22) (no Lua)

@@ -49,8 +49,8 @@
 //!    subscriptions and closes its writer, so an identity it will never use again is
 //!    not queued forever, and the connection that dies is the one case failure mode 1
 //!    covers.
-//! 7. **A client that is not privileged calls a privileged member.** The capability
-//!    gate answers `denied` before the member is looked at, so a plain socket connection
+//! 7. **A client that is not privileged calls a privileged member.** The owner gate
+//!    answers `denied` before the member is looked at, so a plain socket connection
 //!    can neither offer a request nor commit a configuration. The session owner's connection
 //!    may read the configuration and ask for a reload, which the runtime still performs:
 //!    `tests/privilege.rs::a_socket_client_cannot_use_a_privileged_member`.
@@ -78,7 +78,7 @@ use gnoblin_layers::provider::COMPOSITOR_CRATE;
 use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
-use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
+use gnoblin_proto::{Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
@@ -127,9 +127,8 @@ pub(crate) enum IpcEvent {
         client: ClientId,
         /// The writing half the dispatcher writes frames to.
         writer: UnixStream,
-        /// What the compositor granted it. A connection accepted from the socket holds
-        /// nothing; a privileged one holds what its role grants.
-        capabilities: Capabilities,
+        /// Whether the connection is the session owner's. The owner's members are gated on it.
+        owner: bool,
     },
     /// One frame a client sent.
     Request { client: ClientId, envelope: Envelope },
@@ -304,20 +303,12 @@ impl IpcServer {
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
-        // handover per spawn. Each role's identity, capabilities and grants frame are fixed
-        // here, before the dispatcher serves anything, so every handover of a role is served
-        // as the same connection. A role the guardian never hands over is simply idle.
+        // handover per spawn. Each role's identity and grants frame are fixed here, before
+        // the dispatcher serves anything, so every handover of a role is served as the same
+        // connection. A role the guardian never hands over is simply idle.
         let mut roles = BTreeMap::new();
         for ((connection, frame), client) in privileged.into_iter().zip(frames).zip(ids) {
-            let capabilities = super::privileged::grants(&connection.role);
-            roles.insert(
-                connection.role,
-                PrivilegedRole {
-                    client,
-                    capabilities,
-                    frame,
-                },
-            );
+            roles.insert(connection.role, PrivilegedRole { client, frame });
         }
         let (guardian_clone, control_thread) = match guardian {
             Some(guardian) => {
@@ -426,10 +417,9 @@ fn accept_loop(
         let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
         let served = events.clone();
         let grants = Arc::clone(&extension_grants);
-        // What this connection may do follows from its kernel peer uid, read before the stream
-        // leaves this thread: the handshake answers with it, and nothing the client sends can
-        // change it.
-        let capabilities = super::privileged::socket_grants(&stream);
+        // Whether this connection is the session owner's is read from its kernel peer uid
+        // before the stream leaves this thread, so nothing the client sends can change it.
+        let owner = super::privileged::socket_is_owner(&stream);
         // Holding the lock across the spawn and the insert is what lets the dispatcher
         // join a reader it has just been told about: the handle is in the map before
         // the reader can report anything.
@@ -443,7 +433,7 @@ fn accept_loop(
                     version,
                     served,
                     ConnectionPolicy {
-                        capabilities,
+                        owner,
                         extension_grants: grants,
                         ending: ConnectionEnd::Closed,
                     },
@@ -459,9 +449,8 @@ fn accept_loop(
 
 /// Serves one client: the handshake, then its frames, until the socket ends.
 ///
-/// `capabilities` is what this connection was granted before it said anything, which is
-/// what the compositor answers the handshake with: a connection accepted from the
-/// socket is granted nothing, and only the ends the guardian passed can carry more.
+/// `owner` says whether this connection is the session owner's. The handshake does not
+/// carry it: a connection's authority is fixed by how it arrived, never by what it says.
 ///
 /// Every accept is followed by `extension_grants`, the grants frame that tells the client
 /// which extension namespaces it may use.
@@ -469,7 +458,7 @@ fn accept_loop(
 /// privileged stream is lost.
 fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<IpcEvent>, policy: ConnectionPolicy) {
     let ConnectionPolicy {
-        capabilities,
+        owner,
         extension_grants,
         ending,
     } = policy;
@@ -490,7 +479,7 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
         None => return,
     };
     let answer = match gnoblin_proto::check(version, hello.version) {
-        Ok(()) => Handshake::grant(version, capabilities),
+        Ok(()) => Handshake::accept(version),
         Err(mismatch) => {
             // The refusal names this compositor's version, so the client can name both
             // and say which side to upgrade.
@@ -512,14 +501,7 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
         log::debug!(area = "ipc", %error, "a connection could not be given a write deadline");
         return;
     }
-    if events
-        .send(IpcEvent::Accepted {
-            client,
-            writer,
-            capabilities,
-        })
-        .is_err()
-    {
+    if events.send(IpcEvent::Accepted { client, writer, owner }).is_err() {
         return;
     }
     loop {
@@ -564,8 +546,8 @@ impl ConnectionEnd {
 /// The policy one served connection runs under: what it may do, the grants frame it is told,
 /// and how its end is reported.
 struct ConnectionPolicy {
-    /// The capabilities the connection is granted.
-    capabilities: Capabilities,
+    /// Whether the connection is the session owner's.
+    owner: bool,
     /// The extension grants frame sent on every accept.
     extension_grants: Arc<[u8]>,
     /// What the stream's end means to the dispatcher.
@@ -576,8 +558,6 @@ struct ConnectionPolicy {
 struct PrivilegedRole {
     /// The identity every handover of the role is served as.
     client: ClientId,
-    /// The capabilities the role's connection is granted on every accept.
-    capabilities: Capabilities,
     /// The grants frame the role's connection carries on every accept.
     frame: Arc<[u8]>,
 }
@@ -628,7 +608,6 @@ fn serve_control(
                 return;
             }
         };
-        let capabilities = declared.capabilities;
         let frame = Arc::clone(&declared.frame);
         let served = events.clone();
         match std::thread::Builder::new()
@@ -640,7 +619,7 @@ fn serve_control(
                     version,
                     served,
                     ConnectionPolicy {
-                        capabilities,
+                        owner: true,
                         extension_grants: frame,
                         ending: ConnectionEnd::Lost,
                     },
@@ -714,9 +693,8 @@ fn write_accept(writer: &UnixStream, handshake: &Handshake, extension_grants: &[
 struct Connection {
     /// The socket this connection's frames are written to.
     writer: UnixStream,
-    /// What this connection may do beyond reading the graph. Empty for every
-    /// connection that reached the socket.
-    capabilities: Capabilities,
+    /// Whether this connection is the session owner's, which gates the owner's members.
+    owner: bool,
     /// Diff streams this connection subscribed to. They end when the connection is dropped.
     subscriptions: Vec<Subscription>,
     /// Set once a write fails, so the connection is dropped after this turn instead
@@ -819,17 +797,13 @@ impl Dispatcher {
             }
             let Some(event) = event else { continue };
             match event {
-                IpcEvent::Accepted {
-                    client,
-                    writer,
-                    capabilities,
-                } => {
+                IpcEvent::Accepted { client, writer, owner } => {
                     self.extensions.began(client);
                     self.connections.insert(
                         client,
                         Connection {
                             writer,
-                            capabilities,
+                            owner,
                             subscriptions: Vec::new(),
                             broken: false,
                         },
@@ -896,15 +870,13 @@ impl Dispatcher {
         // The gate is before the member is looked at: a member this connection may not
         // call is `denied` whether or not this build serves it, so a client learns what
         // it is missing rather than that the member does not exist.
-        if let Some(required) = required_capability(&envelope.member)
-            && !self.capabilities(client).contains(required)
-        {
+        if requires_owner(&envelope.member) && !self.is_owner(client) {
             self.refuse(
                 client,
                 envelope,
                 wire::code::DENIED,
                 &format!(
-                    "`{}` needs the `{required}` capability, which this connection does not hold",
+                    "`{}` needs the session owner's connection, which this connection is not",
                     envelope.member
                 ),
             );
@@ -1015,11 +987,9 @@ impl Dispatcher {
         }
     }
 
-    /// What this connection was granted.
-    fn capabilities(&self, client: ClientId) -> Capabilities {
-        self.connections
-            .get(&client)
-            .map_or(Capabilities::NONE, |connection| connection.capabilities)
+    /// Whether this connection is the session owner's.
+    fn is_owner(&self, client: ClientId) -> bool {
+        self.connections.get(&client).is_some_and(|connection| connection.owner)
     }
 
     /// The layer's clock, in the tick the model measures deadlines in.
@@ -1134,20 +1104,14 @@ impl Dispatcher {
                 return;
             }
         };
-        // The capability depends on the slot, so the table above cannot name it. The relay
-        // holds `RetrieveSecret` and may offer `secret.derive` only; every other slot needs
-        // `OfferRequest`.
-        let required = if slot == gnoblin_model::CapabilitySlot::SecretDerive.name() {
-            Capability::RetrieveSecret
-        } else {
-            Capability::OfferRequest
-        };
-        if !self.capabilities(client).contains(required) {
+        // Every owner connection may offer a slot. The relay's `secret.derive` offer is still
+        // gated on the compositor's own consent below.
+        if !self.is_owner(client) {
             self.refuse(
                 client,
                 envelope,
                 wire::code::DENIED,
-                &format!("offering `{slot}` needs the `{required}` capability, which this connection does not hold"),
+                &format!("offering `{slot}` needs the session owner's connection, which this connection is not"),
             );
             return;
         }
@@ -1204,10 +1168,9 @@ impl Dispatcher {
                 return;
             }
         };
-        // Only the services role holds `OfferRequest`, so it is the role that may claim the
-        // internal `secret.derive` slot.
-        let services_role = self.capabilities(client).contains(Capability::OfferRequest);
-        match self.requests.claim_slot(client, slot, provider, services_role) {
+        // Only the session owner may claim the internal `secret.derive` slot.
+        let owner = self.is_owner(client);
+        match self.requests.claim_slot(client, slot, provider, owner) {
             Ok(deliveries) => {
                 self.reply(client, envelope);
                 self.deliver(deliveries);
@@ -1402,7 +1365,7 @@ impl Dispatcher {
         let runtime_connected = self
             .connections
             .iter()
-            .any(|(other, connection)| *other != client && connection.capabilities.contains(Capability::CommitConfig));
+            .any(|(other, connection)| *other != client && connection.owner);
         if !runtime_connected {
             self.refuse(
                 client,
@@ -1494,7 +1457,7 @@ impl Dispatcher {
             self.refuse(client, envelope, MALFORMED, &message);
             return;
         }
-        let is_owner = self.capabilities(client).contains(Capability::ReadConfig);
+        let is_owner = self.is_owner(client);
         self.tree.attach(client, envelope.request_id, is_owner);
     }
 
@@ -2016,8 +1979,8 @@ impl Dispatcher {
 
     /// Serves `layers.register`: a trusted built-in registers a window-scope layer above a
     /// window. The provider is the compositor's own, derived here from the connection, so no
-    /// name from the wire can choose it. A connection without `register-layer` is refused
-    /// `power-missing` before the graph sees the call.
+    /// name from the wire can choose it. A connection that is not the session owner's is
+    /// refused `denied` before the graph sees the call.
     fn layers_call(
         &mut self,
         client: ClientId,
@@ -2026,13 +1989,13 @@ impl Dispatcher {
         method: &str,
         arguments: &gnoblin_model::Fields,
     ) {
-        if !self.capabilities(client).contains(Capability::RegisterLayer) {
+        if !self.is_owner(client) {
             self.refuse(
                 client,
                 envelope,
-                "power-missing",
+                wire::code::DENIED,
                 &format!(
-                    "`{}` needs the `register-layer` capability, which this connection does not hold",
+                    "`{}` needs the session owner's connection, which this connection is not",
                     envelope.member
                 ),
             );
@@ -2180,7 +2143,7 @@ impl Dispatcher {
     /// and `set_output`. The loop applies the change through the window manager, so the
     /// constraints a drag obeys apply to these too. The operation completes `done` only when
     /// the change was made; a refusal completes with the reason the window manager gave. A
-    /// connection without `window-control` is refused `power-missing` before the graph sees
+    /// connection that is not the session owner's is refused `denied` before the graph sees
     /// the call, and arguments that name no change are refused before an operation exists.
     fn window_control_call(
         &mut self,
@@ -2191,12 +2154,12 @@ impl Dispatcher {
         arguments: &gnoblin_model::Fields,
         window: WindowId,
     ) {
-        if !self.capabilities(client).contains(Capability::WindowControl) {
+        if !self.is_owner(client) {
             self.refuse(
                 client,
                 envelope,
-                "power-missing",
-                &format!("`{method}` needs the `window-control` capability, which this connection does not hold"),
+                wire::code::DENIED,
+                &format!("`{method}` needs the session owner's connection, which this connection is not"),
             );
             return;
         }
@@ -2237,7 +2200,7 @@ impl Dispatcher {
     /// sees do not change. The loop applies the value to the window's own shell visuals, so a
     /// window rule's opacity and the placement animations keep applying alongside them. The
     /// operation completes `done` only when the value was applied; a refusal completes with its
-    /// reason. A connection without `window-control` is refused `power-missing` before the graph
+    /// reason. A connection that is not the session owner's is refused `denied` before the graph
     /// sees the call, and arguments that are not numbers are refused before an operation exists.
     fn window_visual_call(
         &mut self,
@@ -2248,12 +2211,12 @@ impl Dispatcher {
         arguments: &gnoblin_model::Fields,
         window: WindowId,
     ) {
-        if !self.capabilities(client).contains(Capability::WindowControl) {
+        if !self.is_owner(client) {
             self.refuse(
                 client,
                 envelope,
-                "power-missing",
-                &format!("`{method}` needs the `window-control` capability, which this connection does not hold"),
+                wire::code::DENIED,
+                &format!("`{method}` needs the session owner's connection, which this connection is not"),
             );
             return;
         }
@@ -2798,21 +2761,22 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> Envelope {
     )
 }
 
-/// The capability a member needs, or `None` when every connection may call it.
+/// Whether a member is the session owner's: every connection but the owner's is refused it.
 ///
-/// This is the one table the gate reads, so a privileged member cannot be served
-/// without its capability by omission: the arm that adds a member adds it here.
-fn required_capability(member: &str) -> Option<Capability> {
-    match member {
-        // `OFFER` is gated per slot inside `offer`: `secret.derive` needs `RetrieveSecret`.
-        wire::member::CONFIG_COMMIT | wire::member::CONFIG_REJECT => Some(Capability::CommitConfig),
-        wire::member::CONFIG_CURRENT => Some(Capability::ReadConfig),
-        wire::member::CONFIG_RELOAD => Some(Capability::ReloadConfig),
-        wire::member::PORTAL_UI | wire::member::PORTAL_CANCEL => Some(Capability::PortalUi),
-        wire::member::PORTAL_KEY => Some(Capability::PortalInput),
-        wire::member::CAPTURE_SCREEN => Some(Capability::CaptureScreen),
-        _ => None,
-    }
+/// This is the one table the gate reads, so an owner member cannot be served to an ordinary
+/// connection by omission: the arm that adds a member adds it here.
+fn requires_owner(member: &str) -> bool {
+    matches!(
+        member,
+        wire::member::CONFIG_COMMIT
+            | wire::member::CONFIG_REJECT
+            | wire::member::CONFIG_CURRENT
+            | wire::member::CONFIG_RELOAD
+            | wire::member::PORTAL_UI
+            | wire::member::PORTAL_CANCEL
+            | wire::member::PORTAL_KEY
+            | wire::member::CAPTURE_SCREEN
+    )
 }
 
 /// The wire code and detail a still-picture refusal reports. The detail names the
@@ -3063,9 +3027,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use gnoblin_client::wire;
-    use gnoblin_proto::Capability;
 
-    use super::{DEADLINE_TICK, DeadlineClock, IpcEvent, capture_refusal, events, required_capability, wake};
+    use super::{DEADLINE_TICK, DeadlineClock, IpcEvent, capture_refusal, events, requires_owner, wake};
     use gnoblin_capture::still::Refusal;
 
     /// The regression: deadlines were swept only on a quiet `recv_timeout`, so a client that
@@ -3127,35 +3090,20 @@ mod tests {
     }
 
     #[test]
-    fn config_members_map_to_their_own_capabilities() {
-        // Reading and reloading are split from committing so a same-uid CLI can
-        // use `config get`/`config reload` without being able to write the document.
-        assert_eq!(
-            required_capability(wire::member::CONFIG_CURRENT),
-            Some(Capability::ReadConfig)
-        );
-        assert_eq!(
-            required_capability(wire::member::CONFIG_RELOAD),
-            Some(Capability::ReloadConfig)
-        );
-        assert_eq!(
-            required_capability(wire::member::CONFIG_COMMIT),
-            Some(Capability::CommitConfig)
-        );
-        assert_eq!(
-            required_capability(wire::member::CONFIG_REJECT),
-            Some(Capability::CommitConfig)
-        );
+    fn config_members_require_the_owner_connection() {
+        // Reading and reloading are split from committing in the wire, but both are owner
+        // members: a same-uid client that is not the owner's connection may use neither.
+        assert!(requires_owner(wire::member::CONFIG_CURRENT));
+        assert!(requires_owner(wire::member::CONFIG_RELOAD));
+        assert!(requires_owner(wire::member::CONFIG_COMMIT));
+        assert!(requires_owner(wire::member::CONFIG_REJECT));
     }
 
     #[test]
-    fn a_capture_is_gated_on_the_capture_screen_capability() {
-        // Failure mode: an ungranted client must be refused, so the member must map to
-        // a capability at all. An omitted arm would serve pixels to any connection.
-        assert_eq!(
-            required_capability(wire::member::CAPTURE_SCREEN),
-            Some(Capability::CaptureScreen)
-        );
+    fn a_capture_is_gated_on_the_owner_connection() {
+        // Failure mode: an ordinary connection must be refused, so the member must be an
+        // owner member at all. An omitted arm would serve pixels to any connection.
+        assert!(requires_owner(wire::member::CAPTURE_SCREEN));
     }
 
     #[test]

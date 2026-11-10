@@ -12,13 +12,10 @@
 //! version, or [`HandshakeKind::Refuse`] with the version it does serve. In both
 //! cases the client can build the error that names both versions.
 //!
-//! An accept frame also carries the [`Capabilities`] the compositor granted the
-//! connection (design/rust-compositor.md, "One IPC"). The frame's layout is fixed, so
-//! the grant takes two of the bytes the layout reserved, and an older client ignores
-//! them: a handshake that grows a field must not change its length, and a client that
-//! cannot read the grant is a client whose connection is not privileged anyway.
+//! The frame carries no grant. Who may call what is decided by the compositor from
+//! the peer's kernel identity (design/node-api-refactor.md, D35), not by a claim in the
+//! handshake, so the bytes a grant would have used are reserved and written as zero.
 
-use crate::capability::Capabilities;
 use crate::error::CodecError;
 use crate::version::{self, Mismatch};
 use gnoblin_types::Version;
@@ -26,8 +23,7 @@ use gnoblin_types::Version;
 /// Magic that starts every handshake frame, so one can be told from an envelope.
 pub const MAGIC: [u8; 4] = *b"GNBL";
 
-/// Fixed handshake frame length: 4 magic, 1 kind, 2 capability bytes (low byte first),
-/// 1 reserved, 3 x 4 version.
+/// Fixed handshake frame length: 4 magic, 1 kind, 2 reserved, 1 reserved, 3 x 4 version.
 pub const HANDSHAKE_LEN: usize = 20;
 
 /// Which handshake frame this is.
@@ -57,11 +53,6 @@ pub struct Handshake {
     pub kind: HandshakeKind,
     /// The sender's full IPC version.
     pub version: Version,
-    /// What the sender grants the connection.
-    ///
-    /// A hello and a refusal carry none, because they are not the frame that decides
-    /// it: only the compositor's accept does, and it says so by carrying a set.
-    pub capabilities: Capabilities,
 }
 
 impl Handshake {
@@ -70,7 +61,6 @@ impl Handshake {
         Handshake {
             kind: HandshakeKind::Hello,
             version,
-            capabilities: Capabilities::NONE,
         }
     }
 
@@ -79,20 +69,6 @@ impl Handshake {
         Handshake {
             kind: HandshakeKind::Accept,
             version,
-            capabilities: Capabilities::NONE,
-        }
-    }
-
-    /// The compositor's agreement on a privileged connection, with its grant.
-    ///
-    /// This is the only constructor that carries a capability: the set is the
-    /// compositor's decision about the descriptor the connection arrived on, so a
-    /// client cannot produce a grant for itself.
-    pub const fn grant(version: Version, capabilities: Capabilities) -> Handshake {
-        Handshake {
-            kind: HandshakeKind::Accept,
-            version,
-            capabilities,
         }
     }
 
@@ -102,7 +78,6 @@ impl Handshake {
         Handshake {
             kind: HandshakeKind::Refuse,
             version,
-            capabilities: Capabilities::NONE,
         }
     }
 
@@ -112,9 +87,6 @@ impl Handshake {
         let mut frame = [0u8; HANDSHAKE_LEN];
         frame[0..4].copy_from_slice(&MAGIC);
         frame[4] = self.kind as u8;
-        let grant = self.capabilities.bits().to_le_bytes();
-        frame[5] = grant[0];
-        frame[6] = grant[1];
         frame[8..12].copy_from_slice(&self.version.major.to_be_bytes());
         frame[12..16].copy_from_slice(&self.version.minor.to_be_bytes());
         frame[16..20].copy_from_slice(&self.version.patch.to_be_bytes());
@@ -135,7 +107,6 @@ impl Handshake {
         Ok(Handshake {
             kind,
             version: Version::new(read_u32(frame, 8), read_u32(frame, 12), read_u32(frame, 16)),
-            capabilities: Capabilities::from_bits(u16::from_le_bytes([frame[5], frame[6]])),
         })
     }
 
@@ -148,16 +119,6 @@ impl Handshake {
     pub fn respond(hello: &Handshake, server: Version) -> Result<Handshake, Mismatch> {
         version::check(server, hello.version)?;
         Ok(Handshake::accept(server))
-    }
-
-    /// Answer a client hello with the capabilities this connection holds.
-    ///
-    /// The version rule is the same for a privileged connection: a mismatch is a
-    /// refusal, and the grant is never sent on a connection the compositor cannot
-    /// serve.
-    pub fn respond_with(hello: &Handshake, server: Version, capabilities: Capabilities) -> Result<Handshake, Mismatch> {
-        version::check(server, hello.version)?;
-        Ok(Handshake::grant(server, capabilities))
     }
 }
 
@@ -188,8 +149,7 @@ mod tests {
             assert_eq!(frame.len(), HANDSHAKE_LEN);
             assert_eq!(&frame[0..4], &MAGIC);
             assert_eq!(frame[4], kind as u8);
-            assert_eq!(frame[7], 0, "the reserved byte stays zero");
-            assert_eq!(&frame[5..7], &[0, 0], "a plain handshake grants nothing");
+            assert_eq!(&frame[5..8], &[0, 0, 0], "the reserved bytes stay zero");
             assert_eq!(Handshake::decode(&frame).expect("decode"), handshake);
         }
     }
@@ -230,43 +190,17 @@ mod tests {
     }
 
     #[test]
-    fn a_grant_survives_the_fixed_frame_and_a_plain_handshake_carries_none() {
-        // The failure this prevents: the compositor grants capabilities and the
-        // client reads a frame whose grant bytes it does not parse, so a privileged
-        // client silently believes it holds nothing.
-        use crate::capability::{Capabilities, Capability};
-
-        let grant = Capabilities::of(&[Capability::OfferRequest, Capability::CommitConfig]);
-        let frame = Handshake::grant(version("0.2.0"), grant).encode();
-        assert_eq!(&frame[5..7], &grant.bits().to_le_bytes());
-        let decoded = Handshake::decode(&frame).expect("decode");
-        assert_eq!(decoded.kind, HandshakeKind::Accept);
-        assert_eq!(decoded.capabilities, grant);
-
-        // A hello asks for nothing, so a client cannot widen its own connection by
-        // sending a grant, and a refusal never grants anything.
+    fn a_handshake_carries_no_grant() {
+        // The failure this prevents: a client reading a claim it did not earn. The
+        // reserved bytes are ignored on read, so a peer that writes them cannot change
+        // what the compositor decides for its connection.
         let mut forged = Handshake::hello(version("0.2.0")).encode();
-        forged[5..7].copy_from_slice(&Capabilities::of(&Capability::ALL).bits().to_le_bytes());
+        forged[5..7].copy_from_slice(&[0xff, 0xff]);
         assert_eq!(
-            Handshake::decode(&forged).expect("decode").capabilities,
-            Capabilities::of(&Capability::ALL),
-            "the frame carries what the sender wrote, and only the compositor's answer is consulted"
+            Handshake::decode(&forged).expect("decode"),
+            Handshake::hello(version("0.2.0")),
+            "the reserved bytes decode to nothing"
         );
-        assert_eq!(Handshake::refuse(version("0.3.0")).capabilities, Capabilities::NONE);
-        assert_eq!(Handshake::accept(version("0.2.0")).capabilities, Capabilities::NONE);
-    }
-
-    #[test]
-    fn a_privileged_connection_is_refused_when_the_versions_disagree() {
-        use crate::capability::{Capabilities, Capability};
-
-        let grant = Capabilities::of(&[Capability::OfferRequest]);
-        let hello = Handshake::hello(version("0.2.4"));
-        let accepted = Handshake::respond_with(&hello, version("0.2.9"), grant).expect("accepted");
-        assert_eq!(accepted, Handshake::grant(version("0.2.9"), grant));
-
-        let mismatch = Handshake::respond_with(&hello, version("0.3.0"), grant).expect_err("refused");
-        assert_eq!(mismatch.server, version("0.3.0"));
     }
 
     #[test]

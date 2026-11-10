@@ -21,15 +21,14 @@
 //! [`Handshake`], so a version mismatch is always reportable. Descriptors travel
 //! beside a frame through the [`Transport`] seam.
 //!
-//! The handshake also carries the [`Capabilities`] a connection holds
-//! (design/rust-compositor.md, "One IPC"), and [`privilege`] names the inherited
-//! descriptors those capabilities arrive on. Both are here rather than in the
-//! compositor because they are the contract between two IPC peers: the guardian
-//! creates the descriptor, the compositor grants the capability, and the runtime and
-//! services role read both. [`report`] is the one-line channel a role child reports its
-//! readiness and its configuration commits on.
+//! The handshake carries no grant. Who may call what is decided by the compositor from
+//! the peer's kernel identity (design/node-api-refactor.md, D35), and [`privilege`]
+//! names the inherited descriptors privileged helpers arrive on. Both are here rather
+//! than in the compositor because they are the contract between two IPC peers: the
+//! guardian creates the descriptor, and the runtime and services role read it. [`report`]
+//! is the one-line channel a role child reports its readiness and its configuration
+//! commits on.
 
-mod capability;
 mod envelope;
 mod error;
 mod exit;
@@ -45,7 +44,6 @@ mod transport;
 mod tree_redact;
 mod version;
 
-pub use capability::{Capabilities, Capability};
 pub use envelope::{FLAG_SENSITIVE, UNKNOWN_MEMBER};
 pub use error::CodecError;
 pub use exit::LOGOUT_EXIT_CODE;
