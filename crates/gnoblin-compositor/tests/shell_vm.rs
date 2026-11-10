@@ -145,6 +145,48 @@ fn the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own() {
     );
 }
 
+/// The shell's placement stands in the tree: each placed window's x and y in the mirror are the
+/// spot the stock shell chose, and the composer does not overwrite them with its own layout. The
+/// composer writes a window's x and y only while no shell holds the tree, so a second window the
+/// shell places elsewhere keeps its own spot.
+#[test]
+fn the_composer_publishes_the_shell_chosen_spot_and_not_its_own_layout() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    let mut client = Client::connect(session.wayland());
+    let _first = client.map_window("org.example.first", "First");
+    let _second = client.map_window("org.example.second", "Second");
+    tick_until(&mut role, "the shell never placed both windows", |role| {
+        window_placements(role).iter().filter(|(_, _, placed)| *placed).count() == 2
+    });
+    // Let the composer publish any geometry it has pending after the placement.
+    for _ in 0..30 {
+        role.tick(0.5).expect("a frame runs");
+    }
+    let placements = window_placements(&mut role);
+    assert_eq!(placements.len(), 2, "both windows are in the mirror: {placements:?}");
+    for (x, y, _) in &placements {
+        assert!(
+            x.is_finite() && y.is_finite(),
+            "the mirror holds a finite spot: {placements:?}"
+        );
+    }
+    assert_ne!(
+        (placements[0].0, placements[0].1),
+        (placements[1].0, placements[1].1),
+        "the second window is elsewhere than the first: {placements:?}"
+    );
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}
+
 /// The Desk for the screen under the pointer: one per screen, built by `Screen:on_ready`.
 fn desk_probe(role: &mut ShellRole) -> String {
     role.run(
@@ -175,7 +217,6 @@ fn the_stock_shell_builds_one_desk_for_the_screen_under_the_pointer() {
 /// Each link of the window path, checked on its own: the window reaches the mirror, `Window:on_ready`
 /// runs for it, and the shell issues no refused transaction. The probe wraps `Window.on_ready` after the
 /// stock library, so it counts every call the signal makes.
-#[ignore = "unparented windows never reach Window:on_ready; tracked by the unparented-node work"]
 #[test]
 fn a_mapped_window_reaches_the_mirror_and_runs_window_on_ready() {
     let session = Session::start();

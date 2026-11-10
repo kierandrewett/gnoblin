@@ -676,7 +676,11 @@ impl Composer {
 
     /// Publishes a window node's position and size to the tree, when they changed since the last
     /// publish. The size is the content size; the position is the placed frame's origin.
+    ///
+    /// While the shell holds the tree its placement stands, so the position is not published and
+    /// the tree is treated as not knowing it: the next publish after the hold writes it.
     fn publish_geometry(&mut self, window: WindowId) {
+        let holds = self.scene.shell_places();
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
@@ -689,16 +693,28 @@ impl Composer {
             f64::from(content.size.width),
             f64::from(content.size.height),
         ];
-        if entry.published_geometry == Some(values) {
-            return;
+        let mut published = entry.published_geometry.unwrap_or([f64::NAN; 4]);
+        if holds {
+            published[0] = f64::NAN;
+            published[1] = f64::NAN;
         }
-        entry.published_geometry = Some(values);
-        for (key, value) in ["x", "y", "width", "height"].into_iter().zip(values) {
+        let mut next = published;
+        for (index, (key, value)) in ["x", "y", "width", "height"].into_iter().zip(values).enumerate() {
+            if holds && index < 2 {
+                continue;
+            }
+            if published[index] == value {
+                continue;
+            }
+            next[index] = value;
             self.tree_changes.push(TreeChange::Set {
                 node,
                 key: key.to_owned(),
                 value: TreeValue::Double(value),
             });
+        }
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.published_geometry = Some(next);
         }
     }
 
@@ -4195,6 +4211,32 @@ mod tests {
         composer.place_window(window, Rect::new(200, 120, 100, 100));
         let node = node_of(&composer, window);
         assert_eq!(offset_of(&composer, node), (200.0, 120.0));
+    }
+
+    #[test]
+    fn while_the_shell_holds_the_tree_the_composer_publishes_no_x_or_y() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        composer.with_scene(|scene| scene.set_shell_places(true));
+        composer.follow_placement();
+        composer.take_tree_changes();
+        // The window manager moves the window while the shell holds the tree: the shell's x and y
+        // in the mirror must not be overwritten with the window manager's.
+        composer.place_window(window, Rect::new(200, 120, 100, 100));
+        let held = composer.take_tree_changes();
+        assert_eq!(set_number(&held, node, "x"), None, "no x is published during the hold");
+        assert_eq!(set_number(&held, node, "y"), None, "no y is published during the hold");
+        // Once the shell lets go, the placed position is published, because the tree no longer
+        // holds the value it last saw.
+        composer.with_scene(|scene| scene.set_shell_places(false));
+        composer.set_reduced_motion(true);
+        composer.follow_placement();
+        let released = composer.take_tree_changes();
+        assert_eq!(set_number(&released, node, "x"), Some(200.0));
+        assert_eq!(set_number(&released, node, "y"), Some(120.0));
     }
 
     #[test]
