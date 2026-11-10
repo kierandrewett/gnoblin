@@ -68,10 +68,12 @@ use gnoblin_input::{
     Chord, ChordKind, Event as RouterEvent, KeyState as RouterKeyState, Keysyms, Name, Router, ShortcutInhibit, Symbol,
     Target, Trigger,
 };
-use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, WindowId};
+use gnoblin_render::transaction::TreeCall;
+use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, NodeId, WindowId};
 
 use crate::State;
 use crate::observation::{MenuAnchor, MenuSource};
+use crate::tree_frame::{ChordEvent, ChordState};
 
 use crate::log;
 
@@ -150,6 +152,8 @@ pub(crate) struct KeyboardTables {
     pub(crate) virtual_keymaps: BTreeMap<u64, String>,
     /// The id the next virtual keyboard takes.
     pub(crate) next_virtual_id: u64,
+    /// The seat claims the shell holds, by their router binding's name.
+    pub(crate) claims: BTreeMap<String, Claim>,
 }
 
 impl Default for KeyboardTables {
@@ -178,8 +182,23 @@ impl Default for KeyboardTables {
             keymap_owner: KeymapOwner::Layout,
             virtual_keymaps: BTreeMap::new(),
             next_virtual_id: 0,
+            claims: BTreeMap::new(),
         }
     }
+}
+
+/// A chord the shell claimed on a seat node: the claim's id and the chord as the router reports it.
+#[derive(Clone, Debug)]
+pub(crate) struct Claim {
+    pub(crate) node: NodeId,
+    pub(crate) id: i64,
+    pub(crate) chord: String,
+}
+
+/// The router binding name for a claim. The name grammar allows only ASCII alphanumerics, `-` and
+/// `_`, and a node's digits never contain `-`, so the name is unambiguous.
+fn claim_name(node: NodeId, id: i64) -> String {
+    format!("claim-{}-{}", node.get(), id)
 }
 
 impl KeyboardTables {
@@ -536,6 +555,49 @@ impl State {
         self.rebuild_keymap();
     }
 
+    /// Applies the seat `claim` and `unclaim` calls the shell's transactions made. A claim binds its
+    /// chord in the router, so the router delivers it before any client; an unclaim removes it.
+    pub(crate) fn apply_claims(&mut self, calls: Vec<TreeCall>) {
+        for call in calls {
+            let Some(&id) = call.args.first() else {
+                log::warn!(area = "claim", method = %call.method, "a seat claim call has no id");
+                continue;
+            };
+            let name = claim_name(call.node, id);
+            let Ok(bound) = Name::new(&name) else {
+                log::warn!(area = "claim", claim = %name, "a seat claim name is not a valid binding name");
+                continue;
+            };
+            // A claim of an id already held replaces that claim.
+            self.keyboard_tables.router.bindings_mut().remove_name(&bound);
+            self.keyboard_tables.claims.remove(&name);
+            if call.method == "unclaim" {
+                continue;
+            }
+            let chord = match Chord::parse(&call.text, ChordKind::Key, &SeatKeysyms) {
+                Ok(chord) => chord,
+                Err(_) => {
+                    log::warn!(area = "claim", chord = %call.text, "a seat claim's chord does not parse");
+                    continue;
+                }
+            };
+            let text = chord.to_string();
+            match self.keyboard_tables.router.bind(&bound, chord, Trigger::Press, false) {
+                Ok(_) => {
+                    self.keyboard_tables.claims.insert(
+                        name,
+                        Claim {
+                            node: call.node,
+                            id,
+                            chord: text,
+                        },
+                    );
+                }
+                Err(_) => log::warn!(area = "claim", chord = %call.text, "a seat claim's chord is already bound"),
+            }
+        }
+    }
+
     /// Adds a binding to the session's router.
     ///
     /// It is the seam a configuration reload and `gnoblinctl` use: the chord is parsed
@@ -627,6 +689,29 @@ impl State {
         let consumed = routed.target != Target::Client;
         if consumed {
             log::debug!(area = "key", keycode, target = %routed.target, fired = ?routed.fired, "consumed");
+        }
+        // A claimed chord reports both of its edges to the shell that claimed it.
+        if let Target::Binding(bound) = routed.target
+            && let Some(name) = self
+                .keyboard_tables
+                .router
+                .bindings()
+                .get(bound)
+                .map(|binding| binding.name().as_str().to_owned())
+            && let Some(claim) = self.keyboard_tables.claims.get(&name).cloned()
+        {
+            let state = match state {
+                KeyState::Pressed => ChordState::Press,
+                KeyState::Released => ChordState::Release,
+            };
+            self.tree.chord(
+                claim.node,
+                ChordEvent {
+                    id: claim.id,
+                    chord: claim.chord,
+                    state,
+                },
+            );
         }
         // A press that fires a configured shortcut runs its command. A fired binding is
         // reported only on the edge that runs it, so the release of the same chord does nothing.

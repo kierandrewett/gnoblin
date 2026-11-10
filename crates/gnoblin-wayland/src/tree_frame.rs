@@ -136,7 +136,7 @@ impl TreeInput {
 }
 
 /// What a delivered event says: a client request that needs policy, or a pointer edge.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TreeFrameInput {
     /// A client request the shell decides on.
     Request(TreeRequest),
@@ -144,6 +144,28 @@ pub enum TreeFrameInput {
     Input(TreeInput),
     /// The node first has content. Sent once per window node, when it is created.
     Ready,
+    /// A claimed chord changed state. The claim is the shell's, named by its `id`.
+    Chord(ChordEvent),
+}
+
+/// The state a claimed chord changed to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChordState {
+    /// The chord was pressed.
+    Press,
+    /// The chord was released.
+    Release,
+}
+
+/// A claimed chord changed state, for the shell that claimed it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChordEvent {
+    /// The claim's id, as the shell allocated it.
+    pub id: i64,
+    /// The chord, canonicalised by the compositor.
+    pub chord: String,
+    /// What changed.
+    pub state: ChordState,
 }
 
 /// One event for a node. `frame` is the frame that delivered it; `seq` numbers the events of
@@ -292,6 +314,9 @@ pub struct TreeFrame {
     next_seq: u64,
     /// The number of frames drained; an event carries the frame that delivered it.
     frames: u64,
+    /// Seat `claim` and `unclaim` calls the applied transactions made, in op order, for the
+    /// compositor to apply.
+    claims: Vec<TreeCall>,
 }
 
 impl Default for TreeFrame {
@@ -316,6 +341,7 @@ impl TreeFrame {
             inputs: Vec::new(),
             next_seq: 0,
             frames: 0,
+            claims: Vec::new(),
             revisions: TreeRevisions::new(),
         }
     }
@@ -354,6 +380,12 @@ impl TreeFrame {
         self.push_event(node, TreeFrameInput::Ready);
     }
 
+    /// Records a claimed chord changing state on the seat `node`, delivered to the shell in the
+    /// next batch.
+    pub fn chord(&mut self, node: NodeId, event: ChordEvent) {
+        self.push_event(node, TreeFrameInput::Chord(event));
+    }
+
     /// Records a pointer edge over `node`, delivered to the shell in the next batch.
     pub fn input(&mut self, node: NodeId, input: TreeInput) {
         self.push_event(node, TreeFrameInput::Input(input));
@@ -373,6 +405,12 @@ impl TreeFrame {
     /// deliver to clients.
     pub fn take_inputs(&mut self) -> Vec<SeatInput> {
         std::mem::take(&mut self.inputs)
+    }
+
+    /// Take the seat `claim` and `unclaim` calls the applied transactions made, in op order, for
+    /// the compositor to apply.
+    pub fn take_claims(&mut self) -> Vec<TreeCall> {
+        std::mem::take(&mut self.claims)
     }
 
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
@@ -442,6 +480,15 @@ impl TreeFrame {
                 Ok(done) => {
                     changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
                     self.inputs.extend(done.inputs.iter().copied());
+                    self.claims.extend(
+                        done.calls
+                            .iter()
+                            .filter(|call| {
+                                scene.class(call.node) == Some("seat")
+                                    && matches!(call.method.as_str(), "claim" | "unclaim")
+                            })
+                            .cloned(),
+                    );
                     batch.changes.extend(done.changes.iter().cloned());
                     batch.animations.extend(done.animations.iter().cloned());
                     batch.calls.extend(done.calls.iter().cloned());

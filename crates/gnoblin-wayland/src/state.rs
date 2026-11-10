@@ -3493,6 +3493,8 @@ impl Host for State {
             self.set_keyboard_focus(target);
         }
         self.reconcile_seats();
+        let claims = self.tree.take_claims();
+        self.apply_claims(claims);
         self.deliver_seat_inputs();
         // Placement follows the shell's hold as the drain left it.
         self.composer.follow_placement();

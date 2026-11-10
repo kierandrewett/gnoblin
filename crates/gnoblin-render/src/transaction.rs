@@ -293,6 +293,8 @@ pub enum TreeOp {
         method: String,
         /// The arguments.
         args: Vec<i64>,
+        /// The text argument, such as a claim's chord; empty for every other call.
+        text: String,
     },
     /// Create a node of a class, with a caller-chosen id. It starts unparented.
     New {
@@ -408,6 +410,8 @@ pub struct TreeCall {
     pub method: String,
     /// The arguments.
     pub args: Vec<i64>,
+    /// The text argument; empty for a call that takes none.
+    pub text: String,
 }
 
 /// A pointer input a window's client receives through a seat.
@@ -493,7 +497,12 @@ fn apply_op(
         TreeOp::Insert { node, parent, index } => insert_node(work, actor, *node, *parent, *index, applied),
         TreeOp::Destroy { node } => destroy_node(work, actor, *node, applied),
         TreeOp::Input { node, seat, input } => pointer_input(work, actor, *node, *seat, *input, applied),
-        TreeOp::TreeCall { node, method, args } => call_method(work, classes, *node, method, args, applied),
+        TreeOp::TreeCall {
+            node,
+            method,
+            args,
+            text,
+        } => call_method(work, classes, *node, method, args, text, applied),
         TreeOp::Set {
             node,
             key,
@@ -573,6 +582,7 @@ fn call_method(
     node: NodeId,
     method: &str,
     args: &[i64],
+    text: &str,
     applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !work.contains(node) {
@@ -586,6 +596,7 @@ fn call_method(
         node,
         method: method.to_owned(),
         args: args.to_vec(),
+        text: text.to_owned(),
     });
     Ok(())
 }

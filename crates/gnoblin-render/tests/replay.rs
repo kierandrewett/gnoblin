@@ -369,7 +369,7 @@ fn op_text(op: &TreeOp) -> String {
         }
         TreeOp::Destroy { node } => format!("destroy {}", node.get()),
         TreeOp::Input { node, seat, input } => format!("input {} {} {input:?}", node.get(), seat.get()),
-        TreeOp::TreeCall { node, method, args } => {
+        TreeOp::TreeCall { node, method, args, .. } => {
             let mut words = vec![format!("call {} {method}", node.get())];
             words.extend(args.iter().map(i64::to_string));
             words.join(" ")
@@ -507,7 +507,12 @@ fn parse_op(keyword: &str, line: &mut Line<'_>) -> Result<TreeOp, ParseError> {
             while line.peek().is_some() {
                 args.push(line.number("an argument")?);
             }
-            Ok(TreeOp::TreeCall { node, method, args })
+            Ok(TreeOp::TreeCall {
+                node,
+                method,
+                args,
+                text: String::new(),
+            })
         }
         "set" => {
             let node = line.node()?;
@@ -868,6 +873,7 @@ impl Generator {
                 node,
                 method: "focus".into(),
                 args: Vec::new(),
+                text: String::new(),
             },
         }
     }

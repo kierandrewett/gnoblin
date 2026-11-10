@@ -81,8 +81,8 @@ use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{
-    ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, WindowChange,
-    WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,
+    ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
+    WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,
 };
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -91,7 +91,8 @@ use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
 use super::tree::{TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
-    self, TreeHostHandle, attached_payload, changes_payload, event_payload, reply_payload, snapshot_payloads,
+    self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, reply_payload,
+    snapshot_payloads,
 };
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 use gnoblin_render::transaction::TreeRefusal;
@@ -1532,11 +1533,19 @@ impl Dispatcher {
             ));
         }
         for event in &batch.events {
-            connection.send(&Envelope::event_message(
-                tree_host::NAMESPACE,
-                tree_host::member::EVENT,
-                &event_payload(event),
-            ));
+            if let TreeFrameInput::Chord(chord) = &event.event {
+                connection.send(&Envelope::event_message(
+                    tree_host::NAMESPACE,
+                    tree_host::member::CHORD,
+                    &chord_payload(chord),
+                ));
+            } else {
+                connection.send(&Envelope::event_message(
+                    tree_host::NAMESPACE,
+                    tree_host::member::EVENT,
+                    &event_payload(event),
+                ));
+            }
         }
     }
 

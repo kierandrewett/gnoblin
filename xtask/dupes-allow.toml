@@ -513,6 +513,12 @@ kind = "same-shape"
 reason = "a gesture's timing refusal and a rejected error-code string both carry one text field; they are unrelated failures"
 
 [[allow]]
+left = "gnoblin-input::Trigger"
+right = "gnoblin-wayland::ChordState"
+kind = "same-shape"
+reason = "a binding's trigger edge and a claimed chord's reported state are both press/release enums but name different concepts in different crates"
+
+[[allow]]
 left = "gnoblin-a11y::Key"
 right = "gnoblin-input::Key"
 kind = "same-name"

@@ -12,6 +12,7 @@
 ### Fixed
 
 - The compositor's own changes (the main seat and screen nodes created before an attach) are published as their own batch before the attach snapshot is read. The snapshot carries them, and an attaching shell no longer receives them a second time as `changes` events after the snapshot. Fixes the `tree_ipc` failures introduced by the seat and screen node commits.
+- Seat and node `claim` and `unclaim` calls from the shell are captured in op order, not refused as unknown methods. `has_method` accepts `claim` and `unclaim` on `seat` and `node`; test `seat_claim_calls_are_captured_in_op_order_and_others_are_not` in `tests/tree_frame.rs` (gnoblin-wayland).
 
 ### Changed
 

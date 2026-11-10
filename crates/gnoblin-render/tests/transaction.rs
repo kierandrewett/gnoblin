@@ -490,6 +490,7 @@ fn f27_unknown_method_is_unknown_member() {
             node: window,
             method: "explode".into(),
             args: Vec::new(),
+            text: String::new(),
         }],
     );
     assert_refused(&refusal, 0, Code::UnknownMember);
@@ -607,6 +608,7 @@ fn call_is_validated_and_recorded_in_applied() {
             node: window,
             method: "focus".into(),
             args: vec![1, 2],
+            text: String::new(),
         }]),
     )
     .expect("a known method is accepted");

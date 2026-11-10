@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
     AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -20,7 +21,9 @@ use gnoblin_render::transaction::{
     ClassInfo, Code, PointerInput, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
 use gnoblin_types::{ClientId, Color, NodeId};
-use gnoblin_wayland::{EffectSpec, FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
+use gnoblin_wayland::{
+    ChordEvent, ChordState, EffectSpec, FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
+};
 
 use super::server::IpcEvent;
 use super::tree::{
@@ -31,13 +34,14 @@ use super::tree::{
 pub const NAMESPACE: &str = "tree";
 
 /// The members the tree answers on: `attach` and `transact` are requests, and
-/// `snapshot`, `changes` and `event` are the events that follow them.
+/// `snapshot`, `changes`, `event` and `chord` are the events that follow them.
 pub mod member {
     pub const ATTACH: &str = "attach";
     pub const TRANSACT: &str = "transact";
     pub const SNAPSHOT: &str = "snapshot";
     pub const CHANGES: &str = "changes";
     pub const EVENT: &str = "event";
+    pub const CHORD: &str = "chord";
 }
 
 /// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
@@ -257,6 +261,11 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             kind: "ready".to_owned(),
             ..base
         },
+        // A claimed chord is sent as the `chord` signal, see `chord_payload`.
+        TreeFrameInput::Chord(_) => EventPayload {
+            kind: "chord".to_owned(),
+            ..base
+        },
         TreeFrameInput::Input(input) => {
             let kind = input.name().to_owned();
             match input {
@@ -279,6 +288,20 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
                 TreeInput::Leave => EventPayload { kind, ..base },
             }
         }
+    }
+}
+
+/// The `chord` signal for a claimed chord that changed state.
+#[must_use]
+pub fn chord_payload(chord: &ChordEvent) -> ChordPayload {
+    ChordPayload {
+        id: chord.id,
+        chord: chord.chord.clone(),
+        state: match chord.state {
+            ChordState::Press => "press",
+            ChordState::Release => "release",
+        }
+        .to_owned(),
     }
 }
 
@@ -449,6 +472,7 @@ fn tree_op(op: &op::Properties) -> Result<TreeOp, Code> {
             node,
             method: op.method.clone(),
             args: call_args(&op.args)?,
+            text: op.text.clone(),
         },
         _ => return Err(Code::BadValue),
     })

@@ -17,7 +17,7 @@ struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        class == "node"
+        matches!(class, "node" | "seat")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -28,8 +28,8 @@ impl ClassInfo for Table {
         })
     }
 
-    fn has_method(&self, _class: &str, _method: &str) -> bool {
-        false
+    fn has_method(&self, class: &str, method: &str) -> bool {
+        matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim")
     }
 }
 
@@ -123,6 +123,69 @@ fn take_batches() -> Vec<TreeBatch> {
 
 fn new_frame() -> TreeFrame {
     TreeFrame::with_hooks(hooks(TreeQueue::default()))
+}
+
+#[test]
+fn seat_claim_calls_are_captured_in_op_order_and_others_are_not() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    let seat = NodeId::new(0x200);
+    let other = NodeId::new(0x201);
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![
+            TreeOp::New {
+                class: "seat".to_owned(),
+                id: seat,
+            },
+            TreeOp::Insert {
+                node: seat,
+                parent: ROOT,
+                index: None,
+            },
+            TreeOp::New {
+                class: "node".to_owned(),
+                id: other,
+            },
+            TreeOp::Insert {
+                node: other,
+                parent: ROOT,
+                index: None,
+            },
+            TreeOp::TreeCall {
+                node: seat,
+                method: "claim".to_owned(),
+                args: vec![7],
+                text: "Ctrl+Shift+P".to_owned(),
+            },
+            TreeOp::TreeCall {
+                node: other,
+                method: "claim".to_owned(),
+                args: vec![9],
+                text: "Ctrl+Q".to_owned(),
+            },
+            TreeOp::TreeCall {
+                node: seat,
+                method: "unclaim".to_owned(),
+                args: vec![7],
+                text: String::new(),
+            },
+        ]),
+        &replies,
+    );
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let claims = frame.take_claims();
+    assert_eq!(claims.len(), 2, "only seat claim and unclaim calls are kept");
+    assert_eq!(claims[0].method, "claim");
+    assert_eq!(claims[0].text, "Ctrl+Shift+P");
+    assert_eq!(claims[1].method, "unclaim");
+    assert_eq!(claims[1].args, vec![7]);
+    assert!(frame.take_claims().is_empty(), "taking drains the claims");
+    assert!(replies.lock().unwrap()[0].1.is_ok());
 }
 
 #[test]
@@ -522,6 +585,7 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
             TreeFrameInput::Input(input) => input.name(),
             TreeFrameInput::Request(_) => "request",
             TreeFrameInput::Ready => "ready",
+            TreeFrameInput::Chord(_) => "chord",
         })
         .collect();
     assert_eq!(names, ["enter", "motion", "press", "release", "scroll", "leave"]);
