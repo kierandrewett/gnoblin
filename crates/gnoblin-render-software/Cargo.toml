@@ -16,9 +16,7 @@ gnoblin-types.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # `[tag]` log lines for a refused operation or a skipped layer.
 gnoblin-log = { path = "../gnoblin-log" }
-
-[dev-dependencies]
-# Building a `Surface` in tests needs its `Effects`; the normal build only sees it through the frame.
+# The scene graph a View draws: `render_view` walks its subtree through the camera.
 gnoblin-render = { path = "../gnoblin-render" }
 
 [features]
