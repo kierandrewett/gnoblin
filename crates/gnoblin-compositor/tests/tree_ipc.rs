@@ -15,6 +15,7 @@ use gnoblin_proto::tree::tree::{
 use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
 use support::{Client, Session, Wire};
+use wayland_client::Proxy;
 
 const NAMESPACE: &str = "tree";
 
@@ -929,6 +930,88 @@ fn reply_skipping_changes<M: prost::Message + Default>(wire: &mut Wire, member: 
             return envelope.payload_as::<M>().expect("the payload decodes");
         }
     }
+}
+
+/// Sets the main seat's `focus` to the window node `target`, or clears it with `0`, and
+/// checks the transaction applied.
+fn focus_seat(wire: &mut Wire, request_id: u64, base_serial: u64, seat: u64, target: u64) {
+    transact(
+        wire,
+        request_id,
+        base_serial,
+        base_serial + 1,
+        vec![set_node_ref(seat, "focus", target)],
+    );
+    let reply: ReplyPayload = reply_skipping_changes(wire, "transact");
+    assert!(reply.applied, "the seat focus write applies");
+}
+
+/// Reads the keyboard focus changes after `from` until the last of them satisfies `done`.
+fn keyboard_changes_until(
+    client: &mut Client,
+    from: usize,
+    done: impl Fn(&[support::KeyboardFocus]) -> bool,
+) -> Vec<support::KeyboardFocus> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.roundtrip();
+        let changes = client.keyboard_focus()[from..].to_vec();
+        if done(&changes) {
+            return changes;
+        }
+        assert!(Instant::now() < deadline, "the keyboard focus never moved: {changes:?}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window() {
+    use support::KeyboardFocus::{Enter, Leave};
+
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let first = client.map_window("org.example.window", "Focus one");
+    let second = client.map_window("org.example.window", "Focus two");
+    let one_surface = first.surface.id().protocol_id();
+    let two_surface = second.surface.id().protocol_id();
+    let mut wire = Wire::connect(session.socket());
+    snapshot_holding_window(&mut wire, "Focus one");
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Focus two");
+    let seat = nodes
+        .iter()
+        .find(|node| node.class == "seat")
+        .expect("the main seat node")
+        .id;
+    let one = window_titled(&nodes, "Focus one").expect("the first window node").id;
+    let two = window_titled(&nodes, "Focus two").expect("the second window node").id;
+
+    focus_seat(&mut wire, 2, attached.serial, seat, one);
+    keyboard_changes_until(&mut client, 0, |changes| {
+        changes.last() == Some(&Enter { surface: one_surface })
+    });
+
+    let mark = client.keyboard_focus().len();
+    focus_seat(&mut wire, 3, attached.serial + 1, seat, two);
+    let moved = keyboard_changes_until(&mut client, mark, |changes| {
+        changes.last() == Some(&Enter { surface: two_surface })
+    });
+    assert_eq!(
+        moved,
+        vec![Leave { surface: one_surface }, Enter { surface: two_surface }],
+        "the first window leaves before the second enters"
+    );
+
+    let mark = client.keyboard_focus().len();
+    focus_seat(&mut wire, 4, attached.serial + 2, seat, 0);
+    let cleared = keyboard_changes_until(&mut client, mark, |changes| {
+        changes.last() == Some(&Leave { surface: two_surface })
+    });
+    assert_eq!(
+        cleared,
+        vec![Leave { surface: two_surface }],
+        "a null focus clears the keyboard"
+    );
+    session.stop().expect("the session stops cleanly");
 }
 
 /// The id of the window titled `title`, read from re-attached snapshots; stray change batches

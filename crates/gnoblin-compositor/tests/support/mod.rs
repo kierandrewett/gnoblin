@@ -534,6 +534,13 @@ pub struct Window {
     toplevel: xdg_toplevel::XdgToplevel,
 }
 
+/// One keyboard focus change the client received. A surface is its protocol id.
+#[derive(Clone, Debug, PartialEq)]
+pub enum KeyboardFocus {
+    Enter { surface: u32 },
+    Leave { surface: u32 },
+}
+
 /// What the client records from the events it receives.
 #[derive(Default)]
 pub struct App {
@@ -544,6 +551,12 @@ pub struct App {
     pub sizes: std::collections::HashMap<u32, (i32, i32)>,
     /// How many times the keyboard entered one of this client's surfaces.
     pub keyboard_enters: u32,
+    /// Every keyboard enter and leave, in the order the client received them.
+    pub keyboard_focus: Vec<KeyboardFocus>,
+    /// The protocol ids of the seats whose keyboard this client has already requested.
+    keyboard_seats: Vec<u32>,
+    /// The keyboard of the first seat, the one whose focus events are recorded.
+    keyboard_primary: Option<u32>,
     /// Keys as `(code, state)`, the protocol's own numbers.
     pub keys: Vec<(u32, u32)>,
     /// Every wl_seat global the session advertises, with its name once the name event arrives.
@@ -619,6 +632,11 @@ impl Client {
             seat.get_pointer(&self.qh, name);
         }
         self.roundtrip();
+    }
+
+    /// The keyboard enters and leaves the client has received, in order.
+    pub fn keyboard_focus(&self) -> &[KeyboardFocus] {
+        &self.app.keyboard_focus
     }
 
     /// The pointer events received so far, tagged with their seat's name, in arrival order.
@@ -880,6 +898,13 @@ pub fn listed_titles(session: &Session) -> Vec<String> {
         })
         .collect()
 }
+impl App {
+    /// Whether `keyboard` is the first seat's. A client with several seats gets every focus
+    /// event once per keyboard; the focus record follows the first, so it counts each once.
+    fn is_primary_keyboard(&self, keyboard: &wl_keyboard::WlKeyboard) -> bool {
+        self.keyboard_primary == Some(keyboard.id().protocol_id())
+    }
+}
 
 impl Dispatch<wl_seat::WlSeat, ()> for App {
     fn event(
@@ -899,7 +924,12 @@ impl Dispatch<wl_seat::WlSeat, ()> for App {
             wl_seat::Event::Capabilities {
                 capabilities: WEnum::Value(capabilities),
             } if capabilities.contains(wl_seat::Capability::Keyboard) => {
-                seat.get_keyboard(qh, ());
+                let id = seat.id().protocol_id();
+                if !app.keyboard_seats.contains(&id) {
+                    app.keyboard_seats.push(id);
+                    let keyboard = seat.get_keyboard(qh, ());
+                    app.keyboard_primary.get_or_insert(keyboard.id().protocol_id());
+                }
             }
             _ => {}
         }
@@ -961,14 +991,24 @@ impl Dispatch<wl_pointer::WlPointer, String> for App {
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
     fn event(
         app: &mut Self,
-        _: &wl_keyboard::WlKeyboard,
+        keyboard: &wl_keyboard::WlKeyboard,
         event: <wl_keyboard::WlKeyboard as Proxy>::Event,
         _: &(),
         _: &WaylandConnection,
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { .. } => app.keyboard_enters += 1,
+            wl_keyboard::Event::Enter { surface, .. } if app.is_primary_keyboard(keyboard) => {
+                let surface = surface.id().protocol_id();
+                app.keyboard_enters += 1;
+                app.keyboard_focus.push(KeyboardFocus::Enter { surface });
+            }
+            wl_keyboard::Event::Leave { surface, .. } if app.is_primary_keyboard(keyboard) => {
+                app.keyboard_focus.push(KeyboardFocus::Leave {
+                    surface: surface.id().protocol_id(),
+                })
+            }
+            wl_keyboard::Event::Enter { .. } | wl_keyboard::Event::Leave { .. } => {}
             wl_keyboard::Event::Key {
                 key,
                 state: WEnum::Value(value),

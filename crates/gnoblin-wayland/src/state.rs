@@ -3483,6 +3483,15 @@ impl Host for State {
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;
         self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
+        // A seat focus the shell wrote in the drain moves the keyboard to that window. The
+        // compositor's own focus was published above, before the drain, so it never reads back.
+        if self.composer.main_seat_focus_written_by_shell() {
+            let target = self
+                .composer
+                .main_seat_focus_window()
+                .and_then(|window| self.surface_of(window));
+            self.set_keyboard_focus(target);
+        }
         self.reconcile_seats();
         self.deliver_seat_inputs();
         // Placement follows the shell's hold as the drain left it.

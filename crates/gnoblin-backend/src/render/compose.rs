@@ -274,6 +274,9 @@ pub struct Composer {
     tree_ready: Vec<NodeId>,
     /// The compositor's seat node for the main wl_seat, once added. It holds the pointer and focus.
     main_seat: Option<NodeId>,
+    /// The focus node the compositor last wrote to the main seat. A `focus` the scene holds
+    /// that differs from this was written by the shell.
+    published_focus: Option<NodeId>,
     /// The screen node of each output, created with the output and removed with it.
     screens: BTreeMap<OutputId, NodeId>,
     /// Whether the shell held the tree at the last placement check. While it does, the composer
@@ -318,6 +321,7 @@ impl Composer {
             tree_changes: Vec::new(),
             tree_ready: Vec::new(),
             main_seat: None,
+            published_focus: None,
             screens: BTreeMap::new(),
             placing: false,
             views: BTreeMap::new(),
@@ -1521,12 +1525,13 @@ impl Composer {
     }
 
     /// Publishes the window that holds keyboard focus on the main seat, or none. Only a change
-    /// is published.
+    /// is published. What is published is remembered, so a shell write can be told apart.
     pub fn set_main_seat_focus(&mut self, window: Option<WindowId>) {
         let Some(seat) = self.main_seat else {
             return;
         };
         let target = window.and_then(|window| self.window_node(window));
+        self.published_focus = target;
         if self.scene.reference(seat, "focus") == target {
             return;
         }
@@ -1542,6 +1547,12 @@ impl Composer {
     #[must_use]
     pub fn main_seat_focus(&self) -> Option<NodeId> {
         self.main_seat.and_then(|seat| self.scene.reference(seat, "focus"))
+    }
+
+    /// Whether the shell wrote the main seat's `focus` since the compositor last published it.
+    #[must_use]
+    pub fn main_seat_focus_written_by_shell(&self) -> bool {
+        self.main_seat_focus() != self.published_focus
     }
 
     /// The window whose node the main seat's `focus` names.

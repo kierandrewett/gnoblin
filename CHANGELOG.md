@@ -6,6 +6,7 @@
 
 - Screen nodes: the composer creates a `screen` node per declared output, publishes its geometry, and destroys it with the output.
 - Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.
+- A shell write of the main seat node's `focus` moves the keyboard to that window, through the same path as a compositor focus change; a `nil` write clears it. The compositor's own focus changes are published and never read back. Test `a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window`.
 
 ### Changed
 
