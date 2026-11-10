@@ -22,6 +22,21 @@ impl ClassInfo for Table {
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        if class == "seat" {
+            return match key {
+                "focus" => Some(PropertyInfo {
+                    kind: ValueType::Node("window".into()),
+                    readonly: false,
+                    animated: false,
+                }),
+                "name" => Some(PropertyInfo {
+                    kind: ValueType::Text,
+                    readonly: false,
+                    animated: false,
+                }),
+                _ => None,
+            };
+        }
         if class != "Window" {
             return None;
         }
@@ -701,4 +716,56 @@ fn shell_ids_below_the_base_coexist_with_every_compositor_window() {
             .expect("a compositor window must not collide with a shell node");
     }
     assert_eq!(scene.node_ids().count(), 1 + 2 * shell_count as usize);
+}
+
+/// A compositor-owned seat under the root, the way the composer adds the main seat.
+fn compositor_seat(scene: &mut Scene, raw: u64) -> NodeId {
+    let node = id(raw);
+    let mut spec = NodeSpec::new(rect(0, 0, 0, 0));
+    spec.parent = Some(id(ROOT));
+    scene.insert(node, spec).unwrap();
+    scene.set_class(node, Some("seat".into())).unwrap();
+    node
+}
+
+fn set_focus(node: NodeId, target: Option<NodeId>) -> TreeOp {
+    TreeOp::Set {
+        node,
+        key: "focus".into(),
+        value: TreeValue::Node(target),
+        timing: None,
+    }
+}
+
+#[test]
+fn shell_seat_focus_accepts_a_window_and_null_and_refuses_the_rest() {
+    let mut scene = scene();
+    let root = id(ROOT);
+    let seat = compositor_seat(&mut scene, 9);
+    let window = shell_node(&mut scene, 1, root);
+    scene.set_class(window, Some("window".into())).unwrap();
+    let other = shell_node(&mut scene, 2, root);
+    scene.set_class(other, Some("Other".into())).unwrap();
+
+    let refusal = refused(&mut scene, Actor::Shell, vec![set_focus(seat, Some(other))]);
+    assert_refused(&refusal, 0, Code::BadValue);
+    let refusal = refused(&mut scene, Actor::Shell, vec![set_focus(seat, Some(id(77)))]);
+    assert_refused(&refusal, 0, Code::BadValue);
+
+    validate_and_apply(
+        &mut scene,
+        &Table,
+        Actor::Shell,
+        &TreeTransaction::new(vec![set_focus(seat, Some(window))]),
+    )
+    .expect("a window node is accepted");
+    assert_eq!(scene.reference(seat, "focus"), Some(window));
+    validate_and_apply(
+        &mut scene,
+        &Table,
+        Actor::Shell,
+        &TreeTransaction::new(vec![set_focus(seat, None)]),
+    )
+    .expect("null clears focus");
+    assert_eq!(scene.reference(seat, "focus"), None);
 }

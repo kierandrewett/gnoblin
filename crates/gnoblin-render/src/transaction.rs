@@ -661,6 +661,9 @@ fn set_value(
     if work.class(node) == Some("seat") && key == "name" {
         return set_seat_name(work, node, value, applied);
     }
+    if work.class(node) == Some("seat") && key == "focus" {
+        return set_seat_focus(work, node, value, applied);
+    }
     check_value(work, classes, value, &info.kind)?;
     applied.changes.push(TreeChange::Set {
         node,
@@ -682,6 +685,27 @@ fn set_value(
         return Ok(());
     }
     write_value(work, node, key, value)
+}
+
+/// Set the keyboard focus of a seat node to a window node, or clear it with null. The target
+/// must exist and be a window; anything else is refused as a bad value.
+fn set_seat_focus(work: &mut Scene, node: NodeId, value: &TreeValue, applied: &mut TreeApplied) -> Result<(), Code> {
+    let TreeValue::Node(target) = value else {
+        return Err(Code::WrongType);
+    };
+    if let Some(target) = target
+        && (!work.contains(*target) || work.class(*target) != Some("window"))
+    {
+        return Err(Code::BadValue);
+    }
+    work.set_reference(node, "focus", *target)
+        .map_err(|error| scene_code(&error))?;
+    applied.changes.push(TreeChange::Set {
+        node,
+        key: "focus".to_owned(),
+        value: TreeValue::Node(*target),
+    });
+    Ok(())
 }
 
 /// Name a seat node. The name is non-empty, at most [`MAX_TEXT_BYTES`] bytes and unique among
