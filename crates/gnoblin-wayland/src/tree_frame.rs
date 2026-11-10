@@ -502,19 +502,14 @@ impl TreeFrame {
                 Ok(mut done) => {
                     changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
                     self.inputs.extend(done.inputs.iter().copied());
-                    // The calls move into the batch, which is their one owner from here: a call may
-                    // carry a password, so it is never copied. Seat claims carry no text, so those
-                    // alone are copied out for the compositor to apply.
-                    let calls = std::mem::take(&mut done.calls);
-                    self.claims.extend(
-                        calls
-                            .iter()
-                            .filter(|call| {
-                                scene.class(call.node) == Some("seat")
-                                    && matches!(call.method.as_str(), "claim" | "unclaim")
-                            })
-                            .cloned(),
-                    );
+                    // The calls move into the batch and the seat claims out to the compositor: each
+                    // call has exactly one owner from here, so a password is never copied out of it.
+                    let (claims, calls): (Vec<TreeCall>, Vec<TreeCall>) =
+                        std::mem::take(&mut done.calls).into_iter().partition(|call| {
+                            scene.class(call.node) == Some("seat")
+                                && matches!(call.method.as_str(), "claim" | "unclaim")
+                        });
+                    self.claims.extend(claims);
                     batch.changes.extend(done.changes.iter().cloned());
                     batch.animations.extend(done.animations.iter().cloned());
                     batch.calls.extend(calls);
