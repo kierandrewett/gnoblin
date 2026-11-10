@@ -201,6 +201,7 @@ mod xwayland;
 
 /// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.
 pub use clock::{Clock, ManualClock, SystemClock};
+pub use effects::effect_pass;
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use gnoblin_lock::State as LockState;

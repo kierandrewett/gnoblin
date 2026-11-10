@@ -53,6 +53,22 @@ pub(crate) fn pass_for(spec: &EffectSpec) -> Result<Option<Pass>, String> {
     }
 }
 
+/// The render pass one `effects`-list entry draws as, for a tree value.
+///
+/// A blur or shadow entry becomes its validated pass. A `shader` entry, an unknown kind,
+/// or a value the renderer refuses is an `Err` with the reason, so the caller can refuse
+/// the whole list rather than draw part of it.
+pub fn effect_pass(spec: &EffectSpec) -> Result<Pass, String> {
+    match spec.kind.as_str() {
+        "blur" | "shadow" => match pass_for(spec)? {
+            Some(pass) => Ok(pass),
+            None => Err(format!("effect kind `{}` has no pass", spec.kind)),
+        },
+        "shader" => Err("the renderer cannot run shader modules yet".to_owned()),
+        other => Err(format!("unknown effect kind `{other}`")),
+    }
+}
+
 /// The blur pass a spec asks for, validated against the scene's ranges.
 ///
 /// `downscale` in the schema is the divisor (`1 / downscale` of full resolution), so the
