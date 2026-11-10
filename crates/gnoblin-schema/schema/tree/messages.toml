@@ -364,6 +364,49 @@ name = "value_effects"
 type = "list<object:effect>"
 since = "0.2.0"
 
+# The `input` kind (owner only): the window `node` the pointer is over, the `seat` node whose pointer
+# carries it, and `input_kind` (motion, button, scroll or leave). `x`, `y` are node-local; `button` is the
+# button code and `state` is 1 for a press, 0 for a release; `dx`, `dy` are the scroll deltas.
+[[object.property]]
+name = "seat"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "input_kind"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "state"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+
 # One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the
 # fields the kind does not use are zero or empty.
 [[object]]

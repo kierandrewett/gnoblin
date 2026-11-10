@@ -28,7 +28,7 @@ use gnoblin_compositor::{Compositor, EisGate, SessionConfig, StopHandle};
 use gnoblinctl::SocketConnection;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection as WaylandConnection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
@@ -523,6 +523,8 @@ pub struct Client {
     wm_base: xdg_wm_base::XdgWmBase,
     #[allow(dead_code)]
     seat: wl_seat::WlSeat,
+    /// The registry, kept so every seat global can be bound once its name is known.
+    registry: wl_registry::WlRegistry,
 }
 
 /// One toplevel's protocol objects.
@@ -544,6 +546,21 @@ pub struct App {
     pub keyboard_enters: u32,
     /// Keys as `(code, state)`, the protocol's own numbers.
     pub keys: Vec<(u32, u32)>,
+    /// Every wl_seat global the session advertises, with its name once the name event arrives.
+    pub seats: Vec<(wl_seat::WlSeat, String)>,
+    /// Pointer events, tagged with the name of the seat whose wl_pointer sent them.
+    pub pointer: Vec<(String, PointerEvent)>,
+}
+
+/// One wl_pointer event, with the protocol's own numbers. A surface is its protocol id.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PointerEvent {
+    Enter { surface: u32, x: f64, y: f64 },
+    Leave { surface: u32 },
+    Motion { x: f64, y: f64 },
+    Button { button: u32, pressed: bool },
+    Axis { vertical: bool, value: f64 },
+    Frame,
 }
 
 impl Client {
@@ -561,7 +578,8 @@ impl Client {
             .bind(&qh, 1..=1, ())
             .expect("the session advertises xdg_wm_base");
         let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_seat");
-        Client {
+        let registry = globals.registry().clone();
+        let mut client = Client {
             _connection: connection,
             queue,
             app: App::default(),
@@ -570,7 +588,42 @@ impl Client {
             shm,
             wm_base,
             seat,
+            registry,
+        };
+        client.bind_every_seat(&globals);
+        client
+    }
+
+    /// Binds every wl_seat global the session advertises, so a named seat other than the first
+    /// one can be reached. Their names arrive as events; see `pointers_on_every_seat`.
+    fn bind_every_seat(&mut self, globals: &wayland_client::globals::GlobalList) {
+        let seats: Vec<(u32, u32)> = globals.contents().with_list(|list| {
+            list.iter()
+                .filter(|global| global.interface == "wl_seat")
+                .map(|global| (global.name, global.version.min(7)))
+                .collect()
+        });
+        for (name, version) in seats {
+            let seat: wl_seat::WlSeat = self.registry.bind(name, version, &self.qh, ());
+            self.app.seats.push((seat, String::new()));
         }
+        self.roundtrip();
+    }
+
+    /// Gets a wl_pointer from every seat the session advertises, so each seat's pointer events
+    /// reach this client. Events are tagged with the seat's name in `pointer_events`.
+    pub fn pointers_on_every_seat(&mut self) {
+        self.roundtrip();
+        let seats = self.app.seats.clone();
+        for (seat, name) in seats {
+            seat.get_pointer(&self.qh, name);
+        }
+        self.roundtrip();
+    }
+
+    /// The pointer events received so far, tagged with their seat's name, in arrival order.
+    pub fn pointer_events(&self) -> &[(String, PointerEvent)] {
+        &self.app.pointer
     }
 
     /// Processes every event the session has sent.
@@ -830,20 +883,78 @@ pub fn listed_titles(session: &Session) -> Vec<String> {
 
 impl Dispatch<wl_seat::WlSeat, ()> for App {
     fn event(
-        _: &mut Self,
+        app: &mut Self,
         seat: &wl_seat::WlSeat,
         event: <wl_seat::WlSeat as Proxy>::Event,
         _: &(),
         _: &WaylandConnection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_seat::Event::Capabilities {
-            capabilities: WEnum::Value(capabilities),
-        } = event
-            && capabilities.contains(wl_seat::Capability::Keyboard)
-        {
-            seat.get_keyboard(qh, ());
+        match event {
+            wl_seat::Event::Name { name } => {
+                if let Some(entry) = app.seats.iter_mut().find(|(known, _)| known == seat) {
+                    entry.1 = name;
+                }
+            }
+            wl_seat::Event::Capabilities {
+                capabilities: WEnum::Value(capabilities),
+            } if capabilities.contains(wl_seat::Capability::Keyboard) => {
+                seat.get_keyboard(qh, ());
+            }
+            _ => {}
         }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, String> for App {
+    fn event(
+        app: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: <wl_pointer::WlPointer as Proxy>::Event,
+        seat: &String,
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+        let recorded = match event {
+            wl_pointer::Event::Enter {
+                surface,
+                surface_x,
+                surface_y,
+                ..
+            } => PointerEvent::Enter {
+                surface: surface.id().protocol_id(),
+                x: surface_x,
+                y: surface_y,
+            },
+            wl_pointer::Event::Leave { surface, .. } => PointerEvent::Leave {
+                surface: surface.id().protocol_id(),
+            },
+            wl_pointer::Event::Motion {
+                surface_x, surface_y, ..
+            } => PointerEvent::Motion {
+                x: surface_x,
+                y: surface_y,
+            },
+            wl_pointer::Event::Button {
+                button,
+                state: WEnum::Value(state),
+                ..
+            } => PointerEvent::Button {
+                button,
+                pressed: state == wl_pointer::ButtonState::Pressed,
+            },
+            wl_pointer::Event::Axis {
+                axis: WEnum::Value(axis),
+                value,
+                ..
+            } => PointerEvent::Axis {
+                vertical: axis == wl_pointer::Axis::VerticalScroll,
+                value,
+            },
+            wl_pointer::Event::Frame => PointerEvent::Frame,
+            _ => return,
+        };
+        app.pointer.push((seat.clone(), recorded));
     }
 }
 

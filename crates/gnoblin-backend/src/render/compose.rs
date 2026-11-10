@@ -1306,6 +1306,15 @@ impl Composer {
         self.windows.get(&window).and_then(|entry| entry.node)
     }
 
+    /// The managed window that is the scene node `node`, when one is.
+    #[must_use]
+    pub fn window_of_node(&self, node: NodeId) -> Option<WindowId> {
+        self.windows
+            .iter()
+            .find(|(_, entry)| entry.node == Some(node))
+            .map(|(window, _)| *window)
+    }
+
     /// The shell's node drawn topmost under a point on the output plane, with the point in that
     /// node's local space. A window above it wins: only a topmost node that is not a window is the
     /// shell's, so a shell node under a window is not reported.

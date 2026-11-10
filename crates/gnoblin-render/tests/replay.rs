@@ -368,6 +368,7 @@ fn op_text(op: &TreeOp) -> String {
             format!("insert {} {} {index}", node.get(), parent.get())
         }
         TreeOp::Destroy { node } => format!("destroy {}", node.get()),
+        TreeOp::Input { node, seat, input } => format!("input {} {} {input:?}", node.get(), seat.get()),
         TreeOp::TreeCall { node, method, args } => {
             let mut words = vec![format!("call {} {method}", node.get())];
             words.extend(args.iter().map(i64::to_string));

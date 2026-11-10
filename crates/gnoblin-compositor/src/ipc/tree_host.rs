@@ -17,7 +17,7 @@ use gnoblin_proto::tree::tree::{
 use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_render::Pass;
 use gnoblin_render::transaction::{
-    ClassInfo, Code, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
+    ClassInfo, Code, PointerInput, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
 use gnoblin_types::{ClientId, Color, NodeId};
 use gnoblin_wayland::{EffectSpec, FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
@@ -418,6 +418,11 @@ fn tree_op(op: &op::Properties) -> Result<TreeOp, Code> {
             index: usize::try_from(op.index).ok(),
         },
         "destroy" => TreeOp::Destroy { node },
+        "input" => TreeOp::Input {
+            node,
+            seat: NodeId::new(op.seat),
+            input: pointer_input(op)?,
+        },
         "set" => TreeOp::Set {
             node,
             key: op.key.clone(),
@@ -527,6 +532,33 @@ fn hex_colour(colour: Color) -> String {
         channel(colour.b),
         channel(colour.a),
     )
+}
+
+/// The pointer input an `input` op carries. An unknown `input_kind`, or a button or state that
+/// does not fit, is `bad-value`.
+fn pointer_input(op: &op::Properties) -> Result<PointerInput, Code> {
+    let button = u32::try_from(op.button).map_err(|_| Code::BadValue)?;
+    Ok(match op.input_kind.as_str() {
+        "motion" => PointerInput::Motion { x: op.x, y: op.y },
+        "button" => PointerInput::Button {
+            x: op.x,
+            y: op.y,
+            button,
+            pressed: match op.state {
+                0 => false,
+                1 => true,
+                _ => return Err(Code::BadValue),
+            },
+        },
+        "scroll" => PointerInput::Scroll {
+            x: op.x,
+            y: op.y,
+            dx: op.dx,
+            dy: op.dy,
+        },
+        "leave" => PointerInput::Leave,
+        _ => return Err(Code::BadValue),
+    })
 }
 
 /// The timing of a `set`: an instant set has neither a duration nor samples. A duration of

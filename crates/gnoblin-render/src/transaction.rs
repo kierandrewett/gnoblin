@@ -275,6 +275,16 @@ pub enum TreeOp {
         /// The node to destroy.
         node: NodeId,
     },
+    /// Deliver a pointer input to the client of a window, on a seat's pointer. It changes
+    /// nothing in the scene, so it is an addition-only op the owner may send.
+    Input {
+        /// The window node the pointer is over.
+        node: NodeId,
+        /// The seat node whose pointer carries the input.
+        seat: NodeId,
+        /// The input itself, in the window's own coordinates.
+        input: PointerInput,
+    },
     /// TreeCall a method on a node.
     TreeCall {
         /// The target node.
@@ -400,6 +410,31 @@ pub struct TreeCall {
     pub args: Vec<i64>,
 }
 
+/// A pointer input a window's client receives through a seat.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PointerInput {
+    /// The pointer moved to `(x, y)` in the window's coordinates, entering the window first if
+    /// it was not over it.
+    Motion { x: f64, y: f64 },
+    /// A button changed state at `(x, y)`; `pressed` is `true` for a press.
+    Button { x: f64, y: f64, button: u32, pressed: bool },
+    /// A scroll of `(dx, dy)` at `(x, y)`.
+    Scroll { x: f64, y: f64, dx: f64, dy: f64 },
+    /// The pointer left the window.
+    Leave,
+}
+
+/// A pointer input addressed to a window through a seat.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SeatInput {
+    /// The window node.
+    pub node: NodeId,
+    /// The seat node.
+    pub seat: NodeId,
+    /// The input.
+    pub input: PointerInput,
+}
+
 /// What a committed transaction changed.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TreeApplied {
@@ -409,6 +444,8 @@ pub struct TreeApplied {
     pub animations: Vec<Animation>,
     /// Method calls, for the compositor to run.
     pub calls: Vec<TreeCall>,
+    /// Pointer inputs, for the compositor to deliver to clients in op order.
+    pub inputs: Vec<SeatInput>,
 }
 
 /// Validate every op of `transaction` as `actor` against `scene` and, when all pass,
@@ -455,6 +492,7 @@ fn apply_op(
         TreeOp::New { class, id } => new_node(work, classes, actor, class, *id, created, applied),
         TreeOp::Insert { node, parent, index } => insert_node(work, actor, *node, *parent, *index, applied),
         TreeOp::Destroy { node } => destroy_node(work, actor, *node, applied),
+        TreeOp::Input { node, seat, input } => pointer_input(work, actor, *node, *seat, *input, applied),
         TreeOp::TreeCall { node, method, args } => call_method(work, classes, *node, method, args, applied),
         TreeOp::Set {
             node,
@@ -549,6 +587,39 @@ fn call_method(
         method: method.to_owned(),
         args: args.to_vec(),
     });
+    Ok(())
+}
+
+/// A pointer input to a window through a seat. Only the shell may send one: it is not a scene
+/// change, so the compositor delivers it and records nothing.
+fn pointer_input(
+    work: &Scene,
+    actor: Actor,
+    node: NodeId,
+    seat: NodeId,
+    input: PointerInput,
+    applied: &mut TreeApplied,
+) -> Result<(), Code> {
+    if actor != Actor::Shell {
+        return Err(Code::NotOwner);
+    }
+    match work.class(node) {
+        None => return Err(Code::UnknownNode),
+        Some("window") => {}
+        Some(_) => return Err(Code::BadValue),
+    }
+    if !work.seat_names().any(|(id, _)| id == seat) {
+        return Err(Code::BadValue);
+    }
+    let finite = match input {
+        PointerInput::Motion { x, y } | PointerInput::Button { x, y, .. } => x.is_finite() && y.is_finite(),
+        PointerInput::Scroll { x, y, dx, dy } => [x, y, dx, dy].iter().all(|v| v.is_finite()),
+        PointerInput::Leave => true,
+    };
+    if !finite {
+        return Err(Code::NotFinite);
+    }
+    applied.inputs.push(SeatInput { node, seat, input });
     Ok(())
 }
 

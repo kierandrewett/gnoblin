@@ -689,3 +689,265 @@ fn an_empty_or_duplicate_seat_name_is_refused_bad_value() {
     assert!(!reply.applied, "an empty seat name is refused");
     session.stop().expect("the session stops cleanly");
 }
+
+fn pointer_input(node: u64, seat: u64, input_kind: &str, x: f64, y: f64) -> op::Properties {
+    op::Properties {
+        kind: "input".to_owned(),
+        node,
+        seat,
+        input_kind: input_kind.to_owned(),
+        x,
+        y,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn the_owner_sends_a_pointer_motion_to_a_window_on_a_seat() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.window", "Input target");
+    let mut wire = Wire::connect(session.socket());
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Input target");
+    let window = window_titled(&nodes, "Input target").expect("the window node").id;
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    transact(
+        &mut wire,
+        3,
+        1,
+        2,
+        vec![pointer_input(window, 1000, "motion", 4.0, 5.0)],
+    );
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(reply.applied, "an owner input to a window on a seat applies");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_input_to_a_node_that_is_not_a_window_is_refused_bad_value() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    transact(
+        &mut wire,
+        3,
+        1,
+        2,
+        vec![pointer_input(attached.root, 1000, "motion", 0.0, 0.0)],
+    );
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied, "an input to a non-window node is refused");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_input_on_an_unknown_seat_is_refused_bad_value() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.window", "Unknown seat");
+    let mut wire = Wire::connect(session.socket());
+    let (_, nodes) = snapshot_holding_window(&mut wire, "Unknown seat");
+    let window = window_titled(&nodes, "Unknown seat").expect("the window node").id;
+
+    transact(
+        &mut wire,
+        2,
+        0,
+        1,
+        vec![pointer_input(window, 4242, "motion", 0.0, 0.0)],
+    );
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied, "an input on a seat that does not exist is refused");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn moving_the_pointer_to_another_window_leaves_the_first_and_enters_the_second() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    let mut client = Client::connect(session.wayland());
+    client.map_window("org.example.window", "Switch first");
+    client.map_window("org.example.window", "Switch second");
+    client.pointers_on_every_seat();
+    let first = window_node_after_mapping(&mut wire, "Switch first");
+    let second = window_node_after_mapping(&mut wire, "Switch second");
+
+    transact(&mut wire, 3, 1, 2, vec![pointer_input(first, 1000, "motion", 4.0, 5.0)]);
+    let _: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+    transact(
+        &mut wire,
+        4,
+        2,
+        3,
+        vec![pointer_input(second, 1000, "motion", 6.0, 7.0)],
+    );
+    let _: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.roundtrip();
+        let xr: Vec<support::PointerEvent> = client
+            .pointer_events()
+            .iter()
+            .filter(|(seat, _)| seat == "xr")
+            .map(|(_, event)| event.clone())
+            .collect();
+        let leave_first = xr.iter().position(|e| matches!(e, support::PointerEvent::Leave { .. }));
+        let enter_second = xr
+            .iter()
+            .position(|e| matches!(e, support::PointerEvent::Enter { x, y, .. } if *x == 6.0 && *y == 7.0));
+        if let (Some(leave), Some(enter)) = (leave_first, enter_second) {
+            assert!(
+                leave < enter,
+                "the leave on the first window precedes the enter on the second: {xr:?}"
+            );
+            break;
+        }
+        assert!(Instant::now() < deadline, "no leave then enter on seat xr: {xr:?}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_pointer_input_from_a_connection_that_is_not_the_owner_is_refused() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    transact(&mut wire, 1, 0, 1, vec![pointer_input(1000, 1001, "motion", 0.0, 0.0)]);
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied);
+    assert_eq!(reply.code, "not-privileged");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_pointer_input_reaches_the_window_client_on_the_xr_seat_only() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    // The xr seat is advertised before the client connects, so the client binds it.
+    let mut client = Client::connect(session.wayland());
+    client.map_window("org.example.window", "Seat delivery");
+    client.pointers_on_every_seat();
+    let node = window_node_after_mapping(&mut wire, "Seat delivery");
+
+    transact(&mut wire, 3, 1, 2, vec![pointer_input(node, 1000, "motion", 4.0, 5.0)]);
+    let _: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.roundtrip();
+        let entered = client.pointer_events().iter().any(|(seat, event)| {
+            seat == "xr" && matches!(event, support::PointerEvent::Enter { x, y, .. } if *x == 4.0 && *y == 5.0)
+        });
+        if entered {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no enter on seat xr: {:?}",
+            client.pointer_events()
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    let press = op::Properties {
+        input_kind: "button".to_owned(),
+        button: 272,
+        state: 1,
+        ..pointer_input(node, 1000, "button", 4.0, 5.0)
+    };
+    let release = op::Properties {
+        state: 0,
+        ..press.clone()
+    };
+    let scroll = op::Properties {
+        dy: 3.0,
+        ..pointer_input(node, 1000, "scroll", 4.0, 5.0)
+    };
+    transact(&mut wire, 4, 2, 3, vec![press, release, scroll]);
+    let _: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.roundtrip();
+        let events = client.pointer_events();
+        let pressed = events.iter().any(|(seat, e)| {
+            seat == "xr"
+                && *e
+                    == support::PointerEvent::Button {
+                        button: 272,
+                        pressed: true,
+                    }
+        });
+        let released = events.iter().any(|(seat, e)| {
+            seat == "xr"
+                && *e
+                    == support::PointerEvent::Button {
+                        button: 272,
+                        pressed: false,
+                    }
+        });
+        let scrolled = events.iter().any(|(seat, e)| {
+            seat == "xr" && matches!(e, support::PointerEvent::Axis { vertical: true, value } if *value > 0.0)
+        });
+        if pressed && released && scrolled {
+            break;
+        }
+        assert!(Instant::now() < deadline, "no button or axis on seat xr: {events:?}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        client.pointer_events().iter().all(|(seat, _)| seat == "xr"),
+        "the main seat pointer focus moved: {:?}",
+        client.pointer_events()
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+/// The next Reply frame to `member`, skipping the change batches the compositor publishes
+/// meanwhile.
+fn reply_skipping_changes<M: prost::Message + Default>(wire: &mut Wire, member: &str) -> M {
+    loop {
+        let envelope = wire.receive().expect("a frame");
+        if matches!(envelope.kind, Some(Kind::Reply(_))) {
+            assert_eq!(envelope.member, member);
+            return envelope.payload_as::<M>().expect("the payload decodes");
+        }
+    }
+}
+
+/// The id of the window titled `title`, read from re-attached snapshots; stray change batches
+/// before each attach reply are skipped.
+fn window_node_after_mapping(wire: &mut Wire, title: &str) -> u64 {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut request_id = 1;
+    loop {
+        attach(wire, request_id);
+        let attached: AttachedPayload = reply_skipping_changes(wire, "attach");
+        let nodes = snapshot_nodes(wire, attached.serial);
+        if let Some(node) = window_titled(&nodes, title) {
+            return node.id;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no window titled `{title}` in the tree: {nodes:?}"
+        );
+        request_id += 1;
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}

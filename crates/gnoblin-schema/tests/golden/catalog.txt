@@ -555,6 +555,14 @@ object op since 0.2.0 secret false
   property args type bytes since 0.2.0 secret false
   property value_texts type list<string> since 0.2.0 secret false
   property value_effects type list<object:effect> since 0.2.0 secret false
+  property seat type uint since 0.2.0 secret false
+  property input_kind type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property button type uint since 0.2.0 secret false
+  property state type uint since 0.2.0 secret false
+  property dx type double since 0.2.0 secret false
+  property dy type double since 0.2.0 secret false
 object change since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -2149,6 +2157,22 @@ message Op {
     repeated string value_texts = 20;
     // since 0.2.0; list of record `effect`: the properties of one value
     repeated Effect.Properties value_effects = 21;
+    // since 0.2.0
+    uint64 seat = 22;
+    // since 0.2.0
+    string input_kind = 23;
+    // since 0.2.0
+    double x = 24;
+    // since 0.2.0
+    double y = 25;
+    // since 0.2.0
+    uint64 button = 26;
+    // since 0.2.0
+    uint64 state = 27;
+    // since 0.2.0
+    double dx = 28;
+    // since 0.2.0
+    double dy = 29;
   }
 }
 

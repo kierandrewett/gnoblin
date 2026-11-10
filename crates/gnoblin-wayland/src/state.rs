@@ -70,6 +70,7 @@ use gnoblin_layers::{InputPolicy, LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
+use gnoblin_render::transaction::PointerInput;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
@@ -3317,8 +3318,107 @@ impl State {
             if self.extra_seats.contains_key(&id) {
                 continue;
             }
-            let seat: Seat<Self> = self.seat_state.new_wl_seat(&self.display_handle, name);
+            let mut seat: Seat<Self> = self.seat_state.new_wl_seat(&self.display_handle, name);
+            // The seat's own pointer carries the shell's inputs to windows; the main
+            // seat's pointer and its focus are never touched by them.
+            seat.add_pointer();
             self.extra_seats.insert(id, seat);
+        }
+    }
+}
+
+impl State {
+    /// Delivers the pointer inputs the applied transactions sent: each goes to the client of
+    /// its window on the named seat's own pointer, so the main seat's focus is untouched. A
+    /// window with no surface yet, or a seat that is gone, takes nothing.
+    fn deliver_seat_inputs(&mut self) {
+        let time = InputTime::now();
+        for input in self.tree.take_inputs() {
+            let Some(seat) = self.extra_seats.get(&input.seat) else {
+                continue;
+            };
+            let Some(pointer) = seat.get_pointer() else {
+                continue;
+            };
+            let surface = self
+                .composer
+                .window_of_node(input.node)
+                .and_then(|window| self.surface_of(window));
+            let serial = SERIAL_COUNTER.next_serial();
+            let origin = SmithayPoint::from((0.0, 0.0));
+            match input.input {
+                PointerInput::Leave => {
+                    pointer.motion(
+                        self,
+                        None,
+                        &MotionEvent {
+                            location: origin,
+                            serial,
+                            time,
+                        },
+                    );
+                }
+                PointerInput::Motion { x, y } => {
+                    pointer.motion(
+                        self,
+                        surface.map(|surface| (surface, origin)),
+                        &MotionEvent {
+                            location: SmithayPoint::from((x, y)),
+                            serial,
+                            time,
+                        },
+                    );
+                }
+                PointerInput::Button { x, y, button, pressed } => {
+                    if let Some(surface) = surface.filter(|s| pointer.current_focus().as_ref() != Some(s)) {
+                        pointer.motion(
+                            self,
+                            Some((surface, origin)),
+                            &MotionEvent {
+                                location: SmithayPoint::from((x, y)),
+                                serial,
+                                time,
+                            },
+                        );
+                    }
+                    let serial = SERIAL_COUNTER.next_serial();
+                    pointer.button(
+                        self,
+                        &ButtonEvent {
+                            serial,
+                            time,
+                            button,
+                            state: if pressed {
+                                ButtonState::Pressed
+                            } else {
+                                ButtonState::Released
+                            },
+                        },
+                    );
+                }
+                PointerInput::Scroll { x, y, dx, dy } => {
+                    if let Some(surface) = surface.filter(|s| pointer.current_focus().as_ref() != Some(s)) {
+                        pointer.motion(
+                            self,
+                            Some((surface, origin)),
+                            &MotionEvent {
+                                location: SmithayPoint::from((x, y)),
+                                serial,
+                                time,
+                            },
+                        );
+                    }
+                    let mut frame = AxisFrame::new(time).source(AxisSource::Continuous);
+                    if dx != 0.0 {
+                        frame = frame.value(Axis::Horizontal, dx);
+                    }
+                    if dy != 0.0 {
+                        frame = frame.value(Axis::Vertical, dy);
+                    }
+                    pointer.axis(self, frame);
+                }
+            }
+            pointer.frame(self);
         }
     }
 }
@@ -3338,6 +3438,7 @@ impl Host for State {
         let tree = &mut self.tree;
         self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
         self.reconcile_seats();
+        self.deliver_seat_inputs();
         // Placement follows the shell's hold as the drain left it.
         self.composer.follow_placement();
         // The damage is taken once for every output, because the backend renders one

@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
-    Animation, ClassInfo, Code, PropertyInfo, TreeApplied, TreeCall, TreeChange, TreeRefusal, TreeTransaction,
-    validate_and_apply,
+    Animation, ClassInfo, Code, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeRefusal,
+    TreeTransaction, validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
@@ -279,6 +279,8 @@ pub struct TreeFrame {
     compositor: Vec<TreeChange>,
     /// Request events recorded since the last frame, delivered in the next batch.
     events: Vec<FrameTreeEvent>,
+    /// Pointer inputs the applied transactions sent since the compositor last took them, in op order.
+    inputs: Vec<SeatInput>,
     /// The sequence number of the last event recorded.
     next_seq: u64,
     /// The number of frames drained; an event carries the frame that delivered it.
@@ -303,6 +305,7 @@ impl TreeFrame {
             deferred: VecDeque::new(),
             compositor: Vec::new(),
             events: Vec::new(),
+            inputs: Vec::new(),
             next_seq: 0,
             frames: 0,
             revisions: TreeRevisions::new(),
@@ -351,6 +354,12 @@ impl TreeFrame {
             node,
             event,
         });
+    }
+
+    /// Take the pointer inputs the applied transactions sent, in op order, for the compositor to
+    /// deliver to clients.
+    pub fn take_inputs(&mut self) -> Vec<SeatInput> {
+        std::mem::take(&mut self.inputs)
     }
 
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
@@ -413,6 +422,7 @@ impl TreeFrame {
             match result {
                 Ok(done) => {
                     changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
+                    self.inputs.extend(done.inputs.iter().copied());
                     batch.changes.extend(done.changes.iter().cloned());
                     batch.animations.extend(done.animations.iter().cloned());
                     batch.calls.extend(done.calls.iter().cloned());

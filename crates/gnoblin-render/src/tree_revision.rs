@@ -124,6 +124,6 @@ fn conflicts(op: &TreeOp, changed: &BTreeSet<NodeId>, created: &BTreeSet<NodeId>
     match op {
         TreeOp::Set { node, .. } | TreeOp::Destroy { node } | TreeOp::TreeCall { node, .. } => hit(node),
         TreeOp::Insert { node, parent, .. } => hit(node) || hit(parent),
-        TreeOp::New { .. } => false,
+        TreeOp::New { .. } | TreeOp::Input { .. } => false,
     }
 }
