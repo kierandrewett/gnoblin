@@ -407,6 +407,13 @@ name = "dy"
 type = "double"
 since = "0.2.0"
 
+# The `text` of a `call` (the chord of a seat claim). Empty for every other call and kind.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+default = ""
+
 # One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the
 # fields the kind does not use are zero or empty.
 [[object]]

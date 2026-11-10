@@ -45,3 +45,56 @@ readonly = true
 [[object.method]]
 name = "warp"
 since = "0.2.0"
+
+# Claim a chord for this seat: the compositor withholds the chord from clients and emits `chord`
+# to the owner. `id` is allocated by the shell, per connection, and never reused. `chord` is
+# canonicalised by the compositor; an unparsable chord is `invalid-value`. `grab` keeps the
+# chord's release on the same claim. Only the owner may claim (design/node-core.md, section 5).
+[[object.method]]
+name = "claim"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "chord"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "grab"
+type = "bool"
+since = "0.2.0"
+
+# Remove a claim made on this connection. Unknown ids are `unknown-member`.
+[[object.method]]
+name = "unclaim"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+# A claimed chord changed state: `state` is `press`, `release` or `repeat`.
+[[object.signal]]
+name = "chord"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "chord"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "state"
+type = "string"
+since = "0.2.0"

@@ -563,6 +563,7 @@ object op since 0.2.0 secret false
   property state type uint since 0.2.0 secret false
   property dx type double since 0.2.0 secret false
   property dy type double since 0.2.0 secret false
+  property text type string since 0.2.0 secret false
 object change since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -666,7 +667,17 @@ object seat since 0.2.0 secret false
   property pointer_y type double since 0.2.0 secret false
   property device type string since 0.2.0 secret false
   method warp since 0.2.0 secret false function false
+  method claim since 0.2.0 secret false function false
+    param id type int since 0.2.0 secret false
+    param chord type string since 0.2.0 secret false
+    param grab type bool since 0.2.0 secret false
+  method unclaim since 0.2.0 secret false function false
+    param id type int since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
+  signal chord since 0.2.0 secret false
+    field id type int since 0.2.0 secret false
+    field chord type string since 0.2.0 secret false
+    field state type string since 0.2.0 secret false
 object surface since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -2174,6 +2185,8 @@ message Op {
     double dx = 28;
     // since 0.2.0
     double dy = 29;
+    // since 0.2.0
+    string text = 30;
   }
 }
 
@@ -2413,8 +2426,34 @@ message Seat {
   // Method `warp`, since 0.2.0.
   message WarpArgs {}
 
+  // Method `claim`, since 0.2.0.
+  message ClaimArgs {
+    // since 0.2.0
+    int64 id = 1;
+    // since 0.2.0
+    string chord = 2;
+    // since 0.2.0
+    bool grab = 3;
+  }
+
+  // Method `unclaim`, since 0.2.0.
+  message UnclaimArgs {
+    // since 0.2.0
+    int64 id = 1;
+  }
+
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}
+
+  // Signal `chord`, since 0.2.0.
+  message ChordPayload {
+    // since 0.2.0
+    int64 id = 1;
+    // since 0.2.0
+    string chord = 2;
+    // since 0.2.0
+    string state = 3;
+  }
 }
 
 // Object `surface`, since 0.2.0.
