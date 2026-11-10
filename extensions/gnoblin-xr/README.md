@@ -17,6 +17,11 @@ is drawn or where it sits. The design is in design/xr-extension.md (D34) and des
     - `supervisor`: `RuntimeManager` starts, polls, stops and reports on a runtime service child. It restarts on failure, at
       most 3 times. It kills the child on drop. It works through the `Spawner` and `ChildProcess` traits, so tests use a fake
       child and no real process is started. `status` reports `no-runtime` when no manifest is found.
+- **`xr-scene`** (library, no dependencies): the pure translation from the `room` subtree to layer placements, and the
+  ray pick against them. `plan` walks the `room` Views in tree order and returns the `Quad` and `Projection` layers to
+  submit, with the skipped Views and their reasons. `pick` tests a ray against the quads in reverse submission order and
+  returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
+  `crates/xr-scene/README.md`.
 - **`gnoblin-xr`** (binary): a placeholder. It parses `--help` and `--version` and nothing else.
 
 ## What does not exist
