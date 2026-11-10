@@ -1,0 +1,129 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `effect` value of a node's `effects` list (design/node-core.md, section 4.4a). The
+# schema has no unions, so one object carries every kind's parameters as flat properties.
+# A parameter the kind does not use is ignored and documented as such.
+#
+# This is the same parameter set as the window's `effect` object (`effect.toml`), without
+# its read-only `active` and `reason` status: a list value is what the client sets, and
+# the compositor reports the status on the window, not on the list.
+[[object]]
+name = "effect"
+since = "0.2.0"
+record = true
+
+# The kind of effect: `blur` or `shadow`. `shader` is refused on a node list: the
+# compositor does not run shader effects from the tree yet.
+[[object.property]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+# Whether the effect is applied. A disabled effect stays in the list and draws nothing.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+
+# Blur only. The backdrop is sampled at `1 / downscale` of full resolution before
+# blurring: 1 is full resolution, 2 is half. Default 2. Ignored by shadow.
+[[object.property]]
+name = "downscale"
+type = "uint"
+since = "0.2.0"
+
+# Blur only. The number of blur passes. Default 3. Ignored by shadow.
+[[object.property]]
+name = "passes"
+type = "uint"
+since = "0.2.0"
+
+# Blur only. The blur kernel: `gaussian`, `kawase` or `box`. Default `kawase`. Ignored by
+# shadow.
+[[object.property]]
+name = "algorithm"
+type = "string"
+since = "0.2.0"
+
+# Blur only. Grain added after blurring, from 0.0 (none) to 1.0. Default 0.0. Ignored by
+# shadow.
+[[object.property]]
+name = "noise"
+type = "double"
+since = "0.2.0"
+
+# Blur only. Brightness multiplier on the blurred backdrop; 1.0 leaves it unchanged.
+# Default 1.0. Ignored by shadow.
+[[object.property]]
+name = "brightness"
+type = "double"
+since = "0.2.0"
+
+# Blur only. Contrast multiplier on the blurred backdrop; 1.0 leaves it unchanged.
+# Default 1.0. Ignored by shadow.
+[[object.property]]
+name = "contrast"
+type = "double"
+since = "0.2.0"
+
+# Blur only. Saturation multiplier on the blurred backdrop; 1.0 leaves it unchanged.
+# Default 1.0. Ignored by shadow.
+[[object.property]]
+name = "saturation"
+type = "double"
+since = "0.2.0"
+
+# Blur only. The tint colour as `#rrggbb` or `#rrggbbaa`; the empty string is no tint.
+# Default empty. Ignored by shadow.
+[[object.property]]
+name = "tint"
+type = "string"
+since = "0.2.0"
+
+# Shadow only. Horizontal offset of the shadow in logical pixels; positive is right.
+# Default 0.0. Ignored by blur.
+[[object.property]]
+name = "offset_x"
+type = "double"
+since = "0.2.0"
+
+# Shadow only. Vertical offset of the shadow in logical pixels; positive is down. Default
+# 0.0. Ignored by blur.
+[[object.property]]
+name = "offset_y"
+type = "double"
+since = "0.2.0"
+
+# Shadow only. Blur radius of the shadow edge in logical pixels; 0.0 is a hard edge.
+# Default 12.0. Ignored by blur.
+[[object.property]]
+name = "blur_radius"
+type = "double"
+since = "0.2.0"
+
+# Shadow only. How far the shadow grows beyond the node before blurring, in logical
+# pixels; negative shrinks it. Default 0.0. Ignored by blur.
+[[object.property]]
+name = "spread"
+type = "double"
+since = "0.2.0"
+
+# Shadow only. The shadow colour as `#rrggbb` or `#rrggbbaa`. Default `#00000080`. Ignored
+# by blur.
+[[object.property]]
+name = "colour"
+type = "string"
+since = "0.2.0"
+
+# Shader only, reserved. The name of the shader module. Ignored by blur and shadow.
+[[object.property]]
+name = "source"
+type = "string"
+since = "0.2.0"
+
+# Shader only, reserved. The entry point in `source`. Ignored by blur and shadow.
+[[object.property]]
+name = "entry"
+type = "string"
+since = "0.2.0"

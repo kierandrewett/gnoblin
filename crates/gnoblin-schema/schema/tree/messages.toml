@@ -351,6 +351,19 @@ name = "args"
 type = "bytes"
 since = "0.2.0"
 
+# The `list<string>` value of a `list_text` set. Appended after `args`: a property's field
+# number is its position, so existing numbers never change.
+[[object.property]]
+name = "value_texts"
+type = "list<string>"
+since = "0.2.0"
+
+# The `list<object:effect>` value of a `list_effect` set. Appended after `value_texts`.
+[[object.property]]
+name = "value_effects"
+type = "list<object:effect>"
+since = "0.2.0"
+
 # One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the
 # fields the kind does not use are zero or empty.
 [[object]]
@@ -431,6 +444,19 @@ since = "0.2.0"
 [[object.property]]
 name = "removed"
 type = "list<uint>"
+since = "0.2.0"
+
+# The `list<string>` value of a `list_text` set (a node's `tags`). Appended after `removed`.
+[[object.property]]
+name = "value_texts"
+type = "list<string>"
+since = "0.2.0"
+
+# The `list<object:effect>` value of a `list_effect` set (a node's `effects`). Appended
+# after `value_texts`.
+[[object.property]]
+name = "value_effects"
+type = "list<object:effect>"
 since = "0.2.0"
 
 # One node of a snapshot: the shape of the tree, not the node's properties. A record, so a
