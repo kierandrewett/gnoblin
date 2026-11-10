@@ -629,8 +629,8 @@ local settings = {}
 ---@field tag string
 ---@field modal boolean
 ---@field unresponsive boolean
----@field effects gnoblin.effect[]
 ---@field pid integer
+---@field effects gnoblin.effect[]
 ---@field process gnoblin.Process|nil
 local window = {}
 ---@return gnoblin.Operation
