@@ -236,7 +236,7 @@ pub use smithay::delegate_dispatch2;
 pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
 /// The tree's frame boundary: the queue the shell's transactions wait in, and the batch a
 /// frame publishes for the shell's mirror.
-pub use tree_frame::{TREE_FRAME_BUDGET, TreeBatch, TreeFrame, TreeQueue};
+pub use tree_frame::{TREE_FRAME_BUDGET, TreeBatch, TreeFrame, TreeHooks, TreeQueue};
 
 /// The identity and the window process a client's surface belongs to.
 pub use process::{ProcessIdentity, WindowProcess};

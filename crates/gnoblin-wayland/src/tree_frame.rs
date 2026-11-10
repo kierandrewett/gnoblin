@@ -14,7 +14,7 @@
 //! on it; the lock is held only to move queued work out or back.
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
@@ -65,10 +65,23 @@ pub struct TreeBatch {
 /// The sending side of the tree queue. Clones share one queue.
 #[derive(Clone, Default)]
 pub struct TreeQueue {
-    inner: Arc<Mutex<TreeQueued>>,
+    inner: Arc<TreeShared>,
+}
+
+/// The queue's state, and the hook that wakes the frame loop when work is queued.
+#[derive(Default)]
+struct TreeShared {
+    queued: Mutex<TreeQueued>,
+    wake: OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl TreeQueue {
+    /// Sets the hook that wakes the frame loop when work is queued. The first hook set stays;
+    /// the session sets it once, before the socket starts queuing.
+    pub fn on_submit(&self, wake: impl Fn() + Send + Sync + 'static) {
+        let _ = self.inner.wake.set(Box::new(wake));
+    }
+
     /// Queues `transaction` for the next frame that drains the queue. `base` is the serial
     /// the transaction was built against; `reply` receives the serial after the frame that
     /// answered it, and the result. A transaction is answered in the frame that applies or
@@ -84,18 +97,55 @@ impl TreeQueue {
             transaction,
             reply: Box::new(reply),
         });
+        self.wake();
     }
 
     /// Queues `read` to run at the start of the next frame, before that frame's
     /// transactions, with the scene as the last published batch left it and that serial.
     pub fn read(&self, read: impl FnOnce(&Scene, u64) + Send + 'static) {
         self.lock().reads.push(Box::new(read));
+        self.wake();
+    }
+
+    fn wake(&self) {
+        if let Some(wake) = self.inner.wake.get() {
+            wake();
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, TreeQueued> {
         self.inner
+            .queued
             .lock()
             .expect("the tree queue lock is never held across a callback")
+    }
+}
+
+/// What a compositor hands the tree when it starts: the queue the socket feeds, the schema
+/// the transactions are checked against, and where each published batch goes.
+#[derive(Clone)]
+pub struct TreeHooks {
+    /// The queue the shell's transactions and reads wait in.
+    pub queue: TreeQueue,
+    /// The schema the transactions are checked against.
+    pub classes: Arc<dyn ClassInfo + Send + Sync>,
+    /// Receives each batch a frame publishes, in publication order, on the frame's thread.
+    pub publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
+}
+
+impl std::fmt::Debug for TreeHooks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TreeHooks").finish_non_exhaustive()
+    }
+}
+
+impl Default for TreeHooks {
+    fn default() -> Self {
+        Self {
+            queue: TreeQueue::default(),
+            classes: Arc::new(NoClasses),
+            publish: Arc::new(|_| {}),
+        }
     }
 }
 
@@ -118,12 +168,13 @@ impl ClassInfo for NoClasses {
 }
 
 /// The compositor's side of the tree: the queue, the schema the transactions are checked
-/// against, the serial, and the batches the shell has not taken yet.
+/// against, the serial, and the hook each published batch goes to.
 pub struct TreeFrame {
     queue: TreeQueue,
-    classes: Box<dyn ClassInfo>,
+    classes: Arc<dyn ClassInfo + Send + Sync>,
     serial: u64,
-    batches: Vec<TreeBatch>,
+    /// Receives each batch a frame publishes, before that frame's replies are sent.
+    publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
     /// The nodes each recent published batch changed, for the stale-base check.
     revisions: TreeRevisions,
     /// Transactions the budget deferred. Each is checked against its base when it applies, and
@@ -140,18 +191,24 @@ impl Default for TreeFrame {
 }
 
 impl TreeFrame {
-    /// An empty tree at serial 0 that refuses every class until [`TreeFrame::set_classes`].
+    /// An empty tree at serial 0 with the hooks the compositor configured.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn with_hooks(hooks: TreeHooks) -> Self {
         Self {
-            queue: TreeQueue::default(),
-            classes: Box::new(NoClasses),
+            queue: hooks.queue,
+            classes: hooks.classes,
+            publish: hooks.publish,
             serial: 0,
-            batches: Vec::new(),
             deferred: VecDeque::new(),
             compositor: Vec::new(),
             revisions: TreeRevisions::new(),
         }
+    }
+
+    /// An empty tree at serial 0 that refuses every class and publishes nowhere.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_hooks(TreeHooks::default())
     }
 
     /// A handle for queuing reads and transactions. It may be held off the frame's thread.
@@ -160,20 +217,10 @@ impl TreeFrame {
         self.queue.clone()
     }
 
-    /// Sets the schema transactions are checked against.
-    pub fn set_classes(&mut self, classes: Box<dyn ClassInfo>) {
-        self.classes = classes;
-    }
-
     /// The serial of the last published batch.
     #[must_use]
     pub const fn serial(&self) -> u64 {
         self.serial
-    }
-
-    /// Takes every batch published since the last take, in publication order.
-    pub fn take_batches(&mut self) -> Vec<TreeBatch> {
-        std::mem::take(&mut self.batches)
     }
 
     /// Records a change the compositor made to the scene itself. It is published in the next
@@ -243,7 +290,7 @@ impl TreeFrame {
             self.serial += 1;
             batch.serial = self.serial;
             self.revisions.record(self.serial, &batch.changes);
-            self.batches.push(batch);
+            (self.publish)(batch);
         }
         for (reply, result) in replies {
             reply(self.serial, result);

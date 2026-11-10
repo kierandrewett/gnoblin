@@ -198,6 +198,9 @@ pub struct Config {
     /// snapshot every other reader sees, without a second description of the
     /// window state that could drift from this one.
     pub observer: Option<Arc<dyn Observer>>,
+    /// The tree's queue, schema and publish hook. `TreeHooks::default` refuses every class
+    /// and publishes nowhere.
+    pub tree: crate::tree_frame::TreeHooks,
     /// Which globals the session advertises (`gnoblin.configure.protocols`).
     pub protocols: Protocols,
     /// The document's `input-sources`: the keyboard layouts the session can switch
@@ -258,6 +261,7 @@ impl Default for Config {
             check_alive_timeout: Duration::from_secs(5),
             clock: Arc::new(SystemClock),
             observer: None,
+            tree: crate::tree_frame::TreeHooks::default(),
             protocols: Protocols::default(),
             input_sources: None,
             keyboard: None,
@@ -385,6 +389,7 @@ impl Server {
             config.workspaces,
             xwayland,
             config.observer,
+            config.tree,
             &config.protocols,
             config.titlebar_actions,
             config.cursor,

@@ -3,6 +3,7 @@
 //! it, a refused one changes nothing, and a change the compositor recorded is announced in
 //! the batch ahead of the shell's own changes.
 
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -10,7 +11,7 @@ use gnoblin_backend::render::compose::Composer;
 use gnoblin_render::transaction::{ClassInfo, PropertyInfo, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_render::{Actor, NodeSpec};
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::TreeFrame;
+use gnoblin_wayland::{TreeBatch, TreeFrame, TreeHooks};
 
 /// A schema with one class, `node`, holding one writable double, `opacity`.
 struct Table;
@@ -60,10 +61,22 @@ fn composer_with_window() -> Composer {
     composer
 }
 
+thread_local! {
+    /// The batches this thread's frames published, in order, until a test takes them.
+    static PUBLISHED: RefCell<Vec<TreeBatch>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Takes the batches published on this thread since the last take, in publication order.
+fn take_batches() -> Vec<TreeBatch> {
+    PUBLISHED.with(|published| std::mem::take(&mut *published.borrow_mut()))
+}
+
 fn new_frame() -> TreeFrame {
-    let mut frame = TreeFrame::new();
-    frame.set_classes(Box::new(Table));
-    frame
+    TreeFrame::with_hooks(TreeHooks {
+        classes: Arc::new(Table),
+        publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+        ..TreeHooks::default()
+    })
 }
 
 /// A transaction that writes `opacity` on the window.
@@ -127,7 +140,7 @@ fn a_composer_node_is_visible_to_a_read_at_the_frame_boundary() {
     assert!(present, "the read sees the composer's window node");
     assert_eq!(class.as_deref(), Some("node"));
     assert_eq!(serial, 0, "the read sees the serial before any frame published");
-    assert!(frame.take_batches().is_empty(), "a read alone publishes no batch");
+    assert!(take_batches().is_empty(), "a read alone publishes no batch");
 }
 
 #[test]
@@ -157,7 +170,7 @@ fn a_transaction_applies_at_the_frame_boundary_and_is_answered_after_it() {
         vec![(1, true)],
         "answered with the serial after the frame"
     );
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(batches.len(), 1, "the frame publishes one batch");
     assert_eq!(batches[0].serial, 1);
 }
@@ -181,7 +194,7 @@ fn a_refused_transaction_is_answered_after_the_frame_and_leaves_the_node() {
         *replies.lock().expect("the reply lock is not poisoned"),
         vec![(0, false)]
     );
-    assert!(frame.take_batches().is_empty(), "a refusal publishes no batch");
+    assert!(take_batches().is_empty(), "a refusal publishes no batch");
 }
 
 #[test]
@@ -212,7 +225,7 @@ fn a_compositor_change_is_announced_ahead_of_the_shell_change_in_one_batch() {
     submit(&frame, 0, set_other, &replies);
     drain(&mut frame, &mut composer);
 
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(
         batches.len(),
         1,
@@ -242,7 +255,7 @@ fn a_compositor_change_alone_publishes_a_batch_at_the_next_serial() {
     });
     drain(&mut frame, &mut composer);
 
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(batches.len(), 1);
     assert_eq!(batches[0].serial, 1);
     assert_eq!(batches[0].changes.len(), 1);

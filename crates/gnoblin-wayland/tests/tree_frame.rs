@@ -1,7 +1,7 @@
 //! The tree frame boundary: queued transactions are applied at the start of a frame,
 //! whole or not at all, in arrival order, and one change batch is published per frame.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -10,7 +10,7 @@ use gnoblin_render::transaction::{
 };
 use gnoblin_render::{Actor, NodeSpec, Scene};
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::{TreeBatch, TreeFrame};
+use gnoblin_wayland::{TreeBatch, TreeFrame, TreeHooks, TreeQueue};
 
 /// A schema with one class, `node`, holding one animatable double.
 struct Table;
@@ -98,10 +98,27 @@ fn submit(frame: &TreeFrame, base: u64, tx: TreeTransaction, replies: &Replies) 
     });
 }
 
+thread_local! {
+    /// The batches this thread's frames published, in order, until a test takes them.
+    static PUBLISHED: RefCell<Vec<TreeBatch>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Hooks whose publish records each batch on this thread, for [`take_batches`].
+fn hooks(queue: TreeQueue) -> TreeHooks {
+    TreeHooks {
+        queue,
+        classes: Arc::new(Table),
+        publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+    }
+}
+
+/// Takes the batches published on this thread since the last take, in publication order.
+fn take_batches() -> Vec<TreeBatch> {
+    PUBLISHED.with(|published| std::mem::take(&mut *published.borrow_mut()))
+}
+
 fn new_frame() -> TreeFrame {
-    let mut frame = TreeFrame::new();
-    frame.set_classes(Box::new(Table));
-    frame
+    TreeFrame::with_hooks(hooks(TreeQueue::default()))
 }
 
 #[test]
@@ -114,7 +131,7 @@ fn a_transaction_queued_before_the_frame_draws_in_that_frame() {
     frame.drain(&mut scene, clock(Duration::ZERO));
 
     assert!(scene.contains(FIRST), "the frame's scene holds the transaction's node");
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(batches.len(), 1, "one batch for the frame that changed");
     assert_eq!(batches[0].serial, 1);
     assert_eq!(frame.serial(), 1);
@@ -137,7 +154,7 @@ fn a_transaction_queued_after_the_drain_draws_one_frame_later() {
         !scene.contains(FIRST),
         "a late transaction is not half-drawn into the current frame"
     );
-    assert!(frame.take_batches().is_empty());
+    assert!(take_batches().is_empty());
     assert!(
         replies.lock().unwrap().is_empty(),
         "no reply before the frame applies it"
@@ -146,7 +163,7 @@ fn a_transaction_queued_after_the_drain_draws_one_frame_later() {
     // Frame two applies it, whole, and publishes its batch.
     frame.drain(&mut scene, clock(Duration::ZERO));
     assert!(scene.contains(FIRST));
-    assert_eq!(frame.take_batches().len(), 1);
+    assert_eq!(take_batches().len(), 1);
     assert_eq!(replies.lock().unwrap().len(), 1);
 }
 
@@ -163,10 +180,7 @@ fn a_refused_transaction_changes_nothing_in_the_frame() {
         !scene.contains(FIRST),
         "the first op of a refused transaction did not apply"
     );
-    assert!(
-        frame.take_batches().is_empty(),
-        "a refused transaction publishes no batch"
-    );
+    assert!(take_batches().is_empty(), "a refused transaction publishes no batch");
     assert_eq!(frame.serial(), 0, "the serial does not move");
     let replies = replies.lock().unwrap();
     let refusal = replies[0].1.as_ref().expect_err("the transaction is refused");
@@ -184,7 +198,7 @@ fn a_stale_base_is_refused_and_changes_nothing() {
     frame.drain(&mut scene, clock(Duration::ZERO));
 
     assert!(!scene.contains(FIRST));
-    assert!(frame.take_batches().is_empty());
+    assert!(take_batches().is_empty());
     let replies = replies.lock().unwrap();
     assert!(replies[0].1.is_err());
 }
@@ -200,7 +214,7 @@ fn two_transactions_in_one_frame_publish_one_batch() {
     frame.drain(&mut scene, clock(Duration::ZERO));
 
     assert!(scene.contains(FIRST) && scene.contains(SECOND));
-    let batches: Vec<TreeBatch> = frame.take_batches();
+    let batches: Vec<TreeBatch> = take_batches();
     assert_eq!(batches.len(), 1, "one batch per changed frame, not one per transaction");
     assert_eq!(batches[0].serial, 1, "the serial moves once for the frame");
     assert_eq!(
@@ -229,7 +243,7 @@ fn over_budget_work_defers_whole_transactions_in_order() {
         !scene.contains(THIRD),
         "a transaction behind a deferred one does not jump it"
     );
-    assert_eq!(frame.take_batches().len(), 1);
+    assert_eq!(take_batches().len(), 1);
     assert_eq!(
         replies.lock().unwrap().len(),
         1,
@@ -239,7 +253,7 @@ fn over_budget_work_defers_whole_transactions_in_order() {
     // The next frame applies the deferred two, in order, against the serial the first frame left.
     frame.drain(&mut scene, clock(Duration::ZERO));
     assert!(scene.contains(SECOND) && scene.contains(THIRD));
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(batches.len(), 1);
     let created: Vec<NodeId> = batches[0]
         .changes
@@ -281,7 +295,7 @@ fn a_frame_draws_with_no_shell_attached() {
     frame.drain(&mut scene, clock(Duration::ZERO));
     frame.drain(&mut scene, clock(Duration::ZERO));
 
-    assert!(frame.take_batches().is_empty(), "no shell means no batches");
+    assert!(take_batches().is_empty(), "no shell means no batches");
     assert_eq!(frame.serial(), 0);
     assert!(scene.contains(ROOT), "the scene is untouched and the frame still runs");
 }
@@ -328,7 +342,7 @@ fn a_deferred_transaction_made_stale_by_an_earlier_one_is_refused_at_apply() {
     frame.drain(&mut scene, clock(Duration::ZERO));
 
     assert_eq!(frame.serial(), 2, "only the earlier set publishes");
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(
         published_opacities(&batches),
         vec![0.25],
@@ -364,7 +378,7 @@ fn a_deferred_transaction_that_stays_non_conflicting_applies_in_order() {
         2,
         "the earlier set and the add publish in one frame batch"
     );
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(published_opacities(&batches), vec![0.25]);
     assert!(replies.lock().unwrap().iter().all(|(_, result)| result.is_ok()));
 }
@@ -383,7 +397,7 @@ fn two_stale_writes_to_one_node_in_one_frame_apply_once() {
     frame.drain(&mut scene, clock(Duration::ZERO));
 
     assert_eq!(frame.serial(), 2);
-    let batches = frame.take_batches();
+    let batches = take_batches();
     assert_eq!(published_opacities(&batches), vec![0.25]);
     let replies = replies.lock().unwrap();
     assert!(replies[1].1.is_ok());
@@ -412,8 +426,7 @@ fn a_submission_and_a_read_each_wake_the_frame_loop() {
 #[test]
 fn a_frame_built_on_a_shared_queue_drains_what_a_clone_submits() {
     let queue = TreeQueue::default();
-    let mut frame = TreeFrame::with_queue(queue.clone());
-    frame.set_classes(Box::new(Table));
+    let mut frame = TreeFrame::with_hooks(hooks(queue.clone()));
     let replies = Arc::new(Mutex::new(Vec::new()));
 
     submit(&frame, 0, add(FIRST), &replies);
