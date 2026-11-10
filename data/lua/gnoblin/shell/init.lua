@@ -116,10 +116,11 @@ function focus_settings()
     return Focus.settings(seat.focus_options or {})
 end
 -- Window rules: seat.window_rules is the user's list, compiled once per table (a bad rule fails at load).
-local rules_src, rules_compiled
+local rules_src, rules_compiled, rules_seen
 function window_rules()
-    if rules_src ~= seat.window_rules then
-        rules_src, rules_compiled = seat.window_rules, Rules.compile(seat.window_rules or {})
+    if not rules_seen or rules_src ~= seat.window_rules then
+        rules_seen, rules_src = true, seat.window_rules
+        rules_compiled = Rules.compile(seat.window_rules or {})
     end
     return rules_compiled
 end
@@ -140,22 +141,32 @@ function Window:on_ready()
     end
     self:apply_rules()
 end
+-- The rule key each window last applied, kept off the node: the core does not declare it.
+local rule_keys = setmetatable({}, { __mode = "k" })
+-- The window as the rules read it: plain values, so rules.lua stays pure.
+local function rule_view(w)
+    local ws = w:closest(Workspace)
+    return {
+        app_id = w.app_id,
+        title = w.title,
+        focused = seat.focus == w,
+        workspace_id = ws and ws.name or nil,
+    }
+end
 function Window:apply_rules()
     local rules = window_rules()
-    local key = Rules.key(rules, self)
-    if key == self.rule_key then
+    local view = rule_view(self)
+    local key = Rules.key(rules, view)
+    if key == rule_keys[self] then
         return
     end
-    self.rule_key = key
-    local fx = Rules.effects(rules, self)
+    rule_keys[self] = key
+    local fx = Rules.effects(rules, view)
     if fx.fullscreen ~= nil then
         self.fullscreen = fx.fullscreen
     end
     if fx.secure ~= nil then
         self.secure = fx.secure
-    end
-    if fx.corners then
-        self.corners = fx.corners.radius
     end
     if fx.workspace then
         for _, ws in ipairs(self:closest(Desk).space.children) do

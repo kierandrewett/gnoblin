@@ -50,7 +50,6 @@ local SCHEMA = {
             placed = { type = "boolean", default = false, readonly = true },
             title = { type = "string", default = "" },
             fullscreen = { type = "boolean", default = false },
-            corners = { type = "number", default = 0 },
         },
         signals = { "closed" },
         methods = { "close" },
