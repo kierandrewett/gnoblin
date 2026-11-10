@@ -233,6 +233,8 @@ struct WindowNode {
     /// The content size the node's bounds were last set from. The bounds follow the content only
     /// when it changes, so a width the shell wrote survives the client's commits.
     applied_size: Option<Size>,
+    /// The position and size last published to the node, as `[x, y, width, height]`.
+    published_geometry: Option<[f64; 4]>,
 }
 
 /// The session's scene and the windows it draws.
@@ -557,6 +559,7 @@ impl Composer {
                 title: String::new(),
                 app_id: String::new(),
                 applied_size: None,
+                published_geometry: None,
             },
         );
         self.order.push(window);
@@ -579,6 +582,34 @@ impl Composer {
     fn drop_node(&mut self, node: NodeId) {
         if let Ok(removed) = self.scene.remove(node) {
             self.tree_changes.push(TreeChange::Destroyed { node, removed });
+        }
+    }
+
+    /// Publishes a window node's position and size to the tree, when they changed since the last
+    /// publish. The size is the content size; the position is the placed frame's origin.
+    fn publish_geometry(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let (Some(node), Some(content)) = (entry.node, entry.content) else {
+            return;
+        };
+        let values = [
+            f64::from(entry.geometry.x),
+            f64::from(entry.geometry.y),
+            f64::from(content.size.width),
+            f64::from(content.size.height),
+        ];
+        if entry.published_geometry == Some(values) {
+            return;
+        }
+        entry.published_geometry = Some(values);
+        for (key, value) in ["x", "y", "width", "height"].into_iter().zip(values) {
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value: TreeValue::Double(value),
+            });
         }
     }
 
@@ -1759,6 +1790,7 @@ impl Composer {
                 if self.scene.effects(node) != Some(&effects) {
                     let _ = self.scene.set_effects(node, effects.clone());
                 }
+                self.publish_geometry(window);
                 self.retarget(window, animate);
             }
             None => {
@@ -1812,6 +1844,7 @@ impl Composer {
                             entry.node = Some(id);
                             entry.applied_size = Some(content.size);
                         }
+                        self.publish_geometry(window);
                         if fades_in {
                             self.retarget(window, true);
                         }
@@ -3717,6 +3750,60 @@ mod tests {
         composer.set_window_text(window, "Beta", "app");
         let changes = composer.take_tree_changes();
         assert_eq!(changes.len(), 1, "only the title changed: {changes:?}");
+    }
+
+    /// The number a `set` of `key` on `node` wrote in `changes`, if one did.
+    fn set_number(changes: &[TreeChange], node: NodeId, key: &str) -> Option<f64> {
+        changes.iter().find_map(|change| match change {
+            TreeChange::Set {
+                node: set,
+                key: set_key,
+                value: TreeValue::Double(value),
+            } if *set == node && set_key == key => Some(*value),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_window_node_publishes_its_position_and_size() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let changes = composer.take_tree_changes();
+        let node = node_of(&composer, window);
+        assert_eq!(set_number(&changes, node, "width"), Some(40.0), "{changes:?}");
+        assert_eq!(set_number(&changes, node, "height"), Some(50.0), "{changes:?}");
+        assert_eq!(set_number(&changes, node, "x"), Some(10.0), "{changes:?}");
+        assert_eq!(set_number(&changes, node, "y"), Some(10.0), "{changes:?}");
+    }
+
+    #[test]
+    fn a_resize_and_a_move_publish_the_new_size_and_position() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.take_tree_changes();
+        let node = node_of(&composer, window);
+        let bigger = Content {
+            src: RectF::new(0.0, 0.0, 60.0, 70.0),
+            size: Size::new(60, 70),
+            transform: Transform::Normal,
+        };
+        composer.set_window_content(window, Some(bigger));
+        let resized = composer.take_tree_changes();
+        assert_eq!(set_number(&resized, node, "width"), Some(60.0), "{resized:?}");
+        assert_eq!(set_number(&resized, node, "height"), Some(70.0), "{resized:?}");
+        composer.place_window(window, Rect::new(200, 120, 60, 70));
+        let moved = composer.take_tree_changes();
+        assert_eq!(set_number(&moved, node, "x"), Some(200.0), "{moved:?}");
+        assert_eq!(set_number(&moved, node, "y"), Some(120.0), "{moved:?}");
+        composer.place_window(window, Rect::new(200, 120, 60, 70));
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "the same place publishes nothing"
+        );
     }
 
     #[test]

@@ -735,3 +735,5 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 1. **Class names beside old objects.** Lean: keep capitalised class names; delete each old object in its own step.
 2. **Caps.** 65536 nodes and depth 256 are guesses. Lean: fix now; revise on measurement in step 4.
 3. **Stale base.** Resolved: keep the conflict check, per node (section 4.5).
+
+- **Window geometry (step 1 of the shell-ready slice):** the composer publishes a window node's `x`, `y`, `width` and `height` as `set` changes on creation and whenever they change (size from the content, position from the placed frame). Tests: `a_window_node_publishes_its_position_and_size` and `a_resize_and_a_move_publish_the_new_size_and_position` (`gnoblin-backend`). Not yet published: `focused`, `fullscreen`, `maximised`, `minimised` (the composer does not track them).
