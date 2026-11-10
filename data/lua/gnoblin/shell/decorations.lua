@@ -1,6 +1,7 @@
 -- data/lua/gnoblin/shell/decorations.lua: the stock titlebar and the fade on close. Loaded after init.lua, so it
 -- chains onto the stock Window:on_ready rather than replacing it. Design section 6.4.
 Box:extend("Titlebar")({
+    window = Window,
     height = 28,
     padding = 6,
     gap = 8,
@@ -33,14 +34,13 @@ function Titlebar:on_press(e)
     drag(seat, self.window)
 end
 
-local stock_ready = Window.on_ready
+-- Signal handlers chain: this runs after init.lua's Window:on_ready, so the stock placement still happens first.
 function Window:on_ready()
-    stock_ready(self)
     self:add(Titlebar({ window = self }))
 end
 
 -- Replaces the stock method: fade out, then go.
 function Window:vanish()
-    await(self:to(0.18, { opacity = 0, scale = 0.92 }, ease.in_cubic))
+    await(self:to(0.18, { opacity = 0, scale = { 0.92, 0.92, 1 } }, ease.in_cubic))
     self:destroy()
 end

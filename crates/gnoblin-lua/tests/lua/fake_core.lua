@@ -14,6 +14,7 @@ local SCHEMA = {
             width = { type = "number", default = 0 },
             height = { type = "number", default = 0 },
             opacity = { type = "number", default = 1 },
+            scale = { type = "table", default = { 1, 1, 1 } },
             visible = { type = "boolean", default = true },
             clip = { type = "boolean", default = false },
             parent = { type = "node", readonly = true },
@@ -392,6 +393,17 @@ return function()
         end
         return out
     end
+    -- Table values (such as `scale`) print by content, so two runs dump the same bytes.
+    local function stringify(v)
+        if type(v) ~= "table" then
+            return tostring(v)
+        end
+        local items = {}
+        for _, x in ipairs(v) do
+            items[#items + 1] = tostring(x)
+        end
+        return "{" .. table.concat(items, ",") .. "}"
+    end
     -- The whole mirror as text: one line per node, props sorted, so two runs can be compared byte for byte.
     function host.dump()
         local out = {}
@@ -405,7 +417,7 @@ return function()
             local parts = {}
             for _, k in ipairs(keys) do
                 local v = r.props[k]
-                parts[#parts + 1] = k .. "=" .. (type(v) == "string" and ("%q"):format(v) or tostring(v))
+                parts[#parts + 1] = k .. "=" .. (type(v) == "string" and ("%q"):format(v) or stringify(v))
             end
             out[#out + 1] = ("%d %s parent=%s children=[%s] %s"):format(
                 id,

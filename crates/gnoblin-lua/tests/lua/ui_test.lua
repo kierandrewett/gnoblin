@@ -135,7 +135,7 @@ return {
             setup()
             seat.data.keys["Super+Space"]()
             H.check(#desk():all(Launcher) == 1, "Super+Space must open one launcher")
-            desk():all(Launcher)[1]:on_key({ key = "Escape" })
+            desk():all(Launcher)[1].key:emit({ key = "Escape" })
             H.check(#desk():all(Launcher) == 0, "Escape must close the launcher")
         end,
     },
@@ -155,7 +155,7 @@ return {
             seat.data.keys["Super+Space"]()
             local l = desk():all(Launcher)[1]
             l.text = "foot"
-            l:on_key({ key = "Return" })
+            l.key:emit({ key = "Return" })
             H.check(spawned == "foot", "Return must spawn the typed command")
             H.check(#desk():all(Launcher) == 0, "Return must close the launcher")
         end,
