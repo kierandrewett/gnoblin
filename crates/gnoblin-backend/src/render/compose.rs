@@ -68,6 +68,7 @@ use smithay::utils::Transform;
 
 use gnoblin_animation::{Easing, PropertyValue, VisualProperty, VisualTransform};
 use gnoblin_render::scene_ids::NodeIdAllocator;
+use gnoblin_render::transaction::{TreeChange, TreeValue};
 use gnoblin_render::{
     Damage, Effects, Mat4, NodeKind, NodeSpec, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
@@ -209,6 +210,12 @@ struct WindowNode {
     /// Whether the window is sliding off the workspace it left: it is hidden, still drawn while
     /// it slides, and loses its node when the slide ends.
     leaving: bool,
+    /// The client's title and app id, stored on the window's node for the tree to read.
+    title: String,
+    app_id: String,
+    /// The content size the node's bounds were last set from. The bounds follow the content only
+    /// when it changes, so a width the shell wrote survives the client's commits.
+    applied_size: Option<Size>,
 }
 
 /// The session's scene and the windows it draws.
@@ -239,6 +246,12 @@ pub struct Composer {
     /// The workspace switch in progress, while the compositor is between its begin and end
     /// calls. `None` when no switch is running or motion is reduced.
     workspace_slide: Option<WorkspaceSlide>,
+    /// The tree changes made since the frame last took them: a window's node created or
+    /// destroyed, published in the next batch.
+    tree_changes: Vec<TreeChange>,
+    /// Whether the shell held the tree at the last placement check. While it does, the composer
+    /// leaves the node's x and y to the shell.
+    placing: bool,
 }
 
 impl Default for Composer {
@@ -251,12 +264,20 @@ impl Composer {
     /// An empty scene with an opaque black background.
     #[must_use]
     pub fn new() -> Self {
+        let mut node_ids = NodeIdAllocator::new();
+        let mut scene = Scene::new();
+        // The shell's root takes the allocator's first id, so it is the same for the session.
+        let root = node_ids.allocate().expect("a fresh allocator has an id for the root");
+        scene
+            .insert(root, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+            .expect("the root is a fresh node");
+        scene.set_root(Some(root)).expect("the root was just inserted");
         Self {
-            scene: Scene::new(),
+            scene,
             windows: BTreeMap::new(),
             order: Vec::new(),
             background: Color::BLACK,
-            node_ids: NodeIdAllocator::new(),
+            node_ids,
             damage: None,
             motion: TweenPlayer::new(),
             tracks: BTreeMap::new(),
@@ -264,6 +285,8 @@ impl Composer {
             cursor: None,
             flash: None,
             workspace_slide: None,
+            tree_changes: Vec::new(),
+            placing: false,
         }
     }
 
@@ -381,6 +404,9 @@ impl Composer {
                 closing: None,
                 slide: 0.0,
                 leaving: false,
+                title: String::new(),
+                app_id: String::new(),
+                applied_size: None,
             },
         );
         self.order.push(window);
@@ -394,9 +420,78 @@ impl Composer {
         };
         self.cancel_tracks(window);
         if let Some(node) = entry.node {
-            let _ = self.scene.remove(node);
+            self.drop_node(node);
         }
         self.order.retain(|candidate| *candidate != window);
+    }
+
+    /// Removes a window's node from the scene, recording its destruction for the tree.
+    fn drop_node(&mut self, node: NodeId) {
+        if let Ok(removed) = self.scene.remove(node) {
+            self.tree_changes.push(TreeChange::Destroyed { node, removed });
+        }
+    }
+
+    /// Stores a window's title and app id for its node's read-only texts. Each one that changes
+    /// while the window has a node is published to the tree as a `set`.
+    pub fn set_window_text(&mut self, window: WindowId, title: &str, app_id: &str) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let mut changed = Vec::new();
+        if entry.title != title {
+            entry.title = title.to_owned();
+            changed.push(("title", entry.title.clone()));
+        }
+        if entry.app_id != app_id {
+            entry.app_id = app_id.to_owned();
+            changed.push(("app_id", entry.app_id.clone()));
+        }
+        let Some(node) = entry.node else {
+            return;
+        };
+        for (key, value) in changed {
+            let _ = self.scene.set_text(node, key, value.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value: TreeValue::Text(value),
+            });
+        }
+    }
+
+    /// Takes the tree changes made since the last take, in the order they happened.
+    pub fn take_tree_changes(&mut self) -> Vec<TreeChange> {
+        std::mem::take(&mut self.tree_changes)
+    }
+
+    /// Follows the shell's hold on the tree. When the hold changed since the last check, every
+    /// window is resynced: placed by the composer again, or left to the shell.
+    pub fn follow_placement(&mut self) {
+        let holds = self.scene.shell_places();
+        if holds == self.placing {
+            return;
+        }
+        self.placing = holds;
+        let order = self.order.clone();
+        for window in order {
+            self.sync_animated(window);
+        }
+    }
+
+    /// The transform a window's node should reach. While the shell holds the tree, the node's
+    /// x and y are the shell's, so the target keeps them where they are.
+    fn placed_target(&self, entry: &WindowNode) -> VisualTransform {
+        let mut transform = Self::target(entry);
+        if self.scene.shell_places() {
+            let (x, y) = entry
+                .node
+                .and_then(|node| self.scene.transform(node))
+                .map_or((0.0, 0.0), |current| (current.base.offset.x, current.base.offset.y));
+            transform.base.offset.x = x;
+            transform.base.offset.y = y;
+        }
+        transform
     }
 
     /// Stops drawing a window the client has destroyed, fading its last picture out.
@@ -1299,7 +1394,7 @@ impl Composer {
         }
         let immediate = !animate || self.reduced_motion;
         let mut landing = Vec::new();
-        let target = Self::target(entry);
+        let target = self.placed_target(entry);
         for property in VisualProperty::ALL {
             let value = property.get(&target);
             self.cancel_track(window, property);
@@ -1404,12 +1499,12 @@ impl Composer {
             None
         };
         let node = entry.node;
-        let transform = Self::target(entry);
+        let transform = self.placed_target(entry);
         let effects = entry.effects.clone();
         let Some(content) = content else {
             if let Some(node) = node {
                 self.cancel_tracks(window);
-                let _ = self.scene.remove(node);
+                self.drop_node(node);
             }
             if let Some(entry) = self.windows.get_mut(&window) {
                 entry.node = None;
@@ -1418,7 +1513,18 @@ impl Composer {
         };
         let bounds = Rect::from_size(content.size);
         match node {
-            Some(node) if self.scene.bounds(node) == Some(bounds) => {
+            Some(node) => {
+                // The window keeps its node: a size change moves the node's bounds, so its id and
+                // the tree's view of it stay the same.
+                let resized = self.windows.get(&window).and_then(|entry| entry.applied_size) != Some(content.size);
+                if resized {
+                    if self.scene.bounds(node) != Some(bounds) {
+                        let _ = self.scene.set_bounds(node, bounds);
+                    }
+                    if let Some(entry) = self.windows.get_mut(&window) {
+                        entry.applied_size = Some(content.size);
+                    }
+                }
                 if force && let Some(current) = self.scene.transform(node).copied() {
                     let _ = self.scene.set_transform(node, current);
                 }
@@ -1427,22 +1533,15 @@ impl Composer {
                 }
                 self.retarget(window, animate);
             }
-            existing => {
-                // The content changed size, or there was no node yet: the node is
-                // replaced so its bounds are the content's, and both the old and the
-                // new rectangle are damaged. A new node takes its target at once,
-                // except that a window which maps fades in from transparent.
-                // The id is taken before the old node goes, so an exhausted allocator
-                // leaves the window's current node in place.
+            None => {
+                // The window has no node yet: it gets one and takes its target at once, except that
+                // a window which maps fades in from transparent. The id is taken first, so an
+                // exhausted allocator leaves the window without a node.
                 let Some(id) = self.node_ids.allocate() else {
-                    log::warn!(area = "render", %window, "no compositor node id is left; the window keeps its node");
+                    log::warn!(area = "render", %window, "no compositor node id is left; the window is not drawn");
                     return;
                 };
-                if let Some(node) = existing {
-                    self.cancel_tracks(window);
-                    let _ = self.scene.remove(node);
-                }
-                let fades_in = existing.is_none() && !self.reduced_motion;
+                let fades_in = !self.reduced_motion;
                 let mut spec_transform = transform;
                 if fades_in {
                     spec_transform.opacity = 0.0;
@@ -1459,8 +1558,31 @@ impl Composer {
                 };
                 match self.scene.insert(id, spec) {
                     Ok(()) => {
+                        let (title, app_id) = match self.windows.get(&window) {
+                            Some(entry) => (entry.title.clone(), entry.app_id.clone()),
+                            None => (String::new(), String::new()),
+                        };
+                        let _ = self.scene.set_class(id, Some("window".to_owned()));
+                        let _ = self.scene.set_text(id, "title", title.clone());
+                        let _ = self.scene.set_text(id, "app_id", app_id.clone());
+                        let index = self.scene.root_ids().iter().position(|root| *root == id).unwrap_or(0);
+                        self.tree_changes.push(TreeChange::Created {
+                            node: id,
+                            class: "window".to_owned(),
+                            index,
+                        });
+                        for (key, value) in [("title", title), ("app_id", app_id)] {
+                            if !value.is_empty() {
+                                self.tree_changes.push(TreeChange::Set {
+                                    node: id,
+                                    key: key.to_owned(),
+                                    value: TreeValue::Text(value),
+                                });
+                            }
+                        }
                         if let Some(entry) = self.windows.get_mut(&window) {
                             entry.node = Some(id);
+                            entry.applied_size = Some(content.size);
                         }
                         if fades_in {
                             self.retarget(window, true);
@@ -3116,6 +3238,130 @@ mod tests {
             restarted,
             vec![(Rect::new(0, 0, 800, 600), FLASH_PEAK)],
             "a bell restarts the fade"
+        );
+    }
+
+    /// The window's node, which it has once content arrives.
+    fn node_of(composer: &Composer, window: WindowId) -> NodeId {
+        composer.windows[&window].node.expect("the window has a node")
+    }
+
+    /// The x and y the scene draws the node at.
+    fn offset_of(composer: &Composer, node: NodeId) -> (f32, f32) {
+        let transform = composer.scene.transform(node).expect("the node has a transform");
+        (transform.base.offset.x, transform.base.offset.y)
+    }
+
+    #[test]
+    fn without_a_shell_the_window_manager_places_the_window() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.place_window(window, Rect::new(200, 120, 100, 100));
+        let node = node_of(&composer, window);
+        assert_eq!(offset_of(&composer, node), (200.0, 120.0));
+    }
+
+    #[test]
+    fn a_shell_holding_the_tree_keeps_the_position_it_set() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        composer.with_scene(|scene| scene.set_shell_places(true));
+        composer.follow_placement();
+        // The shell moves the node; the window manager's placement must not move it back.
+        composer.with_scene(|scene| {
+            let mut transform = *scene.transform(node).expect("the node has a transform");
+            transform.base.offset.x = 333.0;
+            transform.base.offset.y = 77.0;
+            scene
+                .set_transform(node, transform)
+                .expect("the shell may set its node's transform");
+        });
+        composer.place_window(window, Rect::new(200, 120, 100, 100));
+        assert_eq!(offset_of(&composer, node), (333.0, 77.0));
+    }
+
+    #[test]
+    fn the_window_manager_places_the_window_again_when_the_shell_lets_go() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        composer.with_scene(|scene| scene.set_shell_places(true));
+        composer.follow_placement();
+        composer.place_window(window, Rect::new(200, 120, 100, 100));
+        composer.with_scene(|scene| scene.set_shell_places(false));
+        composer.follow_placement();
+        assert_eq!(offset_of(&composer, node), (200.0, 120.0));
+    }
+
+    #[test]
+    fn a_window_gets_a_window_node_with_its_title_and_app_id() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_text(window, "Alpha", "org.gnoblin.Alpha");
+        composer.set_window_content(window, Some(content()));
+        let changes = composer.take_tree_changes();
+        let node = node_of(&composer, window);
+        assert!(
+            changes.iter().any(|change| matches!(
+                change,
+                TreeChange::Created { node: created, class, .. } if *created == node && class == "window"
+            )),
+            "the node is created as a window: {changes:?}"
+        );
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node: set, key, value: TreeValue::Text(text) }
+                if *set == node && key == "title" && text == "Alpha"
+        )));
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node: set, key, value: TreeValue::Text(text) }
+                if *set == node && key == "app_id" && text == "org.gnoblin.Alpha"
+        )));
+    }
+
+    #[test]
+    fn a_title_change_is_published_only_when_it_changes() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.set_window_text(window, "Alpha", "app");
+        composer.take_tree_changes();
+        composer.set_window_text(window, "Alpha", "app");
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "the same text publishes nothing"
+        );
+        composer.set_window_text(window, "Beta", "app");
+        let changes = composer.take_tree_changes();
+        assert_eq!(changes.len(), 1, "only the title changed: {changes:?}");
+    }
+
+    #[test]
+    fn removing_a_window_publishes_its_node_as_destroyed() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.take_tree_changes();
+        let node = node_of(&composer, window);
+        composer.remove_window(window);
+        let changes = composer.take_tree_changes();
+        assert!(
+            changes.iter().any(|change| matches!(
+                change,
+                TreeChange::Destroyed { node: destroyed, .. } if *destroyed == node
+            )),
+            "the destruction is published: {changes:?}"
         );
     }
 }

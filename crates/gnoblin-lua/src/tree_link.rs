@@ -309,6 +309,8 @@ fn to_snapshot_node(node: snapshot_node::Properties) -> SnapshotNode {
         parent: node.parent,
         index: node.index,
         class: node.class,
+        title: node.title,
+        app_id: node.app_id,
     }
 }
 

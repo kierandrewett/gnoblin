@@ -54,6 +54,10 @@ pub struct SnapshotNode {
     pub parent: NodeId,
     pub index: i64,
     pub class: String,
+    /// The node's title; empty when it has none. Stored as the `title` property when set.
+    pub title: String,
+    /// The node's app id; empty when it has none. Stored as the `app_id` property when set.
+    pub app_id: String,
 }
 
 /// What a change entry does.
@@ -255,11 +259,16 @@ impl LuaMirror {
             if node.id == NIL {
                 return Err(MirrorError::Snapshot("node id zero".to_owned()));
             }
-            let record = NodeRecord {
+            let mut record = NodeRecord {
                 class: node.class.clone(),
                 parent: node.parent,
                 ..NodeRecord::default()
             };
+            for (key, text) in [("title", &node.title), ("app_id", &node.app_id)] {
+                if !text.is_empty() {
+                    record.props.insert(key.to_owned(), LuaValue::Text(text.clone()));
+                }
+            }
             if map.insert(node.id, record).is_some() {
                 return Err(MirrorError::Snapshot(format!("node {} listed twice", node.id)));
             }

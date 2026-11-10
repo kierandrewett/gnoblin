@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
-use gnoblin_proto::tree::{op, snapshot_node};
+use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
-use support::{Session, Wire};
+use support::{Client, Session, Wire};
 
 const NAMESPACE: &str = "tree";
 
@@ -349,6 +349,196 @@ fn a_detached_shell_leaves_its_nodes_in_the_tree() {
     assert!(
         nodes.iter().any(|node| node.id == 1000 && node.parent == attached.root),
         "the next shell's snapshot still holds the node: {nodes:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+/// The window node of the snapshot titled `title`, if the composer has created it.
+fn window_titled<'a>(nodes: &'a [snapshot_node::Properties], title: &str) -> Option<&'a snapshot_node::Properties> {
+    nodes.iter().find(|node| node.class == "window" && node.title == title)
+}
+
+/// Re-attaches on the same connection until the snapshot holds a window titled `title`. The
+/// composer creates the window node on the first frame after the client maps the window.
+fn snapshot_holding_window(wire: &mut Wire, title: &str) -> Vec<snapshot_node::Properties> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut request_id = 1;
+    loop {
+        let (_, nodes) = attach_and_snapshot(wire, request_id);
+        if window_titled(&nodes, title).is_some() {
+            return nodes;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no window titled `{title}` in the tree: {nodes:?}"
+        );
+        request_id += 1;
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Reads change batches until the changes published so far satisfy `done`.
+fn changes_until(wire: &mut Wire, done: impl Fn(&[change::Properties]) -> bool) -> Vec<change::Properties> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut all = Vec::new();
+    while !done(&all) {
+        assert!(Instant::now() < deadline, "the expected changes never arrived: {all:?}");
+        let batch: ChangesPayload = event(wire, "changes");
+        all.extend(batch.changes);
+    }
+    all
+}
+
+fn set_double(node: u64, key: &str, value: f64) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: "double".to_owned(),
+        value_double: value,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_mapped_window_is_a_window_node_with_its_title_and_app_id() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.window", "Document one");
+    let mut wire = Wire::connect(session.socket());
+
+    let nodes = snapshot_holding_window(&mut wire, "Document one");
+    let node = window_titled(&nodes, "Document one").expect("the window node");
+    assert_eq!(node.class, "window", "a mapped window is the `window` class");
+    assert_eq!(
+        node.app_id, "org.example.window",
+        "the app id the client set is carried read-only"
+    );
+    assert_eq!(
+        node.parent, 0,
+        "a window node is unparented: the compositor owns its placement"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_window_mapped_after_attach_is_published_as_created_with_its_class() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let mut wire = Wire::connect(session.socket());
+    attach_and_snapshot(&mut wire, 1);
+
+    let _window = client.map_window("org.example.window", "Late window");
+    let changes = changes_until(&mut wire, |all| {
+        all.iter()
+            .any(|change| change.kind == "created" && change.class == "window")
+    });
+    let created = changes
+        .iter()
+        .find(|change| change.kind == "created" && change.class == "window")
+        .expect("a created window change");
+    assert_eq!(created.parent, 0, "the created window is unparented");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_client_title_change_is_published_as_a_set_of_the_window_node() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let window = client.map_window("org.example.window", "Before");
+    let mut wire = Wire::connect(session.socket());
+    let nodes = snapshot_holding_window(&mut wire, "Before");
+    let node = window_titled(&nodes, "Before").expect("the window node").id;
+
+    client.set_title(&window, "After");
+    let changes = changes_until(&mut wire, |all| {
+        all.iter()
+            .any(|change| change.kind == "set" && change.key == "title" && change.node == node)
+    });
+    assert!(
+        changes
+            .iter()
+            .any(|change| change.kind == "set" && change.key == "title" && change.node == node),
+        "the title change names the window node: {changes:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_transaction_setting_a_window_geometry_is_applied_and_published_at_the_next_serial() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.window", "Movable");
+    let mut wire = Wire::connect(session.socket());
+    let nodes = snapshot_holding_window(&mut wire, "Movable");
+    let node = window_titled(&nodes, "Movable").expect("the window node").id;
+
+    transact(
+        &mut wire,
+        2,
+        0,
+        1,
+        vec![set_double(node, "x", 333.0), set_double(node, "width", 480.0)],
+    );
+    let changes = changes_until(&mut wire, |all| {
+        all.iter()
+            .any(|change| change.kind == "set" && change.key == "x" && change.node == node)
+            && all
+                .iter()
+                .any(|change| change.kind == "set" && change.key == "width" && change.node == node)
+    });
+    let applied: ReplyPayload = reply(&mut wire, "transact");
+    assert!(applied.applied, "a writable geometry on a window applies: {changes:?}");
+    assert_eq!(applied.failed_op, -1);
+    assert_eq!(applied.serial, 1, "the batch advances the serial");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_refused_transaction_leaves_the_window_node_untouched() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.window", "Steady");
+    let mut wire = Wire::connect(session.socket());
+    let nodes = snapshot_holding_window(&mut wire, "Steady");
+    let node = window_titled(&nodes, "Steady").expect("the window node").id;
+
+    // A base that is not the current serial is refused before any of its ops apply.
+    transact(&mut wire, 2, 7, 1, vec![set_double(node, "x", 999.0)]);
+    let refused: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!refused.applied, "the stale transaction is refused");
+    assert_eq!(refused.code, "stale-base");
+    assert_eq!(refused.serial, 0, "the serial does not move");
+
+    let (attached, nodes) = attach_and_snapshot(&mut wire, 3);
+    assert_eq!(attached.serial, 0, "nothing was published for the refused transaction");
+    assert_eq!(
+        window_titled(&nodes, "Steady").map(|node| node.id),
+        Some(node),
+        "the window is still the same node"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_unmapped_window_is_published_as_destroyed() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let window = client.map_window("org.example.window", "Closing");
+    let mut wire = Wire::connect(session.socket());
+    let nodes = snapshot_holding_window(&mut wire, "Closing");
+    let node = window_titled(&nodes, "Closing").expect("the window node").id;
+
+    client.destroy(window);
+    let changes = changes_until(&mut wire, |all| {
+        all.iter()
+            .any(|change| change.kind == "destroyed" && change.node == node)
+    });
+    assert!(
+        changes
+            .iter()
+            .any(|change| change.kind == "destroyed" && change.node == node),
+        "the destroyed window node is published: {changes:?}"
     );
     session.stop().expect("the session stops cleanly");
 }

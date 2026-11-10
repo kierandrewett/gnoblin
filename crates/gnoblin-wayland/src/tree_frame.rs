@@ -22,8 +22,7 @@ use gnoblin_render::transaction::{
     validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
-use gnoblin_render::{Actor, NodeSpec, Scene};
-use gnoblin_types::NodeId;
+use gnoblin_render::{Actor, Scene};
 
 /// How long one frame may spend applying tree transactions. A transaction that starts
 /// after the budget is spent waits for the next frame; the first transaction of a frame
@@ -38,7 +37,7 @@ type Reply = Box<dyn FnOnce(u64, Result<TreeApplied, TreeRefusal>) + Send>;
 type Admission = Box<dyn Fn() -> bool + Send>;
 
 /// A read that runs at the start of a frame, before its transactions.
-type Read = Box<dyn FnOnce(&Scene, u64) + Send>;
+type Read = Box<dyn FnOnce(&mut Scene, u64) + Send>;
 
 struct Submission {
     /// The serial the shell built the transaction against.
@@ -112,7 +111,7 @@ impl TreeQueue {
 
     /// Queues `read` to run at the start of the next frame, before that frame's
     /// transactions, with the scene as the last published batch left it and that serial.
-    pub fn read(&self, read: impl FnOnce(&Scene, u64) + Send + 'static) {
+    pub fn read(&self, read: impl FnOnce(&mut Scene, u64) + Send + 'static) {
         self.lock().reads.push(Box::new(read));
         self.wake();
     }
@@ -141,9 +140,6 @@ pub struct TreeHooks {
     pub classes: Arc<dyn ClassInfo + Send + Sync>,
     /// Receives each batch a frame publishes, in publication order, on the frame's thread.
     pub publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
-    /// The root the shell attaches to, inserted into the scene before the first frame draws
-    /// if the scene does not hold it yet. `None` leaves the scene as the compositor built it.
-    pub root: Option<(NodeId, NodeSpec)>,
 }
 
 impl std::fmt::Debug for TreeHooks {
@@ -158,7 +154,6 @@ impl Default for TreeHooks {
             queue: TreeQueue::default(),
             classes: Arc::new(NoClasses),
             publish: Arc::new(|_| {}),
-            root: None,
         }
     }
 }
@@ -193,8 +188,6 @@ pub struct TreeFrame {
     revisions: TreeRevisions,
     /// Transactions the budget deferred. Each is checked against its base when it applies, and
     /// runs first in the next frame.
-    /// The root the frame installs on its first drain, then forgets.
-    root: Option<(NodeId, NodeSpec)>,
     deferred: VecDeque<Submission>,
     /// Changes the compositor made itself since the last frame, announced in the next batch ahead of the shell's changes.
     compositor: Vec<TreeChange>,
@@ -213,7 +206,6 @@ impl TreeFrame {
         Self {
             queue: hooks.queue,
             classes: hooks.classes,
-            root: hooks.root,
             publish: hooks.publish,
             serial: 0,
             deferred: VecDeque::new(),
@@ -252,21 +244,13 @@ impl TreeFrame {
     /// the first, so a test can drive the budget with a clock of its own.
     pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
         let start = now();
-        if let Some((id, spec)) = self.root.take()
-            && !scene.contains(id)
-        {
-            scene
-                .insert_as(Actor::Compositor, id, spec)
-                .expect("the tree root inserts into a scene that does not hold it");
-            scene.set_root(Some(id)).expect("the tree root was inserted");
-        }
         let frame_serial = self.serial;
         let (reads, arrived) = {
             let mut queue = self.queue.lock();
             (std::mem::take(&mut queue.reads), std::mem::take(&mut queue.submissions))
         };
         for read in reads {
-            read(scene, frame_serial);
+            read(&mut *scene, frame_serial);
         }
 
         // Deferred work came first, then arrivals in arrival order. Every transaction is checked

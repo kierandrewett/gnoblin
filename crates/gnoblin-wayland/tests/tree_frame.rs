@@ -112,7 +112,6 @@ fn hooks(queue: TreeQueue) -> TreeHooks {
         queue,
         classes: Arc::new(Table),
         publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
-        root: None,
     }
 }
 
@@ -444,24 +443,6 @@ fn a_frame_built_on_a_shared_queue_drains_what_a_clone_submits() {
         "the clone's submission is applied once"
     );
     assert!(scene.contains(FIRST));
-}
-
-#[test]
-fn the_hooked_root_is_inserted_before_the_first_frame_draws() {
-    let queue = TreeQueue::default();
-    let mut frame = TreeFrame::with_hooks(TreeHooks {
-        root: Some((ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))),
-        ..hooks(queue)
-    });
-    let replies = Replies::default();
-    submit(&frame, 0, add(FIRST), &replies);
-    let mut scene = Scene::new();
-
-    frame.drain(&mut scene, clock(Duration::ZERO));
-
-    assert_eq!(scene.root(), Some(ROOT), "the hooked root is named");
-    assert!(scene.contains(FIRST), "the transaction lands under the hooked root");
-    assert_eq!(replies.lock().unwrap().len(), 1);
 }
 
 #[test]

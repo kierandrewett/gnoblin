@@ -105,6 +105,8 @@ impl FakeLink {
                 parent: *parent,
                 index: 0,
                 class: class.clone(),
+                title: String::new(),
+                app_id: String::new(),
             })
             .collect();
         LuaIncoming::Snapshot {

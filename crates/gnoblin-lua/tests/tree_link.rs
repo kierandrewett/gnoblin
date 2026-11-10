@@ -95,6 +95,8 @@ fn attach_sends_the_version_and_poll_yields_the_attached_reply_then_the_snapshot
                     parent: 0,
                     index: 0,
                     class: "node".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
                 }],
             },
         ),
@@ -117,6 +119,8 @@ fn attach_sends_the_version_and_poll_yields_the_attached_reply_then_the_snapshot
                     parent: 0,
                     index: 0,
                     class: "node".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
                 }],
             },
         ]

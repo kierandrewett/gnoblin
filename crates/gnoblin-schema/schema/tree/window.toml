@@ -8,14 +8,15 @@ name = "window"
 since = "0.2.0"
 base = "node"
 
-# Set by the client; not trusted for attribution.
+# Written by the compositor from the xdg toplevel; the shell reads it and cannot set it.
 [[object.property]]
 name = "title"
 type = "string"
 since = "0.2.0"
 default = ""
+readonly = true
 
-# Set by the client.
+# Written by the compositor from the xdg toplevel; the shell reads it and cannot set it.
 [[object.property]]
 name = "app_id"
 type = "string"

@@ -4,6 +4,8 @@
 
 ### Added
 
+- A mapped toplevel is a `window` node in the tree (node-core step 3, section 9). The composer creates it on the first frame after the map, unparented, with an id from `NodeIdAllocator`; it carries the client's title and app id read-only, its `created` change is published in the next batch, its title and app-id changes as `set`, and its `destroyed` change when it unmaps. A shell holding the tree places windows itself, so the window manager's placement does not move them until the shell detaches. Node-core step 3, slice 5 and 6 (part).
+
 - A queued tree transaction whose holder detached before its frame applies is refused `not-privileged` (`failed_op` -1) and changes nothing. The frame asks the submitter whether it still holds the tree when the transaction applies, not when it was queued (`TreeQueue::submit` takes that check; `tree_host` passes the session's holder test). Node-core step 3, slice 5 (part).
 
 - The shell's owner-socket link (`gnoblin-lua`, `tree_link.rs`). `SocketTreeLink` implements `TreeLink` over the client end of a handshaken session socket, in the `tree` namespace of `gnoblin_proto` envelopes. `attach` and `transact` send their request and return; `poll` reads whatever has arrived without blocking and returns the attached reply, the snapshot chunks, the change batches and the transaction replies in arrival order. A refused attach or transaction, a closed socket, a frame cut short, an undecodable frame or payload, and a reply to an unknown request are link errors that name the cause; none of them panics. Node-core step 3, slice 10 (part). The compositor does not start it yet.

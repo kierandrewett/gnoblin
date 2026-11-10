@@ -416,3 +416,14 @@ since = "0.2.0"
 name = "class"
 type = "string"
 since = "0.2.0"
+
+# The read-only texts a node carries: a window's title and app id. Empty for any other node.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"

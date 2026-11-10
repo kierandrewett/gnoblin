@@ -545,6 +545,8 @@ object snapshot_node since 0.2.0 secret false
   property parent type uint since 0.2.0 secret false
   property index type int since 0.2.0 secret false
   property class type string since 0.2.0 secret false
+  property title type string since 0.2.0 secret false
+  property app_id type string since 0.2.0 secret false
 object node since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -2090,6 +2092,10 @@ message SnapshotNode {
     int64 index = 3;
     // since 0.2.0
     string class = 4;
+    // since 0.2.0
+    string title = 5;
+    // since 0.2.0
+    string app_id = 6;
   }
 }
 

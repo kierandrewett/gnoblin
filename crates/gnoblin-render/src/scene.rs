@@ -169,6 +169,8 @@ pub struct Node {
     owner: Actor,
     parented_by: Option<Actor>,
     class: Option<String>,
+    /// Text properties by schema name (`title`, `app_id`). Read by the tree; drawn nowhere.
+    texts: BTreeMap<String, String>,
 }
 
 impl Node {
@@ -448,6 +450,8 @@ pub struct Scene {
     pending: Vec<Rect>,
     full: BTreeSet<OutputId>,
     damage_rect_limit: usize,
+    /// Whether the shell holds the tree, so the composer leaves window x and y to it.
+    shell_places: bool,
 }
 
 impl Default for Scene {
@@ -469,7 +473,22 @@ impl Scene {
             pending: Vec::new(),
             full: BTreeSet::new(),
             damage_rect_limit: DEFAULT_DAMAGE_RECT_LIMIT,
+            shell_places: false,
         }
+    }
+
+    /// Whether the shell holds the tree: while it does, the composer does not write a window's
+    /// x and y, so the shell's placement stands. The window manager places them again when it
+    /// does not.
+    #[must_use]
+    pub fn shell_places(&self) -> bool {
+        self.shell_places
+    }
+
+    /// Set whether the shell holds the tree. Changes no pixels by itself; the composer resyncs
+    /// the windows when it next follows placement.
+    pub fn set_shell_places(&mut self, shell_places: bool) {
+        self.shell_places = shell_places;
     }
 
     /// Insert a node as the last child of its parent, or as the last root, so it
@@ -533,6 +552,7 @@ impl Scene {
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
             class: None,
+            texts: BTreeMap::new(),
         };
         self.nodes.insert(id, node);
         self.siblings_mut(spec.parent).insert(index, id);
@@ -859,6 +879,20 @@ impl Scene {
     pub fn set_class(&mut self, id: NodeId, class: Option<String>) -> Result<(), SceneError> {
         let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
         node.class = class;
+        Ok(())
+    }
+
+    /// The text the scene stores for `key` on a node, or `None` when it stores none.
+    #[must_use]
+    pub fn text(&self, id: NodeId, key: &str) -> Option<&str> {
+        self.nodes.get(&id)?.texts.get(key).map(String::as_str)
+    }
+
+    /// Store a text property on a node. Text is read by the tree and its snapshot, not drawn,
+    /// so it damages no pixels.
+    pub fn set_text(&mut self, id: NodeId, key: &str, value: String) -> Result<(), SceneError> {
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        node.texts.insert(key.to_owned(), value);
         Ok(())
     }
 
@@ -1739,6 +1773,7 @@ mod tests {
                 owner: Actor::Compositor,
                 parented_by: None,
                 class: None,
+                texts: BTreeMap::new(),
             },
         );
         scene.roots.push(space);
@@ -1757,6 +1792,7 @@ mod tests {
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
                 class: None,
+                texts: BTreeMap::new(),
             },
         );
         scene.dirty.clear();

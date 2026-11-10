@@ -1855,6 +1855,9 @@ impl State {
                 attributes.title.clone().unwrap_or_default(),
             )
         });
+        // The node's read-only texts follow the client's title and app id: each change is a
+        // tree `set` at the next frame, and an unchanged pair publishes nothing.
+        self.composer.set_window_text(window, &title, &app_id);
         let mut effects = Vec::new();
         let mut newly_mapped = false;
         let mut initial_configure = None;
@@ -3235,10 +3238,16 @@ impl Host for State {
         // damaged before the damage is taken.
         let redraw = std::mem::take(&mut self.cursor_shape_changed);
         self.update_cursor(redraw);
+        // The compositor's own changes since the last frame lead the batch the drain publishes.
+        for change in self.composer.take_tree_changes() {
+            self.tree.record(change);
+        }
         // The tree's transactions apply to the scene the composer draws from, before the
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;
         self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
+        // Placement follows the shell's hold as the drain left it.
+        self.composer.follow_placement();
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame();

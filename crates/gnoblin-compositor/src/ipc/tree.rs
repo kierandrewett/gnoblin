@@ -18,8 +18,8 @@ const SNAPSHOT_NODE_BYTES: usize = 32;
 pub struct TreeAttached {
     /// The attachment's epoch. Each attach raises it, so an older one is stale.
     pub epoch: u32,
-    /// The root node the shell places its windows under.
-    pub root: NodeId,
+    /// The root node the shell places its windows under, or `None` when the scene has none.
+    pub root: Option<NodeId>,
     /// The scene serial the attachment starts from.
     pub serial: u64,
 }
@@ -45,6 +45,10 @@ pub struct TreeSnapshotNode {
     pub index: usize,
     /// The node's class, or `None` for a node the compositor created without one.
     pub class: Option<String>,
+    /// The node's title, or empty when it has none. Only a window carries one.
+    pub title: String,
+    /// The node's app id, or empty when it has none. Only a window carries one.
+    pub app_id: String,
 }
 
 /// A snapshot of the whole tree, split into chunks no larger than [`SNAPSHOT_CHUNK_BYTES`].
@@ -78,34 +82,21 @@ impl TreeHolder {
 /// The shell's attachment: which connection holds the tree, and the epoch of that hold. The
 /// scene and its serial belong to the frame that applies transactions, so this owns only the
 /// claim.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TreeSession {
-    root: NodeId,
     epoch: u32,
     holder: Option<TreeHolder>,
 }
 
-/// What an attach grants: the epoch of the new hold and the root the shell places under.
-/// The serial is read from the frame, so the host adds it to make a [`TreeAttached`].
+/// What an attach grants: the epoch of the new hold. The serial is read from the frame, so the
+/// host adds it to make a [`TreeAttached`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TreeAttachment {
     /// The attachment's epoch. Each attach raises it, so an older one is stale.
     pub epoch: u32,
-    /// The root node the shell places its windows under.
-    pub root: NodeId,
 }
 
 impl TreeSession {
-    /// Start a session rooted at `root`, with no shell attached.
-    #[must_use]
-    pub const fn new(root: NodeId) -> Self {
-        Self {
-            root,
-            epoch: 0,
-            holder: None,
-        }
-    }
-
     /// Attach the shell from `holder`. Only the session owner's connection may attach, and
     /// `is_owner` is that connection's classification from the owner grant (`owner_grants`).
     /// Any other is refused `not-privileged`. A second holder while one is live is refused
@@ -119,10 +110,7 @@ impl TreeSession {
         }
         self.epoch += 1;
         self.holder = Some(holder);
-        Ok(TreeAttachment {
-            epoch: self.epoch,
-            root: self.root,
-        })
+        Ok(TreeAttachment { epoch: self.epoch })
     }
 
     /// Release the hold `holder` has, when it is the holder. A detach from any other
@@ -160,6 +148,8 @@ fn walk(scene: &Scene, id: NodeId, parent: Option<NodeId>, index: usize, out: &m
         parent,
         index,
         class: scene.class(id).map(str::to_owned),
+        title: scene.text(id, "title").unwrap_or_default().to_owned(),
+        app_id: scene.text(id, "app_id").unwrap_or_default().to_owned(),
     });
     if let Some(node) = scene.node(id) {
         for (child_index, &child) in node.children().iter().enumerate() {
@@ -287,7 +277,8 @@ fn chunk_nodes(nodes: Vec<TreeSnapshotNode>, budget: usize) -> Vec<Vec<TreeSnaps
     let mut chunks: Vec<Vec<TreeSnapshotNode>> = Vec::new();
     let mut used = 0;
     for node in nodes {
-        let size = SNAPSHOT_NODE_BYTES + node.class.as_ref().map_or(0, String::len);
+        let size =
+            SNAPSHOT_NODE_BYTES + node.class.as_ref().map_or(0, String::len) + node.title.len() + node.app_id.len();
         match chunks.last_mut() {
             Some(chunk) if !chunk.is_empty() && used + size <= budget => {
                 chunk.push(node);
@@ -308,21 +299,19 @@ mod tests {
     use gnoblin_render::transaction::{PropertyInfo, ValueType};
     use gnoblin_schema::DefaultValue;
 
-    const ROOT: NodeId = NodeId::new(1);
-
     const HOLDER: TreeHolder = TreeHolder::new(1);
     const OTHER_HOLDER: TreeHolder = TreeHolder::new(2);
 
-    /// A session attached as the privileged shell, rooted at `ROOT`.
+    /// A session attached as the privileged shell.
     fn attached_session() -> TreeSession {
-        let mut session = TreeSession::new(ROOT);
+        let mut session = TreeSession::default();
         session.attach(HOLDER, true).expect("privileged attach");
         session
     }
 
     #[test]
     fn attach_refuses_an_unprivileged_peer() {
-        let mut session = TreeSession::new(ROOT);
+        let mut session = TreeSession::default();
         let refused = session.attach(HOLDER, false).expect_err("unprivileged attach refused");
         assert_eq!(refused.code, Code::NotPrivileged);
         assert_eq!(refused.failed_op, -1);
@@ -332,11 +321,10 @@ mod tests {
     }
 
     #[test]
-    fn attach_answers_with_epoch_and_root_and_each_attach_raises_the_epoch() {
-        let mut session = TreeSession::new(ROOT);
+    fn attach_answers_with_epoch_and_each_attach_raises_the_epoch() {
+        let mut session = TreeSession::default();
         let first = session.attach(HOLDER, true).expect("attach");
         let second = session.attach(HOLDER, true).expect("re-attach");
-        assert_eq!(first.root, ROOT);
         assert_eq!(second.epoch, first.epoch + 1);
     }
 
@@ -370,6 +358,8 @@ mod tests {
                 parent: None,
                 index: 0,
                 class: Some("node".to_owned()),
+                title: String::new(),
+                app_id: String::new(),
             })
             .collect();
         let per_node = SNAPSHOT_NODE_BYTES + "node".len();
@@ -386,6 +376,8 @@ mod tests {
             parent: None,
             index: 0,
             class: Some("x".repeat(SNAPSHOT_CHUNK_BYTES + 1)),
+            title: String::new(),
+            app_id: String::new(),
         };
         let chunks = chunk_nodes(vec![big.clone(), big], SNAPSHOT_CHUNK_BYTES);
         assert_eq!(chunks.len(), 2);

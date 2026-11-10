@@ -78,6 +78,8 @@ fn answer_attach(stream: &mut UnixStream) {
                     parent: 0,
                     index: 0,
                     class: "Node".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
                 }],
             },
         ),

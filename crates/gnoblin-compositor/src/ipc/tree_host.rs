@@ -13,11 +13,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_proto::tree::tree::{AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs};
 use gnoblin_proto::tree::{change, op, snapshot_node};
-use gnoblin_render::NodeSpec;
 use gnoblin_render::transaction::{
     ClassInfo, Code, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
-use gnoblin_types::{ClientId, NodeId, Rect};
+use gnoblin_types::{ClientId, NodeId};
 use gnoblin_wayland::{TreeBatch, TreeHooks, TreeQueue};
 
 use super::server::IpcEvent;
@@ -36,9 +35,6 @@ pub mod member {
     pub const SNAPSHOT: &str = "snapshot";
     pub const CHANGES: &str = "changes";
 }
-
-/// The root node of the tree the compositor starts with. The shell places its windows under it.
-const ROOT: NodeId = NodeId::new(1);
 
 /// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
 /// serial.
@@ -71,7 +67,7 @@ impl TreeHostHandle {
             queue: TreeQueue::default(),
             classes,
             events,
-            session: Arc::new(Mutex::new(TreeSession::new(ROOT))),
+            session: Arc::new(Mutex::new(TreeSession::default())),
             serial: Arc::new(AtomicU64::new(0)),
         })
     }
@@ -96,7 +92,6 @@ impl TreeHostHandle {
                     });
                 }
             }),
-            root: Some((ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))),
         }
     }
 
@@ -107,10 +102,11 @@ impl TreeHostHandle {
         let events = self.events.clone();
         self.queue.read(move |scene, serial| {
             let outcome = lock(&session).attach(holder(client), is_owner).map(|attachment| {
+                scene.set_shell_places(true);
                 (
                     TreeAttached {
                         epoch: attachment.epoch,
-                        root: attachment.root,
+                        root: scene.root(),
                         serial,
                     },
                     snapshot_of(scene, serial),
@@ -126,7 +122,18 @@ impl TreeHostHandle {
 
     /// Release the hold `client` has, when it is the holder.
     pub fn detach(&self, client: ClientId) {
-        lock(&self.session).detach(holder(client));
+        let shared = Arc::clone(&self.session);
+        let released = {
+            let mut session = lock(&shared);
+            let before = session.holder();
+            session.detach(holder(client));
+            before != session.holder()
+        };
+        if released {
+            // The frame clears the flag at its next read, so the wm places windows again.
+            self.queue
+                .read(move |scene, _| scene.set_shell_places(lock(&shared).holder().is_some()));
+        }
     }
 
     /// Answers `args` as `client`, or queues it for the frame. `Some` is the answer now: a
@@ -179,7 +186,7 @@ fn holder(client: ClientId) -> TreeHolder {
 pub fn attached_payload(attached: TreeAttached) -> AttachedPayload {
     AttachedPayload {
         epoch: u64::from(attached.epoch),
-        root: attached.root.get(),
+        root: attached.root.map_or(0, NodeId::get),
         serial: attached.serial,
     }
 }
@@ -318,6 +325,8 @@ pub fn snapshot_payloads(snapshot: &TreeSnapshot) -> Vec<SnapshotPayload> {
                     parent: node.parent.map_or(0, NodeId::get),
                     index: wire_index(node.index),
                     class: node.class.clone().unwrap_or_default(),
+                    title: node.title.clone(),
+                    app_id: node.app_id.clone(),
                 })
                 .collect(),
         })
