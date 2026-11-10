@@ -346,6 +346,9 @@ impl Compositor {
         // connect.
         let prepared = ipc::SocketPath::prepare(&path, version).map_err(Error::Ipc)?;
         let (events, received) = ipc::events();
+        // The tree is built before the Wayland session starts, because its frame runs the tree's
+        // hooks, and its events go to the same channel the dispatcher reads.
+        let tree = ipc::TreeHostHandle::new(events.clone()).map_err(|error| Error::Ipc(ipc::IpcError::Tree(error)))?;
         let (observer, pending) = ipc::wake(events.clone());
 
         // The display name a client puts in `WAYLAND_DISPLAY` is the Wayland socket's file
@@ -376,6 +379,7 @@ impl Compositor {
         )?;
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
+            tree: tree.hooks(),
             ..config.wayland
         };
         // The guardian's report goes out once the server is ready, and the X11 factory reports the
@@ -422,6 +426,7 @@ impl Compositor {
             &config.extensions,
             xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory, Arc::clone(&reporter)),
             config.power.take(),
+            tree,
         )
         .map_err(Error::Ipc)?;
 

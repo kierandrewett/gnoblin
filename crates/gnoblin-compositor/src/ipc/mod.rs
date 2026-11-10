@@ -47,6 +47,8 @@ pub use session::SessionSync;
 
 pub(crate) use server::{events, wake};
 
+pub(crate) use tree_host::TreeHostHandle;
+
 /// Why the IPC socket could not be prepared, bound or served.
 #[derive(Debug)]
 pub enum IpcError {

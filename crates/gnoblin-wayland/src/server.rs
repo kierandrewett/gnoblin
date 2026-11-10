@@ -381,6 +381,13 @@ impl Server {
         let global_scale = config.monitors.global_scale;
         apply_global_scale(backend.as_mut(), None, global_scale);
         let outputs = backend.outputs().to_vec();
+        let (ping, source) = make_ping().map_err(StartupError::Io)?;
+        // A shell's submission wakes the loop, so a frame drains it even when nothing else
+        // would draw. The queue is shared by every clone, so the hook reaches the frame's copy.
+        config.tree.queue.on_submit({
+            let ping = ping.clone();
+            move || ping.ping()
+        });
         let mut state = State::new(
             display,
             &outputs,
@@ -462,7 +469,6 @@ impl Server {
             )
             .map_err(|error| StartupError::EventLoop(error.into()))?;
 
-        let (ping, source) = make_ping().map_err(StartupError::Io)?;
         let control = Arc::new(Control {
             queue: Mutex::new(VecDeque::new()),
             ping,

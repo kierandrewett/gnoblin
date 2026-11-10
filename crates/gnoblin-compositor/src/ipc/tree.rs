@@ -2,11 +2,8 @@
 //! node API. It takes request values and returns message values. It owns no
 //! socket; slice 5b wires it to one.
 
-use gnoblin_render::transaction::{
-    ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, TreeTransaction, ValueType, validate_and_apply,
-};
-use gnoblin_render::tree_revision::TreeRevisions;
-use gnoblin_render::{Actor, Scene};
+use gnoblin_render::Scene;
+use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, ValueType};
 use gnoblin_schema::{Catalog, Namespace, ObjectType, SchemaError, Type as SchemaType};
 use gnoblin_types::NodeId;
 
@@ -70,54 +67,50 @@ impl TreeHolder {
     pub const fn new(id: u64) -> Self {
         Self(id)
     }
+
+    /// The connection number this holder was made from.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
 }
 
-/// The shell's tree session over one scene.
+/// The shell's attachment: which connection holds the tree, and the epoch of that hold. The
+/// scene and its serial belong to the frame that applies transactions, so this owns only the
+/// claim.
 #[derive(Debug)]
-pub struct TreeSession<C: ClassInfo> {
-    scene: Scene,
-    classes: C,
+pub struct TreeSession {
     root: NodeId,
     epoch: u32,
-    serial: u64,
-    /// The nodes each recent serial changed, so a stale base is checked, not refused.
-    revisions: TreeRevisions,
     holder: Option<TreeHolder>,
 }
 
-impl<C: ClassInfo> TreeSession<C> {
-    /// Start a session over `scene`, rooted at `root`. `None` when `root` is not in the scene.
+/// What an attach grants: the epoch of the new hold and the root the shell places under.
+/// The serial is read from the frame, so the host adds it to make a [`TreeAttached`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TreeAttachment {
+    /// The attachment's epoch. Each attach raises it, so an older one is stale.
+    pub epoch: u32,
+    /// The root node the shell places its windows under.
+    pub root: NodeId,
+}
+
+impl TreeSession {
+    /// Start a session rooted at `root`, with no shell attached.
     #[must_use]
-    pub fn new(scene: Scene, classes: C, root: NodeId) -> Option<Self> {
-        scene.contains(root).then_some(Self {
-            scene,
-            classes,
+    pub const fn new(root: NodeId) -> Self {
+        Self {
             root,
             epoch: 0,
-            serial: 0,
-            revisions: TreeRevisions::new(),
             holder: None,
-        })
-    }
-
-    /// The scene the session edits. The unit tests read the scene directly to check the edit.
-    #[cfg(test)]
-    #[must_use]
-    pub const fn scene(&self) -> &Scene {
-        &self.scene
-    }
-
-    /// The serial of the last committed change.
-    #[must_use]
-    pub const fn serial(&self) -> u64 {
-        self.serial
+        }
     }
 
     /// Attach the shell from `holder`. Only the session owner's connection may attach, and
     /// `is_owner` is that connection's classification from the owner grant (`owner_grants`).
     /// Any other is refused `not-privileged`. A second holder while one is live is refused
     /// `shell-already-attached`; the same holder attaching again gets a new epoch.
-    pub fn attach(&mut self, holder: TreeHolder, is_owner: bool) -> Result<TreeAttached, TreeRefusal> {
+    pub fn attach(&mut self, holder: TreeHolder, is_owner: bool) -> Result<TreeAttachment, TreeRefusal> {
         if !is_owner {
             return Err(refusal(Code::NotPrivileged));
         }
@@ -126,10 +119,9 @@ impl<C: ClassInfo> TreeSession<C> {
         }
         self.epoch += 1;
         self.holder = Some(holder);
-        Ok(TreeAttached {
+        Ok(TreeAttachment {
             epoch: self.epoch,
             root: self.root,
-            serial: self.serial,
         })
     }
 
@@ -146,71 +138,32 @@ impl<C: ClassInfo> TreeSession<C> {
     pub const fn holder(&self) -> Option<TreeHolder> {
         self.holder
     }
+}
 
-    /// Apply `transaction` as the shell against the scene. `base` is the serial the shell
-    /// built it against. A stale base is refused only when the transaction names a node
-    /// changed since then (see [`TreeRevisions::check`]). The batch is all-or-nothing: a
-    /// refusal leaves the scene and serial untouched. A committed batch that changed
-    /// something advances the serial by one.
-    pub fn transact(&mut self, base: u64, transaction: &TreeTransaction) -> TreeReply {
-        if self.holder.is_none() {
-            return self.refuse(Code::NotPrivileged);
-        }
-        if let Err(refused) = self.revisions.check(base, self.serial, &[], transaction) {
-            return TreeReply {
-                serial: self.serial,
-                result: Err(refused),
-            };
-        }
-        match validate_and_apply(&mut self.scene, &self.classes, Actor::Shell, transaction) {
-            Ok(applied) => {
-                if !applied.changes.is_empty() {
-                    self.serial += 1;
-                    self.revisions.record(self.serial, &applied.changes);
-                }
-                TreeReply {
-                    serial: self.serial,
-                    result: Ok(applied),
-                }
-            }
-            Err(refused) => TreeReply {
-                serial: self.serial,
-                result: Err(refused),
-            },
-        }
+/// Snapshot every node of `scene` at `serial`, in paint order, split into chunks. The frame
+/// calls this with its own scene, so the snapshot and the serial always agree.
+#[must_use]
+pub fn snapshot_of(scene: &Scene, serial: u64) -> TreeSnapshot {
+    let mut nodes = Vec::new();
+    for (index, &root) in scene.root_ids().iter().enumerate() {
+        walk(scene, root, None, index, &mut nodes);
     }
-
-    /// Snapshot the whole tree at the current serial, in paint order, split into chunks.
-    #[must_use]
-    pub fn snapshot(&self) -> TreeSnapshot {
-        let mut nodes = Vec::new();
-        for (index, &root) in self.scene.root_ids().iter().enumerate() {
-            self.walk(root, None, index, &mut nodes);
-        }
-        TreeSnapshot {
-            serial: self.serial,
-            chunks: chunk_nodes(nodes, SNAPSHOT_CHUNK_BYTES),
-        }
+    TreeSnapshot {
+        serial,
+        chunks: chunk_nodes(nodes, SNAPSHOT_CHUNK_BYTES),
     }
+}
 
-    fn walk(&self, id: NodeId, parent: Option<NodeId>, index: usize, out: &mut Vec<TreeSnapshotNode>) {
-        out.push(TreeSnapshotNode {
-            id,
-            parent,
-            index,
-            class: self.scene.class(id).map(str::to_owned),
-        });
-        if let Some(node) = self.scene.node(id) {
-            for (child_index, &child) in node.children().iter().enumerate() {
-                self.walk(child, Some(id), child_index, out);
-            }
-        }
-    }
-
-    fn refuse(&self, code: Code) -> TreeReply {
-        TreeReply {
-            serial: self.serial,
-            result: Err(refusal(code)),
+fn walk(scene: &Scene, id: NodeId, parent: Option<NodeId>, index: usize, out: &mut Vec<TreeSnapshotNode>) {
+    out.push(TreeSnapshotNode {
+        id,
+        parent,
+        index,
+        class: scene.class(id).map(str::to_owned),
+    });
+    if let Some(node) = scene.node(id) {
+        for (child_index, &child) in node.children().iter().enumerate() {
+            walk(scene, child, Some(id), child_index, out);
         }
     }
 }
@@ -352,110 +305,38 @@ fn chunk_nodes(nodes: Vec<TreeSnapshotNode>, budget: usize) -> Vec<Vec<TreeSnaps
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_render::NodeSpec;
-    use gnoblin_render::transaction::{PropertyInfo, TreeOp, TreeValue, ValueType};
+    use gnoblin_render::transaction::{PropertyInfo, ValueType};
     use gnoblin_schema::DefaultValue;
-    use gnoblin_types::Rect;
-
-    /// A schema with one class, `node`, holding one animatable double and one read-only double.
-    struct Table;
-
-    impl ClassInfo for Table {
-        fn has_class(&self, class: &str) -> bool {
-            class == "node"
-        }
-
-        fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
-            if class != "node" {
-                return None;
-            }
-            match key {
-                "opacity" => Some(PropertyInfo {
-                    kind: ValueType::Double,
-                    readonly: false,
-                    animated: true,
-                }),
-                "serial" => Some(PropertyInfo {
-                    kind: ValueType::Uint,
-                    readonly: true,
-                    animated: false,
-                }),
-                _ => None,
-            }
-        }
-
-        fn has_method(&self, _class: &str, _method: &str) -> bool {
-            false
-        }
-    }
 
     const ROOT: NodeId = NodeId::new(1);
-    const CHILD: NodeId = NodeId::new(0x100);
-    const OTHER: NodeId = NodeId::new(0x101);
 
     const HOLDER: TreeHolder = TreeHolder::new(1);
     const OTHER_HOLDER: TreeHolder = TreeHolder::new(2);
 
-    /// A session whose scene holds one compositor-owned root, attached as privileged.
-    fn attached_session() -> TreeSession<Table> {
-        let mut scene = Scene::new();
-        scene
-            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))
-            .expect("root inserts");
-        scene.set_root(Some(ROOT)).expect("root names");
-        let mut session = TreeSession::new(scene, Table, ROOT).expect("root is live");
+    /// A session attached as the privileged shell, rooted at `ROOT`.
+    fn attached_session() -> TreeSession {
+        let mut session = TreeSession::new(ROOT);
         session.attach(HOLDER, true).expect("privileged attach");
         session
     }
 
-    fn create(id: NodeId) -> TreeOp {
-        TreeOp::New {
-            class: "node".to_owned(),
-            id,
-        }
-    }
-
-    fn insert(node: NodeId, parent: NodeId) -> TreeOp {
-        TreeOp::Insert {
-            node,
-            parent,
-            index: None,
-        }
-    }
-
-    fn set_opacity(node: NodeId, value: f64) -> TreeOp {
-        TreeOp::Set {
-            node,
-            key: "opacity".to_owned(),
-            value: TreeValue::Double(value),
-            timing: None,
-        }
-    }
-
     #[test]
     fn attach_refuses_an_unprivileged_peer() {
-        let mut session = attached_session();
-        let mut scene = Scene::new();
-        scene
-            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 1, 1)))
-            .expect("root inserts");
-        let mut fresh = TreeSession::new(scene, Table, ROOT).expect("root is live");
-        let refused = fresh.attach(HOLDER, false).expect_err("unprivileged attach refused");
+        let mut session = TreeSession::new(ROOT);
+        let refused = session.attach(HOLDER, false).expect_err("unprivileged attach refused");
         assert_eq!(refused.code, Code::NotPrivileged);
         assert_eq!(refused.failed_op, -1);
-        // A refused attach leaves the session unattached: a transaction is still refused.
-        let reply = fresh.transact(0, &TreeTransaction::new(vec![create(CHILD)]));
-        assert_eq!(reply.result.expect_err("unattached").code, Code::NotPrivileged);
-        assert!(session.attach(HOLDER, true).is_ok());
+        // A refused attach leaves the session unattached, so the next privileged attach is first.
+        assert_eq!(session.holder(), None);
+        assert_eq!(session.attach(HOLDER, true).expect("privileged attach").epoch, 1);
     }
 
     #[test]
-    fn attach_answers_with_epoch_root_and_serial_and_each_attach_raises_the_epoch() {
-        let mut session = attached_session();
+    fn attach_answers_with_epoch_and_root_and_each_attach_raises_the_epoch() {
+        let mut session = TreeSession::new(ROOT);
         let first = session.attach(HOLDER, true).expect("attach");
         let second = session.attach(HOLDER, true).expect("re-attach");
         assert_eq!(first.root, ROOT);
-        assert_eq!(first.serial, 0);
         assert_eq!(second.epoch, first.epoch + 1);
     }
 
@@ -479,125 +360,6 @@ mod tests {
         let next = session.attach(OTHER_HOLDER, true).expect("the freed tree attaches");
         assert_eq!(next.epoch, 2);
         assert_eq!(session.holder(), Some(OTHER_HOLDER));
-    }
-
-    #[test]
-    fn transact_applies_a_batch_and_advances_the_serial_by_one() {
-        let mut session = attached_session();
-        let reply = session.transact(0, &TreeTransaction::new(vec![create(CHILD), insert(CHILD, ROOT)]));
-        let applied = reply.result.expect("batch applies");
-        assert_eq!(applied.changes.len(), 2);
-        assert_eq!(reply.serial, 1);
-        assert_eq!(session.serial(), 1);
-        assert_eq!(session.scene().node(ROOT).expect("root").children(), &[CHILD]);
-    }
-
-    #[test]
-    fn transact_with_a_stale_base_is_refused_and_changes_nothing() {
-        let mut session = attached_session();
-        let reply = session.transact(7, &TreeTransaction::new(vec![create(CHILD)]));
-        assert_eq!(reply.result.expect_err("stale base").code, Code::StaleBase);
-        assert_eq!(reply.serial, 0);
-        assert!(!session.scene().contains(CHILD));
-    }
-
-    #[test]
-    fn a_refused_op_leaves_the_whole_batch_unapplied() {
-        let mut session = attached_session();
-        let bad = TreeOp::Set {
-            node: CHILD,
-            key: "no-such-key".to_owned(),
-            value: TreeValue::Double(1.0),
-            timing: None,
-        };
-        let reply = session.transact(0, &TreeTransaction::new(vec![create(CHILD), bad]));
-        let refused = reply.result.expect_err("second op refused");
-        assert_eq!(refused.failed_op, 1);
-        assert_eq!(refused.code, Code::UnknownMember);
-        assert_eq!(reply.serial, 0);
-        assert!(!session.scene().contains(CHILD));
-    }
-
-    #[test]
-    fn a_read_only_property_is_refused_as_read_only() {
-        let mut session = attached_session();
-        // The root carries no class, so the class's readonly flag is only reachable on a `node`.
-        let write = TreeOp::Set {
-            node: CHILD,
-            key: "serial".to_owned(),
-            value: TreeValue::Uint(3),
-            timing: None,
-        };
-        let reply = session.transact(0, &TreeTransaction::new(vec![create(CHILD), write]));
-        let refused = reply.result.expect_err("readonly");
-        assert_eq!(refused.code, Code::ReadOnly);
-        assert_eq!(refused.failed_op, 1);
-    }
-
-    #[test]
-    fn a_shell_may_not_destroy_the_root_or_a_compositor_node() {
-        let mut session = attached_session();
-        let root = TreeOp::Destroy { node: ROOT };
-        let reply = session.transact(0, &TreeTransaction::new(vec![root]));
-        assert_eq!(reply.result.expect_err("root").code, Code::RootImmutable);
-    }
-
-    #[test]
-    fn a_transaction_that_changes_nothing_keeps_the_serial() {
-        let mut session = attached_session();
-        let reply = session.transact(0, &TreeTransaction::new(Vec::new()));
-        assert!(reply.result.expect("empty batch").changes.is_empty());
-        assert_eq!(reply.serial, 0);
-    }
-
-    #[test]
-    fn set_applies_and_advances_the_serial() {
-        let mut session = attached_session();
-        let reply = session.transact(0, &TreeTransaction::new(vec![create(CHILD), set_opacity(CHILD, 0.5)]));
-        reply.result.expect("set applies");
-        // One applied transaction advances the serial by one. Reading the value back needs
-        // gnoblin-animation types the compositor does not depend on, so it is not asserted here.
-        assert_eq!(session.serial(), 1);
-    }
-
-    #[test]
-    fn a_transaction_before_attach_is_refused_as_not_privileged() {
-        let mut scene = Scene::new();
-        scene
-            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 1, 1)))
-            .expect("root inserts");
-        let mut session = TreeSession::new(scene, Table, ROOT).expect("root is live");
-        let reply = session.transact(0, &TreeTransaction::new(vec![create(CHILD)]));
-        assert_eq!(reply.result.expect_err("before attach").code, Code::NotPrivileged);
-    }
-
-    #[test]
-    fn snapshot_lists_every_node_with_its_parent_and_index_in_paint_order() {
-        let mut session = attached_session();
-        session
-            .transact(
-                0,
-                &TreeTransaction::new(vec![
-                    create(CHILD),
-                    insert(CHILD, ROOT),
-                    create(OTHER),
-                    insert(OTHER, ROOT),
-                ]),
-            )
-            .result
-            .expect("batch applies");
-        let snapshot = session.snapshot();
-        assert_eq!(snapshot.serial, 1);
-        let nodes: Vec<&TreeSnapshotNode> = snapshot.chunks.iter().flatten().collect();
-        assert_eq!(nodes.len(), 3);
-        assert_eq!(nodes[0].id, ROOT);
-        assert_eq!(nodes[0].parent, None);
-        assert_eq!(nodes[1].id, CHILD);
-        assert_eq!(nodes[1].parent, Some(ROOT));
-        assert_eq!(nodes[1].index, 0);
-        assert_eq!(nodes[2].id, OTHER);
-        assert_eq!(nodes[2].index, 1);
-        assert_eq!(nodes[1].class.as_deref(), Some("node"));
     }
 
     #[test]
@@ -628,12 +390,6 @@ mod tests {
         let chunks = chunk_nodes(vec![big.clone(), big], SNAPSHOT_CHUNK_BYTES);
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].len(), 1);
-    }
-
-    #[test]
-    fn new_refuses_a_root_that_is_not_in_the_scene() {
-        let scene = Scene::new();
-        assert!(TreeSession::new(scene, Table, ROOT).is_none());
     }
 
     #[test]
@@ -772,89 +528,6 @@ mod tests {
                 });
                 assert_eq!(info.readonly, property.readonly, "{}.{}", object.name, property.name);
                 assert_eq!(info.animated, property.animated, "{}.{}", object.name, property.name);
-                checked += 1;
-            }
-        }
-        assert!(checked > 0, "the tree namespace has class properties");
-    }
-
-    /// The default value of each kind, for a `set` that names a property of that kind.
-    fn default_value(kind: &ValueType) -> TreeValue {
-        match kind {
-            ValueType::Bool => TreeValue::Bool(false),
-            ValueType::Int => TreeValue::Int(0),
-            ValueType::Uint => TreeValue::Uint(0),
-            ValueType::Double => TreeValue::Double(1.0),
-            ValueType::Text => TreeValue::Text(String::new()),
-            ValueType::Bytes => TreeValue::Bytes(Vec::new()),
-            ValueType::Node(_) => TreeValue::Node(None),
-            ValueType::ListDouble => TreeValue::ListDouble(vec![1.0; 3]),
-            ValueType::ListText => TreeValue::ListText(Vec::new()),
-        }
-    }
-
-    /// Every property of every node class in the real catalog accepts a value of its own kind
-    /// through `set`, and a readonly property refuses it as `read-only`. Each class is created
-    /// under the root, then its properties are set one transaction at a time.
-    #[test]
-    fn every_tree_property_accepts_a_value_of_its_own_kind() {
-        let classes = TreeClasses::new(crate::schema::catalog().expect("the schema catalog loads"))
-            .expect("the tree namespace is valid");
-        let mut scene = Scene::new();
-        scene
-            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))
-            .expect("root inserts");
-        scene.set_root(Some(ROOT)).expect("root names");
-        let owner = TreeClasses::new(crate::schema::catalog().expect("the schema catalog loads"))
-            .expect("the tree namespace is valid");
-        let mut session = TreeSession::new(scene, owner, ROOT).expect("root is live");
-        session.attach(TreeHolder::new(1), true).expect("privileged attach");
-        let mut next = 0x1000_u64;
-        let mut checked = 0;
-        for object in classes.catalog.objects(&classes.namespace) {
-            if !classes.is_a(&object.name, "node") {
-                continue;
-            }
-            let node = NodeId::new(next);
-            next += 1;
-            let base = session.serial();
-            let create = TreeTransaction::new(vec![
-                TreeOp::New {
-                    class: object.name.clone(),
-                    id: node,
-                },
-                TreeOp::Insert {
-                    node,
-                    parent: ROOT,
-                    index: None,
-                },
-            ]);
-            let created = session.transact(base, &create).result;
-            assert!(created.is_ok(), "{} new: {created:?}", object.name);
-            for property in &object.properties {
-                let info = classes
-                    .property(&object.name, &property.name)
-                    .unwrap_or_else(|| panic!("{}.{} has no PropertyInfo", object.name, property.name));
-                let base = session.serial();
-                let set = TreeTransaction::new(vec![TreeOp::Set {
-                    node,
-                    key: property.name.clone(),
-                    value: default_value(&info.kind),
-                    timing: None,
-                }]);
-                let result = session.transact(base, &set).result;
-                if info.readonly {
-                    let refusal = result.expect_err("a readonly property refuses set");
-                    assert_eq!(refusal.code, Code::ReadOnly, "{}.{}", object.name, property.name);
-                } else {
-                    assert!(
-                        result.is_ok(),
-                        "{}.{} ({:?}) refused its own kind: {result:?}",
-                        object.name,
-                        property.name,
-                        info.kind
-                    );
-                }
                 checked += 1;
             }
         }

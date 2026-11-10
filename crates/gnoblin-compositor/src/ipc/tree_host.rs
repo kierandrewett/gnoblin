@@ -1,20 +1,29 @@
-//! The host of the `tree` namespace: the one tree session the server serves, and the mapping
-//! between its wire payloads and the transaction types.
+//! The host of the `tree` namespace: the wire side of the tree. Requests from the shell are
+//! queued on the frame that owns the scene; the frame answers them, and its published batches
+//! come back to the dispatcher as events.
 //!
-//! Every request runs on the dispatcher thread, so the session's lock is never contended. It
-//! is a mutex so the session can be read from another thread once observers need it.
+//! The dispatcher never touches the scene. It reads the session's holder under its lock, and
+//! the frame reads and writes the same session between frames. A transaction pipelined straight
+//! after `attach`, before the attach reply, is refused `not-privileged`: the shell waits for
+//! the attach reply before it transacts.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_proto::tree::tree::{AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs};
 use gnoblin_proto::tree::{change, op, snapshot_node};
+use gnoblin_render::NodeSpec;
 use gnoblin_render::transaction::{
-    Code, Timing, TreeApplied, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
+    ClassInfo, Code, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
-use gnoblin_render::{Actor, NodeSpec, Scene};
 use gnoblin_types::{ClientId, NodeId, Rect};
+use gnoblin_wayland::{TreeBatch, TreeHooks, TreeQueue};
 
-use super::tree::{TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, tree_listing};
+use super::server::IpcEvent;
+use super::tree::{
+    TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, snapshot_of, tree_listing,
+};
 
 /// The namespace the tree answers on.
 pub const NAMESPACE: &str = "tree";
@@ -31,73 +40,128 @@ pub mod member {
 /// The root node of the tree the compositor starts with. The shell places its windows under it.
 const ROOT: NodeId = NodeId::new(1);
 
-/// The shell's tree, served by the dispatcher.
-#[derive(Debug)]
+/// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
+/// serial.
+#[derive(Clone)]
 pub struct TreeHostHandle {
-    session: Mutex<TreeSession<TreeClasses>>,
+    queue: TreeQueue,
+    classes: Arc<TreeClasses>,
+    events: Sender<IpcEvent>,
+    session: Arc<Mutex<TreeSession>>,
+    /// The serial of the last batch the frame published, read when a refusal answers.
+    serial: Arc<AtomicU64>,
+}
+
+impl std::fmt::Debug for TreeHostHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TreeHostHandle").finish_non_exhaustive()
+    }
 }
 
 impl TreeHostHandle {
-    /// A host over a fresh scene whose only node is the root.
+    /// A host whose events go to `events`.
     ///
     /// # Errors
     ///
-    /// Returns the reason the scene, the schema catalog or the session could not be built.
-    pub fn new() -> Result<Self, String> {
-        let mut scene = Scene::new();
-        scene
-            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))
-            .map_err(|error| error.to_string())?;
-        scene.set_root(Some(ROOT)).map_err(|error| error.to_string())?;
+    /// Returns the reason the schema catalog or the class table could not be built.
+    pub fn new(events: Sender<IpcEvent>) -> Result<Self, String> {
         let catalog = tree_listing(true).map_err(|error| error.to_string())?;
-        let classes = TreeClasses::new(catalog)?;
-        let session =
-            TreeSession::new(scene, classes, ROOT).ok_or_else(|| "the tree root is not in the scene".to_owned())?;
+        let classes = Arc::new(TreeClasses::new(catalog)?);
         Ok(Self {
-            session: Mutex::new(session),
+            queue: TreeQueue::default(),
+            classes,
+            events,
+            session: Arc::new(Mutex::new(TreeSession::new(ROOT))),
+            serial: Arc::new(AtomicU64::new(0)),
         })
     }
 
-    fn session(&self) -> MutexGuard<'_, TreeSession<TreeClasses>> {
-        self.session.lock().unwrap_or_else(PoisonError::into_inner)
+    /// The hooks the Wayland session's frame runs the tree with. The frame publishes each batch
+    /// it applies; a batch goes to the shell's connection when one holds the tree.
+    #[must_use]
+    pub fn hooks(&self) -> TreeHooks {
+        let session = Arc::clone(&self.session);
+        let serial = Arc::clone(&self.serial);
+        let events = self.events.clone();
+        TreeHooks {
+            queue: self.queue.clone(),
+            classes: Arc::clone(&self.classes) as Arc<dyn ClassInfo + Send + Sync>,
+            publish: Arc::new(move |batch: TreeBatch| {
+                serial.store(batch.serial, Ordering::Release);
+                let holder = lock(&session).holder();
+                if let Some(holder) = holder {
+                    let _ = events.send(IpcEvent::TreeChanged {
+                        client: ClientId::new(holder.get()),
+                        batch,
+                    });
+                }
+            }),
+            root: Some((ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))),
+        }
     }
 
-    /// Attach `client` as the shell. `is_owner` is its owner-grant classification.
-    pub fn attach(&self, client: ClientId, is_owner: bool) -> Result<TreeAttached, TreeRefusal> {
-        self.session().attach(holder(client), is_owner)
+    /// Queues the attach of `client`. The frame decides it at the current serial and sends
+    /// `IpcEvent::TreeAttached` with the outcome and, on success, the snapshot to send.
+    pub fn attach(&self, client: ClientId, request_id: u64, is_owner: bool) {
+        let session = Arc::clone(&self.session);
+        let events = self.events.clone();
+        self.queue.read(move |scene, serial| {
+            let outcome = lock(&session).attach(holder(client), is_owner).map(|attachment| {
+                (
+                    TreeAttached {
+                        epoch: attachment.epoch,
+                        root: attachment.root,
+                        serial,
+                    },
+                    snapshot_of(scene, serial),
+                )
+            });
+            let _ = events.send(IpcEvent::TreeAttached {
+                client,
+                request_id,
+                outcome,
+            });
+        });
     }
 
     /// Release the hold `client` has, when it is the holder.
     pub fn detach(&self, client: ClientId) {
-        self.session().detach(holder(client));
+        lock(&self.session).detach(holder(client));
     }
 
-    /// Snapshot the tree at the current serial.
-    pub fn snapshot(&self) -> TreeSnapshot {
-        self.session().snapshot()
+    /// Answers `args` as `client`, or queues it for the frame. `Some` is the answer now: a
+    /// connection that does not hold the tree is refused `not-privileged`, and a transaction
+    /// that does not convert is refused with its op. `None` means the frame answers later,
+    /// with `IpcEvent::TreeReply`.
+    pub fn transact(&self, client: ClientId, request_id: u64, args: &TransactArgs) -> Option<TreeReply> {
+        if lock(&self.session).holder() != Some(holder(client)) {
+            return Some(self.refusal(Code::NotPrivileged, -1));
+        }
+        let tx = match transaction(&args.ops) {
+            Ok(tx) => tx,
+            Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
+        };
+        let events = self.events.clone();
+        self.queue.submit(args.base_serial, tx, move |serial, result| {
+            let _ = events.send(IpcEvent::TreeReply {
+                client,
+                request_id,
+                reply: TreeReply { serial, result },
+            });
+        });
+        None
     }
 
-    /// Apply `args` as `client`. Only the holder may transact: any other connection is refused
-    /// `not-privileged`, whether or not a shell is attached.
-    pub fn transact(&self, client: ClientId, args: &TransactArgs) -> TreeReply {
-        let mut session = self.session();
-        if session.holder() != Some(holder(client)) {
-            return TreeReply {
-                serial: session.serial(),
-                result: Err(TreeRefusal {
-                    failed_op: -1,
-                    code: Code::NotPrivileged,
-                }),
-            };
-        }
-        match transaction(&args.ops) {
-            Ok(transaction) => session.transact(args.base_serial, &transaction),
-            Err(refusal) => TreeReply {
-                serial: session.serial(),
-                result: Err(refusal),
-            },
+    fn refusal(&self, code: Code, failed_op: i64) -> TreeReply {
+        TreeReply {
+            serial: self.serial.load(Ordering::Acquire),
+            result: Err(TreeRefusal { failed_op, code }),
         }
     }
+}
+
+fn lock(session: &Mutex<TreeSession>) -> MutexGuard<'_, TreeSession> {
+    session.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn holder(client: ClientId) -> TreeHolder {
@@ -145,10 +209,10 @@ fn removed_nodes(change: &TreeChange) -> Vec<u64> {
 
 /// The changes a committed transaction published, as the `changes` event.
 #[must_use]
-pub fn changes_payload(serial: u64, applied: &TreeApplied) -> ChangesPayload {
+pub fn changes_payload(serial: u64, changes: &[TreeChange]) -> ChangesPayload {
     ChangesPayload {
         serial,
-        changes: applied.changes.iter().map(change_properties).collect(),
+        changes: changes.iter().map(change_properties).collect(),
     }
 }
 
