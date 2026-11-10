@@ -47,7 +47,7 @@ use gnoblin_wm::layout::Arg;
 pub use data::{Data, DataError, LayoutKey};
 pub use encoding::MAX_ENCODED_LEN;
 pub use engine::LuaEngine;
-pub use host::{Host, HostConfig, HostFailure, WedgeHook, default_prefix, installed_module_dir};
+pub use host::{Host, HostConfig, HostFailure, WedgeHook};
 pub(crate) use reference::{LayoutModuleLoader, LayoutRef, is_layout_name};
 pub use require::ModuleRoots;
 pub(crate) use require::Modules;

@@ -30,7 +30,8 @@ use std::process::Command;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, ModuleRoots, default_prefix, installed_module_dir};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, ModuleRoots};
+use gnoblin_lua::module_dir::{default_prefix, installed_module_dir};
 use gnoblin_types::{OutputId, Scale, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Camera, Generation, Job, Layout, LayoutEffect, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput,

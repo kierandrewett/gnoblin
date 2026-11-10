@@ -5,7 +5,6 @@
 //! an abandoned worker is leaked and a fresh one is built from the registrations.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
@@ -52,16 +51,6 @@ impl HostConfig {
             wedge: None,
         }
     }
-}
-
-/// Where the layout modules of a prefix are installed.
-pub fn installed_module_dir(prefix: &Path) -> PathBuf {
-    prefix.join("share/gnoblin/lua")
-}
-
-/// The installed prefix for `GNOBLIN_PREFIX` as given, defaulting to `/usr`.
-pub fn default_prefix(value: Option<&std::ffi::OsStr>) -> PathBuf {
-    value.map_or_else(|| PathBuf::from("/usr"), PathBuf::from)
 }
 
 /// A failed registration: why the layout cannot be loaded.

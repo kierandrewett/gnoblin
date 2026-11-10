@@ -557,7 +557,7 @@ impl<T: Transport + 'static> Host<T> {
         self.reset_runtime()?;
         // The shipped root is the installed prefix; the user root is the directory of the
         // configuration file being evaluated, so a `require` there resolves from one place.
-        let shipped = crate::layout::installed_module_dir(&crate::layout::default_prefix(
+        let shipped = crate::module_dir::installed_module_dir(&crate::module_dir::default_prefix(
             std::env::var_os("GNOBLIN_PREFIX").as_deref(),
         ));
         let user = path.path().parent().map(Path::to_path_buf);

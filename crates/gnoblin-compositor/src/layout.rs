@@ -26,9 +26,8 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use gnoblin_config::{Layout, LayoutOptionValue, LayoutRoot, LayoutSelector, SearchPaths, Store};
-use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, HostFailure, LayoutKey, LuaEngine, ModuleRoots, default_prefix, installed_module_dir,
-};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, HostFailure, LayoutKey, LuaEngine, ModuleRoots};
+use gnoblin_lua::module_dir::{default_prefix, installed_module_dir};
 use gnoblin_types::WorkspaceId;
 use gnoblin_wayland::LayoutControl;
 use gnoblin_wm::layout::{

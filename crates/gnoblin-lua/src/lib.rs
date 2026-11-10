@@ -127,6 +127,7 @@ mod loader;
 #[cfg(test)]
 #[path = "../lua_names.rs"]
 mod lua_names;
+pub mod module_dir;
 mod process;
 mod requests;
 pub mod role;

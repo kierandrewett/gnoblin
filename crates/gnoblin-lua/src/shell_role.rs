@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use gnoblin_client::Client;
 use gnoblin_client::unix::{UnixTransport, socket_path};
 
-use crate::layout::{default_prefix, installed_module_dir};
+use crate::module_dir::{default_prefix, installed_module_dir};
 use crate::role::version;
 use crate::shell_vm::{ShellVm, ShellVmError};
 use crate::tree_core::{ClassSpec, tree_classes};
