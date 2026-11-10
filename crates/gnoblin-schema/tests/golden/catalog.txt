@@ -489,7 +489,7 @@ object lock since 0.2.0 secret false
 object tree since 0.2.0 secret false
   method attach since 0.2.0 secret false function false
     param version type uint since 0.2.0 secret false
-  method transact since 0.2.0 secret false function false
+  method transact since 0.2.0 secret true function false
     param base_serial type uint since 0.2.0 secret false
     param serial type uint since 0.2.0 secret false
     param ops type list<object:op> since 0.2.0 secret false
@@ -564,7 +564,7 @@ object op since 0.2.0 secret false
   property state type uint since 0.2.0 secret false
   property dx type double since 0.2.0 secret false
   property dy type double since 0.2.0 secret false
-  property text type string since 0.2.0 secret false
+  property text type string since 0.2.0 secret true
 object change since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -2020,7 +2020,7 @@ message Tree {
     uint64 version = 1;
   }
 
-  // Method `transact`, since 0.2.0.
+  // Method `transact`, since 0.2.0, secret.
   message TransactArgs {
     // since 0.2.0
     uint64 base_serial = 1;
@@ -2189,7 +2189,7 @@ message Op {
     double dx = 28;
     // since 0.2.0
     double dy = 29;
-    // since 0.2.0
+    // since 0.2.0; secret: every frame carrying this field is flagged sensitive
     string text = 30;
   }
 }

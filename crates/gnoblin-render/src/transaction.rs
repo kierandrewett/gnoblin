@@ -61,6 +61,7 @@
 use std::collections::BTreeSet;
 
 use gnoblin_animation::{PropertyValue, VisualProperty};
+use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
 
 use crate::effect::{EffectError, Pass};
@@ -294,7 +295,7 @@ pub enum TreeOp {
         /// The arguments.
         args: Vec<i64>,
         /// The text argument, such as a claim's chord; empty for every other call.
-        text: String,
+        text: SecretText,
     },
     /// Create a node of a class, with a caller-chosen id. It starts unparented.
     New {
@@ -410,8 +411,8 @@ pub struct TreeCall {
     pub method: String,
     /// The arguments.
     pub args: Vec<i64>,
-    /// The text argument; empty for a call that takes none.
-    pub text: String,
+    /// The text argument; empty for a call that takes none. Secret: a password is one.
+    pub text: SecretText,
 }
 
 /// A pointer input a window's client receives through a seat.
@@ -582,7 +583,7 @@ fn call_method(
     node: NodeId,
     method: &str,
     args: &[i64],
-    text: &str,
+    text: &SecretText,
     applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !work.contains(node) {
@@ -596,7 +597,7 @@ fn call_method(
         node,
         method: method.to_owned(),
         args: args.to_vec(),
-        text: text.to_owned(),
+        text: text.clone(),
     });
     Ok(())
 }

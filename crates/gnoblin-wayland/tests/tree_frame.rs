@@ -1,6 +1,7 @@
 //! The tree frame boundary: queued transactions are applied at the start of a frame,
 //! whole or not at all, in arrival order, and one change batch is published per frame.
 
+use gnoblin_secret::SecretText;
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -158,19 +159,19 @@ fn seat_claim_calls_are_captured_in_op_order_and_others_are_not() {
                 node: seat,
                 method: "claim".to_owned(),
                 args: vec![7],
-                text: "Ctrl+Shift+P".to_owned(),
+                text: SecretText::new("Ctrl+Shift+P"),
             },
             TreeOp::TreeCall {
                 node: other,
                 method: "claim".to_owned(),
                 args: vec![9],
-                text: "Ctrl+Q".to_owned(),
+                text: SecretText::new("Ctrl+Q"),
             },
             TreeOp::TreeCall {
                 node: seat,
                 method: "unclaim".to_owned(),
                 args: vec![7],
-                text: String::new(),
+                text: SecretText::default(),
             },
         ]),
         &replies,
@@ -181,7 +182,7 @@ fn seat_claim_calls_are_captured_in_op_order_and_others_are_not() {
     let claims = frame.take_claims();
     assert_eq!(claims.len(), 2, "only seat claim and unclaim calls are kept");
     assert_eq!(claims[0].method, "claim");
-    assert_eq!(claims[0].text, "Ctrl+Shift+P");
+    assert_eq!(claims[0].text.expose(), "Ctrl+Shift+P");
     assert_eq!(claims[1].method, "unclaim");
     assert_eq!(claims[1].args, vec![7]);
     assert!(frame.take_claims().is_empty(), "taking drains the claims");

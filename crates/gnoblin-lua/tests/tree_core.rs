@@ -200,13 +200,13 @@ fn calls_need_a_declared_method_and_carry_their_argument_bytes() {
                 node: 2,
                 method: "close".to_owned(),
                 args: b"ab".to_vec(),
-                text: String::new(),
+                text: gnoblin_secret::SecretText::default(),
             },
             LuaOp::Call {
                 node: 2,
                 method: "close".to_owned(),
                 args: b"cd".to_vec(),
-                text: "Super+q".to_owned(),
+                text: gnoblin_secret::SecretText::new("Super+q"),
             },
         ]
     );

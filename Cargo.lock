@@ -1528,6 +1528,7 @@ dependencies = [
  "gnoblin-render",
  "gnoblin-render-frame",
  "gnoblin-schema",
+ "gnoblin-secret",
  "gnoblin-types",
  "gnoblin-wayland",
  "gnoblin-wm",
@@ -1659,6 +1660,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-secret",
  "gnoblin-testkit",
  "gnoblin-types",
  "gnoblin-wm",
@@ -1806,6 +1808,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-animation",
  "gnoblin-log",
+ "gnoblin-secret",
  "gnoblin-types",
 ]
 
@@ -1867,6 +1870,13 @@ dependencies = [
  "gnoblin-types",
  "serde",
  "toml",
+]
+
+[[package]]
+name = "gnoblin-secret"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "zeroize",
 ]
 
 [[package]]
@@ -2051,6 +2061,7 @@ dependencies = [
  "gnoblin-pipewire-export",
  "gnoblin-render",
  "gnoblin-render-frame",
+ "gnoblin-secret",
  "gnoblin-types",
  "gnoblin-wm",
  "smithay",

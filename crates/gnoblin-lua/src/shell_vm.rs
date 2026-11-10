@@ -84,14 +84,24 @@ pub struct ShellVm {
     /// Messages that arrived with the boot snapshot, handled by the first frame.
     incoming: Vec<LuaIncoming>,
     /// The ops of each sent transaction, by serial, until its reply arrives. A refusal names its
-    /// failed op from this record, and a stale-base refusal re-sends the rest.
-    sent: BTreeMap<u64, Vec<LuaOp>>,
+    /// failed op from this record, and a stale-base refusal re-sends the rest. A call that carries
+    /// text is recorded as `None`: its text is not kept past the send, so a retry cannot send it again.
+    sent: BTreeMap<u64, Vec<Option<LuaOp>>>,
     /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it:
     /// a second transaction built on the same base is refused as stale.
     in_flight: Option<u64>,
     /// Ops refused `stale-base` that are sent again, ahead of the next tick's writes, once the
     /// mirror reaches the refused serial.
     retry: Vec<LuaOp>,
+}
+
+/// What the sent-log keeps of one op for a stale-base retry. A call that carries text is not kept:
+/// its text is secret and is not held past the send, so a retry cannot send it again.
+fn retained_op(op: &LuaOp) -> Option<LuaOp> {
+    match op {
+        LuaOp::Call { text, .. } if !text.is_empty() => None,
+        other => Some(other.clone()),
+    }
 }
 
 /// Names one op for a refusal: its index, class, property and value kind, so a refused write is
@@ -218,12 +228,21 @@ impl ShellVm {
                         // base; the failed op is dropped, since the published change wins. The gate
                         // stays shut until the mirror reaches this serial, which that batch does.
                         let failed = usize::try_from(reply.failed_op).ok();
-                        let mut kept: Vec<LuaOp> = ops
-                            .into_iter()
-                            .enumerate()
-                            .filter(|(index, _)| Some(*index) != failed)
-                            .map(|(_, op)| op)
-                            .collect();
+                        let mut kept: Vec<LuaOp> = Vec::new();
+                        for (index, op) in ops.into_iter().enumerate() {
+                            if Some(index) == failed {
+                                continue;
+                            }
+                            match op {
+                                Some(op) => kept.push(op),
+                                // Its text was not kept, so it is not sent again. A password
+                                // is never re-sent; the diagnostic says which call was dropped.
+                                None => diagnostics.push(format!(
+                                    "transaction {} stale at op {}: text call {index} was dropped and not sent again",
+                                    reply.serial, reply.failed_op
+                                )),
+                            }
+                        }
                         crate::log::debug!(
                             area = "shell",
                             "transaction {} stale at op {}; {} ops sent again",
@@ -249,7 +268,12 @@ impl ShellVm {
                         if !reply.applied {
                             let op = usize::try_from(reply.failed_op)
                                 .ok()
-                                .and_then(|i| ops.get(i).map(|op| describe_op(i, op, self.core.borrow().mirror())))
+                                .and_then(|i| {
+                                    ops.get(i).map(|op| match op {
+                                        Some(op) => describe_op(i, op, self.core.borrow().mirror()),
+                                        None => format!("op {i}: call (text not kept)"),
+                                    })
+                                })
                                 .unwrap_or_else(|| "op not recorded".to_owned());
                             diagnostics.push(format!(
                                 "transaction {} refused at op {}: {}; {}",
@@ -298,7 +322,7 @@ impl ShellVm {
                 tx.ops = ops;
             }
             if !tx.ops.is_empty() {
-                self.sent.insert(tx.serial, tx.ops.clone());
+                self.sent.insert(tx.serial, tx.ops.iter().map(retained_op).collect());
                 self.in_flight = Some(tx.serial);
                 self.link.transact(&tx).map_err(|e| ShellVmError::Link(e.0))?;
             }

@@ -99,9 +99,14 @@ fn run() -> Result<(), String> {
     fs::write(&descriptor_path, descriptors.encode_to_vec())
         .map_err(|error| format!("cannot write {}: {error}", descriptor_path.display()))?;
     // The envelope gets a hand-written `Debug` that redacts, so prost's derived one,
-    // which would print the payload bytes, is switched off for it alone.
+    // which would print the payload bytes, is switched off for it alone. The same goes for
+    // the tree op and the transaction that carries it: an op's `text` may be a password.
     let mut config = prost_build::Config::new();
-    config.skip_debug([".gnoblin.ipc.Envelope"]);
+    config.skip_debug([
+        ".gnoblin.ipc.Envelope",
+        ".tree.Op.Properties",
+        ".tree.Tree.TransactArgs",
+    ]);
     config
         .compile_fds(descriptors)
         .map_err(|error| format!("cannot generate Rust from the descriptor set: {error}"))?;

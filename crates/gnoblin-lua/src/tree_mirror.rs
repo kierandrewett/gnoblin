@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use gnoblin_proto::tree::effect;
+use gnoblin_secret::SecretText;
 
 /// A node id. Zero is nil.
 pub type NodeId = u64;
@@ -151,8 +152,9 @@ pub enum LuaOp {
         node: NodeId,
         method: String,
         args: Vec<u8>,
-        /// The op's text: a seat claim's chord. Empty for every other call.
-        text: String,
+        /// The op's text: a seat claim's chord, or a password. Empty for every other call. Held
+        /// as a [`SecretText`], so it never prints; the transaction wipes it after the send.
+        text: SecretText,
     },
 }
 
@@ -758,7 +760,7 @@ impl LuaTxBuilder {
         node: NodeId,
         method: &str,
         args: Vec<u8>,
-        text: String,
+        text: SecretText,
     ) -> Result<(), TxError> {
         self.require(base, node)?;
         self.ops.push(LuaOp::Call {

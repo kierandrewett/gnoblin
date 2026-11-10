@@ -11,6 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
+gnoblin-secret.workspace = true
 # The Wayland engine this process runs: the protocol handlers, the seat, the window
 # manager glue and the frame hook.
 gnoblin-wayland = { path = "../gnoblin-wayland" }

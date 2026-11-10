@@ -128,13 +128,21 @@ impl TreeLink for SocketTreeLink {
     }
 
     fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError> {
-        let args = TransactArgs {
+        let mut args = TransactArgs {
             base_serial: tx.base_serial,
             serial: tx.serial,
             ops: tx.ops.iter().map(to_op).collect(),
         };
         let id = self.take_request_id();
-        self.send(&Envelope::request_message(NAMESPACE, "transact", id, &args))
+        // The frame and the wire ops carry the call texts, which may be passwords. Both are
+        // wiped once the frame has been written, whether or not the write succeeded.
+        let mut envelope = Envelope::request_message(NAMESPACE, "transact", id, &args);
+        let sent = self.send(&envelope);
+        envelope.wipe_secret();
+        for op in &mut args.ops {
+            gnoblin_secret::wipe(&mut op.text);
+        }
+        sent
     }
 
     fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError> {
@@ -238,7 +246,7 @@ fn to_op(op: &LuaOp) -> op::Properties {
             node: *node,
             method: method.clone(),
             args: args.clone(),
-            text: text.clone(),
+            text: text.expose().to_owned(),
             ..Default::default()
         },
     }

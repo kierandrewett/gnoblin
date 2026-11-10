@@ -71,6 +71,7 @@ members = [
     "crates/gnoblin-render-software",
     "crates/gnoblin-render-vulkan",
     "crates/gnoblin-schema",
+    "crates/gnoblin-secret",
     "crates/gnoblin-service-core",
     "crates/gnoblin-service-location",
     "crates/gnoblin-service-polkit",
@@ -263,6 +264,8 @@ rustix = { version = "1.1.6", features = ["process"] }
 # codes. Every crate that names a rectangle or an output uses this crate instead
 # of declaring its own.
 gnoblin-types = { path = "crates/gnoblin-types" }
+# Text that must not leak: a redacted `Debug` and bytes wiped on drop (the password of a `call`).
+gnoblin-secret = { path = "crates/gnoblin-secret" }
 # The layer registry: named layers, their scopes and their lifecycle (design/layers.md).
 gnoblin-layers = { path = "crates/gnoblin-layers" }
 # The Lua 5.4 pattern matcher and the load-time pattern checker (window rules and the sandbox).

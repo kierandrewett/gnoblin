@@ -11,6 +11,7 @@ use gnoblin_render::transaction::{
     ValueType, validate_and_apply,
 };
 use gnoblin_render::{NodeSpec, Scene, SceneError};
+use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
 
 /// The test schema: one class with every kind of member the transaction layer sees.
@@ -490,7 +491,7 @@ fn f27_unknown_method_is_unknown_member() {
             node: window,
             method: "explode".into(),
             args: Vec::new(),
-            text: String::new(),
+            text: SecretText::default(),
         }],
     );
     assert_refused(&refusal, 0, Code::UnknownMember);
@@ -608,7 +609,7 @@ fn call_is_validated_and_recorded_in_applied() {
             node: window,
             method: "focus".into(),
             args: vec![1, 2],
-            text: String::new(),
+            text: SecretText::default(),
         }]),
     )
     .expect("a known method is accepted");
@@ -771,4 +772,48 @@ fn shell_seat_focus_accepts_a_window_and_null_and_refuses_the_rest() {
     )
     .expect("null clears focus");
     assert_eq!(scene.reference(seat, "focus"), None);
+}
+
+/// A call's text is a secret, so every carrier of it (the op, the transaction, the validated
+/// call) must hide it in both the plain and the alternate Debug form.
+#[test]
+fn debug_of_a_call_carrier_never_shows_its_text() {
+    const SECRET: &str = "hunter2-never-print-me";
+    let call = || TreeOp::TreeCall {
+        node: NodeId::new(0x100),
+        method: "claim".to_owned(),
+        args: vec![7],
+        text: SecretText::new(SECRET),
+    };
+    let transaction = TreeTransaction::new(vec![call()]);
+    let renderings = [
+        format!("{:?}", call()),
+        format!("{:#?}", call()),
+        format!("{transaction:?}"),
+        format!("{transaction:#?}"),
+        format!(
+            "{:?}",
+            gnoblin_render::transaction::TreeCall {
+                node: NodeId::new(0x100),
+                method: "claim".to_owned(),
+                args: vec![7],
+                text: SecretText::new(SECRET),
+            }
+        ),
+        format!(
+            "{:#?}",
+            gnoblin_render::transaction::TreeCall {
+                node: NodeId::new(0x100),
+                method: "claim".to_owned(),
+                args: vec![7],
+                text: SecretText::new(SECRET),
+            }
+        ),
+    ];
+    for rendering in &renderings {
+        assert!(
+            !rendering.contains(SECRET),
+            "a Debug form shows the call text: {rendering}"
+        );
+    }
 }

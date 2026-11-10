@@ -204,12 +204,18 @@ fn the_op_object_has_every_section_4_1_field() {
 }
 
 #[test]
-fn no_tree_member_is_sensitive() {
+fn only_transact_is_a_sensitive_tree_member() {
     let catalog = stock();
     let text = gnoblin_schema::proto::sensitive_table(&catalog);
+    let tree: Vec<&str> = text.lines().filter(|line| line.contains("\"tree\"")).collect();
+    assert_eq!(
+        tree.len(),
+        1,
+        "exactly one tree member is sensitive, the transact that carries call text: {tree:?}"
+    );
     assert!(
-        !text.lines().any(|line| line.contains("\"tree\"")),
-        "no tree member is in the sensitive table: the tree is owner-socket only"
+        tree[0].contains("transact"),
+        "the sensitive tree member is transact: {tree:?}"
     );
 }
 #[test]

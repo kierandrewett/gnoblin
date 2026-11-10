@@ -577,10 +577,11 @@ impl State {
             if call.method == "unclaim" {
                 continue;
             }
-            let chord = match Chord::parse(&call.text, ChordKind::Key, &SeatKeysyms) {
+            let chord = match Chord::parse(call.text.expose(), ChordKind::Key, &SeatKeysyms) {
                 Ok(chord) => chord,
                 Err(_) => {
-                    log::warn!(area = "claim", chord = %call.text, "a seat claim's chord does not parse");
+                    // The chord is not logged: call text is a generic secret-capable argument.
+                    log::warn!(area = "claim", "a seat claim's chord does not parse");
                     continue;
                 }
             };
@@ -596,7 +597,7 @@ impl State {
                         },
                     );
                 }
-                Err(_) => log::warn!(area = "claim", chord = %call.text, "a seat claim's chord is already bound"),
+                Err(_) => log::warn!(area = "claim", "a seat claim's chord is already bound"),
             }
         }
     }

@@ -20,10 +20,12 @@ type = "uint"
 since = "0.2.0"
 
 # Apply one transaction. `base_serial` is the last change batch the shell applied; `serial`
-# is the shell's transaction counter, monotone per connection.
+# is the shell's transaction counter, monotone per connection. Secret: a `call` op carries a
+# `text` that may be a password, so every transact frame is flagged and redacted by the envelope.
 [[object.method]]
 name = "transact"
 since = "0.2.0"
+secret = true
 
 [[object.method.param]]
 name = "base_serial"
@@ -412,9 +414,11 @@ name = "dy"
 type = "double"
 since = "0.2.0"
 
-# The `text` of a `call` (the chord of a seat claim). Empty for every other call and kind.
+# The `text` of a `call`: the chord of a seat claim, or the password of an authenticate call.
+# Secret, so no log, dump or error ever shows it.
 [[object.property]]
 name = "text"
+secret = true
 type = "string"
 since = "0.2.0"
 default = ""

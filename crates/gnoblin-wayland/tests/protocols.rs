@@ -21,6 +21,7 @@
 //!   `a_keyboard_repeat_committed_after_start_reaches_the_client`,
 //!   `a_layout_committed_after_start_reaches_the_client` — `keyboard`
 
+use gnoblin_secret::SecretText;
 use std::io::{Read, Seek};
 use std::os::fd::AsFd;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -1929,7 +1930,7 @@ fn a_claimed_chord_reaches_the_shell_and_never_the_client() {
                     node: CLAIM_SEAT,
                     method: "claim".to_owned(),
                     args: vec![1],
-                    text: "<Super>Return".to_owned(),
+                    text: SecretText::new("<Super>Return"),
                 },
             ]),
         );
@@ -2040,7 +2041,7 @@ fn an_unclaimed_chord_reaches_the_client_again() {
                         node: CLAIM_SEAT,
                         method: "claim".to_owned(),
                         args: vec![1],
-                        text: "<Super>Return".to_owned(),
+                        text: SecretText::new("<Super>Return"),
                     },
                 ]),
             ),
@@ -2063,7 +2064,7 @@ fn an_unclaimed_chord_reaches_the_client_again() {
                     node: CLAIM_SEAT,
                     method: "unclaim".to_owned(),
                     args: vec![1],
-                    text: String::new(),
+                    text: SecretText::default(),
                 }]),
             ),
             "the shell's unclaim applies"
@@ -2119,7 +2120,7 @@ fn a_destroyed_seat_takes_its_claims_with_it() {
                         node: CLAIM_SEAT,
                         method: "claim".to_owned(),
                         args: vec![1],
-                        text: "<Super>Return".to_owned(),
+                        text: SecretText::new("<Super>Return"),
                     },
                 ]),
             ),
@@ -2174,7 +2175,7 @@ fn a_locked_session_never_fires_a_claimed_chord() {
                         node: CLAIM_SEAT,
                         method: "claim".to_owned(),
                         args: vec![1],
-                        text: "<Super>Return".to_owned(),
+                        text: SecretText::new("<Super>Return"),
                     },
                 ]),
             ),

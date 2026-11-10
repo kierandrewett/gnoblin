@@ -835,7 +835,11 @@ impl Dispatcher {
                         },
                     );
                 }
-                IpcEvent::Request { client, envelope } => self.request(client, &envelope),
+                IpcEvent::Request { client, mut envelope } => {
+                    self.request(client, &envelope);
+                    // A sensitive frame's raw payload (a password) is overwritten once answered.
+                    envelope.wipe_secret();
+                }
                 IpcEvent::Lost { client } => self.lost(client),
                 IpcEvent::Closed { client } => self.close(client, false),
                 IpcEvent::TreeChanged { client, batch } => self.tree_changed(client, &batch),
@@ -1501,7 +1505,7 @@ impl Dispatcher {
             self.refuse(client, envelope, MALFORMED, "the transact arguments do not decode");
             return;
         };
-        if let Some(reply) = self.tree.transact(client, envelope.request_id, &args) {
+        if let Some(reply) = self.tree.transact(client, envelope.request_id, args) {
             self.answer_transact(client, envelope.request_id, &reply);
         }
     }

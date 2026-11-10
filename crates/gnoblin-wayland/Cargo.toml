@@ -20,6 +20,8 @@ unsafe_code = "deny"
 all = { level = "deny", priority = -1 }
 
 [dependencies]
+# Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
+gnoblin-secret.workspace = true
 # `zwp_virtual_keyboard_v1` is served here (the server half, from the same XML the client
 # half is generated from); the tests use the client half of it too.
 wayland-protocols-misc = { version = "0.3.12", features = ["client", "server"] }

@@ -228,7 +228,7 @@ fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
     assert!(tx.node(&mirror, 4).is_none());
     assert_eq!(tx.node(&mirror, 1).expect("root").children, vec![3]);
     assert_eq!(
-        tx.call(&mirror, 4, "measure", Vec::new(), String::new()),
+        tx.call(&mirror, 4, "measure", Vec::new(), gnoblin_secret::SecretText::default()),
         Err(TxError::UnknownNode(4))
     );
 }
@@ -385,4 +385,31 @@ fn a_pending_insert_and_its_echo_do_not_double_apply_the_window() {
     assert_eq!(children(&mirror, 6), Vec::<NodeId>::new());
     mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("echo applies");
     assert_eq!(children(&mirror, 6), vec![5]);
+}
+
+#[test]
+fn debug_of_a_lua_call_never_shows_its_text() {
+    const SECRET: &str = "hunter2-never-print-me";
+    let op = LuaOp::Call {
+        node: 5,
+        method: "claim".to_owned(),
+        args: vec![7],
+        text: gnoblin_secret::SecretText::new(SECRET),
+    };
+    let transaction = gnoblin_lua::tree_mirror::LuaTransaction {
+        base_serial: 1,
+        serial: 2,
+        ops: vec![op.clone()],
+    };
+    for rendering in [
+        format!("{op:?}"),
+        format!("{op:#?}"),
+        format!("{transaction:?}"),
+        format!("{transaction:#?}"),
+    ] {
+        assert!(
+            !rendering.contains(SECRET),
+            "a Debug form shows the call text: {rendering}"
+        );
+    }
 }

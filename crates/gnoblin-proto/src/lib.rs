@@ -42,6 +42,7 @@ pub mod privilege;
 mod proto_tags;
 pub mod report;
 mod transport;
+mod tree_redact;
 mod version;
 
 pub use capability::{Capabilities, Capability};

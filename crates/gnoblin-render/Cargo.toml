@@ -8,6 +8,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
+gnoblin-secret.workspace = true
 # Rectangles, points, the 3D-ready transform, vectors, the compositing scale,
 # the output identity and the named `unsupported-3d` refusal are shared with
 # every other crate.

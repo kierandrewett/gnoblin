@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gnoblin_proto::tree::effect;
+use gnoblin_secret::SecretText;
 use mlua::{Lua, Table, Value};
 
 use crate::tree_mirror::{LuaMirror, LuaTransaction, LuaTxBuilder, LuaValue, NIL, NodeId};
@@ -273,7 +274,7 @@ impl TreeCore {
             .map_err(|e| e.to_string())
     }
 
-    fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: String) -> Result<(), String> {
+    fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: SecretText) -> Result<(), String> {
         let class = self.class_of(node)?;
         if !self.has_method(&class, method) {
             return Err(format!("{class} has no method {method}"));
@@ -593,7 +594,12 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
                 let args = args.map_or_else(Vec::new, |bytes| bytes.as_bytes().to_vec());
                 shared
                     .borrow_mut()
-                    .call(node_arg(node)?, &method, args, text.unwrap_or_default())
+                    .call(
+                        node_arg(node)?,
+                        &method,
+                        args,
+                        SecretText::new(text.unwrap_or_default()),
+                    )
                     .map_err(lua_err)
             },
         )?,

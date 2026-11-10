@@ -20,6 +20,7 @@ use gnoblin_render::Pass;
 use gnoblin_render::transaction::{
     ClassInfo, Code, PointerInput, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
+use gnoblin_secret::SecretText;
 use gnoblin_types::{ClientId, Color, NodeId};
 use gnoblin_wayland::{
     ChordEvent, ChordState, EffectSpec, FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
@@ -152,12 +153,15 @@ impl TreeHostHandle {
     /// connection that does not hold the tree is refused `not-privileged`, and a transaction
     /// that does not convert is refused with its op. `None` means the frame answers later,
     /// with `IpcEvent::TreeReply`.
-    pub fn transact(&self, client: ClientId, request_id: u64, args: &TransactArgs) -> Option<TreeReply> {
+    pub fn transact(&self, client: ClientId, request_id: u64, mut args: TransactArgs) -> Option<TreeReply> {
         let me = holder(client);
         if lock(&self.session).holder() != Some(me) {
             return Some(self.refusal(Code::NotPrivileged, -1));
         }
-        let tx = match transaction(&args.ops) {
+        let base_serial = args.base_serial;
+        // Moved out, so the ops (and any call text they carry) leave `args` and are wiped by the
+        // transaction that takes them, not kept alive by the request.
+        let tx = match transaction(std::mem::take(&mut args.ops)) {
             Ok(tx) => tx,
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
@@ -166,14 +170,13 @@ impl TreeHostHandle {
         // waited for the frame has lost the tree, and the frame refuses it.
         let session = Arc::clone(&self.session);
         let admitted = move || lock(&session).holder() == Some(me);
-        self.queue
-            .submit(args.base_serial, tx, admitted, move |serial, result| {
-                let _ = events.send(IpcEvent::TreeReply {
-                    client,
-                    request_id,
-                    reply: TreeReply { serial, result },
-                });
+        self.queue.submit(base_serial, tx, admitted, move |serial, result| {
+            let _ = events.send(IpcEvent::TreeReply {
+                client,
+                request_id,
+                reply: TreeReply { serial, result },
             });
+        });
         None
     }
 
@@ -434,9 +437,9 @@ pub fn snapshot_payloads(snapshot: &TreeSnapshot) -> Vec<SnapshotPayload> {
 
 /// A transaction from its wire ops. The first op that does not convert refuses the batch,
 /// with its position as `failed_op`.
-fn transaction(ops: &[op::Properties]) -> Result<TreeTransaction, TreeRefusal> {
+fn transaction(ops: Vec<op::Properties>) -> Result<TreeTransaction, TreeRefusal> {
     let converted = ops
-        .iter()
+        .into_iter()
         .enumerate()
         .map(|(index, op)| {
             tree_op(op).map_err(|code| TreeRefusal {
@@ -450,11 +453,11 @@ fn transaction(ops: &[op::Properties]) -> Result<TreeTransaction, TreeRefusal> {
 
 /// One wire op as a transaction op. A kind this build does not know, or a value it cannot
 /// carry, is `bad-value`.
-fn tree_op(op: &op::Properties) -> Result<TreeOp, Code> {
+fn tree_op(mut op: op::Properties) -> Result<TreeOp, Code> {
     let node = NodeId::new(op.node);
     Ok(match op.kind.as_str() {
         "new" => TreeOp::New {
-            class: op.class.clone(),
+            class: std::mem::take(&mut op.class),
             id: NodeId::new(op.id),
         },
         "insert" => TreeOp::Insert {
@@ -467,20 +470,25 @@ fn tree_op(op: &op::Properties) -> Result<TreeOp, Code> {
         "input" => TreeOp::Input {
             node,
             seat: NodeId::new(op.seat),
-            input: pointer_input(op)?,
+            input: pointer_input(&op)?,
         },
         "set" => TreeOp::Set {
             node,
             key: op.key.clone(),
-            value: set_value(op)?,
-            timing: timing(op),
+            value: set_value(&op)?,
+            timing: timing(&op),
         },
-        "call" => TreeOp::TreeCall {
-            node,
-            method: op.method.clone(),
-            args: call_args(&op.args)?,
-            text: op.text.clone(),
-        },
+        "call" => {
+            // The password (or chord) moves out of the wire op into a value that never prints and
+            // is wiped on drop, before anything else can fail; the wire op is left empty.
+            let text = SecretText::new(std::mem::take(&mut op.text));
+            TreeOp::TreeCall {
+                node,
+                method: std::mem::take(&mut op.method),
+                args: call_args(&op.args)?,
+                text,
+            }
+        }
         _ => return Err(Code::BadValue),
     })
 }
@@ -633,4 +641,92 @@ fn call_args(bytes: &[u8]) -> Result<Vec<i64>, Code> {
 
 fn wire_index(index: usize) -> i64 {
     i64::try_from(index).unwrap_or(i64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ipc::tree::{TreeReply, snapshot_of};
+    use gnoblin_render::{Actor, NodeSpec, Scene};
+    use gnoblin_types::Rect;
+    use gnoblin_wayland::TreeFrame;
+    use prost::Message;
+    use std::time::Instant;
+
+    /// A secret a shell would send as a call's text argument.
+    const PASSWORD: &str = "correct-horse-battery-staple";
+    const ROOT: NodeId = NodeId::new(1);
+    const SEAT: NodeId = NodeId::new(0x200);
+
+    /// Fails if `needle` is in `bytes` or in the Debug text of the payload.
+    fn assert_no_password(label: &str, wire: &[u8], debug: &str) {
+        let needle = PASSWORD.as_bytes();
+        assert!(
+            !wire.windows(needle.len()).any(|window| window == needle),
+            "{label}: the password is in the encoded bytes"
+        );
+        assert!(!debug.contains(PASSWORD), "{label}: the password is in the Debug text");
+    }
+
+    /// A seat claim carrying the password, applied through a real frame with the real schema.
+    /// Every payload the compositor sends for it (reply, changes, snapshot) is encoded and
+    /// scanned: the password must be in none of them, though the frame does keep it for the
+    /// claim it runs.
+    #[test]
+    fn a_call_password_is_in_no_encoded_payload() {
+        let (events, _events_rx) = std::sync::mpsc::channel();
+        let host = TreeHostHandle::new(events).expect("host builds");
+        let mut frame = TreeFrame::with_hooks(host.hooks());
+        let mut scene = Scene::new();
+        scene
+            .insert_as(Actor::Compositor, ROOT, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+            .expect("root inserts");
+        scene.set_root(Some(ROOT)).expect("root names");
+
+        type Replies = Vec<(u64, Result<gnoblin_render::transaction::TreeApplied, TreeRefusal>)>;
+        let replies: Arc<Mutex<Replies>> = Arc::default();
+        let sink = Arc::clone(&replies);
+        frame.queue().submit(
+            0,
+            TreeTransaction::new(vec![
+                TreeOp::New {
+                    class: "seat".to_owned(),
+                    id: SEAT,
+                },
+                TreeOp::Insert {
+                    node: SEAT,
+                    parent: ROOT,
+                    index: None,
+                },
+                TreeOp::TreeCall {
+                    node: SEAT,
+                    method: "claim".to_owned(),
+                    args: vec![7],
+                    text: SecretText::new(PASSWORD),
+                },
+            ]),
+            || true,
+            move |serial, result| sink.lock().unwrap().push((serial, result)),
+        );
+        frame.drain(&mut scene, Instant::now);
+
+        let (serial, result) = replies.lock().unwrap().remove(0);
+        let applied = result.expect("the transaction applies");
+        assert_eq!(frame.take_claims().len(), 1, "the frame keeps the claim it runs");
+
+        let changes = changes_payload(serial, &applied.changes);
+        let reply = reply_payload(&TreeReply {
+            serial,
+            result: Ok(applied),
+        });
+        let snapshot = snapshot_payloads(&snapshot_of(&scene, &host.classes, serial));
+
+        let changes_wire = changes.encode_to_vec();
+        assert_no_password("changes", &changes_wire, &format!("{changes:?}"));
+        let reply_wire = reply.encode_to_vec();
+        assert_no_password("reply", &reply_wire, &format!("{reply:?}"));
+        for payload in &snapshot {
+            assert_no_password("snapshot", &payload.encode_to_vec(), &format!("{payload:?}"));
+        }
+    }
 }

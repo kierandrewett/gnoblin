@@ -75,6 +75,7 @@
 mod common;
 
 use common::tree_hash;
+use gnoblin_secret::SecretText;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::str::FromStr;
@@ -511,7 +512,7 @@ fn parse_op(keyword: &str, line: &mut Line<'_>) -> Result<TreeOp, ParseError> {
                 node,
                 method,
                 args,
-                text: String::new(),
+                text: SecretText::default(),
             })
         }
         "set" => {
@@ -873,7 +874,7 @@ impl Generator {
                 node,
                 method: "focus".into(),
                 args: Vec::new(),
-                text: String::new(),
+                text: SecretText::default(),
             },
         }
     }

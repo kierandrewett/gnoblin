@@ -8,6 +8,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
+gnoblin-secret.workspace = true
 # The Lua VM (D10): Lua 5.5, vendored, so the runtime links one Lua on every
 # distribution target.
 mlua.workspace = true
