@@ -3433,6 +3433,9 @@ impl Host for State {
         for change in self.composer.take_tree_changes() {
             self.tree.record(change);
         }
+        for node in self.composer.take_tree_ready() {
+            self.tree.ready(node);
+        }
         // The tree's transactions apply to the scene the composer draws from, before the
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;

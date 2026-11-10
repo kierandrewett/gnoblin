@@ -268,6 +268,8 @@ pub struct Composer {
     /// The tree changes made since the frame last took them: a window's node created or
     /// destroyed, published in the next batch.
     tree_changes: Vec<TreeChange>,
+    /// Window nodes created since the last take, announced to the shell as ready.
+    tree_ready: Vec<NodeId>,
     /// Whether the shell held the tree at the last placement check. While it does, the composer
     /// leaves the node's x and y to the shell.
     placing: bool,
@@ -308,6 +310,7 @@ impl Composer {
             flash: None,
             workspace_slide: None,
             tree_changes: Vec::new(),
+            tree_ready: Vec::new(),
             placing: false,
             views: BTreeMap::new(),
         }
@@ -644,6 +647,12 @@ impl Composer {
     /// Takes the tree changes made since the last take, in the order they happened.
     pub fn take_tree_changes(&mut self) -> Vec<TreeChange> {
         std::mem::take(&mut self.tree_changes)
+    }
+
+    /// Takes the window nodes created since the last take. Each is announced to the shell once,
+    /// when its node first exists with content.
+    pub fn take_tree_ready(&mut self) -> Vec<NodeId> {
+        std::mem::take(&mut self.tree_ready)
     }
 
     /// Follows the shell's hold on the tree. When the hold changed since the last check, every
@@ -1831,6 +1840,7 @@ impl Composer {
                             class: "window".to_owned(),
                             index,
                         });
+                        self.tree_ready.push(id);
                         for (key, value) in [("title", title), ("app_id", app_id)] {
                             if !value.is_empty() {
                                 self.tree_changes.push(TreeChange::Set {
@@ -3762,6 +3772,19 @@ mod tests {
             } if *set == node && set_key == key => Some(*value),
             _ => None,
         })
+    }
+
+    #[test]
+    fn a_window_is_announced_ready_once_when_it_first_has_a_node() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        assert!(composer.take_tree_ready().is_empty(), "no content, no node, no ready");
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        assert_eq!(composer.take_tree_ready(), vec![node]);
+        composer.set_window_content(window, Some(content()));
+        assert!(composer.take_tree_ready().is_empty(), "a commit announces nothing new");
     }
 
     #[test]

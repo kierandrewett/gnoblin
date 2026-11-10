@@ -251,6 +251,10 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             request: request.name().to_owned(),
             ..base
         },
+        TreeFrameInput::Ready => EventPayload {
+            kind: "ready".to_owned(),
+            ..base
+        },
         TreeFrameInput::Input(input) => {
             let kind = input.name().to_owned();
             match input {

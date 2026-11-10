@@ -520,6 +520,7 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
         .map(|event| match &event.event {
             TreeFrameInput::Input(input) => input.name(),
             TreeFrameInput::Request(_) => "request",
+            TreeFrameInput::Ready => "ready",
         })
         .collect();
     assert_eq!(names, ["enter", "motion", "press", "release", "scroll", "leave"]);

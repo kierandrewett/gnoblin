@@ -142,6 +142,8 @@ pub enum TreeFrameInput {
     Request(TreeRequest),
     /// A pointer edge over the node.
     Input(TreeInput),
+    /// The node first has content. Sent once per window node, when it is created.
+    Ready,
 }
 
 /// One event for a node. `frame` is the frame that delivered it; `seq` numbers the events of
@@ -339,6 +341,11 @@ impl TreeFrame {
     /// Records a request event for `node`, delivered to the shell in the next batch.
     pub fn event(&mut self, node: NodeId, request: TreeRequest) {
         self.push_event(node, TreeFrameInput::Request(request));
+    }
+
+    /// Records that `node` has content for the first time, delivered to the shell in the next batch.
+    pub fn ready(&mut self, node: NodeId) {
+        self.push_event(node, TreeFrameInput::Ready);
     }
 
     /// Records a pointer edge over `node`, delivered to the shell in the next batch.

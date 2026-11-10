@@ -11,7 +11,7 @@ use gnoblin_backend::render::compose::Composer;
 use gnoblin_render::transaction::{ClassInfo, PropertyInfo, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_render::{Actor, NodeSpec};
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::{TreeBatch, TreeFrame, TreeHooks};
+use gnoblin_wayland::{FrameTreeEvent, TreeBatch, TreeFrame, TreeFrameInput, TreeHooks};
 
 /// A schema with one class, `node`, holding one writable double, `opacity`.
 struct Table;
@@ -392,4 +392,20 @@ fn a_seat_name_already_taken_by_another_seat_is_refused_bad_value() {
     drain(&mut frame, &mut composer);
     assert_eq!(replies.lock().unwrap().last(), Some(&(1, false)));
     composer.with_scene(|scene| assert_eq!(scene.seat_name(second), None));
+}
+
+#[test]
+fn a_window_node_is_announced_ready_once_in_the_batch_that_follows_its_mapping() {
+    let mut composer = composer_with_window();
+    let mut frame = new_frame();
+    frame.ready(WINDOW);
+    drain(&mut frame, &mut composer);
+    let batches = take_batches();
+    let ready: Vec<&FrameTreeEvent> = batches
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter(|event| matches!(event.event, TreeFrameInput::Ready))
+        .collect();
+    assert_eq!(ready.len(), 1, "one ready event: {batches:?}");
+    assert_eq!(ready[0].node, WINDOW);
 }
