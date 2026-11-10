@@ -6,6 +6,8 @@
 
 - Attaching the tree shell from a connection without the owner grant is refused `not-owner` (`failed_op` -1), not `not-privileged`. Test `attach_refuses_a_non_owner_peer` replaces `attach_refuses_an_unprivileged_peer`. A transaction from a connection that does not hold the tree is still refused `not-privileged`.
 
+- Frame callbacks reach a window that only a visible `View` shows, not only one on a monitor. A View shows the subtree under its `source` when the View and its ancestors are visible with non-zero opacity. A mapped window on neither a monitor nor such a View gets no frame callback; before, output-less mapped windows got them. Unit tests `a_visible_view_shows_its_source_subtree_and_a_hidden_one_shows_nothing` and the other `view` tests in `gnoblin-render` cover the visibility rules and a View inside its own source. Compositor-level callback tests are not added: there is no harness for the shell tree.
+
 ### Added
 
 - Window nodes publish their `x`, `y`, `width` and `height` as `set` changes when they change: the size is the content size, the position is the placed frame origin.

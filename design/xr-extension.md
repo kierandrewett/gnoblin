@@ -417,6 +417,10 @@ Code today:
 - **What:** a surface drawn into a captured panel gets its frame callbacks from that capture.
 - **Why:** windows on a virtual output have no display. Without this, their clients would stop drawing.
 - **Code today:** callbacks are sent from the output frame path (`crates/gnoblin-wayland/src/frame.rs:237`).
+- **Status:** done. A window is sent frame callbacks when a monitor shows it or a drawn `View` shows its node: the
+  node lies in the `source` subtree of a View that is visible with no hidden ancestor and non-zero opacity. The set
+  is computed once per callback pass (`Scene::view_shown_nodes`). A window on neither gets no callback, which is a
+  change: output-less mapped windows used to get them.
 
 ### G10: wired headsets only
 

@@ -1047,6 +1047,68 @@ impl Scene {
         Some(opacity)
     }
 
+    /// Whether a node draws: it and every ancestor are visible, and its composed opacity is above
+    /// zero. An unknown node does not draw.
+    #[must_use]
+    pub fn drawn(&self, id: NodeId) -> bool {
+        let mut opacity = 1.0_f32;
+        let mut current = Some(id);
+        while let Some(node_id) = current {
+            let Some(node) = self.nodes.get(&node_id) else {
+                return false;
+            };
+            if !node.visible() {
+                return false;
+            }
+            opacity *= node.transform.opacity;
+            current = node.parent;
+        }
+        opacity > 0.0
+    }
+
+    /// Every node a drawn View shows: the subtree under each drawn View's `source`. A View whose
+    /// source is missing, or which sits inside its own source, shows nothing. One pass over the
+    /// tree: a node reached through two Views is listed once and its subtree is walked once.
+    #[must_use]
+    pub fn view_shown_nodes(&self) -> BTreeSet<NodeId> {
+        let mut views = Vec::new();
+        let mut stack: Vec<NodeId> = self.root_ids().to_vec();
+        while let Some(node) = stack.pop() {
+            if self.class(node) == Some("View") && self.drawn(node) {
+                views.push(node);
+            }
+            stack.extend(self.children(node).unwrap_or(&[]));
+        }
+        let mut shown = BTreeSet::new();
+        for view in views {
+            let Some(source) = self.source(view).filter(|source| self.contains(*source)) else {
+                continue;
+            };
+            if self.is_within(view, source) {
+                continue;
+            }
+            let mut below = vec![source];
+            while let Some(node) = below.pop() {
+                if shown.insert(node) {
+                    below.extend(self.children(node).unwrap_or(&[]));
+                }
+            }
+        }
+        shown
+    }
+
+    /// Whether `id` is `root` or lies below it. Walks up from `id`, so it ends at the root.
+    fn is_within(&self, id: NodeId, root: NodeId) -> bool {
+        let mut current = Some(id);
+        while let Some(node) = current {
+            if node == root {
+                return true;
+            }
+            current = self.parent(node);
+        }
+        false
+    }
+
     /// Raise a node to paint last among its siblings, on top of all of them.
     pub fn raise(&mut self, id: NodeId) -> Result<(), SceneError> {
         let parent = self.parent_of_existing(id)?;
@@ -1989,6 +2051,85 @@ mod tests {
         assert_eq!(scene.source(NodeId::new(2)), None);
         assert_eq!(scene.camera(NodeId::new(2)), Some(NodeId::new(1)));
         assert!(scene.set_source(NodeId::new(9), None).is_err());
+    }
+
+    /// A scene with a root (1) and a View (2) under it sourcing node 3, which holds node 5.
+    fn view_scene() -> Scene {
+        let mut scene = Scene::new();
+        for id in [1, 2, 3, 5] {
+            scene
+                .insert(NodeId::new(id), NodeSpec::new(rect(0, 0, 50, 50)))
+                .expect("a node");
+        }
+        scene
+            .reparent(NodeId::new(2), Some(NodeId::new(1)))
+            .expect("view under root");
+        scene
+            .reparent(NodeId::new(3), Some(NodeId::new(1)))
+            .expect("source under root");
+        scene
+            .reparent(NodeId::new(5), Some(NodeId::new(3)))
+            .expect("source child");
+        scene.set_class(NodeId::new(2), Some("View".to_owned())).expect("class");
+        scene.set_source(NodeId::new(2), Some(NodeId::new(3))).expect("source");
+        scene
+    }
+
+    fn ids(values: &[u64]) -> BTreeSet<NodeId> {
+        values.iter().map(|value| NodeId::new(*value)).collect()
+    }
+
+    #[test]
+    fn a_visible_view_shows_its_source_subtree_and_a_hidden_one_shows_nothing() {
+        let mut scene = view_scene();
+        assert_eq!(scene.view_shown_nodes(), ids(&[3, 5]));
+        scene.set_visible(NodeId::new(2), false).expect("hide the view");
+        assert!(scene.view_shown_nodes().is_empty());
+    }
+
+    #[test]
+    fn a_view_under_a_hidden_ancestor_shows_nothing() {
+        let mut scene = view_scene();
+        scene.set_visible(NodeId::new(1), false).expect("hide the root");
+        assert!(scene.view_shown_nodes().is_empty());
+    }
+
+    #[test]
+    fn a_view_at_zero_opacity_shows_nothing() {
+        let mut scene = view_scene();
+        let transform = VisualTransform {
+            opacity: 0.0,
+            ..VisualTransform::default()
+        };
+        scene.set_transform(NodeId::new(2), transform).expect("opacity");
+        assert!(scene.view_shown_nodes().is_empty());
+    }
+
+    #[test]
+    fn a_view_whose_source_is_gone_shows_nothing() {
+        let mut scene = view_scene();
+        scene.remove(NodeId::new(3)).expect("remove the source");
+        assert!(scene.view_shown_nodes().is_empty());
+    }
+
+    #[test]
+    fn a_view_inside_its_own_source_terminates_and_shows_nothing() {
+        let mut scene = view_scene();
+        scene
+            .reparent(NodeId::new(2), Some(NodeId::new(5)))
+            .expect("view under its source");
+        assert!(scene.view_shown_nodes().is_empty());
+        scene
+            .set_source(NodeId::new(2), Some(NodeId::new(2)))
+            .expect("self source");
+        assert!(scene.view_shown_nodes().is_empty());
+    }
+
+    #[test]
+    fn a_node_under_no_visible_view_is_not_shown() {
+        let scene = view_scene();
+        assert!(!scene.view_shown_nodes().contains(&NodeId::new(1)));
+        assert!(!scene.view_shown_nodes().contains(&NodeId::new(2)));
     }
 
     #[test]

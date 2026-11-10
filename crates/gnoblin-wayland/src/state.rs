@@ -2494,10 +2494,21 @@ impl State {
         // cannot see its frame must not render one. The owner's lock surfaces are the
         // only thing on screen while covered, so they always get theirs.
         if self.lock.state() == LockState::Unlocked {
-            for entry in self.windows.values() {
+            // A window is on screen if a monitor shows it, or a visible View shows its node.
+            // The View set is computed once for the whole pass.
+            let shown = self.composer.view_shown_nodes();
+            for (window, entry) in &self.windows {
                 // A window with no buffer has nothing on screen to have drawn, and Smithay's
                 // own helper refuses those for the same reason.
                 if !entry.mapped {
+                    continue;
+                }
+                let on_monitor = self.wm.window(*window).is_some_and(|managed| managed.output.is_some());
+                let in_view = self
+                    .composer
+                    .window_node(*window)
+                    .is_some_and(|node| shown.contains(&node));
+                if !on_monitor && !in_view {
                     continue;
                 }
                 let Some(surface) = entry.surface.wl_surface() else {

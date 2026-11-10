@@ -1368,6 +1368,12 @@ impl Composer {
             .find_map(|(window, entry)| (entry.node == Some(node)).then_some(*window))
     }
 
+    /// Every node a visible View shows, so a window there is on screen though on no monitor.
+    #[must_use]
+    pub fn view_shown_nodes(&self) -> BTreeSet<NodeId> {
+        self.scene.view_shown_nodes()
+    }
+
     /// The scene node of a window, once the composer has given it one.
     #[must_use]
     pub fn window_node(&self, window: WindowId) -> Option<NodeId> {
