@@ -1,0 +1,17 @@
+[package]
+name = "xr-tree"
+description = "The owner-socket tree client for gnoblin-xr: attaches to the tree namespace, reads the snapshot and applies changes into an xr-scene TreeView."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-client = { path = "../../../../crates/gnoblin-client" }
+gnoblin-proto = { path = "../../../../crates/gnoblin-proto" }
+xr-scene = { path = "../xr-scene" }
+
+[lints]
+workspace = true
