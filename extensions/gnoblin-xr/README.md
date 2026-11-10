@@ -1,8 +1,9 @@
 # gnoblin-xr
 
-`gnoblin-xr` is the XR extension for Gnoblin. It is an out-of-process program on the owner socket. It reads the `View`
-nodes under the node named `room` and submits them as OpenXR layers. It is purely translational: it does not decide what
-is drawn or where it sits. The design is in design/xr-extension.md (D34) and design/node-api-refactor.md, section 9.
+`gnoblin-xr` is the XR extension for Gnoblin. It is an out-of-process program on the owner socket. It attaches to the tree,
+reads the `View` nodes under the node named `room`, and plans them into OpenXR layers on every frame. It is purely
+translational: it does not decide what is drawn or where it sits. It does not yet submit those layers, so the session
+runs with empty layer lists. The design is in design/xr-extension.md (D34) and design/node-api-refactor.md, section 9.
 
 ## What exists
 
@@ -23,12 +24,15 @@ is drawn or where it sits. The design is in design/xr-extension.md (D34) and des
   returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
   `crates/xr-scene/README.md`.
 - **`xr-session`** (library): the OpenXR session and frame loop. `Runtime` is the trait the loop drives (`poll_event`, `begin_session`, `end_session`, `wait_frame`, `begin_frame`, `end_frame`, `locate_head`). `FrameLoop` is the state machine over it: it begins the session on `Ready`, ends it on `Stopping`, runs one paired `wait_frame`, `begin_frame`, `locate_head` and `end_frame` per frame only while the session is running, and returns cleanly on `Exiting`. The loop is tested with a fake runtime. `openxr_runtime` is the one OpenXR-backed `Runtime`: it loads the loader, creates a headless (`XR_MND_headless`) instance and session, and is the only `unsafe` code in the extension. Its one test is `#[ignore]` and runs only with `GNOBLIN_XR_MONADO=1`. See `crates/xr-session/README.md`.
-- **`gnoblin-xr`** (binary): a placeholder. It parses `--help` and `--version` and nothing else.
+- **`gnoblin-xr`** (binary): connects to the owner socket (`$GNOBLIN_IPC_SOCKET`, else `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`),
+  attaches to the `tree` namespace, opens the headless OpenXR session and runs `bridge::run`. The bridge polls the owner
+  socket and runs one frame-loop tick per pass. Each frame plans the `room` subtree against the located head pose and
+  logs the layer and skipped counts when they change. It exits when the runtime asks the session to exit or the owner
+  closes the socket. `--help` and `--version` print and exit without connecting.
 
 ## What does not exist
 
-- No swapchains and no layer submission: the frame loop passes empty layer lists to `end_frame`.
-- No owner-socket client. The binary does not connect to Gnoblin, and `xr-session` is not wired to it yet.
+- No swapchains and no layer submission: the frame loop passes empty layer lists to `end_frame`, and the plan is only logged.
 - No rendering, no GPU code, no input mapping, no environment.
 - The `[powers.process]` entry that starts this program is not written.
 

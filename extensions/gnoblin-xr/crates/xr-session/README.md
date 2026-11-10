@@ -22,7 +22,7 @@ The OpenXR session and frame loop for `gnoblin-xr`. It is a library with no sock
 ## Scope
 
 - The frame loop submits empty layer lists. There are no swapchains and no graphics binding.
-- The session is headless. It is not wired to the Gnoblin owner socket.
+- The session is headless. This crate has no socket code: `gnoblin-xr` joins it to the owner socket through `xr-tree`.
 - The OpenXR runtime's test is `#[ignore]`. It runs only with `GNOBLIN_XR_MONADO=1 cargo test -- --ignored`, against an
   installed Monado runtime that offers `XR_MND_headless`.
 
