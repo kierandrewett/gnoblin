@@ -11,14 +11,14 @@ use std::time::Duration;
 
 use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
-    AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
 use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
 
 use crate::tree_mirror::{
     Attached, LinkError, LuaChange, LuaChord, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
-    SnapshotNode, TreeLink, TxReply,
+    SnapshotNode, TreeEvent, TreeLink, TxReply,
 };
 
 const NAMESPACE: &str = "tree";
@@ -297,6 +297,17 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                     .map(to_snapshot_node)
                     .collect::<Result<Vec<_>, _>>()?,
             })
+        }
+        (Some(Kind::Event(_)), "event") => {
+            let payload = envelope
+                .payload_as::<EventPayload>()
+                .ok_or_else(|| undecodable(member))?;
+            Ok(LuaIncoming::Event(TreeEvent {
+                frame: payload.frame,
+                seq: payload.seq,
+                node: payload.node,
+                kind: payload.kind,
+            }))
         }
         (Some(Kind::Event(_)), "chord") => {
             let payload = envelope
