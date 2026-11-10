@@ -102,14 +102,56 @@ impl TreeRequest {
     }
 }
 
+/// A pointer event for a shell node, in that node's local space. The shell decides what a press
+/// or a scroll means; the compositor only reports where the ray landed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TreeInput {
+    /// A button went down on the node.
+    Press { x: f64, y: f64, button: u32 },
+    /// A button came up on the node.
+    Release { x: f64, y: f64, button: u32 },
+    /// The ray moved over the node.
+    Motion { x: f64, y: f64 },
+    /// A wheel or touchpad scroll; `dx` and `dy` are pixel distances.
+    Scroll { x: f64, y: f64, dx: f64, dy: f64 },
+    /// The ray entered the node.
+    Enter { x: f64, y: f64 },
+    /// The ray left the node it was over.
+    Leave,
+}
+
+impl TreeInput {
+    /// The name the shell reads in the `kind` field.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Press { .. } => "press",
+            Self::Release { .. } => "release",
+            Self::Motion { .. } => "motion",
+            Self::Scroll { .. } => "scroll",
+            Self::Enter { .. } => "enter",
+            Self::Leave => "leave",
+        }
+    }
+}
+
+/// What a delivered event says: a client request that needs policy, or a pointer edge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TreeFrameInput {
+    /// A client request the shell decides on.
+    Request(TreeRequest),
+    /// A pointer edge over the node.
+    Input(TreeInput),
+}
+
 /// One event for a node. `frame` is the frame that delivered it; `seq` numbers the events of
 /// one tree monotonically.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FrameTreeEvent {
     pub frame: u64,
     pub seq: u64,
     pub node: NodeId,
-    pub request: TreeRequest,
+    pub event: TreeFrameInput,
 }
 
 /// The sending side of the tree queue. Clones share one queue.
@@ -293,12 +335,21 @@ impl TreeFrame {
 
     /// Records a request event for `node`, delivered to the shell in the next batch.
     pub fn event(&mut self, node: NodeId, request: TreeRequest) {
+        self.push_event(node, TreeFrameInput::Request(request));
+    }
+
+    /// Records a pointer edge over `node`, delivered to the shell in the next batch.
+    pub fn input(&mut self, node: NodeId, input: TreeInput) {
+        self.push_event(node, TreeFrameInput::Input(input));
+    }
+
+    fn push_event(&mut self, node: NodeId, event: TreeFrameInput) {
         self.next_seq += 1;
         self.events.push(FrameTreeEvent {
             frame: 0,
             seq: self.next_seq,
             node,
-            request,
+            event,
         });
     }
 

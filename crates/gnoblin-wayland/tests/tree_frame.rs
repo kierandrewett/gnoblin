@@ -10,7 +10,7 @@ use gnoblin_render::transaction::{
 };
 use gnoblin_render::{Actor, NodeSpec, Scene};
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::{TreeBatch, TreeFrame, TreeHooks, TreeQueue};
+use gnoblin_wayland::{TreeBatch, TreeFrame, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
 
 /// A schema with one class, `node`, holding one animatable double.
 struct Table;
@@ -473,4 +473,59 @@ fn a_transaction_whose_holder_detached_before_the_frame_is_refused_not_privilege
     let refusal = replies[0].1.as_ref().expect_err("the transaction is refused");
     assert_eq!(refusal.failed_op, -1);
     assert_eq!(refusal.code, Code::NotPrivileged);
+}
+
+#[test]
+fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    frame.input(FIRST, TreeInput::Enter { x: 1.0, y: 2.0 });
+    frame.input(FIRST, TreeInput::Motion { x: 3.0, y: 4.0 });
+    frame.input(
+        FIRST,
+        TreeInput::Press {
+            x: 3.0,
+            y: 4.0,
+            button: 272,
+        },
+    );
+    frame.input(
+        FIRST,
+        TreeInput::Release {
+            x: 3.0,
+            y: 4.0,
+            button: 272,
+        },
+    );
+    frame.input(
+        FIRST,
+        TreeInput::Scroll {
+            x: 3.0,
+            y: 4.0,
+            dx: 0.0,
+            dy: 15.0,
+        },
+    );
+    frame.input(FIRST, TreeInput::Leave);
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let batches = take_batches();
+    assert_eq!(batches.len(), 1, "an input-only frame still publishes its batch");
+    assert_eq!(batches[0].serial, 0, "pointer edges are not scene changes");
+    assert_eq!(frame.serial(), 0, "pointer edges do not advance the serial");
+    let events = &batches[0].events;
+    let names: Vec<&str> = events
+        .iter()
+        .map(|event| match &event.event {
+            TreeFrameInput::Input(input) => input.name(),
+            TreeFrameInput::Request(_) => "request",
+        })
+        .collect();
+    assert_eq!(names, ["enter", "motion", "press", "release", "scroll", "leave"]);
+    assert!(events.iter().all(|event| event.node == FIRST && event.frame == 1));
+    assert!(
+        events.windows(2).all(|pair| pair[0].seq < pair[1].seq),
+        "sequence numbers increase"
+    );
 }

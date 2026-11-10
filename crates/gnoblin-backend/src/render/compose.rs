@@ -1156,6 +1156,15 @@ impl Composer {
         self.windows.get(&window).and_then(|entry| entry.node)
     }
 
+    /// The shell's node drawn topmost under a point on the output plane, with the point in that
+    /// node's local space. A window above it wins: only a topmost node that is not a window is the
+    /// shell's, so a shell node under a window is not reported.
+    #[must_use]
+    pub fn shell_node_at(&self, point: PointF) -> Option<(NodeId, PointF)> {
+        let hit = self.scene.hit_test(point)?;
+        self.window_of(hit.node).is_none().then_some((hit.node, hit.local))
+    }
+
     /// Whether the shell holds the tree's placement, so window requests are the shell's to decide.
     #[must_use]
     pub fn shell_places(&self) -> bool {
@@ -3422,5 +3431,51 @@ mod tests {
             )),
             "the destruction is published: {changes:?}"
         );
+    }
+
+    /// A shell node inserted after a window sits above it in the scene, so the ray picks the shell
+    /// node, in its local space.
+    #[test]
+    fn a_shell_node_above_a_window_is_the_pick_in_its_local_space() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(0, 0, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let shell = NodeId::new(1);
+        composer.with_scene(|scene| {
+            scene
+                .insert_as(
+                    gnoblin_render::Actor::Shell,
+                    shell,
+                    NodeSpec::new(Rect::new(0, 0, 50, 50)),
+                )
+                .expect("the shell may insert a node below the base");
+        });
+        let (node, local) = composer
+            .shell_node_at(PointF::new(10.0, 20.0))
+            .expect("the shell node is topmost at the point");
+        assert_eq!(node, shell);
+        assert_eq!(local, PointF::new(10.0, 20.0));
+    }
+
+    /// A window inserted after a shell node sits above it, so the ray picks no shell node and the
+    /// pointer stays with the window.
+    #[test]
+    fn a_window_above_a_shell_node_leaves_no_pick() {
+        let (mut composer, _) = screen();
+        let shell = NodeId::new(1);
+        composer.with_scene(|scene| {
+            scene
+                .insert_as(
+                    gnoblin_render::Actor::Shell,
+                    shell,
+                    NodeSpec::new(Rect::new(0, 0, 50, 50)),
+                )
+                .expect("the shell may insert a node below the base");
+        });
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(0, 0, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        assert!(composer.shell_node_at(PointF::new(10.0, 20.0)).is_none());
     }
 }

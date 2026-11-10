@@ -19,7 +19,7 @@ use gnoblin_render::transaction::{
     ClassInfo, Code, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
 use gnoblin_types::{ClientId, NodeId};
-use gnoblin_wayland::{FrameTreeEvent, TreeBatch, TreeHooks, TreeQueue};
+use gnoblin_wayland::{FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
 
 use super::server::IpcEvent;
 use super::tree::{
@@ -232,17 +232,45 @@ pub fn changes_payload(serial: u64, changes: &[TreeChange]) -> ChangesPayload {
     }
 }
 
-/// One request event as its wire payload: the node it is for and the request's name. The
-/// `kind` is always `request`, the only kind the compositor sends so far.
+/// One tree event as its wire payload: the node it is for, its `kind`, and the fields that kind
+/// carries. A `request` names the request; a pointer kind carries node-local `x` and `y`, plus
+/// `button` for press and release and `dx`, `dy` for scroll.
 #[must_use]
 pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
-    EventPayload {
+    let base = EventPayload {
         frame: event.frame,
         seq: event.seq,
         node: event.node.get(),
-        kind: "request".to_owned(),
-        request: event.request.name().to_owned(),
         ..Default::default()
+    };
+    match event.event {
+        TreeFrameInput::Request(request) => EventPayload {
+            kind: "request".to_owned(),
+            request: request.name().to_owned(),
+            ..base
+        },
+        TreeFrameInput::Input(input) => {
+            let kind = input.name().to_owned();
+            match input {
+                TreeInput::Press { x, y, button } | TreeInput::Release { x, y, button } => EventPayload {
+                    kind,
+                    x,
+                    y,
+                    button: button.into(),
+                    ..base
+                },
+                TreeInput::Motion { x, y } | TreeInput::Enter { x, y } => EventPayload { kind, x, y, ..base },
+                TreeInput::Scroll { x, y, dx, dy } => EventPayload {
+                    kind,
+                    x,
+                    y,
+                    dx,
+                    dy,
+                    ..base
+                },
+                TreeInput::Leave => EventPayload { kind, ..base },
+            }
+        }
     }
 }
 

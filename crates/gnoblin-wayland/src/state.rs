@@ -71,7 +71,7 @@ use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
-use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
+use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
 
@@ -98,7 +98,7 @@ use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
-use crate::tree_frame::{TreeFrame, TreeHooks, TreeRequest};
+use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 
 use crate::log;
 
@@ -535,6 +535,9 @@ pub struct State {
     pointer_position: SmithayPoint<f64, Logical>,
     /// How many pointer buttons are held. Focus does not follow the pointer while one is.
     held_buttons: u32,
+    /// The shell node the pointer ray is over, when the shell's tree picks one. Its edges are
+    /// sent to the shell; no client holds the pointer while it is set.
+    shell_hover: Option<NodeId>,
     /// The touch points the seat holds, by device slot: the window each went down on and
     /// where it is now.
     touch_points: HashMap<u32, TouchPoint>,
@@ -847,6 +850,7 @@ impl State {
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             held_buttons: 0,
+            shell_hover: None,
             touch_points: HashMap::new(),
             composer: Composer::new(),
             tree: TreeFrame::with_hooks(tree),
@@ -1636,6 +1640,7 @@ impl State {
         // under the pointer is the renderer's, the surface is the window's, and the two
         // are decided independently.
         self.frame_pointer(Some(position), None);
+        self.shell_pointer(self.shell_pick(position));
         let focus = self.surface_under(position);
         let pointer = self.pointer.clone();
         let serial = SERIAL_COUNTER.next_serial();
@@ -2853,6 +2858,36 @@ impl State {
         PresentAnswer::Focused(self.focus_window(window))
     }
 
+    /// The shell node the pointer ray picks, with the point in its local space. Only an
+    /// unlocked session whose shell holds the tree has one: a locked session routes the ray to
+    /// the lock surface, and a window topmost at the point takes it.
+    fn shell_pick(&self, position: SmithayPoint<f64, Logical>) -> Option<(NodeId, PointF)> {
+        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+            return None;
+        }
+        self.composer.shell_node_at(PointF::new(position.x, position.y))
+    }
+
+    /// Sends the shell the pointer edges over its nodes. A ray that enters a node, moves over it
+    /// or leaves it sends the matching edge; a pick of `None` leaves the node it was over.
+    fn shell_pointer(&mut self, pick: Option<(NodeId, PointF)>) {
+        let previous = self.shell_hover;
+        let current = pick.map(|(node, _)| node);
+        if let Some(old) = previous.filter(|old| Some(*old) != current) {
+            self.tree.input(old, TreeInput::Leave);
+        }
+        if let Some((node, local)) = pick {
+            let (x, y) = (local.x, local.y);
+            let input = if previous == current {
+                TreeInput::Motion { x, y }
+            } else {
+                TreeInput::Enter { x, y }
+            };
+            self.tree.input(node, input);
+        }
+        self.shell_hover = current;
+    }
+
     /// Asks the window manager to focus the window under the pointer.
     fn activate_under_pointer(&mut self) {
         self.activate_at(self.pointer_position);
@@ -3046,6 +3081,10 @@ impl State {
     ) -> Option<(WlSurface, SmithayPoint<f64, Logical>)> {
         if self.lock.state() != LockState::Unlocked {
             return self.lock_surface_under(position);
+        }
+        // A shell node the ray picks covers the windows beneath it: the pointer goes to the shell.
+        if self.shell_pick(position).is_some() {
+            return None;
         }
         // The scene holds each window where it is drawn, transforms included, so a rotated
         // window is hit where it appears. A window is a candidate only while managed, shown and
@@ -3366,6 +3405,7 @@ impl Host for State {
                 self.report_pointer();
             }
             InputEvent::PointerLeave => {
+                self.shell_pointer(None);
                 self.frame_pointer(None, None);
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
@@ -3382,6 +3422,15 @@ impl Host for State {
             }
             InputEvent::PointerButton { button, pressed } => {
                 self.frame_pointer(Some(self.pointer_position), Some(pressed));
+                if let Some((node, local)) = self.shell_pick(self.pointer_position) {
+                    let (x, y) = (local.x, local.y);
+                    let input = if pressed {
+                        TreeInput::Press { x, y, button }
+                    } else {
+                        TreeInput::Release { x, y, button }
+                    };
+                    self.tree.input(node, input);
+                }
                 if pressed {
                     // A press on a window is the activation request the window
                     // manager expects from the caller: attribution decides whether
@@ -3427,17 +3476,32 @@ impl Host for State {
             // cannot tell a wheel from a touchpad finger, so the source is the wheel: a client
             // that smooths scrolling still gets the exact fractional steps.
             InputEvent::PointerAxis { horizontal, vertical } if horizontal != 0 || vertical != 0 => {
-                let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
-                for (axis, steps) in [(Axis::Horizontal, horizontal), (Axis::Vertical, vertical)] {
-                    if steps != 0 {
-                        frame = frame
-                            .value(axis, f64::from(steps) / 120.0 * AXIS_PIXELS_PER_STEP)
-                            .v120(axis, steps);
+                // A wheel over a shell node is the shell's: the tree gets the pixel distance, and no client does.
+                if let Some((node, local)) = self.shell_pick(self.pointer_position) {
+                    let dx = f64::from(horizontal) / 120.0 * AXIS_PIXELS_PER_STEP;
+                    let dy = f64::from(vertical) / 120.0 * AXIS_PIXELS_PER_STEP;
+                    self.tree.input(
+                        node,
+                        TreeInput::Scroll {
+                            x: local.x,
+                            y: local.y,
+                            dx,
+                            dy,
+                        },
+                    );
+                } else {
+                    let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
+                    for (axis, steps) in [(Axis::Horizontal, horizontal), (Axis::Vertical, vertical)] {
+                        if steps != 0 {
+                            frame = frame
+                                .value(axis, f64::from(steps) / 120.0 * AXIS_PIXELS_PER_STEP)
+                                .v120(axis, steps);
+                        }
                     }
+                    let pointer = self.pointer.clone();
+                    pointer.axis(self, frame);
+                    pointer.frame(self);
                 }
-                let pointer = self.pointer.clone();
-                pointer.axis(self, frame);
-                pointer.frame(self);
             }
             // A scroll that moved nothing sends nothing, so a client never sees an empty frame.
             InputEvent::PointerAxis { .. } => {}

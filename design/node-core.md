@@ -464,6 +464,13 @@ chords, then the pick. The pick uses `Scene::hit_test` (`scene.rs:928`), so no s
 | any other node with `input` set        | `tree.event` with `kind`, `node`, node-local coordinates, buttons, modifiers |
 | nothing                                | nothing                                                                      |
 
+Implemented: pointer edges over a shell node (`enter`, `motion`, `leave`, `press`, `release`, `scroll`, with
+node-local `x`, `y`, `button`, and `dx`, `dy` for scroll). The pick is the topmost shell node under the pointer; it is
+taken only while the session is unlocked and the shell holds the tree, and a window topmost at the point takes the
+pointer instead. The pick does not check the node's `input` flag yet, so every shell node is an input target. Not done:
+key events. The design routes keys to `seat.focus` (`node-api-refactor.md`), so they are not sent to the shell. F30 is
+not enforced: an event for a node destroyed in the same frame is still sent after its `destroyed` change.
+
 `seq` is monotone per run. A chord claimed with `seat:bind{...}` (a `call` to the seat) is stored in the compositor's
 claim table, so a claimed chord never reaches a client. The claim is removed on `unbind` or when the seat is destroyed.
 
