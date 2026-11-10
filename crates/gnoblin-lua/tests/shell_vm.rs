@@ -65,6 +65,10 @@ struct Compositor {
     sent: Vec<Vec<LuaOp>>,
     /// The next transaction is refused when set.
     refuse_next: bool,
+    /// When set, transactions are recorded in `held` and applied only by `release`, as a real
+    /// compositor echoes them later.
+    hold: bool,
+    held: Vec<LuaTransaction>,
     /// Incoming messages waiting for the next `poll`.
     queue: Vec<LuaIncoming>,
 }
@@ -176,6 +180,14 @@ impl TreeLink for FakeLink {
     }
 
     fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError> {
+        {
+            let mut c = self.0.borrow_mut();
+            if c.hold {
+                c.sent.push(tx.ops.clone());
+                c.held.push(tx.clone());
+                return Ok(());
+            }
+        }
         let ops = tx.ops.clone();
         let refuse = {
             let mut c = self.0.borrow_mut();
@@ -193,7 +205,18 @@ impl TreeLink for FakeLink {
             }));
             return Ok(());
         }
-        let changes = self.apply(&ops);
+        self.apply_and_queue(serial, &ops);
+        Ok(())
+    }
+
+    fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError> {
+        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
+    }
+}
+
+impl FakeLink {
+    fn apply_and_queue(&self, serial: u64, ops: &[LuaOp]) {
+        let changes = self.apply(ops);
         let mut c = self.0.borrow_mut();
         c.serial = serial;
         c.queue.push(LuaIncoming::Changes { serial, changes });
@@ -204,11 +227,14 @@ impl TreeLink for FakeLink {
             code: String::new(),
             removed: Vec::new(),
         }));
-        Ok(())
     }
 
-    fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
+    /// Applies every held transaction in order, as the compositor echoes them.
+    fn release(&self) {
+        let held = std::mem::take(&mut self.0.borrow_mut().held);
+        for tx in held {
+            self.apply_and_queue(tx.serial, &tx.ops);
+        }
     }
 }
 
@@ -414,4 +440,34 @@ fn restart_rebuilds_mirror_without_recreating_nodes() {
     vm.frame(1.0, vec![]).expect("second idle frame");
     assert_eq!(sent(&comp).len(), before, "restart sends no transactions");
     assert_eq!(check(&mut vm, "count", "return #root.children"), "2");
+}
+
+// (N) while a transaction is in flight (its echo not yet back) a later frame holds its ops
+// rather than sending a second transaction on the same base, which the compositor refuses as
+// stale. After the echo lands the held ops go out on the new base and both nodes are inserted.
+#[test]
+fn holds_ops_while_transaction_in_flight() {
+    let comp = compositor_with_root_and_window();
+    comp.borrow_mut().hold = true;
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run("first", "local a = Node()\nroot:add(a)").expect("run first");
+    vm.frame(1.0, vec![]).expect("first write frame");
+    assert_eq!(sent(&comp).len(), 1, "first transaction sent");
+
+    vm.run("second", "local b = Node()\nroot:add(b)").expect("run second");
+    vm.frame(2.0, vec![]).expect("second write frame");
+    assert_eq!(sent(&comp).len(), 1, "second transaction held while first in flight");
+
+    FakeLink(comp.clone()).release();
+    vm.frame(3.0, vec![]).expect("echo frame");
+    vm.frame(4.0, vec![]).expect("send held frame");
+    assert_eq!(sent(&comp).len(), 2, "held ops sent after echo");
+    FakeLink(comp.clone()).release();
+    vm.frame(5.0, vec![]).expect("final echo frame");
+    assert_eq!(
+        check(&mut vm, "count", "return #root.children"),
+        "3",
+        "both nodes inserted"
+    );
 }

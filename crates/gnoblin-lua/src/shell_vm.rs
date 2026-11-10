@@ -86,6 +86,9 @@ pub struct ShellVm {
     /// What each sent transaction's ops were, by serial, until its reply arrives. A refusal names
     /// the failed op from this record.
     sent: BTreeMap<u64, Vec<String>>,
+    /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it:
+    /// a second transaction built on the same base is refused as stale.
+    in_flight: Option<u64>,
 }
 
 /// Names one op for a refusal: its index, class, property and value kind, so a refused write is
@@ -146,6 +149,7 @@ impl ShellVm {
             core,
             tick,
             incoming,
+            in_flight: None,
             sent: BTreeMap::new(),
         })
     }
@@ -192,8 +196,21 @@ impl ShellVm {
                 }
                 LuaIncoming::Reply(reply) => {
                     let described = self.sent.remove(&reply.serial);
+                    if !reply.applied && self.in_flight == Some(reply.serial) {
+                        // A refused transaction never advances the serial, so the gate opens now.
+                        self.in_flight = None;
+                    }
+                    crate::log::debug!(
+                        area = "shell",
+                        "transaction {} applied={} failed_op={} ops={:?}",
+                        reply.serial,
+                        reply.applied,
+                        reply.failed_op,
+                        described
+                    );
                     if !reply.applied && reply.code == "stale-base" {
-                        // The base moved under this frame's writes; the next change batch re-drives them.
+                        // Gated sends keep one transaction in flight, so this should not happen; the
+                        // ops are dropped and logged rather than silently re-sent on a stale base.
                         crate::log::debug!(
                             area = "shell",
                             "transaction {} dropped: stale base at op {}",
@@ -235,12 +252,15 @@ impl ShellVm {
         let wake = self.tick_lua(now, &touched, &created, events.into_iter().chain(tree_events))?;
         diagnostics.extend(self.core.borrow_mut().take_reports());
 
-        let tx = {
+        let ready = self.in_flight.is_none_or(|s| self.core.borrow().mirror().serial() >= s);
+        let tx = if ready {
             let mut core = self.core.borrow_mut();
             let serial = core.mirror_mut().serial();
-            core.take_transaction(serial + 1)
+            Some(core.take_transaction(serial + 1))
+        } else {
+            None
         };
-        if !tx.ops.is_empty() {
+        if let Some(tx) = tx.filter(|tx| !tx.ops.is_empty()) {
             let described = {
                 let core = self.core.borrow();
                 tx.ops
@@ -250,6 +270,7 @@ impl ShellVm {
                     .collect()
             };
             self.sent.insert(tx.serial, described);
+            self.in_flight = Some(tx.serial);
             self.link.transact(&tx).map_err(|e| ShellVmError::Link(e.0))?;
         }
 
