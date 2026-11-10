@@ -24,6 +24,8 @@ pub struct Ray {
 pub struct Hit {
     /// The View node the layer draws.
     pub id: NodeId,
+    /// The window node the View shows: where pointer input over this hit goes.
+    pub source: NodeId,
     /// The pixel column within the View, from `0` at the left to `extent[0]`.
     pub u: f64,
     /// The pixel row within the View, from `0` at the top to `extent[1]`.
@@ -76,7 +78,13 @@ fn hit_quad(p: &Placement, ray: &Ray) -> Option<Hit> {
         ray.origin[1] + t * ray.direction[1],
         ray.origin[2] + t * ray.direction[2],
     ];
-    Some(Hit { id: p.id, u, v, point })
+    Some(Hit {
+        id: p.id,
+        source: p.source,
+        u,
+        v,
+        point,
+    })
 }
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {

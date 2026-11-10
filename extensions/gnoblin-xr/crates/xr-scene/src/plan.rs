@@ -56,6 +56,9 @@ pub enum Space {
 pub struct Placement {
     /// The View node this layer draws.
     pub id: NodeId,
+    /// The window node the View shows: the `source` of its `Class::View`. Pointer input over
+    /// this layer is delivered to this node.
+    pub source: NodeId,
     /// Position in metres, orientation as a quaternion `[x, y, z, w]`.
     pub pose: Pose,
     /// Width and height in metres.
@@ -257,19 +260,19 @@ impl Walker<'_> {
         }
         let frame = frame_for(node, parent, self.head);
         if let Class::View {
-            source: Some(_),
+            source: Some(source),
             width,
             height,
         } = node.class
         {
-            self.emit(node.id, frame, width, height);
+            self.emit(node.id, source, frame, width, height);
         }
         for &child in &node.children {
             self.visit(child, frame);
         }
     }
 
-    fn emit(&mut self, id: NodeId, frame: Frame, width: f64, height: f64) {
+    fn emit(&mut self, id: NodeId, source: NodeId, frame: Frame, width: f64, height: f64) {
         let metres = self.metres;
         if !(metres.is_finite() && metres > 0.0) {
             self.skip(id, SkipReason::InvalidMetres);
@@ -294,6 +297,7 @@ impl Walker<'_> {
         let magnitude = t.scale.abs();
         let placement = Placement {
             id,
+            source,
             pose: Pose {
                 position: t.position.map(|c| c * metres),
                 orientation: t.rotation,

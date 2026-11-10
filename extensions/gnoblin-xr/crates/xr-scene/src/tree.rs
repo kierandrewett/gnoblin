@@ -33,6 +33,8 @@ pub enum Class {
     },
     /// A camera. A camera named `head` makes the Views beneath it head-locked.
     Camera { projection: CameraProjection },
+    /// A seat: the input device group the owner delivers pointer input on. It draws nothing.
+    Seat,
     /// Any other class. It draws nothing, but its transform and opacity still
     /// apply to the nodes beneath it.
     Other,

@@ -5,6 +5,7 @@ use xr_scene::{Hit, IDENTITY, Layer, Placement, Ray, Space, pick};
 fn quad(id: u64, z: f64, input: bool) -> Layer {
     Layer::Quad(Placement {
         id,
+        source: id + 100,
         pose: xr_scene::Pose {
             position: [0.0, 0.0, z],
             orientation: IDENTITY,
@@ -30,6 +31,7 @@ fn ray_through_quad_centre_gives_half_extent() {
     let layers = [quad(7, -2.0, true)];
     let hit = pick(&layers, &ray([0.0, 0.0, 0.0], [0.0, 0.0, -1.0])).expect("hit");
     assert_eq!(hit.id, 7);
+    assert_eq!(hit.source, 107, "the hit carries the window node the View shows");
     assert!(
         (hit.u - 500.0).abs() < 1e-9 && (hit.v - 250.0).abs() < 1e-9,
         "({}, {})",
@@ -97,6 +99,7 @@ fn quad_behind_the_origin_is_not_hit() {
 fn projection_layers_are_not_picked() {
     let layers = [Layer::Projection(Placement {
         id: 9,
+        source: 109,
         pose: xr_scene::Pose {
             position: [0.0, 0.0, -2.0],
             orientation: IDENTITY,

@@ -80,6 +80,15 @@ fn assert_vec_close(actual: [f64; 3], expected: [f64; 3]) {
 }
 
 #[test]
+fn placement_carries_the_source_window_node() {
+    let nodes = vec![room(&[5]), view(5, 1000.0, 500.0)];
+    let plan = plan(&scene(nodes, &[ROOM]), &head_pose(0.0, 0.0, 0.0), &opts());
+    let placed = quad(&plan.layers[0]);
+    assert_eq!(placed.id, 5);
+    assert_eq!(placed.source, 105, "the layer names the window node its View shows");
+}
+
+#[test]
 fn layers_follow_tree_order() {
     // room -> [a, b -> [c], d]: pre-order, so the parent's view precedes its children.
     let tree = scene(

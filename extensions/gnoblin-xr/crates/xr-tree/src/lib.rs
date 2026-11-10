@@ -20,8 +20,10 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use gnoblin_client::{Client, UnixTransport};
-use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ChangesPayload, SnapshotPayload};
-use gnoblin_proto::tree::{change, snapshot_node};
+use gnoblin_proto::tree::tree::{
+    AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+};
+use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, IPC_VERSION, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, Version, read_frame, write_frame};
 use xr_scene::{CameraProjection, Class, NodeId, TreeNode, TreeView};
 
@@ -37,6 +39,110 @@ const WRITE_WAIT: Duration = Duration::from_secs(5);
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 /// The schema default for a camera's `metres`.
 const CAMERA_METRES: f64 = 0.001;
+/// How long a transaction waits for the owner to answer it.
+const REPLY_WAIT: Duration = Duration::from_secs(5);
+
+/// An owner transaction the compositor applied, with the serial it applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reply {
+    /// The serial of the transaction, as the owner recorded it.
+    pub serial: u64,
+}
+
+/// One pointer event the owner delivers on a seat's pointer. `node` is the window the pointer is
+/// over, `seat` the seat node, and `x`, `y` are the pixel coordinates within that window.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PointerInput {
+    /// The pointer moved over `node` to `(x, y)`.
+    Motion { seat: NodeId, node: NodeId, x: f64, y: f64 },
+    /// A button changed: `pressed` is `true` for a press and `false` for a release.
+    Button {
+        seat: NodeId,
+        node: NodeId,
+        x: f64,
+        y: f64,
+        button: u64,
+        pressed: bool,
+    },
+    /// A scroll of `(dx, dy)` at `(x, y)`.
+    Scroll {
+        seat: NodeId,
+        node: NodeId,
+        x: f64,
+        y: f64,
+        dx: f64,
+        dy: f64,
+    },
+    /// The pointer left `node`.
+    Leave { seat: NodeId, node: NodeId },
+}
+
+/// The wire form of one pointer input, an owner-only `input` op.
+fn input_op(input: &PointerInput) -> op::Properties {
+    let base = |seat: NodeId, node: NodeId, kind: &str| op::Properties {
+        kind: "input".to_owned(),
+        input_kind: kind.to_owned(),
+        seat,
+        node,
+        ..Default::default()
+    };
+    match *input {
+        PointerInput::Motion { seat, node, x, y } => op::Properties {
+            x,
+            y,
+            ..base(seat, node, "motion")
+        },
+        PointerInput::Button {
+            seat,
+            node,
+            x,
+            y,
+            button,
+            pressed,
+        } => op::Properties {
+            x,
+            y,
+            button,
+            state: u64::from(pressed),
+            ..base(seat, node, "button")
+        },
+        PointerInput::Scroll {
+            seat,
+            node,
+            x,
+            y,
+            dx,
+            dy,
+        } => op::Properties {
+            x,
+            y,
+            dx,
+            dy,
+            ..base(seat, node, "scroll")
+        },
+        PointerInput::Leave { seat, node } => base(seat, node, "leave"),
+    }
+}
+
+/// Reads the owner's answer to a transaction: the applied serial, or the refusal.
+fn transact_reply(envelope: Envelope) -> Result<Reply, TreeError> {
+    if let Some(Kind::Error(_)) = envelope.kind {
+        return Err(TreeError::Refused {
+            member: envelope.member.clone(),
+            code: envelope.error_code().unwrap_or("unknown").to_owned(),
+        });
+    }
+    let payload = envelope
+        .payload_as::<ReplyPayload>()
+        .ok_or_else(|| undecodable("transact"))?;
+    if !payload.applied {
+        return Err(TreeError::Refused {
+            member: "transact".to_owned(),
+            code: payload.code,
+        });
+    }
+    Ok(Reply { serial: payload.serial })
+}
 
 /// Why the tree client stopped.
 #[derive(Debug)]
@@ -81,6 +187,14 @@ pub struct TreeClient {
     model: TreeView,
     /// Each node's parent id, `NIL` for a root. `TreeView` does not store it.
     parents: BTreeMap<NodeId, NodeId>,
+    /// The owner epoch the attach reply carried. Node ids the owner allocates start with it.
+    epoch: u64,
+    /// The request id the next request takes. The attach used `FIRST_REQUEST_ID`.
+    next_request_id: u64,
+    /// The transaction counter the next transaction takes, monotone per connection.
+    tx_serial: u64,
+    /// The low 32 bits of the next node id this client allocates, after the epoch.
+    next_node: u64,
 }
 
 impl TreeClient {
@@ -120,6 +234,10 @@ impl TreeClient {
             serial: 0,
             model: TreeView::default(),
             parents: BTreeMap::new(),
+            epoch: 0,
+            next_request_id: FIRST_REQUEST_ID + 1,
+            tx_serial: 0,
+            next_node: 0,
         };
         client.send(&Envelope::request_message(
             NAMESPACE,
@@ -170,6 +288,102 @@ impl TreeClient {
     #[must_use]
     pub fn model(&self) -> &TreeView {
         &self.model
+    }
+
+    /// The id of the seat node named `name`, if the model has one.
+    #[must_use]
+    pub fn seat_named(&self, name: &str) -> Option<NodeId> {
+        self.model
+            .nodes
+            .values()
+            .find(|node| matches!(node.class, Class::Seat) && node.name.as_deref() == Some(name))
+            .map(|node| node.id)
+    }
+
+    /// Creates a seat node named `name` in one owner transaction and returns its id.
+    ///
+    /// # Errors
+    ///
+    /// The owner refuses the transaction, such as `not-owner` ([`TreeError::Refused`]).
+    pub fn create_seat(&mut self, name: &str) -> Result<NodeId, TreeError> {
+        let seat = self.allocate_node_id();
+        self.transact(vec![
+            op::Properties {
+                kind: "new".to_owned(),
+                class: "seat".to_owned(),
+                id: seat,
+                ..Default::default()
+            },
+            op::Properties {
+                kind: "set".to_owned(),
+                node: seat,
+                key: "name".to_owned(),
+                value_kind: "text".to_owned(),
+                value_text: name.to_owned(),
+                ..Default::default()
+            },
+        ])?;
+        Ok(seat)
+    }
+
+    /// Sends one pointer input to the owner, which delivers it on the named seat.
+    ///
+    /// # Errors
+    ///
+    /// The owner refuses the transaction ([`TreeError::Refused`]), or the socket fails.
+    pub fn send_input(&mut self, input: &PointerInput) -> Result<(), TreeError> {
+        self.transact(vec![input_op(input)])?;
+        Ok(())
+    }
+
+    /// Applies one owner transaction. It returns once the owner answers, and any change
+    /// batches that arrive before the answer are applied to the model.
+    ///
+    /// # Errors
+    ///
+    /// The owner refuses the transaction or does not apply it ([`TreeError::Refused`], with
+    /// the owner's code), the answer does not arrive in time, or the socket fails.
+    pub fn transact(&mut self, ops: Vec<op::Properties>) -> Result<Reply, TreeError> {
+        self.tx_serial += 1;
+        let serial = self.tx_serial;
+        let request_id = self.next_request_id;
+        self.next_request_id += 1;
+        self.send(&Envelope::request_message(
+            NAMESPACE,
+            "transact",
+            request_id,
+            &TransactArgs {
+                base_serial: self.serial,
+                serial,
+                ops,
+            },
+        ))?;
+        let deadline = Instant::now() + REPLY_WAIT;
+        loop {
+            if Instant::now() >= deadline {
+                return Err(TreeError::Timeout);
+            }
+            match self.next_envelope()? {
+                Some(envelope)
+                    if envelope.request_id == request_id
+                        && matches!(envelope.kind, Some(Kind::Reply(_) | Kind::Error(_))) =>
+                {
+                    return transact_reply(envelope);
+                }
+                Some(envelope) => {
+                    self.handle(envelope)?;
+                }
+                None => {
+                    self.fill()?;
+                }
+            }
+        }
+    }
+
+    /// The next node id this client allocates: the owner epoch above a counter.
+    fn allocate_node_id(&mut self) -> NodeId {
+        self.next_node += 1;
+        (self.epoch << 32) | self.next_node
     }
 
     fn send(&mut self, envelope: &Envelope) -> Result<(), TreeError> {
@@ -236,9 +450,10 @@ impl TreeClient {
                 code: envelope.error_code().unwrap_or("unknown").to_owned(),
             }),
             (Some(Kind::Reply(_)), "attach") => {
-                envelope
+                let attached = envelope
                     .payload_as::<AttachedPayload>()
                     .ok_or_else(|| undecodable(&member))?;
+                self.epoch = attached.epoch;
                 self.attached = true;
                 Ok(false)
             }
@@ -434,6 +649,7 @@ fn new_node(id: NodeId, class: &str) -> TreeNode {
                 height: 0.0,
             },
         ),
+        "seat" => TreeNode::new(id, Class::Seat),
         "camera" => {
             let mut node = TreeNode::new(
                 id,
