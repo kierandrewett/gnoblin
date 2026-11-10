@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use xr_scene::Pose;
+use xr_scene::{Pose, Ray};
 
 use crate::runtime::{FrameTiming, Result, Runtime, RuntimeError, SessionEvent};
 
@@ -22,6 +22,7 @@ pub enum Call {
     BeginFrame,
     EndFrame(i64),
     LocateHead(i64),
+    LocateRay(i64),
 }
 
 /// Plays a script. `poll_event` returns the `Event` steps at the front of the
@@ -31,6 +32,7 @@ pub enum Call {
 pub struct FakeRuntime {
     pub script: VecDeque<Step>,
     pub head: Option<Pose>,
+    pub ray: Option<Ray>,
     pub calls: Vec<Call>,
     /// Makes the call that is this many (1-based) calls in fail with
     /// `RuntimeError("injected failure")`. The failing call is still recorded.
@@ -96,5 +98,10 @@ impl Runtime for FakeRuntime {
     fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>> {
         self.record(Call::LocateHead(display_time))?;
         Ok(self.head)
+    }
+
+    fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
+        self.record(Call::LocateRay(display_time))?;
+        Ok(self.ray)
     }
 }
