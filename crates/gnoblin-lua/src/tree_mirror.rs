@@ -57,6 +57,21 @@ pub enum LuaValue {
 }
 
 impl LuaValue {
+    /// The wire `value_kind` this value is sent as, named for a refusal message.
+    pub const fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Bool(_) => "bool",
+            Self::Int(_) => "int",
+            Self::Uint(_) => "uint",
+            Self::Double(_) => "double",
+            Self::Text(_) => "text",
+            Self::Node(_) => "node",
+            Self::List(_) => "list",
+            Self::Texts(_) => "texts",
+            Self::Effects(_) => "effects",
+        }
+    }
+
     fn dump(&self) -> String {
         match self {
             Self::Bool(v) => format!("bool {v}"),

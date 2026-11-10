@@ -9,13 +9,16 @@
 //! VM cannot load `node.lua` without a mirror, so `ShellVm::new` drains the link
 //! until the last snapshot chunk arrives.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use mlua::{Function, Lua, Table, Value};
 
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
-use crate::tree_mirror::{LuaChange, LuaChord, LuaIncoming, LuaMirror, MirrorChangeKind, SnapshotNode, TreeLink};
+use crate::tree_mirror::{
+    LuaChange, LuaChord, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId, SnapshotNode, TreeLink,
+};
 
 /// The protocol version the VM attaches with.
 const ATTACH_VERSION: u64 = 1;
@@ -80,6 +83,41 @@ pub struct ShellVm {
     tick: Function,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
     incoming: Vec<LuaIncoming>,
+    /// What each sent transaction's ops were, by serial, until its reply arrives. A refusal names
+    /// the failed op from this record.
+    sent: BTreeMap<u64, Vec<String>>,
+}
+
+/// Names one op for a refusal: its index, class, property and value kind, so a refused write is
+/// traceable to the Lua call that made it.
+pub fn describe_op(index: usize, op: &LuaOp, mirror: &LuaMirror) -> String {
+    let class_of = |node: NodeId| {
+        mirror
+            .node(node)
+            .map_or_else(|| "unknown".to_owned(), |record| record.class.clone())
+    };
+    match op {
+        LuaOp::New { id, class } => format!("op {index}: new node {id} class {class}"),
+        LuaOp::Set { node, key, value, .. } => format!(
+            "op {index}: set node {node} ({}) property {key} value kind {}",
+            class_of(*node),
+            value.kind_name()
+        ),
+        LuaOp::Insert {
+            node,
+            parent,
+            index: at,
+        } => {
+            format!(
+                "op {index}: insert node {node} ({}) into {parent} at {at}",
+                class_of(*node)
+            )
+        }
+        LuaOp::Destroy { node } => format!("op {index}: destroy node {node} ({})", class_of(*node)),
+        LuaOp::Call { node, method, .. } => {
+            format!("op {index}: call {method} on node {node} ({})", class_of(*node))
+        }
+    }
 }
 
 impl ShellVm {
@@ -108,6 +146,7 @@ impl ShellVm {
             core,
             tick,
             incoming,
+            sent: BTreeMap::new(),
         })
     }
 
@@ -145,10 +184,15 @@ impl ShellVm {
                     );
                 }
                 LuaIncoming::Reply(reply) => {
+                    let described = self.sent.remove(&reply.serial);
                     if !reply.applied {
+                        let op = usize::try_from(reply.failed_op)
+                            .ok()
+                            .and_then(|i| described.as_ref().and_then(|ops| ops.get(i)))
+                            .map_or_else(|| "op not recorded".to_owned(), Clone::clone);
                         diagnostics.push(format!(
-                            "transaction {} refused at op {}: {}",
-                            reply.serial, reply.failed_op, reply.code
+                            "transaction {} refused at op {}: {}; {}",
+                            reply.serial, reply.failed_op, reply.code, op
                         ));
                     }
                 }
@@ -182,6 +226,15 @@ impl ShellVm {
             core.take_transaction(serial + 1)
         };
         if !tx.ops.is_empty() {
+            let described = {
+                let core = self.core.borrow();
+                tx.ops
+                    .iter()
+                    .enumerate()
+                    .map(|(i, op)| describe_op(i, op, core.mirror()))
+                    .collect()
+            };
+            self.sent.insert(tx.serial, described);
             self.link.transact(&tx).map_err(|e| ShellVmError::Link(e.0))?;
         }
 
@@ -274,4 +327,38 @@ impl ShellVm {
 
 fn lua_error(e: mlua::Error) -> ShellVmError {
     ShellVmError::Lua(e.to_string())
+}
+
+#[cfg(test)]
+mod refusal_tests {
+    use super::describe_op;
+    use crate::tree_mirror::{LuaMirror, LuaOp, LuaValue};
+
+    #[test]
+    fn a_refused_set_names_its_index_class_property_and_value_kind() {
+        let mirror = LuaMirror::default();
+        let op = LuaOp::Set {
+            node: 7,
+            key: "width".to_owned(),
+            value: LuaValue::Text("wide".to_owned()),
+            seconds: None,
+            samples: None,
+        };
+        assert_eq!(
+            describe_op(32, &op, &mirror),
+            "op 32: set node 7 (unknown) property width value kind text"
+        );
+    }
+
+    #[test]
+    fn a_refused_new_names_its_class() {
+        let op = LuaOp::New {
+            id: 9,
+            class: "view".to_owned(),
+        };
+        assert_eq!(
+            describe_op(0, &op, &LuaMirror::default()),
+            "op 0: new node 9 class view"
+        );
+    }
 }

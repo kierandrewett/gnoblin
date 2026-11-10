@@ -37,13 +37,15 @@ function Box:arrange() -- "row" or "column": a small flexbox; "none": children s
     end
 end
 
+-- Text width is an estimate: the compositor has no measure request, so the shell cannot ask for the real
+-- glyph advance. A sans glyph averages about half the font size, so width is size * 0.5 per character.
 Box:extend("Text")({
     text = "",
     size = 14,
     color = "#cdd6f4",
     font = "sans",
     width = function(t)
-        return (t:measure(t.text, t.size, t.font))
+        return (utf8.len(t.text or "") or #(t.text or "")) * t.size // 2
     end,
     height = function(t)
         return t.size * 3 // 2
@@ -54,6 +56,7 @@ Box:extend("Text")({
 })
 
 Box:extend("Icon")({
+    press = signal,
     icon = "",
     size = 16,
     width = function(i)
