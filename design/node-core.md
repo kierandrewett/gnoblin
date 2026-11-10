@@ -172,6 +172,8 @@ Method: `capture()` returns an operation id (`operation.toml`).
 
 **Screen** (base `Node`). An output. Replaces `output.toml`. Created and destroyed by the compositor.
 
+The composer creates a screen under the root when an output is declared (`set_output`), publishes its geometry on change, and destroys it with the output (`remove_output`). Its `name` is `output-N` for output id N until the output carries a connector name.
+
 | Property          | Type     | Default    | Flags               |
 | ----------------- | -------- | ---------- | ------------------- |
 | `name`            | `string` | none       | readonly            |

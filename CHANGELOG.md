@@ -4,6 +4,7 @@
 
 ### Added
 
+- Screen nodes: the composer creates a `screen` node per declared output, publishes its geometry, and destroys it with the output.
 - Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.
 
 ### Changed

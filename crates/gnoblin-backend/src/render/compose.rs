@@ -274,6 +274,8 @@ pub struct Composer {
     tree_ready: Vec<NodeId>,
     /// The compositor's seat node for the main wl_seat, once added. It holds the pointer and focus.
     main_seat: Option<NodeId>,
+    /// The screen node of each output, created with the output and removed with it.
+    screens: BTreeMap<OutputId, NodeId>,
     /// Whether the shell held the tree at the last placement check. While it does, the composer
     /// leaves the node's x and y to the shell.
     placing: bool,
@@ -316,6 +318,7 @@ impl Composer {
             tree_changes: Vec::new(),
             tree_ready: Vec::new(),
             main_seat: None,
+            screens: BTreeMap::new(),
             placing: false,
             views: BTreeMap::new(),
         }
@@ -350,11 +353,70 @@ impl Composer {
         if previous != Some(rect) {
             self.scene.damage_output(output);
         }
+        self.sync_screen(output, rect);
     }
 
-    /// Removes an output and its damage.
+    /// Removes an output, its damage and its screen node.
     pub fn remove_output(&mut self, output: OutputId) {
         self.scene.remove_output(output);
+        if let Some(node) = self.screens.remove(&output) {
+            self.drop_node(node);
+        }
+    }
+
+    /// The screen node of an output, once the composer has declared it.
+    #[must_use]
+    pub fn screen_node(&self, output: OutputId) -> Option<NodeId> {
+        self.screens.get(&output).copied()
+    }
+
+    /// Creates the output's screen node under the root on first sight, and publishes its
+    /// geometry on every change. The name is the output's id, `output-N`.
+    fn sync_screen(&mut self, output: OutputId, rect: Rect) {
+        let geometry = [
+            ("x", f64::from(rect.x)),
+            ("y", f64::from(rect.y)),
+            ("width", f64::from(rect.width)),
+            ("height", f64::from(rect.height)),
+        ];
+        let node = match self.screens.get(&output).copied() {
+            Some(node) => node,
+            None => {
+                let Some(id) = self.node_ids.allocate() else {
+                    return;
+                };
+                let Some(root) = self.scene.root_ids().first().copied() else {
+                    return;
+                };
+                let mut spec = NodeSpec::new(rect);
+                spec.parent = Some(root);
+                spec.input = false;
+                if self.scene.insert(id, spec).is_err() {
+                    return;
+                }
+                let _ = self.scene.set_class(id, Some("screen".to_owned()));
+                let _ = self.scene.set_text(id, "name", format!("output-{}", output.get()));
+                let index = self.scene.root_ids().iter().position(|root| *root == id).unwrap_or(0);
+                self.tree_changes.push(TreeChange::Created {
+                    node: id,
+                    class: "screen".to_owned(),
+                    index,
+                });
+                self.screens.insert(output, id);
+                id
+            }
+        };
+        for (key, value) in geometry {
+            if self.scene.number(node, key) == Some(value) {
+                continue;
+            }
+            let _ = self.scene.set_number(node, key, value);
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value: TreeValue::Double(value),
+            });
+        }
     }
 
     /// Damages an output in full, so its next frame repaints every pixel.
@@ -2086,10 +2148,14 @@ mod tests {
         let mut frame = OutputFrame::new();
         composer.compose(output, &mut frame);
         composer.end_frame();
-        // The compositor's root is a node too; the windows are the other three.
+        // The compositor's root and the output's screen are nodes too; the windows are the rest.
+        let screen = composer.screen_node(output);
         let ids: Vec<NodeId> = composer.with_scene(|scene| {
             let root = scene.root();
-            scene.node_ids().filter(|id| Some(*id) != root).collect()
+            scene
+                .node_ids()
+                .filter(|id| Some(*id) != root && Some(*id) != screen)
+                .collect()
         });
         assert_eq!(ids.len(), 3, "one node per window with content");
         for id in ids {
@@ -2120,8 +2186,8 @@ mod tests {
             assert!(scene.contains(shell), "the shell's node is untouched");
             assert_eq!(
                 scene.node_ids().count(),
-                3,
-                "the shell, the root and the window each have a node"
+                4,
+                "the shell, the root, the screen and the window each have a node"
             );
         });
     }
@@ -4101,5 +4167,65 @@ mod tests {
         composer.insert_window(window, Rect::new(0, 0, 100, 100));
         composer.set_window_content(window, Some(content()));
         assert!(composer.shell_node_at(PointF::new(10.0, 20.0)).is_none());
+    }
+
+    #[test]
+    fn a_new_output_is_a_screen_node_under_the_root_with_its_geometry() {
+        let mut composer = Composer::new();
+        let output = OutputId::new(7);
+        composer.set_output(output, Rect::new(800, 0, 1920, 1080));
+        let node = composer.screen_node(output).expect("the output has a screen node");
+        assert_eq!(composer.scene.class(node), Some("screen"));
+        assert_eq!(composer.scene.number(node, "x"), Some(800.0));
+        assert_eq!(composer.scene.number(node, "width"), Some(1920.0));
+        assert_eq!(composer.scene.number(node, "height"), Some(1080.0));
+        assert_eq!(composer.scene.text(node, "name"), Some("output-7"));
+        let changes = composer.take_tree_changes();
+        assert!(
+            changes.iter().any(|change| matches!(
+                change,
+                TreeChange::Created { node: created, class, .. } if *created == node && class == "screen"
+            )),
+            "the screen is announced: {changes:?}"
+        );
+    }
+
+    #[test]
+    fn a_moved_output_publishes_only_the_geometry_that_changed() {
+        let mut composer = Composer::new();
+        let output = OutputId::new(7);
+        composer.set_output(output, Rect::new(0, 0, 800, 600));
+        composer.take_tree_changes();
+        composer.set_output(output, Rect::new(0, 0, 1024, 600));
+        let node = composer.screen_node(output).expect("the output keeps its screen node");
+        assert_eq!(composer.scene.number(node, "width"), Some(1024.0));
+        let changes = composer.take_tree_changes();
+        assert_eq!(
+            changes,
+            vec![TreeChange::Set {
+                node,
+                key: "width".to_owned(),
+                value: TreeValue::Double(1024.0),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_removed_output_destroys_its_screen_node() {
+        let mut composer = Composer::new();
+        let output = OutputId::new(7);
+        composer.set_output(output, Rect::new(0, 0, 800, 600));
+        let node = composer.screen_node(output).expect("the output has a screen node");
+        composer.take_tree_changes();
+        composer.remove_output(output);
+        assert_eq!(composer.screen_node(output), None);
+        assert!(!composer.scene.contains(node));
+        let changes = composer.take_tree_changes();
+        assert!(
+            changes
+                .iter()
+                .any(|change| matches!(change, TreeChange::Destroyed { node: gone, .. } if *gone == node)),
+            "the screen's destruction is announced: {changes:?}"
+        );
     }
 }
