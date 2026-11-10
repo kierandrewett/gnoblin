@@ -1229,11 +1229,20 @@ impl Composer {
         self.order = kept;
         // The scene's sibling order is the paint order. Only windows with a node are
         // siblings in the scene, so the order is applied to those, bottom first.
-        let nodes: Vec<NodeId> = self
+        // The compositor's own roots (the shell's root) keep the bottom, below every window.
+        let window_nodes: Vec<NodeId> = self
             .order
             .iter()
             .filter_map(|window| self.windows.get(window)?.node)
             .collect();
+        let mut nodes: Vec<NodeId> = self
+            .scene
+            .root_ids()
+            .iter()
+            .copied()
+            .filter(|id| !window_nodes.contains(id))
+            .collect();
+        nodes.extend(window_nodes);
         let _ = self.scene.set_order(None, &nodes);
         let windows: Vec<WindowId> = self.order.clone();
         for window in windows {
@@ -1703,7 +1712,11 @@ mod tests {
         let mut frame = OutputFrame::new();
         composer.compose(output, &mut frame);
         composer.end_frame();
-        let ids: Vec<NodeId> = composer.with_scene(|scene| scene.node_ids().collect());
+        // The compositor's root is a node too; the windows are the other three.
+        let ids: Vec<NodeId> = composer.with_scene(|scene| {
+            let root = scene.root();
+            scene.node_ids().filter(|id| Some(*id) != root).collect()
+        });
         assert_eq!(ids.len(), 3, "one node per window with content");
         for id in ids {
             assert!(
@@ -1731,7 +1744,11 @@ mod tests {
         composer.set_window_content(window, Some(content()));
         composer.with_scene(|scene| {
             assert!(scene.contains(shell), "the shell's node is untouched");
-            assert_eq!(scene.node_ids().count(), 2, "the window got a node of its own");
+            assert_eq!(
+                scene.node_ids().count(),
+                3,
+                "the shell, the root and the window each have a node"
+            );
         });
     }
 
@@ -1741,12 +1758,12 @@ mod tests {
         let window = WindowId::new(1);
         composer.insert_window(window, Rect::new(10, 10, 100, 100));
         composer.set_window_content(window, Some(content()));
-        let first = composer.with_scene(|scene| scene.node_ids().next()).expect("a node");
+        let first = node_of(&composer, window);
         composer.remove_window(window);
         let again = WindowId::new(2);
         composer.insert_window(again, Rect::new(10, 10, 100, 100));
         composer.set_window_content(again, Some(content()));
-        let second = composer.with_scene(|scene| scene.node_ids().next()).expect("a node");
+        let second = node_of(&composer, again);
         assert!(second.get() > first.get(), "{second} reuses or precedes {first}");
     }
 
@@ -3014,6 +3031,34 @@ mod tests {
     }
 
     #[test]
+    fn the_scene_paints_windows_in_the_stacking_order_above_the_compositor_root() {
+        let (mut composer, _) = screen();
+        let first = WindowId::new(1);
+        let second = WindowId::new(2);
+        composer.insert_window(first, Rect::new(0, 0, 10, 10));
+        composer.set_window_content(first, Some(content()));
+        composer.insert_window(second, Rect::new(5, 5, 10, 10));
+        composer.set_window_content(second, Some(content()));
+        composer.set_stacking(&[first, second]);
+        let first_node = node_of(&composer, first);
+        let second_node = node_of(&composer, second);
+        let roots = composer.scene.root_ids().to_vec();
+        let root = composer.scene.root().expect("the compositor root is set");
+        assert_eq!(roots.first(), Some(&root), "the root paints first: {roots:?}");
+        assert_eq!(
+            roots.last(),
+            Some(&first_node),
+            "the topmost window paints last: {roots:?}"
+        );
+        assert_eq!(roots.len(), 3, "the root and both windows: {roots:?}");
+        assert_eq!(
+            roots.get(1),
+            Some(&second_node),
+            "the window below comes next: {roots:?}"
+        );
+    }
+
+    #[test]
     fn a_stacking_change_damages_only_the_windows_that_moved_in_the_order() {
         let (mut composer, output) = screen();
         let first = WindowId::new(1);
@@ -3296,6 +3341,8 @@ mod tests {
         composer.follow_placement();
         composer.place_window(window, Rect::new(200, 120, 100, 100));
         composer.with_scene(|scene| scene.set_shell_places(false));
+        // Reduced motion lands the placement at once, so the node's offset is the placed one.
+        composer.set_reduced_motion(true);
         composer.follow_placement();
         assert_eq!(offset_of(&composer, node), (200.0, 120.0));
     }
