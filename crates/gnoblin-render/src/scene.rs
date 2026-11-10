@@ -1275,6 +1275,37 @@ impl Scene {
         Some(world)
     }
 
+    /// The matrix that maps `id`'s local plane into `root`'s local plane, where `root`
+    /// is the world of its subtree: `root`'s own transform is not applied, but its
+    /// content matrix places its children. `None` when `id` is missing or is neither
+    /// `root` nor below it.
+    pub fn subtree_matrix(&self, root: NodeId, id: NodeId) -> Option<Mat4> {
+        let mut chain = Vec::new();
+        let mut current = Some(id);
+        while let Some(node_id) = current {
+            let node = self.nodes.get(&node_id)?;
+            chain.push((node_id, node));
+            if node_id == root {
+                break;
+            }
+            current = node.parent;
+        }
+        if chain.last().map(|(node_id, _)| *node_id) != Some(root) {
+            return None;
+        }
+        let mut frame = Mat4::IDENTITY;
+        let mut world = Mat4::IDENTITY;
+        for (node_id, node) in chain.iter().rev() {
+            world = if *node_id == root {
+                Mat4::IDENTITY
+            } else {
+                frame.mul(&node.local_matrix())
+            };
+            frame = world.mul(&node.content_matrix());
+        }
+        Some(world)
+    }
+
     /// A node's current projected damage bounds, and whether it is drawn flat.
     fn sample(&self, id: NodeId) -> Option<DamageSample> {
         let world = self.world_matrix(id)?;
