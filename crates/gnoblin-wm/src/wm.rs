@@ -90,6 +90,12 @@ use crate::workspace_set::{self, WorkspaceSet, WorkspaceSetError};
 /// fit any output and large enough to receive input.
 const DEFAULT_WINDOW_SIZE: Size = Size::new(800, 600);
 
+/// Diagonal step, in logical pixels, of the placement used when no shell publishes one.
+const FALLBACK_CASCADE_OFFSET: i32 = 32;
+
+/// Number of distinct cascade positions before the fallback wraps around.
+const FALLBACK_CASCADE_STEPS: usize = 32;
+
 /// How many windows the focus history remembers.
 ///
 /// The history is only used to choose the next focus, so a short list is enough and
@@ -1299,9 +1305,22 @@ impl Wm {
             }
             None => {
                 // Where a new floating window goes is the shell's call (`data/lua/gnoblin/shell/floating.lua`).
-                // Until it publishes a position the window sits at the work area's top-left corner.
+                // Until it publishes a position, a window with no shell cascades from (32, 32) by 32 px for
+                // each window already on its output and workspace, so windows never stack exactly.
+                let visible = self
+                    .windows
+                    .values()
+                    .filter(|other| {
+                        other.output == Some(fallback_output) && other.workspace == workspace && !other.state.minimised
+                    })
+                    .count();
+                let step = i32::try_from(visible % FALLBACK_CASCADE_STEPS).unwrap_or(0) + 1;
+                let offset = FALLBACK_CASCADE_OFFSET.saturating_mul(step);
                 let geometry = Rect::from_size(size)
-                    .translate(fallback_area.x, fallback_area.y)
+                    .translate(
+                        fallback_area.x.saturating_add(offset),
+                        fallback_area.y.saturating_add(offset),
+                    )
                     .clamp_inside(fallback_area);
                 (workspace, Some(fallback_output), geometry, None)
             }
@@ -2601,7 +2620,7 @@ mod tests {
         let Some(second) = wm.window(WindowId::new(2)) else {
             panic!("the second window is managed");
         };
-        assert_eq!(second.geometry, Rect::new(0, 0, 400, 300));
+        assert_eq!(second.geometry, Rect::new(32, 32, 400, 300));
     }
 
     #[test]

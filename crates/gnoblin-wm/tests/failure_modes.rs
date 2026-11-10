@@ -630,7 +630,7 @@ fn snapping_and_unsnapping_restore_the_floating_rectangle() {
     });
     open(&mut wm, 1);
     let floating = wm.window(window(1)).map(|w| w.geometry);
-    assert_eq!(floating, Some(Rect::new(0, 0, 600, 400)));
+    assert_eq!(floating, Some(Rect::new(32, 32, 600, 400)));
 
     wm.apply(Event::SnapRequested {
         window: window(1),
@@ -918,16 +918,62 @@ fn a_window_needs_a_workspace_and_an_output() {
     check(&empty);
 }
 
-// A new window's placement is the shell's; the window manager only keeps it inside the work area.
+// Without a shell, a new window cascades from (32, 32) so it never opens hidden at the
+// origin, and each later window steps 32 px further in.
 #[test]
-fn a_new_window_opens_at_the_work_area_origin() {
+fn a_new_window_without_a_shell_cascades_from_32_32() {
     let mut wm = default_wm();
     open(&mut wm, 1);
     assert_eq!(
         wm.window(window(1)).map(|w| w.geometry),
-        Some(Rect::new(0, 0, 600, 400))
+        Some(Rect::new(32, 32, 600, 400))
     );
     check(&wm);
+}
+
+#[test]
+fn three_windows_without_a_shell_get_distinct_cascading_positions() {
+    let mut wm = default_wm();
+    for raw in 1..=3 {
+        open(&mut wm, raw);
+    }
+    let rects: Vec<Rect> = (1..=3)
+        .filter_map(|raw| wm.window(window(raw)).map(|w| w.geometry))
+        .collect();
+    assert_eq!(
+        rects,
+        vec![
+            Rect::new(32, 32, 600, 400),
+            Rect::new(64, 64, 600, 400),
+            Rect::new(96, 96, 600, 400),
+        ]
+    );
+    let screen = Rect::new(0, 0, 1920, 1080);
+    for (index, rect) in rects.iter().enumerate() {
+        assert!(rect.is_inside(screen), "window {index} is on screen");
+        let others: Vec<Rect> = rects
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != index)
+            .map(|(_, other)| *other)
+            .collect();
+        assert!(
+            visible_part_exists(*rect, &others),
+            "window {index} has a part that no other window covers"
+        );
+    }
+    check(&wm);
+}
+
+/// Whether some point inside `target` is covered by none of `others`, sampled on an 8 px grid.
+fn visible_part_exists(target: Rect, others: &[Rect]) -> bool {
+    (i64::from(target.y)..target.bottom()).step_by(8).any(|y| {
+        (i64::from(target.x)..target.right()).step_by(8).any(|x| {
+            !others.iter().any(|other| {
+                x >= i64::from(other.x) && x < other.right() && y >= i64::from(other.y) && y < other.bottom()
+            })
+        })
+    })
 }
 
 #[test]
@@ -1596,7 +1642,7 @@ fn moving_a_window_to_another_output_reshapes_it_into_that_work_area() {
         output: OutputId::new(1),
     });
     assert_eq!(wm.window(window(1)).map(|w| w.output), Some(Some(OutputId::new(1))));
-    assert_eq!(configured(&effects, window(1)), Some(Rect::new(1920, 0, 600, 400)));
+    assert_eq!(configured(&effects, window(1)), Some(Rect::new(1920, 32, 600, 400)));
     check(&wm);
 }
 
