@@ -409,3 +409,162 @@ fn a_window_node_is_announced_ready_once_in_the_batch_that_follows_its_mapping()
     assert_eq!(ready.len(), 1, "one ready event: {batches:?}");
     assert_eq!(ready[0].node, WINDOW);
 }
+
+/// A window node the owner creates under the root, a valid target for a seat's `focus`.
+const FOCUS_WINDOW: NodeId = NodeId::new(0x500);
+
+/// A window node that is not a window (a plain `node`), which a seat's `focus` refuses.
+const PLAIN_NODE: NodeId = NodeId::new(0x501);
+
+/// A schema with a `seat` whose `focus` is a writable reference to a `window`.
+struct FocusTable;
+
+impl ClassInfo for FocusTable {
+    fn has_class(&self, class: &str) -> bool {
+        matches!(class, "node" | "seat" | "window")
+    }
+
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        match (class, key) {
+            ("seat", "name") => Some(PropertyInfo {
+                kind: ValueType::Text,
+                readonly: true,
+                animated: false,
+            }),
+            ("seat", "focus") => Some(PropertyInfo {
+                kind: ValueType::Node("window".to_owned()),
+                readonly: false,
+                animated: false,
+            }),
+            _ => None,
+        }
+    }
+
+    fn has_method(&self, _class: &str, _method: &str) -> bool {
+        false
+    }
+}
+
+fn focus_frame() -> TreeFrame {
+    TreeFrame::with_hooks(TreeHooks {
+        classes: Arc::new(FocusTable),
+        publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+        ..TreeHooks::default()
+    })
+}
+
+/// A transaction that creates a `seat` named `xr` and a `window` and a plain `node`.
+fn create_focus_scene() -> TreeTransaction {
+    TreeTransaction::new(vec![
+        TreeOp::New {
+            class: "seat".to_owned(),
+            id: SEAT,
+        },
+        TreeOp::Set {
+            node: SEAT,
+            key: "name".to_owned(),
+            value: TreeValue::Text("xr".to_owned()),
+            timing: None,
+        },
+        TreeOp::New {
+            class: "window".to_owned(),
+            id: FOCUS_WINDOW,
+        },
+        TreeOp::New {
+            class: "node".to_owned(),
+            id: PLAIN_NODE,
+        },
+    ])
+}
+
+fn set_focus(target: Option<NodeId>) -> TreeTransaction {
+    TreeTransaction::new(vec![TreeOp::Set {
+        node: SEAT,
+        key: "focus".to_owned(),
+        value: TreeValue::Node(target),
+        timing: None,
+    }])
+}
+
+fn focus_of(composer: &mut Composer) -> Option<NodeId> {
+    composer.with_scene(|scene| scene.reference(SEAT, "focus"))
+}
+
+#[test]
+fn a_seat_focus_is_set_to_a_window_node_in_the_frame() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 1, set_focus(Some(FOCUS_WINDOW)), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(2, true)));
+    assert_eq!(focus_of(&mut composer), Some(FOCUS_WINDOW));
+}
+
+#[test]
+fn a_seat_focus_is_cleared_by_null() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 1, set_focus(Some(FOCUS_WINDOW)), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 2, set_focus(None), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(3, true)));
+    assert_eq!(focus_of(&mut composer), None);
+}
+
+#[test]
+fn a_seat_focus_on_a_non_window_node_is_refused_and_keeps_the_old_focus() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 1, set_focus(Some(FOCUS_WINDOW)), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 2, set_focus(Some(PLAIN_NODE)), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(2, false)));
+    assert_eq!(focus_of(&mut composer), Some(FOCUS_WINDOW));
+}
+
+#[test]
+fn a_seat_focus_on_an_unknown_node_is_refused_bad_value() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 1, set_focus(Some(NodeId::new(0x7ff))), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(1, false)));
+    assert_eq!(focus_of(&mut composer), None);
+}
+
+#[test]
+fn a_seat_focus_with_a_non_node_value_is_refused_wrong_type() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    submit(
+        &frame,
+        1,
+        TreeTransaction::new(vec![TreeOp::Set {
+            node: SEAT,
+            key: "focus".to_owned(),
+            value: TreeValue::Text("window".to_owned()),
+            timing: None,
+        }]),
+        &replies,
+    );
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(1, false)));
+    assert_eq!(focus_of(&mut composer), None);
+}

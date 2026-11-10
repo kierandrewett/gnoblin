@@ -206,6 +206,8 @@ Method: `apply(...)` takes an output configuration (`output.toml`, unverified li
 
 Method: `warp(x, y)`. Chords are a `call` to the seat (section 5.1).
 
+`focus` accepts a window node or `nil` (clears it). Any other target is refused `bad_value` and the previous focus stays; a non-node value is refused `wrong_type`. The compositor writes `focus` itself when keyboard focus moves (`set_main_seat_focus`), and the frame re-publishes it each frame. Shell writes update the scene reference only; routing them to `wl_keyboard` enter/leave is not wired yet.
+
 **Workspace** (base `Node`). A named set of windows on one screen. Replaces `workspace.toml`. Created by the compositor.
 
 | Property | Type            | Default | Flags | Notes                          |

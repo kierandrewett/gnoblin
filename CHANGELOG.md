@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.
+
 ### Changed
 
 - Attaching the tree shell from a connection without the owner grant is refused `not-owner` (`failed_op` -1), not `not-privileged`. Test `attach_refuses_a_non_owner_peer` replaces `attach_refuses_an_unprivileged_peer`. A transaction from a connection that does not hold the tree is still refused `not-privileged`.
