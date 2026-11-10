@@ -7,6 +7,7 @@
 resolver = "3"
 members = [
     "crates/gnoblin-xr",
+    "crates/xr-capture",
     "crates/xr-runtime",
     "crates/xr-scene",
     "crates/xr-session",
