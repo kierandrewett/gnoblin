@@ -508,12 +508,18 @@ impl TreeFrame {
             }
         }
         // The compositor announced its own destroys and the shell's applied ones alike; both
-        // leave the seat claims they held with nothing to fire.
+        // leave the seat claims they held with nothing to fire. An event for a node this frame
+        // destroyed is dropped at send (F30): the shell hears of the destroy, not of the input.
+        let mut gone: Vec<NodeId> = Vec::new();
         for change in &batch.changes {
             if let TreeChange::Destroyed { removed, .. } = change {
-                self.destroyed.extend(removed.iter().cloned());
+                gone.extend(removed.iter().cloned());
             }
         }
+        if !gone.is_empty() {
+            batch.events.retain(|event| !gone.contains(&event.node));
+        }
+        self.destroyed.extend(gone);
         if changed {
             self.serial += 1;
             self.revisions.record(self.serial, &batch.changes);

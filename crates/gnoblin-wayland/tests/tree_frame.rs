@@ -595,3 +595,44 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
         "sequence numbers increase"
     );
 }
+
+#[test]
+fn an_event_for_a_node_destroyed_in_the_same_frame_is_dropped_at_send() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    submit(&frame, 0, add(FIRST), &replies);
+    submit(&frame, 0, add(SECOND), &replies);
+    frame.drain(&mut scene, clock(Duration::ZERO));
+    take_batches();
+
+    // The compositor queues edges for both nodes, then the shell destroys FIRST in the next frame.
+    frame.input(FIRST, TreeInput::Enter { x: 1.0, y: 1.0 });
+    frame.input(SECOND, TreeInput::Enter { x: 2.0, y: 2.0 });
+    frame.input(FIRST, TreeInput::Leave);
+    let destroy = TreeTransaction::new(vec![TreeOp::Destroy { node: FIRST }]);
+    submit(&frame, frame.serial(), destroy, &replies);
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let batches = take_batches();
+    assert_eq!(batches.len(), 1);
+    let destroyed = batches[0]
+        .changes
+        .iter()
+        .any(|change| matches!(change, TreeChange::Destroyed { node, .. } if *node == FIRST));
+    assert!(destroyed, "the batch carries the destroyed change");
+    let events: Vec<(NodeId, &str)> = batches[0]
+        .events
+        .iter()
+        .map(|event| match &event.event {
+            TreeFrameInput::Input(input) => (event.node, input.name()),
+            _ => panic!("only pointer edges were queued"),
+        })
+        .collect();
+    assert_eq!(
+        events,
+        [(SECOND, "enter")],
+        "the edges for the destroyed node are dropped; the other node's edge still goes"
+    );
+}
