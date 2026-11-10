@@ -8,7 +8,7 @@ resolver = "3"
 members = [
     "crates/xr-runtime",
     "crates/xr-scene",
-    "crates/gnoblin-xr",
+    "crates/xr-session",
 ]
 
 [workspace.package]

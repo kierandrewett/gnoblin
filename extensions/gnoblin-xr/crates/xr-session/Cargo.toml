@@ -1,0 +1,23 @@
+[package]
+name = "xr-session"
+description = "The OpenXR session and frame loop for gnoblin-xr: a Runtime trait, the frame state machine, and an OpenXR-backed runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+openxr = "0.22"
+xr-scene = { path = "../xr-scene" }
+
+# Unsafe is needed only by the OpenXR shim (`openxr_runtime`), which calls the
+# loader's unsafe entry points. The crate therefore drops the workspace table,
+# which forbids unsafe, and restates the clippy levels with `unsafe_code = "deny"`
+# (the rule in the root Cargo.toml, [workspace.lints]).
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
