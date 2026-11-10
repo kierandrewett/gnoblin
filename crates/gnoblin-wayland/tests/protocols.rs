@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
 use gnoblin_backend::{InputEvent, TouchPhase};
 use gnoblin_lock::State as LockState;
-use gnoblin_types::Point;
+use gnoblin_types::{NodeId, Point};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
 use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -1823,5 +1823,151 @@ fn a_sandboxed_client_does_not_see_the_privileged_globals() {
         drop(queue);
         drop(close_client);
         let _ = context;
+    });
+}
+
+/// The seat node the shell creates for the claim tests.
+const CLAIM_SEAT: NodeId = NodeId::new(0x500);
+
+/// `KEY_LEFTMETA` and `KEY_ENTER` from `linux/input-event-codes.h`.
+const KEY_LEFTMETA: u32 = 125;
+const KEY_ENTER: u32 = 28;
+
+/// A schema with a `seat` class whose `claim` and `unclaim` methods the shell may call.
+struct ClaimClasses;
+
+impl gnoblin_render::transaction::ClassInfo for ClaimClasses {
+    fn has_class(&self, class: &str) -> bool {
+        class == "seat"
+    }
+
+    fn property(&self, _class: &str, _key: &str) -> Option<gnoblin_render::transaction::PropertyInfo> {
+        None
+    }
+
+    fn has_method(&self, class: &str, method: &str) -> bool {
+        class == "seat" && matches!(method, "claim" | "unclaim")
+    }
+}
+
+/// Submits `transaction` on the shell's queue and returns whether it applied.
+fn apply_on_shell(
+    queue: &gnoblin_wayland::TreeQueue,
+    transaction: gnoblin_render::transaction::TreeTransaction,
+) -> bool {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    queue.submit(
+        0,
+        transaction,
+        || true,
+        move |_serial, result| {
+            let _ = sender.send(result.is_ok());
+        },
+    );
+    receiver
+        .recv_timeout(TIMEOUT)
+        .expect("the shell's transaction is answered")
+}
+
+/// The chord events the shell's mirror received, in order.
+fn chord_events(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>) -> Vec<(NodeId, gnoblin_wayland::ChordEvent)> {
+    batches
+        .lock()
+        .expect("the batch lock")
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter_map(|event| match &event.event {
+            gnoblin_wayland::TreeFrameInput::Chord(chord) => Some((event.node, chord.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_claimed_chord_reaches_the_shell_and_never_the_client() {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+    use gnoblin_wayland::{ChordEvent, ChordState, TreeHooks, TreeQueue};
+
+    let batches: Arc<Mutex<Vec<gnoblin_wayland::TreeBatch>>> = Arc::default();
+    let queue = TreeQueue::default();
+    let tree = TreeHooks {
+        queue: queue.clone(),
+        classes: Arc::new(ClaimClasses),
+        publish: {
+            let batches = Arc::clone(&batches);
+            Arc::new(move |batch| batches.lock().expect("the batch lock").push(batch))
+        },
+        ..TreeHooks::default()
+    };
+    let session = Session::with_config(Config {
+        tree,
+        ..Config::default()
+    });
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+
+        // The shell creates the seat and claims Super+Return as id 1.
+        let claimed = apply_on_shell(
+            &queue,
+            TreeTransaction::new(vec![
+                TreeOp::New {
+                    class: "seat".to_owned(),
+                    id: CLAIM_SEAT,
+                },
+                TreeOp::TreeCall {
+                    node: CLAIM_SEAT,
+                    method: "claim".to_owned(),
+                    args: vec![1],
+                    text: "<Super>Return".to_owned(),
+                },
+            ]),
+        );
+        assert!(claimed, "the shell's claim applies");
+
+        session.key(KEY_LEFTMETA, true);
+        session.key(KEY_ENTER, true);
+        session.key(KEY_ENTER, false);
+        session.key(KEY_LEFTMETA, false);
+        // A key nothing claims follows the chord, so the client's state shows that every
+        // edge before it has been routed.
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = client.wait_for(|state| state.keys.len() >= 4);
+        assert!(
+            !state.keys.contains(&KEY_ENTER),
+            "the claimed chord's key never reaches the client: {:?}",
+            state.keys
+        );
+
+        let deadline = Instant::now() + TIMEOUT;
+        while chord_events(&batches).len() < 2 {
+            assert!(Instant::now() < deadline, "the shell hears both edges of the claim");
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            chord_events(&batches),
+            vec![
+                (
+                    CLAIM_SEAT,
+                    ChordEvent {
+                        id: 1,
+                        chord: "<Super>Return".to_owned(),
+                        state: ChordState::Press,
+                    },
+                ),
+                (
+                    CLAIM_SEAT,
+                    ChordEvent {
+                        id: 1,
+                        chord: "<Super>Return".to_owned(),
+                        state: ChordState::Release,
+                    },
+                ),
+            ],
+            "the shell receives the claim's press then release, under its id"
+        );
     });
 }

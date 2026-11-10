@@ -237,7 +237,6 @@ fn modifiers_of(state: &ModifiersState) -> Modifiers {
         (Modifiers::MOD1, state.alt),
         (Modifiers::MOD2, state.num_lock),
         (Modifiers::MOD3, state.iso_level3_shift),
-        (Modifiers::MOD4, state.logo),
         (Modifiers::SUPER, state.logo),
     ] {
         if on {
