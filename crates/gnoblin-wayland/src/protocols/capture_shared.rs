@@ -112,6 +112,8 @@ pub(super) struct Targets {
     windows: BTreeMap<WindowId, CapturedPlacement>,
     /// Every View, at the size it is drawn, in physical pixels.
     views: BTreeMap<NodeId, Size>,
+    /// The picture each View drew last, which is what a View capture copies.
+    view_pictures: BTreeMap<NodeId, Arc<Image>>,
 }
 
 /// Where a window is drawn.
@@ -147,6 +149,11 @@ impl Targets {
         }
     }
 
+    /// The picture a View capture copies from, when the View has drawn one.
+    fn view_picture(&self, view: NodeId) -> Option<&Arc<Image>> {
+        self.view_pictures.get(&view)
+    }
+
     /// Where a target's own origin sits in its output's frame.
     fn origin(&self, target: Target) -> Point {
         match target {
@@ -180,6 +187,9 @@ pub(crate) struct CaptureTables {
     /// The Views the frame loop published, at the size each is drawn. A view-source
     /// `create_source` is refused for any node not in this set.
     pub(super) views: BTreeMap<NodeId, Size>,
+    /// The picture each View drew on the frame the loop last published. A View capture
+    /// copies from it, and a picture that is not the one held here is new damage.
+    pub(super) view_pictures: BTreeMap<NodeId, Arc<Image>>,
     /// The sessions `ext-image-copy-capture` created, kept alive so their clients keep
     /// their constraints and hear `stopped` when they end.
     pub(super) sessions: Vec<CaptureSession>,
@@ -237,6 +247,7 @@ impl CaptureTables {
             tick: Tick::ZERO,
             sources: BTreeMap::new(),
             views: BTreeMap::new(),
+            view_pictures: BTreeMap::new(),
             sessions: Vec::new(),
             screencopy_frames: Vec::new(),
             owners: HashMap::new(),
@@ -395,6 +406,20 @@ impl PixelSource for Pixels<'_> {
     }
 
     fn copy(&mut self, target: Target, region: Rect, _format: Format) -> Copied {
+        if let Target::View(view) = target {
+            // A View is copied from its own picture: it has no output frame, no
+            // origin inside one, and no cursor drawn over it.
+            let Some(picture) = self.targets.view_picture(view) else {
+                return Copied::Nothing;
+            };
+            return match copy_into(picture, region, Point::new(0, 0), &self.buffer) {
+                Ok(_) => Copied::Copied,
+                Err(error) => {
+                    log::warn!(area = "capture", %error, %target, "the View picture could not be written into the client's buffer");
+                    Copied::Nothing
+                }
+            };
+        }
         let Some(output) = self.targets.output(target) else {
             return Copied::Nothing;
         };
@@ -472,6 +497,7 @@ impl State {
     pub(crate) fn poll_capture(&mut self) {
         self.capture.tick = self.capture.tick.saturating_add(1);
         self.capture.views = self.composer.views().into_iter().collect();
+        self.publish_view_pictures();
         if !self.capture_allowed() && self.capture.stop_all() {
             self.publish();
         }
@@ -486,6 +512,29 @@ impl State {
                 .pipewire
                 .pump(&mut self.capture.table, tick, capture, &mut source);
         }
+    }
+
+    /// Publishes the picture each View drew this frame, and tells capture that a View
+    /// whose picture is new has changed everywhere, so its next frame reports the whole
+    /// of it. The picture is compared by identity: the composer hands back the same
+    /// `Arc` for as long as a View is not redrawn.
+    fn publish_view_pictures(&mut self) {
+        let pictures: BTreeMap<NodeId, Arc<Image>> = self.composer.view_pictures().into_iter().collect();
+        if !self.capture.table.is_empty() {
+            for (view, picture) in &pictures {
+                let unchanged = self
+                    .capture
+                    .view_pictures
+                    .get(view)
+                    .is_some_and(|previous| Arc::ptr_eq(previous, picture));
+                if !unchanged {
+                    self.capture
+                        .table
+                        .note_damage(Target::View(*view), Rect::from_size(picture.size()));
+                }
+            }
+        }
+        self.capture.view_pictures = pictures;
     }
 
     /// Reads `output` back so a capture can copy the frame that reached the screen.
@@ -532,6 +581,7 @@ impl State {
     pub(super) fn capture_targets(&self) -> Targets {
         let mut targets = Targets {
             views: self.capture.views.clone(),
+            view_pictures: self.capture.view_pictures.clone(),
             ..Targets::default()
         };
         for output in self.output_ids() {

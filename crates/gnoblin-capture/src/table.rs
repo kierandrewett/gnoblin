@@ -379,7 +379,7 @@ impl Table {
 #[cfg(test)]
 mod tests {
     use gnoblin_lock::{Capture, CaptureStream};
-    use gnoblin_types::{ClientId, OutputId, Rect, Size, Tick, WindowId};
+    use gnoblin_types::{ClientId, NodeId, OutputId, Rect, Size, Tick, WindowId};
 
     use crate::format::{Format, PixelFormat};
     use crate::session::{BufferId, Refusal, SessionId, Stop, Target};
@@ -765,5 +765,79 @@ mod tests {
         table.close(first);
         let second = open(&mut table, CaptureStream::Requested);
         assert_ne!(first, second);
+    }
+
+    /// A View's frames follow the View's own rectangle: after the picture is
+    /// resized the next frame covers the new size, and damage from before the resize
+    /// is clipped to it rather than delivered against a region the buffer no longer
+    /// shows.
+    #[test]
+    fn a_view_frame_follows_the_view_rect_after_a_resize() {
+        let view = Target::View(NodeId::new(4));
+        let mut table = Table::new();
+        let session = table.open(ClientId::new(9), view, CaptureStream::Requested, format());
+        let mut source = Fake::new(Some(Rect::from_size(SIZE)));
+        let first = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+        let CaptureOutcome::Copied(report) = table.capture(first, Tick::new(1), Capture::Desktop, &mut source) else {
+            panic!("the first View frame copies");
+        };
+        assert_eq!(report.region, Rect::from_size(SIZE));
+        assert_eq!(report.damage, vec![Rect::from_size(SIZE)], "the first frame is whole");
+
+        // No change since the last frame: the next frame delivers no damage.
+        let second = table.request(session, BufferId::new(2), Tick::new(2)).expect("a claim");
+        let CaptureOutcome::Copied(quiet) = table.capture(second, Tick::new(2), Capture::Desktop, &mut source) else {
+            panic!("the quiet View frame still copies");
+        };
+        assert!(quiet.damage.is_empty(), "an unchanged View reports no damage");
+
+        // The View is damaged across its whole rectangle, then shrinks: the frame
+        // covers the smaller rectangle and the damage is clipped to it.
+        table.note_damage(view, Rect::from_size(SIZE));
+        let shrunk = Rect::new(0, 0, 8, 4);
+        source.bounds = Some(shrunk);
+        let third = table.request(session, BufferId::new(3), Tick::new(3)).expect("a claim");
+        let CaptureOutcome::Copied(resized) = table.capture(third, Tick::new(3), Capture::Desktop, &mut source) else {
+            panic!("the resized View frame copies");
+        };
+        assert_eq!(resized.region, shrunk, "the frame covers the View's new rectangle");
+        assert_eq!(resized.damage, vec![shrunk], "damage is clipped to the new rectangle");
+    }
+
+    /// A View's damage is delivered to its own sessions only: a window's session and
+    /// a View's session with the same numeric id do not share it.
+    #[test]
+    fn view_damage_does_not_reach_other_targets() {
+        let mut table = Table::new();
+        let view = table.open(
+            ClientId::new(9),
+            Target::View(NodeId::new(4)),
+            CaptureStream::Requested,
+            format(),
+        );
+        let window = table.open(
+            ClientId::new(9),
+            Target::Window(WindowId::new(4)),
+            CaptureStream::Requested,
+            format(),
+        );
+        let mut source = Fake::new(Some(Rect::from_size(SIZE)));
+        let frame = table.request(window, BufferId::new(1), Tick::new(1)).expect("a claim");
+        table.capture(frame, Tick::new(1), Capture::Desktop, &mut source);
+        table.note_damage(Target::View(NodeId::new(4)), Rect::new(0, 0, 4, 4));
+        let frame = table.request(window, BufferId::new(2), Tick::new(2)).expect("a claim");
+        let CaptureOutcome::Copied(report) = table.capture(frame, Tick::new(2), Capture::Desktop, &mut source) else {
+            panic!("the window frame copies");
+        };
+        assert!(report.damage.is_empty(), "the window does not see the View's damage");
+        let frame = table.request(view, BufferId::new(3), Tick::new(3)).expect("a claim");
+        table.capture(frame, Tick::new(3), Capture::Desktop, &mut source);
+        table.note_damage(Target::View(NodeId::new(4)), Rect::new(0, 0, 4, 4));
+        let frame = table.request(view, BufferId::new(4), Tick::new(4)).expect("a claim");
+        let CaptureOutcome::Copied(view_report) = table.capture(frame, Tick::new(4), Capture::Desktop, &mut source)
+        else {
+            panic!("the View frame copies");
+        };
+        assert_eq!(view_report.damage, vec![Rect::new(0, 0, 4, 4)]);
     }
 }

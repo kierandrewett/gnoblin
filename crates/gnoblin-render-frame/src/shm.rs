@@ -370,7 +370,10 @@ impl Pixel {
 
 #[cfg(test)]
 mod tests {
+    use gnoblin_types::{Point, Size};
+
     use super::{Pixel, ShmShape, to_image_order};
+    use crate::image::Image;
 
     /// The packed layouts put alpha in the high byte and red next to it, which is the
     /// order a client reads with.
@@ -413,6 +416,30 @@ mod tests {
         assert_eq!(
             to_image_order(shape, vec![0x33, 0x22, 0x11, 0x00]),
             vec![0x11, 0x22, 0x33, 0xFF]
+        );
+    }
+
+    /// A View's picture is copied through the same per-pixel encoding as an output's:
+    /// a known RGBA colour in the picture must reach the client's ARGB bytes as the
+    /// same colour, not swapped or washed out.
+    #[test]
+    fn a_view_picture_pixel_reaches_the_client_as_the_same_colour() {
+        // One opaque red-ish pixel and one half-transparent blue one, row-packed.
+        let image = Image::new(Size::new(2, 1), 8, vec![0xFF, 0x20, 0x10, 0xFF, 0x00, 0x20, 0xF0, 0x80])
+            .expect("a two-pixel image");
+        let red = image.pixel(Point::new(0, 0)).expect("the first pixel");
+        let blue = image.pixel(Point::new(1, 0)).expect("the second pixel");
+        assert_eq!(red, [0xFF, 0x20, 0x10, 0xFF]);
+        assert_eq!(blue, [0x00, 0x20, 0xF0, 0x80]);
+        assert_eq!(
+            Pixel::Argb.encode(red),
+            0xFF_FF_20_10u32.to_ne_bytes(),
+            "an opaque pixel keeps its alpha and colour"
+        );
+        assert_eq!(
+            Pixel::Argb.encode(blue),
+            0x80_00_20_F0u32.to_ne_bytes(),
+            "a translucent pixel keeps its alpha instead of being made opaque"
         );
     }
 }

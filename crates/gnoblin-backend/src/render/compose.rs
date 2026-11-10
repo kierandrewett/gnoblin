@@ -1460,6 +1460,16 @@ impl Composer {
             .find_map(|(view, size)| (view == node).then_some(size))
     }
 
+    /// The picture each View drew the last time it was rendered, keyed by its node. A View
+    /// with no source has no picture and is left out. Capture copies a View from here.
+    #[must_use]
+    pub fn view_pictures(&self) -> Vec<(NodeId, Arc<Image>)> {
+        self.views
+            .iter()
+            .filter_map(|(view, picture)| Some((*view, Arc::clone(picture.image.as_ref()?))))
+            .collect()
+    }
+
     /// The scene node of a window, once the composer has given it one.
     #[must_use]
     pub fn window_node(&self, window: WindowId) -> Option<NodeId> {
