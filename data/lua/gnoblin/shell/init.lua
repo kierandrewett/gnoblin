@@ -1,9 +1,16 @@
 -- data/lua/gnoblin/shell/init.lua: the stock shell. Copy it and edit it.
 seat, lock = root:find(Seat), root:find(Lock)
 spawn, date = sys.spawn, sys.date
-function desk()
-    return seat.screen.source
-end -- the Desk under the pointer
+function desk_of(screen) -- the Desk whose screen it is
+    for _, d in ipairs(root:all(Desk)) do
+        if d.screen == screen then
+            return d
+        end
+    end
+end
+function desk() -- the Desk under the pointer
+    return desk_of(seat.screen)
+end
 
 -- Key and gesture bindings: Gnoblin claims each chord, so no client sees it. `keys` maps a chord to its fn and
 -- `claims` maps the claim id the compositor reports back to its chord. A bound fn runs on press.
@@ -108,19 +115,26 @@ function Workspace:walk(step) -- focus the next window in tree order
     end
 end
 function Screen:on_ready()
-    self.source = root:add(Desk({ screen = self }))
+    root:add(Desk({ screen = self }))
 end
 function Screen:on_destroyed() -- unplugged: its windows move to another desk
-    local to = root:find(Desk)
-    if to == self.source then
-        to = root:all(Desk)[2]
+    local gone = desk_of(self)
+    if not gone then
+        return
     end
-    for _, w in ipairs(self.source:all("Workspace > Window")) do
+    local to
+    for _, d in ipairs(root:all(Desk)) do
+        if d ~= gone then
+            to = d
+            break
+        end
+    end
+    for _, w in ipairs(gone:all("Workspace > Window")) do
         if to then
             to.active:add(w)
         end
     end
-    self.source:destroy()
+    gone:destroy()
 end
 -- Focus and raise policy: seat.focus_options holds the window_management focus keys (nil = documented defaults).
 function focus_settings()
