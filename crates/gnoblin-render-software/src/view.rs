@@ -37,6 +37,8 @@
 //! and headset eyes; the compositor and the XR extension call it when they land.
 //! Only software rasterisation: no GPU and no DMA-BUF.
 
+use std::sync::Arc;
+
 use gnoblin_render::Scene;
 use gnoblin_types::{NodeId, Rect, Size, Vec3};
 
@@ -114,6 +116,18 @@ impl ViewImage {
     #[must_use]
     pub fn pixel(&self, x: i32, y: i32) -> Option<[u8; 4]> {
         self.image.colour_at(x, y)
+    }
+
+    /// The rendered image, for a compositor that draws it.
+    #[must_use]
+    pub fn image(&self) -> &Image {
+        &self.image
+    }
+
+    /// The rendered image, shared, so the compositor can hold it as a snapshot.
+    #[must_use]
+    pub fn into_image(self) -> Arc<Image> {
+        Arc::new(self.image)
     }
 }
 
@@ -880,5 +894,17 @@ mod tests {
 
         assert_eq!(first.data(), second.data());
         assert_eq!(fingerprint(&first), fingerprint(&second));
+    }
+
+    #[test]
+    fn the_image_and_its_shared_form_hold_the_same_pixels() {
+        let mut scene = Scene::new();
+        let root = node(&mut scene, 1, None, Rect::new(0, 0, 40, 40));
+        let buffers = HashMap::from([(id(1), solid(40, 40, RED))]);
+        let image = render(&scene, root, &ortho_centred(40, 40), Size::new(40, 40), &buffers);
+        assert_eq!(image.image().size(), Size::new(40, 40));
+        let shared = image.clone().into_image();
+        assert_eq!(shared.data(), image.data());
+        assert_eq!(Arc::strong_count(&shared), 1);
     }
 }

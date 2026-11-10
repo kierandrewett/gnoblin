@@ -171,6 +171,10 @@ pub struct Node {
     class: Option<String>,
     /// Text properties by schema name (`title`, `app_id`). Read by the tree; drawn nowhere.
     texts: BTreeMap<String, String>,
+    /// Node references by schema name (`source`, `camera`). Read by the compositor; drawn nowhere.
+    references: BTreeMap<String, NodeId>,
+    /// Number properties by schema name (`near`, `far`). Read by the compositor; drawn nowhere.
+    numbers: BTreeMap<String, f64>,
 }
 
 impl Node {
@@ -572,6 +576,8 @@ impl Scene {
             parented_by: spec.parent.map(|_| actor),
             class: None,
             texts: BTreeMap::new(),
+            references: BTreeMap::new(),
+            numbers: BTreeMap::new(),
         };
         self.nodes.insert(id, node);
         self.siblings_mut(spec.parent).insert(index, id);
@@ -912,6 +918,62 @@ impl Scene {
     pub fn set_text(&mut self, id: NodeId, key: &str, value: String) -> Result<(), SceneError> {
         let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
         node.texts.insert(key.to_owned(), value);
+        Ok(())
+    }
+
+    /// The node a reference property names on a node, or `None` when it names none.
+    #[must_use]
+    pub fn reference(&self, id: NodeId, key: &str) -> Option<NodeId> {
+        self.nodes.get(&id)?.references.get(key).copied()
+    }
+
+    /// Store or clear a node reference. The target need not exist yet: a dangling reference
+    /// is the compositor's to ignore. A reference is read by the compositor, not drawn, so it
+    /// damages no pixels; the node is marked dirty so anything derived from it is refreshed.
+    pub fn set_reference(&mut self, id: NodeId, key: &str, target: Option<NodeId>) -> Result<(), SceneError> {
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        match target {
+            Some(target) => node.references.insert(key.to_owned(), target),
+            None => node.references.remove(key),
+        };
+        self.dirty.insert(id);
+        Ok(())
+    }
+
+    /// The node a View draws, from its `source` reference.
+    #[must_use]
+    pub fn source(&self, id: NodeId) -> Option<NodeId> {
+        self.reference(id, "source")
+    }
+
+    /// Set or clear a View's `source` reference.
+    pub fn set_source(&mut self, id: NodeId, source: Option<NodeId>) -> Result<(), SceneError> {
+        self.set_reference(id, "source", source)
+    }
+
+    /// The camera a View draws through, from its `camera` reference.
+    #[must_use]
+    pub fn camera(&self, id: NodeId) -> Option<NodeId> {
+        self.reference(id, "camera")
+    }
+
+    /// Set or clear a View's `camera` reference.
+    pub fn set_camera(&mut self, id: NodeId, camera: Option<NodeId>) -> Result<(), SceneError> {
+        self.set_reference(id, "camera", camera)
+    }
+
+    /// The number a property stores on a node, or `None` when it stores none.
+    #[must_use]
+    pub fn number(&self, id: NodeId, key: &str) -> Option<f64> {
+        self.nodes.get(&id)?.numbers.get(key).copied()
+    }
+
+    /// Store a number property on a node. Read by the compositor, not drawn, so it damages no
+    /// pixels; the node is marked dirty so anything derived from it is refreshed.
+    pub fn set_number(&mut self, id: NodeId, key: &str, value: f64) -> Result<(), SceneError> {
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        node.numbers.insert(key.to_owned(), value);
+        self.dirty.insert(id);
         Ok(())
     }
 
@@ -1824,6 +1886,8 @@ mod tests {
                 parented_by: None,
                 class: None,
                 texts: BTreeMap::new(),
+                references: BTreeMap::new(),
+                numbers: BTreeMap::new(),
             },
         );
         scene.roots.push(space);
@@ -1843,6 +1907,8 @@ mod tests {
                 parented_by: Some(Actor::Compositor),
                 class: None,
                 texts: BTreeMap::new(),
+                references: BTreeMap::new(),
+                numbers: BTreeMap::new(),
             },
         );
         scene.dirty.clear();
@@ -1873,6 +1939,41 @@ mod tests {
         assert!(dirty.contains(&NodeId::new(1)));
         assert!(dirty.contains(&NodeId::new(2)));
         assert!(scene.take_dirty().is_empty());
+    }
+
+    #[test]
+    fn a_reference_is_set_read_cleared_and_marks_its_node_dirty() {
+        let mut scene = Scene::new();
+        scene
+            .insert(NodeId::new(1), NodeSpec::new(rect(0, 0, 100, 100)))
+            .expect("root");
+        scene
+            .insert(NodeId::new(2), NodeSpec::new(rect(0, 0, 50, 50)))
+            .expect("view");
+        scene.take_dirty();
+        assert_eq!(scene.source(NodeId::new(2)), None);
+        scene.set_source(NodeId::new(2), Some(NodeId::new(1))).expect("source");
+        assert_eq!(scene.source(NodeId::new(2)), Some(NodeId::new(1)));
+        assert!(scene.take_dirty().contains(&NodeId::new(2)));
+        scene.set_camera(NodeId::new(2), Some(NodeId::new(1))).expect("camera");
+        assert_eq!(scene.camera(NodeId::new(2)), Some(NodeId::new(1)));
+        scene.set_source(NodeId::new(2), None).expect("clear");
+        assert_eq!(scene.source(NodeId::new(2)), None);
+        assert_eq!(scene.camera(NodeId::new(2)), Some(NodeId::new(1)));
+        assert!(scene.set_source(NodeId::new(9), None).is_err());
+    }
+
+    #[test]
+    fn a_number_is_set_read_and_marks_its_node_dirty() {
+        let mut scene = Scene::new();
+        scene
+            .insert(NodeId::new(1), NodeSpec::new(rect(0, 0, 100, 100)))
+            .expect("root");
+        scene.take_dirty();
+        assert_eq!(scene.number(NodeId::new(1), "near"), None);
+        scene.set_number(NodeId::new(1), "near", 0.5).expect("near");
+        assert_eq!(scene.number(NodeId::new(1), "near"), Some(0.5));
+        assert!(scene.take_dirty().contains(&NodeId::new(1)));
     }
 
     #[test]
