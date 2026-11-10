@@ -378,6 +378,23 @@ local function extend(base, name)
     end
 end
 
+-- Chord claims. The Lua side allocates each claim id (per VM, from 1, never reused) and remembers which seat
+-- made it, so a chord event from the compositor can be routed to that seat.
+local claims, next_claim = {}, 0
+local function install_claims(c)
+    rawset(c, "claim", function(seat, chord, grab)
+        next_claim = next_claim + 1
+        local id = next_claim
+        claims[id] = seat
+        core.call(rawget(seat, ID), "claim", string.pack("<i8i8", id, grab and 1 or 0), chord)
+        return id
+    end)
+    rawset(c, "unclaim", function(seat, id)
+        claims[id] = nil
+        core.call(rawget(seat, ID), "unclaim", string.pack("<i8", id))
+    end)
+end
+
 -- The native classes, parent first, from the schema. A method that takes time returns a signal.
 for _, s in ipairs(core.classes()) do
     local c, m = declare(s.base and classes[s.base], s.name, s.name)
@@ -395,6 +412,9 @@ for _, s in ipairs(core.classes()) do
             end
             return v
         end)
+    end
+    if s.name == "Seat" then
+        install_claims(c)
     end
     settle(m)
 end
@@ -604,7 +624,12 @@ return function(t, changes, events)
         end
     end
     for _, e in ipairs(events) do
-        if e.bubbles then -- input: the path is fixed first, as in the DOM
+        if e.chord then -- a claimed chord: routed to the seat that made the claim
+            local seat = claims[e.chord.claim]
+            if seat and nodes[rawget(seat, ID)] then
+                emit(seat, "chord", e.chord)
+            end
+        elseif e.bubbles then -- input: the path is fixed first, as in the DOM
             e.target = wrap(e.target)
             e.stop = function(self)
                 self.stopped = true

@@ -118,6 +118,8 @@ pub enum LuaOp {
         node: NodeId,
         method: String,
         args: Vec<u8>,
+        /// The op's text: a seat claim's chord. Empty for every other call.
+        text: String,
     },
 }
 
@@ -151,6 +153,14 @@ pub struct TreeEvent {
     pub kind: String,
 }
 
+/// A claimed chord the compositor saw change state: `claim` is the id the Lua side allocated.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LuaChord {
+    pub claim: i64,
+    pub chord: String,
+    pub state: String,
+}
+
 /// The reply to attach: the epoch this shell holds, the root and the snapshot serial.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attached {
@@ -180,6 +190,7 @@ pub enum LuaIncoming {
         error: String,
     },
     Event(TreeEvent),
+    Chord(LuaChord),
 }
 
 /// A failure of the link itself: the socket closed or a frame did not decode.
@@ -704,12 +715,20 @@ impl LuaTxBuilder {
     }
 
     /// Call a method on a node. The answer arrives later, by token.
-    pub fn call(&mut self, base: &LuaMirror, node: NodeId, method: &str, args: Vec<u8>) -> Result<(), TxError> {
+    pub fn call(
+        &mut self,
+        base: &LuaMirror,
+        node: NodeId,
+        method: &str,
+        args: Vec<u8>,
+        text: String,
+    ) -> Result<(), TxError> {
         self.require(base, node)?;
         self.ops.push(LuaOp::Call {
             node,
             method: method.to_owned(),
             args,
+            text,
         });
         Ok(())
     }

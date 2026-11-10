@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use mlua::{Function, Lua, Table, Value};
 
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
-use crate::tree_mirror::{LuaChange, LuaIncoming, LuaMirror, MirrorChangeKind, SnapshotNode, TreeLink};
+use crate::tree_mirror::{LuaChange, LuaChord, LuaIncoming, LuaMirror, MirrorChangeKind, SnapshotNode, TreeLink};
 
 /// The protocol version the VM attaches with.
 const ATTACH_VERSION: u64 = 1;
@@ -59,6 +59,8 @@ pub struct LuaEvent {
     pub target: u64,
     pub kind: String,
     pub bubbles: bool,
+    /// A claimed chord the compositor reports; node.lua routes it to the seat that made the claim.
+    pub chord: Option<LuaChord>,
 }
 
 /// What one frame produced for the caller.
@@ -154,6 +156,13 @@ impl ShellVm {
                     target: event.node,
                     kind: event.kind,
                     bubbles: false,
+                    chord: None,
+                }),
+                LuaIncoming::Chord(chord) => tree_events.push(LuaEvent {
+                    target: 0,
+                    kind: "chord".to_owned(),
+                    bubbles: false,
+                    chord: Some(chord),
                 }),
                 LuaIncoming::Attached(_) | LuaIncoming::Snapshot { .. } => {
                     return Err(ShellVmError::Link("attach or snapshot after boot".to_owned()));
@@ -250,6 +259,13 @@ impl ShellVm {
             entry.set("target", event.target).map_err(lua_error)?;
             entry.set("type", event.kind.as_str()).map_err(lua_error)?;
             entry.set("bubbles", event.bubbles).map_err(lua_error)?;
+            if let Some(chord) = &event.chord {
+                let claim = lua.create_table().map_err(lua_error)?;
+                claim.set("claim", chord.claim).map_err(lua_error)?;
+                claim.set("chord", chord.chord.as_str()).map_err(lua_error)?;
+                claim.set("state", chord.state.as_str()).map_err(lua_error)?;
+                entry.set("chord", claim).map_err(lua_error)?;
+            }
             events_table.set(i + 1, entry).map_err(lua_error)?;
         }
         self.tick.call((now, changes, events_table)).map_err(lua_error)

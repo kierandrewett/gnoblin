@@ -9,6 +9,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
+use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -16,8 +17,8 @@ use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
 
 use crate::tree_mirror::{
-    Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
-    TreeLink, TxReply,
+    Attached, LinkError, LuaChange, LuaChord, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
+    SnapshotNode, TreeLink, TxReply,
 };
 
 const NAMESPACE: &str = "tree";
@@ -227,11 +228,17 @@ fn to_op(op: &LuaOp) -> op::Properties {
             node: *node,
             ..Default::default()
         },
-        LuaOp::Call { node, method, args } => op::Properties {
+        LuaOp::Call {
+            node,
+            method,
+            args,
+            text,
+        } => op::Properties {
             kind: "call".to_owned(),
             node: *node,
             method: method.clone(),
             args: args.clone(),
+            text: text.clone(),
             ..Default::default()
         },
     }
@@ -290,6 +297,16 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                     .map(to_snapshot_node)
                     .collect::<Result<Vec<_>, _>>()?,
             })
+        }
+        (Some(Kind::Event(_)), "chord") => {
+            let payload = envelope
+                .payload_as::<ChordPayload>()
+                .ok_or_else(|| undecodable(member))?;
+            Ok(LuaIncoming::Chord(LuaChord {
+                claim: payload.id,
+                chord: payload.chord,
+                state: payload.state,
+            }))
         }
         (Some(Kind::Event(_)), "changes") => {
             let payload = envelope

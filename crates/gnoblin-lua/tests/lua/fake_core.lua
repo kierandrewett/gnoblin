@@ -68,7 +68,7 @@ local SCHEMA = {
         base = "Node",
         props = { focus = { type = "node" }, screen = { type = "node" } },
         signals = { "chord" },
-        methods = { "claim", "grab" },
+        methods = { "claim", "unclaim", "grab" },
     },
     -- `index` is derived from the position in the parent, as the native Workspace reports it.
     {
@@ -96,9 +96,8 @@ local METHODS = {
     measure = function(_, text, size)
         return #tostring(text) * (size or 14) * 0.5
     end,
-    claim = function(_, chord)
-        return chord
-    end,
+    claim = function() end,
+    unclaim = function() end,
     grab = function() end,
     close = function() end,
     camera = function()
@@ -324,13 +323,14 @@ return function()
         end
         return cleared
     end
-    function core.call(id, method, ...)
+    -- As the native core: `args` is the packed argument bytes, `text` the op's text (a claim's chord).
+    function core.call(id, method, args, text)
         local r = record(id, "call")
         if not by_name[r.class].methods[method] then
             error(("%s has no method %s"):format(r.class, method), 2)
         end
-        local result = METHODS[method](r, ...)
-        calls[#calls + 1] = { id = id, method = method, args = { ... }, result = result }
+        local result = METHODS[method](r, args, text)
+        calls[#calls + 1] = { id = id, method = method, args = { args }, text = text, result = result }
         return result
     end
     function core.report(message)

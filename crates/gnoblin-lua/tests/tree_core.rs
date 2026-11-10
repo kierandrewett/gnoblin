@@ -191,14 +191,24 @@ fn calls_need_a_declared_method_and_carry_their_argument_bytes() {
     assert!(refused(&lua, r#"core.call(2, "open")"#).contains("window has no method open"));
     assert!(refused(&lua, r#"core.call(1, "close")"#).contains("node has no method close"));
     check(&lua, r#"core.call(2, "close", "ab")"#);
+    check(&lua, r#"core.call(2, "close", "cd", "Super+q")"#);
     let tx = core.borrow_mut().take_transaction(6);
     assert_eq!(
         tx.ops,
-        vec![LuaOp::Call {
-            node: 2,
-            method: "close".to_owned(),
-            args: b"ab".to_vec(),
-        }]
+        vec![
+            LuaOp::Call {
+                node: 2,
+                method: "close".to_owned(),
+                args: b"ab".to_vec(),
+                text: String::new(),
+            },
+            LuaOp::Call {
+                node: 2,
+                method: "close".to_owned(),
+                args: b"cd".to_vec(),
+                text: "Super+q".to_owned(),
+            },
+        ]
     );
 }
 

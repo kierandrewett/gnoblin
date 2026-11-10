@@ -210,7 +210,10 @@ fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
     assert!(tx.node(&mirror, 2).is_none());
     assert!(tx.node(&mirror, 4).is_none());
     assert_eq!(tx.node(&mirror, 1).expect("root").children, vec![3]);
-    assert_eq!(tx.call(&mirror, 4, "measure", Vec::new()), Err(TxError::UnknownNode(4)));
+    assert_eq!(
+        tx.call(&mirror, 4, "measure", Vec::new(), String::new()),
+        Err(TxError::UnknownNode(4))
+    );
 }
 
 #[test]

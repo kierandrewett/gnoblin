@@ -273,13 +273,13 @@ impl TreeCore {
             .map_err(|e| e.to_string())
     }
 
-    fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>) -> Result<(), String> {
+    fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: String) -> Result<(), String> {
         let class = self.class_of(node)?;
         if !self.has_method(&class, method) {
             return Err(format!("{class} has no method {method}"));
         }
         self.tick
-            .call(&self.mirror, node, method, args)
+            .call(&self.mirror, node, method, args, text)
             .map_err(|e| e.to_string())
     }
 }
@@ -591,13 +591,15 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
     let shared = Rc::clone(core);
     table.set(
         "call",
-        lua.create_function(move |_, (node, method, args): (i64, String, Option<mlua::LuaString>)| {
-            let args = args.map_or_else(Vec::new, |bytes| bytes.as_bytes().to_vec());
-            shared
-                .borrow_mut()
-                .call(node_arg(node)?, &method, args)
-                .map_err(lua_err)
-        })?,
+        lua.create_function(
+            move |_, (node, method, args, text): (i64, String, Option<mlua::LuaString>, Option<String>)| {
+                let args = args.map_or_else(Vec::new, |bytes| bytes.as_bytes().to_vec());
+                shared
+                    .borrow_mut()
+                    .call(node_arg(node)?, &method, args, text.unwrap_or_default())
+                    .map_err(lua_err)
+            },
+        )?,
     )?;
 
     let shared = Rc::clone(core);

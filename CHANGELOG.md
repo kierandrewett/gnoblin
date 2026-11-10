@@ -4,6 +4,7 @@
 
 ### Added
 
+- Lua `seat:claim(chord, grab)` returns a per-VM integer claim id (1, 2, ... never reused) and sends a `claim` call carrying the chord as the op `text` and the grab flag; `seat:unclaim(id)` sends `unclaim`. `Seat:bind{[chord]=fn}` registers each fn under its claim id, `Seat:unbind` unclaims, and a `chord` seat event `(id, chord, state)` runs the fn once on `press`. Tests `seat claim returns increasing ids and queues a claim call carrying the chord` and `a chord event runs the bound fn once on press and unbind stops later events` in `crates/gnoblin-lua/tests/lua/shell_test.lua`.
 - `gnoblin-xr` drives the owner's pointer from the OpenXR ray. `Pointer` (`extensions/gnoblin-xr/crates/gnoblin-xr/src/pointer.rs`) casts the ray with `xr_scene::pick` and sends owner `input` ops: `motion` on change, `leave` on a miss or a new window. `FrameLoop::locate_ray` exposes the runtime's ray without changing tick pacing. Buttons and scroll are not wired: the runtime has no button source. Test `pointer_sends_motion_then_leave_over_the_window_under_the_ray` in `bridge.rs`.
 - Screen nodes: the composer creates a `screen` node per declared output, publishes its geometry, and destroys it with the output.
 - Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.

@@ -234,6 +234,7 @@ fn event(target: u64, kind: &str) -> LuaEvent {
         target,
         kind: kind.to_string(),
         bubbles: false,
+        chord: None,
     }
 }
 

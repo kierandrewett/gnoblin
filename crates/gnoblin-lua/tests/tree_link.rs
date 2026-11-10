@@ -7,9 +7,10 @@ use std::os::unix::net::UnixStream;
 
 use gnoblin_lua::tree_link::SocketTreeLink;
 use gnoblin_lua::tree_mirror::{
-    Attached, LuaChange, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode, TreeLink,
-    TxReply,
+    Attached, LuaChange, LuaChord, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
+    TreeLink, TxReply,
 };
+use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -49,6 +50,31 @@ fn bare(kind: MirrorChangeKind, node: u64) -> LuaChange {
         value: None,
         removed: Vec::new(),
     }
+}
+
+#[test]
+fn a_chord_event_arrives_as_a_chord_not_a_node_event() {
+    let (mut link, mut server) = pair();
+    send(
+        &mut server,
+        &Envelope::event_message(
+            "tree",
+            "chord",
+            &ChordPayload {
+                id: 7,
+                chord: "Super+q".to_owned(),
+                state: "press".to_owned(),
+            },
+        ),
+    );
+    assert_eq!(
+        drain(&mut link),
+        vec![LuaIncoming::Chord(LuaChord {
+            claim: 7,
+            chord: "Super+q".to_owned(),
+            state: "press".to_owned(),
+        })]
+    );
 }
 
 #[test]
@@ -156,6 +182,13 @@ fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
                 node: 1000,
                 method: "focus".to_owned(),
                 args: vec![1, 2],
+                text: String::new(),
+            },
+            LuaOp::Call {
+                node: 2,
+                method: "claim".to_owned(),
+                args: vec![7, 1],
+                text: "Super+q".to_owned(),
             },
             LuaOp::Destroy { node: 1000 },
         ],
@@ -167,7 +200,7 @@ fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
     let args: TransactArgs = request.payload_as().expect("the transact args decode");
     assert_eq!((args.base_serial, args.serial), (0, 1));
     let kinds: Vec<&str> = args.ops.iter().map(|wire| wire.kind.as_str()).collect();
-    assert_eq!(kinds, ["new", "insert", "set", "call", "destroy"]);
+    assert_eq!(kinds, ["new", "insert", "set", "call", "call", "destroy"]);
     assert_eq!(args.ops[0].class, "node");
     assert_eq!(args.ops[0].id, 1000);
     assert_eq!(
@@ -180,7 +213,12 @@ fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
     assert_eq!(args.ops[2].samples, vec![0.0, 1.0]);
     assert_eq!(args.ops[3].method, "focus");
     assert_eq!(args.ops[3].args, vec![1, 2]);
-    assert_eq!(args.ops[4].node, 1000);
+    assert_eq!(args.ops[4].method, "claim");
+    assert_eq!(
+        args.ops[4].text, "Super+q",
+        "a claim's chord crosses the wire as the op text"
+    );
+    assert_eq!(args.ops[5].node, 1000);
 
     send(
         &mut server,

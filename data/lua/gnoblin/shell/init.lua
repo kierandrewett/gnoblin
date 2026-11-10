@@ -5,22 +5,33 @@ function desk()
     return seat.screen.source
 end -- the Desk under the pointer
 
--- Key and gesture bindings: Gnoblin claims each chord, so no client sees it.
+-- Key and gesture bindings: Gnoblin claims each chord, so no client sees it. `keys` maps a chord to its fn and
+-- `claims` maps the claim id the compositor reports back to its chord. A bound fn runs on press.
 function Seat:bind(map)
-    local keys = self.data.keys or {}
+    local keys, claims = self.data.keys or {}, self.data.claims or {}
     local chords = {}
     for chord in pairs(map) do
         chords[#chords + 1] = chord
     end
     table.sort(chords)
     for _, chord in ipairs(chords) do
-        keys[self:claim(chord, map[chord] ~= false)] = map[chord] or nil
+        keys[chord] = map[chord] or nil
+        claims[self:claim(chord, map[chord] ~= false)] = chord
     end
-    self.data.keys = keys
+    self.data.keys, self.data.claims = keys, claims
+end
+function Seat:unbind(id)
+    local chord = self.data.claims[id]
+    if chord then
+        self.data.keys[chord] = nil
+        self.data.claims[id] = nil
+    end
+    self:unclaim(id)
 end
 function Seat:on_chord(e)
-    local fn = self.data.keys[e.chord]
-    if fn then
+    local chord = self.data.claims[e.claim]
+    local fn = chord and self.data.keys[chord]
+    if fn and e.state == "press" then
         fn(e)
     end
 end

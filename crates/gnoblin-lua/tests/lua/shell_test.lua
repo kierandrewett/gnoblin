@@ -4,6 +4,16 @@
 -- stock Floating class, from shell/floating.lua.
 local H = require("harness")
 
+-- The stock shell over a fake core with one Seat, as floating_test sets it up (no Screen needed for claims).
+local function seat_shell()
+    local core, host = require("fake_core")()
+    H.boot(core, host)
+    root:add(Seat({}))
+    H.load_shell()
+    H.start_shell(host)
+    return core, host
+end
+
 return {
     {
         "a window that maps before the shell waits under root, then is placed when the shell starts",
@@ -113,6 +123,58 @@ return {
             H.check(dialog.parent == parent, "the dialog must become the parent's child")
             H.check(parent.parent == other, "the parent stays on its own workspace")
             H.check(desk().active ~= other, "showing the dialog must not switch workspace")
+        end,
+    },
+    -- Seat:claim returns a fresh id per claim and sends the chord and grab to the compositor.
+    {
+        "seat claim returns increasing ids and queues a claim call carrying the chord",
+        function()
+            local core, host = seat_shell()
+            local s = root:find(Seat)
+            local a = s:claim("Super+q", true)
+            local b = s:claim("Super+w", false)
+            H.check(b == a + 1, "ids " .. tostring(a) .. ", " .. tostring(b))
+            local c = host.calls[#host.calls]
+            H.check(c.method == "claim", "last call " .. c.method)
+            H.check(c.text == "Super+w", "chord text " .. tostring(c.text))
+            local id, grab = string.unpack("<i8i8", c.args[1])
+            H.check(id == b and grab == 0, "args id " .. id .. " grab " .. grab)
+        end,
+    },
+
+    -- A chord event reaches the fn bound under its claim id on press only; unbind unclaims.
+    {
+        "a chord event runs the bound fn once on press and unbind stops later events",
+        function()
+            local _, host = seat_shell()
+            local s = root:find(Seat)
+            local hits = {}
+            s:bind({
+                ["Super+q"] = function(e)
+                    hits[#hits + 1] = e.state
+                end,
+            })
+            local id
+            for _, c in ipairs(host.calls) do
+                if c.method == "claim" and c.text == "Super+q" then
+                    id = string.unpack("<i8", c.args[1])
+                end
+            end
+            H.check(id ~= nil, "bind sent no claim for Super+q")
+            local function chord_event(state)
+                local chord = { claim = id, chord = "Super+q", state = state }
+                return { target = 0, type = "chord", bubbles = false, chord = chord }
+            end
+            host.frame(0, { chord_event("press") })
+            host.frame(1, { chord_event("release") })
+            H.check(#hits == 1 and hits[1] == "press", "hits " .. #hits)
+            s:unbind(id)
+            local last = host.calls[#host.calls]
+            H.check(last.method == "unclaim", "unbind sent " .. last.method)
+            local uid = string.unpack("<i8", last.args[1])
+            H.check(uid == id, "unclaim id " .. uid)
+            host.frame(2, { chord_event("press") })
+            H.check(#hits == 1, "fn ran after unbind: " .. #hits)
         end,
     },
 }
