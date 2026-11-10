@@ -3472,6 +3472,13 @@ impl Host for State {
         for node in self.composer.take_tree_ready() {
             self.tree.ready(node);
         }
+        // A window's node is created on the frame after it maps, so the focus is published
+        // again here once the node it names exists.
+        let focused = self
+            .keyboard
+            .current_focus()
+            .and_then(|surface| self.window_of(&surface));
+        self.composer.set_main_seat_focus(focused);
         // The tree's transactions apply to the scene the composer draws from, before the
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;
