@@ -951,3 +951,174 @@ fn window_node_after_mapping(wire: &mut Wire, title: &str) -> u64 {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+fn set_bool(node: u64, key: &str, value: bool) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: "bool".to_owned(),
+        value_bool: value,
+        ..Default::default()
+    }
+}
+
+
+fn set_list(node: u64, key: &str, value: Vec<f64>) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: "list_double".to_owned(),
+        value_list: value,
+        ..Default::default()
+    }
+}
+
+fn set_node_ref(node: u64, key: &str, target: u64) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: "node".to_owned(),
+        value_node: target,
+        ..Default::default()
+    }
+}
+
+/// Create one `view` node under `parent`, with the shell's pre-allocated `id`.
+fn create_view(id: u64, parent: u64) -> Vec<op::Properties> {
+    vec![
+        op::Properties {
+            kind: "new".to_owned(),
+            class: "view".to_owned(),
+            id,
+            ..Default::default()
+        },
+        op::Properties {
+            kind: "insert".to_owned(),
+            node: id,
+            parent,
+            index: 0,
+            ..Default::default()
+        },
+    ]
+}
+
+/// The snapshot's entry for property `key` of node `id`, if the snapshot carries one.
+fn prop_of<'a>(nodes: &'a [snapshot_node::Properties], id: u64, key: &str) -> Option<&'a change::Properties> {
+    nodes
+        .iter()
+        .find(|node| node.id == id)?
+        .props
+        .iter()
+        .find(|prop| prop.key == key)
+}
+
+#[test]
+fn a_fresh_attach_carries_the_current_value_of_every_non_default_property() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(set_double(1000, "opacity", 0.5));
+    ops.push(set_bool(1000, "visible", false));
+    ops.push(set_list(1000, "rotation", vec![0.0, 0.0, 45.0]));
+    ops.push(set_text(1000, "name", "hero"));
+    ops.push(set_double(1000, "width", 0.0));
+    ops.extend(create_view(1001, attached.root));
+    ops.push(set_node_ref(1001, "source", 1000));
+    transact(&mut wire, 2, 0, 1, ops);
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let applied: ReplyPayload = reply(&mut wire, "transact");
+    assert!(applied.applied, "the sets validate: {applied:?}");
+    drop(wire);
+
+    let (_held, _, nodes) = attach_once_released(&session, 3);
+    let opacity = prop_of(&nodes, 1000, "opacity").expect("a non-default double is carried");
+    assert_eq!(opacity.value_kind, "double");
+    assert_eq!(opacity.value_double, 0.5);
+    let visible = prop_of(&nodes, 1000, "visible").expect("a non-default bool is carried");
+    assert_eq!(visible.value_kind, "bool");
+    assert!(!visible.value_bool);
+    let rotation = prop_of(&nodes, 1000, "rotation").expect("a non-default list is carried");
+    assert_eq!(rotation.value_kind, "list_double");
+    assert_eq!(rotation.value_list, vec![0.0, 0.0, 45.0]);
+    let name = prop_of(&nodes, 1000, "name").expect("a non-default text is carried");
+    assert_eq!(name.value_kind, "text");
+    assert_eq!(name.value_text, "hero");
+    let source = prop_of(&nodes, 1001, "source").expect("a node reference is carried");
+    assert_eq!(source.value_kind, "node");
+    assert_eq!(source.value_node, 1000);
+
+    for key in ["width", "height", "x", "scale", "clip", "tags"] {
+        assert!(
+            prop_of(&nodes, 1000, key).is_none(),
+            "a property at its default is not carried: {key}"
+        );
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_value_set_back_to_its_default_is_no_longer_carried() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(set_double(1000, "opacity", 0.5));
+    transact(&mut wire, 2, 0, 1, ops);
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    transact(&mut wire, 3, 1, 2, vec![set_double(1000, "opacity", 1.0)]);
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let applied: ReplyPayload = reply(&mut wire, "transact");
+    assert!(applied.applied, "the set validates: {applied:?}");
+    drop(wire);
+
+    let (_held, _, nodes) = attach_once_released(&session, 4);
+    assert!(
+        prop_of(&nodes, 1000, "opacity").is_none(),
+        "opacity back at its default is not carried"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_value_set_after_the_snapshot_is_published_once_and_not_repeated_in_it() {
+    let session = Session::start();
+    {
+        let mut wire = Wire::connect(session.socket());
+        let (attached, _) = attach_and_snapshot(&mut wire, 1);
+        let mut ops = create(1000, attached.root);
+        ops.push(set_double(1000, "opacity", 0.5));
+        transact(&mut wire, 2, 0, 1, ops);
+        let _: ChangesPayload = event(&mut wire, "changes");
+        let _: ReplyPayload = reply(&mut wire, "transact");
+    }
+
+    let (mut wire, attached, nodes) = attach_once_released(&session, 3);
+    assert_eq!(attached.serial, 1, "the snapshot is at the serial the value was set");
+    assert_eq!(
+        prop_of(&nodes, 1000, "opacity").map(|prop| prop.value_double),
+        Some(0.5),
+        "the snapshot holds the value at its serial"
+    );
+
+    transact(&mut wire, 4, 1, 2, vec![set_double(1000, "opacity", 0.25)]);
+    let changes = changes_until(&mut wire, |all| {
+        all.iter().any(|change| change.kind == "set" && change.key == "opacity")
+    });
+    let applied: ReplyPayload = reply(&mut wire, "transact");
+    assert!(applied.applied, "the set validates: {applied:?}");
+    let opacity: Vec<&change::Properties> = changes
+        .iter()
+        .filter(|change| change.kind == "set" && change.key == "opacity")
+        .collect();
+    assert_eq!(opacity.len(), 1, "the new value is published once: {changes:?}");
+    assert_eq!(opacity[0].value_double, 0.25);
+    session.stop().expect("the session stops cleanly");
+}
