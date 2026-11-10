@@ -401,6 +401,7 @@ fn value_text(value: &TreeValue) -> String {
         TreeValue::Bytes(bytes) => format!("bytes:{bytes:?}"),
         TreeValue::ListDouble(items) => format!("list_double:{items:?}"),
         TreeValue::ListText(items) => format!("list_text:{items:?}"),
+        TreeValue::Effects(passes) => format!("effects:{}", passes.len()),
         TreeValue::Node(node) => format!("node:{node:?}"),
     }
 }

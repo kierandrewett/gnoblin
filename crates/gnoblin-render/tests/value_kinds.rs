@@ -5,9 +5,10 @@
 
 use gnoblin_render::scene_ids::{Actor, COMPOSITOR_ID_BASE};
 use gnoblin_render::transaction::{
-    ClassInfo, Code, MAX_LIST, MAX_TEXT_BYTES, PropertyInfo, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
-    ValueType, validate_and_apply,
+    ClassInfo, Code, MAX_EFFECTS, MAX_LIST, MAX_TEXT_BYTES, PropertyInfo, TreeOp, TreeRefusal, TreeTransaction,
+    TreeValue, ValueType, validate_and_apply,
 };
+use gnoblin_render::{BlurParams, Pass, Shader, UniformSchema};
 use gnoblin_render::{NodeSpec, Scene};
 use gnoblin_types::{NodeId, Rect};
 
@@ -36,6 +37,8 @@ impl ClassInfo for Kinds {
             "parent_ref" => (ValueType::Node("Window".into()), false),
             "source" | "camera" => (ValueType::Node("Window".into()), false),
             "axes" => (ValueType::ListDouble, false),
+            "tags" => (ValueType::ListText, false),
+            "effects" => (ValueType::Effects, false),
             "id" => (ValueType::Uint, true),
             _ => return None,
         };
@@ -296,6 +299,73 @@ fn list_double_refuses_a_text_value() {
     assert_refused(
         apply(&mut scene, set(win, "axes", TreeValue::Text("0 0 0".into()))),
         Code::WrongType,
+    );
+}
+
+#[test]
+fn effects_at_the_cap_are_accepted() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    let blur = Pass::Blur(BlurParams {
+        radius: 4.0,
+        passes: 2,
+        ..BlurParams::default()
+    });
+    assert!(
+        apply(
+            &mut scene,
+            set(win, "effects", TreeValue::Effects(vec![blur; MAX_EFFECTS]))
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn effects_over_the_cap_are_too_large() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    let blur = Pass::Blur(BlurParams {
+        radius: 4.0,
+        passes: 2,
+        ..BlurParams::default()
+    });
+    assert_refused(
+        apply(
+            &mut scene,
+            set(win, "effects", TreeValue::Effects(vec![blur; MAX_EFFECTS + 1])),
+        ),
+        Code::TooLarge,
+    );
+}
+
+#[test]
+fn a_shader_effect_is_refused_as_bad_value() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    let shader = Pass::Shader(Shader::new(UniformSchema::default()));
+    assert_refused(
+        apply(&mut scene, set(win, "effects", TreeValue::Effects(vec![shader]))),
+        Code::BadValue,
+    );
+}
+
+#[test]
+fn tags_at_the_cap_are_accepted_and_over_it_are_too_large() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    assert!(
+        apply(
+            &mut scene,
+            set(win, "tags", TreeValue::ListText(vec!["t".into(); MAX_LIST]))
+        )
+        .is_none()
+    );
+    assert_refused(
+        apply(
+            &mut scene,
+            set(win, "tags", TreeValue::ListText(vec!["t".into(); MAX_LIST + 1])),
+        ),
+        Code::TooLarge,
     );
 }
 

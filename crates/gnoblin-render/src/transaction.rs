@@ -63,6 +63,7 @@ use std::collections::BTreeSet;
 use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_types::{NodeId, Rect};
 
+use crate::effect::{EffectError, Pass};
 use crate::scene::{NodeSpec, Scene, SceneError};
 use crate::scene_ids::Actor;
 
@@ -80,6 +81,10 @@ pub const MAX_BYTES: usize = 1 << 20;
 
 /// The most items in one list value. A longer list is refused `too-large`.
 pub const MAX_LIST: usize = 4096;
+
+/// The most effect passes one node's `effects` list may hold. A longer list is refused
+/// `too-large`.
+pub const MAX_EFFECTS: usize = 16;
 
 /// A refusal code, spelled as in design/node-core.md table 4.4 by [`Code::as_str`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,6 +204,10 @@ pub enum TreeValue {
     ListDouble(Vec<f64>),
     /// A list of strings.
     ListText(Vec<String>),
+    /// A list of effect passes, at most [`MAX_EFFECTS`] long. Only blur and shadow are
+    /// accepted; a shader pass is refused, because the compositor does not run them from
+    /// the tree yet.
+    Effects(Vec<Pass>),
     /// A node reference, or `None` for nil.
     Node(Option<NodeId>),
 }
@@ -222,6 +231,9 @@ pub enum ValueType {
     ListDouble,
     /// A list of at most [`MAX_LIST`] strings, each at most [`MAX_TEXT_BYTES`] bytes.
     ListText,
+    /// A list of at most [`MAX_EFFECTS`] blur or shadow passes, each with finite,
+    /// in-range values.
+    Effects,
     /// A reference to a live node whose class is this class or derives from it, or nil.
     Node(String),
 }
@@ -669,6 +681,10 @@ fn check_value(work: &Scene, classes: &dyn ClassInfo, value: &TreeValue, kind: &
                 .iter()
                 .try_for_each(|item| size_within(item.len(), MAX_TEXT_BYTES))
         }
+        (TreeValue::Effects(passes), ValueType::Effects) => {
+            size_within(passes.len(), MAX_EFFECTS)?;
+            passes.iter().try_for_each(check_effect_pass)
+        }
         (TreeValue::Node(target), ValueType::Node(class)) => match target {
             None => Ok(()),
             Some(id) if !work.contains(*id) => Err(Code::UnknownNode),
@@ -689,6 +705,56 @@ fn finite(number: f64) -> Result<(), Code> {
 
 fn size_within(len: usize, cap: usize) -> Result<(), Code> {
     if len <= cap { Ok(()) } else { Err(Code::TooLarge) }
+}
+
+/// Check one pass of an `effects` list. Only blur and shadow are accepted: a shader pass
+/// is refused `bad-value`, because the tree cannot carry a compiled module yet. A value
+/// that is NaN or infinite is `not-finite`; any other out-of-range value is `out-of-range`.
+fn check_effect_pass(pass: &Pass) -> Result<(), Code> {
+    match pass {
+        Pass::Blur(_) | Pass::Shadow(_) => {}
+        Pass::Shader(_) => return Err(Code::BadValue),
+    }
+    pass.validate().map_err(|error| match error {
+        EffectError::Unsupported3d(_) => Code::BadValue,
+        _ if pass_has_non_finite(pass) => Code::NotFinite,
+        _ => Code::OutOfRange,
+    })
+}
+
+/// Whether any number in a blur or shadow pass is NaN or infinite.
+fn pass_has_non_finite(pass: &Pass) -> bool {
+    match pass {
+        Pass::Blur(blur) => [
+            blur.radius,
+            blur.downscale,
+            blur.brightness,
+            blur.contrast,
+            blur.saturation,
+            blur.noise,
+            blur.tint.r,
+            blur.tint.g,
+            blur.tint.b,
+            blur.tint.a,
+        ]
+        .iter()
+        .any(|value| !value.is_finite()),
+        Pass::Shadow(shadow) => [
+            shadow.offset.x,
+            shadow.offset.y,
+            shadow.offset.z,
+            f64::from(shadow.blur),
+            f64::from(shadow.spread),
+            f64::from(shadow.opacity),
+            f64::from(shadow.color.r),
+            f64::from(shadow.color.g),
+            f64::from(shadow.color.b),
+            f64::from(shadow.color.a),
+        ]
+        .iter()
+        .any(|value| !value.is_finite()),
+        Pass::Shader(_) => false,
+    }
 }
 
 /// Write one validated, non-animated value into the scene. A property the scene does not
