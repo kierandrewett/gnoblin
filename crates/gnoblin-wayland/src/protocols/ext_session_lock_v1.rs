@@ -337,6 +337,13 @@ impl State {
         }
         self.refresh_lock_focus();
         self.settle_lock_waiters();
+        self.composer.set_lock_state(match self.lock.state() {
+            LockState::Unlocked => "not-locked",
+            LockState::Locking => "pending",
+            // Unlocking and CoverFailed still cover the session and embargo it until
+            // the reveal completes, so the shell reads them as locked.
+            LockState::Locked | LockState::Unlocking | LockState::CoverFailed => "locked",
+        });
         self.publish();
     }
 

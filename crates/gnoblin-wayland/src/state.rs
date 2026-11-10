@@ -881,6 +881,9 @@ impl State {
         }
         // The main seat is the compositor's own seat in the scene, named as the wl_seat is.
         state.composer.add_main_seat(seat_name);
+        // The session lock's node: a shell that attaches while the session is locked reads its
+        // state in the snapshot.
+        state.composer.add_lock_node();
         // Every extension registers before the loop runs, so no client can observe a
         // session with half its globals.
         crate::protocols::extension::Extensions::default()

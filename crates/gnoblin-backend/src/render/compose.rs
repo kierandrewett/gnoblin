@@ -274,6 +274,9 @@ pub struct Composer {
     tree_ready: Vec<NodeId>,
     /// The compositor's seat node for the main wl_seat, once added. It holds the pointer and focus.
     main_seat: Option<NodeId>,
+    /// The compositor's lock node, once added. Its `state` is the session lock's state, so a
+    /// shell that attaches while the session is locked reads it in the snapshot.
+    lock_node: Option<NodeId>,
     /// The focus node the compositor last wrote to the main seat. A `focus` the scene holds
     /// that differs from this was written by the shell.
     published_focus: Option<NodeId>,
@@ -321,6 +324,7 @@ impl Composer {
             tree_changes: Vec::new(),
             tree_ready: Vec::new(),
             main_seat: None,
+            lock_node: None,
             published_focus: None,
             screens: BTreeMap::new(),
             placing: false,
@@ -1504,6 +1508,46 @@ impl Composer {
         });
         self.main_seat = Some(id);
         Some(id)
+    }
+
+    /// Adds the compositor's lock node under the root, in the `not-locked` state. Idempotent.
+    pub fn add_lock_node(&mut self) -> Option<NodeId> {
+        if let Some(lock) = self.lock_node {
+            return Some(lock);
+        }
+        let id = self.node_ids.allocate()?;
+        let root = *self.scene.root_ids().first()?;
+        let mut spec = NodeSpec::new(Rect::new(0, 0, 0, 0));
+        spec.parent = Some(root);
+        spec.input = false;
+        self.scene.insert(id, spec).ok()?;
+        let _ = self.scene.set_class(id, Some("lock".to_owned()));
+        let _ = self.scene.set_text(id, "state", "not-locked".to_owned());
+        let index = self.scene.root_ids().iter().position(|root| *root == id).unwrap_or(0);
+        self.tree_changes.push(TreeChange::Created {
+            node: id,
+            class: "lock".to_owned(),
+            index,
+        });
+        self.lock_node = Some(id);
+        Some(id)
+    }
+
+    /// Publishes the session lock's state on the lock node: `not-locked`, `pending` or
+    /// `locked`. Only a change is published.
+    pub fn set_lock_state(&mut self, state: &str) {
+        let Some(lock) = self.lock_node else {
+            return;
+        };
+        if self.scene.text(lock, "state") == Some(state) {
+            return;
+        }
+        let _ = self.scene.set_text(lock, "state", state.to_owned());
+        self.tree_changes.push(TreeChange::Set {
+            node: lock,
+            key: "state".to_owned(),
+            value: TreeValue::Text(state.to_owned()),
+        });
     }
 
     /// Publishes the pointer's layout position on the main seat. Only a change is published.
@@ -3818,6 +3862,71 @@ mod tests {
         assert!(
             covers(&damage, Rect::new(0, 0, 800, 600)),
             "the whole output is repainted"
+        );
+    }
+
+    #[test]
+    fn the_lock_node_is_a_compositor_node_that_publishes_only_a_state_change() {
+        let mut composer = Composer::new();
+        let lock = composer.add_lock_node().expect("a lock node");
+        let root = composer.with_scene(|scene| scene.root_ids()[0]);
+        let (parent, class, state) = composer.with_scene(|scene| {
+            (
+                scene.parent(lock),
+                scene.class(lock).map(str::to_owned),
+                scene.text(lock, "state").map(str::to_owned),
+            )
+        });
+        assert_eq!(parent, Some(root));
+        assert_eq!(class.as_deref(), Some("lock"));
+        assert_eq!(state.as_deref(), Some("not-locked"), "a new session is not locked");
+        assert_eq!(composer.add_lock_node(), Some(lock), "one lock node");
+        composer.take_tree_changes();
+
+        composer.set_lock_state("locked");
+        let changes = composer.take_tree_changes();
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Text(text) }
+                if *node == lock && key == "state" && text == "locked"
+        )));
+        composer.set_lock_state("locked");
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged state is not republished"
+        );
+        assert!(
+            composer
+                .with_scene(|scene| scene.remove_as(Actor::Shell, lock))
+                .is_err(),
+            "the shell may not destroy the compositor's lock node"
+        );
+    }
+
+    /// F22: the lock unlocks while the shell is gone. The lock node follows the session-lock
+    /// state with no shell attached and no frame draining the changes, so the state the
+    /// shell reads on attach is the session's, not one the shell has to answer for.
+    #[test]
+    fn the_lock_node_returns_to_not_locked_when_the_session_unlocks_with_no_shell() {
+        let mut composer = Composer::new();
+        let lock = composer.add_lock_node().expect("a lock node");
+        composer.set_lock_state("pending");
+        composer.set_lock_state("locked");
+        composer.take_tree_changes();
+
+        composer.set_lock_state("not-locked");
+        let changes = composer.take_tree_changes();
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Text(text) }
+                if *node == lock && key == "state" && text == "not-locked"
+        )));
+        assert_eq!(
+            composer
+                .with_scene(|scene| scene.text(lock, "state").map(str::to_owned))
+                .as_deref(),
+            Some("not-locked"),
+            "the scene reads the unlocked state"
         );
     }
 

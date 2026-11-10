@@ -510,6 +510,12 @@ fn centre(geometry: gnoblin_types::Rect) -> Point {
     )
 }
 
+/// The centre of the 200x150 buffer `map_window` draws, at the frame's origin. Only that part of
+/// a window takes pointer input, so the centre of the frame itself can miss it.
+fn drawn_centre(geometry: gnoblin_types::Rect) -> Point {
+    Point::new(geometry.x + 100, geometry.y + 75)
+}
+
 #[test]
 fn locked_waits_for_a_presented_cover() {
     let session = Session::start();
@@ -947,6 +953,54 @@ fn unlock_restores_the_previous_focus() {
         session.wait_for_lock(LockState::Locked);
         next.wait_for_locked();
         assert_eq!(next.state.locked.len(), 1);
+    });
+}
+
+/// F22b: the lock unlocks while the shell is gone. Once the cover is revealed the pointer
+/// reaches the covered client again: the session lock, not a shell, decides where input goes.
+#[test]
+fn unlock_returns_the_pointer_to_the_covered_client() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Covered", "Covered");
+        let observation =
+            session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+        let geometry = observation.only().expect("the window").geometry;
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface(0);
+        locker.unlock();
+        session.wait_for_lock(LockState::Unlocked);
+
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            session.move_pointer(drawn_centre(geometry));
+            let state = app.settle();
+            if state.pointer_enters >= 1 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the covered client never saw the pointer enter: window {:?}, motions {}, at ({}, {}), buttons {}",
+                session
+                    .snapshot()
+                    .only()
+                    .map(|window| (window.mapped, window.focused, window.geometry)),
+                app.state.pointer_motions,
+                app.state.pointer_x,
+                app.state.pointer_y,
+                app.state.pointer_buttons
+            );
+        }
+        session.click(drawn_centre(geometry));
+        let state = app.settle();
+        assert!(
+            state.pointer_buttons >= 1,
+            "the covered client saw the pointer enter but no button"
+        );
     });
 }
 

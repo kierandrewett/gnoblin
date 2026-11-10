@@ -13,20 +13,29 @@ use gnoblin_render::{Actor, NodeSpec};
 use gnoblin_types::{NodeId, Rect};
 use gnoblin_wayland::{FrameTreeEvent, TreeBatch, TreeFrame, TreeFrameInput, TreeHooks};
 
-/// A schema with one class, `node`, holding one writable double, `opacity`.
+/// A schema with two classes: `node`, holding one writable double, `opacity`, and `lock`,
+/// holding the read-only text `state`.
 struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        class == "node"
+        matches!(class, "node" | "lock")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
-        (class == "node" && key == "opacity").then_some(PropertyInfo {
-            kind: ValueType::Double,
-            readonly: false,
-            animated: false,
-        })
+        match (class, key) {
+            ("node", "opacity") => Some(PropertyInfo {
+                kind: ValueType::Double,
+                readonly: false,
+                animated: false,
+            }),
+            ("lock", "state") => Some(PropertyInfo {
+                kind: ValueType::Text,
+                readonly: true,
+                animated: false,
+            }),
+            _ => None,
+        }
     }
 
     fn has_method(&self, _class: &str, _method: &str) -> bool {
@@ -146,6 +155,52 @@ fn a_composer_node_is_visible_to_a_read_at_the_frame_boundary() {
     assert_eq!(class.as_deref(), Some("node"));
     assert_eq!(serial, 0, "the read sees the serial before any frame published");
     assert!(take_batches().is_empty(), "a read alone publishes no batch");
+}
+
+/// F21: the shell dies while the lock is engaged. The lock node stays under the root at the
+/// state the compositor published, and a new shell's first read at the frame boundary, its
+/// snapshot, sees `locked`.
+#[test]
+fn a_shell_that_attaches_while_the_lock_is_engaged_reads_the_lock_state() {
+    let mut composer = composer_with_window();
+    let lock = composer.add_lock_node().expect("a lock node");
+    composer.set_lock_state("locked");
+
+    let mut dead_shell = new_frame();
+    drain(&mut dead_shell, &mut composer);
+    drop(dead_shell);
+    take_batches();
+
+    let root = composer.with_scene(|scene| scene.root_ids()[0]);
+    assert_eq!(
+        composer.with_scene(|scene| scene.parent(lock)),
+        Some(root),
+        "the lock stays in the scene under the root after the shell is gone"
+    );
+
+    let mut new_shell = new_frame();
+    type Reading = (Option<String>, Option<String>);
+    let seen: Arc<Mutex<Option<Reading>>> = Arc::new(Mutex::new(None));
+    let sink = Arc::clone(&seen);
+    new_shell.queue().read(move |scene, _| {
+        *sink.lock().expect("the read lock is not poisoned") = Some((
+            scene.class(lock).map(str::to_owned),
+            scene.text(lock, "state").map(str::to_owned),
+        ));
+    });
+    drain(&mut new_shell, &mut composer);
+
+    let (class, state) = seen
+        .lock()
+        .expect("the read lock is not poisoned")
+        .take()
+        .expect("the new shell's read ran in its frame");
+    assert_eq!(class.as_deref(), Some("lock"));
+    assert_eq!(
+        state.as_deref(),
+        Some("locked"),
+        "the new shell's snapshot shows the lock engaged"
+    );
 }
 
 #[test]
