@@ -12,6 +12,12 @@ fn node_class_and_shell_cases_pass_on_lua_55() -> mlua::Result<()> {
     let lua = common::lua_state()?;
     common::run_case_files(
         &lua,
-        &["node_test.lua", "shell_test.lua", "tiling_test.lua", "strip_test.lua", "ui_test.lua"],
+        &[
+            "node_test.lua",
+            "shell_test.lua",
+            "tiling_test.lua",
+            "strip_test.lua",
+            "ui_test.lua",
+        ],
     )
 }
