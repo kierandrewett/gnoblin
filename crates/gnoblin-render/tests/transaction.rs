@@ -136,7 +136,7 @@ fn insert(node: NodeId, parent: NodeId) -> TreeOp {
 /// Run `ops` as `actor`, expect a refusal, and check that the tree is unchanged.
 fn refused(scene: &mut Scene, actor: Actor, ops: Vec<TreeOp>) -> TreeRefusal {
     let before = tree_hash(scene);
-    let result = validate_and_apply(scene, &Table, actor, &TreeTransaction::new(ops));
+    let result = validate_and_apply(scene, &Table, actor, TreeTransaction::new(ops));
     assert_eq!(tree_hash(scene), before, "a refused transaction must change nothing");
     result.expect_err("the transaction should be refused")
 }
@@ -192,7 +192,7 @@ fn op_sees_an_earlier_new_in_the_same_transaction() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![
+        TreeTransaction::new(vec![
             new_window(7),
             insert(id(7), root),
             set_number(id(7), "opacity", 0.5),
@@ -216,14 +216,14 @@ fn f39_second_transaction_sees_the_first_writes() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![new_window(7)]),
+        TreeTransaction::new(vec![new_window(7)]),
     )
     .expect("the first transaction creates the node");
     validate_and_apply(
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![insert(id(7), root)]),
+        TreeTransaction::new(vec![insert(id(7), root)]),
     )
     .expect("the second transaction sees the node");
     assert_eq!(scene.parent(id(7)), Some(root));
@@ -238,7 +238,7 @@ fn a_valid_transaction_applies_every_op() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![set_number(window, "opacity", 0.5), set_bool(window, "clip", true)]),
+        TreeTransaction::new(vec![set_number(window, "opacity", 0.5), set_bool(window, "clip", true)]),
     )
     .expect("both ops are valid");
     assert_eq!(scene.clip(window), Some(true));
@@ -258,7 +258,7 @@ fn destroy_reports_the_removed_subtree() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![TreeOp::Destroy { node: parent }]),
+        TreeTransaction::new(vec![TreeOp::Destroy { node: parent }]),
     )
     .expect("the shell destroys its own subtree");
     assert!(!scene.contains(child));
@@ -340,7 +340,7 @@ fn shell_writes_to_a_compositor_window_apply() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![
+        TreeTransaction::new(vec![
             set_number(window, "opacity", 0.25),
             set_number(window, "width", 300.0),
         ]),
@@ -406,7 +406,7 @@ fn f16_exactly_4096_ops_are_accepted() {
     let root = id(ROOT);
     let window = shell_node(&mut scene, 1, root);
     let ops = (0..MAX_OPS).map(|_| set_number(window, "opacity", 0.5)).collect();
-    validate_and_apply(&mut scene, &Table, Actor::Shell, &TreeTransaction::new(ops)).expect("the limit is inclusive");
+    validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(ops)).expect("the limit is inclusive");
 }
 
 #[test]
@@ -584,7 +584,7 @@ fn animated_set_is_validated_and_stored_in_applied() {
             samples: LINEAR.to_vec(),
         }),
     };
-    let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, &TreeTransaction::new(vec![op]))
+    let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(vec![op]))
         .expect("a valid animated set applies");
     assert_eq!(applied.animations.len(), 1);
     assert_eq!(applied.animations[0].node, window);
@@ -605,7 +605,7 @@ fn call_is_validated_and_recorded_in_applied() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![TreeOp::TreeCall {
+        TreeTransaction::new(vec![TreeOp::TreeCall {
             node: window,
             method: "focus".into(),
             args: vec![1, 2],
@@ -626,7 +626,7 @@ fn set_width_and_height_apply_through_the_bounds_setter() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![
+        TreeTransaction::new(vec![
             set_number(window, "width", 300.0),
             set_number(window, "height", 200.0),
         ]),
@@ -708,7 +708,7 @@ fn shell_ids_below_the_base_coexist_with_every_compositor_window() {
         .map(new_window)
         .chain((1..=shell_count).map(|raw| insert(id(raw), root)))
         .collect();
-    validate_and_apply(&mut scene, &Table, Actor::Shell, &TreeTransaction::new(ops))
+    validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(ops))
         .expect("the shell's transaction applies");
     for _ in 0..shell_count {
         let node = allocator.allocate().expect("the compositor range is not exhausted");
@@ -760,7 +760,7 @@ fn shell_seat_focus_accepts_a_window_and_null_and_refuses_the_rest() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![set_focus(seat, Some(window))]),
+        TreeTransaction::new(vec![set_focus(seat, Some(window))]),
     )
     .expect("a window node is accepted");
     assert_eq!(scene.reference(seat, "focus"), Some(window));
@@ -768,7 +768,7 @@ fn shell_seat_focus_accepts_a_window_and_null_and_refuses_the_rest() {
         &mut scene,
         &Table,
         Actor::Shell,
-        &TreeTransaction::new(vec![set_focus(seat, None)]),
+        TreeTransaction::new(vec![set_focus(seat, None)]),
     )
     .expect("null clears focus");
     assert_eq!(scene.reference(seat, "focus"), None);

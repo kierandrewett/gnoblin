@@ -636,7 +636,7 @@ impl Player {
 
     fn transaction(&mut self, actor: Actor, ops: &[TreeOp]) -> Outcome {
         let transaction = TreeTransaction::new(ops.to_vec());
-        match validate_and_apply(&mut self.scene, &Table, actor, &transaction) {
+        match validate_and_apply(&mut self.scene, &Table, actor, transaction) {
             Ok(applied) => {
                 self.drive_tracks(ops, &applied);
                 Outcome::Applied

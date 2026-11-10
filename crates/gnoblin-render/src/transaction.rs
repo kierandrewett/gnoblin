@@ -454,7 +454,9 @@ pub struct TreeApplied {
 }
 
 /// Validate every op of `transaction` as `actor` against `scene` and, when all pass,
-/// apply them. A refusal leaves `scene` exactly as it was.
+/// apply them. A refusal leaves `scene` exactly as it was. The transaction is consumed: its
+/// ops move into the applied result, so a call's secret text is never copied, and is wiped when
+/// a refusal drops it.
 ///
 /// # Errors
 ///
@@ -464,7 +466,7 @@ pub fn validate_and_apply(
     scene: &mut Scene,
     classes: &dyn ClassInfo,
     actor: Actor,
-    transaction: &TreeTransaction,
+    transaction: TreeTransaction,
 ) -> Result<TreeApplied, TreeRefusal> {
     if transaction.ops.len() > MAX_OPS {
         return Err(TreeRefusal {
@@ -475,7 +477,7 @@ pub fn validate_and_apply(
     let mut work = scene.clone();
     let mut applied = TreeApplied::default();
     let mut created = BTreeSet::new();
-    for (index, op) in transaction.ops.iter().enumerate() {
+    for (index, op) in transaction.ops.into_iter().enumerate() {
         apply_op(&mut work, classes, actor, op, &mut created, &mut applied).map_err(|code| TreeRefusal {
             failed_op: i32::try_from(index).expect("the batch is bounded by MAX_OPS"),
             code,
@@ -489,29 +491,29 @@ fn apply_op(
     work: &mut Scene,
     classes: &dyn ClassInfo,
     actor: Actor,
-    op: &TreeOp,
+    op: TreeOp,
     created: &mut BTreeSet<NodeId>,
     applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     match op {
-        TreeOp::New { class, id } => new_node(work, classes, actor, class, *id, created, applied),
-        TreeOp::Insert { node, parent, index } => insert_node(work, actor, *node, *parent, *index, applied),
-        TreeOp::Destroy { node } => destroy_node(work, actor, *node, applied),
-        TreeOp::Input { node, seat, input } => pointer_input(work, actor, *node, *seat, *input, applied),
+        TreeOp::New { class, id } => new_node(work, classes, actor, &class, id, created, applied),
+        TreeOp::Insert { node, parent, index } => insert_node(work, actor, node, parent, index, applied),
+        TreeOp::Destroy { node } => destroy_node(work, actor, node, applied),
+        TreeOp::Input { node, seat, input } => pointer_input(work, actor, node, seat, input, applied),
         TreeOp::TreeCall {
             node,
             method,
             args,
             text,
-        } => call_method(work, classes, *node, method, args, text, applied),
+        } => call_method(work, classes, node, method, args, text, applied),
         TreeOp::Set {
             node,
             key,
             value,
             timing,
         } => {
-            check_writable(work, classes, *node, key, created)?;
-            set_value(work, classes, *node, key, value, timing.as_ref(), applied)
+            check_writable(work, classes, node, &key, created)?;
+            set_value(work, classes, node, &key, &value, timing.as_ref(), applied)
         }
     }
 }
@@ -581,23 +583,23 @@ fn call_method(
     work: &Scene,
     classes: &dyn ClassInfo,
     node: NodeId,
-    method: &str,
-    args: &[i64],
-    text: &SecretText,
+    method: String,
+    args: Vec<i64>,
+    text: SecretText,
     applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !work.contains(node) {
         return Err(Code::UnknownNode);
     }
     let class = work.class(node).unwrap_or("");
-    if !classes.has_method(class, method) {
+    if !classes.has_method(class, &method) {
         return Err(Code::UnknownMember);
     }
     applied.calls.push(TreeCall {
         node,
-        method: method.to_owned(),
-        args: args.to_vec(),
-        text: text.clone(),
+        method,
+        args,
+        text,
     });
     Ok(())
 }

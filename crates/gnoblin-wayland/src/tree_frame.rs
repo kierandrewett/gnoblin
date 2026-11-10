@@ -494,7 +494,7 @@ impl TreeFrame {
                     .revisions
                     .check(submission.base, self.serial, &batch.changes, &submission.transaction)
                 {
-                    Ok(()) => validate_and_apply(scene, self.classes.as_ref(), Actor::Shell, &submission.transaction),
+                    Ok(()) => validate_and_apply(scene, self.classes.as_ref(), Actor::Shell, submission.transaction),
                     Err(refusal) => Err(refusal),
                 }
             };

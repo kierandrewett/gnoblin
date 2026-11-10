@@ -87,7 +87,7 @@ fn set(node: NodeId, key: &str, value: TreeValue) -> TreeOp {
 
 /// Apply one `set` as the shell. `None` means it applied; `Some` is its refusal.
 fn apply(scene: &mut Scene, op: TreeOp) -> Option<TreeRefusal> {
-    validate_and_apply(scene, &Kinds, Actor::Shell, &TreeTransaction::new(vec![op])).err()
+    validate_and_apply(scene, &Kinds, Actor::Shell, TreeTransaction::new(vec![op])).err()
 }
 
 fn assert_refused(refusal: Option<TreeRefusal>, code: Code) {
