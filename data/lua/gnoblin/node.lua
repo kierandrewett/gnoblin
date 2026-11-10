@@ -614,9 +614,33 @@ function Node.describe(c) -- for the stub and docs generator
     return { name = m.name, base = m.base and meta(m.base).name, props = props, signals = signals }
 end
 
+-- Nodes the attach snapshot installed never went through Node:add, so they get `ready` here,
+-- once each, parents first, after the shell library has registered its handlers.
+local booted = false
+local function announce_snapshot()
+    local ids = {}
+    local function collect(id)
+        ids[#ids + 1] = id
+        for _, c in ipairs(core.get(id, "children") or {}) do
+            collect(c)
+        end
+    end
+    collect(core.root())
+    for _, id in ipairs(ids) do
+        local n = wrap(id)
+        if n then
+            emit(n, "ready")
+        end
+    end
+end
+
 -- The one entry the host calls each frame: the frame clock, changed native properties, events.
 return function(t, changes, events)
     now = t
+    if not booted then
+        booted = true
+        announce_snapshot()
+    end
     for _, c in ipairs(changes) do
         local n = wrap(c[1])
         if n then

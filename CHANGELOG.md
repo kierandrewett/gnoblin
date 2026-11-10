@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- Nodes the attach snapshot installs get `ready` once each, parents first, on the first VM frame after the shell library loads, so `Screen:on_ready` runs and the stock shell places windows. Test `snapshot_nodes_get_ready_once_parents_first_and_the_screen_handler_runs` in `crates/gnoblin-lua/tests/shell_ready.rs`; restored `the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own` in `crates/gnoblin-compositor/tests/shell_vm.rs`.
+
 - The compositor's own changes (the main seat and screen nodes created before an attach) are published as their own batch before the attach snapshot is read. The snapshot carries them, and an attaching shell no longer receives them a second time as `changes` events after the snapshot. Fixes the `tree_ipc` failures introduced by the seat and screen node commits.
 - Seat and node `claim` and `unclaim` calls from the shell are captured in op order, not refused as unknown methods. `has_method` accepts `claim` and `unclaim` on `seat` and `node`; test `seat_claim_calls_are_captured_in_op_order_and_others_are_not` in `tests/tree_frame.rs` (gnoblin-wayland).
 - A claimed chord reports both of its edges to the shell that claimed it: a `chord` press when the key goes down and a `chord` release when it comes up, each with the claim id. The client sees neither edge while the claim holds. A press the lock held back goes to the client, and so does its release. A destroyed seat releases its claims, so their chords reach the client again. Tests `a_claimed_chord_reaches_the_shell_and_never_the_client`, `an_unclaimed_chord_reaches_the_client_again`, `a_locked_session_never_fires_a_claimed_chord` and `a_destroyed_seat_takes_its_claims_with_it` in `tests/protocols.rs` (gnoblin-wayland).
