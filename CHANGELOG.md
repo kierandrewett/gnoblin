@@ -8,6 +8,10 @@
 - Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.
 - A shell write of the main seat node's `focus` moves the keyboard to that window, through the same path as a compositor focus change; a `nil` write clears it. The compositor's own focus changes are published and never read back. Test `a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window`.
 
+### Fixed
+
+- The compositor's own changes (the main seat and screen nodes created before an attach) are published as their own batch before the attach snapshot is read. The snapshot carries them, and an attaching shell no longer receives them a second time as `changes` events after the snapshot. Fixes the `tree_ipc` failures introduced by the seat and screen node commits.
+
 ### Changed
 
 - Attaching the tree shell from a connection without the owner grant is refused `not-owner` (`failed_op` -1), not `not-privileged`. Test `attach_refuses_a_non_owner_peer` replaces `attach_refuses_an_unprivileged_peer`. A transaction from a connection that does not hold the tree is still refused `not-privileged`.

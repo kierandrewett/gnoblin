@@ -267,6 +267,47 @@ fn a_compositor_change_alone_publishes_a_batch_at_the_next_serial() {
     assert_eq!(frame.serial(), 1);
 }
 
+/// A frame whose holder presence is `attached`, shared with the test so it can change it.
+fn attachable_frame(attached: Arc<std::sync::atomic::AtomicBool>) -> TreeFrame {
+    TreeFrame::with_hooks(TreeHooks {
+        classes: Arc::new(Table),
+        attached: Arc::new(move || attached.load(std::sync::atomic::Ordering::SeqCst)),
+        publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+        ..TreeHooks::default()
+    })
+}
+
+#[test]
+fn compositor_changes_drained_while_detached_publish_nothing_and_keep_serial_zero() {
+    let mut composer = composer_with_window();
+    let attached = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut frame = attachable_frame(Arc::clone(&attached));
+
+    frame.record(TreeChange::Created {
+        node: WINDOW,
+        class: "node".to_owned(),
+        index: 0,
+    });
+    drain(&mut frame, &mut composer);
+    assert!(
+        take_batches().is_empty(),
+        "nothing is published while no holder is attached"
+    );
+    assert_eq!(frame.serial(), 0, "a fresh tree stays at serial zero while detached");
+
+    attached.store(true, std::sync::atomic::Ordering::SeqCst);
+    frame.record(TreeChange::Created {
+        node: WINDOW,
+        class: "node".to_owned(),
+        index: 0,
+    });
+    drain(&mut frame, &mut composer);
+    let batches = take_batches();
+    assert_eq!(batches.len(), 1, "a change while attached arrives once as a batch");
+    assert_eq!(batches[0].serial, 1);
+    assert_eq!(frame.serial(), 1);
+}
+
 /// A seat node the owner creates: `new` and `set name` in one transaction.
 const SEAT: NodeId = NodeId::new(0x400);
 

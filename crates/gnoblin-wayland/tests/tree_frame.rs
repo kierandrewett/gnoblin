@@ -112,6 +112,7 @@ fn hooks(queue: TreeQueue) -> TreeHooks {
         queue,
         classes: Arc::new(Table),
         publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+        ..TreeHooks::default()
     }
 }
 

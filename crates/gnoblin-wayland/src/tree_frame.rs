@@ -226,6 +226,8 @@ pub struct TreeHooks {
     pub queue: TreeQueue,
     /// The schema the transactions are checked against.
     pub classes: Arc<dyn ClassInfo + Send + Sync>,
+    /// Whether a holder is attached. Compositor changes drained while none is publish nothing.
+    pub attached: Arc<dyn Fn() -> bool + Send + Sync>,
     /// Receives each batch a frame publishes, in publication order, on the frame's thread.
     pub publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
 }
@@ -241,6 +243,7 @@ impl Default for TreeHooks {
         Self {
             queue: TreeQueue::default(),
             classes: Arc::new(NoClasses),
+            attached: Arc::new(|| true),
             publish: Arc::new(|_| {}),
         }
     }
@@ -272,6 +275,8 @@ pub struct TreeFrame {
     serial: u64,
     /// Receives each batch a frame publishes, before that frame's replies are sent.
     publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
+    /// Whether a holder is attached; see [`TreeHooks::attached`].
+    attached: Arc<dyn Fn() -> bool + Send + Sync>,
     /// The nodes each recent published batch changed, for the stale-base check.
     revisions: TreeRevisions,
     /// Transactions the budget deferred. Each is checked against its base when it applies, and
@@ -303,6 +308,7 @@ impl TreeFrame {
             queue: hooks.queue,
             classes: hooks.classes,
             publish: hooks.publish,
+            attached: hooks.attached,
             serial: 0,
             deferred: VecDeque::new(),
             compositor: Vec::new(),
@@ -375,9 +381,15 @@ impl TreeFrame {
     /// the first, so a test can drive the budget with a clock of its own.
     pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
         let start = now();
-        let frame_serial = self.serial;
         self.frames += 1;
         let frame = self.frames;
+        // The compositor's own changes (seat and screen nodes) are already in the scene. With a
+        // holder attached they are announced in this frame's batch, ahead of the shell's changes,
+        // so the holder hears of them once. With none, nobody has heard of them: the attach
+        // snapshot read carries them, so they are dropped here and bump no serial.
+        let announced = std::mem::take(&mut self.compositor);
+        let announced = if (self.attached)() { announced } else { Vec::new() };
+        let frame_serial = self.serial;
         let (reads, arrived) = {
             let mut queue = self.queue.lock();
             (std::mem::take(&mut queue.reads), std::mem::take(&mut queue.submissions))
@@ -391,9 +403,9 @@ impl TreeFrame {
         // frame has already applied. A stale one that conflicts is refused here; one that does not
         // conflict still lands.
         let mut queue: VecDeque<Submission> = self.deferred.drain(..).chain(arrived).collect();
-        // The compositor's own changes come first, so the shell sees a node before any change to it.
+        // Compositor changes lead the batch, ahead of the shell's transaction changes.
         let mut batch = TreeBatch {
-            changes: std::mem::take(&mut self.compositor),
+            changes: announced,
             ..TreeBatch::default()
         };
         batch.events = std::mem::take(&mut self.events)

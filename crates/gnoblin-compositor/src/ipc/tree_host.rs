@@ -83,9 +83,11 @@ impl TreeHostHandle {
         let session = Arc::clone(&self.session);
         let serial = Arc::clone(&self.serial);
         let events = self.events.clone();
+        let attached_session = Arc::clone(&self.session);
         TreeHooks {
             queue: self.queue.clone(),
             classes: Arc::clone(&self.classes) as Arc<dyn ClassInfo + Send + Sync>,
+            attached: Arc::new(move || lock(&attached_session).holder().is_some()),
             publish: Arc::new(move |batch: TreeBatch| {
                 serial.store(batch.serial, Ordering::Release);
                 let holder = lock(&session).holder();
