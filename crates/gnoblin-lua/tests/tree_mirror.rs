@@ -307,3 +307,65 @@ fn a_mirror_that_applies_the_same_script_twice_dumps_identically() {
     };
     assert_eq!(run(), run());
 }
+
+/// A parentless window W(5) and a shell node P(6) under the root(1).
+fn window_and_shell_mirror() -> LuaMirror {
+    let nodes = [
+        snap(1, NIL, 0, "node"),
+        snap(5, NIL, 0, "window"),
+        snap(6, 1, 0, "node"),
+    ];
+    LuaMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds")
+}
+
+fn parented(node: NodeId, parent: NodeId, index: i64) -> LuaChange {
+    LuaChange {
+        parent,
+        index,
+        ..change(MirrorChangeKind::Parented, node)
+    }
+}
+
+#[test]
+fn a_parented_batch_places_a_parentless_window_under_its_shell_node() {
+    let mut mirror = window_and_shell_mirror();
+    assert_eq!(mirror.node(5).expect("window").parent, NIL);
+    let applied = mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("batch applies");
+    assert_eq!(applied, LuaApplied::LuaApplied);
+    assert_eq!(mirror.node(5).expect("window").parent, 6);
+    assert_eq!(children(&mirror, 6), vec![5]);
+    assert_eq!(mirror.serial(), 6);
+}
+
+#[test]
+fn the_echo_of_the_authors_own_transaction_is_applied_not_ignored() {
+    // The author's transaction was sent at serial 6, so its echo carries serial 6 > mirror
+    // serial 5: it must be applied, never reported as stale.
+    let mut mirror = window_and_shell_mirror();
+    let applied = mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("echo applies");
+    assert_eq!(applied, LuaApplied::LuaApplied);
+    assert_eq!(mirror.serial(), 6);
+}
+
+#[test]
+fn a_replayed_parented_batch_leaves_the_window_listed_once() {
+    let mut mirror = window_and_shell_mirror();
+    mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("first applies");
+    assert_eq!(
+        mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("replay is stale"),
+        LuaApplied::Ignored
+    );
+    assert_eq!(children(&mirror, 6), vec![5]);
+}
+
+#[test]
+fn a_pending_insert_and_its_echo_do_not_double_apply_the_window() {
+    // The builder holds the insert until the echo arrives; the committed view must list W once.
+    let mut mirror = window_and_shell_mirror();
+    let mut tx = LuaTxBuilder::default();
+    tx.insert(&mirror, 5, 6, 0).expect("the insert is accepted locally");
+    assert_eq!(tx.children(&mirror, 6), Some(&[5][..]));
+    assert_eq!(children(&mirror, 6), Vec::<NodeId>::new());
+    mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("echo applies");
+    assert_eq!(children(&mirror, 6), vec![5]);
+}
