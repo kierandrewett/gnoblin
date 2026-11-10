@@ -53,11 +53,5 @@ infra/site/.svelte-kit/
 !/crates/gnoblin-proto/proto/envelope.proto
 /crates/gnoblin-proto/src/sensitive.rs
 
-# Generated WIT host API and member table for the module host. The build script
-# writes the package twice: the canonical copy under `target/` (OUT_DIR) and one
-# beside the crate, because `wasmtime::component::bindgen` takes a literal path
-# relative to the manifest and cannot read OUT_DIR.
-/crates/gnoblin-wasm/generated/
-
 # Generated configuration reference, Lua stubs and settings catalogue.
 crates/gnoblin-config/generated/

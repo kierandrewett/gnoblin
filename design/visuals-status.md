@@ -70,9 +70,8 @@ stack), and the shaped-windows amendment in `design/rust-compositor.md`.
   `a_user_shader_shades_its_layer`, `:503` `a_user_shader_reads_its_uniforms`, `:546`
   `a_user_shader_refuses_a_mistyped_uniform`, `:590`
   `a_broken_user_shader_leaves_the_frame_drawn` (all read).
-  **No production caller of `set_user_shader`.** The WASM crate
-  (`crates/gnoblin-wasm`) has only `tests/failure_modes.rs`, and no other crate
-  uses it. There is no config loader.
+  **No production caller of `set_user_shader`.** No crate outside
+  `gnoblin-render` calls it. There is no config loader.
 - **User shaders, Vulkan.** Only Vulkan's own shader compile tests
   (`shader.rs:99`, `tests.rs:632`). Not user shaders.
 - **Shaped windows.** No silhouette or mask code found in `crates/`. The frame

@@ -71,10 +71,6 @@ path = "crates/gnoblinctl/build.rs"
 reason = "crate-relative: the build script names src/generate.rs in this crate, run from the crate directory"
 
 [[allow]]
-path = "crates/gnoblin-wasm/build.rs"
-reason = "crate-relative: the build script names src/wit.rs in this crate, run from the crate directory"
-
-[[allow]]
 path = "crates/compat/gnoblin-compat-wayland-gtk-shell1/protocols/gtk-shell.xml"
 reason = "the vendored protocol header records Mutter's src/wayland path it was copied from, not a path we read"
 

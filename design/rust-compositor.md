@@ -514,7 +514,6 @@ gnoblin/
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem; `portal` module: provider negotiation, request queue, reply validation, outcomes (D19)
     gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; the `layout` module (Lua layout host, D17, in progress); extension Lua modules (D22); uses gnoblin-lua-sandbox
     gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset; a separate crate until the layout host lands, then folds into gnoblin-lua
-    gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6); WASM extension tier (D22)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
     gnoblin-services/         services role: serves the agents and links the GeoClue agent (`location_agent`); polkit, keyring, PipeWire privacy, inhibit, idle
     gnoblin-service-core/     the services role's shared machinery: slot registry, request state machine, the connection agents offer through

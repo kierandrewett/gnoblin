@@ -37,6 +37,10 @@
 
 - Frame callbacks reach a window that only a visible `View` shows, not only one on a monitor. A View shows the subtree under its `source` when the View and its ancestors are visible with non-zero opacity. A mapped window on neither a monitor nor such a View gets no frame callback; before, output-less mapped windows got them. Unit tests `a_visible_view_shows_its_source_subtree_and_a_hidden_one_shows_nothing` and the other `view` tests in `gnoblin-render` cover the visibility rules and a View inside its own source. Compositor-level callback tests are not added: there is no harness for the shell tree.
 
+### Removed
+
+- The `gnoblin-wasm` crate is removed: the WASM module host (the wasmtime runtime and the generated WIT host API). No crate depended on it. `window-rules[N].shader` and `shader-uniforms` are still refused at load, now with the reason `shaders need the shader pass (render)` in place of `shaders need the WASM host`. The refusal is still tested in `crates/gnoblin-config/tests/window_rules.rs`. The `wasmtime` crate and the Cranelift packages only it used are dropped from `Cargo.lock`.
+
 ### Added
 
 - The owner-only global `gnoblin_view_source_manager_v1` (protocol `protocols/gnoblin-view-source-v1.xml`) is offered to the owner's privileged connection and to nothing else: an application, a sandbox and a trusted service do not see it. Its `create_source(node)` returns an `ext_image_capture_source_v1` for a View node, the source `ext-image-copy-capture` reads a View's picture from. A node that is not a View of the scene is a protocol error `invalid_node`. The frame loop publishes the set of View nodes into the capture tables each frame, so a View created and named in the same loop iteration is refused until the next. Tests in `crates/gnoblin-wayland/tests/view_source.rs` (`the_owner_sees_the_view_source_global`, `an_ordinary_application_does_not_see_the_view_source_global`, `a_trusted_service_does_not_see_the_view_source_global`, `a_source_for_a_node_that_is_not_a_view_is_a_protocol_error`).

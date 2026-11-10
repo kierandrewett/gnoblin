@@ -1,7 +1,7 @@
 //! The owner-only `tree` namespace reaches only the session owner's build.
 //!
 //! design/node-core.md section 2.3: the tree is the owner socket's vocabulary. A catalog that a
-//! non-owner surface builds (the CLI, the module WIT, the Lua bindings, a test fixture) must leave
+//! non-owner surface builds (the CLI, the Lua bindings, a test fixture) must leave
 //! `tree` out with `Catalog::load_dir_except(dir, &["tree"])`. A plain `load_dir` there lets the
 //! tree's classes (`lock`, `destroyed`) collide with the public ones. This test scans every Rust
 //! source in the workspace for a full-catalog `load_dir(` call and fails on any file that is not

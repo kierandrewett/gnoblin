@@ -710,15 +710,10 @@ right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
 
-# The pairs below were found once the module host landed and every crate had a
-# schema to serve. Each is a homonym: the name is the obvious word for two
-# different things, and the two types are in different processes or different
-# layers, so neither can stand in for the other.
-[[allow]]
-left = "gnoblin-session::Level"
-right = "gnoblin-wasm::Level"
-kind = "same-name"
-reason = "both name how urgent a log line is, and the two spellings differ (`Warn` against `Warning`); one copy belongs in gnoblin-types and moving the session's copy is that crate's change, so the duplication is recorded here instead of being hidden by a rename"
+# The pairs below were found once every crate had a schema to serve. Each is a
+# homonym: the name is the obvious word for two different things, and the two
+# types are in different processes or different layers, so neither can stand in
+# for the other.
 
 # Capture's own vocabulary. Each of these names is the natural word in its own
 # domain and says something different from the crate it collides with: a capture

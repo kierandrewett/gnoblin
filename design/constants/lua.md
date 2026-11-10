@@ -10,7 +10,6 @@ Method: `grep -rnE '^\s*(pub(\([a-z]+\))? )?(const|static) [A-Z_0-9]+'` per crat
 | ---------------------- | --------- | ------------------- | ------- | ----------------------------------------------------------------- |
 | gnoblin-lua            | 16        | 9                   | 7       | Layout limits, role pump, registry keys, build-time schema paths  |
 | gnoblin-lua-sandbox    | 8         | 6                   | 2       | Instruction, memory and time budgets, pattern limits, Lua wrapper |
-| gnoblin-wasm           | 8         | 5                   | 3       | Fuel, memory, table caps, WIT package and host error names        |
 | gnoblin-config         | 13        | 8                   | 5       | Search paths, last-good file, depth limits, accent table          |
 | gnoblin-config-codegen | 3         | 2                   | 1       | Hook list and namespace names                                     |
 | gnoblin-schema         | 2         | 2                   | 0       | Schema directory path                                             |
@@ -55,20 +54,6 @@ Note on `HOOK_INSTRUCTIONS`: the value is an instruction-count granularity for t
 | `SCHEMA_DIR`                | `crates/gnoblin-lua/build.rs:37`               | path                                        | No                       | No                                             | Yes, build input                            | MOVE to a shared path helper with gnoblin-schema | low    | S      |
 | `OWN_NAMESPACE`             | `crates/gnoblin-lua/build.rs:43`               | `gnoblin`                                   | No                       | No                                             | Yes                                         | KEEP                                             | low    | S      |
 | `RESERVED`                  | `crates/gnoblin-lua/build.rs:49`               | name list                                   | No                       | No                                             | Yes, reserved identifiers                   | KEEP                                             | low    | S      |
-
-### 2.3 WASM host (gnoblin-wasm)
-
-| Item                     | Location                                                     | Value         | Q1                      | Q2                 | Q3                         | Verdict                             | Risk   | Effort |
-| ------------------------ | ------------------------------------------------------------ | ------------- | ----------------------- | ------------------ | -------------------------- | ----------------------------------- | ------ | ------ |
-| `Budget::default` fuel   | `crates/gnoblin-wasm/src/manifest.rs:59`                     | 10,000,000    | Yes, for plugin authors | No                 | Yes                        | CONFIGURE, manifest field (see 3.1) | medium | M      |
-| `Budget::default` memory | `crates/gnoblin-wasm/src/manifest.rs:83`                     | 16 MiB        | Yes                     | No                 | Yes                        | CONFIGURE, manifest field           | medium | M      |
-| `table_elements`         | `crates/gnoblin-wasm/src/manifest.rs:84`                     | 10,000        | No                      | No                 | Yes                        | KEEP, unless plugin needs more      | low    | S      |
-| Memory and table counts  | `crates/gnoblin-wasm/src/manifest.rs` (memories 1, tables 4) | 1, 4          | No                      | No                 | Yes, WASM MVP-style limits | KEEP                                | low    | S      |
-| Event codes              | `crates/gnoblin-wasm/src/abi.rs:49-57`                       | numeric codes | No                      | Wire format        | Yes                        | KEEP, wire ABI                      | low    | S      |
-| `PACKAGE`                | `crates/gnoblin-wasm/src/wit.rs:53`                          | `gnoblin:ipc` | No                      | No                 | Yes                        | KEEP                                | low    | S      |
-| `HOST_ERRORS`            | `crates/gnoblin-wasm/src/wit.rs:60`                          | 4 error names | No                      | Defined by our WIT | Yes                        | KEEP                                | low    | S      |
-
-Notes: `host.rs:143` calls `consume_fuel`, so fuel is enforced. No WASI is linked. [INFERENCE: wasmtime defaults were not re-checked against docs.rs for this audit.]
 
 ### 2.4 Config (gnoblin-config and codegen)
 
@@ -115,26 +100,24 @@ The file is `init.lua`, and an override must end in `.lua`. These are already th
 | `COUNTER`              | `crates/gnoblin-testkit/src/runtime.rs:36`       | `AtomicU64` | No  | No              | Yes                      | KEEP    | low  | S      |
 | `SECRET` (recorder)    | `crates/gnoblin-testkit/src/recorder.rs:147`     | test string | No  | No              | Test only                | KEEP    | low  | S      |
 
-## 3. Top ten wins
+## 3. Top nine wins
 
 Ranked by user value over effort.
 
 1. **Make the Lua instruction and memory budgets configurable for a shell or the user** (`lua-sandbox` `Limits`, lib.rs:85-86). Heavy layouts currently hit a hard ceiling with no way out. Medium risk. Effort M.
 2. **Expose the layout hard limit and pump timeout to Lua** (`layout/host.rs:50`, `role.rs:62`). Slow machines get a clear knob. Medium risk. Effort M.
-3. **Make WASM fuel and memory configurable per plugin manifest** (`wasm manifest.rs:59,83`). Plugin authors can then raise the limit with a reason. Medium risk. Effort M.
-4. **Derive the accent palette from libadwaita instead of repeating it** (`appearance.rs:60`). Keeps colours matching the toolkit on upgrade. Medium risk. Effort M.
-5. **Remove the duplicated effect pass limit from the schema text** (`effect.toml:54`, `window.toml:266`). Stops docs drifting from `render/effect.rs:30`. Low risk. Effort S.
-6. **Share the schema directory path between gnoblin-lua, gnoblin-schema and codegen** (`build.rs:37`, `proto.rs:35`). One source of truth. Low risk. Effort S.
-7. **Share the hook list between codegen and hooks.rs** (`codegen lib.rs:393`, `hooks.rs:34`). A test already guards the copy; generating it removes the copy. Low risk. Effort S.
-8. **Name the FNV constants** (`require.rs:161`). Readability only. Low risk. Effort S.
-9. **Document `HOOK_INSTRUCTIONS` as an instruction count** (`lib.rs:63`). Stops misuse as a time budget. Low risk. Effort S.
-10. **Document why `leak_cap` is 3** (`layout/host.rs:51`). Stops someone raising it blindly. Low risk. Effort S.
+3. **Derive the accent palette from libadwaita instead of repeating it** (`appearance.rs:60`). Keeps colours matching the toolkit on upgrade. Medium risk. Effort M.
+4. **Remove the duplicated effect pass limit from the schema text** (`effect.toml:54`, `window.toml:266`). Stops docs drifting from `render/effect.rs:30`. Low risk. Effort S.
+5. **Share the schema directory path between gnoblin-lua, gnoblin-schema and codegen** (`build.rs:37`, `proto.rs:35`). One source of truth. Low risk. Effort S.
+6. **Share the hook list between codegen and hooks.rs** (`codegen lib.rs:393`, `hooks.rs:34`). A test already guards the copy; generating it removes the copy. Low risk. Effort S.
+7. **Name the FNV constants** (`require.rs:161`). Readability only. Low risk. Effort S.
+8. **Document `HOOK_INSTRUCTIONS` as an instruction count** (`lib.rs:63`). Stops misuse as a time budget. Low risk. Effort S.
+9. **Document why `leak_cap` is 3** (`layout/host.rs:51`). Stops someone raising it blindly. Low risk. Effort S.
 
 ## 4. Constants to leave alone and why
 
 - Lua pattern limits (`MAX_CAPTURES`, `MAX_DEPTH`, sentinels): they match the C library, changing them changes which patterns match.
 - Registry keys (`bindings.rs:55-65`): internal identity, not configurable.
-- Wire and ABI codes (`abi.rs:49-57`, `wit.rs` package name): a plugin or client depends on them.
 - `CONFIG_RANDOM_SEED`: a fixed seed keeps `math.random` reproducible. Making it user-facing would break determinism for no gain.
 - Clock start and runtime directory mode in testkit: they exist to make tests deterministic and private.
 - Config search names (`init.lua`, `gnoblin`, `last-good-config.json`): fixed by XDG convention and by users' expectations.
@@ -142,7 +125,6 @@ Ranked by user value over effort.
 ## 5. Needs Kieran
 
 - Should the Lua instruction, memory and tick budgets be a shell setting (Bingux) or a core config leaf? A leaf would need a unit and a range. I recommend core config, because the sandbox is core.
-- Should WASM fuel and memory be per manifest, per plugin, or a host-wide cap? The manifest is the obvious place, but it lets a plugin ask for more.
 - Should the libadwaita accent palette be derived at build time from a pinned libadwaita, or checked by a test on upgrade?
 - Does the layout hard limit (100 ms) belong in the Lua API or the shell? I have assumed the Lua API.
 

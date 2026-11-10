@@ -11,7 +11,7 @@ Numbers are `wc -l` on the worktree at `489a0cace`. Where a count was not measur
 | `gnoblin-wm` `src/layout/` (8 files)                  | 1310         | -          | engine, placement, settle, transform, kind, error, fallback                                                                                            |
 | `gnoblin-wm` `tests/` (5 files)                       | -            | 3404       | `failure_modes.rs` 1948 (80 `#[test]`), `layout_validation.rs` 431 (34 tests), `layout_engine.rs` 289 (17), `wm_layout.rs` 390 (5), `model.rs` 346 (2) |
 | `gnoblin-layers` `src/`                               | 1987         | -          | `registry.rs` 885, `name.rs` 347, `order.rs` 226                                                                                                       |
-| `gnoblin-wasm` `src/` + `build.rs`                    | 3633         | -          | `bindings.rs` 1582, `wit.rs` 570, `host.rs` 615; `tests/failure_modes.rs` 835                                                                          |
+| `gnoblin-wasm` `src/` + `build.rs` (deleted step 10A) | 3633         | -          | `bindings.rs` 1582, `wit.rs` 570, `host.rs` 615; `tests/failure_modes.rs` 835                                                                          |
 | `gnoblin-lua` `src/layout/`                           | 2418         | -          | `host.rs` 461, `lua.rs` 388, `encoding.rs` 326                                                                                                         |
 | `gnoblin-lua` `tests/layout.rs`, `shipped_layouts.rs` | -            | 1114       | 424 + 690                                                                                                                                              |
 | `data/lua/gnoblin/layouts/*.lua` (8 files)            | 1297         | -          | `strip` 398, `dwindle` 288, `carousel3d` 162                                                                                                           |
@@ -30,7 +30,7 @@ not depend on any of the three crates).
 | ---------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `gnoblin-wm`     | backend, compositor, lua, wayland, xwayland; root `Cargo.toml`   | compositor 6, backend 2, lua 8, wayland 23, xwayland 2, session 1                 |
 | `gnoblin-layers` | compositor, config, wayland, wm, xwayland; root `Cargo.toml:267` | compositor 2, config 1, wayland 9, wm 2 (plus 20 uses inside `wm.rs`), xwayland 1 |
-| `gnoblin-wasm`   | root `Cargo.toml:85` only                                        | none                                                                              |
+| `gnoblin-wasm`   | root `Cargo.toml:85` only (crate deleted step 10A)               | none                                                                              |
 
 Consumers that are not Rust dependencies, to check at each lane (not yet measured, see section 7):
 config keys in `crates/gnoblin-config/schema/config.toml` and `crates/gnoblin-schema/schema/config.toml`; schema files

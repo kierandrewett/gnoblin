@@ -67,7 +67,7 @@ pub enum Fault {
     /// rather than assuming the setting was accepted and ignored. Refusal is a
     /// load error: a rule list is never partly applied.
     Refused {
-        /// What is missing, as a sentence fragment: `shaders need the WASM host`.
+        /// What is missing, as a sentence fragment: `shaders need the shader pass (render)`.
         reason: &'static str,
     },
 }

@@ -63,7 +63,6 @@ Rows are read from the files named below. `gnoblin-lua/src/layout/` has ten file
 
 ## Considered and not flagged
 
-- `gnoblin-wasm`: `wasmtime` (119 crates, `Cargo.lock` inference) is confined to `bindings.rs` and `host.rs`, but no crate depends on `gnoblin-wasm`. It is a leaf, so a split gains nothing.
 - `gnoblin-proto`: `prost-build` and `protox` are build-dependencies. They compile once per profile and do not rebuild when `proto` sources change, so they are not a rebuild cost.
 - `gnoblin-compat-core/src/caller.rs` (55 lines) is the only `zbus` user in that crate, but `gnoblin-compat-host` uses `zbus` too. Moving 55 lines removes nothing from the build.
 - `gnoblin-config` (27 transitive dependants) and `gnoblin-model` (24) are hubs with no heavy external deps. Splitting them would not help.

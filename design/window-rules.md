@@ -205,7 +205,7 @@ Expected messages:
 
 - `window-rules[N].blur: effects need the blur pass (render), not yet built in this compositor`
 - `window-rules[N].frame: frames need the layers phase 6 surface renderer, not yet built`
-- `window-rules[N].shader: shaders need the WASM host, not yet built`
+- `window-rules[N].shader: shaders need the shader pass (render), not yet built`
 - `window-rules[N].animation: animations need the animation system, not yet built`
 
 Refusal is a load error. The rule list is not partly applied. Losing a rule silently is the failure this

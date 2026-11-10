@@ -104,7 +104,7 @@ of a key is refused.
 | --------------------------- | -------------------------------------- |
 | `blur`                      | Needs the blur pass                    |
 | `blur-ignore-shadows`       | Needs the blur pass                    |
-| `shader`, `shader-uniforms` | Needs the WASM shader host             |
+| `shader`, `shader-uniforms` | Needs the shader pass (render)         |
 | `animation`                 | Needs the animation system             |
 | `frame`                     | Needs the layer-shell surface renderer |
 | `match.layer`               | Needs the layer-shell surface selector |

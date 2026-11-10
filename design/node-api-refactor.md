@@ -117,18 +117,18 @@ Codes used in the tables of sections 1 and 2:
 
 ### Object system, trust and extensions
 
-| Object or API                     | Where                                                           | Created and ended by | Callers | Axes              |
-| --------------------------------- | --------------------------------------------------------------- | -------------------- | ------- | ----------------- |
-| Schema objects (15 files)         | `crates/gnoblin-schema/schema/*.toml`                           | K                    | S P     | via members       |
-| Generated Lua bindings and stub   | `crates/gnoblin-lua/build.rs:1-19`, `docs/public/gnoblin.d.lua` | build                | S       | n/a               |
-| Hand-written host members         | `crates/gnoblin-lua/src/bindings.rs:368-371`                    | build                | S       | n/a               |
-| `gnoblin-model::Graph` mirror     | `crates/gnoblin-model/src/lib.rs:1-30`                          | K, runtime           | S P     | n/a               |
-| IPC capabilities (11)             | `crates/gnoblin-proto/src/capability.rs:27-92`                  | handshake            | P       | all, by grant     |
-| Privileged roles                  | `crates/gnoblin-compositor/src/ipc/privileged.rs:77-116`        | guardian             | P       | all, by grant     |
-| Wayland `ClientRole` (6)          | `crates/gnoblin-wayland/src/access.rs:195-216`                  | K on connect         | C       | global visibility |
-| Extension manifest, powers, tiers | `design/rust-compositor.md:2744-2909` (D22)                     | host config          | X       | all, by grant     |
-| WASM module host                  | `crates/gnoblin-wasm/src/lib.rs:1-11`                           | host config          | X       | all, by grant     |
-| Request broker and slots          | `crates/gnoblin-model/src/slot.rs:1-20`                         | services role        | P       | prompts           |
+| Object or API                        | Where                                                           | Created and ended by | Callers | Axes              |
+| ------------------------------------ | --------------------------------------------------------------- | -------------------- | ------- | ----------------- |
+| Schema objects (15 files)            | `crates/gnoblin-schema/schema/*.toml`                           | K                    | S P     | via members       |
+| Generated Lua bindings and stub      | `crates/gnoblin-lua/build.rs:1-19`, `docs/public/gnoblin.d.lua` | build                | S       | n/a               |
+| Hand-written host members            | `crates/gnoblin-lua/src/bindings.rs:368-371`                    | build                | S       | n/a               |
+| `gnoblin-model::Graph` mirror        | `crates/gnoblin-model/src/lib.rs:1-30`                          | K, runtime           | S P     | n/a               |
+| IPC capabilities (11)                | `crates/gnoblin-proto/src/capability.rs:27-92`                  | handshake            | P       | all, by grant     |
+| Privileged roles                     | `crates/gnoblin-compositor/src/ipc/privileged.rs:77-116`        | guardian             | P       | all, by grant     |
+| Wayland `ClientRole` (6)             | `crates/gnoblin-wayland/src/access.rs:195-216`                  | K on connect         | C       | global visibility |
+| Extension manifest, powers, tiers    | `design/rust-compositor.md:2744-2909` (D22)                     | host config          | X       | all, by grant     |
+| WASM module host (deleted, step 10A) | `crates/gnoblin-wasm/src/lib.rs:1-11`                           | host config          | X       | all, by grant     |
+| Request broker and slots             | `crates/gnoblin-model/src/slot.rs:1-20`                         | services role        | P       | prompts           |
 
 ## 2. Rule census with verdicts
 
@@ -234,7 +234,7 @@ an ordinary shell developer must learn the rule to do ordinary work.
 | `ClientRole` six values                       | `access.rs:195-216`                     | Wayland global visibility         | no   | fold    | two: sandboxed or not; `SessionHost` stays          |
 | Privileged globals list                       | `access.rs:114-135`                     | hide globals from sandboxes       | no   | keep    | the one edge                                        |
 | D22 packages: manifest, powers, tiers, hashes | `rust-compositor.md:2744-2909`          | third-party code                  | yes  | delete  | extensions receive node references                  |
-| WASM tier                                     | `gnoblin-wasm/src/lib.rs:1-11`          | native plugins (D6)               | yes  | delete  | no script needs it                                  |
+| WASM tier (deleted, step 10A)                 | `gnoblin-wasm/src/lib.rs:1-11`          | native plugins (D6)               | yes  | delete  | no script needs it                                  |
 | Dynamic Wayland globals                       | `rust-compositor.md:2848-2862`          | extension protocols               | yes  | delete  | not built; no script needs it                       |
 | Per-extension Lua environments                | `gnoblin-lua/src/bindings.rs:391`       | veto power isolation              | no   | fold    | restricted environment without roots                |
 | IPC extension namespaces                      | `request-intercept.md:41`               | custom APIs                       | yes  | fold    | nodes with script-declared members                  |
