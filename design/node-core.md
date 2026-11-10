@@ -89,7 +89,7 @@ Four keys go into `RawObject` and `RawProperty` (`parse.rs:48-102`):
    inherited property list into each class; there is no runtime inheritance.
 2. `default = <toml value>` on a property. Every tree property has one, so the mirror never sees a missing value.
    The default must match the type.
-3. `readonly = true`: `set` is refused `read-only`.
+3. `readonly = true`: `set` is refused `read-only`, except in the transaction that creates the node: a `new` followed by `set` of a readonly property in the same transaction is accepted (construct-time only). A later `set` of a readonly property is refused.
 4. `animated = true`: `set` with `seconds` is allowed; without it, `not-animated`.
 
 Validation follows the existing duplicate checks (`parse.rs:250`). `base` must name a class in the same namespace

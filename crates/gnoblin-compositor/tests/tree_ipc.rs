@@ -547,3 +547,63 @@ fn an_unmapped_window_is_published_as_destroyed() {
     );
     session.stop().expect("the session stops cleanly");
 }
+
+fn create_seat(id: u64, parent: u64, name: &str) -> Vec<op::Properties> {
+    let mut ops = create(id, parent);
+    ops[0].class = "seat".to_owned();
+    ops.push(set_text(id, "name", name));
+    ops
+}
+
+fn set_text(node: u64, key: &str, value: &str) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: "text".to_owned(),
+        value_text: value.to_owned(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn the_owner_creates_a_named_seat_in_one_transaction() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(reply.applied, "a new seat with its name applies in one transaction");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_seat_name_is_refused_read_only_once_the_seat_exists() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    transact(&mut wire, 3, 1, 2, vec![set_text(1000, "name", "other")]);
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied, "a later set of the readonly name is refused");
+    assert_eq!(reply.failed_op, 0);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_empty_or_duplicate_seat_name_is_refused_bad_value() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, ""));
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied, "an empty seat name is refused");
+    session.stop().expect("the session stops cleanly");
+}

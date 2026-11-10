@@ -281,6 +281,9 @@ pub struct State {
     pub(crate) shm_state: ShmState,
     /// The seat protocol state, which owns the seat globals and its client list.
     pub(crate) seat_state: SeatState<State>,
+    /// The wl_seat globals the owner created as seat nodes, by node id. Each is removed when its
+    /// node leaves the scene.
+    pub(crate) extra_seats: std::collections::BTreeMap<gnoblin_types::NodeId, Seat<State>>,
     /// The popup tree for `xdg_popup` surfaces, so they are stacked over their parents.
     pub(crate) popups: PopupManager,
     /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
@@ -766,6 +769,7 @@ impl State {
             xdg_shell_state,
             shm_state,
             seat_state,
+            extra_seats: std::collections::BTreeMap::new(),
             popups: PopupManager::default(),
             output_manager_state,
             viewporter_state,
@@ -3289,6 +3293,36 @@ pub(crate) fn committed_content(surface: &WlSurface) -> Option<(WlBuffer, Conten
     .flatten()
 }
 
+impl State {
+    /// Makes the wl_seat globals match the seat nodes in the scene: one global per seat node,
+    /// named as the node is, created when the node appears and removed when it leaves.
+    fn reconcile_seats(&mut self) {
+        let wanted: std::collections::BTreeMap<gnoblin_types::NodeId, String> = self
+            .composer
+            .with_scene(|scene| scene.seat_names().map(|(id, name)| (id, name.to_owned())).collect());
+        let gone: Vec<gnoblin_types::NodeId> = self
+            .extra_seats
+            .keys()
+            .filter(|id| !wanted.contains_key(id))
+            .copied()
+            .collect();
+        for id in gone {
+            if let Some(seat) = self.extra_seats.remove(&id)
+                && let Some(global) = seat.global()
+            {
+                self.display_handle.remove_global::<State>(global);
+            }
+        }
+        for (id, name) in wanted {
+            if self.extra_seats.contains_key(&id) {
+                continue;
+            }
+            let seat: Seat<Self> = self.seat_state.new_wl_seat(&self.display_handle, name);
+            self.extra_seats.insert(id, seat);
+        }
+    }
+}
+
 impl Host for State {
     fn begin_frame(&mut self) {
         // The pointer may have moved since the last frame; its old and new places are
@@ -3303,6 +3337,7 @@ impl Host for State {
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;
         self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
+        self.reconcile_seats();
         // Placement follows the shell's hold as the drain left it.
         self.composer.follow_placement();
         // The damage is taken once for every output, because the backend renders one

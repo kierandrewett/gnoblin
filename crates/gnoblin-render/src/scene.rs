@@ -452,6 +452,8 @@ pub struct Scene {
     damage_rect_limit: usize,
     /// Whether the shell holds the tree, so the composer leaves window x and y to it.
     shell_places: bool,
+    /// The name of each seat node, set once when the node is created.
+    seat_names: BTreeMap<NodeId, String>,
 }
 
 impl Default for Scene {
@@ -474,7 +476,24 @@ impl Scene {
             full: BTreeSet::new(),
             damage_rect_limit: DEFAULT_DAMAGE_RECT_LIMIT,
             shell_places: false,
+            seat_names: BTreeMap::new(),
         }
+    }
+
+    /// The name of seat node `id`, if it is a seat.
+    #[must_use]
+    pub fn seat_name(&self, id: NodeId) -> Option<&str> {
+        self.seat_names.get(&id).map(String::as_str)
+    }
+
+    /// Names seat node `id`.
+    pub fn set_seat_name(&mut self, id: NodeId, name: String) {
+        self.seat_names.insert(id, name);
+    }
+
+    /// Every seat node and its name, in id order.
+    pub fn seat_names(&self) -> impl Iterator<Item = (NodeId, &str)> {
+        self.seat_names.iter().map(|(id, name)| (*id, name.as_str()))
     }
 
     /// Whether the shell holds the tree: while it does, the composer does not write a window's

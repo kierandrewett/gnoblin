@@ -58,6 +58,8 @@
 //! spellings live in one place; this module never returns them. A scene refusal
 //! with no table code maps to `bad-value`.
 
+use std::collections::BTreeSet;
+
 use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_types::{NodeId, Rect};
 
@@ -418,8 +420,9 @@ pub fn validate_and_apply(
     }
     let mut work = scene.clone();
     let mut applied = TreeApplied::default();
+    let mut created = BTreeSet::new();
     for (index, op) in transaction.ops.iter().enumerate() {
-        apply_op(&mut work, classes, actor, op, &mut applied).map_err(|code| TreeRefusal {
+        apply_op(&mut work, classes, actor, op, &mut created, &mut applied).map_err(|code| TreeRefusal {
             failed_op: i32::try_from(index).expect("the batch is bounded by MAX_OPS"),
             code,
         })?;
@@ -433,10 +436,11 @@ fn apply_op(
     classes: &dyn ClassInfo,
     actor: Actor,
     op: &TreeOp,
+    created: &mut BTreeSet<NodeId>,
     applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     match op {
-        TreeOp::New { class, id } => new_node(work, classes, actor, class, *id, applied),
+        TreeOp::New { class, id } => new_node(work, classes, actor, class, *id, created, applied),
         TreeOp::Insert { node, parent, index } => insert_node(work, actor, *node, *parent, *index, applied),
         TreeOp::Destroy { node } => destroy_node(work, actor, *node, applied),
         TreeOp::TreeCall { node, method, args } => call_method(work, classes, *node, method, args, applied),
@@ -445,7 +449,10 @@ fn apply_op(
             key,
             value,
             timing,
-        } => set_value(work, classes, *node, key, value, timing.as_ref(), applied),
+        } => {
+            check_writable(work, classes, *node, key, created)?;
+            set_value(work, classes, *node, key, value, timing.as_ref(), applied)
+        }
     }
 }
 
@@ -455,6 +462,7 @@ fn new_node(
     actor: Actor,
     class: &str,
     id: NodeId,
+    created: &mut BTreeSet<NodeId>,
     applied: &mut TreeApplied,
 ) -> Result<(), Code> {
     if !classes.has_class(class) {
@@ -464,6 +472,7 @@ fn new_node(
         .map_err(|error| scene_code(&error))?;
     work.set_class(id, Some(class.to_owned()))
         .map_err(|error| scene_code(&error))?;
+    created.insert(id);
     applied.changes.push(TreeChange::Created {
         node: id,
         class: class.to_owned(),
@@ -531,6 +540,26 @@ fn call_method(
     Ok(())
 }
 
+/// A read-only property is set only in the transaction that creates its node.
+fn check_writable(
+    work: &Scene,
+    classes: &dyn ClassInfo,
+    node: NodeId,
+    key: &str,
+    created: &BTreeSet<NodeId>,
+) -> Result<(), Code> {
+    if !work.contains(node) {
+        return Err(Code::UnknownNode);
+    }
+    let info = classes
+        .property(work.class(node).unwrap_or(""), key)
+        .ok_or(Code::UnknownMember)?;
+    if info.readonly && !created.contains(&node) {
+        return Err(Code::ReadOnly);
+    }
+    Ok(())
+}
+
 fn set_value(
     work: &mut Scene,
     classes: &dyn ClassInfo,
@@ -546,8 +575,8 @@ fn set_value(
     let info = classes
         .property(work.class(node).unwrap_or(""), key)
         .ok_or(Code::UnknownMember)?;
-    if info.readonly {
-        return Err(Code::ReadOnly);
+    if work.class(node) == Some("seat") && key == "name" {
+        return set_seat_name(work, node, value, applied);
     }
     check_value(work, classes, value, &info.kind)?;
     applied.changes.push(TreeChange::Set {
@@ -570,6 +599,28 @@ fn set_value(
         return Ok(());
     }
     write_value(work, node, key, value)
+}
+
+/// Name a seat node. The name is non-empty, at most [`MAX_TEXT_BYTES`] bytes and unique among
+/// the seats, so a name set twice or taken by another seat is refused.
+fn set_seat_name(work: &mut Scene, node: NodeId, value: &TreeValue, applied: &mut TreeApplied) -> Result<(), Code> {
+    let TreeValue::Text(name) = value else {
+        return Err(Code::WrongType);
+    };
+    if name.is_empty() || name.len() > MAX_TEXT_BYTES {
+        return Err(Code::BadValue);
+    }
+    let taken = work.seat_names().any(|(id, other)| id != node && other == name);
+    if taken {
+        return Err(Code::BadValue);
+    }
+    work.set_seat_name(node, name.clone());
+    applied.changes.push(TreeChange::Set {
+        node,
+        key: "name".to_owned(),
+        value: TreeValue::Text(name.clone()),
+    });
+    Ok(())
 }
 
 /// Check a timing: a duration in `(0, 3600]` and a curve from 0 to 1 that is

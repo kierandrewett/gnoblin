@@ -266,3 +266,130 @@ fn a_compositor_change_alone_publishes_a_batch_at_the_next_serial() {
     assert_eq!(batches[0].changes.len(), 1);
     assert_eq!(frame.serial(), 1);
 }
+
+/// A seat node the owner creates: `new` and `set name` in one transaction.
+const SEAT: NodeId = NodeId::new(0x400);
+
+/// A transaction that creates a `seat` node named `name` under the root in one step.
+fn create_seat(name: &str) -> TreeTransaction {
+    TreeTransaction::new(vec![
+        TreeOp::New {
+            class: "seat".to_owned(),
+            id: SEAT,
+        },
+        TreeOp::Set {
+            node: SEAT,
+            key: "name".to_owned(),
+            value: TreeValue::Text(name.to_owned()),
+            timing: None,
+        },
+    ])
+}
+
+/// A schema with a read-only `seat` class whose `name` is set at construction only.
+struct SeatTable;
+
+impl ClassInfo for SeatTable {
+    fn has_class(&self, class: &str) -> bool {
+        matches!(class, "node" | "seat")
+    }
+
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        (class == "seat" && key == "name").then_some(PropertyInfo {
+            kind: ValueType::Text,
+            readonly: true,
+            animated: false,
+        })
+    }
+
+    fn has_method(&self, _class: &str, _method: &str) -> bool {
+        false
+    }
+}
+
+fn seat_frame() -> TreeFrame {
+    TreeFrame::with_hooks(TreeHooks {
+        classes: Arc::new(SeatTable),
+        publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+        ..TreeHooks::default()
+    })
+}
+
+fn seat_name(composer: &mut Composer) -> Option<String> {
+    composer.with_scene(|scene| scene.seat_name(SEAT).map(str::to_owned))
+}
+
+#[test]
+fn a_readonly_name_is_set_in_the_transaction_that_creates_the_seat() {
+    let mut frame = seat_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_seat("xr"), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(*replies.lock().unwrap(), vec![(1, true)]);
+    assert_eq!(seat_name(&mut composer).as_deref(), Some("xr"));
+}
+
+#[test]
+fn a_later_set_of_a_readonly_name_is_refused_and_leaves_the_seat_named() {
+    let mut frame = seat_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_seat("xr"), &replies);
+    drain(&mut frame, &mut composer);
+    submit(
+        &frame,
+        1,
+        TreeTransaction::new(vec![TreeOp::Set {
+            node: SEAT,
+            key: "name".to_owned(),
+            value: TreeValue::Text("other".to_owned()),
+            timing: None,
+        }]),
+        &replies,
+    );
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(1, false)));
+    assert_eq!(seat_name(&mut composer).as_deref(), Some("xr"));
+}
+
+#[test]
+fn an_empty_seat_name_is_refused_bad_value_and_nothing_is_created() {
+    let mut frame = seat_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_seat(""), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(*replies.lock().unwrap(), vec![(0, false)]);
+    assert_eq!(seat_name(&mut composer), None);
+}
+
+#[test]
+fn a_seat_name_already_taken_by_another_seat_is_refused_bad_value() {
+    let mut frame = seat_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_seat("xr"), &replies);
+    drain(&mut frame, &mut composer);
+    let second = NodeId::new(0x401);
+    submit(
+        &frame,
+        1,
+        TreeTransaction::new(vec![
+            TreeOp::New {
+                class: "seat".to_owned(),
+                id: second,
+            },
+            TreeOp::Set {
+                node: second,
+                key: "name".to_owned(),
+                value: TreeValue::Text("xr".to_owned()),
+                timing: None,
+            },
+        ]),
+        &replies,
+    );
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(1, false)));
+    composer.with_scene(|scene| assert_eq!(scene.seat_name(second), None));
+}
