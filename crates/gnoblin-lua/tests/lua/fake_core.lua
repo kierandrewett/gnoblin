@@ -46,11 +46,18 @@ local SCHEMA = {
             committed_height = { type = "number", default = 0, readonly = true },
             -- True once a shell has positioned the window. Only the host sets it, on a shell's write to x or y.
             placed = { type = "boolean", default = false, readonly = true },
+            title = { type = "string", default = "" },
         },
         signals = { "closed" },
+        methods = { "close" },
     },
     { name = "Canvas", base = "Node", methods = { "measure" } },
-    { name = "View", base = "Node", props = { source = { type = "node" } } },
+    {
+        name = "View",
+        base = "Node",
+        props = { source = { type = "node" } },
+        methods = { "camera", "capture" },
+    },
     { name = "Screen", base = "View", props = { connector = { type = "string", default = "" } } },
     { name = "Camera", base = "Node" },
     {
@@ -70,9 +77,17 @@ local SCHEMA = {
         },
         signals = { "activate" },
     },
-    { name = "Lock", base = "Node" },
+    {
+        name = "Lock",
+        base = "Node",
+        props = { engaged = { type = "boolean", default = false } },
+        signals = { "requested" },
+        methods = { "authenticate" },
+        slow = { authenticate = true },
+    },
 }
 
+local auth_n = 0 -- token counter for slow methods: each call names a token the host answers under
 -- Method bodies. Each receives the mirror record of the node it is called on.
 local METHODS = {
     measure = function(_, text, size)
@@ -82,6 +97,17 @@ local METHODS = {
         return chord
     end,
     grab = function() end,
+    close = function() end,
+    camera = function()
+        return 0
+    end,
+    capture = function()
+        return 0
+    end,
+    authenticate = function()
+        auth_n = auth_n + 1
+        return "auth" .. auth_n
+    end,
 }
 
 return function()
@@ -93,7 +119,7 @@ return function()
             props = s.props or {},
             signals = s.signals or {},
             methods = s.methods or {},
-            slow = {},
+            slow = s.slow or {},
         }
         -- Every class sees its own declarations and everything it inherits.
         local all = { name = s.name, props = {}, signals = {}, methods = {} }
@@ -124,8 +150,8 @@ return function()
     local nodes, next_id = {}, 0 -- id -> { class, props, parent, children }
     local batch, batches = {}, {} -- writes since the last frame; committed batches
     local changes, closing, close_events = {}, {}, {}
-    local reports = {}
-    local core, host = {}, { reports = reports, batches = batches }
+    local reports, calls = {}, {}
+    local core, host = {}, { reports = reports, batches = batches, calls = calls }
 
     local function op(t)
         batch[#batch + 1] = t
@@ -300,7 +326,9 @@ return function()
         if not by_name[r.class].methods[method] then
             error(("%s has no method %s"):format(r.class, method), 2)
         end
-        return METHODS[method](r, ...)
+        local result = METHODS[method](r, ...)
+        calls[#calls + 1] = { id = id, method = method, args = { ... }, result = result }
+        return result
     end
     function core.report(message)
         reports[#reports + 1] = tostring(message)

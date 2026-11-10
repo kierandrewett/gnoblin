@@ -152,29 +152,6 @@ function drag(s, w) -- follow the pointer until release
     s:grab(nil)
     w.x, w.y = w.x, w.y -- a plain write ends the bindings
 end
-
-function toast(text)
-    go(function()
-        local d = desk()
-        local t = d:add(Box({
-            x = d.width - 340,
-            y = 44,
-            width = 320,
-            height = 64,
-            radius = 10,
-            padding = 14,
-            direction = "row",
-            fill = "#45475a",
-            opacity = 0,
-            text,
-        }))
-        await(t:to(0.12, { opacity = 1 }))
-        await(4)
-        await(t:to(0.3, { opacity = 0 }))
-        t:destroy()
-    end)
-end
-
 -- Super+Left and Super+Right move focus between the columns of a Strip; on any other layout they do nothing.
 -- A shell loaded without a seat (the Lua tests) has no keys to bind.
 if seat then
