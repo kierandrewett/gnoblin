@@ -378,6 +378,7 @@ fn value_bytes(value: &TreeValue) -> usize {
         TreeValue::Bytes(bytes) => bytes.len(),
         TreeValue::ListDouble(items) => items.len() * 8,
         TreeValue::ListText(items) => items.iter().map(|item| item.len() + 8).sum(),
+        TreeValue::Effects(passes) => std::mem::size_of_val(passes.as_slice()),
         TreeValue::Bool(_) | TreeValue::Int(_) | TreeValue::Uint(_) | TreeValue::Double(_) | TreeValue::Node(_) => 8,
     }
 }
