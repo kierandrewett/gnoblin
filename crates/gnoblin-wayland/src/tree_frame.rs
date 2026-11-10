@@ -22,7 +22,8 @@ use gnoblin_render::transaction::{
     validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
-use gnoblin_render::{Actor, Scene};
+use gnoblin_render::{Actor, NodeSpec, Scene};
+use gnoblin_types::NodeId;
 
 /// How long one frame may spend applying tree transactions. A transaction that starts
 /// after the budget is spent waits for the next frame; the first transaction of a frame
@@ -131,6 +132,9 @@ pub struct TreeHooks {
     pub classes: Arc<dyn ClassInfo + Send + Sync>,
     /// Receives each batch a frame publishes, in publication order, on the frame's thread.
     pub publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
+    /// The root the shell attaches to, inserted into the scene before the first frame draws
+    /// if the scene does not hold it yet. `None` leaves the scene as the compositor built it.
+    pub root: Option<(NodeId, NodeSpec)>,
 }
 
 impl std::fmt::Debug for TreeHooks {
@@ -145,6 +149,7 @@ impl Default for TreeHooks {
             queue: TreeQueue::default(),
             classes: Arc::new(NoClasses),
             publish: Arc::new(|_| {}),
+            root: None,
         }
     }
 }
@@ -179,6 +184,8 @@ pub struct TreeFrame {
     revisions: TreeRevisions,
     /// Transactions the budget deferred. Each is checked against its base when it applies, and
     /// runs first in the next frame.
+    /// The root the frame installs on its first drain, then forgets.
+    root: Option<(NodeId, NodeSpec)>,
     deferred: VecDeque<Submission>,
     /// Changes the compositor made itself since the last frame, announced in the next batch ahead of the shell's changes.
     compositor: Vec<TreeChange>,
@@ -197,6 +204,7 @@ impl TreeFrame {
         Self {
             queue: hooks.queue,
             classes: hooks.classes,
+            root: hooks.root,
             publish: hooks.publish,
             serial: 0,
             deferred: VecDeque::new(),
@@ -235,6 +243,14 @@ impl TreeFrame {
     /// the first, so a test can drive the budget with a clock of its own.
     pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
         let start = now();
+        if let Some((id, spec)) = self.root.take()
+            && !scene.contains(id)
+        {
+            scene
+                .insert_as(Actor::Compositor, id, spec)
+                .expect("the tree root inserts into a scene that does not hold it");
+            scene.set_root(Some(id)).expect("the tree root was inserted");
+        }
         let frame_serial = self.serial;
         let (reads, arrived) = {
             let mut queue = self.queue.lock();
