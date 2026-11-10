@@ -24,6 +24,24 @@ pub type NodeId = u64;
 /// The nil node id: the parent of the root and of every node not yet inserted.
 pub const NIL: NodeId = 0;
 
+/// The shell's name for a class the wire carries by its schema name: `seat` is `Seat`. The
+/// schema names are lowercase; the shell's classes are their names with the first letter
+/// capitalised (`tree_core::tree_classes`).
+pub fn lua_class(wire: &str) -> String {
+    let lower = wire.to_ascii_lowercase();
+    let mut chars = lower.chars();
+    chars
+        .next()
+        .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
+        .unwrap_or_default()
+}
+
+/// The schema name the wire carries for a shell class: `Seat` is `seat`. The compositor
+/// checks classes by exact schema name, so a class the shell creates is sent this way.
+pub fn wire_class(lua: &str) -> String {
+    lua.to_ascii_lowercase()
+}
+
 /// A property value, one variant per `value_kind` the wire carries.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LuaValue {
@@ -281,7 +299,7 @@ impl LuaMirror {
                 return Err(MirrorError::Snapshot("node id zero".to_owned()));
             }
             let mut record = NodeRecord {
-                class: node.class.clone(),
+                class: lua_class(&node.class),
                 parent: node.parent,
                 ..NodeRecord::default()
             };
@@ -378,7 +396,7 @@ impl LuaMirror {
                 self.nodes.insert(
                     change.node,
                     NodeRecord {
-                        class: change.class.clone(),
+                        class: lua_class(&change.class),
                         ..NodeRecord::default()
                     },
                 );
@@ -623,7 +641,7 @@ impl LuaTxBuilder {
         );
         self.ops.push(LuaOp::New {
             id,
-            class: class.to_owned(),
+            class: wire_class(class),
         });
         Ok(())
     }
@@ -749,5 +767,24 @@ impl LuaTxBuilder {
             serial,
             ops: self.ops,
         }
+    }
+}
+
+#[cfg(test)]
+mod class_name_tests {
+    use super::{lua_class, wire_class};
+
+    #[test]
+    fn a_wire_class_is_the_shells_capitalised_name() {
+        assert_eq!(lua_class("seat"), "Seat");
+        assert_eq!(lua_class("node"), "Node");
+        assert_eq!(lua_class("View"), "View");
+    }
+
+    #[test]
+    fn a_shell_class_is_sent_by_its_schema_name() {
+        assert_eq!(wire_class("Screen"), "screen");
+        assert_eq!(wire_class("Node"), "node");
+        assert_eq!(lua_class(&wire_class("Workspace")), "Workspace");
     }
 }
