@@ -184,6 +184,18 @@ impl ShellVm {
         for message in incoming {
             match message {
                 LuaIncoming::Changes { serial, changes } => {
+                    // A closed node runs its `destroyed` handlers before node.lua drops its face.
+                    tree_events.extend(
+                        changes
+                            .iter()
+                            .filter(|c| c.kind == MirrorChangeKind::Destroyed)
+                            .map(|c| LuaEvent {
+                                target: c.node,
+                                kind: "destroyed".to_owned(),
+                                bubbles: false,
+                                chord: None,
+                            }),
+                    );
                     self.apply_changes(serial, &changes)?;
                     touched.extend(
                         changes

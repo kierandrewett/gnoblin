@@ -445,7 +445,11 @@ impl LuaMirror {
             MirrorChangeKind::Destroyed => {
                 self.require(change.node)?;
                 self.detach(change.node);
-                for id in std::iter::once(&change.node).chain(&change.removed) {
+                // `removed` is the whole subtree, the root included, as the scene reports it; a list
+                // that omits the root still removes it. Each node is removed once.
+                let mut ids = vec![change.node];
+                ids.extend(change.removed.iter().copied().filter(|id| *id != change.node));
+                for id in &ids {
                     if self.nodes.remove(id).is_none() {
                         return Err(inconsistent(format!("destroyed node {id} is not in the mirror")));
                     }

@@ -257,3 +257,47 @@ fn a_mapped_window_reaches_the_mirror_and_runs_window_on_ready() {
         role.diagnostics()
     );
 }
+
+/// A client that closes its window: the composer drops the node, the mirror reports `destroyed`,
+/// the shell's `Window:on_destroyed` runs, and the node is gone from the tree the shell reads.
+#[test]
+fn a_closed_window_runs_on_destroyed_and_leaves_the_tree() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    role.run(
+        "on_destroyed probe",
+        "destroyed_calls = 0; local prev = Window.on_destroyed; Window.on_destroyed = function(self) destroyed_calls = destroyed_calls + 1; if prev then prev(self) end end",
+    )
+    .expect("the probe installs");
+
+    let mut client = Client::connect(session.wayland());
+    let first = client.map_window("org.example.first", "First");
+    tick_until(&mut role, "the shell never placed the window", |role| {
+        window_placements(role).iter().any(|(_, _, placed)| *placed)
+    });
+    assert_eq!(
+        window_placements(&mut role).len(),
+        1,
+        "one window is in the mirror before it closes"
+    );
+
+    client.destroy(first);
+    tick_until(&mut role, "the closed window never left the tree", |role| {
+        window_placements(role).is_empty()
+    });
+
+    let calls = role
+        .run("destroyed probe", "return tostring(destroyed_calls)")
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    assert_eq!(calls, "1", "Window:on_destroyed ran once for the closed window");
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}

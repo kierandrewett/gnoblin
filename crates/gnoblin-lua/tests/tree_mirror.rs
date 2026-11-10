@@ -136,6 +136,23 @@ fn a_destroy_change_removes_the_subtree_and_its_parent_link() {
 }
 
 #[test]
+fn a_destroy_whose_removed_list_names_the_root_removes_each_node_once() {
+    // The scene's `removed` is the whole subtree, the root included (`Scene::remove_as`), which is
+    // what the compositor sends. The root must not be counted twice.
+    let mut mirror = base_mirror();
+    let mut destroyed = change(MirrorChangeKind::Destroyed, 2);
+    destroyed.removed = vec![2, 4];
+
+    mirror
+        .apply_changes(6, &[destroyed])
+        .expect("a whole-subtree destroy applies");
+
+    assert!(mirror.node(2).is_none());
+    assert!(mirror.node(4).is_none());
+    assert_eq!(children(&mirror, 1), vec![3]);
+}
+
+#[test]
 fn a_stale_batch_is_ignored() {
     // F24: a batch at or before the mirror's serial is stale and changes nothing.
     let mut mirror = base_mirror();
