@@ -602,6 +602,19 @@ function Node:all(sel)
     walk(self)
     return out
 end
+function Node:unparented()
+    local root_id, ids, out = core.root(), {}, {}
+    for id in pairs(nodes) do
+        if id ~= root_id and pcall(core.get, id, "parent") and core.get(id, "parent") == nil then
+            ids[#ids + 1] = id
+        end
+    end
+    table.sort(ids)
+    for _, id in ipairs(ids) do
+        out[#out + 1] = nodes[id]
+    end
+    return out
+end
 function Node:find(sel)
     return self:all(sel)[1]
 end

@@ -380,6 +380,11 @@ return {
             function Window:on_ready()
                 runs = runs + 1
                 seen_parent = self.parent
+                local loose = root:unparented()
+                H.check(
+                    #loose == 1 and loose[1] == self,
+                    "unparented lists the window before on_ready adds it, got " .. #loose
+                )
                 self.x, self.y = 7, 9
                 root:add(self)
             end
@@ -391,6 +396,7 @@ return {
             H.check(seen_parent == nil, "no parent when ready runs")
             H.check(#root.children == 1, "on_ready parented it")
             host.frame(2, {})
+            H.check(#root:unparented() == 0, "a parented window is not unparented")
             H.check(runs == 1, "ready does not repeat, got " .. runs)
             H.check(#host.reports == 0, "reports: " .. table.concat(host.reports, "; "))
         end,
