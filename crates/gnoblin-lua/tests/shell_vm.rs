@@ -382,6 +382,7 @@ fn function_binding_reruns_on_mirror_change() {
 fn class_handler_fires_on_ready_event() {
     let comp = compositor_with_root_and_window();
     let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame announces the snapshot");
     vm.run(
         "handler",
         r#"

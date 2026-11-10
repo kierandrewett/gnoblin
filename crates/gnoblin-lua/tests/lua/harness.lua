@@ -41,19 +41,11 @@ function H.load_shell()
     dofile(GNOBLIN_LUA_DIR .. "/shell/workspaces.lua")
 end
 
--- The shell starts: every Screen gets `ready` first, so the Desk exists; then every Window, as a shell that comes
--- up after its windows have mapped would see them. The Desk is built with the screen's size, so it places windows
+-- The shell starts: its first frame emits `ready` for every node already in the tree, parents first, so every
+-- Screen gets `ready` before the Windows it places. The Desk is built with the screen's size, so it places windows
 -- in its active workspace.
 function H.start_shell(host)
-    local screens, windows = {}, {}
-    for _, id in ipairs(host.ids("Screen")) do
-        screens[#screens + 1] = { type = "ready", target = id }
-    end
-    host.frame(0, screens)
-    for _, id in ipairs(host.ids("Window")) do
-        windows[#windows + 1] = { type = "ready", target = id }
-    end
-    host.frame(0, windows)
+    host.frame(0, {})
 end
 
 -- One frame at time `now` with the given events. Returns the host's wake time.

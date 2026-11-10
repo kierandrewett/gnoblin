@@ -261,7 +261,7 @@ impl ShellVm {
             entry.set("bubbles", event.bubbles).map_err(lua_error)?;
             if let Some(chord) = &event.chord {
                 let claim = lua.create_table().map_err(lua_error)?;
-                claim.set("claim", chord.claim as i64).map_err(lua_error)?;
+                claim.set("claim", chord.claim).map_err(lua_error)?;
                 claim.set("chord", chord.chord.as_str()).map_err(lua_error)?;
                 claim.set("state", chord.state.as_str()).map_err(lua_error)?;
                 entry.set("chord", claim).map_err(lua_error)?;
