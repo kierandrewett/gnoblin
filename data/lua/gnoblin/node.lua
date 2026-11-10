@@ -421,6 +421,10 @@ end
 local Node = classes.Node
 meta(Node).props.tags = { type = "table", default = {} }
 meta(Node).props.data = { type = "table", default = {} }
+-- `on_ready` and `on_destroyed` are handlers, so they must be signals: without this the class
+-- keeps `on_ready` as a plain method and nothing ever calls it.
+meta(Node).signals.ready = true
+meta(Node).signals.destroyed = true
 for _, c in pairs(classes) do
     settle(meta(c))
 end
