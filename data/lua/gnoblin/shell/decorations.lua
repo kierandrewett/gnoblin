@@ -7,7 +7,12 @@ Box:extend("Titlebar")({
     gap = 8,
     direction = "row",
     input = true,
-    fill = "#232634",
+    width = function(t)
+        return t.window.width
+    end,
+    fill = function(t)
+        return t.window.activated and "#414559" or "#232634"
+    end,
 })
 function Titlebar:build()
     local w = self.window

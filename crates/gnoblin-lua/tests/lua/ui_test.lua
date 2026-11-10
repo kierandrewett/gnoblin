@@ -22,6 +22,38 @@ local function last_token(host)
     return call.result
 end
 
+-- A started shell with one Screen, one Seat and one Window built from `props`. Returns the host and the window.
+local function window_setup(props)
+    local core, host = require("fake_core")()
+    H.boot(core, host)
+    root:add(Seat({}))
+    local screen = root:add(Screen({ width = 1000, height = 800 }))
+    local win = root:add(Window(props))
+    H.load_shell()
+    root:find(Seat).screen = screen
+    H.start_shell(host)
+    return host, win
+end
+
+-- The native ids of a node's children, read from the host's dump.
+local function children_of(host, id)
+    local out = {}
+    for line in host.dump():gmatch("[^\n]+") do
+        local child, parent = line:match("^(%d+) %S+ parent=(%S+)")
+        if parent == tostring(id) then
+            out[#out + 1] = tonumber(child)
+        end
+    end
+    return out
+end
+
+-- The native ids of the titlebar (the window's first child) and its Icon (the titlebar's second child).
+local function titlebar_ids(host)
+    local win_id = host.ids("Window")[1]
+    local bar = children_of(host, win_id)[1]
+    return bar, children_of(host, bar)[2]
+end
+
 return {
     {
         "the lock engages when the host requests it",
@@ -186,6 +218,103 @@ return {
             H.frame(host, 1, {})
             H.frame(host, 2, {})
             H.check(#host.ids("Window") == 0, "the window must be destroyed after the fade")
+        end,
+    },
+    {
+        "the titlebar width follows the window width",
+        function()
+            local host, win = window_setup({ app_id = "foot", title = "term" })
+            H.frame(host, 1, {})
+            win.width = 420
+            H.frame(host, 2, {})
+            H.check(win:all(Titlebar)[1].width == 420, "the titlebar must be as wide as its window")
+        end,
+    },
+    {
+        "the titlebar fill follows whether the window is activated",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            H.frame(host, 1, {})
+            seat.focus = win
+            H.frame(host, 2, {})
+            H.check(win:all(Titlebar)[1].fill == "#414559", "an activated window must have the active fill")
+            seat.focus = nil
+            H.frame(host, 3, {})
+            H.check(win:all(Titlebar)[1].fill == "#232634", "an inactive window must have the idle fill")
+        end,
+    },
+    {
+        "the titlebar text follows the window title",
+        function()
+            local host, win = window_setup({ app_id = "foot", title = "term" })
+            H.frame(host, 1, {})
+            win.title = "vim"
+            H.frame(host, 2, {})
+            H.check(win:all(Titlebar)[1]:all(Text)[1].text == "vim", "the titlebar text must show the new title")
+        end,
+    },
+    {
+        "the titlebar close icon closes its window and stops the press",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            H.frame(host, 1, {})
+            local _, icon = titlebar_ids(host)
+            local dragged, real_drag = nil, drag
+            drag = function(_, w)
+                dragged = w
+            end
+            H.frame(host, 2, { { type = "press", bubbles = true, target = icon, args = {} } })
+            drag = real_drag
+            local closed = false
+            for _, c in ipairs(host.calls) do
+                closed = closed or (c.method == "close" and c.id == host.ids("Window")[1])
+            end
+            H.check(closed, "the close icon must close its window")
+            H.check(dragged == nil, "a stopped press must not reach the titlebar drag")
+        end,
+    },
+    {
+        "a press on the titlebar starts a drag of its window",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            H.frame(host, 1, {})
+            local bar = titlebar_ids(host)
+            local dragged, real_drag = nil, drag
+            drag = function(_, w)
+                dragged = w
+            end
+            H.frame(host, 2, { { type = "press", bubbles = true, target = bar, args = {} } })
+            drag = real_drag
+            H.check(dragged == win, "a press on the titlebar must drag its window")
+        end,
+    },
+    {
+        "switching workspace slides the new one in and leaves only it visible",
+        function()
+            local host = setup()
+            local d = desk()
+            local old, ws3 = d.active, d.space.children[3]
+            local ws3_id, old_id = host.ids("Workspace")[3], host.ids("Workspace")[1]
+            seat.data.keys["Super+3"]()
+            H.check(ws3.visible, "the new workspace must be shown as the slide starts")
+            H.check(old.visible and old.x == -d.width, "the old workspace must slide out")
+            H.frame(host, 1, {})
+            H.frame(host, 2, {})
+            local function tweened(id, value)
+                for _, batch in ipairs(host.batches) do
+                    for _, o in ipairs(batch) do
+                        if o.op == "set" and o.id == id and o.key == "x" and o.value == value and o.seconds then
+                            return true
+                        end
+                    end
+                end
+                return false
+            end
+            H.check(tweened(ws3_id, 0), "the new workspace must slide to 0 over time")
+            H.check(tweened(old_id, -d.width), "the old workspace must slide out over time")
+            H.check(ws3.x == 0, "the slide must end with the new workspace in place")
+            H.check(not old.visible, "the old workspace must be hidden after the slide")
+            H.check(ws3.visible, "the new workspace must be visible after the slide")
         end,
     },
 }
