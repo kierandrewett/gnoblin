@@ -395,3 +395,36 @@ fn two_stale_writes_to_one_node_in_one_frame_apply_once() {
         })
     );
 }
+
+#[test]
+fn a_submission_and_a_read_each_wake_the_frame_loop() {
+    let wakes = Arc::new(Mutex::new(0_usize));
+    let queue = TreeQueue::default();
+    let counted = Arc::clone(&wakes);
+    queue.on_submit(move || *counted.lock().unwrap() += 1);
+
+    queue.submit(0, add(FIRST), |_, _| {});
+    queue.read(|_, _| {});
+
+    assert_eq!(*wakes.lock().unwrap(), 2);
+}
+
+#[test]
+fn a_frame_built_on_a_shared_queue_drains_what_a_clone_submits() {
+    let queue = TreeQueue::default();
+    let mut frame = TreeFrame::with_queue(queue.clone());
+    frame.set_classes(Box::new(Table));
+    let replies = Arc::new(Mutex::new(Vec::new()));
+
+    submit(&frame, 0, add(FIRST), &replies);
+    let mut scene = scene();
+    frame.drain(&mut scene, Instant::now);
+    frame.drain(&mut scene, Instant::now);
+
+    assert_eq!(
+        replies.lock().unwrap().len(),
+        1,
+        "the clone's submission is applied once"
+    );
+    assert!(scene.contains(FIRST));
+}
