@@ -11,7 +11,7 @@ Box:extend("Titlebar")({
         return t.window.width
     end,
     fill = function(t)
-        return t.window.activated and "#414559" or "#232634"
+        return seat.focus == t.window and "#414559" or "#232634"
     end,
 })
 function Titlebar:build()

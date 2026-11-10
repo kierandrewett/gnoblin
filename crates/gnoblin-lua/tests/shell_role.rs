@@ -198,7 +198,7 @@ fn change_batch_sends_one_transaction_only_when_the_vm_wrote() {
     // The compositor reports a native change; the VM has nothing to write about it.
     comp.borrow_mut().queue.push(LuaIncoming::Changes {
         serial: 1,
-        changes: vec![change_of(MirrorChangeKind::Created, 3, "Node")],
+        changes: vec![change_of(MirrorChangeKind::Set, 1, "")],
     });
     role.tick(1.0).expect("frame on a change batch");
     assert_eq!(sent(&comp), before, "no write, no transaction");
@@ -207,7 +207,7 @@ fn change_batch_sends_one_transaction_only_when_the_vm_wrote() {
     role.run("write", r#"local n = Node(); n.title = "shell"; root:add(n)"#)
         .expect("run the write");
     comp.borrow_mut().queue.push(LuaIncoming::Changes {
-        serial: 1,
+        serial: 2,
         changes: vec![change_of(MirrorChangeKind::Created, 4, "Node")],
     });
     role.tick(2.0).expect("frame on a change batch");

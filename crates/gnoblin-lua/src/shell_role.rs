@@ -28,11 +28,16 @@ pub fn shell_vm_dir(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
 /// A running shell VM, driven one frame per turn of the runtime loop.
 pub struct ShellRole {
     vm: ShellVm,
+    /// Every diagnostic the VM has reported since it booted, oldest first.
+    diagnostics: Vec<String>,
 }
 
 impl ShellRole {
     pub fn new(vm: ShellVm) -> Self {
-        Self { vm }
+        Self {
+            vm,
+            diagnostics: Vec::new(),
+        }
     }
 
     /// Run one frame at `now` (seconds on the frame clock). The frame applies any change
@@ -44,7 +49,13 @@ impl ShellRole {
         for diagnostic in &frame.diagnostics {
             crate::log::warn!(area = "shell-vm", "{diagnostic}");
         }
+        self.diagnostics.extend(frame.diagnostics);
         Ok(())
+    }
+
+    /// Every diagnostic the VM has reported since it booted, oldest first.
+    pub fn diagnostics(&self) -> &[String] {
+        &self.diagnostics
     }
 
     /// Run a Lua chunk inside the VM, as a named chunk.

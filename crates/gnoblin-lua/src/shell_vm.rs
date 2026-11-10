@@ -168,6 +168,7 @@ impl ShellVm {
     pub fn frame(&mut self, now: f64, events: Vec<LuaEvent>) -> Result<ShellFrame> {
         let mut diagnostics = Vec::new();
         let mut touched: Vec<(u64, String)> = Vec::new();
+        let mut created: Vec<u64> = Vec::new();
         let mut tree_events: Vec<LuaEvent> = Vec::new();
 
         let mut incoming = std::mem::take(&mut self.incoming);
@@ -182,10 +183,24 @@ impl ShellVm {
                             .filter(|c| c.kind == MirrorChangeKind::Set)
                             .map(|c| (c.node, c.key.clone())),
                     );
+                    created.extend(
+                        changes
+                            .iter()
+                            .filter(|c| c.kind == MirrorChangeKind::Created)
+                            .map(|c| c.node),
+                    );
                 }
                 LuaIncoming::Reply(reply) => {
                     let described = self.sent.remove(&reply.serial);
-                    if !reply.applied {
+                    if !reply.applied && reply.code == "stale-base" {
+                        // The base moved under this frame's writes; the next change batch re-drives them.
+                        crate::log::debug!(
+                            area = "shell",
+                            "transaction {} dropped: stale base at op {}",
+                            reply.serial,
+                            reply.failed_op
+                        );
+                    } else if !reply.applied {
                         let op = usize::try_from(reply.failed_op)
                             .ok()
                             .and_then(|i| described.as_ref().and_then(|ops| ops.get(i)))
@@ -217,7 +232,7 @@ impl ShellVm {
             }
         }
 
-        let wake = self.tick_lua(now, &touched, events.into_iter().chain(tree_events))?;
+        let wake = self.tick_lua(now, &touched, &created, events.into_iter().chain(tree_events))?;
         diagnostics.extend(self.core.borrow_mut().take_reports());
 
         let tx = {
@@ -296,6 +311,7 @@ impl ShellVm {
         &self,
         now: f64,
         touched: &[(u64, String)],
+        created: &[u64],
         events: impl Iterator<Item = LuaEvent>,
     ) -> Result<Option<f64>> {
         let lua = &self.lua;
@@ -305,6 +321,10 @@ impl ShellVm {
             entry.set(1, *node as i64).map_err(lua_error)?;
             entry.set(2, key.as_str()).map_err(lua_error)?;
             changes.set(i + 1, entry).map_err(lua_error)?;
+        }
+        let created_table = lua.create_table().map_err(lua_error)?;
+        for (i, node) in created.iter().enumerate() {
+            created_table.set(i + 1, *node as i64).map_err(lua_error)?;
         }
         let events_table: Table = lua.create_table().map_err(lua_error)?;
         for (i, event) in events.enumerate() {
@@ -321,7 +341,9 @@ impl ShellVm {
             }
             events_table.set(i + 1, entry).map_err(lua_error)?;
         }
-        self.tick.call((now, changes, events_table)).map_err(lua_error)
+        self.tick
+            .call((now, changes, events_table, created_table))
+            .map_err(lua_error)
     }
 }
 

@@ -16,6 +16,38 @@ end
 
 return {
     {
+        "the stock shell loads through require in a bare VM and reads no global the host does not define",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            -- Everything the test needs is captured before strict mode, so only the shell's own reads are checked.
+            local req, dir = require, GNOBLIN_LUA_DIR
+            sys = {
+                spawn = function() end,
+                date = function()
+                    return ""
+                end,
+            }
+            package.path = dir .. "/../?.lua;" .. dir .. "/../?/init.lua;" .. package.path
+            for name in pairs(package.loaded) do
+                if name == "gnoblin.shell" or name:find("^gnoblin%.shell%.") then
+                    package.loaded[name] = nil
+                end
+            end
+            local missing = {}
+            setmetatable(_G, {
+                __index = function(_, k)
+                    missing[#missing + 1] = tostring(k)
+                    return nil
+                end,
+            })
+            req("gnoblin.shell")
+            setmetatable(_G, nil)
+            H.check(#missing == 0, "the shell read undefined globals: " .. table.concat(missing, ", "))
+        end,
+    },
+    {
         "a window that maps before the shell waits under root, then is placed when the shell starts",
         function()
             local core, host = require("fake_core")()

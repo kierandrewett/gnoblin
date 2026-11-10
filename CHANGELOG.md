@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- Nodes the shell creates unparented (windows) get `ready` once, on the first VM frame that sees them in a created batch, so the stock floating shell's `Window:on_ready` runs. Test `change_batch_sends_one_transaction_only_when_the_vm_wrote` in `crates/gnoblin-lua/tests/shell_role.rs`. Compositor test `a_mapped_window_reaches_the_mirror_and_runs_window_on_ready` is `#[ignore]`d until the parent op and placement land.
 - Nodes the attach snapshot installs get `ready` once each, parents first, on the first VM frame after the shell library loads, so `Screen:on_ready` runs. `ready` and `destroyed` are declared as `Node` signals in `data/lua/gnoblin/node.lua`; before this, `on_ready` and `on_destroyed` were stored as plain methods and never ran. The desk test `the_stock_shell_builds_one_desk_for_the_screen_under_the_pointer` covers it. The stock shell placement test `the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own` is held back (`#[ignore]`) until the compositor publishes the seat's screen before the first window maps.
 
 - The compositor's own changes (the main seat and screen nodes created before an attach) are published as their own batch before the attach snapshot is read. The snapshot carries them, and an attaching shell no longer receives them a second time as `changes` events after the snapshot. Fixes the `tree_ipc` failures introduced by the seat and screen node commits.

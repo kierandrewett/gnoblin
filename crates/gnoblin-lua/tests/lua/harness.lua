@@ -19,6 +19,7 @@ end
 -- The stock shell: ui, then floating and strip (before init, which makes every Desk workspace a Floating), then
 -- init. `sys` is the host's system table; the stub is inert. `H.floating` is the module floating.lua returns, so the
 -- pure placement function is `H.floating.place`; `H.strip` is strip.lua's module (`H.strip.ring`, `H.strip.column`).
+local shell_path_set = false
 function H.load_shell()
     sys = sys or {
         spawn = function() end,
@@ -26,19 +27,22 @@ function H.load_shell()
             return ""
         end,
     }
-    dofile(GNOBLIN_LUA_DIR .. "/shell/ui.lua")
-    H.floating = dofile(GNOBLIN_LUA_DIR .. "/shell/floating.lua")
-    H.strip = dofile(GNOBLIN_LUA_DIR .. "/shell/strip.lua")
-    Focus = dofile(GNOBLIN_LUA_DIR .. "/shell/focus.lua")
-    Snap = dofile(GNOBLIN_LUA_DIR .. "/shell/snap.lua")
-    Rules = dofile(GNOBLIN_LUA_DIR .. "/shell/rules.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/init.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/panel.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/lock.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/overview.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/decorations.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/launcher.lua")
-    dofile(GNOBLIN_LUA_DIR .. "/shell/workspaces.lua")
+    if not shell_path_set then -- the shipped Lua root: require("gnoblin.shell") finds shell/init.lua
+        package.path = GNOBLIN_LUA_DIR .. "/../?.lua;" .. GNOBLIN_LUA_DIR .. "/../?/init.lua;" .. package.path
+        shell_path_set = true
+    end
+    -- A reload runs over a new node.lua runtime, so the shell's classes must be defined again.
+    for name in pairs(package.loaded) do
+        if name == "gnoblin.shell" or name:find("^gnoblin%.shell%.") then
+            package.loaded[name] = nil
+        end
+    end
+    require("gnoblin.shell")
+    H.floating = require("gnoblin.shell.floating")
+    H.strip = require("gnoblin.shell.strip")
+    Focus = require("gnoblin.shell.focus")
+    Snap = require("gnoblin.shell.snap")
+    Rules = require("gnoblin.shell.rules")
 end
 
 -- The shell starts: its first frame emits `ready` for every node already in the tree, parents first, so every

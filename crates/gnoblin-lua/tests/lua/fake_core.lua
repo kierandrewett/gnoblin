@@ -42,7 +42,6 @@ local SCHEMA = {
             title = { type = "string", default = "" },
             secure = { type = "boolean", default = false },
             parent_window = { type = "node" },
-            activated = { type = "boolean", default = false },
             -- The size the client last committed (0 before its first commit). Only the client writes it.
             committed_width = { type = "number", default = 0, readonly = true },
             committed_height = { type = "number", default = 0, readonly = true },

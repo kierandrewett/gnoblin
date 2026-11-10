@@ -200,6 +200,7 @@ return {
         "a ready handler that awaits is resumed by the frame that reaches its timer",
         function()
             local _, host = H.fresh()
+            host.frame(0, {}) -- the shell starts with the first frame, before any Lua adds a node
             local at
             local c = Canvas({})
             function c:on_ready()
@@ -291,6 +292,7 @@ return {
         "a handler started by a binding can await",
         function()
             local _, host = H.fresh()
+            host.frame(0, {}) -- the shell starts with the first frame, before any Lua adds a node
             local resumed = false
             local holder = Canvas({})
             root:add(holder)

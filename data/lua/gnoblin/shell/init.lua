@@ -1,4 +1,11 @@
 -- data/lua/gnoblin/shell/init.lua: the stock shell. Copy it and edit it.
+-- Loaded as require("gnoblin.shell"). The modules it depends on are required here, before the code that uses them.
+local Focus = require("gnoblin.shell.focus")
+local Snap = require("gnoblin.shell.snap")
+local Rules = require("gnoblin.shell.rules")
+require("gnoblin.shell.ui")
+require("gnoblin.shell.floating")
+require("gnoblin.shell.strip")
 seat, lock = root:find(Seat), root:find(Lock)
 spawn, date = sys.spawn, sys.date
 function desk_of(screen) -- the Desk whose screen it is
@@ -158,9 +165,6 @@ function Window:on_ready()
     else
         desk().active:add(self)
     end
-    self.activated = function(w)
-        return seat.focus == w
-    end
     if Focus.opens_focused(focus_settings(), self.from_launcher) then
         seat.focus = self
     end
@@ -273,3 +277,11 @@ if seat then
         end,
     })
 end
+
+-- The modules that extend the classes defined above. decorations.lua chains onto Window:on_ready, so it loads last.
+require("gnoblin.shell.panel")
+require("gnoblin.shell.lock")
+require("gnoblin.shell.overview")
+require("gnoblin.shell.launcher")
+require("gnoblin.shell.workspaces")
+require("gnoblin.shell.decorations")

@@ -49,8 +49,9 @@ fn tick_until(role: &mut ShellRole, what: &str, mut done: impl FnMut(&mut ShellR
         }
         assert!(
             Instant::now() < deadline,
-            "{what}: seat/screen counts {:?}",
-            mirror_counts(role)
+            "{what}: seat/screen counts {:?}; VM diagnostics {:?}",
+            mirror_counts(role),
+            role.diagnostics()
         );
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -65,37 +66,23 @@ fn the_shell_vm_attaches_and_its_mirror_holds_the_seat_and_a_screen() {
     });
 }
 
-/// The stock shell's modules, in the order the shell loads them (`shell/init.lua` needs the
-/// others first: floating and strip before init turns every Desk workspace into a Floating).
-const STOCK_SHELL: &[&str] = &[
-    "shell/ui.lua",
-    "shell/floating.lua",
-    "shell/strip.lua",
-    "shell/focus.lua",
-    "shell/snap.lua",
-    "shell/rules.lua",
-    "shell/init.lua",
-    "shell/panel.lua",
-    "shell/lock.lua",
-    "shell/overview.lua",
-    "shell/decorations.lua",
-    "shell/launcher.lua",
-    "shell/workspaces.lua",
-];
-
-/// Runs the stock shell's modules inside the VM, after `node.lua`. `sys` is the host's system
-/// table, which the shell reads when it loads; the test supplies it inert, as the Lua harness does.
+/// Runs the stock shell inside the VM the way production loads it: the package path is the shipped
+/// Lua root, then `require("gnoblin.shell")` loads `shell/init.lua`, which requires its siblings.
+/// `sys` is the host's system table, which the shell reads when it loads; the test supplies it inert.
 fn load_stock_shell(role: &mut ShellRole) {
     role.run(
         "sys",
         "sys = sys or { spawn = function() end, date = function() return '' end }",
     )
     .expect("the host table is set");
-    for module in STOCK_SHELL {
-        let src = std::fs::read_to_string(stock_library().join(module)).expect("a stock module");
-        role.run(module, &src)
-            .unwrap_or_else(|error| panic!("{module} loads in the shell VM: {error:?}"));
-    }
+    let root = stock_library().join("..");
+    let setup = format!(
+        "package.path = '{root}/?.lua;{root}/?/init.lua;' .. package.path",
+        root = root.display()
+    );
+    role.run("package.path", &setup).expect("the package path is set");
+    role.run("gnoblin.shell", "require('gnoblin.shell')")
+        .unwrap_or_else(|error| panic!("gnoblin.shell loads in the shell VM: {error:?}"));
 }
 
 /// The `x,y,placed` of every window node in the mirror, in tree order, read inside the VM.
@@ -121,7 +108,7 @@ fn window_placements(role: &mut ShellRole) -> Vec<(f64, f64, bool)> {
         .collect()
 }
 
-#[ignore = "red until the compositor publishes seat.screen before the first window maps"]
+#[ignore = "stock shell does not place unparented windows yet; tracked by the unparented-node work"]
 #[test]
 fn the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own() {
     let session = Session::start();
@@ -181,4 +168,49 @@ fn the_stock_shell_builds_one_desk_for_the_screen_under_the_pointer() {
     tick_until(&mut role, "the stock shell never built the screen's Desk", |role| {
         desk_probe(role) == "1 1"
     });
+}
+
+/// Each link of the window path, checked on its own: the window reaches the mirror, `Window:on_ready`
+/// runs for it, and the shell issues no refused transaction. The probe wraps `Window.on_ready` after the
+/// stock library, so it counts every call the signal makes.
+#[ignore = "unparented windows never reach Window:on_ready; tracked by the unparented-node work"]
+#[test]
+fn a_mapped_window_reaches_the_mirror_and_runs_window_on_ready() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    role.run(
+        "on_ready probe",
+        "ready_calls = 0; local prev = Window.on_ready; Window.on_ready = function(self) ready_calls = ready_calls + 1; if prev then prev(self) end end",
+    )
+    .expect("the probe installs");
+
+    let mut client = Client::connect(session.wayland());
+    let _first = client.map_window("org.example.first", "First");
+    for _ in 0..30 {
+        role.tick(0.5).expect("a frame runs");
+    }
+    let state = role
+        .run(
+            "link probe",
+            "return tostring(#root:all('Window')) .. ' ' .. tostring(ready_calls)",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    let mut parts = state.split(' ');
+    let windows: usize = parts.next().unwrap().parse().unwrap();
+    let ready: usize = parts.next().unwrap().parse().unwrap();
+    assert!(
+        windows >= 1 && ready >= 1,
+        "window nodes in the mirror {windows}, Window:on_ready calls {ready}; VM diagnostics {:?}",
+        role.diagnostics()
+    );
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
 }

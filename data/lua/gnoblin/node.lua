@@ -41,7 +41,7 @@ local function run(b)
     local ok, err = pcall(b.fn)
     current = outer
     if not ok then
-        core.report(err)
+        core.report(tostring(err))
     end
 end
 local function bind(fn)
@@ -86,7 +86,7 @@ local function resume(co, ...)
     local ok, err = coroutine.resume(co, ...)
     current = outer
     if not ok then
-        core.report(err)
+        core.report(tostring(err))
     end
 end
 local function start(o, fn, ...)
@@ -163,6 +163,8 @@ function every(seconds, fn)
 end
 
 -- Nodes. Values of native properties live in the native tree; Lua properties live in VALS.
+local readied = {} -- node id -> true once its `ready` has been emitted
+local ready -- emits `ready` once per node; defined with the snapshot code below
 local make
 local function wrap(id) -- a node Gnoblin made gets its Lua face
     if id == nil then
@@ -201,7 +203,10 @@ local function read(n, k, p)
 end
 local function write(n, k, p, v, seconds, curve)
     if p.native then
-        core.set(rawget(n, ID), k, p.type == "node" and v and rawget(v, ID) or v, seconds, curve)
+        local ok, err = pcall(core.set, rawget(n, ID), k, p.type == "node" and v and rawget(v, ID) or v, seconds, curve)
+        if not ok then
+            error(("%s.%s: %s"):format(meta(rawget(n, CLASS)).name, k, tostring(err)), 3)
+        end
     else
         local t = p.type
         if v ~= nil and t ~= "any" and (type(t) == "string" and type(v) ~= t or type(t) == "table" and not v:is(t)) then
@@ -452,7 +457,7 @@ function Node:add(child, index)
     touch(self, "children")
     touch(child, "parent")
     if first then
-        emit(child, "ready")
+        ready(child)
     end
     emit(self, "child_added", child)
     return child
@@ -467,6 +472,7 @@ function Node:destroy()
     local p = self.parent
     local cleared = core.destroy(rawget(self, ID)) -- references to it become nil
     nodes[rawget(self, ID)] = nil
+    readied[rawget(self, ID)] = nil
     if p then
         touch(p, "children")
     end
@@ -618,9 +624,20 @@ function Node.describe(c) -- for the stub and docs generator
     return { name = m.name, base = m.base and meta(m.base).name, props = props, signals = signals }
 end
 
--- Nodes the attach snapshot installed never went through Node:add, so they get `ready` here,
--- once each, parents first, after the shell library has registered its handlers.
+-- `ready` fires once per node: when it is first added to a parent, when the attach snapshot
+-- installs it, or when Gnoblin creates it unparented (windows, which the shell places).
 local booted = false
+ready = function(n)
+    if not booted then -- the snapshot pass announces nodes that exist before the shell starts
+        return
+    end
+    local id = rawget(n, ID)
+    if readied[id] then
+        return
+    end
+    readied[id] = true
+    emit(n, "ready")
+end
 local function announce_snapshot()
     local ids = {}
     local function collect(id)
@@ -633,18 +650,26 @@ local function announce_snapshot()
     for _, id in ipairs(ids) do
         local n = wrap(id)
         if n then
-            emit(n, "ready")
+            ready(n)
         end
     end
 end
 
--- The one entry the host calls each frame: the frame clock, changed native properties, events.
-return function(t, changes, events)
+-- The one entry the host calls each frame: the frame clock, changed native properties, events,
+-- and the ids of nodes Gnoblin created this batch.
+return function(t, changes, events, created)
     now = t
     if not booted then
         booted = true
         announce_snapshot()
     end
+    for _, id in ipairs(created or {}) do
+        local n = wrap(id)
+        if n then
+            ready(n)
+        end
+    end
+
     for _, c in ipairs(changes) do
         local n = wrap(c[1])
         if n then
