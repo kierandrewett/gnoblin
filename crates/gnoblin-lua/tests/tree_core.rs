@@ -29,7 +29,7 @@ fn prop(name: &str, kind: TreeValueKind, readonly: bool, default: Option<LuaValu
 fn schema() -> Vec<ClassSpec> {
     vec![
         ClassSpec {
-            name: "node".to_owned(),
+            name: "Node".to_owned(),
             props: vec![
                 prop("x", TreeValueKind::Double, false, Some(LuaValue::Double(0.0))),
                 prop("title", TreeValueKind::Text, false, None),
@@ -40,8 +40,8 @@ fn schema() -> Vec<ClassSpec> {
             ..ClassSpec::default()
         },
         ClassSpec {
-            name: "window".to_owned(),
-            base: Some("node".to_owned()),
+            name: "Window".to_owned(),
+            base: Some("Node".to_owned()),
             props: vec![prop("w", TreeValueKind::Uint, false, None)],
             methods: vec!["close".to_owned()],
             ..ClassSpec::default()
@@ -82,8 +82,8 @@ fn refused(lua: &Lua, call: &str) -> String {
 #[test]
 fn new_ids_carry_the_epoch_and_are_unique_within_a_tick() {
     let (lua, _) = setup();
-    let a: i64 = lua.load(r#"return core.new("node")"#).eval().expect("new");
-    let b: i64 = lua.load(r#"return core.new("node")"#).eval().expect("new");
+    let a: i64 = lua.load(r#"return core.new("Node")"#).eval().expect("new");
+    let b: i64 = lua.load(r#"return core.new("Node")"#).eval().expect("new");
     assert_eq!(a >> 32, 7);
     assert_eq!(b >> 32, 7);
     assert_ne!(a, b);
@@ -95,7 +95,7 @@ fn reads_fall_back_to_schema_defaults_and_inherited_properties() {
     check(
         &lua,
         r#"
-        assert(core.get(2, "class") == "window")
+        assert(core.get(2, "class") == "Window")
         assert(core.get(2, "parent") == 1)
         assert(core.get(1, "parent") == nil)
         assert(core.get(2, "x") == 0)
@@ -156,13 +156,13 @@ fn writes_are_seen_by_this_tick_and_the_mirror_is_unchanged_until_the_tx_is_take
 #[test]
 fn refused_writes_name_the_check_and_never_reach_the_transaction() {
     let (lua, core) = setup();
-    assert!(refused(&lua, r#"core.set(2, "nope", 1)"#).contains("window has no property nope"));
-    assert!(refused(&lua, r#"core.set(2, "serial", 1)"#).contains("window.serial is read-only"));
+    assert!(refused(&lua, r#"core.set(2, "nope", 1)"#).contains("Window has no property nope"));
+    assert!(refused(&lua, r#"core.set(2, "serial", 1)"#).contains("Window.serial is read-only"));
     assert!(refused(&lua, r#"core.set(2, "visible", "yes")"#).contains("expected a bool"));
     assert!(refused(&lua, r#"core.set(2, "x", "far")"#).contains("expected a double"));
     assert!(refused(&lua, r#"core.set(2, "w", -1)"#).contains("expected a uint"));
     assert!(refused(&lua, r#"core.set(99, "x", 1)"#).contains("no node 99"));
-    assert!(refused(&lua, r#"core.set(-1, "x", 1)"#).contains("no node -1"));
+    assert!(refused(&lua, r#"core.set(-1, "x", 1)"#).contains("no node 18446744073709551615"));
     assert!(refused(&lua, r#"core.set(2, "x", 1, -1)"#).contains("seconds must be"));
     assert!(refused(&lua, r#"core.set(2, "x", 1, 0.5, {0.5})"#).contains("at least two"));
     assert!(refused(&lua, r#"core.set(2, "x", 1, 0.5, {0, 2})"#).contains("[0, 1]"));
@@ -188,8 +188,8 @@ fn insert_and_destroy_are_checked_and_a_destroyed_node_is_gone_for_the_rest_of_t
 #[test]
 fn calls_need_a_declared_method_and_carry_their_argument_bytes() {
     let (lua, core) = setup();
-    assert!(refused(&lua, r#"core.call(2, "open")"#).contains("window has no method open"));
-    assert!(refused(&lua, r#"core.call(1, "close")"#).contains("node has no method close"));
+    assert!(refused(&lua, r#"core.call(2, "open")"#).contains("Window has no method open"));
+    assert!(refused(&lua, r#"core.call(1, "close")"#).contains("Node has no method close"));
     check(&lua, r#"core.call(2, "close", "ab")"#);
     check(&lua, r#"core.call(2, "close", "cd", "Super+q")"#);
     let tx = core.borrow_mut().take_transaction(6);
@@ -220,8 +220,8 @@ fn classes_lists_the_schema_parent_first() {
         r#"
         local cs = core.classes()
         assert(#cs == 2)
-        assert(cs[1].name == "node" and cs[1].base == nil)
-        assert(cs[2].name == "window" and cs[2].base == "node")
+        assert(cs[1].name == "Node" and cs[1].base == nil)
+        assert(cs[2].name == "Window" and cs[2].base == "Node")
         assert(cs[1].props.x.type == "double" and cs[1].props.x.default == 0)
         assert(cs[1].props.serial.readonly == true and cs[1].props.serial.default == nil)
         assert(cs[1].props.title.readonly == false)
@@ -247,11 +247,11 @@ fn reports_are_taken_in_order_and_then_cleared() {
 fn a_schema_that_repeats_a_class_or_names_an_undeclared_base_is_refused() {
     let dup = vec![
         ClassSpec {
-            name: "node".to_owned(),
+            name: "Node".to_owned(),
             ..ClassSpec::default()
         },
         ClassSpec {
-            name: "node".to_owned(),
+            name: "Node".to_owned(),
             ..ClassSpec::default()
         },
     ];
@@ -259,8 +259,8 @@ fn a_schema_that_repeats_a_class_or_names_an_undeclared_base_is_refused() {
     assert!(err.contains("declared twice"), "{err}");
 
     let orphan = vec![ClassSpec {
-        name: "window".to_owned(),
-        base: Some("node".to_owned()),
+        name: "Window".to_owned(),
+        base: Some("Node".to_owned()),
         ..ClassSpec::default()
     }];
     let err = TreeCore::shared(LuaMirror::empty(), orphan).expect_err("undeclared base is refused");

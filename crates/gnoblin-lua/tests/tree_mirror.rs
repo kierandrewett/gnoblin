@@ -118,7 +118,7 @@ fn a_change_batch_updates_the_mirror() {
     assert_eq!(applied, LuaApplied::LuaApplied);
     assert_eq!(mirror.serial(), 6);
     assert_eq!(children(&mirror, 3), vec![10]);
-    assert_eq!(mirror.node(10).expect("created").class, "canvas");
+    assert_eq!(mirror.node(10).expect("created").class, "Canvas");
     assert_eq!(mirror.value(10, "opacity"), Some(&LuaValue::Double(0.5)));
 }
 
@@ -184,12 +184,12 @@ fn a_transactions_own_writes_are_visible_to_its_reads() {
     let mirror = base_mirror();
     let mut tx = LuaTxBuilder::new();
 
-    tx.new_node(&mirror, 20, "canvas").expect("fresh id");
+    tx.new_node(&mirror, 20, "Canvas").expect("fresh id");
     tx.insert(&mirror, 20, 3, 0).expect("insert under b");
     tx.set(&mirror, 20, "opacity", LuaValue::Double(0.75), None, None)
         .expect("set on new node");
 
-    assert_eq!(tx.node(&mirror, 20).expect("new node visible").class, "canvas");
+    assert_eq!(tx.node(&mirror, 20).expect("new node visible").class, "Canvas");
     assert_eq!(tx.node(&mirror, 20).expect("visible").parent, 3);
     assert_eq!(tx.node(&mirror, 3).expect("b visible").children, vec![20]);
     assert_eq!(tx.get(&mirror, 20, "opacity"), Some(&LuaValue::Double(0.75)));
@@ -245,7 +245,7 @@ fn the_root_cannot_be_destroyed() {
 fn the_transaction_carries_the_ops_and_the_serials() {
     let mirror = base_mirror();
     let mut tx = LuaTxBuilder::new();
-    tx.new_node(&mirror, 20, "node").expect("fresh id");
+    tx.new_node(&mirror, 20, "Node").expect("fresh id");
     tx.set(
         &mirror,
         20,

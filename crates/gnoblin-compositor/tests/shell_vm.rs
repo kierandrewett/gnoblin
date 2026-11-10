@@ -47,7 +47,11 @@ fn tick_until(role: &mut ShellRole, what: &str, mut done: impl FnMut(&mut ShellR
         if done(role) {
             return;
         }
-        assert!(Instant::now() < deadline, "{what}");
+        assert!(
+            Instant::now() < deadline,
+            "{what}: seat/screen counts {:?}",
+            mirror_counts(role)
+        );
         std::thread::sleep(Duration::from_millis(5));
     }
 }
