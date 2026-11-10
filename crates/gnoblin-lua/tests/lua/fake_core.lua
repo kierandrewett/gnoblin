@@ -150,7 +150,7 @@ return function()
 
     local nodes, next_id = {}, 0 -- id -> { class, props, parent, children }
     local batch, batches = {}, {} -- writes since the last frame; committed batches
-    local changes, closing, close_events = {}, {}, {}
+    local changes, closing, close_events, created = {}, {}, {}, {}
     local reports, calls = {}, {}
     local core, host = {}, { reports = reports, batches = batches, calls = calls }
 
@@ -338,9 +338,15 @@ return function()
 
     -- Runs one frame: the tick gets the native changes and the events, then the batch of writes is committed.
     -- Changes and removals made during the frame are delivered on the next one.
+    -- A native node the compositor makes on its own (a new window): parentless, reported as `created` by the next frame.
+    function host.create(class)
+        local id = new_node(class)
+        created[#created + 1] = id
+        return id
+    end
     function host.frame(now, events)
-        local pending = changes
-        changes = {}
+        local pending, born = changes, created
+        changes, created = {}, {}
         local list = {}
         for _, e in ipairs(close_events) do
             list[#list + 1] = e
@@ -349,7 +355,7 @@ return function()
         for _, e in ipairs(events or {}) do
             list[#list + 1] = e
         end
-        local wake = host.tick(now, pending, list)
+        local wake = host.tick(now, pending, list, born)
         for _, id in ipairs(closing) do
             if nodes[id] then
                 local cleared = remove(id)

@@ -369,6 +369,33 @@ return {
         end,
     },
 
+    -- A window the compositor creates has no parent. Its ready runs Window:on_ready once; the handler parents it.
+    {
+        "a created window with no parent gets ready once and has no parent until on_ready adds it",
+        function()
+            local _, host = H.fresh()
+            host.frame(0, {}) -- the snapshot: the shell starts before any window exists
+            local runs, seen_parent = 0, "unset"
+            local hook = Window.on_ready
+            function Window:on_ready()
+                runs = runs + 1
+                seen_parent = self.parent
+                self.x, self.y = 7, 9
+                root:add(self)
+            end
+            local id = host.create("Window")
+            H.check(id ~= nil, "created")
+            host.frame(1, {})
+            Window.on_ready = hook
+            H.check(runs == 1, "on_ready ran once, got " .. runs)
+            H.check(seen_parent == nil, "no parent when ready runs")
+            H.check(#root.children == 1, "on_ready parented it")
+            host.frame(2, {})
+            H.check(runs == 1, "ready does not repeat, got " .. runs)
+            H.check(#host.reports == 0, "reports: " .. table.concat(host.reports, "; "))
+        end,
+    },
+
     -- Bug g: a native read-only property (a parent, a child list, an index) has no default to write at
     -- construction, so `make` must skip it; writing it would raise in the host.
     {
