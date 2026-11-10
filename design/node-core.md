@@ -568,52 +568,52 @@ GLES/Vulkan pixels (software renderer only), wall-clock reads other than `sys.da
 
 Each row is written before the code. A slice's tests name the rows they check.
 
-| #   | Condition                                           | Behaviour                                                                                                                 | Slice |
-| --- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----- |
-| F1  | No shell connected at start                         | Windows map under `root` and are not drawn. The session waits. No fallback layout. The runtime guardian restarts it (D1). | 5     |
-| F2  | Second `tree.attach` while a shell is live          | Refused `shell-already-attached`. The first shell keeps the tree.                                                         | 5     |
-| F3  | Shell crashes mid-write                             | The reader gets `CodecError::Truncated` (`frame.rs:48-54`). Nothing applies.                                              | 5     |
-| F4  | Shell crashes after `tick`, before the send         | The writes are lost. The next shell attaches and gets a snapshot. The tree keeps its last state.                          | 5     |
-| F5  | Stale serial, conflicting writes                    | Refused `stale-base`. The shell catches up and decides on its next tick.                                                  | 3     |
-| F6  | Stale serial, no conflict                           | Applied. Untouched values keep the compositor's current value.                                                            | 3     |
-| F7  | `base_serial` above the compositor's serial         | Refused `invalid-serial`. The connection closes.                                                                          | 5     |
-| F8  | Op on a destroyed id                                | Whole transaction refused `unknown-node`; `failed_op` set.                                                                | 3     |
-| F9  | Op on an id from an older epoch                     | Refused `unknown-node`. The old id names nothing in this epoch.                                                           | 3     |
-| F10 | Reparent into its own subtree                       | Refused `cycle`. No change.                                                                                               | 3     |
-| F11 | Move or destroy of `root`                           | Refused `root-immutable`.                                                                                                 | 3     |
-| F12 | Shell destroys or moves a compositor node           | Refused `not-owner`.                                                                                                      | 3     |
-| F13 | Coordinate beyond `2^20`                            | Refused `out-of-bounds`. Not clamped (`scene.rs:337`).                                                                    | 3     |
-| F14 | NaN or infinite value                               | Refused `not-finite`.                                                                                                     | 3     |
-| F15 | `new` with a live id                                | Refused `duplicate-node`.                                                                                                 | 3     |
-| F16 | Transaction over 4096 ops                           | Refused `too-large` before any apply.                                                                                     | 4     |
-| F17 | Snapshot needs more than one chunk                  | Chunks at most 1 MiB; the last is flagged. A node over 1 MiB is refused at creation.                                      | 5     |
-| F18 | More than 65536 nodes                               | Refused `too-many-nodes`.                                                                                                 | 3     |
-| F19 | Shell answers after the frame started               | The frame draws without it. The transaction applies at the next frame start. No frame waits.                              | 4     |
-| F20 | Shell never answers a `call`                        | After 5 s the token is dropped and the shell receives `tree.answer` with `error = "call-timeout"`.                        | 5     |
-| F21 | Shell dies while the lock is engaged                | The lock stays engaged and drawn. A new shell gets the lock state in its snapshot.                                        | 8     |
-| F22 | Lock client unlocks while the shell is gone         | The unlock goes through the session-lock protocol. The shell is not consulted.                                            | 8     |
-| F23 | Mirror sees a serial gap                            | Drops its mirror and attaches again on the same connection; the compositor sends a fresh snapshot.                        | 4     |
-| F24 | Old or duplicate serial delivered                   | Ignored if `<=` the applied serial.                                                                                       | 4     |
-| F25 | Client request needs policy; shell silent for 5 s   | The compositor answers the client with the window's current state (a configure with no change).                           | 5     |
-| F26 | Wrong value type in `set`                           | Refused `wrong-type`.                                                                                                     | 3     |
-| F27 | Unknown class, property or method                   | Refused `unknown-class` or `unknown-member`.                                                                              | 3     |
-| F28 | Privileged member from an unprivileged peer         | Refused `not-privileged` (`ipc/server.rs:52-57`, mode 7).                                                                 | 5     |
-| F29 | Input for a node not yet in a batch                 | Not sent; the pick skips nodes not yet in a batch.                                                                        | 6     |
-| F30 | Input for a node destroyed in the same frame        | Dropped at send; the `destroyed` change precedes any later event.                                                         | 6     |
-| F31 | `seconds` on a property without `animated`          | Refused `not-animated`.                                                                                                   | 7     |
-| F32 | `samples` empty, unsorted or outside `[0,1]`        | Refused `bad-curve`.                                                                                                      | 7     |
-| F33 | `seconds` negative or above 3600                    | Refused `out-of-range`.                                                                                                   | 7     |
-| F34 | Replay log diverges from the recording              | The harness fails at the first frame whose hash differs.                                                                  | 9     |
-| F35 | Clock goes backwards                                | The compositor's monotonic clock is the only source; the shell never sees a backwards `now`.                              | 6     |
-| F36 | Seat focus names a destroyed node                   | Focus becomes nil; the `focus` change is in the same batch.                                                               | 3     |
-| F37 | Workspace removed while it has windows              | Windows keep their geometry, move to `root` with `workspace` nil, and the shell places them. Windows are not destroyed.   | 3     |
-| F38 | Tree deeper than 256                                | Refused `too-deep` at `insert`.                                                                                           | 3     |
-| F39 | Two transactions in one frame, the second conflicts | The second sees the first's writes; a conflict is refused `stale-base` as in F5.                                          | 4     |
-| F40 | Binding cycle in the shell                          | 100 passes, then an error names the cycle. The tree keeps the last values.                                                | 10    |
-| F41 | `set` on a readonly property                        | Refused `read-only`.                                                                                                      | 3     |
-| F42 | `Canvas.content` does not decode                    | Refused `bad-paint`. The canvas keeps its last content.                                                                   | 3     |
-| F43 | Screen unplugged                                    | Its `Screen` node is destroyed. Windows on it keep their rectangle; the compositor does not move them.                    | 5     |
-| F44 | Timer fires after its node is destroyed             | The timer stops when the node that started it is destroyed.                                                               | 10    |
+| #   | Condition                                           | Behaviour                                                                                                                   | Slice |
+| --- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----- |
+| F1  | No shell connected at start                         | Windows map under `root` and are not drawn. The session waits. No fallback layout. The runtime guardian restarts it (D1).   | 5     |
+| F2  | Second `tree.attach` while a shell is live          | Refused `shell-already-attached`. The first shell keeps the tree.                                                           | 5     |
+| F3  | Shell crashes mid-write                             | The reader gets `CodecError::Truncated` (`frame.rs:48-54`). Nothing applies.                                                | 5     |
+| F4  | Shell crashes after `tick`, before the send         | The writes are lost. The next shell attaches and gets a snapshot. The tree keeps its last state.                            | 5     |
+| F5  | Stale serial, conflicting writes                    | Refused `stale-base`. The shell catches up and decides on its next tick.                                                    | 3     |
+| F6  | Stale serial, no conflict                           | Applied. Untouched values keep the compositor's current value.                                                              | 3     |
+| F7  | `base_serial` above the compositor's serial         | Refused `invalid-serial`. The connection closes.                                                                            | 5     |
+| F8  | Op on a destroyed id                                | Whole transaction refused `unknown-node`; `failed_op` set.                                                                  | 3     |
+| F9  | Op on an id from an older epoch                     | Refused `unknown-node`. The old id names nothing in this epoch.                                                             | 3     |
+| F10 | Reparent into its own subtree                       | Refused `cycle`. No change.                                                                                                 | 3     |
+| F11 | Move or destroy of `root`                           | Refused `root-immutable`.                                                                                                   | 3     |
+| F12 | Shell destroys or moves a compositor node           | Refused `not-owner`.                                                                                                        | 3     |
+| F13 | Coordinate beyond `2^20`                            | Refused `out-of-bounds`. Not clamped (`scene.rs:337`).                                                                      | 3     |
+| F14 | NaN or infinite value                               | Refused `not-finite`.                                                                                                       | 3     |
+| F15 | `new` with a live id                                | Refused `duplicate-node`.                                                                                                   | 3     |
+| F16 | Transaction over 4096 ops                           | Refused `too-large` before any apply.                                                                                       | 4     |
+| F17 | Snapshot needs more than one chunk                  | Chunks at most 1 MiB; the last is flagged. A node over 1 MiB is refused at creation.                                        | 5     |
+| F18 | More than 65536 nodes                               | Refused `too-many-nodes`.                                                                                                   | 3     |
+| F19 | Shell answers after the frame started               | The frame draws without it. The transaction applies at the next frame start. No frame waits.                                | 4     |
+| F20 | Shell never answers a `call`                        | After 5 s the token is dropped and the shell receives `tree.answer` with `error = "call-timeout"`.                          | 5     |
+| F21 | Shell dies while the lock is engaged                | The lock stays engaged and drawn. A new shell gets the lock state in its snapshot.                                          | 8     |
+| F22 | Lock client unlocks while the shell is gone         | The unlock goes through the session-lock protocol. The shell is not consulted.                                              | 8     |
+| F23 | Mirror sees a serial gap                            | Drops its mirror and attaches again on the same connection; the compositor sends a fresh snapshot.                          | 4     |
+| F24 | Old or duplicate serial delivered                   | Ignored if `<=` the applied serial.                                                                                         | 4     |
+| F25 | Client request needs policy; shell silent for 5 s   | The compositor answers the client with the window's current state (a configure with no change).                             | 5     |
+| F26 | Wrong value type in `set`                           | Refused `wrong-type`.                                                                                                       | 3     |
+| F27 | Unknown class, property or method                   | Refused `unknown-class` or `unknown-member`.                                                                                | 3     |
+| F28 | Owner-only member from a non-owner peer             | Refused `not-owner` on attach (`ipc/tree.rs`). A transaction from a non-holder stays `not-privileged` (`ipc/tree_host.rs`). | 5     |
+| F29 | Input for a node not yet in a batch                 | Not sent; the pick skips nodes not yet in a batch.                                                                          | 6     |
+| F30 | Input for a node destroyed in the same frame        | Dropped at send; the `destroyed` change precedes any later event.                                                           | 6     |
+| F31 | `seconds` on a property without `animated`          | Refused `not-animated`.                                                                                                     | 7     |
+| F32 | `samples` empty, unsorted or outside `[0,1]`        | Refused `bad-curve`.                                                                                                        | 7     |
+| F33 | `seconds` negative or above 3600                    | Refused `out-of-range`.                                                                                                     | 7     |
+| F34 | Replay log diverges from the recording              | The harness fails at the first frame whose hash differs.                                                                    | 9     |
+| F35 | Clock goes backwards                                | The compositor's monotonic clock is the only source; the shell never sees a backwards `now`.                                | 6     |
+| F36 | Seat focus names a destroyed node                   | Focus becomes nil; the `focus` change is in the same batch.                                                                 | 3     |
+| F37 | Workspace removed while it has windows              | Windows keep their geometry, move to `root` with `workspace` nil, and the shell places them. Windows are not destroyed.     | 3     |
+| F38 | Tree deeper than 256                                | Refused `too-deep` at `insert`.                                                                                             | 3     |
+| F39 | Two transactions in one frame, the second conflicts | The second sees the first's writes; a conflict is refused `stale-base` as in F5.                                            | 4     |
+| F40 | Binding cycle in the shell                          | 100 passes, then an error names the cycle. The tree keeps the last values.                                                  | 10    |
+| F41 | `set` on a readonly property                        | Refused `read-only`.                                                                                                        | 3     |
+| F42 | `Canvas.content` does not decode                    | Refused `bad-paint`. The canvas keeps its last content.                                                                     | 3     |
+| F43 | Screen unplugged                                    | Its `Screen` node is destroyed. Windows on it keep their rectangle; the compositor does not move them.                      | 5     |
+| F44 | Timer fires after its node is destroyed             | The timer stops when the node that started it is destroyed.                                                                 | 10    |
 
 ## 9. Migration: old objects onto the new schema
 

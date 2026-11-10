@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Attaching the tree shell from a connection without the owner grant is refused `not-owner` (`failed_op` -1), not `not-privileged`. Test `attach_refuses_a_non_owner_peer` replaces `attach_refuses_an_unprivileged_peer`. A transaction from a connection that does not hold the tree is still refused `not-privileged`.
+
 ### Added
 
 - `gnoblin_render_software::render_view` draws a scene subtree through a `ViewCamera` into an image of the View's size. The camera has a pose (`position` and `rotation_degrees`) and a `ViewProjection`: orthographic, perspective with a vertical field of view, or an asymmetric frustum from four edge angles, which gives a stereo eye. Each node draws its buffer on its own plane, mapped to pixels through the camera, so a rotated node lands on its projected corners. Siblings paint in tree order, and invisible subtrees, zero-opacity subtrees and nodes behind the camera draw nothing. Opacity multiplies down the tree and blends straight alpha. Clipping ancestors cut their children to their bounds on their own plane. A non-finite transform or a camera that cannot project removes only the affected nodes, never panics, and the same scene always gives the same bytes. Node-api-refactor section 5 (render targets).

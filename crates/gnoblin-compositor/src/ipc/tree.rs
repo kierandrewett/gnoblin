@@ -99,11 +99,11 @@ pub struct TreeAttachment {
 impl TreeSession {
     /// Attach the shell from `holder`. Only the session owner's connection may attach, and
     /// `is_owner` is that connection's classification from the owner grant (`owner_grants`).
-    /// Any other is refused `not-privileged`. A second holder while one is live is refused
+    /// Any other is refused `not-owner`. A second holder while one is live is refused
     /// `shell-already-attached`; the same holder attaching again gets a new epoch.
     pub fn attach(&mut self, holder: TreeHolder, is_owner: bool) -> Result<TreeAttachment, TreeRefusal> {
         if !is_owner {
-            return Err(refusal(Code::NotPrivileged));
+            return Err(refusal(Code::NotOwner));
         }
         if self.holder.is_some_and(|live| live != holder) {
             return Err(refusal(Code::ShellAlreadyAttached));
@@ -310,10 +310,10 @@ mod tests {
     }
 
     #[test]
-    fn attach_refuses_an_unprivileged_peer() {
+    fn attach_refuses_a_non_owner_peer() {
         let mut session = TreeSession::default();
-        let refused = session.attach(HOLDER, false).expect_err("unprivileged attach refused");
-        assert_eq!(refused.code, Code::NotPrivileged);
+        let refused = session.attach(HOLDER, false).expect_err("non-owner attach refused");
+        assert_eq!(refused.code, Code::NotOwner);
         assert_eq!(refused.failed_op, -1);
         // A refused attach leaves the session unattached, so the next privileged attach is first.
         assert_eq!(session.holder(), None);
