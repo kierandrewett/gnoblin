@@ -111,6 +111,19 @@ function Screen:on_destroyed() -- unplugged: its windows move to another desk
     end
     self.source:destroy()
 end
+-- Focus and raise policy: seat.focus_options holds the window_management focus keys (nil = documented defaults).
+function focus_settings()
+    return Focus.settings(seat.focus_options or {})
+end
+-- Window rules: seat.window_rules is the user's list, compiled once per table (a bad rule fails at load).
+local rules_src, rules_compiled
+function window_rules()
+    if rules_src ~= seat.window_rules then
+        rules_src, rules_compiled = seat.window_rules, Rules.compile(seat.window_rules or {})
+    end
+    return rules_compiled
+end
+
 function Window:on_ready()
     local p = self.parent_window
     if p then
@@ -122,11 +135,56 @@ function Window:on_ready()
     self.activated = function(w)
         return seat.focus == w
     end
-    seat.focus = self
+    if Focus.opens_focused(focus_settings(), self.from_launcher) then
+        seat.focus = self
+    end
+    self:apply_rules()
+end
+function Window:apply_rules()
+    local rules = window_rules()
+    local key = Rules.key(rules, self)
+    if key == self.rule_key then
+        return
+    end
+    self.rule_key = key
+    local fx = Rules.effects(rules, self)
+    if fx.fullscreen ~= nil then
+        self.fullscreen = fx.fullscreen
+    end
+    if fx.secure ~= nil then
+        self.secure = fx.secure
+    end
+    if fx.corners then
+        self.corners = fx.corners.radius
+    end
+    if fx.workspace then
+        for _, ws in ipairs(self:closest(Desk).space.children) do
+            if ws.name == tostring(fx.workspace.id) and self:closest(Workspace) ~= ws then
+                ws:add(self)
+            end
+        end
+    end
+end
+function Window:on_enter() -- focus follows the pointer under the hover modes; auto-raise after a rest
+    local opts = focus_settings()
+    if Focus.hover_focus(opts, self, true) then
+        seat.focus = self
+    end
+    self:apply_rules()
+    if opts.auto_raise then
+        go(function()
+            await(Focus.auto_raise_seconds(opts))
+            if seat.focus == self then
+                self:raise()
+            end
+        end)
+    end
 end
 function Window:on_press(e)
     seat.focus = self
-    self:raise()
+    if focus_settings().raise_on_click then
+        self:raise()
+    end
     e:stop()
 end
 function Window:on_move(e)
@@ -139,7 +197,9 @@ function Window:vanish()
     self:destroy()
 end -- a method: replace it to animate
 
-function drag(s, w) -- follow the pointer until release
+-- Pointer distance from a screen edge that tiles a dropped window (no documented value: a small fixed zone).
+local EDGE_MARGIN = 4
+function drag(s, w) -- follow the pointer until release, then tile it if dropped on an edge
     local dx, dy = w.x - s.x, w.y - s.y
     w.x = function()
         return s.x + dx
@@ -151,6 +211,15 @@ function drag(s, w) -- follow the pointer until release
     await(w.release)
     s:grab(nil)
     w.x, w.y = w.x, w.y -- a plain write ends the bindings
+    if not Snap.enabled({ edge_tiling = seat.edge_tiling }) then
+        return
+    end
+    local d = desk()
+    local area = { x = 0, y = d.space.y, w = d.width, h = d.space.height }
+    local rect = Snap.tile_rect(Snap.edge_zone(s.x, s.y, area, EDGE_MARGIN), area)
+    if rect then
+        w.x, w.y, w.width, w.height = rect.x, rect.y, rect.w, rect.h
+    end
 end
 -- Super+Left and Super+Right move focus between the columns of a Strip; on any other layout they do nothing.
 -- A shell loaded without a seat (the Lua tests) has no keys to bind.

@@ -39,6 +39,7 @@ local SCHEMA = {
         base = "Surface",
         props = {
             app_id = { type = "string", default = "" },
+            title = { type = "string", default = "" },
             secure = { type = "boolean", default = false },
             parent_window = { type = "node" },
             activated = { type = "boolean", default = false },
@@ -48,6 +49,8 @@ local SCHEMA = {
             -- True once a shell has positioned the window. Only the host sets it, on a shell's write to x or y.
             placed = { type = "boolean", default = false, readonly = true },
             title = { type = "string", default = "" },
+            fullscreen = { type = "boolean", default = false },
+            corners = { type = "number", default = 0 },
         },
         signals = { "closed" },
         methods = { "close" },
