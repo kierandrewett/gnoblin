@@ -428,7 +428,7 @@ fn from_lua(kind: TreeValueKind, value: Value) -> mlua::Result<LuaValue> {
         },
         TreeValueKind::Node => match value {
             Value::Nil => LuaValue::Node(NIL),
-            other => LuaValue::Node(u64::try_from(integer(&other).ok_or_else(wrong)?).map_err(|_| wrong())?),
+            other => LuaValue::Node(integer(&other).ok_or_else(wrong)? as u64),
         },
         TreeValueKind::Nodes => return Err(wrong()),
         TreeValueKind::ListDouble => match value {
@@ -476,7 +476,7 @@ fn to_lua(lua: &Lua, value: &LuaValue) -> mlua::Result<Value> {
         LuaValue::Double(d) => Value::Number(*d),
         LuaValue::Text(s) => Value::String(lua.create_string(s)?),
         LuaValue::Node(NIL) => Value::Nil,
-        LuaValue::Node(id) => Value::Integer(i64::try_from(*id).map_err(|_| lua_err("node id above i64::MAX"))?),
+        LuaValue::Node(id) => Value::Integer(*id as i64),
         LuaValue::List(items) => {
             let table = lua.create_table()?;
             for (index, item) in items.iter().enumerate() {
@@ -543,10 +543,7 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
             let node = node_arg(node)?;
             let nodes = shared.borrow().nodes_value(node, &key).map_err(lua_err)?;
             if let Some(ids) = nodes {
-                let ids = ids
-                    .into_iter()
-                    .map(|id| i64::try_from(id).map_err(lua_err))
-                    .collect::<mlua::Result<Vec<i64>>>()?;
+                let ids = ids.into_iter().map(|id| id as i64).collect::<Vec<i64>>();
                 return lua.create_sequence_from(ids).map(Value::Table);
             }
             let value = shared.borrow().get(node, &key).map_err(lua_err)?;
@@ -605,9 +602,7 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
     let shared = Rc::clone(core);
     table.set(
         "root",
-        lua.create_function(move |_, ()| {
-            i64::try_from(shared.borrow().mirror().root()).map_err(|_| lua_err("root id above i64::MAX"))
-        })?,
+        lua.create_function(move |_, ()| Ok(shared.borrow().mirror().root() as i64))?,
     )?;
 
     let shared = Rc::clone(core);
@@ -664,7 +659,25 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
     Ok(table)
 }
 
-/// A Lua node id as the shell's `u64`. A negative id names no node.
+/// A Lua node id as the shell's `u64`. Ids cross as their 64 bits, so a compositor id with bit 63
+/// set arrives negative; the mapping is one-to-one.
 fn node_arg(value: i64) -> mlua::Result<NodeId> {
-    u64::try_from(value).map_err(|_| lua_err(format!("no node {value}")))
+    Ok(value as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Compositor ids carry bit 63 (`COMPOSITOR_ID_BASE`); they must cross to Lua and back unchanged.
+    #[test]
+    fn node_ids_above_i64_max_round_trip_through_core_values() {
+        let lua = Lua::new();
+        let id: u64 = (1 << 63) | 1;
+        let value = to_lua(&lua, &LuaValue::Node(id)).expect("a node id converts");
+        assert_eq!(value, Value::Integer(id as i64));
+        let back = from_lua(TreeValueKind::Node, value).expect("a node id is accepted back");
+        assert_eq!(back, LuaValue::Node(id));
+        assert_eq!(node_arg(id as i64).expect("the argument maps"), id);
+    }
 }
