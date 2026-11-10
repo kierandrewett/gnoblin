@@ -1572,10 +1572,19 @@ impl Composer {
 
     /// The shell's node drawn topmost under a point on the output plane, with the point in that
     /// node's local space. A window above it wins: only a topmost node that is not a window is the
-    /// shell's, so a shell node under a window is not reported.
+    /// shell's, so a shell node under a window is not reported. A node the compositor created since
+    /// the last frame and has not yet published in a batch is skipped (F29): the shell has not
+    /// heard of it, so it cannot be sent input, and the pick falls through to what lies under it.
     #[must_use]
     pub fn shell_node_at(&self, point: PointF) -> Option<(NodeId, PointF)> {
-        let hit = self.scene.hit_test(point)?;
+        let unpublished = |node: NodeId| {
+            self.tree_changes
+                .iter()
+                .any(|change| matches!(change, TreeChange::Created { node: created, .. } if *created == node))
+        };
+        let hit = self
+            .scene
+            .hit_test_where(point, &|node| self.window_of(node).is_some() || !unpublished(node))?;
         self.window_of(hit.node).is_none().then_some((hit.node, hit.local))
     }
 
@@ -4209,6 +4218,41 @@ mod tests {
         composer.insert_window(window, Rect::new(0, 0, 100, 100));
         composer.set_window_content(window, Some(content()));
         assert!(composer.shell_node_at(PointF::new(10.0, 20.0)).is_none());
+    }
+
+    /// A node the compositor created that no batch has published yet is not picked (F29): the
+    /// pick falls through to the shell node under it, and once the batch has taken the creation
+    /// the node is picked.
+    #[test]
+    fn a_node_not_yet_in_a_batch_is_not_picked() {
+        let (mut composer, _) = screen();
+        let below = NodeId::new(1);
+        let above = NodeId::new(2);
+        composer.with_scene(|scene| {
+            for node in [below, above] {
+                scene
+                    .insert_as(
+                        gnoblin_render::Actor::Shell,
+                        node,
+                        NodeSpec::new(Rect::new(0, 0, 50, 50)),
+                    )
+                    .expect("the shell may insert a node below the base");
+            }
+        });
+        composer.tree_changes.push(TreeChange::Created {
+            node: above,
+            class: "shell".to_owned(),
+            index: 0,
+        });
+        let (node, _) = composer
+            .shell_node_at(PointF::new(10.0, 20.0))
+            .expect("the published node under the unpublished one is picked");
+        assert_eq!(node, below);
+        composer.take_tree_changes();
+        let (node, _) = composer
+            .shell_node_at(PointF::new(10.0, 20.0))
+            .expect("the node is picked once its batch has taken it");
+        assert_eq!(node, above);
     }
 
     #[test]
