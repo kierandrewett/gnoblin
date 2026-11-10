@@ -16,9 +16,9 @@ function H.boot(core, host)
     host.tick = assert(loadfile(GNOBLIN_LUA_DIR .. "/node.lua"))(core)
 end
 
--- The stock shell: ui, then floating (before init, which makes every Desk workspace a Floating), then init.
--- `sys` is the host's system table; the stub is inert. `H.floating` is the module floating.lua returns, so the
--- pure placement function is `H.floating.place`.
+-- The stock shell: ui, then floating and strip (before init, which makes every Desk workspace a Floating), then
+-- init. `sys` is the host's system table; the stub is inert. `H.floating` is the module floating.lua returns, so the
+-- pure placement function is `H.floating.place`; `H.strip` is strip.lua's module (`H.strip.ring`, `H.strip.column`).
 function H.load_shell()
     sys = sys or {
         spawn = function() end,
@@ -28,6 +28,7 @@ function H.load_shell()
     }
     dofile(GNOBLIN_LUA_DIR .. "/shell/ui.lua")
     H.floating = dofile(GNOBLIN_LUA_DIR .. "/shell/floating.lua")
+    H.strip = dofile(GNOBLIN_LUA_DIR .. "/shell/strip.lua")
     dofile(GNOBLIN_LUA_DIR .. "/shell/init.lua")
 end
 

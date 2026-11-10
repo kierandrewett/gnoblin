@@ -174,3 +174,20 @@ function toast(text)
         t:destroy()
     end)
 end
+
+-- Super+Left and Super+Right move focus between the columns of a Strip; on any other layout they do nothing.
+-- A shell loaded without a seat (the Lua tests) has no keys to bind.
+if seat then
+    seat:bind({
+        ["Super+Left"] = function()
+            if desk().active:is(Strip) then
+                desk().active:focus_left()
+            end
+        end,
+        ["Super+Right"] = function()
+            if desk().active:is(Strip) then
+                desk().active:focus_right()
+            end
+        end,
+    })
+end
