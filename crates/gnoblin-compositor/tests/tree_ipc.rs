@@ -358,15 +358,17 @@ fn window_titled<'a>(nodes: &'a [snapshot_node::Properties], title: &str) -> Opt
     nodes.iter().find(|node| node.class == "window" && node.title == title)
 }
 
-/// Re-attaches on the same connection until the snapshot holds a window titled `title`. The
-/// composer creates the window node on the first frame after the client maps the window.
-fn snapshot_holding_window(wire: &mut Wire, title: &str) -> Vec<snapshot_node::Properties> {
+/// Re-attaches on the same connection until the snapshot holds a window titled `title`, and
+/// returns that attachment with the snapshot. Transactions made from the snapshot are based on
+/// its serial, which the window's creation may already have advanced. The composer creates the
+/// window node on the first frame after the client maps the window.
+fn snapshot_holding_window(wire: &mut Wire, title: &str) -> (AttachedPayload, Vec<snapshot_node::Properties>) {
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut request_id = 1;
     loop {
-        let (_, nodes) = attach_and_snapshot(wire, request_id);
+        let (attached, nodes) = attach_and_snapshot(wire, request_id);
         if window_titled(&nodes, title).is_some() {
-            return nodes;
+            return (attached, nodes);
         }
         assert!(
             Instant::now() < deadline,
@@ -407,7 +409,7 @@ fn a_mapped_window_is_a_window_node_with_its_title_and_app_id() {
     let _window = client.map_window("org.example.window", "Document one");
     let mut wire = Wire::connect(session.socket());
 
-    let nodes = snapshot_holding_window(&mut wire, "Document one");
+    let (_, nodes) = snapshot_holding_window(&mut wire, "Document one");
     let node = window_titled(&nodes, "Document one").expect("the window node");
     assert_eq!(node.class, "window", "a mapped window is the `window` class");
     assert_eq!(
@@ -447,7 +449,7 @@ fn a_client_title_change_is_published_as_a_set_of_the_window_node() {
     let mut client = Client::connect(session.wayland());
     let window = client.map_window("org.example.window", "Before");
     let mut wire = Wire::connect(session.socket());
-    let nodes = snapshot_holding_window(&mut wire, "Before");
+    let (_, nodes) = snapshot_holding_window(&mut wire, "Before");
     let node = window_titled(&nodes, "Before").expect("the window node").id;
 
     client.set_title(&window, "After");
@@ -470,14 +472,14 @@ fn a_transaction_setting_a_window_geometry_is_applied_and_published_at_the_next_
     let mut client = Client::connect(session.wayland());
     let _window = client.map_window("org.example.window", "Movable");
     let mut wire = Wire::connect(session.socket());
-    let nodes = snapshot_holding_window(&mut wire, "Movable");
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Movable");
     let node = window_titled(&nodes, "Movable").expect("the window node").id;
 
     transact(
         &mut wire,
         2,
-        0,
-        1,
+        attached.serial,
+        attached.serial + 1,
         vec![set_double(node, "x", 333.0), set_double(node, "width", 480.0)],
     );
     let changes = changes_until(&mut wire, |all| {
@@ -490,7 +492,7 @@ fn a_transaction_setting_a_window_geometry_is_applied_and_published_at_the_next_
     let applied: ReplyPayload = reply(&mut wire, "transact");
     assert!(applied.applied, "a writable geometry on a window applies: {changes:?}");
     assert_eq!(applied.failed_op, -1);
-    assert_eq!(applied.serial, 1, "the batch advances the serial");
+    assert_eq!(applied.serial, attached.serial + 1, "the batch advances the serial");
     session.stop().expect("the session stops cleanly");
 }
 
@@ -500,7 +502,7 @@ fn a_refused_transaction_leaves_the_window_node_untouched() {
     let mut client = Client::connect(session.wayland());
     let _window = client.map_window("org.example.window", "Steady");
     let mut wire = Wire::connect(session.socket());
-    let nodes = snapshot_holding_window(&mut wire, "Steady");
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Steady");
     let node = window_titled(&nodes, "Steady").expect("the window node").id;
 
     // A base that is not the current serial is refused before any of its ops apply.
@@ -508,10 +510,13 @@ fn a_refused_transaction_leaves_the_window_node_untouched() {
     let refused: ReplyPayload = reply(&mut wire, "transact");
     assert!(!refused.applied, "the stale transaction is refused");
     assert_eq!(refused.code, "stale-base");
-    assert_eq!(refused.serial, 0, "the serial does not move");
+    assert_eq!(refused.serial, attached.serial, "the serial does not move");
 
-    let (attached, nodes) = attach_and_snapshot(&mut wire, 3);
-    assert_eq!(attached.serial, 0, "nothing was published for the refused transaction");
+    let (reattached, nodes) = attach_and_snapshot(&mut wire, 3);
+    assert_eq!(
+        reattached.serial, attached.serial,
+        "nothing was published for the refused transaction"
+    );
     assert_eq!(
         window_titled(&nodes, "Steady").map(|node| node.id),
         Some(node),
@@ -526,7 +531,7 @@ fn an_unmapped_window_is_published_as_destroyed() {
     let mut client = Client::connect(session.wayland());
     let window = client.map_window("org.example.window", "Closing");
     let mut wire = Wire::connect(session.socket());
-    let nodes = snapshot_holding_window(&mut wire, "Closing");
+    let (_, nodes) = snapshot_holding_window(&mut wire, "Closing");
     let node = window_titled(&nodes, "Closing").expect("the window node").id;
 
     client.destroy(window);

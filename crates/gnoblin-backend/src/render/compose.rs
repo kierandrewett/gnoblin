@@ -3247,7 +3247,7 @@ mod tests {
     }
 
     /// The x and y the scene draws the node at.
-    fn offset_of(composer: &Composer, node: NodeId) -> (f32, f32) {
+    fn offset_of(composer: &Composer, node: NodeId) -> (f64, f64) {
         let transform = composer.scene.transform(node).expect("the node has a transform");
         (transform.base.offset.x, transform.base.offset.y)
     }
