@@ -432,6 +432,7 @@ Decision: the conflict check is per node. Two transactions conflict only when th
 
 1. **Attach.** `tree.attach` returns the epoch, the root id and the serial `S`.
 2. **Snapshot.** The compositor sends `tree.snapshot` chunks of at most 1 MiB at serial `S`; the last has `last = true`.
+   Each snapshot node carries `props`: the node's property values that differ from their schema defaults, as `change` records with kind `set` (the same shape as a `set` entry in a batch). A property at its default is left out. The mirror seeds each node's values from `props`, so a shell attaching to a tree that already has values sees them without waiting for a batch.
    The frame cap is 16 MiB (`frame.rs:22`), so a chunk fits with room to spare. A node over 1 MiB is refused at creation
    (`too-large`), so a whole snapshot is bounded by 65536 nodes times that cap.
 3. **Changes.** Each changed frame sends one `tree.changes` at `S+1`, `S+2`, and so on. The shell applies batches in

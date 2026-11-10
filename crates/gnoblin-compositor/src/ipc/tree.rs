@@ -3,8 +3,8 @@
 //! socket; slice 5b wires it to one.
 
 use gnoblin_render::Scene;
-use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, ValueType};
-use gnoblin_schema::{Catalog, Namespace, ObjectType, SchemaError, Type as SchemaType};
+use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, TreeValue, ValueType};
+use gnoblin_schema::{Catalog, DefaultValue, Namespace, ObjectType, SchemaError, Type as SchemaType};
 use gnoblin_types::NodeId;
 
 /// The largest snapshot chunk, in bytes of its estimated encoded size.
@@ -35,7 +35,7 @@ pub struct TreeReply {
 }
 
 /// One node in a snapshot, with its place in the tree.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TreeSnapshotNode {
     /// The node's id.
     pub id: NodeId,
@@ -49,10 +49,13 @@ pub struct TreeSnapshotNode {
     pub title: String,
     /// The node's app id, or empty when it has none. Only a window carries one.
     pub app_id: String,
+    /// The node's property values that differ from their schema defaults, by schema name. A
+    /// value with no schema default is always listed.
+    pub props: Vec<(String, TreeValue)>,
 }
 
 /// A snapshot of the whole tree, split into chunks no larger than [`SNAPSHOT_CHUNK_BYTES`].
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TreeSnapshot {
     /// The serial the snapshot was taken at.
     pub serial: u64,
@@ -129,12 +132,13 @@ impl TreeSession {
 }
 
 /// Snapshot every node of `scene` at `serial`, in paint order, split into chunks. The frame
-/// calls this with its own scene, so the snapshot and the serial always agree.
+/// calls this with its own scene, so the snapshot and the serial always agree. `classes`
+/// decides which values differ from their schema defaults.
 #[must_use]
-pub fn snapshot_of(scene: &Scene, serial: u64) -> TreeSnapshot {
+pub fn snapshot_of(scene: &Scene, classes: &TreeClasses, serial: u64) -> TreeSnapshot {
     let mut nodes = Vec::new();
     for (index, &root) in scene.root_ids().iter().enumerate() {
-        walk(scene, root, None, index, &mut nodes);
+        walk(scene, classes, root, None, index, &mut nodes);
     }
     TreeSnapshot {
         serial,
@@ -142,20 +146,44 @@ pub fn snapshot_of(scene: &Scene, serial: u64) -> TreeSnapshot {
     }
 }
 
-fn walk(scene: &Scene, id: NodeId, parent: Option<NodeId>, index: usize, out: &mut Vec<TreeSnapshotNode>) {
+fn walk(
+    scene: &Scene,
+    classes: &TreeClasses,
+    id: NodeId,
+    parent: Option<NodeId>,
+    index: usize,
+    out: &mut Vec<TreeSnapshotNode>,
+) {
+    let class = scene.class(id).map(str::to_owned);
     out.push(TreeSnapshotNode {
         id,
         parent,
         index,
-        class: scene.class(id).map(str::to_owned),
+        props: props_of(scene, classes, id, class.as_deref()),
+        class,
         title: scene.text(id, "title").unwrap_or_default().to_owned(),
         app_id: scene.text(id, "app_id").unwrap_or_default().to_owned(),
     });
     if let Some(node) = scene.node(id) {
         for (child_index, &child) in node.children().iter().enumerate() {
-            walk(scene, child, Some(id), child_index, out);
+            walk(scene, classes, child, Some(id), child_index, out);
         }
     }
+}
+
+/// The values of `id` that differ from their schema defaults, in name order. A value with no
+/// schema default is always listed.
+fn props_of(scene: &Scene, classes: &TreeClasses, id: NodeId, class: Option<&str>) -> Vec<(String, TreeValue)> {
+    scene
+        .values(id)
+        .filter(
+            |(key, value)| match class.and_then(|class| classes.default_of(class, key)) {
+                Some(default) => &default != *value,
+                None => true,
+            },
+        )
+        .map(|(key, value)| (key.to_owned(), value.clone()))
+        .collect()
 }
 
 /// The schema a connection may list. The owner's connection (`is_owner`) sees the whole
@@ -228,6 +256,17 @@ impl TreeClasses {
             .objects(&self.namespace)
             .find(|object| object.name == class)
     }
+
+    /// The default of property `key` of `class`, as a value of its kind, or `None` when the
+    /// schema gives it no default or the default does not convert.
+    fn default_of(&self, class: &str, key: &str) -> Option<TreeValue> {
+        let property = self
+            .object(class)?
+            .properties
+            .iter()
+            .find(|property| property.name == key)?;
+        tree_default(&value_type(&property.ty)?, property.default.as_ref()?)
+    }
 }
 
 impl ClassInfo for TreeClasses {
@@ -267,6 +306,37 @@ impl ClassInfo for TreeClasses {
     }
 }
 
+/// A schema default as the value a tree property of kind `kind` holds, or `None` when the two
+/// do not match.
+fn tree_default(kind: &ValueType, default: &DefaultValue) -> Option<TreeValue> {
+    Some(match (kind, default) {
+        (ValueType::Bool, DefaultValue::Bool(value)) => TreeValue::Bool(*value),
+        (ValueType::Int, DefaultValue::Int(value)) => TreeValue::Int(*value),
+        (ValueType::Uint, DefaultValue::Uint(value)) => TreeValue::Uint(*value),
+        (ValueType::Double, DefaultValue::Double(value)) => TreeValue::Double(*value),
+        (ValueType::Text, DefaultValue::Text(value)) => TreeValue::Text(value.clone()),
+        (ValueType::ListDouble, DefaultValue::List(items)) => TreeValue::ListDouble(
+            items
+                .iter()
+                .map(|item| match item {
+                    DefaultValue::Double(value) => Some(*value),
+                    _ => None,
+                })
+                .collect::<Option<Vec<f64>>>()?,
+        ),
+        (ValueType::ListText, DefaultValue::List(items)) => TreeValue::ListText(
+            items
+                .iter()
+                .map(|item| match item {
+                    DefaultValue::Text(value) => Some(value.clone()),
+                    _ => None,
+                })
+                .collect::<Option<Vec<String>>>()?,
+        ),
+        _ => return None,
+    })
+}
+
 /// A batch-level refusal: no op failed, the whole batch was turned away.
 const fn refusal(code: Code) -> TreeRefusal {
     TreeRefusal { failed_op: -1, code }
@@ -278,8 +348,15 @@ fn chunk_nodes(nodes: Vec<TreeSnapshotNode>, budget: usize) -> Vec<Vec<TreeSnaps
     let mut chunks: Vec<Vec<TreeSnapshotNode>> = Vec::new();
     let mut used = 0;
     for node in nodes {
-        let size =
-            SNAPSHOT_NODE_BYTES + node.class.as_ref().map_or(0, String::len) + node.title.len() + node.app_id.len();
+        let size = SNAPSHOT_NODE_BYTES
+            + node.class.as_ref().map_or(0, String::len)
+            + node.title.len()
+            + node.app_id.len()
+            + node
+                .props
+                .iter()
+                .map(|(key, value)| key.len() + value_bytes(value))
+                .sum::<usize>();
         match chunks.last_mut() {
             Some(chunk) if !chunk.is_empty() && used + size <= budget => {
                 chunk.push(node);
@@ -292,6 +369,17 @@ fn chunk_nodes(nodes: Vec<TreeSnapshotNode>, budget: usize) -> Vec<Vec<TreeSnaps
         }
     }
     chunks
+}
+
+/// The estimated encoded size of one value's payload.
+fn value_bytes(value: &TreeValue) -> usize {
+    match value {
+        TreeValue::Text(text) => text.len(),
+        TreeValue::Bytes(bytes) => bytes.len(),
+        TreeValue::ListDouble(items) => items.len() * 8,
+        TreeValue::ListText(items) => items.iter().map(|item| item.len() + 8).sum(),
+        TreeValue::Bool(_) | TreeValue::Int(_) | TreeValue::Uint(_) | TreeValue::Double(_) | TreeValue::Node(_) => 8,
+    }
 }
 
 #[cfg(test)]
@@ -361,6 +449,7 @@ mod tests {
                 class: Some("node".to_owned()),
                 title: String::new(),
                 app_id: String::new(),
+                props: Vec::new(),
             })
             .collect();
         let per_node = SNAPSHOT_NODE_BYTES + "node".len();
@@ -379,6 +468,7 @@ mod tests {
             class: Some("x".repeat(SNAPSHOT_CHUNK_BYTES + 1)),
             title: String::new(),
             app_id: String::new(),
+            props: Vec::new(),
         };
         let chunks = chunk_nodes(vec![big.clone(), big], SNAPSHOT_CHUNK_BYTES);
         assert_eq!(chunks.len(), 2);

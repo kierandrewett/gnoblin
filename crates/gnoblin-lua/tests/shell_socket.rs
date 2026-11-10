@@ -80,6 +80,7 @@ fn answer_attach(stream: &mut UnixStream) {
                     class: "Node".to_owned(),
                     title: String::new(),
                     app_id: String::new(),
+                    props: vec![],
                 }],
             },
         ),

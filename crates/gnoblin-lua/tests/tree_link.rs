@@ -97,6 +97,7 @@ fn attach_sends_the_version_and_poll_yields_the_attached_reply_then_the_snapshot
                     class: "node".to_owned(),
                     title: String::new(),
                     app_id: String::new(),
+                    props: vec![],
                 }],
             },
         ),
@@ -121,6 +122,7 @@ fn attach_sends_the_version_and_poll_yields_the_attached_reply_then_the_snapshot
                     class: "node".to_owned(),
                     title: String::new(),
                     app_id: String::new(),
+                    props: Vec::new(),
                 }],
             },
         ]

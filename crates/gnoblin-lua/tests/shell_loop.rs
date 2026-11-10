@@ -107,6 +107,7 @@ fn serve_attach(mut server: UnixStream) -> UnixStream {
                         class: "Node".to_owned(),
                         title: String::new(),
                         app_id: String::new(),
+                        props: vec![],
                     },
                     snapshot_node::Properties {
                         id: 2,
@@ -115,6 +116,7 @@ fn serve_attach(mut server: UnixStream) -> UnixStream {
                         class: "Window".to_owned(),
                         title: String::new(),
                         app_id: String::new(),
+                        props: vec![],
                     },
                 ],
             },

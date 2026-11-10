@@ -82,6 +82,7 @@ use crate::damage::{Damage, OutputDamage, merge_rects};
 use crate::effect::{EffectError, Effects};
 use crate::matrix::Mat4;
 use crate::scene_ids::{Actor, COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES};
+use crate::transaction::TreeValue;
 
 /// The default number of damage rectangles per output.
 ///
@@ -169,12 +170,9 @@ pub struct Node {
     owner: Actor,
     parented_by: Option<Actor>,
     class: Option<String>,
-    /// Text properties by schema name (`title`, `app_id`). Read by the tree; drawn nowhere.
-    texts: BTreeMap<String, String>,
-    /// Node references by schema name (`source`, `camera`). Read by the compositor; drawn nowhere.
-    references: BTreeMap<String, NodeId>,
-    /// Number properties by schema name (`near`, `far`). Read by the compositor; drawn nowhere.
-    numbers: BTreeMap<String, f64>,
+    /// Property values the tree has accepted, by schema name. Read by the tree and its snapshot;
+    /// the scene draws nothing from them.
+    values: BTreeMap<String, TreeValue>,
 }
 
 impl Node {
@@ -575,9 +573,7 @@ impl Scene {
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
             class: None,
-            texts: BTreeMap::new(),
-            references: BTreeMap::new(),
-            numbers: BTreeMap::new(),
+            values: BTreeMap::new(),
         };
         self.nodes.insert(id, node);
         self.siblings_mut(spec.parent).insert(index, id);
@@ -907,35 +903,57 @@ impl Scene {
         Ok(())
     }
 
+    /// The value the tree last accepted for `key` on a node, or `None` when it has none.
+    /// Read by the tree and its snapshot; the scene draws nothing from it.
+    #[must_use]
+    pub fn value(&self, id: NodeId, key: &str) -> Option<&TreeValue> {
+        self.nodes.get(&id)?.values.get(key)
+    }
+
+    /// Every value the tree has accepted on a node, by schema name, in name order.
+    pub fn values(&self, id: NodeId) -> impl Iterator<Item = (&str, &TreeValue)> {
+        self.nodes
+            .get(&id)
+            .into_iter()
+            .flat_map(|node| node.values.iter().map(|(key, value)| (key.as_str(), value)))
+    }
+
+    /// Store the value the tree accepted for `key` on a node. It damages no pixels by itself.
+    pub fn set_value(&mut self, id: NodeId, key: &str, value: TreeValue) -> Result<(), SceneError> {
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        node.values.insert(key.to_owned(), value);
+        Ok(())
+    }
+
     /// The text the scene stores for `key` on a node, or `None` when it stores none.
     #[must_use]
     pub fn text(&self, id: NodeId, key: &str) -> Option<&str> {
-        self.nodes.get(&id)?.texts.get(key).map(String::as_str)
+        match self.value(id, key)? {
+            TreeValue::Text(text) => Some(text.as_str()),
+            _ => None,
+        }
     }
 
     /// Store a text property on a node. Text is read by the tree and its snapshot, not drawn,
     /// so it damages no pixels.
     pub fn set_text(&mut self, id: NodeId, key: &str, value: String) -> Result<(), SceneError> {
-        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
-        node.texts.insert(key.to_owned(), value);
-        Ok(())
+        self.set_value(id, key, TreeValue::Text(value))
     }
 
     /// The node a reference property names on a node, or `None` when it names none.
     #[must_use]
     pub fn reference(&self, id: NodeId, key: &str) -> Option<NodeId> {
-        self.nodes.get(&id)?.references.get(key).copied()
+        match self.value(id, key)? {
+            TreeValue::Node(target) => *target,
+            _ => None,
+        }
     }
 
     /// Store or clear a node reference. The target need not exist yet: a dangling reference
     /// is the compositor's to ignore. A reference is read by the compositor, not drawn, so it
     /// damages no pixels; the node is marked dirty so anything derived from it is refreshed.
     pub fn set_reference(&mut self, id: NodeId, key: &str, target: Option<NodeId>) -> Result<(), SceneError> {
-        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
-        match target {
-            Some(target) => node.references.insert(key.to_owned(), target),
-            None => node.references.remove(key),
-        };
+        self.set_value(id, key, TreeValue::Node(target))?;
         self.dirty.insert(id);
         Ok(())
     }
@@ -965,14 +983,16 @@ impl Scene {
     /// The number a property stores on a node, or `None` when it stores none.
     #[must_use]
     pub fn number(&self, id: NodeId, key: &str) -> Option<f64> {
-        self.nodes.get(&id)?.numbers.get(key).copied()
+        match self.value(id, key)? {
+            TreeValue::Double(number) => Some(*number),
+            _ => None,
+        }
     }
 
     /// Store a number property on a node. Read by the compositor, not drawn, so it damages no
     /// pixels; the node is marked dirty so anything derived from it is refreshed.
     pub fn set_number(&mut self, id: NodeId, key: &str, value: f64) -> Result<(), SceneError> {
-        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
-        node.numbers.insert(key.to_owned(), value);
+        self.set_value(id, key, TreeValue::Double(value))?;
         self.dirty.insert(id);
         Ok(())
     }
@@ -1897,9 +1917,7 @@ mod tests {
                 owner: Actor::Compositor,
                 parented_by: None,
                 class: None,
-                texts: BTreeMap::new(),
-                references: BTreeMap::new(),
-                numbers: BTreeMap::new(),
+                values: BTreeMap::new(),
             },
         );
         scene.roots.push(space);
@@ -1918,9 +1936,7 @@ mod tests {
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
                 class: None,
-                texts: BTreeMap::new(),
-                references: BTreeMap::new(),
-                numbers: BTreeMap::new(),
+                values: BTreeMap::new(),
             },
         );
         scene.dirty.clear();

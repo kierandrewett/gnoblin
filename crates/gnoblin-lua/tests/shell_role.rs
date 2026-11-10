@@ -79,6 +79,7 @@ impl TreeLink for FakeLink {
                 class: class.clone(),
                 title: String::new(),
                 app_id: String::new(),
+                props: Vec::new(),
             })
             .collect();
         c.queue.push(LuaIncoming::Attached(attached));

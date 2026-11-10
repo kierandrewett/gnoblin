@@ -539,3 +539,12 @@ since = "0.2.0"
 name = "app_id"
 type = "string"
 since = "0.2.0"
+
+# The node's property values that differ from their schema defaults, each as a `change` record
+# with kind `set`. A property at its default is left out; a property the schema gives no default
+# for is listed once the node holds a value for it. Each value is the value at the snapshot's
+# serial, so a live `set` published after the snapshot is never repeated in it.
+[[object.property]]
+name = "props"
+type = "list<object:change>"
+since = "0.2.0"

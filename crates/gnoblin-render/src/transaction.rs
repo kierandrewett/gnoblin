@@ -828,8 +828,8 @@ fn pass_has_non_finite(pass: &Pass) -> bool {
     }
 }
 
-/// Write one validated, non-animated value into the scene. A property the scene does not
-/// store is accepted and listed as changed, but the scene keeps no copy of it.
+/// Write one validated, non-animated value into the scene, then keep it as the node's value for
+/// `key` so the snapshot can carry it. A key the scene draws from is written to its typed field.
 fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> Result<(), Code> {
     if let TreeValue::ListDouble(axes) = value
         && matches!(key, "rotation" | "scale")
@@ -876,7 +876,9 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
         _ if !is_stored(key) => Ok(()),
         _ => return Err(Code::WrongType),
     };
-    result.map_err(|error| scene_code(&error))
+    result.map_err(|error| scene_code(&error))?;
+    work.set_value(node, key, value.clone())
+        .map_err(|error| scene_code(&error))
 }
 
 /// Whether the scene stores `key`. A `set` to any other key is accepted and listed as changed.

@@ -588,6 +588,7 @@ object snapshot_node since 0.2.0 secret false
   property class type string since 0.2.0 secret false
   property title type string since 0.2.0 secret false
   property app_id type string since 0.2.0 secret false
+  property props type list<object:change> since 0.2.0 secret false
 object node since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -2233,6 +2234,8 @@ message SnapshotNode {
     string title = 5;
     // since 0.2.0
     string app_id = 6;
+    // since 0.2.0; list of record `change`: the properties of one value
+    repeated Change.Properties props = 7;
   }
 }
 

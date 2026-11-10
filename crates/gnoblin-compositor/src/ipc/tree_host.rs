@@ -103,6 +103,7 @@ impl TreeHostHandle {
     /// `IpcEvent::TreeAttached` with the outcome and, on success, the snapshot to send.
     pub fn attach(&self, client: ClientId, request_id: u64, is_owner: bool) {
         let session = Arc::clone(&self.session);
+        let classes = Arc::clone(&self.classes);
         let events = self.events.clone();
         self.queue.read(move |scene, serial| {
             let outcome = lock(&session).attach(holder(client), is_owner).map(|attachment| {
@@ -113,7 +114,7 @@ impl TreeHostHandle {
                         root: scene.root(),
                         serial,
                     },
-                    snapshot_of(scene, serial),
+                    snapshot_of(scene, &classes, serial),
                 )
             });
             let _ = events.send(IpcEvent::TreeAttached {
@@ -291,56 +292,7 @@ fn change_properties(change: &TreeChange) -> change::Properties {
             index: wire_index(*index),
             ..Default::default()
         },
-        TreeChange::Set { node, key, value } => {
-            let mut properties = change::Properties {
-                kind: "set".to_owned(),
-                node: node.get(),
-                key: key.clone(),
-                ..Default::default()
-            };
-            match value {
-                TreeValue::Bool(value) => {
-                    "bool".clone_into(&mut properties.value_kind);
-                    properties.value_bool = *value;
-                }
-                TreeValue::Int(value) => {
-                    "int".clone_into(&mut properties.value_kind);
-                    properties.value_int = *value;
-                }
-                TreeValue::Uint(value) => {
-                    "uint".clone_into(&mut properties.value_kind);
-                    properties.value_uint = *value;
-                }
-                TreeValue::Double(value) => {
-                    "double".clone_into(&mut properties.value_kind);
-                    properties.value_double = *value;
-                }
-                TreeValue::Text(value) => {
-                    "text".clone_into(&mut properties.value_kind);
-                    properties.value_text.clone_from(value);
-                }
-                TreeValue::Node(value) => {
-                    "node".clone_into(&mut properties.value_kind);
-                    properties.value_node = value.map_or(0, NodeId::get);
-                }
-                TreeValue::ListDouble(value) => {
-                    "list_double".clone_into(&mut properties.value_kind);
-                    properties.value_list.clone_from(value);
-                }
-                TreeValue::ListText(value) => {
-                    "list_text".clone_into(&mut properties.value_kind);
-                    properties.value_texts.clone_from(value);
-                }
-                TreeValue::Effects(value) => {
-                    "list_effect".clone_into(&mut properties.value_kind);
-                    properties.value_effects = value.iter().map(effect_properties).collect();
-                }
-                // No wire field carries bytes, and `set_value` refuses them as `bad-value`,
-                // so a shell can never write one; the kind names it for a direct caller.
-                TreeValue::Bytes(_) => "bytes".clone_into(&mut properties.value_kind),
-            }
-            properties
-        }
+        TreeChange::Set { node, key, value } => set_properties(*node, key, value),
         TreeChange::Destroyed { node, removed } => change::Properties {
             kind: "destroyed".to_owned(),
             node: node.get(),
@@ -348,6 +300,59 @@ fn change_properties(change: &TreeChange) -> change::Properties {
             ..Default::default()
         },
     }
+}
+
+/// The `set` record that carries `key` of `node` as `value`. The live `set` event and the
+/// snapshot's property list both use it, so a value reads the same in either.
+fn set_properties(node: NodeId, key: &str, value: &TreeValue) -> change::Properties {
+    let mut properties = change::Properties {
+        kind: "set".to_owned(),
+        node: node.get(),
+        key: key.to_owned(),
+        ..Default::default()
+    };
+    match value {
+        TreeValue::Bool(value) => {
+            "bool".clone_into(&mut properties.value_kind);
+            properties.value_bool = *value;
+        }
+        TreeValue::Int(value) => {
+            "int".clone_into(&mut properties.value_kind);
+            properties.value_int = *value;
+        }
+        TreeValue::Uint(value) => {
+            "uint".clone_into(&mut properties.value_kind);
+            properties.value_uint = *value;
+        }
+        TreeValue::Double(value) => {
+            "double".clone_into(&mut properties.value_kind);
+            properties.value_double = *value;
+        }
+        TreeValue::Text(value) => {
+            "text".clone_into(&mut properties.value_kind);
+            properties.value_text.clone_from(value);
+        }
+        TreeValue::Node(value) => {
+            "node".clone_into(&mut properties.value_kind);
+            properties.value_node = value.map_or(0, NodeId::get);
+        }
+        TreeValue::ListDouble(value) => {
+            "list_double".clone_into(&mut properties.value_kind);
+            properties.value_list.clone_from(value);
+        }
+        TreeValue::ListText(value) => {
+            "list_text".clone_into(&mut properties.value_kind);
+            properties.value_texts.clone_from(value);
+        }
+        TreeValue::Effects(value) => {
+            "list_effect".clone_into(&mut properties.value_kind);
+            properties.value_effects = value.iter().map(effect_properties).collect();
+        }
+        // No wire field carries bytes, and `set_value` refuses them as `bad-value`,
+        // so a shell can never write one; the kind names it for a direct caller.
+        TreeValue::Bytes(_) => "bytes".clone_into(&mut properties.value_kind),
+    }
+    properties
 }
 
 /// The snapshot as the `snapshot` events, one per chunk. The last carries `last`; a tree with
@@ -380,6 +385,11 @@ pub fn snapshot_payloads(snapshot: &TreeSnapshot) -> Vec<SnapshotPayload> {
                     class: node.class.clone().unwrap_or_default(),
                     title: node.title.clone(),
                     app_id: node.app_id.clone(),
+                    props: node
+                        .props
+                        .iter()
+                        .map(|(key, value)| set_properties(node.id, key, value))
+                        .collect(),
                 })
                 .collect(),
         })

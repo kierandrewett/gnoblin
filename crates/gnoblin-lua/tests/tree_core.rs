@@ -13,6 +13,7 @@ fn snap(id: u64, parent: u64, index: i64, class: &str) -> SnapshotNode {
         class: class.to_owned(),
         title: String::new(),
         app_id: String::new(),
+        props: Vec::new(),
     }
 }
 

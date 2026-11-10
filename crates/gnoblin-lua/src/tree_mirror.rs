@@ -65,6 +65,9 @@ pub struct SnapshotNode {
     pub title: String,
     /// The node's app id; empty when it has none. Stored as the `app_id` property when set.
     pub app_id: String,
+    /// The node's property values that differ from their schema defaults, by schema name.
+    /// A property at its default is absent, so reads of it return the default.
+    pub props: Vec<(String, LuaValue)>,
 }
 
 /// What a change entry does.
@@ -275,6 +278,9 @@ impl LuaMirror {
                 if !text.is_empty() {
                     record.props.insert(key.to_owned(), LuaValue::Text(text.clone()));
                 }
+            }
+            for (key, value) in &node.props {
+                record.props.insert(key.clone(), value.clone());
             }
             if map.insert(node.id, record).is_some() {
                 return Err(MirrorError::Snapshot(format!("node {} listed twice", node.id)));

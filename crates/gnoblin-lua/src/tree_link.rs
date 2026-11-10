@@ -284,7 +284,11 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                 serial: payload.serial,
                 chunk,
                 last: payload.last,
-                nodes: payload.nodes.into_iter().map(to_snapshot_node).collect(),
+                nodes: payload
+                    .nodes
+                    .into_iter()
+                    .map(to_snapshot_node)
+                    .collect::<Result<Vec<_>, _>>()?,
             })
         }
         (Some(Kind::Event(_)), "changes") => {
@@ -311,15 +315,21 @@ fn undecodable(member: &str) -> LinkError {
     LinkError(format!("the tree {member} payload does not decode"))
 }
 
-fn to_snapshot_node(node: snapshot_node::Properties) -> SnapshotNode {
-    SnapshotNode {
+fn to_snapshot_node(node: snapshot_node::Properties) -> Result<SnapshotNode, LinkError> {
+    let props = node
+        .props
+        .iter()
+        .map(|prop| Ok((prop.key.clone(), to_value(prop)?)))
+        .collect::<Result<Vec<_>, LinkError>>()?;
+    Ok(SnapshotNode {
         id: node.id,
         parent: node.parent,
         index: node.index,
         class: node.class,
         title: node.title,
         app_id: node.app_id,
-    }
+        props,
+    })
 }
 
 fn to_change(change: change::Properties) -> Result<LuaChange, LinkError> {
