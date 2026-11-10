@@ -20,6 +20,8 @@
 
 - Attaching the tree shell from a connection without the owner grant is refused `not-owner` (`failed_op` -1), not `not-privileged`. Test `attach_refuses_a_non_owner_peer` replaces `attach_refuses_an_unprivileged_peer`. A transaction from a connection that does not hold the tree is still refused `not-privileged`.
 
+- The `gnoblin-xr` pointer's seat is named `xr`, not `gnoblin-xr-pointer`. The bridge reuses a seat named `xr` already in the owner snapshot and creates one only when none exists. Tests `pointer_creates_the_xr_seat_when_the_snapshot_has_none` and `pointer_reuses_an_existing_xr_seat` in `bridge.rs`.
+
 - Frame callbacks reach a window that only a visible `View` shows, not only one on a monitor. A View shows the subtree under its `source` when the View and its ancestors are visible with non-zero opacity. A mapped window on neither a monitor nor such a View gets no frame callback; before, output-less mapped windows got them. Unit tests `a_visible_view_shows_its_source_subtree_and_a_hidden_one_shows_nothing` and the other `view` tests in `gnoblin-render` cover the visibility rules and a View inside its own source. Compositor-level callback tests are not added: there is no harness for the shell tree.
 
 ### Added

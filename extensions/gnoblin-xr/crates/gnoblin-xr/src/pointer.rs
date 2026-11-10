@@ -7,8 +7,9 @@
 use xr_scene::{Layer, NodeId, Ray, pick};
 use xr_tree::{PointerInput, TreeClient, TreeError};
 
-/// The seat the OpenXR pointer uses. The owner creates it on first use.
-pub const SEAT_NAME: &str = "gnoblin-xr-pointer";
+/// The seat the OpenXR pointer uses. The owner creates it on first use, unless the snapshot
+/// already holds a seat named `xr`, which the pointer reuses.
+pub const SEAT_NAME: &str = "xr";
 
 /// What the pointer last told the owner. Motion is sent only when the hit point changes.
 #[derive(Debug, Default)]

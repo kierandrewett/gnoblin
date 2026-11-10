@@ -23,7 +23,7 @@ runs with empty layer lists. The design is in design/xr-extension.md (D34) and d
   submit, with the skipped Views and their reasons. `pick` tests a ray against the quads in reverse submission order and
   returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
   `crates/xr-scene/README.md`.
-- **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `gnoblin-xr-pointer` that the bridge creates on first use. A miss sends `leave` for the window last hovered.
+- **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `xr`: the bridge reuses a seat of that name from the owner snapshot and creates one on first use. A miss sends `leave` for the window last hovered.
 - **`gnoblin-xr`** (binary): connects to the owner socket (`$GNOBLIN_IPC_SOCKET`, else `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`),
   attaches to the `tree` namespace, opens the headless OpenXR session and runs `bridge::run`. The bridge polls the owner
   socket and runs one frame-loop tick per pass. Each frame plans the `room` subtree against the located head pose and

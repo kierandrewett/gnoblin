@@ -309,6 +309,58 @@ mod tests {
         assert_eq!(leave.node, 3);
     }
 
+    #[test]
+    fn pointer_creates_the_xr_seat_when_the_snapshot_has_none() {
+        let (sink, ops) = std::sync::mpsc::channel();
+        let mut tree =
+            TreeClient::from_stream(serve_with_ops(room_with_one_view(), false, Some(sink))).expect("attach");
+        let mut pointer = Pointer::default();
+        let through_centre = Ray {
+            origin: [0.0, 0.0, 0.0],
+            direction: [0.0, 0.0, -1.0],
+        };
+
+        pointer
+            .update(&mut tree, &front_quad(), Some(through_centre))
+            .expect("motion");
+        let sent: Vec<_> = ops.try_iter().flatten().collect();
+        let created = sent
+            .iter()
+            .find(|op| op.kind == "new" && op.class == "seat")
+            .expect("the owner creates a seat");
+        let name = sent
+            .iter()
+            .find(|op| op.kind == "set" && op.node == created.id && op.key == "name")
+            .expect("the new seat is named");
+        assert_eq!(name.value_text, "xr", "the pointer's seat is named xr");
+        let motion = sent.iter().find(|op| op.input_kind == "motion").expect("a motion op");
+        assert_eq!(motion.seat, created.id, "the pointer delivers on the seat it created");
+    }
+
+    #[test]
+    fn pointer_reuses_an_existing_xr_seat() {
+        let mut nodes = room_with_one_view();
+        nodes.push(snapshot_node(9, 1, 2, "seat", vec![text(9, "name", "xr")]));
+        let (sink, ops) = std::sync::mpsc::channel();
+        let mut tree = TreeClient::from_stream(serve_with_ops(nodes, false, Some(sink))).expect("attach");
+        let mut pointer = Pointer::default();
+        let through_centre = Ray {
+            origin: [0.0, 0.0, 0.0],
+            direction: [0.0, 0.0, -1.0],
+        };
+
+        pointer
+            .update(&mut tree, &front_quad(), Some(through_centre))
+            .expect("motion");
+        let sent: Vec<_> = ops.try_iter().flatten().collect();
+        assert!(
+            !sent.iter().any(|op| op.kind == "new"),
+            "an existing xr seat is reused, not recreated"
+        );
+        let motion = sent.iter().find(|op| op.input_kind == "motion").expect("a motion op");
+        assert_eq!(motion.seat, 9, "the pointer delivers on the existing xr seat");
+    }
+
     fn state(state: SessionState) -> Step {
         Step::Event(SessionEvent::StateChanged(state))
     }
