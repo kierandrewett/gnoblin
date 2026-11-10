@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-openxr = "0.22"
+openxr = { version = "0.22", features = ["loaded"] }
 xr-scene = { path = "../xr-scene" }
 
 # Unsafe is needed only by the OpenXR shim (`openxr_runtime`), which calls the

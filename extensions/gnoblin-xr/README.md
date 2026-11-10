@@ -22,12 +22,13 @@ is drawn or where it sits. The design is in design/xr-extension.md (D34) and des
   submit, with the skipped Views and their reasons. `pick` tests a ray against the quads in reverse submission order and
   returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
   `crates/xr-scene/README.md`.
+- **`xr-session`** (library): the OpenXR session and frame loop. `Runtime` is the trait the loop drives (`poll_event`, `begin_session`, `end_session`, `wait_frame`, `begin_frame`, `end_frame`, `locate_head`). `FrameLoop` is the state machine over it: it begins the session on `Ready`, ends it on `Stopping`, runs one paired `wait_frame`, `begin_frame`, `locate_head` and `end_frame` per frame only while the session is running, and returns cleanly on `Exiting`. The loop is tested with a fake runtime. `openxr_runtime` is the one OpenXR-backed `Runtime`: it loads the loader, creates a headless (`XR_MND_headless`) instance and session, and is the only `unsafe` code in the extension. Its one test is `#[ignore]` and runs only with `GNOBLIN_XR_MONADO=1`. See `crates/xr-session/README.md`.
 - **`gnoblin-xr`** (binary): a placeholder. It parses `--help` and `--version` and nothing else.
 
 ## What does not exist
 
-- No OpenXR dependency. No session, frame loop, swapchain or layer submission.
-- No owner-socket client. The binary does not connect to Gnoblin.
+- No swapchains and no layer submission: the frame loop passes empty layer lists to `end_frame`.
+- No owner-socket client. The binary does not connect to Gnoblin, and `xr-session` is not wired to it yet.
 - No rendering, no GPU code, no input mapping, no environment.
 - The `[powers.process]` entry that starts this program is not written.
 
