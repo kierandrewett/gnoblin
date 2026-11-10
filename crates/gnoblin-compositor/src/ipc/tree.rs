@@ -182,6 +182,7 @@ fn value_type(ty: &SchemaType) -> Option<ValueType> {
         SchemaType::List(inner) => match inner.as_ref() {
             SchemaType::Double => ValueType::ListDouble,
             SchemaType::Text => ValueType::ListText,
+            SchemaType::ObjectRef(class) if class == "effect" => ValueType::Effects,
             _ => return None,
         },
     })
@@ -408,6 +409,7 @@ mod tests {
             ("input", Some(DefaultValue::Bool(true))),
             ("secure", Some(DefaultValue::Bool(false))),
             ("tags", Some(DefaultValue::List(Vec::new()))),
+            ("effects", Some(DefaultValue::List(Vec::new()))),
         ];
         assert_eq!(node.properties.len(), defaults.len());
         for (key, default) in defaults {
@@ -477,6 +479,14 @@ mod tests {
             classes.property("node", "tags"),
             Some(PropertyInfo {
                 kind: ValueType::ListText,
+                readonly: false,
+                animated: false
+            })
+        );
+        assert_eq!(
+            classes.property("node", "effects"),
+            Some(PropertyInfo {
+                kind: ValueType::Effects,
                 readonly: false,
                 animated: false
             })

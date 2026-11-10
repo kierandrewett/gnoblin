@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
-use gnoblin_proto::tree::{change, op, snapshot_node};
+use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
 use support::{Client, Session, Wire};
 
@@ -283,6 +283,88 @@ fn a_list_and_a_bool_set_travel_the_wire_and_come_back_in_the_change_batch() {
         .expect("the visible set is published");
     assert_eq!(visible.value_kind, "bool");
     assert!(!visible.value_bool);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_tags_and_an_effects_set_travel_the_wire_and_come_back_in_the_change_batch() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "tags".to_owned(),
+        value_kind: "list_text".to_owned(),
+        value_texts: vec!["dock".to_owned(), "pinned".to_owned()],
+        ..Default::default()
+    });
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "effects".to_owned(),
+        value_kind: "list_effect".to_owned(),
+        value_effects: vec![effect::Properties {
+            kind: "blur".to_owned(),
+            enabled: true,
+            downscale: 2,
+            passes: 3,
+            blur_radius: 12.0,
+            tint: "#10203040".to_owned(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    transact(&mut wire, 2, 0, 1, ops);
+    let changes: ChangesPayload = event(&mut wire, "changes");
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(reply.applied, "the tags and effects sets validate: {reply:?}");
+
+    let tags = changes
+        .changes
+        .iter()
+        .find(|change| change.kind == "set" && change.key == "tags")
+        .expect("the tags set is published");
+    assert_eq!(tags.value_kind, "list_text");
+    assert_eq!(tags.value_texts, vec!["dock".to_owned(), "pinned".to_owned()]);
+    let effects = changes
+        .changes
+        .iter()
+        .find(|change| change.kind == "set" && change.key == "effects")
+        .expect("the effects set is published");
+    assert_eq!(effects.value_kind, "list_effect");
+    assert_eq!(effects.value_effects.len(), 1);
+    assert_eq!(effects.value_effects[0].kind, "blur");
+    assert_eq!(effects.value_effects[0].downscale, 2);
+    assert_eq!(effects.value_effects[0].passes, 3);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shader_effect_refuses_the_whole_effects_set_bad_value() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "effects".to_owned(),
+        value_kind: "list_effect".to_owned(),
+        value_effects: vec![effect::Properties {
+            kind: "shader".to_owned(),
+            enabled: true,
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    transact(&mut wire, 2, 0, 1, ops);
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied, "a shader pass is not drawable yet");
+    assert_eq!(reply.code, "bad-value");
     session.stop().expect("the session stops cleanly");
 }
 
