@@ -4084,6 +4084,8 @@ mod tests {
             Some(first),
             "the first screen once the pointer's screen is gone"
         );
+        composer.remove_output(OutputId::new(0));
+        assert_eq!(screen(&mut composer), None, "no screen once every output is gone");
     }
 
     #[test]
