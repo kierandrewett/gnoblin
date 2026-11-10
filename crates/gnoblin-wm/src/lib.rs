@@ -1,7 +1,7 @@
-//! Pure window management policy: stacking, focus, workspaces, placement, snapping and rules.
+//! Pure window management policy: stacking, focus, workspaces, snapping and rules.
 //!
 //! This crate is the "Policy core" `gnoblin-wm` of `design/rust-compositor.md`. It
-//! owns floating placement, stacking, the focus model and its history, workspaces
+//! owns stacking, the focus model and its history, workspaces
 //! with stable IDs, maximise, fullscreen, minimise, snapping, interactive move and
 //! resize, window rules and work areas from reserved insets.
 //!
@@ -67,10 +67,10 @@
 //!    therefore stops at the last matching rule. Covered by
 //!    `failure_modes.rs::contradicting_rules_settle_on_the_last_match` and the
 //!    pattern tests in `rules.rs`.
-//! 8. **Placement never terminates.** Free-space scanning and the cascade fallback
-//!    are bounded by `placement::MAX_SCAN_STEPS` and
-//!    `placement::MAX_CASCADE_STEPS`, so a work area full of windows still yields
-//!    one rectangle. Covered by `placement.rs::a_full_work_area_still_places_the_window`.
+//! 8. **A new window opens inside the work area.** Floating placement belongs to the
+//!    shell; until it publishes a position, a new window sits at the work area's
+//!    top-left corner, clamped inside it. Covered by
+//!    `failure_modes.rs::a_new_window_opens_at_the_work_area_origin`.
 //! 9. **A snapped or maximised window drifts from its zone.** Geometry for the
 //!    non-floating states is derived from the work area every time the work area
 //!    changes, and [`Wm::check_invariants`] requires maximised, fullscreen and
@@ -99,7 +99,6 @@ mod effect;
 mod event;
 mod geometry;
 mod output;
-mod placement;
 mod pointer_focus;
 mod rules;
 mod snapping;
@@ -115,9 +114,6 @@ pub use drag::DragConstraint;
 pub use effect::{Effect, RuleRejection, WorkspaceDirection};
 pub use event::{Event, Rejection, WindowProtocol, WindowSpec};
 pub use output::Output;
-pub use placement::PlacementMode;
-// The golden table (`tests/placement_goldens.rs`) drives the free function directly. Removed with `placement.rs`.
-pub use placement::place as place_new_window;
 pub use pointer_focus::{FocusMode, POINTER_REST, PointerAction, PointerFocus};
 pub use rules::{
     MAX_RULES, Match, Pattern, PatternSyntaxError, Rule, RuleError, RuleFields, WorkspaceSelector, validate_list,

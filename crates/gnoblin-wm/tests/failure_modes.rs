@@ -3,9 +3,9 @@
 
 use gnoblin_types::{Insets, OutputId, Rect, Scale, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, MAX_WINDOWS, Match, Pattern,
-    PlacementMode, Rejection, Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions,
-    WorkspaceDirection, WorkspaceSelector, WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError,
+    ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, MAX_WINDOWS, Match, Pattern, Rejection,
+    Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceDirection,
+    WorkspaceSelector, WorkspaceSet, WorkspaceSetEntry, WorkspaceSetError,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -918,38 +918,14 @@ fn a_window_needs_a_workspace_and_an_output() {
     check(&empty);
 }
 
-// Placement modes.
+// A new window's placement is the shell's; the window manager only keeps it inside the work area.
 #[test]
-fn free_space_placement_avoids_existing_windows() {
+fn a_new_window_opens_at_the_work_area_origin() {
     let mut wm = default_wm();
-    open(&mut wm, 1);
-    open(&mut wm, 2);
-    let first = wm.window(window(1)).map(|w| w.geometry);
-    let second = wm.window(window(2)).map(|w| w.geometry);
-    assert_eq!(first, Some(Rect::new(0, 0, 600, 400)));
-    match (first, second) {
-        (Some(first), Some(second)) => assert!(!first.intersects(second)),
-        _ => panic!("both windows are managed"),
-    }
-    check(&wm);
-}
-
-#[test]
-fn centered_placement_opens_new_windows_in_the_middle() {
-    let mut wm = wm_with(WmOptions {
-        placement: PlacementMode::Center,
-        ..WmOptions::default()
-    });
     open(&mut wm, 1);
     assert_eq!(
         wm.window(window(1)).map(|w| w.geometry),
-        Some(Rect::new(660, 340, 600, 400))
-    );
-    open(&mut wm, 2);
-    assert_ne!(
-        wm.window(window(2)).map(|w| w.geometry),
-        wm.window(window(1)).map(|w| w.geometry),
-        "the second centred window cascades instead of covering the first"
+        Some(Rect::new(0, 0, 600, 400))
     );
     check(&wm);
 }

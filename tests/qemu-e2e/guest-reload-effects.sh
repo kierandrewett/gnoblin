@@ -12,11 +12,11 @@
 # window_management.workspaces_only_on_primary: a second-monitor window follows the active workspace, or not.
 # window_management.auto_raise: with sloppy focus a resting pointer raises the window under it, or not.
 # window_management.focus_new_windows: strict keeps focus on the window in use, smart focuses the new window.
-# window_management.new_window_placement: center opens a new window centred on the monitor, free_space uses
-#            Mutter's first-fit placement.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export XDG_RUNTIME_DIR
+DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+export DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 CLICK="${GNOBLIN_CLICK_SCRIPT:-/tmp/guest-click.py}"
@@ -34,7 +34,7 @@ check() {
 }
 
 apply() {
-    printf '%s\n' "$1" > "$F"
+    printf '%s\n' "$1" >"$F"
     "$G" config reload >/dev/null
     sleep 4
 }
@@ -52,7 +52,7 @@ check "enabling it again starts it again" "$(marker_count)" "1"
 apply '-- disabled'
 check "removing the config stops it" "$(marker_count)" "0"
 
-cat > /tmp/pointer-move.py <<'PY'
+cat >/tmp/pointer-move.py <<'PY'
 import sys
 import time
 
@@ -102,10 +102,10 @@ for w in json.load(sys.stdin)["windows"]:
         print(f["x"] + f["width"] // 2, f["y"] + f["height"] // 2)'
 }
 
-nohup swaybg -c "#303030" >/dev/null 2>&1 < /dev/null &
-nohup foot -T focus-A >/dev/null 2>&1 < /dev/null &
+nohup swaybg -c "#303030" >/dev/null 2>&1 </dev/null &
+nohup foot -T focus-A >/dev/null 2>&1 </dev/null &
 sleep 3
-nohup foot -T focus-B >/dev/null 2>&1 < /dev/null &
+nohup foot -T focus-B >/dev/null 2>&1 </dev/null &
 sleep 3
 "$G" window move "$(window_id focus-A)" 40 100 >/dev/null 2>&1
 "$G" window move "$(window_id focus-B)" 760 100 >/dev/null 2>&1
@@ -114,9 +114,11 @@ sleep 1
 # "sloppy" is the deprecated name of "hover"; it must behave the same.
 for mode in click hover sloppy; do
     apply "gnoblin.configure {window_management = {focus_mode = \"$mode\"}}"
+    # shellcheck disable=SC2046
     python3 "$CLICK" $(center focus-A) >/dev/null 2>&1
     sleep 1
     before="$(focused)"
+    # shellcheck disable=SC2046
     python3 /tmp/pointer-move.py $(center focus-B)
     sleep 1
     after="$(focused)"
@@ -131,48 +133,6 @@ pkill -f "foot -T focus-"
 pkill -x swaybg
 sleep 1
 
-# window_management.new_window_placement: a new window opens centred on the first monitor, or at Mutter's default spot.
-monitor_center="$("$G" monitor list | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-monitors = data.get("monitors", data) if isinstance(data, dict) else data
-m = monitors[0]
-box = m.get("rect") or m.get("geometry") or m
-x, y = m.get("x", box.get("x", 0)), m.get("y", box.get("y", 0))
-w, h = m.get("width", box.get("width")), m.get("height", box.get("height"))
-print(x + w // 2, y + h // 2)')"
-new_window_center() {
-    nohup foot -T center-test >/dev/null 2>&1 < /dev/null &
-    sleep 4
-    "$G" window list | python3 -c '
-import json, sys
-for w in json.load(sys.stdin)["windows"]:
-    if w["title"] == "center-test":
-        f = w["frame"]
-        print(f["x"] + f["width"] // 2, f["y"] + f["height"] // 2)'
-    pkill -f "foot -T center-test"
-    sleep 1
-}
-distance() {
-    python3 -c 'import sys; a = list(map(int, sys.argv[1:5])); print(max(abs(a[0] - a[2]), abs(a[1] - a[3])))' $1 $2
-}
-apply 'gnoblin.configure {window_management = {new_window_placement = "center"}}'
-centered="$(distance "$(new_window_center)" "$monitor_center")"
-apply 'gnoblin.configure {window_management = {new_window_placement = "free_space"}}'
-default_spot="$(distance "$(new_window_center)" "$monitor_center")"
-if [ "$centered" -le 2 ]; then
-    echo "PASS new_window_placement center centres the new window (off by $centered px)"
-else
-    echo "FAIL new_window_placement center is off by $centered px"
-    fail=$((fail + 1))
-fi
-if [ "$default_spot" -gt 10 ]; then
-    echo "PASS new_window_placement free_space uses the default placement (off centre by $default_spot px)"
-else
-    echo "FAIL new_window_placement free_space still centres the window (off by $default_spot px)"
-    fail=$((fail + 1))
-fi
-
 # window_management.raise_on_click: clicking a window raises it above an overlapping one, or does not.
 python3 -c "import PIL" 2>/dev/null || sudo dnf install -y python3-pillow >/dev/null 2>&1
 overlap_pixel() {
@@ -181,10 +141,10 @@ overlap_pixel() {
 }
 for mode in true false; do
     apply "gnoblin.configure {window_management = {raise_on_click = $mode}}"
-    nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
-    nohup foot -T raise-A -o colors.background=ff0000 -o colors-dark.background=ff0000 -o colors-light.background=ff0000 >/dev/null 2>&1 < /dev/null &
+    nohup swaybg -c "#202020" >/dev/null 2>&1 </dev/null &
+    nohup foot -T raise-A -o colors.background=ff0000 -o colors-dark.background=ff0000 -o colors-light.background=ff0000 >/dev/null 2>&1 </dev/null &
     sleep 3
-    nohup foot -T raise-B -o colors.background=0000ff -o colors-dark.background=0000ff -o colors-light.background=0000ff >/dev/null 2>&1 < /dev/null &
+    nohup foot -T raise-B -o colors.background=0000ff -o colors-dark.background=0000ff -o colors-light.background=0000ff >/dev/null 2>&1 </dev/null &
     sleep 3
     "$G" window move "$(window_id raise-A)" 40 100 >/dev/null 2>&1
     "$G" window move "$(window_id raise-B)" 300 160 >/dev/null 2>&1
@@ -224,12 +184,12 @@ print(m.get("width", box.get("width")), m.get("height", box.get("height")))')"
 read -r mon_w mon_h <<<"$monitor_size"
 for mode in true false; do
     apply "gnoblin.configure {window_management = {edge_tiling = $mode}}"
-    nohup foot -T tile-test >/dev/null 2>&1 < /dev/null &
+    nohup foot -T tile-test >/dev/null 2>&1 </dev/null &
     sleep 4
     read -r wx wy ww wh <<<"$(tile_frame)"
     python3 "$DRAG" $((wx + ww / 2)) $((wy + 12)) -$((wx + ww / 2 + 200)) 0 >/dev/null 2>&1
     sleep 2
-    read -r nx ny nw nh <<<"$(tile_frame)"
+    read -r nx _ nw nh <<<"$(tile_frame)"
     pkill -f "foot -T tile-test"
     sleep 2
     if [ "$mode" = true ]; then
@@ -240,7 +200,7 @@ for mode in true false; do
 done
 
 # window_management.auto_maximize: a new window that nearly fills the monitor opens maximized, or does not.
-cat > /tmp/big-window.py <<'PY'
+cat >/tmp/big-window.py <<'PY'
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -288,8 +248,8 @@ if [ "$monitor_count" -ge 2 ]; then
     second_x=$((mon_w + 200))
     for mode in true false; do
         apply "gnoblin.configure {window_management = {workspaces_only_on_primary = $mode}}"
-        nohup foot -T ws-primary-A >/dev/null 2>&1 < /dev/null &
-        nohup foot -T ws-secondary-B >/dev/null 2>&1 < /dev/null &
+        nohup foot -T ws-primary-A >/dev/null 2>&1 </dev/null &
+        nohup foot -T ws-secondary-B >/dev/null 2>&1 </dev/null &
         sleep 4
         "$G" window move "$(window_id ws-primary-A)" 100 200 >/dev/null 2>&1
         "$G" window move "$(window_id ws-secondary-B)" "$second_x" 200 >/dev/null 2>&1
@@ -317,10 +277,10 @@ fi
 # auto_raise_delay, or leaves the stacking alone. Reuses the overlap_pixel helper and pointer-move.py above.
 for mode in true false; do
     apply "gnoblin.configure {window_management = {focus_mode = \"sloppy\", auto_raise = $mode, auto_raise_delay = 300}}"
-    nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
-    nohup foot -T raise-A -o colors.background=ff0000 -o colors-dark.background=ff0000 -o colors-light.background=ff0000 >/dev/null 2>&1 < /dev/null &
+    nohup swaybg -c "#202020" >/dev/null 2>&1 </dev/null &
+    nohup foot -T raise-A -o colors.background=ff0000 -o colors-dark.background=ff0000 -o colors-light.background=ff0000 >/dev/null 2>&1 </dev/null &
     sleep 3
-    nohup foot -T raise-B -o colors.background=0000ff -o colors-dark.background=0000ff -o colors-light.background=0000ff >/dev/null 2>&1 < /dev/null &
+    nohup foot -T raise-B -o colors.background=0000ff -o colors-dark.background=0000ff -o colors-light.background=0000ff >/dev/null 2>&1 </dev/null &
     sleep 3
     "$G" window move "$(window_id raise-A)" 40 100 >/dev/null 2>&1
     "$G" window move "$(window_id raise-B)" 300 160 >/dev/null 2>&1
@@ -345,12 +305,13 @@ done
 # of "prevent" and "allow"; they must behave the same.
 for mode in prevent allow strict smart; do
     apply "gnoblin.configure {window_management = {focus_new_windows = \"$mode\"}}"
-    nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
-    nohup foot -T fn-first >/dev/null 2>&1 < /dev/null &
+    nohup swaybg -c "#202020" >/dev/null 2>&1 </dev/null &
+    nohup foot -T fn-first >/dev/null 2>&1 </dev/null &
     sleep 3
+    # shellcheck disable=SC2046
     python3 "$CLICK" $(center fn-first) >/dev/null 2>&1
     sleep 1
-    nohup foot -T fn-second >/dev/null 2>&1 < /dev/null &
+    nohup foot -T fn-second >/dev/null 2>&1 </dev/null &
     sleep 4
     after="$(focused)"
     pkill -f "foot -T fn-"

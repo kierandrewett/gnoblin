@@ -90,16 +90,6 @@ variants = [
 ]
 
 [[enum]]
-name = "NewWindowPlacement"
-setting = "new-window-placement"
-doc = "Where a new application window opens."
-variants = [
-    { spelling = "free_space", doc = "First free area, cascading when nothing fits." },
-    { spelling = "center", doc = "Centred on the work area." },
-    { spelling = "cascade", doc = "Always stepped from the top left." },
-]
-
-[[enum]]
 name = "TitlebarAction"
 setting = "titlebar-action"
 doc = "What a titlebar click does."
@@ -1878,15 +1868,6 @@ kind = "bool"
 accepted = "a boolean"
 default = { bool = false }
 doc = "Drag a window to a screen edge to tile it."
-since = "0.2.0"
-
-[[section.field]]
-key = "new-window-placement"
-kind = "enum"
-enum = "NewWindowPlacement"
-accepted = "one of free_space, center, cascade"
-default = { enum = "free_space" }
-doc = "Where a new application window opens."
 since = "0.2.0"
 
 [[section.field]]

@@ -74,7 +74,6 @@ use crate::layout::{
     Layout, LayoutCommand, LayoutEffect, LayoutEngine, LayoutKind, Placement, RequestKind, Transform3, WindowPlacement,
 };
 use crate::output::Output;
-use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
 use crate::rules::{Facts, Rule, RuleOutcome, matching, outcome_of, validate_list};
 use crate::snapping::SnapZone;
@@ -108,8 +107,6 @@ pub const MAX_WINDOWS: usize = 256;
 /// The configuration the window manager reads.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct WmOptions {
-    /// `window_management.new_window_placement`.
-    pub placement: PlacementMode,
     /// `window_management.edge_tiling`.
     pub edge_tiling: bool,
     /// `window_management.constrain_drag_to_work_area`.
@@ -133,7 +130,6 @@ impl Default for WmOptions {
     /// values a session gets when its configuration omits the keys.
     fn default() -> Self {
         Self {
-            placement: PlacementMode::FreeSpace,
             edge_tiling: false,
             drag_constraint: DragConstraint::WorkArea,
             new_window_focus: NewWindowFocus::Prevent,
@@ -1032,20 +1028,6 @@ impl Wm {
         focused.or_else(|| self.outputs.first().map(Output::id))
     }
 
-    /// Rectangles of the visible windows on one output and workspace.
-    fn occupied(&self, output: OutputId, workspace: WorkspaceId, exclude: Option<WindowId>) -> Vec<Rect> {
-        self.windows
-            .values()
-            .filter(|window| {
-                window.output == Some(output)
-                    && window.workspace == workspace
-                    && !window.state.minimised
-                    && Some(window.id) != exclude
-            })
-            .map(|window| window.geometry)
-            .collect()
-    }
-
     /// Records `id` as the most recently used window.
     fn remember_focus(&mut self, id: WindowId) {
         self.history.retain(|entry| *entry != id);
@@ -1316,8 +1298,11 @@ impl Wm {
                 (parent_workspace, output, geometry, Some(parent_id))
             }
             None => {
-                let occupied = self.occupied(fallback_output, workspace, None);
-                let geometry = placement::place(self.options.placement, size, fallback_area, &occupied);
+                // Where a new floating window goes is the shell's call (`data/lua/gnoblin/shell/floating.lua`).
+                // Until it publishes a position the window sits at the work area's top-left corner.
+                let geometry = Rect::from_size(size)
+                    .translate(fallback_area.x, fallback_area.y)
+                    .clamp_inside(fallback_area);
                 (workspace, Some(fallback_output), geometry, None)
             }
         };

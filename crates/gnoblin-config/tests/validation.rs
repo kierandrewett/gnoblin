@@ -127,11 +127,11 @@ fn an_out_of_range_monitors_global_scale_is_refused_naming_the_leaf() {
 
 #[test]
 fn a_removed_setting_names_what_replaced_it() {
-    let document = table([("window-management", table([("center-new-windows", flag(true))]))]);
+    let document = table([("window-management", table([("new-window-placement", text("center"))]))]);
     let problems = problems(document);
-    assert_eq!(problems[0].0, "window-management.center-new-windows");
+    assert_eq!(problems[0].0, "window-management.new-window-placement");
     match &problems[0].1 {
-        Fault::Removed { detail } => assert!(detail.contains("new-window-placement")),
+        Fault::Removed { detail } => assert!(detail.contains("the shell places new windows")),
         other => panic!("expected a removed setting, got {other:?}"),
     }
 }

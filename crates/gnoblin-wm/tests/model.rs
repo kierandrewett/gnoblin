@@ -20,8 +20,8 @@
 
 use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, PlacementMode, Rule, RuleFields, SnapZone,
-    WindowSpec, Wm, WmOptions, WorkspaceSelector,
+    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, Rule, RuleFields, SnapZone, WindowSpec, Wm,
+    WmOptions, WorkspaceSelector,
 };
 
 /// Windows the generator draws ids from; the pool is smaller than the event count so
@@ -225,12 +225,6 @@ fn run(seed: u64) -> (Vec<Vec<Effect>>, usize) {
             gnoblin_wm::NewWindowFocus::Prevent
         } else {
             gnoblin_wm::NewWindowFocus::Allow
-        },
-        // Every mode is exercised: the seed picks one of each pair.
-        placement: match seed % 3 {
-            0 => PlacementMode::FreeSpace,
-            1 => PlacementMode::Center,
-            _ => PlacementMode::Cascade,
         },
         edge_tiling: seed.is_multiple_of(2),
         drag_constraint: if seed.is_multiple_of(4) {

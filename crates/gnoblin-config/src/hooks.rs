@@ -107,14 +107,16 @@ pub(crate) fn window_management(
             valid = false;
         }
     }
-    if map.contains_key("center-new-windows") {
-        out.problem(
-            &path.key("center-new-windows"),
-            Fault::Removed {
-                detail: "use new-window-placement, which takes free_space, center or cascade".to_owned(),
-            },
-        );
-        valid = false;
+    for key in ["center-new-windows", "new-window-placement"] {
+        if map.contains_key(key) {
+            out.problem(
+                &path.key(key),
+                Fault::Removed {
+                    detail: "the shell places new windows".to_owned(),
+                },
+            );
+            valid = false;
+        }
     }
     valid
 }

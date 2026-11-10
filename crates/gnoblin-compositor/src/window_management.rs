@@ -9,12 +9,10 @@
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_config::{
-    FocusMode as ConfiguredFocusMode, FocusNewWindows, NewWindowPlacement, SearchPaths, Store, WindowManagement,
-};
+use gnoblin_config::{FocusMode as ConfiguredFocusMode, FocusNewWindows, SearchPaths, Store, WindowManagement};
 
 use gnoblin_wayland::TitlebarActions;
-use gnoblin_wm::{DragConstraint, FocusMode, NewWindowFocus, PlacementMode, WmOptions};
+use gnoblin_wm::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 
 use crate::SessionConfig;
 
@@ -78,9 +76,6 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 fn apply(config: &mut SessionConfig, section: &WindowManagement) {
     let wm_defaults = WmOptions::default();
     config.wayland.wm = WmOptions {
-        placement: section
-            .new_window_placement
-            .map_or(wm_defaults.placement, placement_mode),
         edge_tiling: section.edge_tiling.unwrap_or(wm_defaults.edge_tiling),
         drag_constraint: section
             .constrain_drag_to_work_area
@@ -116,15 +111,6 @@ fn apply(config: &mut SessionConfig, section: &WindowManagement) {
         .map_or(default_timeout, Duration::from_millis);
 }
 
-/// The placement mode for a configured `new-window-placement`.
-fn placement_mode(placement: NewWindowPlacement) -> PlacementMode {
-    match placement {
-        NewWindowPlacement::FreeSpace => PlacementMode::FreeSpace,
-        NewWindowPlacement::Center => PlacementMode::Center,
-        NewWindowPlacement::Cascade => PlacementMode::Cascade,
-    }
-}
-
 /// The pointer focus mode for a configured `focus-mode`.
 fn focus_mode(mode: ConfiguredFocusMode) -> FocusMode {
     match mode {
@@ -151,7 +137,6 @@ mod tests {
     #[test]
     fn every_leaf_maps_into_the_compositor_configuration() {
         let section = WindowManagement {
-            new_window_placement: Some(NewWindowPlacement::Cascade),
             edge_tiling: Some(true),
             constrain_drag_to_work_area: Some(false),
             check_alive_timeout: Some(1500),
@@ -162,7 +147,6 @@ mod tests {
         let mut config = SessionConfig::default();
         apply(&mut config, &section);
 
-        assert_eq!(config.wayland.wm.placement, PlacementMode::Cascade);
         assert!(config.wayland.wm.edge_tiling);
         assert_eq!(config.wayland.wm.drag_constraint, DragConstraint::MinimumStrip);
         assert_eq!(config.wayland.wm.new_window_focus, NewWindowFocus::Allow);
