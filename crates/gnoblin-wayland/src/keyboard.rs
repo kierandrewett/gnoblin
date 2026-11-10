@@ -68,6 +68,7 @@ use gnoblin_input::{
     Chord, ChordKind, Event as RouterEvent, KeyState as RouterKeyState, Keysyms, Name, Router, ShortcutInhibit, Symbol,
     Target, Trigger,
 };
+use gnoblin_lock::State as LockState;
 use gnoblin_render::transaction::TreeCall;
 use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, NodeId, WindowId};
 
@@ -154,6 +155,8 @@ pub(crate) struct KeyboardTables {
     pub(crate) next_virtual_id: u64,
     /// The seat claims the shell holds, by their router binding's name.
     pub(crate) claims: BTreeMap<String, Claim>,
+    /// The claim whose press the shell was told of, by keycode, until the release is reported.
+    pub(crate) pressed_claims: BTreeMap<u32, Claim>,
 }
 
 impl Default for KeyboardTables {
@@ -183,6 +186,7 @@ impl Default for KeyboardTables {
             virtual_keymaps: BTreeMap::new(),
             next_virtual_id: 0,
             claims: BTreeMap::new(),
+            pressed_claims: BTreeMap::new(),
         }
     }
 }
@@ -597,6 +601,84 @@ impl State {
         }
     }
 
+    /// Releases the claims the destroyed nodes held. A destroyed seat takes its claims with it, so
+    /// its chords stop firing and reach the client again.
+    pub(crate) fn release_seat_nodes(&mut self, gone: &[NodeId]) {
+        let dropped: Vec<String> = self
+            .keyboard_tables
+            .claims
+            .iter()
+            .filter(|(_, claim)| gone.contains(&claim.node))
+            .map(|(name, _)| name.clone())
+            .collect();
+        for name in dropped {
+            if let Ok(bound) = Name::new(&name) {
+                self.keyboard_tables.router.bindings_mut().remove_name(&bound);
+            }
+            self.keyboard_tables.claims.remove(&name);
+        }
+        self.keyboard_tables
+            .pressed_claims
+            .retain(|_, claim| !gone.contains(&claim.node));
+    }
+
+    /// The seat claim behind a router target, when the target is a claim.
+    fn claim_of(&self, target: Target) -> Option<Claim> {
+        let Target::Binding(bound) = target else {
+            return None;
+        };
+        let name = self
+            .keyboard_tables
+            .router
+            .bindings()
+            .get(bound)?
+            .name()
+            .as_str()
+            .to_owned();
+        self.keyboard_tables.claims.get(&name).cloned()
+    }
+
+    /// Reports one edge of a claimed chord to the shell that claimed it, and says whether the client
+    /// receives the edge. `None` means the edge is not a claim, so the caller keeps its own answer.
+    ///
+    /// A press reported to the shell is remembered by keycode, so its release is reported even when
+    /// the lock came down between the two edges. A press the lock held back went to the client, so
+    /// its release does too.
+    fn route_claim_edge(&mut self, keycode: u32, state: KeyState, target: Target) -> Option<bool> {
+        match state {
+            KeyState::Pressed => {
+                let claim = self.claim_of(target)?;
+                if self.lock.state() != LockState::Unlocked {
+                    return Some(false);
+                }
+                self.tree.chord(
+                    claim.node,
+                    ChordEvent {
+                        id: claim.id,
+                        chord: claim.chord.clone(),
+                        state: ChordState::Press,
+                    },
+                );
+                self.keyboard_tables.pressed_claims.insert(keycode, claim);
+                Some(true)
+            }
+            KeyState::Released => {
+                if let Some(claim) = self.keyboard_tables.pressed_claims.remove(&keycode) {
+                    self.tree.chord(
+                        claim.node,
+                        ChordEvent {
+                            id: claim.id,
+                            chord: claim.chord,
+                            state: ChordState::Release,
+                        },
+                    );
+                    return Some(true);
+                }
+                self.claim_of(target).map(|_| false)
+            }
+        }
+    }
+
     /// Adds a binding to the session's router.
     ///
     /// It is the seam a configuration reload and `gnoblinctl` use: the chord is parsed
@@ -685,32 +767,14 @@ impl State {
             },
             inhibit,
         );
-        let consumed = routed.target != Target::Client;
+        let mut consumed = routed.target != Target::Client;
         if consumed {
             log::debug!(area = "key", keycode, target = %routed.target, fired = ?routed.fired, "consumed");
         }
-        // A claimed chord reports both of its edges to the shell that claimed it.
-        if let Target::Binding(bound) = routed.target
-            && let Some(name) = self
-                .keyboard_tables
-                .router
-                .bindings()
-                .get(bound)
-                .map(|binding| binding.name().as_str().to_owned())
-            && let Some(claim) = self.keyboard_tables.claims.get(&name).cloned()
-        {
-            let state = match state {
-                KeyState::Pressed => ChordState::Press,
-                KeyState::Released => ChordState::Release,
-            };
-            self.tree.chord(
-                claim.node,
-                ChordEvent {
-                    id: claim.id,
-                    chord: claim.chord,
-                    state,
-                },
-            );
+        // A claimed chord reports both of its edges to the shell that claimed it, while the session
+        // is unlocked. A locked session's cover owns every key, so the client gets the chord instead.
+        if let Some(answer) = self.route_claim_edge(keycode, state, routed.target) {
+            consumed = answer;
         }
         // A press that fires a configured shortcut runs its command. A fired binding is
         // reported only on the edge that runs it, so the release of the same chord does nothing.

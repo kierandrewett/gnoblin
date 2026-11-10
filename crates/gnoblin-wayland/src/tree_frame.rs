@@ -317,6 +317,9 @@ pub struct TreeFrame {
     /// Seat `claim` and `unclaim` calls the applied transactions made, in op order, for the
     /// compositor to apply.
     claims: Vec<TreeCall>,
+    /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
+    /// took them. A destroyed seat takes its claims with it.
+    destroyed: Vec<NodeId>,
 }
 
 impl Default for TreeFrame {
@@ -342,6 +345,7 @@ impl TreeFrame {
             next_seq: 0,
             frames: 0,
             claims: Vec::new(),
+            destroyed: Vec::new(),
             revisions: TreeRevisions::new(),
         }
     }
@@ -411,6 +415,12 @@ impl TreeFrame {
     /// the compositor to apply.
     pub fn take_claims(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.claims)
+    }
+
+    /// Take the nodes the published batches destroyed since the last take, for the compositor to
+    /// drop the seat claims they held.
+    pub fn take_destroyed(&mut self) -> Vec<NodeId> {
+        std::mem::take(&mut self.destroyed)
     }
 
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
@@ -497,7 +507,13 @@ impl TreeFrame {
                 Err(refusal) => replies.push((submission.reply, Err(refusal))),
             }
         }
-
+        // The compositor announced its own destroys and the shell's applied ones alike; both
+        // leave the seat claims they held with nothing to fire.
+        for change in &batch.changes {
+            if let TreeChange::Destroyed { removed, .. } = change {
+                self.destroyed.extend(removed.iter().cloned());
+            }
+        }
         if changed {
             self.serial += 1;
             self.revisions.record(self.serial, &batch.changes);

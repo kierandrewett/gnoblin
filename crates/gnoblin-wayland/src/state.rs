@@ -3495,6 +3495,8 @@ impl Host for State {
         self.reconcile_seats();
         let claims = self.tree.take_claims();
         self.apply_claims(claims);
+        let destroyed = self.tree.take_destroyed();
+        self.release_seat_nodes(&destroyed);
         self.deliver_seat_inputs();
         // Placement follows the shell's hold as the drain left it.
         self.composer.follow_placement();

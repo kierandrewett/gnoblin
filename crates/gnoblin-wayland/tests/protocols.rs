@@ -1850,23 +1850,30 @@ impl gnoblin_render::transaction::ClassInfo for ClaimClasses {
     }
 }
 
-/// Submits `transaction` on the shell's queue and returns whether it applied.
+/// Submits `transaction` on the shell's queue against `base` and returns whether it applied. The
+/// reply's serial becomes the next base, so a sequence of transactions on one queue chains.
 fn apply_on_shell(
     queue: &gnoblin_wayland::TreeQueue,
+    base: &mut u64,
     transaction: gnoblin_render::transaction::TreeTransaction,
 ) -> bool {
     let (sender, receiver) = std::sync::mpsc::channel();
     queue.submit(
-        0,
+        *base,
         transaction,
         || true,
-        move |_serial, result| {
-            let _ = sender.send(result.is_ok());
+        move |serial, result| {
+            if let Err(refusal) = &result {
+                eprintln!("the shell's transaction was refused: {refusal:?}");
+            }
+            let _ = sender.send((serial, result.is_ok()));
         },
     );
-    receiver
+    let (serial, applied) = receiver
         .recv_timeout(TIMEOUT)
-        .expect("the shell's transaction is answered")
+        .expect("the shell's transaction is answered");
+    *base = serial;
+    applied
 }
 
 /// The chord events the shell's mirror received, in order.
@@ -1912,6 +1919,7 @@ fn a_claimed_chord_reaches_the_shell_and_never_the_client() {
         // The shell creates the seat and claims Super+Return as id 1.
         let claimed = apply_on_shell(
             &queue,
+            &mut 0,
             TreeTransaction::new(vec![
                 TreeOp::New {
                     class: "seat".to_owned(),
@@ -1968,6 +1976,226 @@ fn a_claimed_chord_reaches_the_shell_and_never_the_client() {
                 ),
             ],
             "the shell receives the claim's press then release, under its id"
+        );
+    });
+}
+
+/// Presses Super+Return, the chord the claim tests claim, so every edge reaches the router.
+fn press_claimed_chord(session: &Handle) {
+    session.key(KEY_LEFTMETA, true);
+    session.key(KEY_ENTER, true);
+    session.key(KEY_ENTER, false);
+    session.key(KEY_LEFTMETA, false);
+}
+
+/// A session whose shell tree is wired to a queue and a mirror that records its batches.
+fn claim_session() -> (
+    gnoblin_wayland::TreeQueue,
+    Arc<Mutex<Vec<gnoblin_wayland::TreeBatch>>>,
+    Config,
+) {
+    use gnoblin_wayland::{TreeHooks, TreeQueue};
+
+    let batches: Arc<Mutex<Vec<gnoblin_wayland::TreeBatch>>> = Arc::default();
+    let queue = TreeQueue::default();
+    let tree = TreeHooks {
+        queue: queue.clone(),
+        classes: Arc::new(ClaimClasses),
+        publish: {
+            let batches = Arc::clone(&batches);
+            Arc::new(move |batch| batches.lock().expect("the batch lock").push(batch))
+        },
+        ..TreeHooks::default()
+    };
+    let config = Config {
+        tree,
+        ..Config::default()
+    };
+    (queue, batches, config)
+}
+
+#[test]
+fn an_unclaimed_chord_reaches_the_client_again() {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut base = 0;
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![
+                    TreeOp::New {
+                        class: "seat".to_owned(),
+                        id: CLAIM_SEAT,
+                    },
+                    TreeOp::TreeCall {
+                        node: CLAIM_SEAT,
+                        method: "claim".to_owned(),
+                        args: vec![1],
+                        text: "<Super>Return".to_owned(),
+                    },
+                ]),
+            ),
+            "the shell's claim applies"
+        );
+        press_claimed_chord(session);
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = client.wait_for(|state| state.keys.len() >= 4);
+        assert!(
+            !state.keys.contains(&KEY_ENTER),
+            "the claimed chord is not the client's"
+        );
+
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![TreeOp::TreeCall {
+                    node: CLAIM_SEAT,
+                    method: "unclaim".to_owned(),
+                    args: vec![1],
+                    text: String::new(),
+                }]),
+            ),
+            "the shell's unclaim applies"
+        );
+        press_claimed_chord(session);
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = client.wait_for(|state| state.keys.len() >= 10);
+        assert_eq!(
+            state.keys.iter().filter(|key| **key == KEY_ENTER).count(),
+            2,
+            "after the unclaim the chord's Enter reaches the client: {:?}",
+            state.keys
+        );
+
+        let deadline = Instant::now() + TIMEOUT;
+        while chord_events(&batches).len() < 2 {
+            assert!(Instant::now() < deadline, "the shell hears the first chord");
+            thread::sleep(Duration::from_millis(5));
+        }
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            chord_events(&batches).len(),
+            2,
+            "an unclaimed chord sends the shell nothing"
+        );
+    });
+}
+
+#[test]
+fn a_destroyed_seat_takes_its_claims_with_it() {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut base = 0;
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![
+                    TreeOp::New {
+                        class: "seat".to_owned(),
+                        id: CLAIM_SEAT,
+                    },
+                    TreeOp::TreeCall {
+                        node: CLAIM_SEAT,
+                        method: "claim".to_owned(),
+                        args: vec![1],
+                        text: "<Super>Return".to_owned(),
+                    },
+                ]),
+            ),
+            "the shell's claim applies"
+        );
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![TreeOp::Destroy { node: CLAIM_SEAT }])
+            ),
+            "the shell destroys its seat"
+        );
+        press_claimed_chord(session);
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = client.wait_for(|state| state.keys.len() >= 4);
+        assert_eq!(
+            state.keys.iter().filter(|key| **key == KEY_ENTER).count(),
+            2,
+            "a destroyed seat's chord reaches the client: {:?}",
+            state.keys
+        );
+        thread::sleep(Duration::from_millis(100));
+        assert!(chord_events(&batches).is_empty(), "a destroyed seat hears no chord");
+    });
+}
+
+#[test]
+fn a_locked_session_never_fires_a_claimed_chord() {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut base = 0;
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![
+                    TreeOp::New {
+                        class: "seat".to_owned(),
+                        id: CLAIM_SEAT,
+                    },
+                    TreeOp::TreeCall {
+                        node: CLAIM_SEAT,
+                        method: "claim".to_owned(),
+                        args: vec![1],
+                        text: "<Super>Return".to_owned(),
+                    },
+                ]),
+            ),
+            "the shell's claim applies"
+        );
+        let mut locker = Client::connect(session.socket());
+        let manager: ext_session_lock_manager_v1::ExtSessionLockManagerV1 = locker
+            .globals
+            .bind(&locker.qh, 1..=1, ())
+            .expect("the session advertises ext_session_lock_manager_v1");
+        let _lock = manager.lock(&locker.qh, ());
+        locker.wait_for(|state| state.lock_locked == 1);
+        session.wait_for(|observation| observation.lock_state() == LockState::Locked);
+
+        press_claimed_chord(session);
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            chord_events(&batches).is_empty(),
+            "a locked session does not fire a claimed chord at the shell"
         );
     });
 }

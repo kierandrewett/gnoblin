@@ -480,7 +480,9 @@ key events. The design routes keys to `seat.focus` (`node-api-refactor.md`), so 
 not enforced: an event for a node destroyed in the same frame is still sent after its `destroyed` change.
 
 `seq` is monotone per run. A chord claimed with `seat:bind{...}` (a `call` to the seat) is stored in the compositor's
-claim table, so a claimed chord never reaches a client. The claim is removed on `unbind` or when the seat is destroyed.
+claim table. While the session is unlocked, a claimed chord never reaches a client: the press and the release are each
+reported to the claiming shell as a `chord` event carrying the claim id. A press the lock held back goes to the client,
+and so does its release. The claim is removed on `unclaim`, or when its seat node is destroyed.
 
 ### 5.2 Protocol requests
 
