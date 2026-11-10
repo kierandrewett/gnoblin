@@ -524,6 +524,62 @@ mod tests {
         );
     }
 
+    /// A View is desktop content like a window: a granted View stream is refused the
+    /// lock scene and stopped, never fed stale pixels.
+    #[test]
+    fn a_granted_view_stream_is_refused_under_the_lock() {
+        let mut table = Table::new();
+        let session = table.open(
+            ClientId::new(9),
+            Target::View(NodeId::new(4)),
+            CaptureStream::Granted,
+            format(),
+        );
+        let mut source = Fake::new(Some(Rect::from_size(SIZE)));
+        let frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+        assert_eq!(
+            table.capture(frame, Tick::new(1), Capture::LockScene, &mut source),
+            CaptureOutcome::Refused(Refusal::Locked)
+        );
+        assert_eq!(
+            table.get(session).and_then(|session| session.stopped()),
+            Some(Stop::Embargoed),
+            "the View stream is stopped"
+        );
+        assert!(source.copies.is_empty(), "the refused frame copied nothing");
+    }
+
+    /// A View stream that was live when the lock came up is stopped by its next frame,
+    /// and releasing the lock does not resume it.
+    #[test]
+    fn a_view_stream_is_stopped_by_the_lock_and_never_resumes() {
+        let mut table = Table::new();
+        let session = table.open(
+            ClientId::new(9),
+            Target::View(NodeId::new(4)),
+            CaptureStream::Requested,
+            format(),
+        );
+        let mut source = Fake::new(Some(Rect::from_size(SIZE)));
+        let first = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+        assert!(
+            table
+                .capture(first, Tick::new(1), Capture::Desktop, &mut source)
+                .is_copied()
+        );
+        let second = table.request(session, BufferId::new(2), Tick::new(2)).expect("a claim");
+        assert_eq!(
+            table.capture(second, Tick::new(2), Capture::Refused, &mut source),
+            CaptureOutcome::Refused(Refusal::Locked)
+        );
+        assert_eq!(
+            table.request(session, BufferId::new(3), Tick::new(3)),
+            Err(Refusal::Stopped(Stop::Embargoed)),
+            "unlocking does not resume the View stream"
+        );
+        assert_eq!(source.copies.len(), 1, "the refused frame copied nothing");
+    }
+
     /// Failure mode 3: a buffer that is still claimed is handed out again, and the
     /// client reads a torn frame.
     #[test]

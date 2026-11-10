@@ -62,6 +62,7 @@ Why no prompt for the runtime: the runtime is the trusted process that evaluates
 - While the session lock is up, or the lock embargoes capture, `capture.still` refuses every target kind with `locked`.
 - The check runs before any pixel is read. It uses the same observation snapshot as `capture.screen` (`still::choose_output`).
 - A window target never returns lock-cover pixels. While locked, no window target is readable.
+- A View capture (`gnoblin_view_source_manager_v1`, ext-image-copy-capture) is embargoed by the same lock: a granted View stream is refused while the lock is up, and a running one stops and does not resume.
 
 ## Secure treatment
 
