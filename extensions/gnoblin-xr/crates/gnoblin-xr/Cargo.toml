@@ -1,12 +1,22 @@
 [package]
 name = "gnoblin-xr"
-description = "The out-of-process OpenXR extension for Gnoblin: it reads the room node and submits OpenXR layers."
+description = "The out-of-process OpenXR extension for Gnoblin: it plans the room node into OpenXR layers each frame."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+
+[dependencies]
+gnoblin-client = { path = "../../../../crates/gnoblin-client" }
+xr-scene = { path = "../xr-scene" }
+xr-session = { path = "../xr-session" }
+xr-tree = { path = "../xr-tree" }
+
+[dev-dependencies]
+gnoblin-proto = { path = "../../../../crates/gnoblin-proto" }
+xr-session = { path = "../xr-session", features = ["testing"] }
 
 [lints]
 workspace = true

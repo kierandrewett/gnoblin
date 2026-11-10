@@ -1,11 +1,20 @@
 //! `gnoblin-xr`: the out-of-process OpenXR extension for Gnoblin.
 //!
-//! This is a placeholder. It parses `--help` and `--version` only. It does not
-//! connect to the owner socket, read the `room` node or submit OpenXR layers yet.
+//! With no arguments it connects to the owner socket, attaches to the tree and
+//! plans the `room` subtree for every OpenXR frame. It submits no layers yet.
+
+mod bridge;
+
+use xr_scene::Options;
+use xr_session::frame_loop::FrameLoop;
+use xr_session::openxr_runtime::OpenxrRuntime;
+use xr_tree::TreeClient;
 
 /// What the command line asked for.
 #[derive(Debug, PartialEq, Eq)]
 enum Action {
+    /// Connect to the owner and run the bridge until the session or the owner ends.
+    Run,
     /// Print the usage text and exit successfully.
     Help,
     /// Print the version and exit successfully.
@@ -22,17 +31,46 @@ where
         (Some("--help" | "-h"), None) => Action::Help,
         (Some("--version" | "-V"), None) => Action::Version,
         (Some(other), _) => Action::Invalid(other.to_owned()),
-        (None, _) => Action::Help,
+        (None, _) => Action::Run,
     }
 }
 
 const USAGE: &str = "usage: gnoblin-xr [--help | --version]
 
-Placeholder: the OpenXR layer bridge is not implemented yet.
+Connects to the Gnoblin owner socket and runs the OpenXR bridge. The socket is
+$GNOBLIN_IPC_SOCKET, or $XDG_RUNTIME_DIR/gnoblin/ipc.sock.
 See extensions/gnoblin-xr/README.md.";
+
+/// Connects to the owner and the OpenXR runtime, then runs the bridge until it ends.
+fn run_bridge() -> Result<(), String> {
+    let socket = gnoblin_client::unix::socket_path(|name| std::env::var(name).ok())?;
+    let mut tree = TreeClient::connect(&socket).map_err(|error| format!("owner socket: {error}"))?;
+    let runtime = OpenxrRuntime::connect("gnoblin-xr").map_err(|error| error.to_string())?;
+    let mut frames = FrameLoop::new(runtime);
+
+    // Planning runs every frame, but the summary is only worth a line when it changes.
+    let mut last_summary = None;
+    let outcome = bridge::run(&mut tree, &mut frames, &Options::default(), |plan| {
+        let summary = (plan.layers.len(), plan.skipped.len());
+        if last_summary != Some(summary) {
+            eprintln!("gnoblin-xr: plan: {} layers, {} skipped", summary.0, summary.1);
+            last_summary = Some(summary);
+        }
+    })
+    .map_err(|error| error.to_string())?;
+    eprintln!("gnoblin-xr: stopped: {outcome:?}");
+    Ok(())
+}
 
 fn main() -> std::process::ExitCode {
     match parse_args(std::env::args().skip(1)) {
+        Action::Run => match run_bridge() {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("gnoblin-xr: {message}");
+                std::process::ExitCode::FAILURE
+            }
+        },
         Action::Help => {
             println!("{USAGE}");
             std::process::ExitCode::SUCCESS
@@ -69,8 +107,8 @@ mod tests {
     }
 
     #[test]
-    fn no_arguments_prints_help() {
-        assert_eq!(parse(&[]), Action::Help);
+    fn no_arguments_runs_the_bridge() {
+        assert_eq!(parse(&[]), Action::Run);
     }
 
     #[test]

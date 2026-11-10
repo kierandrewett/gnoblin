@@ -12,6 +12,11 @@ publish.workspace = true
 openxr = { version = "0.22", features = ["loaded"] }
 xr-scene = { path = "../xr-scene" }
 
+# The scripted `FakeRuntime` for the frame loop tests. Other crates that test a loop over
+# `Runtime` enable it as a dev-dependency; it is not part of the shipped library.
+[features]
+testing = []
+
 # Unsafe is needed only by the OpenXR shim (`openxr_runtime`), which calls the
 # loader's unsafe entry points. The crate therefore drops the workspace table,
 # which forbids unsafe, and restates the clippy levels with `unsafe_code = "deny"`
