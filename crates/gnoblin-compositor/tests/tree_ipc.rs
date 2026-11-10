@@ -963,7 +963,6 @@ fn set_bool(node: u64, key: &str, value: bool) -> op::Properties {
     }
 }
 
-
 fn set_list(node: u64, key: &str, value: Vec<f64>) -> op::Properties {
     op::Properties {
         kind: "set".to_owned(),
