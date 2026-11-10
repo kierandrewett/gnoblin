@@ -879,6 +879,8 @@ impl State {
                 workspace: WorkspaceId::new(u64::from(raw) + 1),
             });
         }
+        // The main seat is the compositor's own seat in the scene, named as the wl_seat is.
+        state.composer.add_main_seat(seat_name);
         // Every extension registers before the loop runs, so no client can observe a
         // session with half its globals.
         crate::protocols::extension::Extensions::default()
@@ -1608,6 +1610,8 @@ impl State {
     /// `leave` before `enter`, the seat's `wl_keyboard` moves, and the window arriving gets
     /// the layout it remembers.
     pub(crate) fn set_keyboard_focus(&mut self, target: Option<WlSurface>) {
+        let focused = target.as_ref().and_then(|surface| self.window_of(surface));
+        self.composer.set_main_seat_focus(focused);
         self.remember_layout();
         {
             use smithay::wayland::text_input::TextInputSeat;
@@ -1649,6 +1653,7 @@ impl State {
         // under the pointer is the renderer's, the surface is the window's, and the two
         // are decided independently.
         self.frame_pointer(Some(position), None);
+        self.composer.set_main_seat_pointer(position.x, position.y);
         self.shell_pointer(self.shell_pick(position));
         let focus = self.surface_under(position);
         let pointer = self.pointer.clone();
