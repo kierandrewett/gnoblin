@@ -14,6 +14,8 @@ use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
 use xr_tree::{TreeClient, TreeError};
 
+use crate::pointer::Pointer;
+
 /// How long the bridge sleeps when the session is not running a frame.
 const IDLE_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -70,6 +72,7 @@ pub fn run<R: Runtime>(
     opts: &Options,
     mut on_plan: impl FnMut(&Plan),
 ) -> Result<Outcome, BridgeError> {
+    let mut pointer = Pointer::default();
     loop {
         match tree.poll() {
             Ok(_) => {}
@@ -83,7 +86,10 @@ pub fn run<R: Runtime>(
                     position: [0.0; 3],
                     orientation: IDENTITY,
                 });
-                on_plan(&plan(tree.model(), &head, opts));
+                let planned = plan(tree.model(), &head, opts);
+                let ray = frames.locate_ray(frame.display_time)?;
+                pointer.update(tree, &planned.layers, ray)?;
+                on_plan(&planned);
             }
             Tick::Exit => return Ok(Outcome::SessionExited),
         }
@@ -96,8 +102,9 @@ mod tests {
 
     use gnoblin_proto::tree::change;
     use gnoblin_proto::tree::snapshot_node;
-    use gnoblin_proto::tree::tree::{AttachedPayload, SnapshotPayload};
+    use gnoblin_proto::tree::tree::{AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
     use gnoblin_proto::{Envelope, read_frame, write_frame};
+    use xr_scene::{Layer, Placement, Ray, Space};
     use xr_session::runtime::{FrameTiming, SessionEvent, SessionState};
     use xr_session::testing::{FakeRuntime, Step};
 
@@ -178,6 +185,15 @@ mod tests {
     /// Starts a fake owner that answers the attach with the room snapshot. It holds
     /// the socket open until the client drops it, unless `hang_up` closes it at once.
     fn serve(nodes: Vec<snapshot_node::Properties>, hang_up: bool) -> UnixStream {
+        serve_with_ops(nodes, hang_up, None)
+    }
+
+    /// As [`serve`], and sends each transaction's ops to `ops_sink` when one is given.
+    fn serve_with_ops(
+        nodes: Vec<snapshot_node::Properties>,
+        hang_up: bool,
+        ops_sink: Option<std::sync::mpsc::Sender<Vec<gnoblin_proto::tree::op::Properties>>>,
+    ) -> UnixStream {
         let events = vec![
             Envelope::reply_message(
                 "tree",
@@ -202,17 +218,95 @@ mod tests {
         ];
         let (client, mut server) = UnixStream::pair().expect("socket pair");
         std::thread::spawn(move || {
-            let _attach = read_frame(&mut server).expect("read attach").expect("attach frame");
+            let attach = read_frame(&mut server).expect("read attach").expect("attach frame");
+            assert_eq!(attach.request_id, ATTACH_REQUEST_ID);
             for event in &events {
                 if write_frame(&mut server, event).is_err() {
                     return;
                 }
             }
-            if !hang_up {
-                let _ = read_frame(&mut server);
+            if hang_up {
+                return;
+            }
+            // Answer every transact as applied, and hand its ops to the test.
+            let mut serial = 1;
+            while let Ok(Some(request)) = read_frame(&mut server) {
+                let args = request.payload_as::<TransactArgs>().expect("transact args");
+                serial += 1;
+                if let Some(sink) = &ops_sink {
+                    let _ = sink.send(args.ops.clone());
+                }
+                let reply = Envelope::reply_message(
+                    "tree",
+                    "transact",
+                    request.request_id,
+                    &ReplyPayload {
+                        serial,
+                        applied: true,
+                        failed_op: -1,
+                        code: String::new(),
+                        removed: Vec::new(),
+                    },
+                );
+                if write_frame(&mut server, &reply).is_err() {
+                    return;
+                }
             }
         });
         client
+    }
+
+    /// A quad at `z = -1` facing the viewer, drawing the window `3` at 1920x1080.
+    fn front_quad() -> Vec<Layer> {
+        vec![Layer::Quad(Placement {
+            id: 2,
+            source: 3,
+            pose: Pose {
+                position: [0.0, 0.0, -1.0],
+                orientation: IDENTITY,
+            },
+            size: [1.0, 1.0],
+            extent: [1920.0, 1080.0],
+            opacity: 1.0,
+            space: Space::World,
+            input: true,
+        })]
+    }
+
+    #[test]
+    fn pointer_sends_motion_then_leave_over_the_window_under_the_ray() {
+        let (sink, ops) = std::sync::mpsc::channel();
+        let mut tree =
+            TreeClient::from_stream(serve_with_ops(room_with_one_view(), false, Some(sink))).expect("attach");
+        let mut pointer = Pointer::default();
+        let layers = front_quad();
+        let through_centre = Ray {
+            origin: [0.0, 0.0, 0.0],
+            direction: [0.0, 0.0, -1.0],
+        };
+
+        pointer
+            .update(&mut tree, &layers, Some(through_centre))
+            .expect("motion");
+        let sent: Vec<_> = ops.try_iter().flatten().collect();
+        let motion = sent
+            .iter()
+            .find(|op| op.input_kind == "motion")
+            .expect("a motion op for the hit");
+        assert_eq!(motion.node, 3, "input goes to the window the view shows");
+        assert_eq!((motion.x, motion.y), (960.0, 540.0), "the ray hits the quad's centre");
+
+        // The same pixel again sends nothing.
+        pointer
+            .update(&mut tree, &layers, Some(through_centre))
+            .expect("still hovering");
+        assert!(ops.try_recv().is_err(), "an unchanged hit sends no new input");
+
+        // A ray that misses leaves the window it was over.
+        pointer.update(&mut tree, &layers, None).expect("leave");
+        let left: Vec<_> = ops.try_iter().flatten().collect();
+        let leave = left.iter().find(|op| op.input_kind == "leave").expect("a leave op");
+        assert_eq!(leave.node, 3);
     }
 
     fn state(state: SessionState) -> Step {

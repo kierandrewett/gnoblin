@@ -23,7 +23,7 @@ runs with empty layer lists. The design is in design/xr-extension.md (D34) and d
   submit, with the skipped Views and their reasons. `pick` tests a ray against the quads in reverse submission order and
   returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
   `crates/xr-scene/README.md`.
-- **`xr-session`** (library): the OpenXR session and frame loop. `Runtime` is the trait the loop drives (`poll_event`, `begin_session`, `end_session`, `wait_frame`, `begin_frame`, `end_frame`, `locate_head`). `FrameLoop` is the state machine over it: it begins the session on `Ready`, ends it on `Stopping`, runs one paired `wait_frame`, `begin_frame`, `locate_head` and `end_frame` per frame only while the session is running, and returns cleanly on `Exiting`. The loop is tested with a fake runtime. `openxr_runtime` is the one OpenXR-backed `Runtime`: it loads the loader, creates a headless (`XR_MND_headless`) instance and session, and is the only `unsafe` code in the extension. Its one test is `#[ignore]` and runs only with `GNOBLIN_XR_MONADO=1`. See `crates/xr-session/README.md`.
+- **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `gnoblin-xr-pointer` that the bridge creates on first use. A miss sends `leave` for the window last hovered.
 - **`gnoblin-xr`** (binary): connects to the owner socket (`$GNOBLIN_IPC_SOCKET`, else `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`),
   attaches to the `tree` namespace, opens the headless OpenXR session and runs `bridge::run`. The bridge polls the owner
   socket and runs one frame-loop tick per pass. Each frame plans the `room` subtree against the located head pose and
@@ -33,7 +33,7 @@ runs with empty layer lists. The design is in design/xr-extension.md (D34) and d
 ## What does not exist
 
 - No swapchains and no layer submission: the frame loop passes empty layer lists to `end_frame`, and the plan is only logged.
-- No rendering, no GPU code, no input mapping, no environment.
+- No rendering, no GPU code, no environment. Buttons and scroll are not wired: the runtime has no button source yet.
 - The `[powers.process]` entry that starts this program is not written.
 
 ## Build and test

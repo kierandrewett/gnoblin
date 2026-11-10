@@ -17,7 +17,7 @@
 
 use std::time::Duration;
 
-use xr_scene::Pose;
+use xr_scene::{Pose, Ray};
 
 use crate::runtime::{Result, Runtime, SessionEvent, SessionState};
 
@@ -54,6 +54,16 @@ pub struct FrameLoop<R: Runtime> {
 }
 
 impl<R: Runtime> FrameLoop<R> {
+    /// The pointing ray at `display_time`, if the runtime tracks one. Called by the caller
+    /// alongside the frame, not inside [`FrameLoop::tick`], so frame pacing is unchanged.
+    ///
+    /// # Errors
+    ///
+    /// The runtime fails to locate the ray.
+    pub fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
+        self.runtime.locate_ray(display_time)
+    }
+
     pub fn new(runtime: R) -> Self {
         Self {
             runtime,

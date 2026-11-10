@@ -4,6 +4,7 @@
 //! plans the `room` subtree for every OpenXR frame. It submits no layers yet.
 
 mod bridge;
+mod pointer;
 
 use xr_scene::Options;
 use xr_session::frame_loop::FrameLoop;

@@ -4,6 +4,7 @@
 
 ### Added
 
+- `gnoblin-xr` drives the owner's pointer from the OpenXR ray. `Pointer` (`extensions/gnoblin-xr/crates/gnoblin-xr/src/pointer.rs`) casts the ray with `xr_scene::pick` and sends owner `input` ops: `motion` on change, `leave` on a miss or a new window. `FrameLoop::locate_ray` exposes the runtime's ray without changing tick pacing. Buttons and scroll are not wired: the runtime has no button source. Test `pointer_sends_motion_then_leave_over_the_window_under_the_ray` in `bridge.rs`.
 - Screen nodes: the composer creates a `screen` node per declared output, publishes its geometry, and destroys it with the output.
 - Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.
 - A shell write of the main seat node's `focus` moves the keyboard to that window, through the same path as a compositor focus change; a `nil` write clears it. The compositor's own focus changes are published and never read back. Test `a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window`.
