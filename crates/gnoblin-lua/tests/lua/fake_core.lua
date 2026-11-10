@@ -42,11 +42,6 @@ local SCHEMA = {
             title = { type = "string", default = "" },
             secure = { type = "boolean", default = false },
             parent_window = { type = "node" },
-            -- The size the client last committed (0 before its first commit). Only the client writes it.
-            committed_width = { type = "number", default = 0, readonly = true },
-            committed_height = { type = "number", default = 0, readonly = true },
-            -- True once a shell has positioned the window. Only the host sets it, on a shell's write to x or y.
-            placed = { type = "boolean", default = false, readonly = true },
             title = { type = "string", default = "" },
             fullscreen = { type = "boolean", default = false },
         },
@@ -177,7 +172,8 @@ return function()
         next_id = next_id + 1
         local props = {}
         for k, p in pairs(c.props) do
-            props[k] = p.default
+            -- A table default (`data = {}`) must be a fresh table per node, or writing one node's data writes them all.
+            props[k] = type(p.default) == "table" and { table.unpack(p.default) } or p.default
         end
         nodes[next_id] = { class = class, props = props, parent = nil, children = {} }
         return next_id
@@ -286,11 +282,6 @@ return function()
             error(key .. " is read-only", 2)
         end
         r.props[key] = value
-        -- A shell positioning a node that is already in the tree marks it placed. Construction writes the
-        -- defaults of x and y before the node has a parent, so they do not count.
-        if (key == "x" or key == "y") and by_name[r.class].props.placed and r.parent then
-            r.props.placed = true
-        end
         op({ op = "set", id = id, key = key, value = value, seconds = seconds, samples = samples and #samples })
     end
     function core.insert(parent, id, index)

@@ -430,6 +430,8 @@ meta(Node).props.data = { type = "table", default = {} }
 -- keeps `on_ready` as a plain method and nothing ever calls it.
 meta(Node).signals.ready = true
 meta(Node).signals.destroyed = true
+-- `Floating:on_child_added` is a handler only when the signal is declared before the classes settle.
+meta(Node).signals.child_added = true
 for _, c in pairs(classes) do
     settle(meta(c))
 end

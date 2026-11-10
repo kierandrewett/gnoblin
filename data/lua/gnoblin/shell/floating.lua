@@ -114,14 +114,15 @@ function Centred:place(w, h, area, occupied)
     return M.place("center", w, h, area, occupied)
 end
 
--- A new window is placed once, when it first joins a workspace; `placed` stays true after that. A window that has
--- not committed a size yet opens at the default size.
+-- A new window is placed once, when it first joins a workspace; `data.placed` stays true after that. A window
+-- that has not committed a size yet opens at the default size.
 function Floating:on_child_added(win)
-    if not win:is(Window) or win.placed then
+    if not win:is(Window) or win.data.placed then
         return
     end
-    local w = win.committed_width > 0 and win.committed_width or DEFAULT_W
-    local h = win.committed_height > 0 and win.committed_height or DEFAULT_H
+    -- Until this shell writes them, `width` and `height` hold the size the client committed (the compositor publishes it before ShellReady), so they are read before the rectangle below overwrites them.
+    local w = win.width > 0 and win.width or DEFAULT_W
+    local h = win.height > 0 and win.height or DEFAULT_H
     local occupied = {}
     for _, other in ipairs(self:all("> Window")) do
         if other ~= win and other.visible then
@@ -130,6 +131,7 @@ function Floating:on_child_added(win)
     end
     local r = self:place(w, h, rect(0, 0, self.width, self.height), occupied)
     win.x, win.y, win.width, win.height = r.x, r.y, r.w, r.h
+    win.data.placed = true
 end
 
 return M

@@ -1991,7 +1991,8 @@ Steps 1 to 4 must have landed:
 1. A window maps before the shell is up. It waits under `root`, undrawn; when the shell starts, it gets `ready` like
    any new node and is placed then.
 2. The shell restarts mid-session. Gnoblin drops the nodes the old shell made and returns windows to `root` with
-   their geometry; `placed` is true, so `Floating` moves none of them.
+   their geometry. The new shell places them again: placement is not persisted, so `placed` is per runtime and
+   `Floating` re-places each window.
 3. The transaction misses the frame budget. The window is drawn one frame later, never at the origin first.
 4. The work area is full. The window still gets a rectangle inside it, by bounded loops.
 5. The window is larger than the work area. It is aligned to the area's origin.
@@ -2198,23 +2199,23 @@ Folded. `gnoblin-xr` stays an out-of-process program on the owner socket. It is 
 
 ### Risks
 
-| Risk                                                                   | Answer                                                                                                           |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| A transaction per frame over a socket is too slow                      | measure on Agent37 in step 4; decision 1b is the fallback                                                        |
-| One frame of latency for interactive moves                             | the 4 ms budget usually lands the same frame; `drag` binds to `seat.x`, so measure it in step 4                  |
-| Parity drift when policy moves to Lua                                  | parity scenarios run unchanged against the stock shell (steps 5 to 7)                                            |
-| Binding cycles                                                         | 100 passes, then a reported error naming the cycle; the tree keeps the last values                               |
-| A Lua `__index` function on every property read is slow                | measure `arrange` over 200 windows in step 4; a layout reads each window a few times per change                  |
-| A binding re-runs more often than needed (it reads a whole child list) | correct but wasteful; `all("> Window")` reads only the direct child list                                         |
-| Class handlers add, unlike plain Lua assignment                        | documented on the one page; to change stock behaviour, replace the method the stock handler calls (`vanish`)     |
-| Two scripts declare the same class name                                | the second `extend` is an error at its line (decision 3); a shell reload starts a fresh VM                       |
-| `to` on a Lua property jumps instead of moving                         | only native properties are drawn; a layout animates the windows it moves, not its own `ratio`                    |
-| `tags` are not reactive when mutated in place                          | assign a new table (`n.tags = { dock = true }`) to notify; say so in `nodes.md`                                  |
-| A shell that ignores `closed` leaves dead windows on screen            | the stock `Window:on_closed` calls `vanish`; documented as the ownership rule                                    |
-| A shell restart loses workspace membership                             | windows return to `root` with their geometry, `placed` stops re-placement, and they land on the active workspace |
-| Text painting cost in the compositor                                   | `Canvas` is rasterised once per change, not per frame                                                            |
-| GPU renderers are not bit-exact                                        | determinism is proven on the software renderer; GLES uses tolerances                                             |
-| Large deletion across many crates                                      | twelve steps, each green on its own                                                                              |
+| Risk                                                                   | Answer                                                                                                             |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| A transaction per frame over a socket is too slow                      | measure on Agent37 in step 4; decision 1b is the fallback                                                          |
+| One frame of latency for interactive moves                             | the 4 ms budget usually lands the same frame; `drag` binds to `seat.x`, so measure it in step 4                    |
+| Parity drift when policy moves to Lua                                  | parity scenarios run unchanged against the stock shell (steps 5 to 7)                                              |
+| Binding cycles                                                         | 100 passes, then a reported error naming the cycle; the tree keeps the last values                                 |
+| A Lua `__index` function on every property read is slow                | measure `arrange` over 200 windows in step 4; a layout reads each window a few times per change                    |
+| A binding re-runs more often than needed (it reads a whole child list) | correct but wasteful; `all("> Window")` reads only the direct child list                                           |
+| Class handlers add, unlike plain Lua assignment                        | documented on the one page; to change stock behaviour, replace the method the stock handler calls (`vanish`)       |
+| Two scripts declare the same class name                                | the second `extend` is an error at its line (decision 3); a shell reload starts a fresh VM                         |
+| `to` on a Lua property jumps instead of moving                         | only native properties are drawn; a layout animates the windows it moves, not its own `ratio`                      |
+| `tags` are not reactive when mutated in place                          | assign a new table (`n.tags = { dock = true }`) to notify; say so in `nodes.md`                                    |
+| A shell that ignores `closed` leaves dead windows on screen            | the stock `Window:on_closed` calls `vanish`; documented as the ownership rule                                      |
+| A shell restart loses workspace membership                             | windows return to `root` with their geometry; the new shell re-places them, because placement is not persisted yet |
+| Text painting cost in the compositor                                   | `Canvas` is rasterised once per change, not per frame                                                              |
+| GPU renderers are not bit-exact                                        | determinism is proven on the software renderer; GLES uses tolerances                                               |
+| Large deletion across many crates                                      | twelve steps, each green on its own                                                                                |
 
 ### Determinism: what is reproducible and how it is tested
 

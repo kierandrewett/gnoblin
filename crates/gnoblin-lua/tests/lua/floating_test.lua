@@ -129,8 +129,8 @@ return {
             local a = root:add(Window({ app_id = "a" }))
             local b = root:add(Window({ app_id = "b" }))
             for _, id in ipairs(host.ids("Window")) do
-                host.external(id, "committed_width", 400)
-                host.external(id, "committed_height", 300)
+                host.external(id, "width", 400)
+                host.external(id, "height", 300)
             end
             H.load_shell()
             root:find(Seat).screen = screen
@@ -168,10 +168,10 @@ return {
             local win = ws:add(Window({ app_id = "a" }))
             local x, y = win.x, win.y
             local id = host.ids("Window")[#host.ids("Window")]
-            host.external(id, "committed_width", 700)
-            host.external(id, "committed_height", 500)
+            host.external(id, "width", 700)
+            host.external(id, "height", 500)
             host.frame(1, {})
-            H.check(win.placed, "the window stays placed")
+            H.check(win.data.placed, "the window stays placed")
             H.check(win.x == x and win.y == y, "a resize must not move the window")
         end,
     },
@@ -183,7 +183,7 @@ return {
             local ws = desk().active
             ws:add(Window({ app_id = "a" }))
             local second = ws:add(Window({ app_id = "b" }))
-            H.check(second.placed, "the window must be placed as soon as it joins the workspace")
+            H.check(second.data.placed, "the window must be placed as soon as it joins the workspace")
             H.check(second.x ~= 0 or second.y ~= 0, "the second window must avoid the origin the first took")
         end,
     },
@@ -207,8 +207,8 @@ return {
             local screen = root:add(Screen({ width = 1000, height = 800 }))
             root:add(Window({ app_id = "a" }))
             local id = host.ids("Window")[1]
-            host.external(id, "committed_width", 500)
-            host.external(id, "committed_height", 400)
+            host.external(id, "width", 500)
+            host.external(id, "height", 400)
             H.load_shell()
             root:find(Seat).screen = screen
             H.start_shell(host)

@@ -161,7 +161,7 @@ function Window:on_ready()
     local p = self.parent_window
     if p then
         p:add(self) -- a dialog moves with its parent
-        self.x, self.y = (p.width - self.committed_width) // 2, (p.height - self.committed_height) // 2
+        self.x, self.y = (p.width - self.width) // 2, (p.height - self.height) // 2
     else
         desk().active:add(self)
     end

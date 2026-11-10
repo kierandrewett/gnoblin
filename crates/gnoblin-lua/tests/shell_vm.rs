@@ -61,6 +61,8 @@ struct Compositor {
     /// node id -> (class, parent, title). Parent 0 is no parent.
     nodes: BTreeMap<u64, (String, u64, String)>,
     serial: u64,
+    /// The serial at which each node last changed in a batch the compositor published.
+    changed: BTreeMap<u64, u64>,
     /// Transactions the link has received, in order.
     sent: Vec<Vec<LuaOp>>,
     /// The next transaction is refused when set.
@@ -123,7 +125,7 @@ impl FakeLink {
     }
 
     /// Applies `ops` to the node map and returns the change batch describing them.
-    fn apply(&self, ops: &[LuaOp]) -> Vec<LuaChange> {
+    fn apply(&self, ops: &[LuaOp], serial: u64) -> Vec<LuaChange> {
         let mut c = self.0.borrow_mut();
         let mut changes = Vec::new();
         for op in ops {
@@ -158,6 +160,9 @@ impl FakeLink {
                 _ => {}
             }
         }
+        for change in &changes {
+            c.changed.insert(change.node, serial);
+        }
         changes
     }
 }
@@ -182,30 +187,23 @@ impl TreeLink for FakeLink {
     fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError> {
         {
             let mut c = self.0.borrow_mut();
+            c.sent.push(tx.ops.clone());
             if c.hold {
-                c.sent.push(tx.ops.clone());
                 c.held.push(tx.clone());
                 return Ok(());
             }
+            if std::mem::replace(&mut c.refuse_next, false) {
+                c.queue.push(LuaIncoming::Reply(TxReply {
+                    serial: tx.serial,
+                    applied: false,
+                    failed_op: 0,
+                    code: "refused".into(),
+                    removed: Vec::new(),
+                }));
+                return Ok(());
+            }
         }
-        let ops = tx.ops.clone();
-        let refuse = {
-            let mut c = self.0.borrow_mut();
-            c.sent.push(ops.clone());
-            std::mem::replace(&mut c.refuse_next, false)
-        };
-        let serial = tx.serial;
-        if refuse {
-            self.0.borrow_mut().queue.push(LuaIncoming::Reply(TxReply {
-                serial,
-                applied: false,
-                failed_op: 0,
-                code: "refused".into(),
-                removed: Vec::new(),
-            }));
-            return Ok(());
-        }
-        self.apply_and_queue(serial, &ops);
+        self.land(tx);
         Ok(())
     }
 
@@ -215,13 +213,28 @@ impl TreeLink for FakeLink {
 }
 
 impl FakeLink {
-    fn apply_and_queue(&self, serial: u64, ops: &[LuaOp]) {
-        let changes = self.apply(ops);
+    /// Lands `tx` as the compositor does: refused `stale-base` at the first op whose node a batch
+    /// published after the base changed, otherwise applied whole and echoed.
+    fn land(&self, tx: &LuaTransaction) {
+        if let Some(failed_op) = self.stale_op(tx) {
+            self.0.borrow_mut().queue.push(LuaIncoming::Reply(TxReply {
+                serial: tx.serial,
+                applied: false,
+                failed_op: failed_op as i64,
+                code: "stale-base".into(),
+                removed: Vec::new(),
+            }));
+            return;
+        }
+        let changes = self.apply(&tx.ops, tx.serial);
         let mut c = self.0.borrow_mut();
-        c.serial = serial;
-        c.queue.push(LuaIncoming::Changes { serial, changes });
+        c.serial = tx.serial;
+        c.queue.push(LuaIncoming::Changes {
+            serial: tx.serial,
+            changes,
+        });
         c.queue.push(LuaIncoming::Reply(TxReply {
-            serial,
+            serial: tx.serial,
             applied: true,
             failed_op: -1,
             code: String::new(),
@@ -229,11 +242,42 @@ impl FakeLink {
         }));
     }
 
-    /// Applies every held transaction in order, as the compositor echoes them.
+    /// The index of the first op of `tx` on a node that a batch published after `tx`'s base
+    /// changed, or none when the base is current.
+    fn stale_op(&self, tx: &LuaTransaction) -> Option<usize> {
+        let c = self.0.borrow();
+        if tx.base_serial == c.serial {
+            return None;
+        }
+        tx.ops.iter().position(|op| {
+            let node = match op {
+                LuaOp::Set { node, .. } | LuaOp::Insert { node, .. } | LuaOp::Destroy { node } => *node,
+                _ => return false,
+            };
+            c.changed.get(&node).is_some_and(|serial| *serial > tx.base_serial)
+        })
+    }
+
+    /// A native title write the shell did not make: the compositor publishes it as a batch of its own.
+    fn external_title(&self, node: u64, text: &str) {
+        let mut c = self.0.borrow_mut();
+        c.serial += 1;
+        let serial = c.serial;
+        if let Some(entry) = c.nodes.get_mut(&node) {
+            entry.2 = text.into();
+        }
+        c.changed.insert(node, serial);
+        c.queue.push(LuaIncoming::Changes {
+            serial,
+            changes: vec![set_change(node, "title", text)],
+        });
+    }
+
+    /// Lands every held transaction in order, as the compositor echoes them.
     fn release(&self) {
         let held = std::mem::take(&mut self.0.borrow_mut().held);
-        for tx in held {
-            self.apply_and_queue(tx.serial, &tx.ops);
+        for tx in &held {
+            self.land(tx);
         }
     }
 }
@@ -469,5 +513,58 @@ fn holds_ops_while_transaction_in_flight() {
         check(&mut vm, "count", "return #root.children"),
         "3",
         "both nodes inserted"
+    );
+}
+
+// (R) a transaction refused `stale-base` because a native batch changed a node it writes is sent
+// again without the refused op, on the new base, and the native change stands.
+#[test]
+fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
+    let comp = compositor_with_root_and_window();
+    comp.borrow_mut().hold = true;
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "write",
+        "local w = root.children[1]\nlocal n = Node()\nroot:add(n)\nw.title = \"mine\"",
+    )
+    .expect("run write");
+    let first = vm.frame(1.0, vec![]).expect("write frame");
+    assert!(first.diagnostics.is_empty(), "{:?}", first.diagnostics);
+    assert_eq!(sent(&comp).len(), 1, "first transaction held in flight");
+
+    FakeLink(comp.clone()).external_title(2, "ext");
+    FakeLink(comp.clone()).release();
+    let refused = vm.frame(2.0, vec![]).expect("refusal frame");
+    assert!(
+        refused.diagnostics.is_empty(),
+        "a stale-base refusal is retried, not reported: {:?}",
+        refused.diagnostics
+    );
+    let txs = sent(&comp);
+    assert_eq!(txs.len(), 2, "the other ops are sent again");
+    let kinds: Vec<&str> = txs[1]
+        .iter()
+        .map(|op| match op {
+            LuaOp::New { .. } => "new",
+            LuaOp::Insert { .. } => "insert",
+            LuaOp::Set { .. } => "set",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, vec!["new", "insert"], "the refused title write is dropped");
+
+    FakeLink(comp.clone()).release();
+    let done = vm.frame(3.0, vec![]).expect("applied frame");
+    assert!(done.diagnostics.is_empty(), "{:?}", done.diagnostics);
+    assert_eq!(
+        check(&mut vm, "count", "return #root.children"),
+        "2",
+        "new node inserted"
+    );
+    assert_eq!(
+        check(&mut vm, "title", "return root.children[1].title"),
+        "ext",
+        "the native title stands"
     );
 }

@@ -68,7 +68,7 @@ return {
     },
 
     {
-        "a shell restart drops the old shell's nodes and keeps windows at their geometry",
+        "a shell restart drops the old shell's nodes and re-places its windows, keeping them mapped",
         function()
             local core, host = require("fake_core")()
             H.boot(core, host)
@@ -79,11 +79,11 @@ return {
             H.load_shell()
             root:find(Seat).screen = screen
             H.start_shell(host)
-
+            H.check(win.data.placed == true, "the first shell places the window")
+            local win_ids = host.ids("Window")
             win.x, win.y, win.width, win.height = 40, 50, 300, 200
             host.frame(1, {})
             local old_desk = desk()
-            H.check(#root:all(Desk) == 1, "the first shell must have made a Desk")
 
             -- Gnoblin returns the window to root and drops the old shell's subtree. Destroying the Desk is
             -- the same native call the host makes for every node the old shell created.
@@ -98,14 +98,14 @@ return {
             H.boot(core, host)
             H.load_shell()
             H.start_shell(host)
-            -- The new runtime has its own wrappers: the old `win` belongs to the discarded runtime.
-            local new_win = root:all(Window)[1]
+            local pw = root:all(Window)[1]
+            -- A restarted shell re-places windows: placement is not persisted yet (documented limitation).
             H.check(#root:all(Desk) == 1, "exactly one Desk after the restart")
-            H.check(new_win.parent == desk().active, "the window goes into the new desk().active")
-            H.check(
-                new_win.x == 40 and new_win.y == 50 and new_win.width == 300 and new_win.height == 200,
-                ("geometry must be kept, got %s,%s %sx%s"):format(new_win.x, new_win.y, new_win.width, new_win.height)
-            )
+            H.check(pw.parent == desk().active, "the window is re-placed into the new desk().active")
+            H.check(pw.data.placed == true, "the restarted shell places the window again")
+            H.check(pw.width == 300 and pw.height == 200, "the client size survives the restart")
+            H.check(#host.ids("Window") == 1, "the window is still mapped, not duplicated")
+            H.check(host.ids("Window")[1] == win_ids[1], "the restarted shell wraps the same native node")
         end,
     },
 

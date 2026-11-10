@@ -83,12 +83,15 @@ pub struct ShellVm {
     tick: Function,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
     incoming: Vec<LuaIncoming>,
-    /// What each sent transaction's ops were, by serial, until its reply arrives. A refusal names
-    /// the failed op from this record.
-    sent: BTreeMap<u64, Vec<String>>,
+    /// The ops of each sent transaction, by serial, until its reply arrives. A refusal names its
+    /// failed op from this record, and a stale-base refusal re-sends the rest.
+    sent: BTreeMap<u64, Vec<LuaOp>>,
     /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it:
     /// a second transaction built on the same base is refused as stale.
     in_flight: Option<u64>,
+    /// Ops refused `stale-base` that are sent again, ahead of the next tick's writes, once the
+    /// mirror reaches the refused serial.
+    retry: Vec<LuaOp>,
 }
 
 /// Names one op for a refusal: its index, class, property and value kind, so a refused write is
@@ -151,6 +154,7 @@ impl ShellVm {
             incoming,
             in_flight: None,
             sent: BTreeMap::new(),
+            retry: Vec::new(),
         })
     }
 
@@ -195,37 +199,51 @@ impl ShellVm {
                     );
                 }
                 LuaIncoming::Reply(reply) => {
-                    let described = self.sent.remove(&reply.serial);
-                    if !reply.applied && self.in_flight == Some(reply.serial) {
-                        // A refused transaction never advances the serial, so the gate opens now.
-                        self.in_flight = None;
-                    }
-                    crate::log::debug!(
-                        area = "shell",
-                        "transaction {} applied={} failed_op={} ops={:?}",
-                        reply.serial,
-                        reply.applied,
-                        reply.failed_op,
-                        described
-                    );
-                    if !reply.applied && reply.code == "stale-base" {
-                        // Gated sends keep one transaction in flight, so this should not happen; the
-                        // ops are dropped and logged rather than silently re-sent on a stale base.
+                    let ops = self.sent.remove(&reply.serial).unwrap_or_default();
+                    if !reply.applied && reply.code == "stale-base" && reply.failed_op >= 0 {
+                        // A published batch changed a node this transaction writes. The refused
+                        // transaction applied nothing, so its other ops are sent again on the next
+                        // base; the failed op is dropped, since the published change wins. The gate
+                        // stays shut until the mirror reaches this serial, which that batch does.
+                        let failed = usize::try_from(reply.failed_op).ok();
+                        let mut kept: Vec<LuaOp> = ops
+                            .into_iter()
+                            .enumerate()
+                            .filter(|(index, _)| Some(*index) != failed)
+                            .map(|(_, op)| op)
+                            .collect();
                         crate::log::debug!(
                             area = "shell",
-                            "transaction {} dropped: stale base at op {}",
+                            "transaction {} stale at op {}; {} ops sent again",
                             reply.serial,
+                            reply.failed_op,
+                            kept.len()
+                        );
+                        kept.append(&mut self.retry);
+                        self.retry = kept;
+                    } else {
+                        if self.in_flight == Some(reply.serial) && !reply.applied {
+                            // A refused transaction never advances the serial, so the gate opens now.
+                            self.in_flight = None;
+                        }
+                        crate::log::debug!(
+                            area = "shell",
+                            "transaction {} applied={} code={} failed_op={}",
+                            reply.serial,
+                            reply.applied,
+                            reply.code,
                             reply.failed_op
                         );
-                    } else if !reply.applied {
-                        let op = usize::try_from(reply.failed_op)
-                            .ok()
-                            .and_then(|i| described.as_ref().and_then(|ops| ops.get(i)))
-                            .map_or_else(|| "op not recorded".to_owned(), Clone::clone);
-                        diagnostics.push(format!(
-                            "transaction {} refused at op {}: {}; {}",
-                            reply.serial, reply.failed_op, reply.code, op
-                        ));
+                        if !reply.applied {
+                            let op = usize::try_from(reply.failed_op)
+                                .ok()
+                                .and_then(|i| ops.get(i).map(|op| describe_op(i, op, self.core.borrow().mirror())))
+                                .unwrap_or_else(|| "op not recorded".to_owned());
+                            diagnostics.push(format!(
+                                "transaction {} refused at op {}: {}; {}",
+                                reply.serial, reply.failed_op, reply.code, op
+                            ));
+                        }
                     }
                 }
                 LuaIncoming::Event(event) => tree_events.push(LuaEvent {
@@ -260,18 +278,18 @@ impl ShellVm {
         } else {
             None
         };
-        if let Some(tx) = tx.filter(|tx| !tx.ops.is_empty()) {
-            let described = {
-                let core = self.core.borrow();
-                tx.ops
-                    .iter()
-                    .enumerate()
-                    .map(|(i, op)| describe_op(i, op, core.mirror()))
-                    .collect()
-            };
-            self.sent.insert(tx.serial, described);
-            self.in_flight = Some(tx.serial);
-            self.link.transact(&tx).map_err(|e| ShellVmError::Link(e.0))?;
+        if let Some(mut tx) = tx {
+            if !self.retry.is_empty() {
+                // Ops refused stale-base go first, on this base.
+                let mut ops = std::mem::take(&mut self.retry);
+                ops.append(&mut tx.ops);
+                tx.ops = ops;
+            }
+            if !tx.ops.is_empty() {
+                self.sent.insert(tx.serial, tx.ops.clone());
+                self.in_flight = Some(tx.serial);
+                self.link.transact(&tx).map_err(|e| ShellVmError::Link(e.0))?;
+            }
         }
 
         Ok(ShellFrame { wake, diagnostics })

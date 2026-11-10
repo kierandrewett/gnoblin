@@ -47,12 +47,15 @@ fn tick_until(role: &mut ShellRole, what: &str, mut done: impl FnMut(&mut ShellR
         if done(role) {
             return;
         }
-        assert!(
-            Instant::now() < deadline,
-            "{what}: seat/screen counts {:?}; VM diagnostics {:?}",
-            mirror_counts(role),
-            role.diagnostics()
-        );
+        if Instant::now() >= deadline {
+            let placements = window_placements(role);
+            panic!(
+                "{what}: seat/screen counts {:?}; VM diagnostics {:?}; windows (x,y,placed) {:?}",
+                mirror_counts(role),
+                role.diagnostics(),
+                placements
+            );
+        }
         std::thread::sleep(Duration::from_millis(5));
     }
 }
@@ -85,13 +88,13 @@ fn load_stock_shell(role: &mut ShellRole) {
         .unwrap_or_else(|error| panic!("gnoblin.shell loads in the shell VM: {error:?}"));
 }
 
-/// The `x,y,placed` of every window node in the mirror, in tree order, read inside the VM.
+/// The `x,y,placed` of every window node in the mirror, in tree order, read inside the VM (`placed` is `data.placed`).
 fn window_placements(role: &mut ShellRole) -> Vec<(f64, f64, bool)> {
     let text = role
         .run(
             "placements",
             "local out = {} for _, w in ipairs(root:all('Window')) do \
-             out[#out + 1] = tostring(w.x) .. ',' .. tostring(w.y) .. ',' .. tostring(w.placed == true) end \
+             out[#out + 1] = tostring(w.x) .. ',' .. tostring(w.y) .. ',' .. tostring(w.data.placed == true) end \
              return table.concat(out, ';')",
         )
         .expect("the probe runs")
@@ -108,7 +111,6 @@ fn window_placements(role: &mut ShellRole) -> Vec<(f64, f64, bool)> {
         .collect()
 }
 
-#[ignore = "stock shell does not place unparented windows yet; tracked by the unparented-node work"]
 #[test]
 fn the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own() {
     let session = Session::start();
