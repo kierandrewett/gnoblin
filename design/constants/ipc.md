@@ -180,7 +180,7 @@ Ranked by user value over effort.
 - **Portal bus name and path:** `iface/mod.rs:58`, `:61`. Fixed by the portal dispatch contract.
 - **Geometry and identity values:** `ZERO`, `ONE`, `EMPTY`, `IDENTITY`. Mathematical identities.
 - **Spinner glyphs and SGR codes:** `theme.rs:96-104`, `:148`, `:152`. Terminal standards; the terminal theme already applies.
-- **Environment variable names:** `GNOBLIN_IPC_SOCKET`, `XDG_RUNTIME_DIR`, `GNOBLIN_IPC_FD`, `GNOBLIN_READY_FD`, and the opt-in `GNOBLIN_SHELL_VM` (the shell VM's Lua directory; the VM opens its own owner-socket session by the `GNOBLIN_IPC_SOCKET` rule). Interface to launchers and supervisors.
+- **Environment variable names:** `GNOBLIN_IPC_SOCKET`, `XDG_RUNTIME_DIR`, `GNOBLIN_IPC_FD`, `GNOBLIN_READY_FD`, and `GNOBLIN_SHELL_VM` (`0` turns the shell VM off; any other non-empty value names its Lua directory, and unset uses the installed stock library; the VM opens its own owner-socket session by the `GNOBLIN_IPC_SOCKET` rule). Interface to launchers and supervisors.
 - **Handle length bounds:** `MAX_HANDLE_BYTES`, `MAX_XID_DIGITS` (`parent_window.rs:25`, `:28`). Limits on untrusted input; the X11 width is fixed.
 
 ## 5. Needs Kieran

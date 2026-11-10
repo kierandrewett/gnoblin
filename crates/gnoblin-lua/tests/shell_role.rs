@@ -170,20 +170,54 @@ fn sent(comp: &Rc<RefCell<Compositor>>) -> usize {
     comp.borrow().sent.len()
 }
 
-/// (a) With the variable unset there is no shell VM to start: the role runs exactly as before.
-#[test]
-fn unset_variable_wires_no_shell_vm() {
-    assert_eq!(shell_vm_dir(&|_| None), None);
-    assert_eq!(SHELL_VM_VARIABLE, "GNOBLIN_SHELL_VM");
-    let slot = ShellSlot::from_env(&|_| None, |_| -> Result<ShellRole, ShellVmError> {
-        panic!("connect must not run when unset")
-    });
-    assert!(!slot.is_running(), "no shell VM is started without the variable");
+/// A stock directory under the temp dir, with `node.lua` present when `installed` is true.
+fn stock_dir(name: &str, installed: bool) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("gnoblin-shell-role-{name}"));
+    std::fs::create_dir_all(&dir).expect("create stock dir");
+    if installed {
+        std::fs::write(dir.join("node.lua"), "").expect("write node.lua");
+    } else {
+        std::fs::remove_file(dir.join("node.lua")).ok();
+    }
+    dir
 }
 
+/// (a) With the variable unset and no stock library installed there is no shell VM to start.
+#[test]
+fn unset_variable_with_no_installed_library_wires_no_shell_vm() {
+    let absent = stock_dir("absent", false);
+    assert_eq!(shell_vm_dir(&|_| None, &absent), None);
+    assert_eq!(SHELL_VM_VARIABLE, "GNOBLIN_SHELL_VM");
+    let slot = ShellSlot::from_env(&|_| None, &absent, |_| -> Result<ShellRole, ShellVmError> {
+        panic!("connect must not run when there is no shell VM directory")
+    });
+    assert!(!slot.is_running(), "no shell VM is started without a directory");
+}
+
+/// (a) With the variable unset and the stock library installed, the VM is on by default.
+#[test]
+fn unset_variable_with_an_installed_library_defaults_on() {
+    let installed = stock_dir("installed", true);
+    assert_eq!(shell_vm_dir(&|_| None, &installed), Some(installed.clone()));
+    assert_eq!(shell_vm_dir(&|_| Some(String::new()), &installed), Some(installed));
+}
+
+/// (a) `GNOBLIN_SHELL_VM=0` keeps the VM off even when the stock library is installed.
+#[test]
+fn the_variable_zero_turns_the_shell_vm_off() {
+    let installed = stock_dir("zero", true);
+    let zero = |name: &str| (name == SHELL_VM_VARIABLE).then(|| "0".to_owned());
+    assert_eq!(shell_vm_dir(&zero, &installed), None);
+}
+
+/// (a) A set, non-empty variable names the directory, installed or not.
 #[test]
 fn set_variable_names_the_directory() {
-    let dir = shell_vm_dir(&|name| (name == SHELL_VM_VARIABLE).then(|| "/tmp/shell".to_owned()));
+    let installed = stock_dir("unused", false);
+    let dir = shell_vm_dir(
+        &|name| (name == SHELL_VM_VARIABLE).then(|| "/tmp/shell".to_owned()),
+        &installed,
+    );
     assert_eq!(dir, Some(PathBuf::from("/tmp/shell")));
 }
 

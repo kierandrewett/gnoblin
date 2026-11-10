@@ -1,28 +1,51 @@
-//! The shell VM as the runtime role runs it, when `GNOBLIN_SHELL_VM` names a directory.
+//! The shell VM as the runtime role runs it.
 //!
-//! Opt-in and experimental. With the variable unset, nothing here runs and the role's loop
-//! is the one it always was. With it set, the role connects a [`ShellVm`] to the owner
-//! socket through a [`SocketTreeLink`] and runs one frame per turn of its loop. A frame
-//! applies the compositor's change batches and sends the VM's writes as one transaction.
-//! A link failure ends the VM with a named error; the role keeps serving without it.
+//! On by default when the stock Lua library is installed at `<prefix>/share/gnoblin/lua/gnoblin`
+//! (`GNOBLIN_PREFIX`, default `/usr`). `GNOBLIN_SHELL_VM=0` turns it off; any other non-empty
+//! value names the directory the VM loads instead. With no installed library and the variable
+//! unset, nothing here runs and the role's loop is the one it always was. When the VM runs, the
+//! role connects a [`ShellVm`] to the owner socket through a [`SocketTreeLink`] and runs one frame
+//! per turn of its loop. A frame applies the compositor's change batches and sends the VM's writes
+//! as one transaction. A failure to start, or a link failure, logs one warning and the role keeps
+//! serving without the VM.
 
+use std::ffi::OsStr;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 use gnoblin_client::Client;
 use gnoblin_client::unix::{UnixTransport, socket_path};
 
+use crate::layout::{default_prefix, installed_module_dir};
 use crate::role::version;
 use crate::shell_vm::{ShellVm, ShellVmError};
 use crate::tree_core::{ClassSpec, tree_classes};
 use crate::tree_link::SocketTreeLink;
 
-/// The environment variable that turns the shell VM on, and names its Lua directory.
+/// The environment variable that names the shell VM's Lua directory, or turns the VM off with `0`.
 pub const SHELL_VM_VARIABLE: &str = "GNOBLIN_SHELL_VM";
 
-/// The directory the shell VM loads, when the variable is set and not empty.
-pub fn shell_vm_dir(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    env(SHELL_VM_VARIABLE).filter(|dir| !dir.is_empty()).map(PathBuf::from)
+/// The value of [`SHELL_VM_VARIABLE`] that turns the shell VM off.
+pub const SHELL_VM_OFF: &str = "0";
+
+/// Where the installed stock Lua library lives: `<prefix>/share/gnoblin/lua/gnoblin`, for
+/// `GNOBLIN_PREFIX` as `env` gives it, defaulting to `/usr`.
+pub fn installed_stock_dir(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    let prefix = env("GNOBLIN_PREFIX");
+    installed_module_dir(&default_prefix(prefix.as_deref().map(OsStr::new))).join("gnoblin")
+}
+
+/// The directory the shell VM loads, or `None` when it should not run.
+///
+/// `GNOBLIN_SHELL_VM=0` is off. Any other non-empty value is the directory. Unset or empty means
+/// the installed stock library at `installed`, and only when that library is there (it has
+/// `node.lua`); otherwise the VM stays off.
+pub fn shell_vm_dir(env: &dyn Fn(&str) -> Option<String>, installed: &Path) -> Option<PathBuf> {
+    match env(SHELL_VM_VARIABLE) {
+        Some(value) if value == SHELL_VM_OFF => None,
+        Some(value) if !value.is_empty() => Some(PathBuf::from(value)),
+        _ => installed.join("node.lua").is_file().then(|| installed.to_path_buf()),
+    }
 }
 
 /// A running shell VM, driven one frame per turn of the runtime loop.
@@ -64,25 +87,27 @@ impl ShellRole {
     }
 }
 
-/// The shell VM's slot in the runtime role: empty when the variable is unset or the VM ended.
+/// The shell VM's slot in the runtime role: empty when the VM is off or ended.
 pub struct ShellSlot {
     role: Option<ShellRole>,
 }
 
 impl ShellSlot {
-    /// The slot for `env`. When the variable names a directory, `connect` boots the VM on it;
-    /// a boot failure is logged, and the slot stays empty so the role still serves.
+    /// The slot for `env`. `installed` is the stock Lua directory the VM runs from by default.
+    /// `connect` boots the VM on the directory `env` and `installed` select; a boot failure is
+    /// logged as a warning, and the slot stays empty so the role still serves.
     pub fn from_env(
         env: &dyn Fn(&str) -> Option<String>,
+        installed: &Path,
         connect: impl FnOnce(&Path) -> Result<ShellRole, ShellVmError>,
     ) -> Self {
-        let Some(dir) = shell_vm_dir(env) else {
+        let Some(dir) = shell_vm_dir(env, installed) else {
             return Self { role: None };
         };
         match connect(&dir) {
             Ok(role) => Self { role: Some(role) },
             Err(error) => {
-                crate::log::error!(
+                crate::log::warn!(
                     area = "shell-vm",
                     "shell VM did not start from {}: {error:?}",
                     dir.display()

@@ -722,6 +722,8 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 - **Stays green:** input tests and the parity input scenarios.
 - **Status:** the lock is a compositor-owned `lock` node (`class lock`, prop `state`: `not-locked`, `pending`, `locked`), created at startup and set from the session-lock state on every change. F21 is tested at the tree level (`tests/tree_live.rs` `a_shell_that_attaches_while_the_lock_is_engaged_reads_the_lock_state`); F21b and F22b are tested in `tests/session_lock.rs`. F22 at the composer level: `the_lock_node_returns_to_not_locked_when_the_session_unlocks_with_no_shell`. Not done: a shell that dies and is replaced with the lock still engaged is not tested end to end (the session harness has no shell that can die), and shell key events under the lock are not tested.
 
+**Blocker (item 3, real-VM lock test):** the stock `lock.lua` needs a `requested` event delivered to `Lock` (`on_requested`) and a native `authenticate` method (`Lock:unlock`). Neither exists yet: the lock node has `state` and `engaged` only, no `requested` event is emitted, and `authenticate` is not implemented. A lock/unlock test against the real VM cannot pass until both exist.
+
 ### Slice 9: replay harness and fake core
 
 - **Crate and files:** `gnoblin-render`: new `tests/replay.rs`. `tests/shell/*.lua` (new): loads `node.lua` against a fake

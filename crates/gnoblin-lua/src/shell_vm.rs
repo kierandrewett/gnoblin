@@ -2,8 +2,8 @@
 //!
 //! This module boots `data/lua/gnoblin/node.lua` against `tree_core`, keeps the
 //! mirror in step with the compositor through a `TreeLink`, and sends each
-//! frame's writes as one transaction. It is NOT yet loaded by the runtime role;
-//! wiring it into the shell is a later step.
+//! frame's writes as one transaction. The runtime role runs it by default (see
+//! `shell_role.rs`); `GNOBLIN_SHELL_VM=0` turns it off.
 //!
 //! The link must answer the attach with the snapshot in its `poll` results: the
 //! VM cannot load `node.lua` without a mirror, so `ShellVm::new` drains the link
