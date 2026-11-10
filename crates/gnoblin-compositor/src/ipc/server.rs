@@ -90,7 +90,9 @@ use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope}
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
 use super::tree::{TreeAttached, TreeReply, TreeSnapshot};
-use super::tree_host::{self, TreeHostHandle, attached_payload, changes_payload, reply_payload, snapshot_payloads};
+use super::tree_host::{
+    self, TreeHostHandle, attached_payload, changes_payload, event_payload, reply_payload, snapshot_payloads,
+};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 use gnoblin_render::transaction::TreeRefusal;
 
@@ -1516,19 +1518,26 @@ impl Dispatcher {
         ));
     }
 
-    /// The frame applied a batch: the holder hears its changes in the order they were applied.
+    /// The frame applied a batch: the holder hears its changes in the order they were applied,
+    /// then each event the frame delivered, one `event` signal apiece.
     fn tree_changed(&mut self, client: ClientId, batch: &TreeBatch) {
-        if batch.changes.is_empty() {
-            return;
-        }
         let Some(connection) = self.connections.get_mut(&client) else {
             return;
         };
-        connection.send(&Envelope::event_message(
-            tree_host::NAMESPACE,
-            tree_host::member::CHANGES,
-            &changes_payload(batch.serial, &batch.changes),
-        ));
+        if !batch.changes.is_empty() {
+            connection.send(&Envelope::event_message(
+                tree_host::NAMESPACE,
+                tree_host::member::CHANGES,
+                &changes_payload(batch.serial, &batch.changes),
+            ));
+        }
+        for event in &batch.events {
+            connection.send(&Envelope::event_message(
+                tree_host::NAMESPACE,
+                tree_host::member::EVENT,
+                &event_payload(event),
+            ));
+        }
     }
 
     /// The frame decided a queued attach: the answer, then the whole snapshot.

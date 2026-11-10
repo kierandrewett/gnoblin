@@ -23,6 +23,7 @@ use gnoblin_render::transaction::{
 };
 use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
+use gnoblin_types::NodeId;
 
 /// How long one frame may spend applying tree transactions. A transaction that starts
 /// after the budget is spent waits for the next frame; the first transaction of a frame
@@ -66,6 +67,49 @@ pub struct TreeBatch {
     pub animations: Vec<Animation>,
     /// Method calls, for the compositor to run.
     pub calls: Vec<TreeCall>,
+    /// Events the frame delivers to the shell, in the order they arrived.
+    pub events: Vec<FrameTreeEvent>,
+}
+
+/// A request a client made of its window, which the shell decides on instead of the window
+/// manager. Its wire name is the `request` field of an `event`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TreeRequest {
+    Move,
+    Resize,
+    Maximize,
+    Unmaximize,
+    Fullscreen,
+    Unfullscreen,
+    Minimize,
+    Menu,
+}
+
+impl TreeRequest {
+    /// The name the shell reads in the `request` field.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Move => "move",
+            Self::Resize => "resize",
+            Self::Maximize => "maximize",
+            Self::Unmaximize => "unmaximize",
+            Self::Fullscreen => "fullscreen",
+            Self::Unfullscreen => "unfullscreen",
+            Self::Minimize => "minimize",
+            Self::Menu => "menu",
+        }
+    }
+}
+
+/// One event for a node. `frame` is the frame that delivered it; `seq` numbers the events of
+/// one tree monotonically.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FrameTreeEvent {
+    pub frame: u64,
+    pub seq: u64,
+    pub node: NodeId,
+    pub request: TreeRequest,
 }
 
 /// The sending side of the tree queue. Clones share one queue.
@@ -191,6 +235,12 @@ pub struct TreeFrame {
     deferred: VecDeque<Submission>,
     /// Changes the compositor made itself since the last frame, announced in the next batch ahead of the shell's changes.
     compositor: Vec<TreeChange>,
+    /// Request events recorded since the last frame, delivered in the next batch.
+    events: Vec<FrameTreeEvent>,
+    /// The sequence number of the last event recorded.
+    next_seq: u64,
+    /// The number of frames drained; an event carries the frame that delivered it.
+    frames: u64,
 }
 
 impl Default for TreeFrame {
@@ -210,6 +260,9 @@ impl TreeFrame {
             serial: 0,
             deferred: VecDeque::new(),
             compositor: Vec::new(),
+            events: Vec::new(),
+            next_seq: 0,
+            frames: 0,
             revisions: TreeRevisions::new(),
         }
     }
@@ -238,6 +291,17 @@ impl TreeFrame {
         self.compositor.push(change);
     }
 
+    /// Records a request event for `node`, delivered to the shell in the next batch.
+    pub fn event(&mut self, node: NodeId, request: TreeRequest) {
+        self.next_seq += 1;
+        self.events.push(FrameTreeEvent {
+            frame: 0,
+            seq: self.next_seq,
+            node,
+            request,
+        });
+    }
+
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
     /// order until the budget is spent, then one batch if anything changed, then the
     /// replies. `now` is read once at the start, and once before each transaction after
@@ -245,6 +309,8 @@ impl TreeFrame {
     pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
         let start = now();
         let frame_serial = self.serial;
+        self.frames += 1;
+        let frame = self.frames;
         let (reads, arrived) = {
             let mut queue = self.queue.lock();
             (std::mem::take(&mut queue.reads), std::mem::take(&mut queue.submissions))
@@ -263,6 +329,10 @@ impl TreeFrame {
             changes: std::mem::take(&mut self.compositor),
             ..TreeBatch::default()
         };
+        batch.events = std::mem::take(&mut self.events)
+            .into_iter()
+            .map(|event| FrameTreeEvent { frame, ..event })
+            .collect();
         let mut changed = !batch.changes.is_empty();
         let mut attempted = 0usize;
         let mut spent = false;
@@ -303,8 +373,10 @@ impl TreeFrame {
 
         if changed {
             self.serial += 1;
-            batch.serial = self.serial;
             self.revisions.record(self.serial, &batch.changes);
+        }
+        if changed || !batch.events.is_empty() {
+            batch.serial = self.serial;
             (self.publish)(batch);
         }
         for (reply, result) in replies {

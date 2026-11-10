@@ -4,6 +4,8 @@
 
 ### Added
 
+- A client's window request (move, resize, maximize, unmaximize, fullscreen, unfullscreen, minimize, window menu) reaches a shell holding the tree as a `tree.event` with `kind = "request"` and `request` naming it, on the window's node, with a per-tree `seq` and the frame that delivered it. While the shell holds the tree and the session is not locked the window manager does not act on the request; with no shell the window manager acts as before. Node-core step 8, section 5.2 (part). Pointer and key events, the lock's F21 and F22 tests, and the unknown-kind log are not yet done.
+
 - A mapped toplevel is a `window` node in the tree (node-core step 3, section 9). The composer creates it on the first frame after the map, unparented, with an id from `NodeIdAllocator`; it carries the client's title and app id read-only, its `created` change is published in the next batch, its title and app-id changes as `set`, and its `destroyed` change when it unmaps. A shell holding the tree places windows itself, so the window manager's placement does not move them until the shell detaches. Node-core step 3, slice 5 and 6 (part).
 - The stock tiled layouts (`data/lua/gnoblin/shell/tiling.lua`): `Tiling` (master and stack), `Monocle`, `GridLayout` (a near-square grid), `Dwindle` and `Kiosk`. Each is a `Workspace` class whose `arrange` is a binding over its window children, with its options as class fields (`ratio`, `gap`, `master_count`, `orientation`, `fill`, `split`). They are ported from `data/lua/gnoblin/layouts`, keeping its geometry and defaults; the old `M.arrange`, context and effects API is dropped. `GridLayout` is named so because `Grid` is the shell's box class. The stock library is not loaded by the compositor yet.
 

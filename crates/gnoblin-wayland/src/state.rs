@@ -98,7 +98,7 @@ use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
-use crate::tree_frame::{TreeFrame, TreeHooks};
+use crate::tree_frame::{TreeFrame, TreeHooks, TreeRequest};
 
 use crate::log;
 
@@ -2342,6 +2342,24 @@ impl State {
         let effects = self.wm.apply(event(window));
         self.apply(effects);
         self.publish();
+    }
+
+    /// Routes a client's window request to the shell as an event on the window's node, and
+    /// returns true, when the shell holds the tree and the session is not locked: the shell is
+    /// the policy authority, so the window manager does not act on the request. Otherwise
+    /// returns false and the request takes its usual path.
+    pub(crate) fn request_to_shell(&mut self, surface: &WlSurface, request: TreeRequest) -> bool {
+        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+            return false;
+        }
+        let Some(node) = self
+            .window_of(surface)
+            .and_then(|window| self.composer.window_node(window))
+        else {
+            return false;
+        };
+        self.tree.event(node, request);
+        true
     }
 
     /// The window manager's state for a toplevel.

@@ -11,13 +11,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use gnoblin_proto::tree::tree::{AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs};
+use gnoblin_proto::tree::tree::{
+    AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+};
 use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_render::transaction::{
     ClassInfo, Code, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
 use gnoblin_types::{ClientId, NodeId};
-use gnoblin_wayland::{TreeBatch, TreeHooks, TreeQueue};
+use gnoblin_wayland::{FrameTreeEvent, TreeBatch, TreeHooks, TreeQueue};
 
 use super::server::IpcEvent;
 use super::tree::{
@@ -28,12 +30,13 @@ use super::tree::{
 pub const NAMESPACE: &str = "tree";
 
 /// The members the tree answers on: `attach` and `transact` are requests, and
-/// `snapshot` and `changes` are the events that follow them.
+/// `snapshot`, `changes` and `event` are the events that follow them.
 pub mod member {
     pub const ATTACH: &str = "attach";
     pub const TRANSACT: &str = "transact";
     pub const SNAPSHOT: &str = "snapshot";
     pub const CHANGES: &str = "changes";
+    pub const EVENT: &str = "event";
 }
 
 /// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
@@ -226,6 +229,20 @@ pub fn changes_payload(serial: u64, changes: &[TreeChange]) -> ChangesPayload {
     ChangesPayload {
         serial,
         changes: changes.iter().map(change_properties).collect(),
+    }
+}
+
+/// One request event as its wire payload: the node it is for and the request's name. The
+/// `kind` is always `request`, the only kind the compositor sends so far.
+#[must_use]
+pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
+    EventPayload {
+        frame: event.frame,
+        seq: event.seq,
+        node: event.node.get(),
+        kind: "request".to_owned(),
+        request: event.request.name().to_owned(),
+        ..Default::default()
     }
 }
 

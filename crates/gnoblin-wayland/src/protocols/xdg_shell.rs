@@ -25,6 +25,7 @@
 //! logged and otherwise ignored rather than half-implemented.
 
 use smithay::desktop::{PopupKind, find_popup_root_surface, get_popup_toplevel_coords};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat;
@@ -38,6 +39,7 @@ use gnoblin_wm::Event;
 
 use crate::State;
 use crate::observation::{MenuAnchor, MenuSource};
+use crate::tree_frame::TreeRequest;
 
 use crate::log;
 
@@ -60,6 +62,9 @@ impl XdgShellHandler for State {
         serial: Serial,
         location: Point<i32, Logical>,
     ) {
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Menu) {
+            return;
+        }
         if !self.serial_issued(u32::from(serial)) {
             log::debug!(
                 area = "xdg",
@@ -118,31 +123,60 @@ impl XdgShellHandler for State {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Maximize) {
+            return;
+        }
         if !self.is_maximised(&surface) {
             self.window_event(&surface, |window| Event::ToggleMaximise { window });
         }
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Unmaximize) {
+            return;
+        }
         if self.is_maximised(&surface) {
             self.window_event(&surface, |window| Event::ToggleMaximise { window });
         }
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<WlOutput>) {
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Fullscreen) {
+            return;
+        }
         if !self.is_fullscreen(&surface) {
             self.window_event(&surface, |window| Event::ToggleFullscreen { window });
         }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Unfullscreen) {
+            return;
+        }
         if self.is_fullscreen(&surface) {
             self.window_event(&surface, |window| Event::ToggleFullscreen { window });
         }
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Minimize) {
+            return;
+        }
         self.window_event(&surface, |window| Event::Minimise { window });
+    }
+
+    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        self.request_to_shell(surface.wl_surface(), TreeRequest::Move);
+    }
+
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: wl_seat::WlSeat,
+        _serial: Serial,
+        _edges: xdg_toplevel::ResizeEdge,
+    ) {
+        self.request_to_shell(surface.wl_surface(), TreeRequest::Resize);
     }
 
     fn ack_configure(&mut self, surface: WlSurface, configure: Configure) {

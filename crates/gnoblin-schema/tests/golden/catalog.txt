@@ -500,6 +500,14 @@ object tree since 0.2.0 secret false
     field seq type uint since 0.2.0 secret false
     field node type uint since 0.2.0 secret false
     field kind type string since 0.2.0 secret false
+    field x type double since 0.2.0 secret false
+    field y type double since 0.2.0 secret false
+    field button type uint since 0.2.0 secret false
+    field key type string since 0.2.0 secret false
+    field text type string since 0.2.0 secret false
+    field dx type double since 0.2.0 secret false
+    field dy type double since 0.2.0 secret false
+    field request type string since 0.2.0 secret false
   signal answer since 0.2.0 secret false
     field token type uint since 0.2.0 secret false
     field result type bytes since 0.2.0 secret false
@@ -1985,6 +1993,22 @@ message Tree {
     uint64 node = 3;
     // since 0.2.0
     string kind = 4;
+    // since 0.2.0
+    double x = 5;
+    // since 0.2.0
+    double y = 6;
+    // since 0.2.0
+    uint64 button = 7;
+    // since 0.2.0
+    string key = 8;
+    // since 0.2.0
+    string text = 9;
+    // since 0.2.0
+    double dx = 10;
+    // since 0.2.0
+    double dy = 11;
+    // since 0.2.0
+    string request = 12;
   }
 
   // Signal `answer`, since 0.2.0.

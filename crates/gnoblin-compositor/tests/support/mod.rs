@@ -625,6 +625,19 @@ impl Client {
         window
     }
 
+    /// Asks to be maximised the way a client does: `xdg_toplevel.set_maximized`.
+    pub fn request_maximize(&mut self, window: &Window) {
+        window.toplevel.set_maximized();
+        window.surface.commit();
+        self.roundtrip();
+    }
+
+    /// Asks to be moved the way a client does: `xdg_toplevel.move` on the seat.
+    pub fn request_move(&mut self, window: &Window) {
+        window.toplevel._move(&self.seat, 0);
+        self.roundtrip();
+    }
+
     /// Changes the title the way a client does once it has a document name.
     pub fn set_title(&mut self, window: &Window, title: &str) {
         window.toplevel.set_title(title.to_owned());

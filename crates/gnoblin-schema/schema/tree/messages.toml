@@ -156,7 +156,10 @@ name = "changes"
 type = "list<object:change>"
 since = "0.2.0"
 
-# An input event for a node in a frame. The payload of the event is defined in slice 8.
+# An input event for a node in a frame. `kind` names it: `request` (a client request that needs policy, named by
+# `request`: move, resize, maximize, unmaximize, fullscreen, unfullscreen, minimize, menu), or a pointer or key
+# kind (press, release, motion, scroll, enter, leave, key). `x`, `y` are node-local, `button` is the press or
+# release button, `key` and `text` are the key event, `dx`, `dy` are the scroll deltas.
 [[object.signal]]
 name = "event"
 since = "0.2.0"
@@ -178,6 +181,46 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "kind"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "request"
 type = "string"
 since = "0.2.0"
 

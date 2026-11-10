@@ -1150,6 +1150,18 @@ impl Composer {
             .find_map(|(window, entry)| (entry.node == Some(node)).then_some(*window))
     }
 
+    /// The scene node of a window, once the composer has given it one.
+    #[must_use]
+    pub fn window_node(&self, window: WindowId) -> Option<NodeId> {
+        self.windows.get(&window).and_then(|entry| entry.node)
+    }
+
+    /// Whether the shell holds the tree's placement, so window requests are the shell's to decide.
+    #[must_use]
+    pub fn shell_places(&self) -> bool {
+        self.scene.shell_places()
+    }
+
     /// Replaces a window's content, or clears it.
     ///
     /// A commit always damages the window's rectangle: the client may have drawn
