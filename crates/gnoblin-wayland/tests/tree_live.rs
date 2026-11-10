@@ -101,12 +101,17 @@ fn refused_set() -> TreeTransaction {
 
 fn submit(frame: &TreeFrame, base: u64, transaction: TreeTransaction, replies: &Replies) {
     let replies = Arc::clone(replies);
-    frame.queue().submit(base, transaction, move |serial, result| {
-        replies
-            .lock()
-            .expect("the reply lock is not poisoned")
-            .push((serial, result.is_ok()));
-    });
+    frame.queue().submit(
+        base,
+        transaction,
+        || true,
+        move |serial, result| {
+            replies
+                .lock()
+                .expect("the reply lock is not poisoned")
+                .push((serial, result.is_ok()));
+        },
+    );
 }
 
 fn drain(frame: &mut TreeFrame, composer: &mut Composer) {

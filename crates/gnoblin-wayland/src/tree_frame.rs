@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
-    Animation, ClassInfo, PropertyInfo, TreeApplied, TreeCall, TreeChange, TreeRefusal, TreeTransaction,
+    Animation, ClassInfo, Code, PropertyInfo, TreeApplied, TreeCall, TreeChange, TreeRefusal, TreeTransaction,
     validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
@@ -34,6 +34,9 @@ pub const TREE_FRAME_BUDGET: Duration = Duration::from_millis(4);
 /// and what it changed or why it was refused.
 type Reply = Box<dyn FnOnce(u64, Result<TreeApplied, TreeRefusal>) + Send>;
 
+/// Whether the submitter may still change the tree, asked when its transaction applies.
+type Admission = Box<dyn Fn() -> bool + Send>;
+
 /// A read that runs at the start of a frame, before its transactions.
 type Read = Box<dyn FnOnce(&Scene, u64) + Send>;
 
@@ -41,6 +44,9 @@ struct Submission {
     /// The serial the shell built the transaction against.
     base: u64,
     transaction: TreeTransaction,
+    /// Asked when the transaction applies, not when it was queued: a holder that detached in
+    /// between has lost the right to change the tree, and its queued work must not land.
+    admitted: Admission,
     reply: Reply,
 }
 
@@ -84,18 +90,21 @@ impl TreeQueue {
     }
 
     /// Queues `transaction` for the next frame that drains the queue. `base` is the serial
-    /// the transaction was built against; `reply` receives the serial after the frame that
-    /// answered it, and the result. A transaction is answered in the frame that applies or
-    /// refuses it; within a frame, replies keep arrival order.
+    /// the transaction was built against; `admitted` is asked when the transaction applies and
+    /// refuses it `not-privileged` when it answers false; `reply` receives the serial after the
+    /// frame that answered it, and the result. A transaction is answered in the frame that applies
+    /// or refuses it; within a frame, replies keep arrival order.
     pub fn submit(
         &self,
         base: u64,
         transaction: TreeTransaction,
+        admitted: impl Fn() -> bool + Send + 'static,
         reply: impl FnOnce(u64, Result<TreeApplied, TreeRefusal>) + Send + 'static,
     ) {
         self.lock().submissions.push_back(Submission {
             base,
             transaction,
+            admitted: Box::new(admitted),
             reply: Box::new(reply),
         });
         self.wake();
@@ -282,14 +291,20 @@ impl TreeFrame {
                 continue;
             }
             attempted += 1;
-            let result =
+            let result = if !(submission.admitted)() {
+                Err(TreeRefusal {
+                    failed_op: -1,
+                    code: Code::NotPrivileged,
+                })
+            } else {
                 match self
                     .revisions
                     .check(submission.base, self.serial, &batch.changes, &submission.transaction)
                 {
                     Ok(()) => validate_and_apply(scene, self.classes.as_ref(), Actor::Shell, &submission.transaction),
                     Err(refusal) => Err(refusal),
-                };
+                }
+            };
             match result {
                 Ok(done) => {
                     changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());

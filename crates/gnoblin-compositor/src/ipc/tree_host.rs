@@ -134,7 +134,8 @@ impl TreeHostHandle {
     /// that does not convert is refused with its op. `None` means the frame answers later,
     /// with `IpcEvent::TreeReply`.
     pub fn transact(&self, client: ClientId, request_id: u64, args: &TransactArgs) -> Option<TreeReply> {
-        if lock(&self.session).holder() != Some(holder(client)) {
+        let me = holder(client);
+        if lock(&self.session).holder() != Some(me) {
             return Some(self.refusal(Code::NotPrivileged, -1));
         }
         let tx = match transaction(&args.ops) {
@@ -142,13 +143,18 @@ impl TreeHostHandle {
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
         let events = self.events.clone();
-        self.queue.submit(args.base_serial, tx, move |serial, result| {
-            let _ = events.send(IpcEvent::TreeReply {
-                client,
-                request_id,
-                reply: TreeReply { serial, result },
+        // Asked again when the frame applies: a holder that detached while the transaction
+        // waited for the frame has lost the tree, and the frame refuses it.
+        let session = Arc::clone(&self.session);
+        let admitted = move || lock(&session).holder() == Some(me);
+        self.queue
+            .submit(args.base_serial, tx, admitted, move |serial, result| {
+                let _ = events.send(IpcEvent::TreeReply {
+                    client,
+                    request_id,
+                    reply: TreeReply { serial, result },
+                });
             });
-        });
         None
     }
 

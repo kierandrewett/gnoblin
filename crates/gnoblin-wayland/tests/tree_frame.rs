@@ -93,9 +93,12 @@ type Replies = Arc<Mutex<Vec<(u64, Result<TreeApplied, TreeRefusal>)>>>;
 /// Submits `tx` on `frame`'s queue and records its reply into the returned list.
 fn submit(frame: &TreeFrame, base: u64, tx: TreeTransaction, replies: &Replies) {
     let replies = Arc::clone(replies);
-    frame.queue().submit(base, tx, move |serial, result| {
-        replies.lock().unwrap().push((serial, result))
-    });
+    frame.queue().submit(
+        base,
+        tx,
+        || true,
+        move |serial, result| replies.lock().unwrap().push((serial, result)),
+    );
 }
 
 thread_local! {
@@ -418,7 +421,7 @@ fn a_submission_and_a_read_each_wake_the_frame_loop() {
     let counted = Arc::clone(&wakes);
     queue.on_submit(move || *counted.lock().unwrap() += 1);
 
-    queue.submit(0, add(FIRST), |_, _| {});
+    queue.submit(0, add(FIRST), || true, |_, _| {});
     queue.read(|_, _| {});
 
     assert_eq!(*wakes.lock().unwrap(), 2);
@@ -459,4 +462,34 @@ fn the_hooked_root_is_inserted_before_the_first_frame_draws() {
     assert_eq!(scene.root(), Some(ROOT), "the hooked root is named");
     assert!(scene.contains(FIRST), "the transaction lands under the hooked root");
     assert_eq!(replies.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_transaction_whose_holder_detached_before_the_frame_is_refused_not_privileged() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    // The holder is still attached when the transaction is queued, and detaches before the frame.
+    let holding = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let admitted = Arc::clone(&holding);
+    let sink = Arc::clone(&replies);
+    frame.queue().submit(
+        0,
+        add(FIRST),
+        move || admitted.load(std::sync::atomic::Ordering::SeqCst),
+        move |serial, result| sink.lock().unwrap().push((serial, result)),
+    );
+    holding.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert!(!scene.contains(FIRST), "queued work of a detached holder never lands");
+    assert!(take_batches().is_empty(), "a refused transaction publishes no batch");
+    assert_eq!(frame.serial(), 0, "a refused transaction does not advance the serial");
+    let replies = replies.lock().unwrap();
+    assert_eq!(replies.len(), 1);
+    assert_eq!(replies[0].0, 0);
+    let refusal = replies[0].1.as_ref().expect_err("the transaction is refused");
+    assert_eq!(refusal.failed_op, -1);
+    assert_eq!(refusal.code, Code::NotPrivileged);
 }

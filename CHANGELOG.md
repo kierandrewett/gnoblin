@@ -4,6 +4,8 @@
 
 ### Added
 
+- A queued tree transaction whose holder detached before its frame applies is refused `not-privileged` (`failed_op` -1) and changes nothing. The frame asks the submitter whether it still holds the tree when the transaction applies, not when it was queued (`TreeQueue::submit` takes that check; `tree_host` passes the session's holder test). Node-core step 3, slice 5 (part).
+
 - The shell's owner-socket link (`gnoblin-lua`, `tree_link.rs`). `SocketTreeLink` implements `TreeLink` over the client end of a handshaken session socket, in the `tree` namespace of `gnoblin_proto` envelopes. `attach` and `transact` send their request and return; `poll` reads whatever has arrived without blocking and returns the attached reply, the snapshot chunks, the change batches and the transaction replies in arrival order. A refused attach or transaction, a closed socket, a frame cut short, an undecodable frame or payload, and a reply to an unknown request are link errors that name the cause; none of them panics. Node-core step 3, slice 10 (part). The compositor does not start it yet.
 
 - The shell VM (`gnoblin-lua`, `shell_vm.rs`). `ShellVm` attaches to the tree owner socket, boots its mirror from the snapshot and loads `node.lua` against the Lua `core` table. Each frame it applies the serial-stamped change batches, runs the bindings and handlers the changes wake, and sends the queued transaction as one `tree.transact`. A refused transaction leaves the mirror unchanged, and `run` reports a Lua error or a refusal by name. Node-core step 3, slice 10 (part). The compositor does not start it yet.
