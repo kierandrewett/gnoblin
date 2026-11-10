@@ -280,6 +280,9 @@ pub struct Composer {
     /// The focus node the compositor last wrote to the main seat. A `focus` the scene holds
     /// that differs from this was written by the shell.
     published_focus: Option<NodeId>,
+    /// The node the shell holds the main seat's focus on, when that node is not a window. The
+    /// compositor's "no window has focus" does not take it back, so the shell's keys still reach it.
+    shell_focus: Option<NodeId>,
     /// The screen node of each output, created with the output and removed with it.
     screens: BTreeMap<OutputId, NodeId>,
     /// Whether the shell held the tree at the last placement check. While it does, the composer
@@ -330,6 +333,7 @@ impl Composer {
             main_seat: None,
             lock_node: None,
             published_focus: None,
+            shell_focus: None,
             screens: BTreeMap::new(),
             placing: false,
             views: BTreeMap::new(),
@@ -1620,6 +1624,11 @@ impl Composer {
             return;
         };
         let target = window.and_then(|window| self.window_node(window));
+        if target.is_none() && self.shell_focus.is_some() && self.main_seat_focus() == self.shell_focus {
+            // The shell holds the seat focus on one of its nodes; "no window" does not take it back.
+            return;
+        }
+        self.shell_focus = None;
         self.published_focus = target;
         if self.scene.reference(seat, "focus") == target {
             return;
@@ -1632,6 +1641,27 @@ impl Composer {
         });
     }
 
+    /// Records that the shell wrote the main seat's `focus` onto one of its own nodes, so the
+    /// compositor's "no window" publishes do not take the focus back. The write is not republished.
+    pub fn hold_seat_focus_for_shell(&mut self) {
+        self.shell_focus = self.main_seat_focus();
+        self.published_focus = None;
+    }
+
+    /// Gives the main seat's focus back to the compositor: a window or no window replaces the
+    /// shell's node on the next publish.
+    pub fn release_shell_focus(&mut self) {
+        self.shell_focus = None;
+    }
+
+    /// The shell's node that holds the main seat's focus and takes input, the target of the keys
+    /// the router does not consume. A node that was destroyed or stopped taking input is not one.
+    #[must_use]
+    pub fn shell_key_target(&self) -> Option<NodeId> {
+        let node = self.shell_focus?;
+        (self.main_seat_focus() == Some(node) && self.scene.input(node) == Some(true)).then_some(node)
+    }
+
     /// The node the main seat's `focus` names, which the shell may have written.
     #[must_use]
     pub fn main_seat_focus(&self) -> Option<NodeId> {
@@ -1641,7 +1671,8 @@ impl Composer {
     /// Whether the shell wrote the main seat's `focus` since the compositor last published it.
     #[must_use]
     pub fn main_seat_focus_written_by_shell(&self) -> bool {
-        self.main_seat_focus() != self.published_focus
+        let focus = self.main_seat_focus();
+        focus != self.published_focus && (self.shell_focus.is_none() || focus != self.shell_focus)
     }
 
     /// The window whose node the main seat's `focus` names.

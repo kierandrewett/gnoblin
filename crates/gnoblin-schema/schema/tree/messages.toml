@@ -224,6 +224,11 @@ name = "request"
 type = "string"
 since = "0.2.0"
 
+[[object.signal.field]]
+name = "pressed"
+type = "bool"
+since = "0.2.0"
+
 # The answer to a `call`: `result` on success, `error` otherwise.
 [[object.signal]]
 name = "answer"

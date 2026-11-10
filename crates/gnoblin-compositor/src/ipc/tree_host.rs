@@ -23,6 +23,7 @@ use gnoblin_render::transaction::{
 use gnoblin_types::{ClientId, Color, NodeId};
 use gnoblin_wayland::{
     ChordEvent, ChordState, EffectSpec, FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
+    keysym_name,
 };
 
 use super::server::IpcEvent;
@@ -286,6 +287,12 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
                     ..base
                 },
                 TreeInput::Leave => EventPayload { kind, ..base },
+                TreeInput::Key { pressed, keysym } => EventPayload {
+                    kind,
+                    key: keysym_name(keysym),
+                    pressed,
+                    ..base
+                },
             }
         }
     }

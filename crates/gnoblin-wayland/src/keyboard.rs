@@ -74,7 +74,7 @@ use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, NodeId, WindowId};
 
 use crate::State;
 use crate::observation::{MenuAnchor, MenuSource};
-use crate::tree_frame::{ChordEvent, ChordState};
+use crate::tree_frame::{ChordEvent, ChordState, TreeInput};
 
 use crate::log;
 
@@ -775,6 +775,21 @@ impl State {
         // is unlocked. A locked session's cover owns every key, so the client gets the chord instead.
         if let Some(answer) = self.route_claim_edge(keycode, state, routed.target) {
             consumed = answer;
+        }
+        // A key the router leaves to the client goes to the shell's node instead, when the shell holds
+        // the seat focus on one that takes input. A locked session's cover owns every key, so none reach it.
+        if !consumed
+            && self.lock.state() == LockState::Unlocked
+            && let Some(node) = self.composer.shell_key_target()
+        {
+            self.tree.input(
+                node,
+                TreeInput::Key {
+                    pressed: state == KeyState::Pressed,
+                    keysym: Keysym::new(symbol.modified_sym().raw()),
+                },
+            );
+            consumed = true;
         }
         // A press that fires a configured shortcut runs its command. A fired binding is
         // reported only on the edge that runs it, so the release of the same chord does nothing.

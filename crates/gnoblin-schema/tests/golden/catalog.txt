@@ -529,6 +529,7 @@ object tree since 0.2.0 secret false
     field dx type double since 0.2.0 secret false
     field dy type double since 0.2.0 secret false
     field request type string since 0.2.0 secret false
+    field pressed type bool since 0.2.0 secret false
   signal answer since 0.2.0 secret false
     field token type uint since 0.2.0 secret false
     field result type bytes since 0.2.0 secret false
@@ -2111,6 +2112,8 @@ message Tree {
     double dy = 11;
     // since 0.2.0
     string request = 12;
+    // since 0.2.0
+    bool pressed = 13;
   }
 
   // Signal `answer`, since 0.2.0.
@@ -2416,12 +2419,14 @@ message Seat {
     repeated Effect.Properties effects = 17;
     // since 0.2.0; object id of `node`
     string focus = 18;
+    // since 0.2.0; object id of `node`
+    string screen = 19;
     // since 0.2.0
-    double pointer_x = 19;
+    double pointer_x = 20;
     // since 0.2.0
-    double pointer_y = 20;
+    double pointer_y = 21;
     // since 0.2.0
-    string device = 21;
+    string device = 22;
   }
 
   // Method `warp`, since 0.2.0.

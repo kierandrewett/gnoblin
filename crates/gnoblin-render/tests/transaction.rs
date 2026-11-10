@@ -748,6 +748,7 @@ fn shell_seat_focus_accepts_a_window_and_null_and_refuses_the_rest() {
     scene.set_class(window, Some("window".into())).unwrap();
     let other = shell_node(&mut scene, 2, root);
     scene.set_class(other, Some("Other".into())).unwrap();
+    scene.set_input(other, false).unwrap();
 
     let refusal = refused(&mut scene, Actor::Shell, vec![set_focus(seat, Some(other))]);
     assert_refused(&refusal, 0, Code::BadValue);

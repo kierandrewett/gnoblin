@@ -208,7 +208,7 @@ Method: `apply(...)` takes an output configuration (`output.toml`, unverified li
 
 Method: `warp(x, y)`. Chords are a `call` to the seat (section 5.1).
 
-`focus` accepts a window node or `nil` (clears it). Any other target is refused `bad_value` and the previous focus stays; a non-node value is refused `wrong_type`. The compositor writes `focus` itself when keyboard focus moves (`set_main_seat_focus`), and the frame re-publishes it each frame. Shell writes update the scene reference only; routing them to `wl_keyboard` enter/leave is not wired yet.
+`focus` accepts a window node, a shell node that takes input (`class` other than `window`, `input` set), or `nil` (clears it). Any other target is refused `bad_value` and the previous focus stays; a non-node value is refused `wrong_type`. The compositor writes `focus` itself when keyboard focus moves (`set_main_seat_focus`), and the frame re-publishes it each frame. A shell write to a shell node holds the keyboard there (see 5.1); a shell write to a window moves the keyboard to that window.
 
 **Workspace** (base `Node`). A named set of windows on one screen. Replaces `workspace.toml`. Created by the compositor.
 
@@ -475,9 +475,15 @@ chords, then the pick. The pick uses `Scene::hit_test` (`scene.rs:928`), so no s
 Implemented: pointer edges over a shell node (`enter`, `motion`, `leave`, `press`, `release`, `scroll`, with
 node-local `x`, `y`, `button`, and `dx`, `dy` for scroll). The pick is the topmost shell node under the pointer; it is
 taken only while the session is unlocked and the shell holds the tree, and a window topmost at the point takes the
-pointer instead. The pick does not check the node's `input` flag yet, so every shell node is an input target. Not done:
-key events. The design routes keys to `seat.focus` (`node-api-refactor.md`), so they are not sent to the shell. F30 is
-not enforced: an event for a node destroyed in the same frame is still sent after its `destroyed` change.
+pointer. The pick does not check the node's `input` flag yet, so every shell node is an input target.
+
+Keys: when the shell writes the main seat's `focus` to a shell node that takes input (`class` other than `window`,
+`input` set), that node holds the keyboard. The client gets `wl_keyboard` leave, and each key the router does not consume
+(a binding, a grab or a claimed chord) goes to the node as `tree.event` `kind = "key"` with `pressed` and `keysym`.
+A window focus or a window-less compositor publish does not take the hold back; a surface that takes focus does. Under the
+lock no key reaches the shell. Not done: key repeat, modifiers on the key event, and the check that the node's `input`
+flag is still set on every key.
+F30 is not enforced: an event for a node destroyed in the same frame is still sent after its `destroyed` change.
 
 `seq` is monotone per run. A chord claimed with `seat:bind{...}` (a `call` to the seat) is stored in the compositor's
 claim table. While the session is unlocked, a claimed chord never reaches a client: the press and the release are each

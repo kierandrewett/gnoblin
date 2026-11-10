@@ -23,7 +23,8 @@ use gnoblin_render::transaction::{
 };
 use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
-use gnoblin_types::NodeId;
+use gnoblin_types::{Keysym, NodeId};
+use smithay::input::keyboard::xkb;
 
 /// How long one frame may spend applying tree transactions. A transaction that starts
 /// after the budget is spent waits for the next frame; the first transaction of a frame
@@ -118,6 +119,9 @@ pub enum TreeInput {
     Enter { x: f64, y: f64 },
     /// The ray left the node it was over.
     Leave,
+    /// A key went down or up while the node holds seat keyboard focus. The keysym is the
+    /// layout-resolved symbol; the shell reads it as `keysym` and `pressed` as the edge.
+    Key { pressed: bool, keysym: Keysym },
 }
 
 impl TreeInput {
@@ -131,8 +135,16 @@ impl TreeInput {
             Self::Scroll { .. } => "scroll",
             Self::Enter { .. } => "enter",
             Self::Leave => "leave",
+            Self::Key { .. } => "key",
         }
     }
+}
+
+/// The xkbcommon name of a keysym (`Escape`, `a`, `KP_Enter`), the `key` a shell reads from a key
+/// event. A keysym xkbcommon does not name reads as its hex value, as xkbcommon itself spells it.
+#[must_use]
+pub fn keysym_name(keysym: Keysym) -> String {
+    xkb::keysym_get_name(xkb::Keysym::new(keysym.get()))
 }
 
 /// What a delivered event says: a client request that needs policy, or a pointer edge.

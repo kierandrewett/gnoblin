@@ -509,8 +509,11 @@ fn a_window_node_is_announced_ready_once_in_the_batch_that_follows_its_mapping()
 /// A window node the owner creates under the root, a valid target for a seat's `focus`.
 const FOCUS_WINDOW: NodeId = NodeId::new(0x500);
 
-/// A window node that is not a window (a plain `node`), which a seat's `focus` refuses.
+/// A plain `node` with `input` off, which a seat's `focus` refuses: it is not a window and not a shell input node.
 const PLAIN_NODE: NodeId = NodeId::new(0x501);
+
+/// A plain `node` with `input` on, a shell node that a seat may focus to receive keys.
+const SHELL_NODE: NodeId = NodeId::new(0x502);
 
 /// A schema with a `seat` whose `focus` is a writable reference to a `window`.
 struct FocusTable;
@@ -527,8 +530,13 @@ impl ClassInfo for FocusTable {
                 readonly: true,
                 animated: false,
             }),
+            ("node", "input") => Some(PropertyInfo {
+                kind: ValueType::Bool,
+                readonly: false,
+                animated: false,
+            }),
             ("seat", "focus") => Some(PropertyInfo {
-                kind: ValueType::Node("window".to_owned()),
+                kind: ValueType::Node("node".to_owned()),
                 readonly: false,
                 animated: false,
             }),
@@ -569,6 +577,16 @@ fn create_focus_scene() -> TreeTransaction {
         TreeOp::New {
             class: "node".to_owned(),
             id: PLAIN_NODE,
+        },
+        TreeOp::Set {
+            node: PLAIN_NODE,
+            key: "input".to_owned(),
+            value: TreeValue::Bool(false),
+            timing: None,
+        },
+        TreeOp::New {
+            class: "node".to_owned(),
+            id: SHELL_NODE,
         },
     ])
 }
@@ -627,6 +645,56 @@ fn a_seat_focus_on_a_non_window_node_is_refused_and_keeps_the_old_focus() {
     drain(&mut frame, &mut composer);
     assert_eq!(replies.lock().unwrap().last(), Some(&(2, false)));
     assert_eq!(focus_of(&mut composer), Some(FOCUS_WINDOW));
+}
+
+#[test]
+fn a_seat_focus_on_a_shell_node_with_input_on_is_accepted_and_keeps_the_node() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    submit(&frame, 1, set_focus(Some(SHELL_NODE)), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(2, true)));
+    assert_eq!(focus_of(&mut composer), Some(SHELL_NODE));
+}
+
+#[test]
+fn a_shell_node_that_holds_the_seat_focus_is_the_key_target_until_it_is_released() {
+    let mut frame = focus_frame();
+    let mut composer = Composer::new();
+    let main = composer.add_main_seat("main").expect("a main seat");
+    let replies = Replies::default();
+    submit(&frame, 0, create_focus_scene(), &replies);
+    drain(&mut frame, &mut composer);
+    let focus_main = |target| {
+        TreeTransaction::new(vec![TreeOp::Set {
+            node: main,
+            key: "focus".to_owned(),
+            value: TreeValue::Node(target),
+            timing: None,
+        }])
+    };
+    submit(&frame, 1, focus_main(Some(SHELL_NODE)), &replies);
+    drain(&mut frame, &mut composer);
+    assert_eq!(replies.lock().unwrap().last(), Some(&(2, true)));
+    assert!(composer.main_seat_focus_written_by_shell());
+    composer.hold_seat_focus_for_shell();
+    assert_eq!(composer.shell_key_target(), Some(SHELL_NODE));
+
+    composer.set_main_seat_focus(None);
+    assert_eq!(
+        composer.main_seat_focus(),
+        Some(SHELL_NODE),
+        "a publish of no window does not take the shell's focus back"
+    );
+    assert_eq!(composer.shell_key_target(), Some(SHELL_NODE));
+
+    composer.release_shell_focus();
+    composer.set_main_seat_focus(None);
+    assert_eq!(composer.main_seat_focus(), None);
+    assert_eq!(composer.shell_key_target(), None);
 }
 
 #[test]

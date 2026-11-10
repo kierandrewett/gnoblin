@@ -1614,6 +1614,10 @@ impl State {
     /// the layout it remembers.
     pub(crate) fn set_keyboard_focus(&mut self, target: Option<WlSurface>) {
         let focused = target.as_ref().and_then(|surface| self.window_of(surface));
+        // A surface, even one that is no window, replaces the shell's node as the seat focus.
+        if target.is_some() {
+            self.composer.release_shell_focus();
+        }
         self.composer.set_main_seat_focus(focused);
         self.remember_layout();
         {
@@ -3489,6 +3493,10 @@ impl Host for State {
         // A seat focus the shell wrote in the drain moves the keyboard to that window. The
         // compositor's own focus was published above, before the drain, so it never reads back.
         if self.composer.main_seat_focus_written_by_shell() {
+            // A shell node holds the seat focus: the window keeps none, and the keys go to the shell.
+            if self.composer.main_seat_focus_window().is_none() {
+                self.composer.hold_seat_focus_for_shell();
+            }
             let target = self
                 .composer
                 .main_seat_focus_window()

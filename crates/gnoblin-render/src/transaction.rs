@@ -705,7 +705,7 @@ fn set_seat_focus(work: &mut Scene, node: NodeId, value: &TreeValue, applied: &m
         return Err(Code::WrongType);
     };
     if let Some(target) = target
-        && (!work.contains(*target) || work.class(*target) != Some("window"))
+        && (!work.contains(*target) || (work.class(*target) != Some("window") && work.input(*target) != Some(true)))
     {
         return Err(Code::BadValue);
     }

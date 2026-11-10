@@ -9,7 +9,7 @@ use gnoblin_render::transaction::{
     ClassInfo, Code, PropertyInfo, TreeApplied, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue, ValueType,
 };
 use gnoblin_render::{Actor, NodeSpec, Scene};
-use gnoblin_types::{NodeId, Rect};
+use gnoblin_types::{Keysym, NodeId, Rect};
 use gnoblin_wayland::{TreeBatch, TreeFrame, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
 
 /// A schema with one class, `node`, holding one animatable double.
@@ -593,6 +593,46 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
     assert!(
         events.windows(2).all(|pair| pair[0].seq < pair[1].seq),
         "sequence numbers increase"
+    );
+}
+
+#[test]
+fn key_edges_reach_the_shell_in_order_and_do_not_advance_the_serial() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    frame.input(
+        FIRST,
+        TreeInput::Key {
+            pressed: true,
+            keysym: Keysym::new(0x61),
+        },
+    );
+    frame.input(
+        FIRST,
+        TreeInput::Key {
+            pressed: false,
+            keysym: Keysym::new(0x61),
+        },
+    );
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let batches = take_batches();
+    assert_eq!(batches.len(), 1, "a key-only frame still publishes its batch");
+    assert_eq!(batches[0].serial, 0, "key edges are not scene changes");
+    assert_eq!(frame.serial(), 0, "key edges do not advance the serial");
+    let names: Vec<&str> = batches[0]
+        .events
+        .iter()
+        .map(|event| match &event.event {
+            TreeFrameInput::Input(input) => input.name(),
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(names, ["key", "key"]);
+    assert!(
+        batches[0].events.iter().all(|event| event.node == FIRST),
+        "both key edges are for the focused shell node"
     );
 }
 

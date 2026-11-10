@@ -10,6 +10,7 @@
 - Screen nodes: the composer creates a `screen` node per declared output, publishes its geometry, and destroys it with the output.
 - Tests for seat `focus` writes from the shell: window accepted, `nil` clears, non-window and unknown targets refused `bad_value`, non-node value refused `wrong_type`.
 - A shell write of the main seat node's `focus` moves the keyboard to that window, through the same path as a compositor focus change; a `nil` write clears it. The compositor's own focus changes are published and never read back. Test `a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window`.
+- A shell node that takes input (`class` other than `window`, `input` set) holds the keyboard when the shell writes the main seat's `focus` to it. The client gets a `wl_keyboard` leave, and each key the router does not consume is sent to the shell as `tree.event` `kind = "key"` with `pressed` and `keysym`. A window focus takes the hold back. Under the session lock no key reaches the shell (the route is gated on `Unlocked`; no end-to-end test yet). Tests `key_edges_reach_the_shell_in_order_and_do_not_advance_the_serial` in `tests/tree_frame.rs`, `a_seat_focus_on_a_shell_node_with_input_on_is_accepted_and_keeps_the_node` and `a_shell_node_that_holds_the_seat_focus_is_the_key_target_until_it_is_released` in `tests/tree_live.rs` (gnoblin-wayland).
 
 ### Fixed
 
