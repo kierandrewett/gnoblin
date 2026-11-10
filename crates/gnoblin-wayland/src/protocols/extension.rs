@@ -434,6 +434,7 @@ mod tests {
             1,
             None,
             None,
+            crate::tree_frame::TreeHooks::default(),
             &Protocols::default(),
             TitlebarActions::default(),
             crate::server::CursorSettings::default(),

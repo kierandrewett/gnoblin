@@ -152,7 +152,7 @@ impl TreeHostHandle {
         None
     }
 
-    fn refusal(&self, code: Code, failed_op: i64) -> TreeReply {
+    fn refusal(&self, code: Code, failed_op: i32) -> TreeReply {
         TreeReply {
             serial: self.serial.load(Ordering::Acquire),
             result: Err(TreeRefusal { failed_op, code }),
