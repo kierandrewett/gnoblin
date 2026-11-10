@@ -1626,6 +1626,10 @@ impl State {
         let client = target.as_ref().and_then(|surface| surface.client());
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, target.clone(), serial);
+        let windows: Vec<WindowId> = self.wm.windows().map(|window| window.id).collect();
+        for window in windows {
+            self.publish_window_state(window);
+        }
         self.set_selection_focus(client.as_ref());
         self.restore_layout(target.as_ref());
     }
@@ -1868,6 +1872,7 @@ impl State {
         // The node's read-only texts follow the client's title and app id: each change is a
         // tree `set` at the next frame, and an unchanged pair publishes nothing.
         self.composer.set_window_text(window, &title, &app_id);
+        self.publish_window_state(window);
         let mut effects = Vec::new();
         let mut newly_mapped = false;
         let mut initial_configure = None;
@@ -2376,6 +2381,21 @@ impl State {
     pub(crate) fn window_state(&self, surface: &ToplevelSurface) -> Option<gnoblin_wm::WindowState> {
         let window = self.window_of(surface.wl_surface())?;
         Some(self.wm.window(window)?.state)
+    }
+
+    /// Publishes a window's focus and window-manager state to its node in the tree. Focus is
+    /// read from the keyboard, so the caller only names the window.
+    pub(crate) fn publish_window_state(&mut self, window: WindowId) {
+        let Some(state) = self.wm.window(window).map(|entry| entry.state) else {
+            return;
+        };
+        let focused = self
+            .keyboard
+            .current_focus()
+            .and_then(|surface| self.window_of(&surface))
+            == Some(window);
+        self.composer
+            .set_window_state(window, [focused, state.fullscreen, state.maximised, state.minimised]);
     }
 
     /// Dispatches every pending client request.

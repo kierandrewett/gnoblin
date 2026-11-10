@@ -235,6 +235,8 @@ struct WindowNode {
     applied_size: Option<Size>,
     /// The position and size last published to the node, as `[x, y, width, height]`.
     published_geometry: Option<[f64; 4]>,
+    /// The window state last published to the node: focused, fullscreen, maximised, minimised.
+    published_state: Option<[bool; 4]>,
 }
 
 /// The session's scene and the windows it draws.
@@ -561,6 +563,7 @@ impl Composer {
                 leaving: false,
                 title: String::new(),
                 app_id: String::new(),
+                published_state: None,
                 applied_size: None,
                 published_geometry: None,
             },
@@ -612,6 +615,31 @@ impl Composer {
                 node,
                 key: key.to_owned(),
                 value: TreeValue::Double(value),
+            });
+        }
+    }
+
+    /// Publishes a window's focus and window-manager state (`focused`, `fullscreen`, `maximised`,
+    /// `minimised`) to its node as a `set` when any of them changes.
+    pub fn set_window_state(&mut self, window: WindowId, state: [bool; 4]) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if entry.published_state == Some(state) {
+            return;
+        }
+        entry.published_state = Some(state);
+        let Some(node) = entry.node else {
+            return;
+        };
+        for (key, value) in ["focused", "fullscreen", "maximised", "minimised"]
+            .into_iter()
+            .zip(state)
+        {
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value: TreeValue::Bool(value),
             });
         }
     }
@@ -3760,6 +3788,33 @@ mod tests {
         composer.set_window_text(window, "Beta", "app");
         let changes = composer.take_tree_changes();
         assert_eq!(changes.len(), 1, "only the title changed: {changes:?}");
+    }
+
+    #[test]
+    fn a_window_state_is_published_only_when_it_changes() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.set_window_text(window, "Alpha", "app");
+        composer.take_tree_changes();
+        composer.set_window_state(window, [true, false, false, false]);
+        assert_eq!(
+            composer.take_tree_changes().len(),
+            4,
+            "focused, fullscreen, maximised and minimised are each set"
+        );
+        composer.set_window_state(window, [true, false, false, false]);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "the same state publishes nothing"
+        );
+        composer.set_window_state(window, [false, true, false, false]);
+        assert_eq!(
+            composer.take_tree_changes().len(),
+            4,
+            "a changed state publishes all four"
+        );
     }
 
     /// The number a `set` of `key` on `node` wrote in `changes`, if one did.
