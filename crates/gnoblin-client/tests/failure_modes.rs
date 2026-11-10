@@ -18,10 +18,10 @@ const VERSION: Version = Version::new(0, 2, 0);
 const TITLE: &str = "title";
 
 fn graph() -> Graph {
-    let catalog = Catalog::load_dir(Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../gnoblin-schema/schema"
-    )))
+    let catalog = Catalog::load_dir_except(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema")),
+        &["tree"],
+    )
     .expect("the checked-in schema loads");
     Graph::new(catalog)
 }

@@ -431,10 +431,10 @@ fn refusals(result: Result<Revision, ModelError>, before: Revision, graph: &Grap
 
 /// One seed: the observation stream it produced and the checks it ran.
 fn run(seed: u64) -> (Vec<Observation>, usize) {
-    let catalog = Catalog::load_dir(Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../gnoblin-schema/schema"
-    )))
+    let catalog = Catalog::load_dir_except(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema")),
+        &["tree"],
+    )
     .expect("the checked-in schema loads");
     let shapes = members(&catalog);
     let mut rng = Rng::new(seed);

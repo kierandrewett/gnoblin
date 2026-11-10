@@ -59,10 +59,10 @@ impl Sink for Capture {
 
 /// A graph built from the checked-in schema.
 fn graph() -> Graph {
-    let catalog = Catalog::load_dir(Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../gnoblin-schema/schema"
-    )))
+    let catalog = Catalog::load_dir_except(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema")),
+        &["tree"],
+    )
     .expect("the checked-in schema loads");
     Graph::new(catalog)
 }
@@ -558,11 +558,13 @@ fn the_generated_wit_matches_the_schema() {
         .push_str("gnoblin-ipc.wit", WIT)
         .expect("the generated WIT parses");
 
-    // The module surface leaves out the wire-only portal schema, as `build.rs` does.
-    let loaded = Catalog::load_dir(Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../gnoblin-schema/schema"
-    )))
+    // The module surface leaves out the wire-only portal schema and the owner-only `tree`
+    // namespace, as `build.rs` does: the tree's classes reuse names (`lock`, `destroyed`) the
+    // module surface already declares.
+    let loaded = Catalog::load_dir_except(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema")),
+        &["tree"],
+    )
     .expect("the checked-in schema loads");
     let schemas: Vec<_> = loaded
         .schemas()

@@ -32,7 +32,7 @@ fn example_schema_path() -> String {
 
 fn stock() -> Vec<Schema> {
     let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema"));
-    Catalog::load_dir(dir)
+    Catalog::load_dir_except(dir, &["tree"])
         .expect("the stock catalog loads")
         .declared_schemas()
         .to_vec()

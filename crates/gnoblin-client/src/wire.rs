@@ -1640,10 +1640,10 @@ mod tests {
         // The member paths on this layer are the schema's, not this file's opinion: a
         // rename in request.toml that this crate misses would silently stop flagging
         // answers, which is the failure the whole table exists to prevent.
-        let catalog = Catalog::load_dir(Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../gnoblin-schema/schema"
-        )))
+        let catalog = Catalog::load_dir_except(
+            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema")),
+            &["tree"],
+        )
         .expect("the checked-in schema loads");
         let namespace = gnoblin_schema::Namespace::parse(NAMESPACE).expect("namespace");
         let request = catalog

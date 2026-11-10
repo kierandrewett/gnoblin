@@ -87,6 +87,8 @@
 
 - The Lua `core.insert` binding takes `(parent, node, index)`, the order `node.lua` calls it in. It had taken `(node, parent, index)`, so each child insert from `node.lua` swapped the parent and the child.
 
+- The `gnoblinctl` and `gnoblin-wasm` catalogs leave out the owner-only `tree` namespace (`Catalog::load_dir_except(dir, &["tree"])`), as `gnoblinctl/build.rs` already did. Its `lock` and `destroyed` classes collided with the public ones, so `the_command_tree_matches_the_schema` and `the_generated_wit_matches_the_schema` failed. `gnoblin-schema/tests/owner_only_tree.rs` fails when any other crate loads the full catalog.
+
 - Window records past the 32nd window do not trip a debug assertion, because the window manager's layer provider has
   its own limit.
 - The `layout_failed` signal's documented `reason` values now match the ones it emits.

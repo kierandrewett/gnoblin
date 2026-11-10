@@ -14,7 +14,7 @@ use gnoblin_schema::{Catalog, Namespace, Type};
 
 static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
     let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema"));
-    Catalog::load_dir(dir).expect("the schema directory loads")
+    Catalog::load_dir_except(dir, &["tree"]).expect("the schema directory loads")
 });
 
 /// The default for a property of type `ty`, or [`None`] for an object reference, which

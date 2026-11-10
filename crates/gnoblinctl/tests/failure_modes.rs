@@ -49,8 +49,10 @@ fn scratch(suffix: &str) -> PathBuf {
 }
 
 fn catalog() -> Catalog {
+    // The owner-only `tree` namespace is left out, as `gnoblinctl/build.rs` leaves it out of the
+    // command tree this test checks; the tree's `lock` class would otherwise claim the bare name.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-schema/schema");
-    Catalog::load_dir(&dir).expect("the checked-in schema loads")
+    Catalog::load_dir_except(&dir, &["tree"]).expect("the checked-in schema loads")
 }
 
 fn window_properties(title: &str) -> Fields {

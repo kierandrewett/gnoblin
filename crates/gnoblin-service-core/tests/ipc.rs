@@ -20,10 +20,10 @@ use gnoblin_types::OwnerId;
 const VERSION: Version = Version::new(0, 2, 0);
 
 fn catalog() -> Catalog {
-    Catalog::load_dir(Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../gnoblin-schema/schema"
-    )))
+    Catalog::load_dir_except(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../gnoblin-schema/schema")),
+        &["tree"],
+    )
     .expect("the checked-in schema loads")
 }
 
