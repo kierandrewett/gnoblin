@@ -19,6 +19,14 @@ name = "focus"
 type = "object:node"
 since = "0.2.0"
 
+# The screen under the pointer, published by the compositor (the first screen when the pointer is
+# over none). Read-only: a shell write is refused.
+[[object.property]]
+name = "screen"
+type = "object:node"
+since = "0.2.0"
+readonly = true
+
 [[object.property]]
 name = "pointer_x"
 type = "double"

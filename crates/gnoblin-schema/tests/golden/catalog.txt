@@ -663,6 +663,7 @@ object seat since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
   property focus type object:node since 0.2.0 secret false
+  property screen type object:node since 0.2.0 secret false
   property pointer_x type double since 0.2.0 secret false
   property pointer_y type double since 0.2.0 secret false
   property device type string since 0.2.0 secret false

@@ -374,6 +374,7 @@ impl Composer {
         if let Some(node) = self.screens.remove(&output) {
             self.drop_node(node);
         }
+        self.publish_seat_screen();
     }
 
     /// The screen node of an output, once the composer has declared it.
@@ -429,6 +430,7 @@ impl Composer {
                 value: TreeValue::Double(value),
             });
         }
+        self.publish_seat_screen();
     }
 
     /// Damages an output in full, so its next frame repaints every pixel.
@@ -1511,6 +1513,7 @@ impl Composer {
             index,
         });
         self.main_seat = Some(id);
+        self.publish_seat_screen();
         Some(id)
     }
 
@@ -1554,6 +1557,43 @@ impl Composer {
         });
     }
 
+    /// Publishes the screen under the main seat's pointer as the seat's `screen`. When the
+    /// pointer is over no screen, or none has been declared yet, the first screen is
+    /// published, or none. Only a change is published.
+    fn publish_seat_screen(&mut self) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        let x = self.scene.number(seat, "pointer_x").unwrap_or(0.0);
+        let y = self.scene.number(seat, "pointer_y").unwrap_or(0.0);
+        let contains = |node: &NodeId| {
+            let (Some(nx), Some(ny), Some(w), Some(h)) = (
+                self.scene.number(*node, "x"),
+                self.scene.number(*node, "y"),
+                self.scene.number(*node, "width"),
+                self.scene.number(*node, "height"),
+            ) else {
+                return false;
+            };
+            x >= nx && x < nx + w && y >= ny && y < ny + h
+        };
+        let target = self
+            .screens
+            .values()
+            .copied()
+            .find(contains)
+            .or_else(|| self.screens.values().next().copied());
+        if self.scene.reference(seat, "screen") == target {
+            return;
+        }
+        let _ = self.scene.set_reference(seat, "screen", target);
+        self.tree_changes.push(TreeChange::Set {
+            node: seat,
+            key: "screen".to_owned(),
+            value: TreeValue::Node(target),
+        });
+    }
+
     /// Publishes the pointer's layout position on the main seat. Only a change is published.
     pub fn set_main_seat_pointer(&mut self, x: f64, y: f64) {
         let Some(seat) = self.main_seat else {
@@ -1570,6 +1610,7 @@ impl Composer {
                 value: TreeValue::Double(value),
             });
         }
+        self.publish_seat_screen();
     }
 
     /// Publishes the window that holds keyboard focus on the main seat, or none. Only a change
@@ -3977,6 +4018,40 @@ mod tests {
         assert!(
             composer.take_tree_changes().is_empty(),
             "an unchanged pointer is not republished"
+        );
+    }
+
+    #[test]
+    fn the_main_seat_publishes_the_screen_under_the_pointer() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        composer.set_output(OutputId::new(0), Rect::new(0, 0, 800, 600));
+        composer.set_output(OutputId::new(1), Rect::new(800, 0, 800, 600));
+        let first = composer.screen_node(OutputId::new(0)).expect("the first screen");
+        let second = composer.screen_node(OutputId::new(1)).expect("the second screen");
+        let screen = |composer: &mut Composer| composer.with_scene(|scene| scene.reference(seat, "screen"));
+        assert_eq!(
+            screen(&mut composer),
+            Some(first),
+            "the first screen before any pointer move"
+        );
+        composer.set_main_seat_pointer(900.0, 100.0);
+        assert_eq!(screen(&mut composer), Some(second), "the screen the pointer moved onto");
+        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Node(Some(target)) }
+                if *node == seat && key == "screen" && *target == second
+        )));
+        composer.set_main_seat_pointer(900.0, 100.0);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged screen is not republished"
+        );
+        composer.remove_output(OutputId::new(1));
+        assert_eq!(
+            screen(&mut composer),
+            Some(first),
+            "the first screen once the pointer's screen is gone"
         );
     }
 
