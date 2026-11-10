@@ -33,6 +33,9 @@ function H.load_shell()
     dofile(GNOBLIN_LUA_DIR .. "/shell/panel.lua")
     dofile(GNOBLIN_LUA_DIR .. "/shell/lock.lua")
     dofile(GNOBLIN_LUA_DIR .. "/shell/overview.lua")
+    dofile(GNOBLIN_LUA_DIR .. "/shell/decorations.lua")
+    dofile(GNOBLIN_LUA_DIR .. "/shell/launcher.lua")
+    dofile(GNOBLIN_LUA_DIR .. "/shell/workspaces.lua")
 end
 
 -- The shell starts: every Screen gets `ready` first, so the Desk exists; then every Window, as a shell that comes

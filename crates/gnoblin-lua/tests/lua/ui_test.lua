@@ -109,4 +109,83 @@ return {
             H.check(#d.children == before + 1, "toast must add one box to the desk")
         end,
     },
+    {
+        "a window gets a titlebar when it is ready",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local screen = root:add(Screen({ width = 1000, height = 800 }))
+            local win = root:add(Window({ app_id = "foot", title = "term" }))
+            H.load_shell()
+            root:find(Seat).screen = screen
+            H.start_shell(host)
+            H.check(#win:all(Titlebar) == 1, "a ready window must get exactly one titlebar")
+        end,
+    },
+    {
+        "Super+Space opens the launcher and Escape closes it",
+        function()
+            sys = {
+                spawn = function() end,
+                date = function()
+                    return ""
+                end,
+            }
+            setup()
+            seat.data.keys["Super+Space"]()
+            H.check(#desk():all(Launcher) == 1, "Super+Space must open one launcher")
+            desk():all(Launcher)[1]:on_key({ key = "Escape" })
+            H.check(#desk():all(Launcher) == 0, "Escape must close the launcher")
+        end,
+    },
+    {
+        "Return in the launcher spawns the typed command and closes it",
+        function()
+            local spawned
+            sys = {
+                spawn = function(cmd)
+                    spawned = cmd
+                end,
+                date = function()
+                    return ""
+                end,
+            }
+            setup()
+            seat.data.keys["Super+Space"]()
+            local l = desk():all(Launcher)[1]
+            l.text = "foot"
+            l:on_key({ key = "Return" })
+            H.check(spawned == "foot", "Return must spawn the typed command")
+            H.check(#desk():all(Launcher) == 0, "Return must close the launcher")
+        end,
+    },
+    {
+        "Super+3 makes workspace 3 the active one",
+        function()
+            setup()
+            seat.data.keys["Super+3"]()
+            H.check(desk().active == desk().space.children[3], "Super+3 must show workspace 3")
+        end,
+    },
+    {
+        "a closing window fades out before it is destroyed",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local screen = root:add(Screen({ width = 1000, height = 800 }))
+            local win = root:add(Window({ app_id = "foot" }))
+            H.load_shell()
+            root:find(Seat).screen = screen
+            H.start_shell(host)
+            go(function()
+                win:vanish()
+            end)
+            H.check(#host.ids("Window") == 1, "the window must still exist while it fades")
+            H.frame(host, 1, {})
+            H.frame(host, 2, {})
+            H.check(#host.ids("Window") == 0, "the window must be destroyed after the fade")
+        end,
+    },
 }
