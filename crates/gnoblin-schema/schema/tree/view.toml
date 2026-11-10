@@ -20,6 +20,12 @@ type = "uint"
 since = "0.2.0"
 default = 0
 
+# The camera node whose projection and pose render `source`. Nil is the default orthographic camera.
+[[object.property]]
+name = "camera"
+type = "object:node"
+since = "0.2.0"
+
 # Capture the subtree. Returns an operation id.
 [[object.method]]
 name = "capture"

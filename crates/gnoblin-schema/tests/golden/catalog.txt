@@ -592,6 +592,7 @@ object screen since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property source type object:node since 0.2.0 secret false
   property fps type uint since 0.2.0 secret false
+  property camera type object:node since 0.2.0 secret false
   property make type string since 0.2.0 secret false
   property model type string since 0.2.0 secret false
   property screen_x type double since 0.2.0 secret false
@@ -669,6 +670,7 @@ object view since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property source type object:node since 0.2.0 secret false
   property fps type uint since 0.2.0 secret false
+  property camera type object:node since 0.2.0 secret false
   method capture since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
 object window since 0.2.0 secret false
@@ -2205,26 +2207,28 @@ message Screen {
     string source = 17;
     // since 0.2.0
     uint64 fps = 18;
+    // since 0.2.0; object id of `node`
+    string camera = 19;
     // since 0.2.0
-    string make = 19;
+    string make = 20;
     // since 0.2.0
-    string model = 20;
+    string model = 21;
     // since 0.2.0
-    double screen_x = 21;
+    double screen_x = 22;
     // since 0.2.0
-    double screen_y = 22;
+    double screen_y = 23;
     // since 0.2.0
-    double screen_width = 23;
+    double screen_width = 24;
     // since 0.2.0
-    double screen_height = 24;
+    double screen_height = 25;
     // since 0.2.0
-    string transform = 25;
+    string transform = 26;
     // since 0.2.0
-    bool primary = 26;
+    bool primary = 27;
     // since 0.2.0
-    bool enabled = 27;
+    bool enabled = 28;
     // since 0.2.0
-    string mode = 28;
+    string mode = 29;
   }
 
   // Method `capture`, since 0.2.0.
@@ -2381,6 +2385,8 @@ message View {
     string source = 17;
     // since 0.2.0
     uint64 fps = 18;
+    // since 0.2.0; object id of `node`
+    string camera = 19;
   }
 
   // Method `capture`, since 0.2.0.

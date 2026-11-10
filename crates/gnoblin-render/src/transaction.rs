@@ -730,6 +730,8 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
             axes,
             [VisualProperty::ScaleX, VisualProperty::ScaleY, VisualProperty::ScaleZ],
         ),
+        ("source", TreeValue::Node(target)) => work.set_source(node, *target),
+        ("camera", TreeValue::Node(target)) => work.set_camera(node, *target),
         (key, TreeValue::Double(number)) => match visual_property(key) {
             Some(property) => work.set_property(node, property, PropertyValue::Number(*number as f32)),
             None => Ok(()),
@@ -744,7 +746,7 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
 fn is_stored(key: &str) -> bool {
     matches!(
         key,
-        "width" | "height" | "visible" | "clip" | "input" | "rotation" | "scale"
+        "width" | "height" | "visible" | "clip" | "input" | "rotation" | "scale" | "source" | "camera"
     ) || visual_property(key).is_some()
 }
 

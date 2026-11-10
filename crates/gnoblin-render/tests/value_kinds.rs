@@ -16,7 +16,7 @@ struct Kinds;
 
 impl ClassInfo for Kinds {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "Window" | "Panel")
+        matches!(class, "Window" | "Panel" | "View")
     }
 
     fn is_a(&self, class: &str, ancestor: &str) -> bool {
@@ -34,6 +34,7 @@ impl ClassInfo for Kinds {
             "ratio" => (ValueType::Double, false),
             "visible" => (ValueType::Bool, false),
             "parent_ref" => (ValueType::Node("Window".into()), false),
+            "source" | "camera" => (ValueType::Node("Window".into()), false),
             "axes" => (ValueType::ListDouble, false),
             "id" => (ValueType::Uint, true),
             _ => return None,
@@ -240,6 +241,22 @@ fn a_node_reference_to_a_missing_node_is_unknown_node() {
         ),
         Code::UnknownNode,
     );
+}
+
+#[test]
+fn a_view_sets_and_clears_its_source_and_camera_nodes() {
+    let mut scene = scene();
+    let view = node(&mut scene, 0x100, "View");
+    let source = node(&mut scene, 0x101, "Window");
+    let camera = node(&mut scene, 0x102, "Window");
+    assert!(apply(&mut scene, set(view, "source", TreeValue::Node(Some(source)))).is_none());
+    assert!(apply(&mut scene, set(view, "camera", TreeValue::Node(Some(camera)))).is_none());
+    assert_eq!(scene.source(view), Some(source));
+    assert_eq!(scene.camera(view), Some(camera));
+    assert!(apply(&mut scene, set(view, "source", TreeValue::Node(None))).is_none());
+    assert!(apply(&mut scene, set(view, "camera", TreeValue::Node(None))).is_none());
+    assert_eq!(scene.source(view), None);
+    assert_eq!(scene.camera(view), None);
 }
 
 #[test]
