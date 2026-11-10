@@ -213,6 +213,11 @@ pub enum ClientRole {
     /// privileged: a renderer draws decorations and must not be able to read a
     /// clipboard or copy another client's pixels.
     FrameRenderer,
+    /// The extension process the guardian started to read Views for the owner. It is promised
+    /// by pid before spawn, like a frame renderer. It earns the view-source and image-copy-capture
+    /// managers and nothing else privileged. Core globals such as `wl_shm` and `wl_compositor`
+    /// are not role-gated and are visible to it as to any client.
+    View,
     /// The connection the compositor brokered for one hosted session
     /// (design/rust-compositor.md, D4). It sees `gnoblin_session_host_v1` and nothing
     /// else privileged: the session never sees another privileged global.
@@ -230,6 +235,7 @@ impl ClientRole {
             Self::Trusted => "trusted",
             Self::Privileged => "privileged",
             Self::FrameRenderer => "frame-renderer",
+            Self::View => "view",
             Self::SessionHost => "session-host",
             Self::Sandboxed => "sandboxed",
         }
@@ -239,8 +245,8 @@ impl ClientRole {
 /// The decision for one connection and one global.
 ///
 /// A pure function so the rule can be read and tested without a session: a sandbox
-/// earns nothing, the two general earned roles earn everything, the two single-purpose
-/// roles earn exactly the one global they were started for, and an unprivileged
+/// earns nothing, the two general earned roles earn everything, the single-purpose
+/// roles earn only what they were started for, and an unprivileged
 /// application earns exactly the globals [`Global::is_privileged`] does not claim.
 #[must_use]
 pub const fn decide(role: ClientRole, global: Global) -> bool {
@@ -253,6 +259,7 @@ pub const fn decide(role: ClientRole, global: Global) -> bool {
         // Narrow on purpose: the process behind these roles is a renderer or a session,
         // never the session's own management, so one global is the whole of what it may
         // reach.
+        ClientRole::View => matches!(global, Global::ViewSource | Global::ImageCopyCapture),
         ClientRole::FrameRenderer => matches!(global, Global::GnoblinWindowFrameV1Frame),
         ClientRole::SessionHost => matches!(global, Global::SessionHost),
         ClientRole::Unprivileged => !global.is_privileged(),
@@ -611,6 +618,23 @@ mod tests {
                 *global == Global::SessionHost,
                 "a hosted session must {} see {}",
                 if *global == Global::SessionHost { "" } else { "not" },
+                global.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_view_extension_sees_only_the_capture_protocols() {
+        // The extension reads a View's pixels and drives a capture of them, and nothing
+        // else: no layer shell, clipboard, window management or output control.
+        for global in ALL {
+            let allowed = decide(ClientRole::View, *global);
+            let wanted = matches!(global, Global::ViewSource | Global::ImageCopyCapture);
+            assert_eq!(
+                allowed,
+                wanted,
+                "a view extension must {} see {}",
+                if wanted { "" } else { "not" },
                 global.as_str()
             );
         }

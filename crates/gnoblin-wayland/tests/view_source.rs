@@ -96,3 +96,29 @@ fn a_source_for_a_node_that_is_not_a_view_is_a_protocol_error() {
         client.expect_protocol_error(MANAGER, 0);
     });
 }
+
+/// The view role reaches the two globals a capture needs and none of the other privileged
+/// ones. `wl_compositor`, `wl_seat` and `wl_shm` are core globals that no role gates, so they
+/// are not asserted here.
+#[test]
+fn the_view_role_sees_the_capture_globals_and_no_other_privileged_global() {
+    let session = Session::start(Some(ClientRole::View));
+    session.run(|handle| {
+        let client = Connected::connect(handle.socket(), App);
+        assert!(client.has(MANAGER), "the view role reads a View through {MANAGER}");
+        assert!(
+            client.has("ext_image_copy_capture_manager_v1"),
+            "the view role drives a capture through ext_image_copy_capture_manager_v1"
+        );
+        for other in [
+            "gnoblin_window_frame_manager_v1",
+            "gnoblin_session_host_v1",
+            "ext_data_control_manager_v1",
+            "zwlr_layer_shell_v1",
+            "zwlr_output_manager_v1",
+            "zwlr_screencopy_manager_v1",
+        ] {
+            assert!(!client.has(other), "the view role must not see {other}");
+        }
+    });
+}

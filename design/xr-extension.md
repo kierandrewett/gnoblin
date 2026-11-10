@@ -396,16 +396,25 @@ Code today:
 
 ### G7: extension processes with a connection Gnoblin creates
 
-- **What:** the D22 process power starts the extension and hands it a connected Wayland socket (`WAYLAND_SOCKET`, the
-  libwayland convention for a compositor-started client) and the IPC socket (`{socket}`,
-  `design/rust-compositor.md:2766`). The connection's role comes from the package's grants.
+- **What:** the extension is a guardian-started process that reads Views and nothing else. The guardian starts it
+  and promises the connection's role by pid before the spawn, the way it promises a frame renderer
+  (`crates/gnoblin-wayland/src/access.rs`, `ClientRole::FrameRenderer`). The extension then takes an already
+  connected socket: the compositor passes the connected fd as `WAYLAND_SOCKET`. For development it may instead
+  connect to a display named by `GNOBLIN_VIEW_DISPLAY`.
+- **Role:** `ClientRole::View` (`view`). It sees `gnoblin_view_source_manager_v1` and
+  `ext_image_copy_capture_manager_v1`, which are the two globals a capture needs. It does not see the other
+  privileged globals (layer shell, data control, output management, window frames, session host, screencopy). Core
+  globals such as `wl_shm`, `wl_compositor` and `wl_seat` are not role-gated and are visible to it as to any client.
+  The role is not the owner's privileged connection, so the privileged socket is not handed out.
 - **Grants used:** `capture` (panels), `input.inject` (view pointer), and a grant to create a virtual output, needed
   only for the VR output and the head-locked output. Names follow D22 (`design/rust-compositor.md:2791-2810`).
-- **Code today:** a frame renderer is started by the compositor and sees one global only
-  (`crates/gnoblin-wayland/src/access.rs:205-213`, `:240-251`). Its role is promised by pid before spawn
-  (`crates/gnoblin-wayland/src/server.rs:991-1000`). The guardian supervises with restart limits
-  (`crates/gnoblin-session/src/guardian.rs:875`).
-- **Not used:** the privileged socket. It trusts any process of the same user (`design/capture-protocols.md:12-18`).
+- **Code today:** the role and its decision are in `crates/gnoblin-wayland/src/access.rs`; the view-source global is
+  in `crates/gnoblin-wayland/src/protocols/gnoblin_view_source_v1.rs`. Nothing starts the extension yet: there is no
+  extension manifest, so the guardian does not spawn it (`crates/gnoblin-session/src/guardian.rs:875` supervises
+  children with restart limits, and a child spec for the extension is added only when that manifest exists).
+- **Trust:** the view role reads a View's pixels only through the capture protocols, and the guardian promises the
+  role only to the pid it spawned. An ordinary application, a sandbox and a trusted service do not see the view
+  source global.
 
 ### G8: off-axis projection
 
@@ -675,8 +684,9 @@ Testable on an Agent37 instance with Monado's simulated headset.
 
 - Gnoblin: G1, G2 (output panels), G3 (output panels only), G5 (defaults only). SHM buffers are allowed in this
   phase; the capture protocol defines them.
-- Connection: Gnoblin starts the extension and promises its pid a single-purpose role that sees the view global
-  only, as it does for frame renderers today. G7 replaces this in phase 2.
+- Connection: the extension is a guardian-started process with the single-purpose `view` role (G7). The guardian
+  promises the role by pid before the spawn. The extension takes a connected socket through `WAYLAND_SOCKET`, or
+  connects to `GNOBLIN_VIEW_DISPLAY` for development. It sees the view-source and image-copy-capture globals only.
 - Extension: session, view, layers, gpu, input. No engine: the environment is a solid colour.
 - Monado: simulated driver and the null compositor (exists in Monado's documentation; how to select it is
   unverified).
