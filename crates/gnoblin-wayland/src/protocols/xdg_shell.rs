@@ -35,11 +35,10 @@ use smithay::wayland::shell::xdg::{
     Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 
-use gnoblin_wm::Event;
-
 use crate::State;
 use crate::observation::{MenuAnchor, MenuSource};
 use crate::tree_frame::TreeRequest;
+use crate::window_request::WindowRequest;
 
 use crate::log;
 
@@ -123,46 +122,23 @@ impl XdgShellHandler for State {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        if self.request_to_shell(surface.wl_surface(), TreeRequest::Maximize) {
-            return;
-        }
-        if !self.is_maximised(&surface) {
-            self.window_event(&surface, |window| Event::ToggleMaximise { window });
-        }
+        self.toplevel_request(&surface, WindowRequest::Maximise(true));
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        if self.request_to_shell(surface.wl_surface(), TreeRequest::Unmaximize) {
-            return;
-        }
-        if self.is_maximised(&surface) {
-            self.window_event(&surface, |window| Event::ToggleMaximise { window });
-        }
+        self.toplevel_request(&surface, WindowRequest::Maximise(false));
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<WlOutput>) {
-        if self.request_to_shell(surface.wl_surface(), TreeRequest::Fullscreen) {
-            return;
-        }
-        if !self.is_fullscreen(&surface) {
-            self.window_event(&surface, |window| Event::ToggleFullscreen { window });
-        }
+        self.toplevel_request(&surface, WindowRequest::Fullscreen(true));
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        if self.request_to_shell(surface.wl_surface(), TreeRequest::Unfullscreen) {
-            return;
-        }
-        if self.is_fullscreen(&surface) {
-            self.window_event(&surface, |window| Event::ToggleFullscreen { window });
-        }
+        self.toplevel_request(&surface, WindowRequest::Fullscreen(false));
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
-        if self.request_to_shell(surface.wl_surface(), TreeRequest::Minimize) {
-            return;
-        }
-        self.window_event(&surface, |window| Event::Minimise { window });
+        self.toplevel_request(&surface, WindowRequest::Minimise(true));
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
@@ -235,14 +211,11 @@ impl State {
         self.layer_rect(&root)
     }
 
-    /// Whether the window manager has this toplevel maximised.
-    fn is_maximised(&self, surface: &ToplevelSurface) -> bool {
-        self.window_state(surface).is_some_and(|state| state.maximised)
-    }
-
-    /// Whether the window manager has this toplevel fullscreen.
-    fn is_fullscreen(&self, surface: &ToplevelSurface) -> bool {
-        self.window_state(surface).is_some_and(|state| state.fullscreen)
+    /// Hands a toplevel's request to whoever decides it: the shell, or the window manager when none is attached.
+    fn toplevel_request(&mut self, surface: &ToplevelSurface, request: WindowRequest) {
+        if let Some(window) = self.window_of(surface.wl_surface()) {
+            self.window_request(window, request);
+        }
     }
 
     /// Moves a popup inside its output.

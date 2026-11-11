@@ -66,9 +66,10 @@
 //!    serial this session never issued, and is not one of the session's own processes,
 //!    is not kept as a token holder: `a_token_needs_a_trusted_context`.
 //! 5. **A refusal is invisible.** A refusal this module *takes* records
-//!    [`crate::observation::ActivationDenial`] with the authority's own reason and asks
-//!    the window manager for `ActivationDenied`, so a shell can say *why* a window did
-//!    not come up: `a_token_cannot_be_redeemed_twice`.
+//!    [`crate::observation::ActivationDenial`] with the authority's own reason, so a shell can say
+//!    *why* a window did not come up, and never reaches the shell as a request, so focus does not
+//!    move: `a_token_cannot_be_redeemed_twice` and
+//!    `a_denied_activation_reports_the_decision_without_changing_focus`.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -80,12 +81,11 @@ use smithay::wayland::xdg_activation::{
 
 use gnoblin_authority::{AppId, Authority, Claimant, Event, LaunchOrigin, SessionLeader, SurfaceId, TokenId};
 use gnoblin_types::{ClientId as ConnectionId, Tick, WindowId};
-use gnoblin_wm::ActivationDecision;
 
 use crate::State;
 use crate::access::ClientRole;
 use crate::observation::ActivationDenial;
-use crate::tree_frame::TreeRequest;
+use crate::window_request::WindowRequest;
 
 use crate::log;
 
@@ -291,13 +291,7 @@ impl State {
             match window {
                 Some(window) => {
                     log::debug!(area = "activation", %window, "allowed");
-                    if !self.request_to_shell(surface, TreeRequest::Activate) {
-                        let effects = self.wm.apply(gnoblin_wm::Event::ActivationRequested {
-                            window,
-                            decision: ActivationDecision::Allow,
-                        });
-                        self.apply(effects);
-                    }
+                    self.window_request(window, WindowRequest::Activate);
                 }
                 None => {
                     // A token is about a surface; a surface that is not a managed
@@ -317,23 +311,19 @@ impl State {
         self.refuse_activation(window, reason);
     }
 
-    /// Records a refusal and asks the window manager to report it.
+    /// Records a refusal. The decision is the compositor's, not the shell's: a client that was refused
+    /// is never offered to the shell as an `activate` request, so focus cannot move on its behalf, and
+    /// the denial reaches the snapshot with the authority's own reason.
     ///
     /// Crate-visible because the `gtk_shell1` seam refuses an activation the same way:
     /// one refusal path is what keeps `activation-denied` meaning the same thing
     /// whichever protocol asked.
     pub(crate) fn refuse_activation(&mut self, window: Option<WindowId>, reason: &str) {
+        log::debug!(area = "focus", ?window, reason, "activation refused by the caller");
         self.activation.denied = Some(ActivationDenial {
             window,
             reason: reason.to_owned(),
         });
-        if let Some(window) = window {
-            let effects = self.wm.apply(gnoblin_wm::Event::ActivationRequested {
-                window,
-                decision: ActivationDecision::Deny,
-            });
-            self.apply(effects);
-        }
         self.publish();
     }
 

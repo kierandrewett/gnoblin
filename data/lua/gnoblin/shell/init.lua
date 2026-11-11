@@ -123,6 +123,7 @@ function Desk:show(ws)
     if self.active ~= from then
         from.visible, from.x = false, 0
     end
+    self:sync_fullscreen()
 end
 function Desk:step(n)
     self:show(self.space.children[self:position(self.active) + n])
@@ -426,6 +427,16 @@ function Window:apply_rules()
         elseif field == "maximised" and state.wrote[field] then
             self:unmaximise()
             state.wrote[field] = nil
+        elseif field == "fullscreen" and fx.fullscreen ~= nil then
+            if fx.fullscreen then
+                self:enter_fullscreen()
+            else
+                self:leave_fullscreen()
+            end
+            state.wrote[field] = true
+        elseif field == "fullscreen" and state.wrote[field] then
+            self:leave_fullscreen()
+            state.wrote[field] = nil
         elseif fx[field] ~= nil then
             self[field] = fx[field]
             state.wrote[field] = true
@@ -540,8 +551,15 @@ end
 function Window:on_release()
     pressed = nil
 end
-function Window:on_activate() -- an activation request raises and focuses a window on the active workspace
+function Window:on_activate()
+    self:present()
+end
+-- An activation request raises and focuses a window on the active workspace, and brings a minimised one back.
+function Window:present()
     if self:closest(Workspace) == desk().active then
+        if self.minimised then
+            self:unminimise()
+        end
         seat.focus = self
         self:raise()
     end
@@ -576,6 +594,7 @@ function Window:on_closed()
     end
     rest_gen[self] = (rest_gen[self] or 0) + 1
     auto_token[self] = nil
+    self:leave_fullscreen() -- the bars come back
     self:vanish()
 end
 function Window:vanish()
@@ -673,9 +692,109 @@ function Window:unmaximise()
     restore_floating(self)
     return true
 end
--- Re-fits a maximised or snapped window to a work area that has changed (a bar was added, removed or resized).
+-- The rectangle a fullscreen window covers, in its workspace's space: the whole Screen, under the bars. Nil when the
+-- window is on no Desk.
+local function cover_rect(w)
+    local d = w:closest(Desk)
+    return d and { x = 0, y = -d.space.y, w = d.width, h = d.height }
+end
+-- Bars and the Desk's clip give way to a fullscreen window that is showing, and come back when none is.
+function Desk:sync_fullscreen()
+    local covered = false
+    for _, w in ipairs(self.active and self.active:all("> Window") or {}) do
+        covered = covered or (w.fullscreen and not w.minimised)
+    end
+    for _, bar in ipairs(self:all("> Bar")) do
+        bar.visible = not covered
+    end
+    self.space.clip = not covered
+end
+-- Covers the whole output, bars included, and goes last among its siblings. The rectangle it had is kept, so leaving
+-- fullscreen returns a floating, snapped or maximised window to it. Refused (false) when it is fullscreen already.
+function Window:enter_fullscreen()
+    if self.fullscreen then
+        return false
+    end
+    local r = cover_rect(self)
+    if r then
+        self.data.windowed = { x = self.x, y = self.y, w = self.width, h = self.height }
+    end
+    self.fullscreen = true
+    if r then
+        self.x, self.y, self.width, self.height = r.x, r.y, r.w, r.h
+        self:raise()
+        self:closest(Desk):sync_fullscreen()
+    end
+    return true
+end
+function Window:leave_fullscreen()
+    if not self.fullscreen then
+        return false
+    end
+    self.fullscreen = false
+    local r = self.data.windowed
+    self.data.windowed = nil
+    if r then
+        self.x, self.y, self.width, self.height = r.x, r.y, r.w, r.h
+    end
+    local d = self:closest(Desk)
+    if d then
+        d:sync_fullscreen()
+    end
+    return true
+end
+-- The window the seat's focus passes to when `w` leaves the screen: the topmost sibling still showing, or none.
+local function next_focus(w)
+    local siblings = w.parent and w.parent.children or {}
+    for i = #siblings, 1, -1 do
+        local c = siblings[i]
+        if c ~= w and c:is(Window) and not c.minimised then
+            return c
+        end
+    end
+end
+-- Hides the window and hands the seat's focus on, as the window manager did. Refused (false) when it is minimised.
+function Window:minimise()
+    if self.minimised then
+        return false
+    end
+    self.minimised = true
+    self.visible = false
+    if seat and seat.focus == self then
+        seat.focus = next_focus(self)
+    end
+    local d = self:closest(Desk)
+    if d then
+        d:sync_fullscreen()
+    end
+    return true
+end
+-- Shows the window again. The seat's focus goes to it only when nothing holds it. Refused (false) when it is not
+-- minimised.
+function Window:unminimise()
+    if not self.minimised then
+        return false
+    end
+    self.minimised = false
+    self.visible = true
+    if seat and seat.focus == nil then
+        seat.focus = self
+    end
+    local d = self:closest(Desk)
+    if d then
+        d:sync_fullscreen()
+    end
+    return true
+end
+-- Re-fits a maximised or snapped window to a work area that has changed (a bar was added, removed or resized). A
+-- fullscreen window keeps covering the Screen.
 function Window:refit(a)
-    if self.maximised then
+    if self.fullscreen then
+        local r = cover_rect(self)
+        if r then
+            self.x, self.y, self.width, self.height = r.x, r.y, r.w, r.h
+        end
+    elseif self.maximised then
         self.x, self.y, self.width, self.height = a.x, a.y, a.w, a.h
     elseif self.data.snapped then
         local rect = Snap.tile_rect(self.data.snapped, a)
@@ -726,14 +845,30 @@ function Window:move_to_output(screen)
     end
     return self:move_to(to.active)
 end
--- The client asks for a state change; the shell decides and the window's properties echo the answer.
+-- The client asks for a state change; the shell decides and the window's properties echo the answer. The
+-- compositor turns `maximised`, `fullscreen`, `minimised` and the size into the client's configure, and runs `close`.
 function Window:on_request(e)
-    if e.request == "maximize" then
+    local request = e.request
+    if request == "maximize" then
         self:maximise()
-    elseif e.request == "unmaximize" then
+    elseif request == "unmaximize" then
         self:unmaximise()
-    elseif e.request == "activate" then
-        self:on_activate()
+    elseif request == "fullscreen" then
+        self:enter_fullscreen()
+    elseif request == "unfullscreen" then
+        self:leave_fullscreen()
+    elseif request == "minimize" then
+        self:minimise()
+    elseif request == "unminimize" then
+        self:unminimise()
+    elseif request == "close" then
+        self:close()
+    elseif request == "raise" then
+        self:raise()
+    elseif request == "lower" then
+        self:lower()
+    elseif request == "activate" then
+        self:present()
     end
 end
 -- Super+Left and Super+Right move focus between the columns of a Strip; on any other layout they do nothing.

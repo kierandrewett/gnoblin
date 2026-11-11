@@ -99,6 +99,7 @@ use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
+use crate::window_request::WindowRequest;
 
 use crate::log;
 
@@ -893,24 +894,22 @@ impl State {
         let current = managed.geometry;
         match change {
             WindowChange::Close => {
-                let closed = if self.toplevel_of(window).is_some() {
-                    self.toplevel_close(window);
-                    true
+                if self.close_window(window) {
+                    Ok(())
                 } else {
-                    self.close_x11_window(window)
-                };
-                if closed { Ok(()) } else { Err(WindowChangeRefusal::Gone) }
+                    Err(WindowChangeRefusal::Gone)
+                }
             }
             WindowChange::Minimised(minimised) => {
-                self.toplevel_minimise(window, minimised);
+                self.window_request(window, WindowRequest::Minimise(minimised));
                 Ok(())
             }
             WindowChange::Maximised(maximised) => {
-                self.toplevel_maximise(window, maximised);
+                self.window_request(window, WindowRequest::Maximise(maximised));
                 Ok(())
             }
             WindowChange::Fullscreen(fullscreen) => {
-                self.toplevel_fullscreen(window, fullscreen, None);
+                self.window_request(window, WindowRequest::Fullscreen(fullscreen));
                 Ok(())
             }
             WindowChange::MoveTo { x, y } => {
@@ -1496,6 +1495,7 @@ impl State {
         tiled: TiledEdges,
         work_area: Option<Rect>,
     ) {
+        let state = self.effective_state(window, state);
         let Some(surface) = self.windows.get(&window).map(|entry| &entry.surface) else {
             // The window closed between the policy call and this action, which is
             // the race the policy's rejections describe.
@@ -1539,7 +1539,7 @@ impl State {
     /// A hidden window is minimised or sits on another workspace, so the client is told it is
     /// `suspended` and may stop drawing it. That is the same signal that drives output enter and
     /// leave, so the two never disagree.
-    fn set_visible(&mut self, window: WindowId, visible: bool) {
+    pub(crate) fn set_visible(&mut self, window: WindowId, visible: bool) {
         let Some(entry) = self.windows.get(&window) else {
             return;
         };
@@ -2285,16 +2285,6 @@ impl State {
         self.window_of(surface)
     }
 
-    /// Applies one event about the window a toplevel belongs to.
-    pub(crate) fn window_event(&mut self, surface: &ToplevelSurface, event: impl FnOnce(WindowId) -> Event) {
-        let Some(window) = self.window_of(surface.wl_surface()) else {
-            return;
-        };
-        let effects = self.wm.apply(event(window));
-        self.apply(effects);
-        self.publish();
-    }
-
     /// Routes a client's window request to the shell as an event on the window's node, and
     /// returns true, when the shell holds the tree and the session is not locked: the shell is
     /// the policy authority, so the window manager does not act on the request. Otherwise
@@ -2313,16 +2303,27 @@ impl State {
         true
     }
 
-    /// The window manager's state for a toplevel.
-    pub(crate) fn window_state(&self, surface: &ToplevelSurface) -> Option<gnoblin_wm::WindowState> {
-        let window = self.window_of(surface.wl_surface())?;
-        Some(self.wm.window(window)?.state)
+    /// Tells the window manager a window's app id changed from a path that is not the toplevel's own
+    /// commit, so its rules read the new one.
+    pub(crate) fn window_app_id_set(&mut self, window: WindowId, app_id: &str) -> bool {
+        if self.wm.window(window).is_none() {
+            return false;
+        }
+        let effects = self.wm.apply(Event::WindowAppIdChanged {
+            window,
+            app_id: app_id.to_owned(),
+        });
+        self.apply(effects);
+        self.publish();
+        true
     }
 
     /// Publishes a window's focus and window-manager state to its node in the tree. Focus is
-    /// read from the keyboard, so the caller only names the window.
+    /// read from the keyboard, so the caller only names the window. While a shell holds the tree
+    /// the node's own `fullscreen`, `maximised` and `minimised` are published back unchanged: they are
+    /// the shell's to write.
     pub(crate) fn publish_window_state(&mut self, window: WindowId) {
-        let Some(state) = self.wm.window(window).map(|entry| entry.state) else {
+        let Some(state) = self.window_flags(window) else {
             return;
         };
         let focused = self
@@ -3113,7 +3114,7 @@ fn smithay_mode(output: &gnoblin_backend::Output) -> Mode {
 
 /// A layout rectangle as the window manager states it.
 /// Sets or clears an xdg toplevel state flag.
-fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: bool) {
+pub(crate) fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: bool) {
     if enabled {
         states.set(state);
     } else {
@@ -3431,6 +3432,11 @@ impl Host for State {
                 .and_then(|window| self.surface_of(window));
             self.set_keyboard_focus(target);
         }
+        // The shell's answers to window requests: its `close` calls, then the state and size it wrote.
+        let window_calls = self.tree.take_window_calls();
+        self.run_window_calls(window_calls);
+        let window_writes = self.tree.take_window_writes();
+        self.answer_window_writes(window_writes);
         self.reconcile_seats();
         let claims = self.tree.take_claims();
         let authentications = self.tree.take_authentications();

@@ -11,12 +11,12 @@
 //!
 //! A request from a shell is a request from a *privileged* client, so it is not
 //! attributed: `activate` is the shell telling the session which window the user
-//! picked in its taskbar, and it takes the window manager's activation path with
-//! [`gnoblin_wm::ActivationDecision::Allow`]. Everything else is the same event the
-//! window's own client could have sent with `xdg_toplevel`: minimise, maximise,
-//! fullscreen. `close` is the protocol's own `xdg_toplevel.close` and goes to the
-//! client rather than to the window manager, because only the client decides whether
-//! it exits.
+//! picked in its taskbar. Every request, `close` included, goes to
+//! [`State::window_request`](crate::State): while a session shell holds the tree it is an event on the
+//! window's node (`activate`, `maximize`, `unmaximize`, `fullscreen`, `unfullscreen`, `minimize`,
+//! `unminimize`, `close`) and the shell decides, answering by writing the node or calling its `close`.
+//! With no shell the window manager decides, and `close` is the protocol's own
+//! `xdg_toplevel.close`, which goes to the client because only the client decides whether it exits.
 //!
 //! Access is decided per client ([`crate::access`]): a taskbar inside an application
 //! sandbox sees neither global.
@@ -40,7 +40,7 @@
 //! 4. **A request for a window that is gone is applied to another one.** A handle
 //!    carries its window identity, and an identity is never reused, so a request that
 //!    arrives after the window closed is a no-op rather than an action on whatever
-//!    the table holds now: the `toplevel_maximise` guards and
+//!    the table holds now: the maximise guards and
 //!    `a_request_for_a_closed_window_does_nothing`.
 //! 5. **A taskbar in a sandbox sees the list.** The access policy hides both globals
 //!    from a sandboxed connection: `a_sandboxed_client_sees_no_privileged_global` in
@@ -61,11 +61,11 @@ use wayland_protocols_wlr::foreign_toplevel::v1::server::{
 };
 
 use gnoblin_types::{OutputId, WindowId};
-use gnoblin_wm::{ActivationDecision, Event};
 
 use super::foreign_toplevel_shared::{Sent, States, ToplevelChanges, ToplevelEntry, ToplevelState};
 use crate::State;
 use crate::access::{Access, Global};
+use crate::window_request::WindowRequest;
 
 use crate::log;
 
@@ -196,13 +196,16 @@ impl Dispatch2<ZwlrForeignToplevelHandleV1, State> for ZwlrForeignToplevelManage
         let window = self.window;
         match request {
             handle::Request::Activate { seat } => state.toplevel_activated(window, &seat),
-            handle::Request::Close => state.toplevel_close(window),
-            handle::Request::SetMaximized => state.toplevel_maximise(window, true),
-            handle::Request::UnsetMaximized => state.toplevel_maximise(window, false),
-            handle::Request::SetMinimized => state.toplevel_minimise(window, true),
-            handle::Request::UnsetMinimized => state.toplevel_minimise(window, false),
-            handle::Request::SetFullscreen { output } => state.toplevel_fullscreen(window, true, output.as_ref()),
-            handle::Request::UnsetFullscreen => state.toplevel_fullscreen(window, false, None),
+            handle::Request::Close => state.window_request(window, WindowRequest::Close),
+            handle::Request::SetMaximized => state.window_request(window, WindowRequest::Maximise(true)),
+            handle::Request::UnsetMaximized => state.window_request(window, WindowRequest::Maximise(false)),
+            handle::Request::SetMinimized => state.window_request(window, WindowRequest::Minimise(true)),
+            handle::Request::UnsetMinimized => state.window_request(window, WindowRequest::Minimise(false)),
+            // The output a taskbar names is not honoured yet: a window goes fullscreen on its own output.
+            handle::Request::SetFullscreen { output: _ } => {
+                state.window_request(window, WindowRequest::Fullscreen(true))
+            }
+            handle::Request::UnsetFullscreen => state.window_request(window, WindowRequest::Fullscreen(false)),
             handle::Request::SetRectangle {
                 surface,
                 x,
@@ -293,16 +296,12 @@ impl State {
         // A taskbar is one of the session's own privileged clients and the click on its
         // row is the trusted input context: the plan's rule is about a *client*
         // demanding focus, not about a shell reporting the user's action.
-        let effects = self.wm.apply(Event::ActivationRequested {
-            window,
-            decision: ActivationDecision::Allow,
-        });
         log::debug!(area = "toplevel", %window, "activated by a taskbar");
-        self.apply(effects);
-        self.publish();
+        self.window_request(window, WindowRequest::Activate);
     }
 
-    /// A taskbar asked for a window to be closed.
+    /// A taskbar asked for a window to be closed. The close goes to the client, which decides whether
+    /// it exits; the window manager is not asked.
     pub(crate) fn toplevel_close(&mut self, window: WindowId) {
         let Some(entry) = self.toplevel_of(window) else {
             log::trace!(area = "toplevel", %window, "close for a window that is gone");
@@ -310,51 +309,6 @@ impl State {
         };
         entry.send_close();
         log::debug!(area = "toplevel", %window, "asked to close");
-    }
-
-    /// A taskbar asked for a window to be maximised or restored.
-    pub(crate) fn toplevel_maximise(&mut self, window: WindowId, maximised: bool) {
-        let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
-            log::trace!(area = "toplevel", %window, "maximise for a window that is gone");
-            return;
-        };
-        if state.maximised != maximised {
-            let effects = self.wm.apply(Event::ToggleMaximise { window });
-            self.apply(effects);
-            self.publish();
-        }
-    }
-
-    /// A taskbar asked for a window to be minimised or restored.
-    pub(crate) fn toplevel_minimise(&mut self, window: WindowId, minimised: bool) {
-        let Some(managed) = self.wm.window(window) else {
-            log::trace!(area = "toplevel", %window, "minimise for a window that is gone");
-            return;
-        };
-        if managed.state.minimised != minimised {
-            let event = if minimised {
-                Event::Minimise { window }
-            } else {
-                Event::Unminimise { window }
-            };
-            let effects = self.wm.apply(event);
-            self.apply(effects);
-            self.publish();
-        }
-    }
-
-    /// A taskbar asked for a window to be fullscreened or restored.
-    pub(crate) fn toplevel_fullscreen(&mut self, window: WindowId, fullscreen: bool, output: Option<&WlOutput>) {
-        let _ = output;
-        let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
-            log::trace!(area = "toplevel", %window, "fullscreen for a window that is gone");
-            return;
-        };
-        if state.fullscreen != fullscreen {
-            let effects = self.wm.apply(Event::ToggleFullscreen { window });
-            self.apply(effects);
-            self.publish();
-        }
     }
 
     /// A taskbar said where it draws a window's thumbnail.

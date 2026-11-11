@@ -159,9 +159,11 @@ type = "list<object:change>"
 since = "0.2.0"
 
 # An input event for a node in a frame. `kind` names it: `request` (a client request that needs policy, named by
-# `request`: move, resize, maximize, unmaximize, fullscreen, unfullscreen, minimize, menu), or a pointer or key
-# kind (press, release, motion, scroll, enter, leave, key). `x`, `y` are node-local, `button` is the press or
-# release button, `key` and `text` are the key event, `dx`, `dy` are the scroll deltas.
+# `request`: move, resize, maximize, unmaximize, fullscreen, unfullscreen, minimize, unminimize, close, raise, lower,
+# menu, activate), or a pointer or key kind (press, release, motion, scroll, enter, leave, key). `x`, `y` are
+# node-local, `button` is the press or release button, `key` and `text` are the key event, `dx`, `dy` are the scroll
+# deltas. A window request changes nothing until the shell answers: by writing the window's `maximised`, `fullscreen`,
+# `minimised`, `width` and `height`, which the compositor turns into the client's configure, or by calling `close`.
 [[object.signal]]
 name = "event"
 since = "0.2.0"

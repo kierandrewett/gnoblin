@@ -141,14 +141,16 @@ impl State {
             .wm
             .windows()
             .map(|window| {
+                // A shell that holds the tree writes these three on the window's node.
+                let flags = self.effective_state(window.id, window.state);
                 let mut states = States::default();
-                if window.state.maximised {
+                if flags.maximised {
                     states.0 |= States::MAXIMISED;
                 }
-                if window.state.minimised {
+                if flags.minimised {
                     states.0 |= States::MINIMISED;
                 }
-                if window.state.fullscreen {
+                if flags.fullscreen {
                     states.0 |= States::FULLSCREEN;
                 }
                 if focused == Some(window.id) {
@@ -159,7 +161,7 @@ impl State {
                     title: window.title.clone(),
                     app_id: window.app_id.clone(),
                     states,
-                    outputs: if self.wm.is_visible(window.id) {
+                    outputs: if self.wm.is_visible(window.id) && !flags.minimised {
                         self.output_ids()
                     } else {
                         Vec::new()

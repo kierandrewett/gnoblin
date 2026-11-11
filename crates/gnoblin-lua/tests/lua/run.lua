@@ -13,6 +13,7 @@ for _, file in ipairs({
     "shell_test",
     "focus_test",
     "snap_test",
+    "states_test",
     "drag_test",
     "rules_test",
     "sets_test",

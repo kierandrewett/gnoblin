@@ -50,9 +50,9 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use gnoblin_authority::Denial;
 use gnoblin_config::{TitlebarAction, WindowManagement};
 use gnoblin_types::WindowId;
-use gnoblin_wm::Event;
 
 use crate::State;
+use crate::window_request::WindowRequest;
 
 use crate::log;
 
@@ -261,38 +261,30 @@ impl Shell1Host for State {
         let Some(window) = self.window_of(surface) else {
             return Surface::Gone;
         };
-        let effects = self.wm.apply(Event::WindowAppIdChanged {
-            window,
-            app_id: app_id.to_owned(),
-        });
-        self.apply(effects);
-        self.publish();
+        self.window_app_id_set(window, app_id);
         Surface::Window(window)
     }
 
     fn titlebar(&mut self, window: WindowId, action: TitlebarAction) -> Titlebar {
-        if self.wm.window(window).is_none() {
+        let Some(state) = self.window_flags(window) else {
             return Titlebar::Unavailable("the window is not managed");
-        }
-        let event = match action {
-            TitlebarAction::ToggleMaximize => Event::ToggleMaximise { window },
-            TitlebarAction::Minimize => Event::Minimise { window },
-            TitlebarAction::Lower => Event::Lower { window },
+        };
+        let request = match action {
+            TitlebarAction::ToggleMaximize => WindowRequest::Maximise(!state.maximised),
+            TitlebarAction::Minimize => WindowRequest::Minimise(true),
+            TitlebarAction::Lower => WindowRequest::Lower,
             TitlebarAction::None => return Titlebar::Performed,
-            // Three configured actions have no event in `gnoblin-wm`: the
-            // horizontal and vertical halves of a maximise, and the window menu,
-            // which is a shell surface this session does not have yet.
+            // Three configured actions have no request: the horizontal and vertical halves of a
+            // maximise, and the window menu, which is a shell surface this session does not have yet.
             TitlebarAction::ToggleMaximizeHorizontally => {
-                return Titlebar::Unavailable("gnoblin-wm has no horizontal-maximise event");
+                return Titlebar::Unavailable("there is no horizontal-maximise request");
             }
             TitlebarAction::ToggleMaximizeVertically => {
-                return Titlebar::Unavailable("gnoblin-wm has no vertical-maximise event");
+                return Titlebar::Unavailable("there is no vertical-maximise request");
             }
             TitlebarAction::Menu => return Titlebar::Unavailable("the window menu is a shell surface"),
         };
-        let effects = self.wm.apply(event);
-        self.apply(effects);
-        self.publish();
+        self.window_request(window, request);
         Titlebar::Performed
     }
 
@@ -300,16 +292,14 @@ impl Shell1Host for State {
         // The protocol's timestamp is a client's own clock; the session's turn is
         // what the authority reads, so the value is deliberately unused.
         let _ = time;
-        if self.wm.window(window).is_none() {
+        if !self.is_managed(window) {
             return Activation::Refused("not-a-window");
         }
         // A trusted context is the one `gtk_shell1` can offer: the user is
         // interacting with this window already. Anything else is a window asking to
         // raise itself, which is exactly what an app id must not buy.
-        if self.wm.focused() == Some(window) {
-            let effects = self.wm.apply(Event::Raise { window });
-            self.apply(effects);
-            self.publish();
+        if self.is_focused_window(window) {
+            self.window_request(window, WindowRequest::Raise);
             return Activation::Focused;
         }
         let reason = Denial::NoAuthority.as_str();

@@ -25,7 +25,7 @@ use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
 use gnoblin_types::Point;
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks};
 use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -49,6 +49,8 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1, zwlr_foreign_toplevel_manager_v1,
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+
+pub mod shell;
 
 /// How long a test waits for a state before failing.
 pub const TIMEOUT: Duration = Duration::from_secs(10);
@@ -174,11 +176,32 @@ impl Session {
         Self::create(Box::new(Headless::new()), protocols, WmOptions::default())
     }
 
+    /// Creates a session with a shell's tree attached: the hooks' queue is the shell's way in and its publish hook
+    /// the shell's eyes, as the compositor wires them for a connected shell.
+    pub fn start_shelled(tree: TreeHooks) -> Self {
+        Self::create_with(
+            Box::new(Headless::new()),
+            Protocols::default(),
+            WmOptions::default(),
+            tree,
+        )
+    }
+
     /// Builds the session, its sockets and the handle a worker thread uses.
     fn create(
         backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>,
         protocols: Protocols,
         wm: WmOptions,
+    ) -> Self {
+        Self::create_with(backend, protocols, wm, TreeHooks::default())
+    }
+
+    /// Builds the session with the tree hooks a shell uses.
+    fn create_with(
+        backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>,
+        protocols: Protocols,
+        wm: WmOptions,
+        tree: TreeHooks,
     ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
@@ -188,6 +211,7 @@ impl Session {
             privileged_socket_path: Some(privileged_socket.clone()),
             protocols,
             wm,
+            tree,
             ..Config::default()
         };
         let server = Server::new(backend, config).expect("the session starts");
@@ -268,6 +292,8 @@ pub struct App {
     pub height: i32,
     /// Whether the server asked a toplevel to close.
     pub closed: bool,
+    /// The `xdg_toplevel` state values of the last configure a toplevel received.
+    pub states: Vec<u32>,
     /// The size a layer surface was last configured with.
     pub layer_size: Option<(u32, u32)>,
     /// The last layer surface configure serial.
@@ -604,9 +630,15 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            xdg_toplevel::Event::Configure { width, height, .. } => {
+            xdg_toplevel::Event::Configure { width, height, states } => {
                 state.width = width;
                 state.height = height;
+                state.states = states
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|chunk| u32::from_ne_bytes(*chunk))
+                    .collect();
             }
             xdg_toplevel::Event::Close => state.closed = true,
             _ => {}

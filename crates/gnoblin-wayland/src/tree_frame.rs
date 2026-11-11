@@ -96,8 +96,16 @@ pub enum TreeRequest {
     Fullscreen,
     Unfullscreen,
     Minimize,
+    /// A taskbar asked for a minimised window to come back.
+    Unminimize,
+    /// A taskbar asked for the window to close. The shell decides, and answers by calling the node's `close`.
+    Close,
+    /// A window asked to be put on top of its siblings.
+    Raise,
+    /// A window asked to go under its siblings.
+    Lower,
     Menu,
-    /// An activation token the client redeemed for its window; the shell decides whether it focuses.
+    /// An activation token the client redeemed for its window, or a taskbar picked it; the shell decides whether it focuses.
     Activate,
 }
 
@@ -113,6 +121,10 @@ impl TreeRequest {
             Self::Fullscreen => "fullscreen",
             Self::Unfullscreen => "unfullscreen",
             Self::Minimize => "minimize",
+            Self::Unminimize => "unminimize",
+            Self::Close => "close",
+            Self::Raise => "raise",
+            Self::Lower => "lower",
             Self::Menu => "menu",
             Self::Activate => "activate",
         }
@@ -185,6 +197,23 @@ mod tests {
     #[test]
     fn an_activation_request_is_named_for_the_shell() {
         assert_eq!(TreeRequest::Activate.name(), "activate");
+    }
+
+    #[test]
+    fn every_toplevel_request_is_named_for_the_shell() {
+        for (request, name) in [
+            (TreeRequest::Maximize, "maximize"),
+            (TreeRequest::Unmaximize, "unmaximize"),
+            (TreeRequest::Fullscreen, "fullscreen"),
+            (TreeRequest::Unfullscreen, "unfullscreen"),
+            (TreeRequest::Minimize, "minimize"),
+            (TreeRequest::Unminimize, "unminimize"),
+            (TreeRequest::Close, "close"),
+            (TreeRequest::Raise, "raise"),
+            (TreeRequest::Lower, "lower"),
+        ] {
+            assert_eq!(request.name(), name);
+        }
     }
 }
 
@@ -359,6 +388,11 @@ pub struct TreeFrame {
     claims: Vec<TreeCall>,
     /// `authenticate` calls the applied transactions made, in op order, for the compositor to check.
     authentications: Vec<TreeCall>,
+    /// Window nodes whose `maximised`, `fullscreen`, `minimised`, `width` or `height` the shell wrote, in the order
+    /// the writes applied, for the compositor to answer with a configure.
+    window_writes: Vec<NodeId>,
+    /// Method calls on window nodes (`close`), in op order, for the compositor to run.
+    window_calls: Vec<TreeCall>,
     /// Answers to authentications, published with the next batch.
     answers: Vec<TreeAnswer>,
     /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
@@ -390,6 +424,8 @@ impl TreeFrame {
             frames: 0,
             claims: Vec::new(),
             authentications: Vec::new(),
+            window_writes: Vec::new(),
+            window_calls: Vec::new(),
             answers: Vec::new(),
             destroyed: Vec::new(),
             revisions: TreeRevisions::new(),
@@ -473,6 +509,17 @@ impl TreeFrame {
     /// to check against the session's password.
     pub fn take_authentications(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.authentications)
+    }
+
+    /// Take the window nodes the shell wrote state or size on since the last take, each once, for the
+    /// compositor to turn into configures.
+    pub fn take_window_writes(&mut self) -> Vec<NodeId> {
+        std::mem::take(&mut self.window_writes)
+    }
+
+    /// Take the method calls made on window nodes since the last take, in op order, for the compositor to run.
+    pub fn take_window_calls(&mut self) -> Vec<TreeCall> {
+        std::mem::take(&mut self.window_calls)
     }
 
     /// Queue the answer to an `authenticate` call; the next published batch carries it to the shell.
@@ -569,6 +616,24 @@ impl TreeFrame {
                         .partition(|call| scene.class(call.node) == Some("lock") && call.method == "authenticate");
                     self.authentications.extend(auths);
                     self.claims.extend(claims);
+                    for change in &done.changes {
+                        if let TreeChange::Set { node, key, .. } = change
+                            && matches!(
+                                key.as_str(),
+                                "maximised" | "fullscreen" | "minimised" | "width" | "height"
+                            )
+                            && scene.class(*node) == Some("window")
+                            && !self.window_writes.contains(node)
+                        {
+                            self.window_writes.push(*node);
+                        }
+                    }
+                    self.window_calls.extend(
+                        calls
+                            .iter()
+                            .filter(|call| scene.class(call.node) == Some("window"))
+                            .cloned(),
+                    );
                     batch.changes.extend(done.changes.iter().cloned());
                     batch.animations.extend(done.animations.iter().cloned());
                     batch.calls.extend(calls);

@@ -745,8 +745,11 @@ impl Composer {
     }
 
     /// Publishes a window's focus and window-manager state (`focused`, `fullscreen`, `maximised`,
-    /// `minimised`) to its node as a `set` when any of them changes.
+    /// `minimised`) to its node as a `set` when any of them changes. While a shell holds the tree
+    /// only `focused` is published: the other three are the shell's to write, and sending its own
+    /// values back would only make its next transaction stale.
     pub fn set_window_state(&mut self, window: WindowId, state: [bool; 4]) {
+        let holds = self.scene.shell_places();
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
@@ -757,16 +760,43 @@ impl Composer {
         let Some(node) = entry.node else {
             return;
         };
-        for (key, value) in ["focused", "fullscreen", "maximised", "minimised"]
+        for (index, (key, value)) in ["focused", "fullscreen", "maximised", "minimised"]
             .into_iter()
             .zip(state)
+            .enumerate()
         {
+            if holds && index > 0 {
+                continue;
+            }
             self.tree_changes.push(TreeChange::Set {
                 node,
                 key: key.to_owned(),
                 value: TreeValue::Bool(value),
             });
         }
+    }
+
+    /// The `[fullscreen, maximised, minimised]` flags the shell holds on a window's node, or
+    /// `None` while no shell holds the tree or the window has no node. While the shell holds the
+    /// tree these three are the shell's to write, so they are read from the node and never
+    /// published over it.
+    #[must_use]
+    pub fn shell_window_flags(&self, window: WindowId) -> Option<[bool; 3]> {
+        if !self.scene.shell_places() {
+            return None;
+        }
+        let node = self.windows.get(&window)?.node?;
+        let flag = |key: &str| matches!(self.scene.value(node, key), Some(TreeValue::Bool(true)));
+        Some([flag("fullscreen"), flag("maximised"), flag("minimised")])
+    }
+
+    /// The size of a window's node: the content size the client last committed, or the size the
+    /// shell wrote since. `None` when the window has no node.
+    #[must_use]
+    pub fn window_node_size(&self, window: WindowId) -> Option<(u32, u32)> {
+        let node = self.windows.get(&window)?.node?;
+        let bounds = self.scene.bounds(node)?;
+        Some((bounds.width, bounds.height))
     }
 
     /// Stores a window's title and app id for its node's read-only texts. Each one that changes
@@ -4583,6 +4613,51 @@ mod tests {
             composer.take_tree_changes().len(),
             4,
             "a changed state publishes all four"
+        );
+    }
+
+    #[test]
+    fn while_a_shell_holds_the_tree_only_focus_is_published_and_the_flags_are_read_from_the_node() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        composer.take_tree_changes();
+        let node = composer.window_node(window).expect("the window has a node");
+        composer.with_scene(|scene| scene.set_shell_places(true));
+        assert_eq!(
+            composer.shell_window_flags(window),
+            Some([false; 3]),
+            "nothing is set yet"
+        );
+
+        // The shell writes the three flags on the node itself.
+        composer.with_scene(|scene| {
+            for key in ["fullscreen", "maximised"] {
+                scene
+                    .set_value(node, key, TreeValue::Bool(true))
+                    .expect("the node takes the value");
+            }
+        });
+        assert_eq!(
+            composer.shell_window_flags(window),
+            Some([true, true, false]),
+            "the flags are read from the node"
+        );
+
+        composer.set_window_state(window, [true, true, true, false]);
+        let changes = composer.take_tree_changes();
+        assert_eq!(changes.len(), 1, "only focus is published: {changes:?}");
+        assert!(
+            matches!(&changes[0], TreeChange::Set { key, value: TreeValue::Bool(true), .. } if key == "focused"),
+            "{changes:?}"
+        );
+
+        composer.with_scene(|scene| scene.set_shell_places(false));
+        assert_eq!(
+            composer.shell_window_flags(window),
+            None,
+            "with no shell the node holds nothing"
         );
     }
 

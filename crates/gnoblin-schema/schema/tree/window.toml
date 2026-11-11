@@ -32,7 +32,8 @@ since = "0.2.0"
 default = false
 readonly = true
 
-# A client request; the shell may refuse it.
+# A client or taskbar request the shell decides (see the `request` event). The shell writes the answer here, and the
+# compositor turns `fullscreen`, `maximised` and `minimised` (with `width` and `height`) into the client's configure.
 [[object.property]]
 name = "fullscreen"
 type = "bool"
@@ -62,7 +63,7 @@ since = "0.2.0"
 name = "focus"
 since = "0.2.0"
 
-# Close the window.
+# Ask the window's client to close. The client decides whether it exits; the window goes away when it destroys it.
 [[object.method]]
 name = "close"
 since = "0.2.0"

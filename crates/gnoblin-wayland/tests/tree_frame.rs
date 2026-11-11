@@ -13,25 +13,33 @@ use gnoblin_render::{Actor, NodeSpec, Scene};
 use gnoblin_types::{Keysym, NodeId, Rect};
 use gnoblin_wayland::{TreeBatch, TreeFrame, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
 
-/// A schema with one class, `node`, holding one animatable double.
+/// A schema with the classes the tests build: `node`, holding one animatable double, the `seat` and `lock` the
+/// compositor owns, and a `window` whose state flags and size the shell writes.
 struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "seat" | "lock")
+        matches!(class, "node" | "seat" | "lock" | "window")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
-        (class == "node" && key == "opacity").then_some(PropertyInfo {
-            kind: ValueType::Double,
+        let (kind, animated) = match (class, key) {
+            ("node", "opacity") => (ValueType::Double, true),
+            ("window", "maximised" | "fullscreen" | "minimised") => (ValueType::Bool, false),
+            ("window", "width" | "height" | "x") => (ValueType::Double, false),
+            _ => return None,
+        };
+        Some(PropertyInfo {
+            kind,
             readonly: false,
-            animated: true,
+            animated,
         })
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
         (matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim"))
             || (class == "lock" && method == "authenticate")
+            || (class == "window" && method == "close")
     }
 }
 
@@ -742,4 +750,103 @@ fn an_event_for_a_node_destroyed_in_the_same_frame_is_dropped_at_send() {
         [(SECOND, "enter")],
         "the edges for the destroyed node are dropped; the other node's edge still goes"
     );
+}
+
+/// A scene whose root holds a compositor-owned window node and a plain node.
+fn scene_with_window(window: NodeId, plain: NodeId) -> Scene {
+    let mut scene = scene();
+    for (id, class) in [(window, "window"), (plain, "node")] {
+        scene
+            .insert_as(Actor::Compositor, id, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+            .expect("the node inserts");
+        scene
+            .set_class(id, Some(class.to_owned()))
+            .expect("the node takes a class");
+    }
+    scene
+}
+
+fn set(node: NodeId, key: &str, value: TreeValue) -> TreeOp {
+    TreeOp::Set {
+        node,
+        key: key.to_owned(),
+        value,
+        timing: None,
+    }
+}
+
+#[test]
+fn the_shells_writes_to_a_window_are_kept_once_for_the_compositor_to_answer() {
+    let mut frame = new_frame();
+    let (window, plain) = (NodeId::new(0x300), NodeId::new(0x301));
+    let mut scene = scene_with_window(window, plain);
+    let replies = Replies::default();
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![
+            set(window, "maximised", TreeValue::Bool(true)),
+            set(window, "width", TreeValue::Double(640.0)),
+            set(window, "height", TreeValue::Double(480.0)),
+            set(plain, "opacity", TreeValue::Double(0.5)),
+        ]),
+        &replies,
+    );
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert!(replies.lock().unwrap()[0].1.is_ok(), "the writes apply");
+    assert_eq!(
+        frame.take_window_writes(),
+        [window],
+        "the window is named once, however many of its keys were written, and a plain node is not named"
+    );
+    assert!(frame.take_window_writes().is_empty(), "taking drains the writes");
+}
+
+#[test]
+fn a_write_to_a_key_that_is_not_a_state_or_a_size_is_not_an_answer() {
+    let mut frame = new_frame();
+    let (window, plain) = (NodeId::new(0x300), NodeId::new(0x301));
+    let mut scene = scene_with_window(window, plain);
+    let replies = Replies::default();
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![set(window, "x", TreeValue::Double(30.0))]),
+        &replies,
+    );
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert!(replies.lock().unwrap()[0].1.is_ok(), "the write applies");
+    assert!(
+        frame.take_window_writes().is_empty(),
+        "a move changes no state and no configure size"
+    );
+}
+
+#[test]
+fn a_close_call_on_a_window_is_kept_for_the_compositor() {
+    let mut frame = new_frame();
+    let (window, plain) = (NodeId::new(0x300), NodeId::new(0x301));
+    let mut scene = scene_with_window(window, plain);
+    let replies = Replies::default();
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![TreeOp::TreeCall {
+            token: 1,
+            node: window,
+            method: "close".to_owned(),
+            args: Vec::new(),
+            text: SecretText::default(),
+        }]),
+        &replies,
+    );
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert!(replies.lock().unwrap()[0].1.is_ok(), "the call applies");
+    let calls = frame.take_window_calls();
+    assert_eq!(calls.len(), 1, "the close call is kept");
+    assert_eq!((calls[0].node, calls[0].method.as_str()), (window, "close"));
+    assert!(frame.take_window_calls().is_empty(), "taking drains the calls");
 }

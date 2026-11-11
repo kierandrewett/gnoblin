@@ -9,6 +9,7 @@ mod session;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use session::shell::Shell;
 use session::{Client, Session, TIMEOUT};
 use wayland_protocols::xdg::activation::v1::client::xdg_activation_v1;
 use wayland_protocols::xdg::shell::client::xdg_toplevel;
@@ -221,6 +222,86 @@ fn a_token_needs_a_trusted_context() {
         assert!(
             session.windows().activation_denied().is_none(),
             "an unearned token is dropped, not decided"
+        );
+    });
+}
+
+#[test]
+fn a_denied_activation_reports_the_decision_without_changing_focus() {
+    let session = Session::start_allowing_focus();
+    session.run(|session| {
+        let mut alpha = Client::connect(session.socket());
+        let activation = activation(&mut alpha);
+        let alpha_window = alpha.map_window("org.gnoblin.Alpha", "Alpha");
+        wait_focus(session, "Alpha");
+        let serial = click_for_serial(&mut alpha, session, &alpha_window);
+        let token = request_token(&mut alpha, &activation, Some(serial)).expect("a click earns a token");
+
+        // The token is spent on Alpha, which is the focused window already.
+        activation.activate(token.clone(), &alpha_window.surface);
+        alpha.roundtrip();
+        wait_focus(session, "Alpha");
+
+        // Another window takes the focus. The spent token is then presented again to take it back.
+        let mut beta = Client::connect(session.socket());
+        let _beta_window = beta.map_window("org.gnoblin.Beta", "Beta");
+        wait_focus(session, "Beta");
+        activation.activate(token, &alpha_window.surface);
+        alpha.roundtrip();
+
+        // The compositor decided: the denial names its reason and the window it was for, and the focus did not move.
+        wait_denial(session, "reused-token");
+        for _ in 0..20 {
+            alpha.roundtrip();
+            thread::sleep(Duration::from_millis(5));
+        }
+        let observation = session.windows();
+        assert_eq!(
+            observation.focused().map(|window| window.title.as_str()),
+            Some("Beta"),
+            "a denied activation leaves the focus where it was"
+        );
+        let denial = observation.activation_denied().expect("the denial is reported");
+        assert_eq!(
+            denial.window,
+            observation.titled("Alpha").map(|window| window.id),
+            "the denial names the window that asked"
+        );
+    });
+}
+
+#[test]
+fn a_denied_activation_is_never_a_request_to_the_shell() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        // A privileged connection earns a token without a click, so the test needs no pointer.
+        let mut app = Client::connect(session.privileged_socket());
+        let activation = activation(&mut app);
+        let window = app.map_window("org.gnoblin.Asker", "Asker");
+        let node = shell.wait_window_node();
+        let token = request_token(&mut app, &activation, None).expect("a privileged client earns a token");
+
+        activation.activate(token.clone(), &window.surface);
+        app.roundtrip();
+        shell.wait_request(node, "activate", 1);
+
+        activation.activate(token, &window.surface);
+        app.roundtrip();
+        wait_denial(session, "reused-token");
+        for _ in 0..20 {
+            app.roundtrip();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            shell
+                .requests(node)
+                .iter()
+                .filter(|request| **request == "activate")
+                .count(),
+            1,
+            "only the allowed activation reached the shell; the refusal stayed in the compositor"
         );
     });
 }
