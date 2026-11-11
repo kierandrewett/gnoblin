@@ -1946,3 +1946,47 @@ fn a_window_past_the_cap_is_refused_and_leaves_no_record() {
     assert!(secure_of(&wm, over).is_none());
     check(&wm);
 }
+
+// Policy reload: replacing the options changes the behaviour the next event sees.
+#[test]
+fn replacing_the_options_changes_the_pointer_focus_mode() {
+    let mut wm = pointer_wm(FocusMode::Click, false);
+    pointer_moved(&mut wm, Some(2), 0);
+    assert_eq!(wm.focused(), Some(window(1)), "click mode ignores motion");
+
+    let effects = wm.apply(Event::OptionsChanged {
+        options: WmOptions {
+            focus_mode: FocusMode::Hover,
+            ..WmOptions::default()
+        },
+    });
+    assert!(
+        effects.is_empty(),
+        "a reload moves no window and changes no focus by itself"
+    );
+    assert_eq!(wm.options().focus_mode, FocusMode::Hover);
+
+    pointer_moved(&mut wm, Some(2), 10);
+    assert_eq!(
+        wm.focused(),
+        Some(window(2)),
+        "hover mode follows the pointer after the reload"
+    );
+    check(&wm);
+}
+
+#[test]
+fn replacing_the_options_keeps_the_managed_windows() {
+    let mut wm = default_wm();
+    open(&mut wm, 1);
+    let before = wm.window(window(1)).map(|w| w.geometry);
+    wm.apply(Event::OptionsChanged {
+        options: WmOptions {
+            edge_tiling: true,
+            ..WmOptions::default()
+        },
+    });
+    assert_eq!(wm.window(window(1)).map(|w| w.geometry), before);
+    assert_eq!(wm.focused(), Some(window(1)));
+    check(&wm);
+}

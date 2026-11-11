@@ -245,6 +245,22 @@ behavior. A custom SSD renderer implements its own titlebar click behavior.
 
 See [titlebars](/guides/window_frames).
 
+## Reading the policy from Lua
+
+The main seat node publishes the window management policy as readonly props, so
+the shell reads the policy it runs under. A reload publishes only the values it
+changed. The props are:
+
+- Edges and drags: `edge_tiling`, `drag_constraint` (`work_area` or `minimum_strip`).
+- Focus: `focus_mode`, `focus_new_windows`, `raise_on_click`, `auto_raise`,
+  `auto_raise_delay`, `focus_change_on_pointer_rest`.
+- Titlebar gestures: `double_click`, `middle_click`, `right_click`.
+
+Some settings are not in this policy. Window rules are read by the stock shell from
+its own rule list. `attach-modal-dialogs` and `workspaces-only-on-primary` are not
+published. Workspaces are `Workspace` nodes in the tree, not seat props; see
+[Workspaces](/shell-api/workspaces).
+
 ## Type definition
 
 This is schema pseudocode in Lua table form. `?` marks an optional field;

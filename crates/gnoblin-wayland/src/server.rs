@@ -539,6 +539,14 @@ impl Server {
                                 state.apply_window_rules(rules);
                                 let _ = reply.send(());
                             }
+                            Command::WindowManagement {
+                                options,
+                                titlebar,
+                                reply,
+                            } => {
+                                state.apply_window_management(options, titlebar);
+                                let _ = reply.send(());
+                            }
                             Command::Xwayland { session, reply } => {
                                 let _ = reply.send(state.reconcile_xwayland(session));
                             }
@@ -1122,6 +1130,19 @@ impl ControlHandle {
         let _ = answer.recv_timeout(FOCUS_TIMEOUT);
     }
 
+    /// Applies the accepted window management options and titlebar gestures, and republishes
+    /// the seat policy the stock shell reads. Like the rules, it waits for the change to be
+    /// applied, so a reload is confirmed before the reply is sent.
+    pub fn set_window_management(&self, options: gnoblin_wm::WmOptions, titlebar: TitlebarActions) {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::WindowManagement {
+            options,
+            titlebar,
+            reply,
+        });
+        let _ = answer.recv_timeout(FOCUS_TIMEOUT);
+    }
+
     /// Replaces the X11 session from the loop: `None` stops the running server, a session
     /// starts a fresh one. Waits for the loop's answer, so the caller's reply to a commit is
     /// ordered after the server is up or stopped.
@@ -1436,6 +1457,12 @@ enum Command {
     /// answers once they are applied.
     WindowRules {
         rules: Vec<gnoblin_wm::Rule>,
+        reply: std::sync::mpsc::SyncSender<()>,
+    },
+    /// The window management options and titlebar gestures from an accepted document.
+    WindowManagement {
+        options: gnoblin_wm::WmOptions,
+        titlebar: TitlebarActions,
         reply: std::sync::mpsc::SyncSender<()>,
     },
     /// The X11 session the configuration accepted, replacing the running one (`None` stops

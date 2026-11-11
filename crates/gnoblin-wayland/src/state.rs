@@ -62,9 +62,9 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{Composer, Content};
+use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
-use gnoblin_config::Protocols;
+use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
 use gnoblin_layers::{InputPolicy, LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_lock::{Embargo, Lock, State as LockState};
@@ -886,14 +886,7 @@ impl State {
         }
         // The main seat is the compositor's own seat in the scene, named as the wl_seat is.
         state.composer.add_main_seat(seat_name);
-        let options = state.wm.options();
-        let drag_constraint = match options.drag_constraint {
-            gnoblin_wm::DragConstraint::WorkArea => "work_area",
-            gnoblin_wm::DragConstraint::MinimumStrip => "minimum_strip",
-        };
-        state
-            .composer
-            .publish_main_seat_policy(options.edge_tiling, drag_constraint);
+        state.publish_seat_policy();
         // The session lock's node: a shell that attaches while the session is locked reads its
         // state in the snapshot.
         state.composer.add_lock_node();
@@ -2285,6 +2278,50 @@ impl State {
         ))
     }
 
+    /// Publishes the window management policy on the main seat, where the stock shell reads
+    /// it. Startup and every reload call this, so the shell always reads the live config.
+    pub(crate) fn publish_seat_policy(&mut self) {
+        let options = self.wm.options();
+        let titlebar = self.titlebar_actions;
+        let policy = MainSeatPolicy {
+            edge_tiling: options.edge_tiling,
+            drag_constraint: match options.drag_constraint {
+                gnoblin_wm::DragConstraint::WorkArea => "work_area",
+                gnoblin_wm::DragConstraint::MinimumStrip => "minimum_strip",
+            },
+            focus_mode: match options.focus_mode {
+                gnoblin_wm::FocusMode::Click => "click",
+                gnoblin_wm::FocusMode::Hover => "hover",
+                gnoblin_wm::FocusMode::HoverStrict => "hover-strict",
+            },
+            focus_new_windows: match options.new_window_focus {
+                gnoblin_wm::NewWindowFocus::Allow => "allow",
+                gnoblin_wm::NewWindowFocus::Prevent => "prevent",
+            },
+            raise_on_click: options.raise_on_click,
+            auto_raise: options.auto_raise,
+            auto_raise_delay: i64::try_from(options.auto_raise_delay).unwrap_or(i64::MAX),
+            focus_change_on_pointer_rest: options.focus_change_on_pointer_rest,
+            double_click: Self::titlebar_action_name(titlebar.double_click),
+            middle_click: Self::titlebar_action_name(titlebar.middle_click),
+            right_click: Self::titlebar_action_name(titlebar.right_click),
+        };
+        self.composer.publish_main_seat_policy(&policy);
+    }
+
+    /// The spelling the stock shell matches on for a titlebar gesture.
+    fn titlebar_action_name(action: TitlebarAction) -> &'static str {
+        match action {
+            TitlebarAction::ToggleMaximize => "toggle-maximize",
+            TitlebarAction::ToggleMaximizeHorizontally => "toggle-maximize-horizontally",
+            TitlebarAction::ToggleMaximizeVertically => "toggle-maximize-vertically",
+            TitlebarAction::Minimize => "minimize",
+            TitlebarAction::Lower => "lower",
+            TitlebarAction::Menu => "menu",
+            TitlebarAction::None => "none",
+        }
+    }
+
     /// Sets whether property changes land at once, see [`Composer::set_reduced_motion`].
     pub(crate) fn set_reduced_motion(&mut self, reduced: bool) {
         self.composer.set_reduced_motion(reduced);
@@ -2296,6 +2333,15 @@ impl State {
     pub(crate) fn apply_window_rules(&mut self, rules: Vec<gnoblin_wm::Rule>) {
         let effects = self.wm.apply(Event::RulesChanged { rules });
         self.apply(effects);
+    }
+
+    /// Applies the accepted window management options and titlebar gestures, then republishes
+    /// the seat policy the stock shell reads.
+    pub(crate) fn apply_window_management(&mut self, options: WmOptions, titlebar: TitlebarActions) {
+        let effects = self.wm.apply(Event::OptionsChanged { options });
+        self.titlebar_actions = titlebar;
+        self.apply(effects);
+        self.publish_seat_policy();
     }
 
     /// Hands the window manager the workspace sets the configuration accepted. The window

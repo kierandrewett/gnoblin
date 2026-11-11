@@ -476,6 +476,10 @@ impl Wm {
                 // stay, so a bad reload cannot leave a half-configured session.
                 Err(error) => vec![Effect::rejected(Rejection::Rules(error))],
             },
+            Event::OptionsChanged { options } => {
+                self.options = options;
+                Vec::new()
+            }
             Event::WorkspaceAdded { workspace } => self.workspace_added(workspace),
             Event::WorkspaceRemoved { workspace } => self.workspace_removed(workspace),
             Event::WorkspaceActivated { workspace } => self.workspace_activated(workspace),

@@ -151,9 +151,16 @@ function Screen:on_destroyed() -- unplugged: its windows move to another desk
     end
     gone:destroy()
 end
--- Focus and raise policy: seat.focus_options holds the window_management focus keys (nil = documented defaults).
+-- Focus and raise policy: the window_management focus keys the compositor publishes as readonly seat props.
 function focus_settings()
-    return Focus.settings(seat.focus_options or {})
+    return Focus.settings({
+        focus_mode = seat.focus_mode,
+        focus_new_windows = seat.focus_new_windows,
+        raise_on_click = seat.raise_on_click,
+        auto_raise = seat.auto_raise,
+        auto_raise_delay = seat.auto_raise_delay,
+        focus_change_on_pointer_rest = seat.focus_change_on_pointer_rest,
+    })
 end
 -- Window rules: seat.data.window_rules is the user's list, compiled once per table (a bad rule fails at load).
 local rules_src, rules_compiled, rules_seen

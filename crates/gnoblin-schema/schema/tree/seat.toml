@@ -67,6 +67,77 @@ since = "0.2.0"
 default = "work_area"
 readonly = true
 
+# Whether a focus follows the pointer: `click`, `hover` or `hover-strict`.
+[[object.property]]
+name = "focus_mode"
+type = "string"
+since = "0.2.0"
+default = "click"
+readonly = true
+
+# Whether a new window takes focus: `allow` or `prevent`.
+[[object.property]]
+name = "focus_new_windows"
+type = "string"
+since = "0.2.0"
+default = "prevent"
+readonly = true
+
+# Whether a click raises the window it lands in.
+[[object.property]]
+name = "raise_on_click"
+type = "bool"
+since = "0.2.0"
+default = true
+readonly = true
+
+# Whether a hovered window is raised after `auto_raise_delay` milliseconds.
+[[object.property]]
+name = "auto_raise"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# The delay before auto-raise, in milliseconds.
+[[object.property]]
+name = "auto_raise_delay"
+type = "int"
+since = "0.2.0"
+default = 500
+readonly = true
+
+# Whether focus moves to a window the pointer rests on.
+[[object.property]]
+name = "focus_change_on_pointer_rest"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# The titlebar gestures: `toggle-maximize`, `toggle-maximize-horizontally`,
+# `toggle-maximize-vertically`, `minimize`, `lower`, `menu` or `none`.
+[[object.property]]
+name = "double_click"
+type = "string"
+since = "0.2.0"
+default = "toggle-maximize"
+readonly = true
+
+[[object.property]]
+name = "middle_click"
+type = "string"
+since = "0.2.0"
+default = "lower"
+readonly = true
+
+[[object.property]]
+name = "right_click"
+type = "string"
+since = "0.2.0"
+default = "menu"
+readonly = true
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

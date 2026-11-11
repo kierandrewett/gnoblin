@@ -32,10 +32,13 @@ local function seat_focus()
     return root:find(Seat).focus
 end
 
--- Sets the seat's focus options. The compositor does not publish focus_options yet (no schema property), so the
--- shell's raw read sees the field directly. Writing through the node would be refused as an unknown property.
-local function set_focus_options(opts)
-    rawset(root:find(Seat), "focus_options", opts)
+-- Publishes the seat's focus options as the compositor does: readonly seat props, changed the way the native side
+-- reports its own changes (`host.external`), so the next frame sees them.
+local function set_focus_options(host, opts)
+    local seat = host.ids("Seat")[1]
+    for k, v in pairs(opts) do
+        host.external(seat, k, v)
+    end
 end
 
 -- A second window, added after the shell started. The shell places it on its next frame.
@@ -262,7 +265,7 @@ return {
         function()
             local host, w = window_setup({})
             local id = host.ids("Window")[1]
-            set_focus_options({ focus_mode = "hover" })
+            set_focus_options(host, { focus_mode = "hover" })
             host.frame(0, { { type = "enter", target = id, bubbles = true } })
             H.check(root:find(Seat).focus == w, "enter must focus under hover")
             host.frame(0.1, { { type = "leave", target = id, bubbles = true } })
@@ -274,7 +277,7 @@ return {
         function()
             local host, w = window_setup({})
             local id = host.ids("Window")[1]
-            set_focus_options({ focus_mode = "hover-strict" })
+            set_focus_options(host, { focus_mode = "hover-strict" })
             host.frame(0, { { type = "enter", target = id, bubbles = true } })
             host.frame(0.1, { { type = "leave", target = id, bubbles = true } })
             H.check(root:find(Seat).focus == nil, "hover-strict leave must clear focus")
@@ -286,7 +289,7 @@ return {
             local host, w = window_setup({})
             local id = host.ids("Window")[1]
             root:find(Seat).focus = nil
-            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            set_focus_options(host, { focus_mode = "hover", focus_change_on_pointer_rest = true })
             host.frame(0, { { type = "enter", target = id, bubbles = true } })
             host.frame(0.05, { { type = "leave", target = id, bubbles = true } })
             host.frame(0.4, {})
@@ -299,7 +302,7 @@ return {
             local host, w = window_setup({})
             local id = host.ids("Window")[1]
             root:find(Seat).focus = nil
-            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            set_focus_options(host, { focus_mode = "hover", focus_change_on_pointer_rest = true })
             host.frame(0, { { type = "enter", target = id, bubbles = true } })
             host.frame(0.1, { { type = "motion", target = id, bubbles = true } })
             host.frame(0.25, {})
@@ -313,7 +316,7 @@ return {
         function()
             local host, w = window_setup({})
             local id = host.ids("Window")[1]
-            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            set_focus_options(host, { focus_mode = "hover", focus_change_on_pointer_rest = true })
             host.frame(0, { { type = "press", target = id, bubbles = true } })
             host.frame(0.05, { { type = "enter", target = id, bubbles = true } })
             host.frame(0.4, {})
@@ -335,7 +338,7 @@ return {
         function()
             local host, w = window_setup({})
             local a = host.ids("Window")[1]
-            set_focus_options({ raise_on_click = false })
+            set_focus_options(host, { raise_on_click = false })
             host.frame(0, { { type = "press", target = a, bubbles = true } })
             H.check(root:find(Seat).focus == w, "press must focus")
         end,
@@ -482,7 +485,7 @@ return {
             local a = host.ids("Window")[1]
             second_window(host)
             H.check(not is_top(w), "a starts buried under b")
-            set_focus_options({ focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
+            set_focus_options(host, { focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
             host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
             host.frame(0.9, {})
             H.check(is_top(w), "auto-raise must raise a after 0.5 s")
@@ -494,7 +497,7 @@ return {
             local host, w = window_setup({})
             local a = host.ids("Window")[1]
             second_window(host)
-            set_focus_options({ focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
+            set_focus_options(host, { focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
             host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
             host.frame(0.2, { { type = "leave", target = a, bubbles = true } })
             host.frame(0.9, {})
@@ -507,7 +510,7 @@ return {
             local host, w = window_setup({})
             local a = host.ids("Window")[1]
             second_window(host)
-            set_focus_options({ focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
+            set_focus_options(host, { focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
             host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
             host.frame(0.2, { { type = "closed", target = a, args = {} } })
             host.frame(0.9, {})
@@ -520,7 +523,7 @@ return {
             local host, w = window_setup({})
             local a = host.ids("Window")[1]
             root:find(Seat).focus = nil
-            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            set_focus_options(host, { focus_mode = "hover", focus_change_on_pointer_rest = true })
             host.frame(0, { { type = "enter", target = a, bubbles = true } })
             host.frame(0.05, { { type = "closed", target = a, args = {} } })
             host.frame(0.4, {})
@@ -535,7 +538,7 @@ return {
             second_window(host)
             local b = host.ids("Window")[2]
             root:find(Seat).focus = nil
-            set_focus_options({ focus_mode = "hover-strict" })
+            set_focus_options(host, { focus_mode = "hover-strict" })
             host.frame(0, { { type = "press", target = a, bubbles = true } })
             host.frame(0.05, { { type = "enter", target = b, bubbles = true } })
             H.check(root:find(Seat).focus == w, "a held button keeps focus on the pressed window")

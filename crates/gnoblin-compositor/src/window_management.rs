@@ -74,8 +74,21 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 /// Copies an accepted `window-management` section into the compositor configuration. A leaf
 /// the section leaves out keeps its compositor default.
 fn apply(config: &mut SessionConfig, section: &WindowManagement) {
+    config.wayland.wm = wm_options_of(section);
+    config.wayland.titlebar_actions = TitlebarActions::of(section);
+    let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
+    config.wayland.check_alive_timeout = section
+        .check_alive_timeout
+        .and_then(|ms| u64::try_from(ms).ok())
+        .map_or(default_timeout, Duration::from_millis);
+}
+
+/// The window manager options a `window-management` section sets. A leaf the section leaves
+/// out keeps its compositor default. Startup and a committed reload both read the policy from
+/// here, so the two cannot disagree about what a section means.
+pub(crate) fn wm_options_of(section: &WindowManagement) -> WmOptions {
     let wm_defaults = WmOptions::default();
-    config.wayland.wm = WmOptions {
+    WmOptions {
         edge_tiling: section.edge_tiling.unwrap_or(wm_defaults.edge_tiling),
         drag_constraint: section
             .constrain_drag_to_work_area
@@ -102,13 +115,7 @@ fn apply(config: &mut SessionConfig, section: &WindowManagement) {
             .auto_raise_delay
             .and_then(|ms| u64::try_from(ms).ok())
             .unwrap_or(wm_defaults.auto_raise_delay),
-    };
-    config.wayland.titlebar_actions = TitlebarActions::of(section);
-    let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
-    config.wayland.check_alive_timeout = section
-        .check_alive_timeout
-        .and_then(|ms| u64::try_from(ms).ok())
-        .map_or(default_timeout, Duration::from_millis);
+    }
 }
 
 /// The pointer focus mode for a configured `focus-mode`.
@@ -278,5 +285,21 @@ mod tests {
             paths.iter().any(|path| path == "window-management.auto-raise-delay"),
             "the refusal names the leaf, got {paths:?}"
         );
+    }
+
+    #[test]
+    fn the_options_a_reload_derives_are_the_options_startup_sets() {
+        let section = WindowManagement {
+            edge_tiling: Some(true),
+            focus_mode: Some(ConfiguredFocusMode::HoverStrict),
+            auto_raise: Some(true),
+            auto_raise_delay: Some(250),
+            ..WindowManagement::default()
+        };
+        let mut startup = SessionConfig::default();
+        apply(&mut startup, &section);
+
+        assert_eq!(wm_options_of(&section), startup.wayland.wm);
+        assert_eq!(wm_options_of(&WindowManagement::default()), WmOptions::default());
     }
 }

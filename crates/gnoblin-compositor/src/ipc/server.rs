@@ -1281,6 +1281,13 @@ impl Dispatcher {
                 if let Some(rules) = rules {
                     self.control.set_window_rules(rules);
                 }
+                // The window management policy and titlebar gestures follow the accepted document
+                // as the rules do, so a reload applies them without a restart.
+                let section = config.window_management.clone().unwrap_or_default();
+                self.control.set_window_management(
+                    crate::window_management::wm_options_of(&section),
+                    gnoblin_wayland::TitlebarActions::of(&section),
+                );
                 // The X11 session follows the accepted document. An unchanged session is left running; a
                 // changed one restarts the server only when no X11 client is connected, else it is refused.
                 if let Some(desired) = xwayland

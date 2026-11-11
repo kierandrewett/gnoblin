@@ -239,6 +239,21 @@ struct WindowNode {
     published_state: Option<[bool; 4]>,
 }
 
+/// The window management policy the main seat publishes for the stock shell to read.
+pub struct MainSeatPolicy {
+    pub edge_tiling: bool,
+    pub drag_constraint: &'static str,
+    pub focus_mode: &'static str,
+    pub focus_new_windows: &'static str,
+    pub raise_on_click: bool,
+    pub auto_raise: bool,
+    pub auto_raise_delay: i64,
+    pub focus_change_on_pointer_rest: bool,
+    pub double_click: &'static str,
+    pub middle_click: &'static str,
+    pub right_click: &'static str,
+}
+
 /// The session's scene and the windows it draws.
 #[derive(Debug)]
 pub struct Composer {
@@ -1649,28 +1664,39 @@ impl Composer {
         self.publish_seat_screen();
     }
 
-    /// Publishes the main seat's window management policy from the configuration: whether edge
-    /// tiling is on, and the name of the drag constraint. Only a change is published.
-    pub fn publish_main_seat_policy(&mut self, edge_tiling: bool, drag_constraint: &str) {
+    /// Publishes the main seat's window management policy, the values the stock shell reads
+    /// from the seat. Each key is published only when its value changes.
+    pub fn publish_main_seat_policy(&mut self, policy: &MainSeatPolicy) {
         let Some(seat) = self.main_seat else {
             return;
         };
-        if self.scene.value(seat, "edge_tiling") != Some(&TreeValue::Bool(edge_tiling)) {
-            let value = TreeValue::Bool(edge_tiling);
-            let _ = self.scene.set_value(seat, "edge_tiling", value.clone());
-            self.tree_changes.push(TreeChange::Set {
-                node: seat,
-                key: "edge_tiling".to_owned(),
-                value,
-            });
-        }
-        if self.scene.text(seat, "drag_constraint") != Some(drag_constraint) {
-            let _ = self.scene.set_text(seat, "drag_constraint", drag_constraint.to_owned());
-            self.tree_changes.push(TreeChange::Set {
-                node: seat,
-                key: "drag_constraint".to_owned(),
-                value: TreeValue::Text(drag_constraint.to_owned()),
-            });
+        for (key, value) in [
+            ("edge_tiling", TreeValue::Bool(policy.edge_tiling)),
+            ("drag_constraint", TreeValue::Text(policy.drag_constraint.to_owned())),
+            ("focus_mode", TreeValue::Text(policy.focus_mode.to_owned())),
+            (
+                "focus_new_windows",
+                TreeValue::Text(policy.focus_new_windows.to_owned()),
+            ),
+            ("raise_on_click", TreeValue::Bool(policy.raise_on_click)),
+            ("auto_raise", TreeValue::Bool(policy.auto_raise)),
+            ("auto_raise_delay", TreeValue::Int(policy.auto_raise_delay)),
+            (
+                "focus_change_on_pointer_rest",
+                TreeValue::Bool(policy.focus_change_on_pointer_rest),
+            ),
+            ("double_click", TreeValue::Text(policy.double_click.to_owned())),
+            ("middle_click", TreeValue::Text(policy.middle_click.to_owned())),
+            ("right_click", TreeValue::Text(policy.right_click.to_owned())),
+        ] {
+            if self.scene.value(seat, key) != Some(&value) {
+                let _ = self.scene.set_value(seat, key, value.clone());
+                self.tree_changes.push(TreeChange::Set {
+                    node: seat,
+                    key: key.to_owned(),
+                    value,
+                });
+            }
         }
     }
 
@@ -4126,28 +4152,66 @@ mod tests {
     fn the_main_seat_publishes_its_window_management_policy() {
         let mut composer = Composer::new();
         let seat = composer.add_main_seat("seat0").expect("a seat node");
-        let (edge, drag) = composer.with_scene(|scene| {
-            (
-                scene.value(seat, "edge_tiling").cloned(),
-                scene.text(seat, "drag_constraint").map(str::to_owned),
-            )
+        composer.with_scene(|scene| {
+            for key in ["edge_tiling", "focus_mode", "auto_raise_delay", "right_click"] {
+                assert_eq!(scene.value(seat, key), None, "{key}: the default is not stored yet");
+            }
         });
-        assert_eq!(edge, None, "the default is not stored, so the snapshot lists nothing");
-        assert_eq!(drag, None, "the default is not stored, so the snapshot lists nothing");
 
-        composer.publish_main_seat_policy(true, "minimum_strip");
-        let (edge, drag) = composer.with_scene(|scene| {
-            (
-                scene.value(seat, "edge_tiling").cloned(),
-                scene.text(seat, "drag_constraint").map(str::to_owned),
-            )
+        let mut policy = MainSeatPolicy {
+            edge_tiling: true,
+            drag_constraint: "minimum_strip",
+            focus_mode: "hover",
+            focus_new_windows: "prevent",
+            raise_on_click: true,
+            auto_raise: true,
+            auto_raise_delay: 250,
+            focus_change_on_pointer_rest: false,
+            double_click: "toggle-maximize",
+            middle_click: "lower",
+            right_click: "menu",
+        };
+        composer.publish_main_seat_policy(&policy);
+        composer.with_scene(|scene| {
+            assert_eq!(scene.value(seat, "edge_tiling"), Some(&TreeValue::Bool(true)));
+            assert_eq!(scene.text(seat, "drag_constraint"), Some("minimum_strip"));
+            assert_eq!(scene.text(seat, "focus_mode"), Some("hover"));
+            assert_eq!(scene.text(seat, "focus_new_windows"), Some("prevent"));
+            assert_eq!(scene.value(seat, "raise_on_click"), Some(&TreeValue::Bool(true)));
+            assert_eq!(scene.value(seat, "auto_raise"), Some(&TreeValue::Bool(true)));
+            assert_eq!(scene.value(seat, "auto_raise_delay"), Some(&TreeValue::Int(250)));
+            assert_eq!(
+                scene.value(seat, "focus_change_on_pointer_rest"),
+                Some(&TreeValue::Bool(false))
+            );
+            assert_eq!(scene.text(seat, "double_click"), Some("toggle-maximize"));
+            assert_eq!(scene.text(seat, "middle_click"), Some("lower"));
+            assert_eq!(scene.text(seat, "right_click"), Some("menu"));
         });
-        assert_eq!(edge, Some(TreeValue::Bool(true)));
-        assert_eq!(drag.as_deref(), Some("minimum_strip"));
-        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+        let changes = composer.take_tree_changes();
+        assert!(changes.iter().any(|change| matches!(
             change,
             TreeChange::Set { node, key, value: TreeValue::Bool(true) } if *node == seat && key == "edge_tiling"
         )));
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Int(250) } if *node == seat && key == "auto_raise_delay"
+        )));
+
+        composer.publish_main_seat_policy(&policy);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged policy is not republished"
+        );
+
+        policy.auto_raise_delay = 900;
+        composer.publish_main_seat_policy(&policy);
+        let changes = composer.take_tree_changes();
+        assert_eq!(changes.len(), 1, "a reload publishes only the value it changed");
+        assert!(matches!(
+            &changes[0],
+            TreeChange::Set { node, key, value: TreeValue::Int(900) } if *node == seat && key == "auto_raise_delay"
+        ));
     }
 
     #[test]

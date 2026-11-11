@@ -674,6 +674,15 @@ object seat since 0.2.0 secret false
   property device type string since 0.2.0 secret false
   property edge_tiling type bool since 0.2.0 secret false
   property drag_constraint type string since 0.2.0 secret false
+  property focus_mode type string since 0.2.0 secret false
+  property focus_new_windows type string since 0.2.0 secret false
+  property raise_on_click type bool since 0.2.0 secret false
+  property auto_raise type bool since 0.2.0 secret false
+  property auto_raise_delay type int since 0.2.0 secret false
+  property focus_change_on_pointer_rest type bool since 0.2.0 secret false
+  property double_click type string since 0.2.0 secret false
+  property middle_click type string since 0.2.0 secret false
+  property right_click type string since 0.2.0 secret false
   method warp since 0.2.0 secret false function false
   method claim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
@@ -2448,6 +2457,24 @@ message Seat {
     bool edge_tiling = 23;
     // since 0.2.0
     string drag_constraint = 24;
+    // since 0.2.0
+    string focus_mode = 25;
+    // since 0.2.0
+    string focus_new_windows = 26;
+    // since 0.2.0
+    bool raise_on_click = 27;
+    // since 0.2.0
+    bool auto_raise = 28;
+    // since 0.2.0
+    int64 auto_raise_delay = 29;
+    // since 0.2.0
+    bool focus_change_on_pointer_rest = 30;
+    // since 0.2.0
+    string double_click = 31;
+    // since 0.2.0
+    string middle_click = 32;
+    // since 0.2.0
+    string right_click = 33;
   }
 
   // Method `warp`, since 0.2.0.

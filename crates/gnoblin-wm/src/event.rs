@@ -16,6 +16,7 @@ use crate::activation::ActivationDecision;
 use crate::rules::{Rule, RuleError};
 use crate::snapping::SnapZone;
 use crate::window::WindowKind;
+use crate::wm::WmOptions;
 use crate::workspace_set::{WorkspaceSet, WorkspaceSetError};
 
 /// The protocol a window arrived on. It decides which surface record the window has.
@@ -123,6 +124,9 @@ pub enum Event {
     },
     /// The configured window rules were replaced.
     RulesChanged { rules: Vec<Rule> },
+    /// Replaces the policy options. Only later events see the new values: windows already
+    /// managed keep their geometry and focus, so a reload never re-places a window.
+    OptionsChanged { options: WmOptions },
     /// Replaces the declared workspace sets. The list is checked as a whole before it
     /// is applied, so a refused list leaves the sets already in force untouched.
     WorkspaceSetsChanged { sets: Vec<WorkspaceSet> },
