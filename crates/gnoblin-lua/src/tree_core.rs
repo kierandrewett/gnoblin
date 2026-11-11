@@ -16,6 +16,7 @@
 //! the classes in.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gnoblin_proto::tree::effect;
@@ -97,6 +98,8 @@ pub struct TreeCore {
     counter: u64,
     /// The last call token handed out; the compositor echoes it back in `answer`.
     tokens: u64,
+    /// The node each unanswered call token was made on, so its answer reaches that node.
+    call_nodes: HashMap<u64, NodeId>,
     reports: Vec<String>,
 }
 
@@ -126,8 +129,14 @@ impl TreeCore {
             classes,
             counter: 0,
             tokens: 0,
+            call_nodes: HashMap::new(),
             reports: Vec::new(),
         })))
+    }
+
+    /// The node that made the call `token`, removed: the answer is delivered to it once.
+    pub fn take_call_node(&mut self, token: u64) -> Option<NodeId> {
+        self.call_nodes.remove(&token)
     }
 
     /// The mirror as the last applied batch left it.
@@ -284,6 +293,7 @@ impl TreeCore {
         }
         self.tokens += 1;
         let token = self.tokens;
+        self.call_nodes.insert(token, node);
         self.tick
             .call(&self.mirror, node, method, args, token, text)
             .map(|()| token)

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket};
-use support::{Client, Session};
+use support::{Client, Locker, Session};
 
 /// The stock Lua library the shell VM loads (`node.lua` and the modules beside it).
 fn stock_library() -> PathBuf {
@@ -295,6 +295,41 @@ fn a_closed_window_runs_on_destroyed_and_leaves_the_tree() {
         .expect("the probe runs")
         .expect("the probe returns text");
     assert_eq!(calls, "1", "Window:on_destroyed ran once for the closed window");
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}
+
+/// A lock screen asks the session to lock: the compositor's lock node reports `requested` to the
+/// shell, and the stock `Lock:on_requested` engages the lock before anything is unlocked.
+#[test]
+fn a_session_lock_request_engages_the_stock_lock_screen() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    role.run(
+        "requested probe",
+        "requested_calls = 0; requested_engaged = false; local prev = Lock.on_requested; Lock.on_requested = function(self) requested_calls = requested_calls + 1; if prev then prev(self) end; requested_engaged = self.engaged == true end",
+    )
+    .expect("the probe installs");
+
+    let mut locker = Locker::connect(session.wayland());
+    locker.lock();
+    tick_until(&mut role, "the shell never received the lock request", |role| {
+        let state = role
+            .run(
+                "requested state",
+                "return tostring(requested_calls) .. ' ' .. tostring(requested_engaged)",
+            )
+            .expect("the probe runs")
+            .expect("the probe returns text");
+        state == "1 true"
+    });
     assert!(
         role.diagnostics().is_empty(),
         "no refused transaction: {:?}",

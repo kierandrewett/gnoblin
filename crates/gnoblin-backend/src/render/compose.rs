@@ -1571,12 +1571,15 @@ impl Composer {
     }
 
     /// Publishes the session lock's state on the lock node: `not-locked`, `pending` or
-    /// `locked`. Only a change is published.
+    /// `locked`. Only a change is published. A lock that leaves `not-locked` asks the shell for
+    /// its lock screen, once: a lock can go straight to `locked` in one dispatch, so `pending`
+    /// is not always published first.
     pub fn set_lock_state(&mut self, state: &str) {
         let Some(lock) = self.lock_node else {
             return;
         };
-        if self.scene.text(lock, "state") == Some(state) {
+        let previous = self.scene.text(lock, "state").map(str::to_owned);
+        if previous.as_deref() == Some(state) {
             return;
         }
         let _ = self.scene.set_text(lock, "state", state.to_owned());
@@ -1585,7 +1588,7 @@ impl Composer {
             key: "state".to_owned(),
             value: TreeValue::Text(state.to_owned()),
         });
-        if state == "pending" {
+        if previous.as_deref() == Some("not-locked") && state != "not-locked" {
             self.lock_requested.push(lock);
         }
     }
@@ -4033,10 +4036,11 @@ mod tests {
         );
     }
 
-    /// The lock asks for the lock screen once per transition to `pending`: the shell is told to
-    /// engage, and a second `pending` publish does not ask again.
+    /// The lock asks for the lock screen once when it leaves `not-locked`: the shell is told to
+    /// engage, whether the lock passes through `pending` or goes straight to `locked`, and a
+    /// repeated publish does not ask again.
     #[test]
-    fn the_lock_node_asks_the_shell_for_its_lock_screen_once_when_the_lock_goes_pending() {
+    fn the_lock_node_asks_the_shell_for_its_lock_screen_once_when_the_lock_leaves_not_locked() {
         let mut composer = Composer::new();
         let lock = composer.add_lock_node().expect("a lock node");
         assert!(composer.take_lock_requested().is_empty(), "no lock yet, nothing asked");
@@ -4053,6 +4057,18 @@ mod tests {
 
         composer.set_lock_state("locked");
         assert!(composer.take_lock_requested().is_empty(), "locking asks nothing");
+    }
+
+    #[test]
+    fn the_lock_node_asks_once_when_the_lock_goes_straight_to_locked() {
+        let mut composer = Composer::new();
+        let lock = composer.add_lock_node().expect("a lock node");
+
+        composer.set_lock_state("locked");
+        assert_eq!(composer.take_lock_requested(), vec![lock]);
+
+        composer.set_lock_state("not-locked");
+        assert!(composer.take_lock_requested().is_empty(), "unlocking asks nothing");
     }
 
     /// F22: the lock unlocks while the shell is gone. The lock node follows the session-lock

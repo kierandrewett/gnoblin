@@ -1,7 +1,8 @@
 namespace = "tree"
 version = "0.2.0"
 
-# The `lock` class: the session lock. While `engaged`, the compositor draws only `lock` and routes input only to it (design/node-core.md, section 2.4).
+# The `lock` class: the session lock. The compositor enforces the session lock from `state`; the
+# shell's stock lock screen records its own lock screen as `engaged` (design/node-core.md, section 2.4).
 [[object]]
 name = "lock"
 since = "0.2.0"
@@ -15,9 +16,27 @@ since = "0.2.0"
 default = "not-locked"
 readonly = true
 
+# True while the shell's lock screen is up. The shell sets it on `requested` and clears it once a password is accepted.
+[[object.property]]
+name = "engaged"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The session asked to lock while `state` moved to `pending`: the shell engages its lock screen.
+[[object.signal]]
+name = "requested"
+since = "0.2.0"
+
 # Check the password `text` against the session user. The compositor answers with `token`:
 # `result` `ok` on accept; `error` `denied`, `rate-limited` (`result` is the retry-after in ms),
 # `not-locked`, `busy`, or `failed: <reason>`. The password never enters a batch.
 [[object.method]]
 name = "authenticate"
 since = "0.2.0"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+since = "0.2.0"
+secret = true

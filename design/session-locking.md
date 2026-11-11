@@ -65,6 +65,21 @@ lock scene is presented and is routed to its active surface. These guarantees
 come from Mutter; a fullscreen or layer-shell window alone cannot provide
 them.
 
+## Shell lock node
+
+The stock Lua shell drives the compositor's `lock` node (`class lock`):
+
+- `requested` is emitted to the shell when a lock is requested. `Lock:on_requested` in `lock.lua` engages the lock.
+- `authenticate` checks the password for the session user on a worker thread, behind a rate limiter (three denials, then a 2 s wait; success resets it). The shell gets `token` with `result` `ok` on accept, or `error` `denied`, `rate-limited`, `not-locked`, `busy` or `failed: <reason>`.
+- Only the compositor unlocks. The shell's answer never disengages the lock on its own, and with no session user every attempt fails closed.
+
+Residual limits:
+
+- The compositor does not load the stock library yet. The lock screen runs where a shell VM loads it; `a_session_lock_request_engages_the_stock_lock_screen` in `crates/gnoblin-compositor/tests/shell_vm.rs` is the real-VM proof, and it covers request to engage only.
+- Unlock through `Lock:unlock` is tested against the fake core in `tests/lua/ui_test.lua`, not through PAM in a VM.
+- The real-PAM test (`crates/gnoblin-lock-auth/src/pam.rs`) is `#[ignore]`d and needs `GNOBLIN_PAM_TEST=1` plus a test account.
+- No real-VM check renders the lock screen's pixels.
+
 ## Verification
 
 The current checks cover different boundaries:

@@ -413,7 +413,7 @@ for _, s in ipairs(core.classes()) do
         rawset(c, f, function(n, ...)
             local v = core.call(rawget(n, ID), f, ...)
             if s.slow and s.slow[f] then
-                return setmetatable({ node = n, name = v }, Signal)
+                return setmetatable({ node = n, name = tostring(v) }, Signal)
             end
             return v
         end)

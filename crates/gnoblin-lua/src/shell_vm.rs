@@ -64,6 +64,8 @@ pub struct LuaEvent {
     pub bubbles: bool,
     /// A claimed chord the compositor reports; node.lua routes it to the seat that made the claim.
     pub chord: Option<LuaChord>,
+    /// Positional strings: an `answer` event carries the call's result and its error, else empty.
+    pub args: Vec<String>,
 }
 
 /// What one frame produced for the caller.
@@ -204,6 +206,7 @@ impl ShellVm {
                                 kind: "destroyed".to_owned(),
                                 bubbles: false,
                                 chord: None,
+                                args: Vec::new(),
                             }),
                     );
                     self.apply_changes(serial, &changes)?;
@@ -287,18 +290,30 @@ impl ShellVm {
                     kind: event.kind,
                     bubbles: false,
                     chord: None,
+                    args: Vec::new(),
                 }),
                 LuaIncoming::Chord(chord) => tree_events.push(LuaEvent {
                     target: 0,
                     kind: "chord".to_owned(),
                     bubbles: false,
                     chord: Some(chord),
+                    args: Vec::new(),
                 }),
                 LuaIncoming::Attached(_) | LuaIncoming::Snapshot { .. } => {
                     return Err(ShellVmError::Link("attach or snapshot after boot".to_owned()));
                 }
-                LuaIncoming::Answer { token, error, .. } => {
-                    diagnostics.push(format!("unexpected answer {token}: {error}"));
+                LuaIncoming::Answer { token, result, error } => {
+                    let node = self.core.borrow_mut().take_call_node(token);
+                    match node {
+                        Some(target) => tree_events.push(LuaEvent {
+                            target,
+                            kind: token.to_string(),
+                            bubbles: false,
+                            chord: None,
+                            args: vec![String::from_utf8_lossy(&result).into_owned(), error],
+                        }),
+                        None => diagnostics.push(format!("answer {token} has no pending call")),
+                    }
                 }
             }
         }
@@ -407,6 +422,11 @@ impl ShellVm {
             entry.set("target", event.target as i64).map_err(lua_error)?;
             entry.set("type", event.kind.as_str()).map_err(lua_error)?;
             entry.set("bubbles", event.bubbles).map_err(lua_error)?;
+            let args = lua.create_table().map_err(lua_error)?;
+            for (j, arg) in event.args.iter().enumerate() {
+                args.set(j + 1, arg.as_str()).map_err(lua_error)?;
+            }
+            entry.set("args", args).map_err(lua_error)?;
             if let Some(chord) = &event.chord {
                 let claim = lua.create_table().map_err(lua_error)?;
                 claim.set("claim", chord.claim).map_err(lua_error)?;

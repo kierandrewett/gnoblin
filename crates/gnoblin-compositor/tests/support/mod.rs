@@ -31,6 +31,8 @@ use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection as WaylandConnection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+use wayland_protocols::ext::session_lock::v1::client::ext_session_lock_manager_v1::ExtSessionLockManagerV1;
+use wayland_protocols::ext::session_lock::v1::client::ext_session_lock_v1::ExtSessionLockV1;
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 /// How long a test waits for a state before failing.
@@ -898,6 +900,70 @@ pub fn listed_titles(session: &Session) -> Vec<String> {
         })
         .collect()
 }
+
+/// A client that asks the session to lock through `ext_session_lock_manager_v1`, as a lock screen does.
+/// It only requests the lock; the session's answer is what the test observes in the shell.
+pub struct Locker {
+    _connection: WaylandConnection,
+    queue: EventQueue<LockerApp>,
+    qh: QueueHandle<LockerApp>,
+    manager: ExtSessionLockManagerV1,
+}
+
+/// The locker's queue state. The lock's own events are not needed, so none are recorded.
+struct LockerApp;
+
+impl Locker {
+    pub fn connect(socket: &Path) -> Locker {
+        let stream = UnixStream::connect(socket).expect("the session is listening");
+        let connection = WaylandConnection::from_socket(stream).expect("a client connection");
+        let (globals, queue) = registry_queue_init::<LockerApp>(&connection).expect("the global list");
+        let qh = queue.handle();
+        let manager: ExtSessionLockManagerV1 = globals
+            .bind(&qh, 1..=1, ())
+            .expect("the session advertises ext_session_lock_manager_v1");
+        Locker {
+            _connection: connection,
+            queue,
+            qh,
+            manager,
+        }
+    }
+
+    /// Requests the lock and waits until the session has read the request.
+    pub fn lock(&mut self) {
+        // The lock object lives on the session side for as long as the test runs.
+        let _lock: ExtSessionLockV1 = self.manager.lock(&self.qh, ());
+        self.queue.roundtrip(&mut LockerApp).expect("the locker roundtrip");
+    }
+}
+
+wayland_client::delegate_noop!(LockerApp: ignore ExtSessionLockManagerV1);
+
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for LockerApp {
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtSessionLockV1, ()> for LockerApp {
+    fn event(
+        _: &mut Self,
+        _: &ExtSessionLockV1,
+        _: <ExtSessionLockV1 as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
 impl App {
     /// Whether `keyboard` is the first seat's. A client with several seats gets every focus
     /// event once per keyboard; the focus record follows the first, so it counts each once.

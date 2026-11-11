@@ -204,19 +204,18 @@ fn the_op_object_has_every_section_4_1_field() {
 }
 
 #[test]
-fn only_transact_is_a_sensitive_tree_member() {
+fn only_the_call_text_tree_members_are_sensitive() {
     let catalog = stock();
     let text = gnoblin_schema::proto::sensitive_table(&catalog);
     let tree: Vec<&str> = text.lines().filter(|line| line.contains("\"tree\"")).collect();
+    // transact carries call text; lock.authenticate carries the password.
     assert_eq!(
         tree.len(),
-        1,
-        "exactly one tree member is sensitive, the transact that carries call text: {tree:?}"
+        2,
+        "exactly two tree members are sensitive, transact and lock.authenticate: {tree:?}"
     );
-    assert!(
-        tree[0].contains("transact"),
-        "the sensitive tree member is transact: {tree:?}"
-    );
+    assert!(tree.iter().any(|line| line.contains("tree.transact")), "{tree:?}");
+    assert!(tree.iter().any(|line| line.contains("lock.authenticate")), "{tree:?}");
 }
 #[test]
 fn the_owner_socket_only_tree_is_excluded_by_load_dir_except() {

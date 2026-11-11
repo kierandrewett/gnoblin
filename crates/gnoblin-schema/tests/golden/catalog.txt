@@ -484,8 +484,11 @@ object lock since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
   property state type string since 0.2.0 secret false
+  property engaged type bool since 0.2.0 secret false
   method authenticate since 0.2.0 secret false function false
+    param text type string since 0.2.0 secret true
   signal destroyed since 0.2.0 secret false
+  signal requested since 0.2.0 secret false
 object tree since 0.2.0 secret false
   method attach since 0.2.0 secret false function false
     param version type uint since 0.2.0 secret false
@@ -2005,13 +2008,21 @@ message Lock {
     repeated Effect.Properties effects = 17;
     // since 0.2.0
     string state = 18;
+    // since 0.2.0
+    bool engaged = 19;
   }
 
   // Method `authenticate`, since 0.2.0.
-  message AuthenticateArgs {}
+  message AuthenticateArgs {
+    // since 0.2.0; secret: every frame carrying this field is flagged sensitive
+    string text = 1;
+  }
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}
+
+  // Signal `requested`, since 0.2.0.
+  message RequestedPayload {}
 }
 
 // Object `tree`, since 0.2.0.

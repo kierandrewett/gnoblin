@@ -82,13 +82,14 @@ return {
         function()
             local host, id, lock = setup()
             H.frame(host, 1, { { type = "requested", target = id, args = {} } })
-            local result
+            local result, err
             go(function()
-                result = lock:unlock("pw")
+                result, err = lock:unlock("pw")
             end)
             H.check(result == nil, "unlock must wait until the native core answers")
-            H.frame(host, 2, { { type = last_token(host), target = id, args = { "ok" } } })
+            H.frame(host, 2, { { type = last_token(host), target = id, args = { "ok", "" } } })
             H.check(result == "ok", "unlock must return the native answer, got " .. tostring(result))
+            H.check(err == "", "an ok answer carries no error, got " .. tostring(err))
             H.check(not lock.engaged, "an ok answer must disengage the lock")
         end,
     },
@@ -97,13 +98,27 @@ return {
         function()
             local host, id, lock = setup()
             H.frame(host, 1, { { type = "requested", target = id, args = {} } })
-            local result
+            local result, err
             go(function()
-                result = lock:unlock("nope")
+                result, err = lock:unlock("nope")
             end)
-            H.frame(host, 2, { { type = last_token(host), target = id, args = { "denied" } } })
-            H.check(result == "denied", "unlock must return the denial")
+            H.frame(host, 2, { { type = last_token(host), target = id, args = { "", "denied" } } })
+            H.check(result == "" and err == "denied", "unlock must return the denial")
             H.check(lock.engaged, "a denial must keep the lock engaged")
+        end,
+    },
+    {
+        "a rate-limited attempt keeps the lock engaged and returns the wait",
+        function()
+            local host, id, lock = setup()
+            H.frame(host, 1, { { type = "requested", target = id, args = {} } })
+            local result, err
+            go(function()
+                result, err = lock:unlock("again")
+            end)
+            H.frame(host, 2, { { type = last_token(host), target = id, args = { "1500", "rate-limited" } } })
+            H.check(result == "1500" and err == "rate-limited", "unlock must return the wait and the reason")
+            H.check(lock.engaged, "a rate-limited attempt must keep the lock engaged")
         end,
     },
     {
