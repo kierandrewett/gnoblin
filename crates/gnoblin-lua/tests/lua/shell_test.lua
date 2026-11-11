@@ -492,6 +492,20 @@ return {
         end,
     },
     {
+        "the seat's auto_raise_delay sets how long an armed auto-raise waits",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            second_window(host)
+            set_focus_options(host, { focus_mode = "hover", auto_raise = true, auto_raise_delay = 1500 })
+            host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
+            host.frame(0.9, {})
+            H.check(not is_top(w), "a 1.5 s delay must not raise after 0.8 s")
+            host.frame(1.7, {})
+            H.check(is_top(w), "auto-raise must raise a after the 1.5 s delay")
+        end,
+    },
+    {
         "a leave cancels an armed auto-raise",
         function()
             local host, w = window_setup({})

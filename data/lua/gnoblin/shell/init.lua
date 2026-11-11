@@ -390,6 +390,10 @@ function Window:raise()
         parent:add(c)
     end
 end
+-- The bottom of its siblings, so it draws under them. A lowered window keeps its focus and stacking otherwise.
+function Window:lower()
+    self.parent:add(self, 1)
+end
 function Window:on_move(e)
     drag(e.seat, self)
 end

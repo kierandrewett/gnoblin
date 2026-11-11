@@ -34,9 +34,54 @@ function Titlebar:build()
         }),
     }
 end
+-- The titlebar gestures. A left press drags, unless it is the second press of a double click within DOUBLE_CLICK
+-- seconds of the first on the same window. Each gesture's action is the seat property of the same name.
+local LEFT, RIGHT, MIDDLE = 272, 273, 274
+local DOUBLE_CLICK = 0.5
+local last_press = setmetatable({}, { __mode = "k" })
+-- What each action does to its window. `menu`, `minimize` and the one-axis maximise have no Lua surface yet, so they
+-- do nothing; `none` does nothing too. An action the schema does not name raises.
+local ACTIONS = {
+    ["toggle-maximize"] = function(w)
+        if w.maximised then
+            w:unmaximise()
+        else
+            w:maximise()
+        end
+    end,
+    lower = function(w)
+        w:lower()
+    end,
+    none = function() end,
+    menu = function() end,
+    minimize = function() end,
+    ["toggle-maximize-horizontally"] = function() end,
+    ["toggle-maximize-vertically"] = function() end,
+}
+local function gesture(w, property)
+    local run = ACTIONS[seat[property]]
+    if not run then
+        error(("%s must name a titlebar action, got %s"):format(property, tostring(seat[property])), 2)
+    end
+    run(w)
+end
 function Titlebar:on_press(e)
     e:stop()
-    drag(seat, self.window)
+    local w = self.window
+    if e.button == MIDDLE then
+        gesture(w, "middle_click")
+    elseif e.button == RIGHT then
+        gesture(w, "right_click")
+    elseif e.button == LEFT then
+        local now, prev = gnoblin.timers.now(), last_press[w]
+        last_press[w] = now
+        if prev and now - prev <= DOUBLE_CLICK then
+            last_press[w] = nil
+            gesture(w, "double_click")
+        else
+            drag(seat, w)
+        end
+    end
 end
 
 -- Signal handlers chain: this runs after init.lua's Window:on_ready, so the stock placement still happens first.
