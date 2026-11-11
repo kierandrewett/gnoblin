@@ -18,7 +18,7 @@ use smithay::utils::Size as SmithaySize;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use gnoblin_render::transaction::TreeCall;
-use gnoblin_types::{NodeId, WindowId};
+use gnoblin_types::{NodeId, Rect, WindowId};
 use gnoblin_wm::{ActivationDecision, Event, WindowState};
 
 use crate::State;
@@ -193,6 +193,12 @@ impl State {
         self.publish();
     }
 
+    /// The work area of the output a window is on, or `None` when it has no output.
+    pub(crate) fn work_area_of(&self, window: WindowId) -> Option<Rect> {
+        let output = self.wm.window(window)?.output?;
+        self.wm.work_area(output)
+    }
+
     /// Brings one toplevel's pending configure in line with its node.
     fn configure_from_node(&mut self, window: WindowId) {
         let Some(managed) = self.wm.window(window) else {
@@ -212,7 +218,11 @@ impl State {
         if suspended != state.minimised {
             self.set_visible(window, !state.minimised);
         }
-        if write_pending(&toplevel, state, size) && toplevel.is_initial_configure_sent() {
+        // A tiled window is told all four edges and is sent the work area as its bounds, so its client drops the
+        // border and rounding it draws for itself and fits the area.
+        let tiled = self.composer.shell_window_tiled(window);
+        let bounds = if tiled { self.work_area_of(window) } else { None };
+        if write_pending(&toplevel, state, size, tiled, bounds) && toplevel.is_initial_configure_sent() {
             toplevel.send_configure();
         }
         log::debug!(
@@ -222,6 +232,7 @@ impl State {
             fullscreen = state.fullscreen,
             minimised = state.minimised,
             ?size,
+            tiled,
             "configured from the shell's node"
         );
     }
@@ -229,9 +240,31 @@ impl State {
 
 /// Writes the shell's answer into a toplevel's pending state. Returns whether it changed, so a write that says what
 /// the client already has sends nothing.
-fn write_pending(toplevel: &ToplevelSurface, state: WindowState, size: Option<(u32, u32)>) -> bool {
+fn write_pending(
+    toplevel: &ToplevelSurface,
+    state: WindowState,
+    size: Option<(u32, u32)>,
+    tiled: bool,
+    bounds: Option<Rect>,
+) -> bool {
     toplevel.with_pending_state(|pending| {
         let mut changed = false;
+        for edge in [
+            xdg_toplevel::State::TiledLeft,
+            xdg_toplevel::State::TiledRight,
+            xdg_toplevel::State::TiledTop,
+            xdg_toplevel::State::TiledBottom,
+        ] {
+            if pending.states.contains(edge) != tiled {
+                set_flag(&mut pending.states, edge, tiled);
+                changed = true;
+            }
+        }
+        let bounds = bounds.map(|area| SmithaySize::from((area.width as i32, area.height as i32)));
+        if pending.bounds != bounds {
+            pending.bounds = bounds;
+            changed = true;
+        }
         for (flag, on) in [
             (xdg_toplevel::State::Maximized, state.maximised),
             (xdg_toplevel::State::Fullscreen, state.fullscreen),

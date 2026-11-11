@@ -551,6 +551,10 @@ pub struct App {
     /// The size of the last `xdg_toplevel.configure` each toplevel received, keyed by its
     /// protocol id. A zero side means the client chooses that size.
     pub sizes: std::collections::HashMap<u32, (i32, i32)>,
+    /// The states of the last `xdg_toplevel.configure` each toplevel received, keyed by its protocol id.
+    pub states: std::collections::HashMap<u32, Vec<xdg_toplevel::State>>,
+    /// The bounds of the last `xdg_toplevel.configure_bounds` each toplevel received, keyed by its protocol id.
+    pub bounds: std::collections::HashMap<u32, (i32, i32)>,
     /// How many times the keyboard entered one of this client's surfaces.
     pub keyboard_enters: u32,
     /// Every keyboard enter and leave, in the order the client received them.
@@ -589,8 +593,9 @@ impl Client {
             .bind(&qh, 1..=1, ())
             .expect("the session advertises wl_compositor");
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_shm");
+        // Version 4 is the first with `xdg_toplevel.configure_bounds`.
         let wm_base: xdg_wm_base::XdgWmBase = globals
-            .bind(&qh, 1..=1, ())
+            .bind(&qh, 1..=6, ())
             .expect("the session advertises xdg_wm_base");
         let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_seat");
         let registry = globals.registry().clone();
@@ -659,6 +664,19 @@ impl Client {
 
     pub fn configured_size(&self, window: &Window) -> Option<(i32, i32)> {
         self.app.sizes.get(&window.toplevel.id().protocol_id()).copied()
+    }
+
+    /// The states of `window`'s last configure, or `None` when it has not been configured.
+    pub fn configured_states(&self, window: &Window) -> Option<&[xdg_toplevel::State]> {
+        self.app
+            .states
+            .get(&window.toplevel.id().protocol_id())
+            .map(Vec::as_slice)
+    }
+
+    /// The bounds of `window`'s last `configure_bounds`, or `None` when it has had none.
+    pub fn configured_bounds(&self, window: &Window) -> Option<(i32, i32)> {
+        self.app.bounds.get(&window.toplevel.id().protocol_id()).copied()
     }
 
     /// Creates a toplevel, asks for a configure and acknowledges it.
@@ -841,8 +859,23 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         _: &WaylandConnection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_toplevel::Event::Configure { width, height, .. } = event {
-            state.sizes.insert(toplevel.id().protocol_id(), (width, height));
+        match event {
+            xdg_toplevel::Event::Configure { width, height, states } => {
+                let id = toplevel.id().protocol_id();
+                state.sizes.insert(id, (width, height));
+                // The states arrive as an array of native-endian `u32`s, one per state.
+                let states = states
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter_map(|bytes| xdg_toplevel::State::try_from(u32::from_ne_bytes(*bytes)).ok())
+                    .collect();
+                state.states.insert(id, states);
+            }
+            xdg_toplevel::Event::ConfigureBounds { width, height } => {
+                state.bounds.insert(toplevel.id().protocol_id(), (width, height));
+            }
+            _ => {}
         }
     }
 }

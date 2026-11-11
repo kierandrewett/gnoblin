@@ -16,6 +16,7 @@ use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
 use support::{Client, Session, Wire};
 use wayland_client::Proxy;
+use wayland_protocols::xdg::shell::client::xdg_toplevel;
 
 const NAMESPACE: &str = "tree";
 
@@ -1202,5 +1203,164 @@ fn a_value_set_after_the_snapshot_is_published_once_and_not_repeated_in_it() {
         .collect();
     assert_eq!(opacity.len(), 1, "the new value is published once: {changes:?}");
     assert_eq!(opacity[0].value_double, 0.25);
+    session.stop().expect("the session stops cleanly");
+}
+
+// The shell tells a client how big it is and how it is placed by writing its window node: `width` and `height` are
+// the configure size, and `tiled` is the four tiled edge states with the work area as the bounds
+// (design/node-api-refactor.md, the `Window` members table). These tests read what the client receives.
+
+/// Sends a transaction of `ops` and returns the serial it was applied at, waiting for the compositor's reply.
+fn apply(wire: &mut Wire, request_id: u64, base_serial: u64, ops: Vec<op::Properties>) -> u64 {
+    transact(wire, request_id, base_serial, base_serial + 1, ops);
+    let applied: ReplyPayload = reply_skipping_changes(wire, "transact");
+    assert!(applied.applied, "the shell's write applies: {applied:?}");
+    applied.serial
+}
+
+/// The client's view of a window after the shell's writes: its size, states and bounds.
+type Configured = ((i32, i32), Vec<xdg_toplevel::State>, Option<(i32, i32)>);
+
+/// What the client last received for `window`.
+fn configured(client: &mut Client, window: &support::Window) -> Configured {
+    client.roundtrip();
+    (
+        client.configured_size(window).unwrap_or_default(),
+        client.configured_states(window).map(<[_]>::to_vec).unwrap_or_default(),
+        client.configured_bounds(window),
+    )
+}
+
+/// Waits until the client's last configure has `size`.
+fn wait_for_size(client: &mut Client, window: &support::Window, size: (i32, i32)) {
+    support::wait_for(&format!("a configure of {size:?}"), || {
+        (configured(client, window).0 == size).then_some(())
+    });
+}
+
+const TILED_EDGES: [xdg_toplevel::State; 4] = [
+    xdg_toplevel::State::TiledLeft,
+    xdg_toplevel::State::TiledRight,
+    xdg_toplevel::State::TiledTop,
+    xdg_toplevel::State::TiledBottom,
+];
+
+#[test]
+fn a_shell_write_of_a_windows_size_reaches_its_client_as_a_configure() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let window = client.map_window("org.example.window", "Sized");
+    let mut wire = Wire::connect(session.socket());
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Sized");
+    let node = window_titled(&nodes, "Sized").expect("the window node").id;
+
+    apply(
+        &mut wire,
+        2,
+        attached.serial,
+        vec![set_double(node, "width", 400.0), set_double(node, "height", 300.0)],
+    );
+
+    wait_for_size(&mut client, &window, (400, 300));
+    let (_, states, bounds) = configured(&mut client, &window);
+    assert!(
+        TILED_EDGES.iter().all(|edge| !states.contains(edge)),
+        "a window the shell did not tile has no tiled edge: {states:?}"
+    );
+    // A configure_bounds of 0 by 0 is the protocol's "no bounds".
+    assert!(
+        bounds.is_none_or(|bounds| bounds == (0, 0)),
+        "a window the shell did not tile is sent no bounds: {bounds:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shell_write_of_tiled_sends_the_four_tiled_edges_and_the_work_area_as_bounds() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let window = client.map_window("org.example.window", "Tiled");
+    let mut wire = Wire::connect(session.socket());
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Tiled");
+    let node = window_titled(&nodes, "Tiled").expect("the window node").id;
+
+    apply(
+        &mut wire,
+        2,
+        attached.serial,
+        vec![
+            set_double(node, "width", 500.0),
+            set_double(node, "height", 400.0),
+            set_bool(node, "tiled", true),
+        ],
+    );
+
+    wait_for_size(&mut client, &window, (500, 400));
+    let (_, states, bounds) = configured(&mut client, &window);
+    for edge in TILED_EDGES {
+        assert!(states.contains(&edge), "the tiled window is told {edge:?}: {states:?}");
+    }
+    // Nothing reserves space on the session's one output, so its work area is the screen the shell reads.
+    let screen = nodes
+        .iter()
+        .find(|node| node.class == "screen")
+        .expect("the session has a screen node")
+        .id;
+    let screen_side = |key: &str| {
+        prop_of(&nodes, screen, key)
+            .expect("the screen has its size")
+            .value_double as i32
+    };
+    assert_eq!(
+        bounds,
+        Some((screen_side("width"), screen_side("height"))),
+        "a tiled window is sent the work area as its bounds"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shell_write_of_tiled_false_takes_the_tiled_edges_off_again() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let window = client.map_window("org.example.window", "Untiled");
+    let mut wire = Wire::connect(session.socket());
+    let (attached, nodes) = snapshot_holding_window(&mut wire, "Untiled");
+    let node = window_titled(&nodes, "Untiled").expect("the window node").id;
+
+    let serial = apply(
+        &mut wire,
+        2,
+        attached.serial,
+        vec![
+            set_double(node, "width", 500.0),
+            set_double(node, "height", 400.0),
+            set_bool(node, "tiled", true),
+        ],
+    );
+    wait_for_size(&mut client, &window, (500, 400));
+    assert!(
+        configured(&mut client, &window)
+            .1
+            .contains(&xdg_toplevel::State::TiledLeft),
+        "the window is tiled first"
+    );
+
+    apply(
+        &mut wire,
+        3,
+        serial,
+        vec![
+            set_double(node, "width", 320.0),
+            set_double(node, "height", 240.0),
+            set_bool(node, "tiled", false),
+        ],
+    );
+    wait_for_size(&mut client, &window, (320, 240));
+    let (_, states, _) = configured(&mut client, &window);
+    assert!(
+        TILED_EDGES.iter().all(|edge| !states.contains(edge)),
+        "a window the shell untiled has no tiled edge: {states:?}"
+    );
     session.stop().expect("the session stops cleanly");
 }

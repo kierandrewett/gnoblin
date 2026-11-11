@@ -388,7 +388,7 @@ pub struct TreeFrame {
     claims: Vec<TreeCall>,
     /// `authenticate` calls the applied transactions made, in op order, for the compositor to check.
     authentications: Vec<TreeCall>,
-    /// Window nodes whose `maximised`, `fullscreen`, `minimised`, `width` or `height` the shell wrote, in the order
+    /// Window nodes whose `maximised`, `fullscreen`, `minimised`, `tiled`, `width` or `height` the shell wrote, in the order
     /// the writes applied, for the compositor to answer with a configure.
     window_writes: Vec<NodeId>,
     /// Method calls on window nodes (`close`), in op order, for the compositor to run.
@@ -620,7 +620,7 @@ impl TreeFrame {
                         if let TreeChange::Set { node, key, .. } = change
                             && matches!(
                                 key.as_str(),
-                                "maximised" | "fullscreen" | "minimised" | "width" | "height"
+                                "maximised" | "fullscreen" | "minimised" | "tiled" | "width" | "height"
                             )
                             && scene.class(*node) == Some("window")
                             && !self.window_writes.contains(node)

@@ -745,6 +745,7 @@ object window since 0.2.0 secret false
   property maximised type bool since 0.2.0 secret false
   property minimised type bool since 0.2.0 secret false
   property workspace type object:workspace since 0.2.0 secret false
+  property tiled type bool since 0.2.0 secret false
   method focus since 0.2.0 secret false function false
   method close since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
@@ -2595,6 +2596,8 @@ message Window {
     bool minimised = 23;
     // since 0.2.0; object id of `workspace`
     string workspace = 24;
+    // since 0.2.0
+    bool tiled = 25;
   }
 
   // Method `focus`, since 0.2.0.

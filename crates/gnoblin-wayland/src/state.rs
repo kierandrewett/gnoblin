@@ -1499,6 +1499,12 @@ impl State {
         work_area: Option<Rect>,
     ) {
         let state = self.effective_state(window, state);
+        // A window the shell tiled stays tiled through a configure the window manager makes.
+        let (tiled, work_area) = if self.composer.shell_window_tiled(window) {
+            (TiledEdges::ALL, work_area.or_else(|| self.work_area_of(window)))
+        } else {
+            (tiled, work_area)
+        };
         let Some(surface) = self.windows.get(&window).map(|entry| &entry.surface) else {
             // The window closed between the policy call and this action, which is
             // the race the policy's rejections describe.

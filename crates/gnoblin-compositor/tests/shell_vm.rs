@@ -523,3 +523,92 @@ fn a_workspace_set_in_the_users_shell_file_activates() {
         role.diagnostics()
     );
 }
+
+/// The screen's size in the mirror, read inside the VM.
+fn screen_size(role: &mut ShellRole) -> (i32, i32) {
+    let text = role
+        .run(
+            "screen size",
+            "local s = root:find(Screen) return string.format('%d %d', s.width, s.height)",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    let mut sides = text.split(' ').map(|side| side.parse::<i32>().expect("a side"));
+    (sides.next().unwrap(), sides.next().unwrap())
+}
+
+/// A stock Tiling workspace places three real clients, and what the shell wrote reaches each of them on the wire:
+/// its configure size is its tile, it is told all four edges are tiled, and its bounds are the work area. This is the
+/// check the old `a_master_stack_places_three_real_clients_at_their_configured_sizes` and
+/// `a_tiled_master_receives_tiled_states_and_work_area_bounds_on_the_wire` made against the Rust layout engine.
+#[test]
+fn a_tiling_workspace_configures_three_real_clients_to_their_tiles_with_tiled_edges_and_the_work_area() {
+    use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
+
+    let session = Session::start();
+    let config = user_config(&[(
+        "shell.lua",
+        "require('gnoblin.shell.tiling')\nfunction Desk:workspace(name) return Tiling({ name = name }) end\n",
+    )]);
+    let mut role = connect_session(&session, config.path());
+    assert!(
+        role.user_file_errors().is_empty(),
+        "the user's file loads: {:?}",
+        role.user_file_errors()
+    );
+    tick_until(&mut role, "the stock shell never built the screen's Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
+    let (screen_width, screen_height) = screen_size(&mut role);
+    let (half, rows) = (screen_width / 2, screen_height / 2);
+
+    let mut client = Client::connect(session.wayland());
+    let master = client.map_window("org.example.master", "Master");
+    let upper = client.map_window("org.example.stack", "Upper");
+    let lower = client.map_window("org.example.stack", "Lower");
+
+    let expected = [
+        (&master, (half, screen_height)),
+        (&upper, (half, rows)),
+        (&lower, (half, rows)),
+    ];
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut now = 0.0;
+    loop {
+        role.tick(now).expect("a frame runs");
+        now += 0.016;
+        client.roundtrip();
+        if expected
+            .iter()
+            .all(|(window, size)| client.configured_size(window) == Some(*size))
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the clients were never configured to their tiles: {:?}; VM diagnostics {:?}",
+            expected
+                .iter()
+                .map(|(window, size)| (client.configured_size(window), *size))
+                .collect::<Vec<_>>(),
+            role.diagnostics()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    for (window, _) in expected {
+        let states = client.configured_states(window).expect("the window was configured");
+        for edge in [State::TiledLeft, State::TiledRight, State::TiledTop, State::TiledBottom] {
+            assert!(states.contains(&edge), "a tiled window is told {edge:?}: {states:?}");
+        }
+        assert_eq!(
+            client.configured_bounds(window),
+            Some((screen_width, screen_height)),
+            "a tiled window is sent the work area as its bounds"
+        );
+    }
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}

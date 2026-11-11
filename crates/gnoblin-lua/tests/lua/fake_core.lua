@@ -49,6 +49,7 @@ local SCHEMA = {
             fullscreen = { type = "boolean", default = false },
             maximised = { type = "boolean", default = false },
             minimised = { type = "boolean", default = false },
+            tiled = { type = "boolean", default = false },
         },
         signals = { "closed", "request", "activate" },
         methods = { "close" },

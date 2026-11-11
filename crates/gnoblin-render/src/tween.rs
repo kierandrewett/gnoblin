@@ -998,6 +998,44 @@ mod tests {
         assert_eq!(player.active(), 0);
     }
 
+    /// A window moved a second time while its first move is still running is drawn from where it is now, not from
+    /// where the first move began or ended (`TrackStart::Current`, the default).
+    #[test]
+    fn a_placement_set_while_a_tween_runs_starts_from_where_the_node_is_drawn() {
+        let (mut scene, node, mut player, first) = offset_track(&[0.0, 0.5, 1.0], 1000);
+        player.advance(&mut scene, 500);
+        let drawn = x_offset(&scene, node);
+        assert!(drawn > 0.0 && drawn < 100.0, "mid-flight: {drawn}");
+        let second = player
+            .start_sampled(
+                &mut scene,
+                TrackSpec {
+                    duration_ms: 400,
+                    ..TrackSpec::new(node, VisualProperty::OffsetX, PropertyValue::number(300.0))
+                },
+                SampledCurve::new(vec![0.0, 1.0]).expect("curve"),
+            )
+            .expect("started");
+        assert_eq!(
+            x_offset(&scene, node),
+            drawn,
+            "the new move begins at the drawn place, with no jump"
+        );
+        player.advance(&mut scene, 200);
+        assert!(
+            (x_offset(&scene, node) - (drawn + 300.0) / 2.0).abs() < 1e-3,
+            "halfway between the drawn place and the new target, not between the old start or target and it"
+        );
+        let ended = player.take_ended();
+        assert!(
+            ended
+                .iter()
+                .any(|end| end.track == first && end.reason == TrackEndReason::Superseded),
+            "the first move ended as superseded"
+        );
+        assert!(player.is_active(second));
+    }
+
     #[test]
     fn retarget_sampled_starts_from_the_current_value_not_the_start() {
         let (mut scene, node, mut player, first) = offset_track(&[0.0, 0.5, 1.0], 1000);

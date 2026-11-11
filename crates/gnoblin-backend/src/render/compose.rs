@@ -792,6 +792,19 @@ impl Composer {
         Some([flag("fullscreen"), flag("maximised"), flag("minimised")])
     }
 
+    /// Whether the shell marked the window's node `tiled`. Only the shell writes it, so a session with no shell
+    /// holds every window untiled.
+    #[must_use]
+    pub fn shell_window_tiled(&self, window: WindowId) -> bool {
+        if !self.scene.shell_places() {
+            return false;
+        }
+        let Some(node) = self.windows.get(&window).and_then(|entry| entry.node) else {
+            return false;
+        };
+        matches!(self.scene.value(node, "tiled"), Some(TreeValue::Bool(true)))
+    }
+
     /// The size of a window's node: the content size the client last committed, or the size the
     /// shell wrote since. `None` when the window has no node.
     #[must_use]

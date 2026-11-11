@@ -58,6 +58,15 @@ name = "workspace"
 type = "object:workspace"
 since = "0.2.0"
 
+# Written by the shell: the window sits in a tiled layout. The client is sent all four tiled edge states
+# (`xdg_toplevel` `tiled_left`, `tiled_right`, `tiled_top` and `tiled_bottom`) so it drops the border and rounding it
+# draws for itself, and its configure carries the work area as its bounds.
+[[object.property]]
+name = "tiled"
+type = "bool"
+since = "0.2.0"
+default = false
+
 # Give the window keyboard focus. The shell's focus policy decides.
 [[object.method]]
 name = "focus"

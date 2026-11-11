@@ -291,4 +291,19 @@ case("each class: the options have the old layouts' defaults", function()
     H.check(d.split == "aspect" and d.ratio == 0.5 and d.gap == 0, "Dwindle defaults")
 end)
 
+case("each class: tiled windows are marked tiled, and a window moved to a floating workspace is not", function()
+    for _, class in ipairs(CLASSES) do
+        local ws = workspace(class)
+        local list = add(ws, 2)
+        rects(ws)
+        for i, w in ipairs(list) do
+            H.check(w.tiled == true, class .. ": window " .. i .. " is tiled")
+        end
+        local floating = root:add(Floating({ name = "free", width = 1000, height = 800 }))
+        floating:add(list[1])
+        rects(ws)
+        H.check(list[1].tiled == false, class .. ": a window moved to a floating workspace is not tiled")
+    end
+end)
+
 return cases

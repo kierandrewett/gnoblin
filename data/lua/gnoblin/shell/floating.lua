@@ -118,7 +118,11 @@ end
 -- A new window is placed once, when it first joins a workspace; `data.placed` stays true after that. A window
 -- that has not committed a size yet opens at the default size.
 function Floating:on_child_added(win)
-    if not win:is(Window) or win.data.placed then
+    if not win:is(Window) then
+        return
+    end
+    win.tiled = false -- a window that came from a tiled layout is a floating one now, placed or not
+    if win.data.placed then
         return
     end
     -- Until this shell writes them, `width` and `height` hold the size the client committed (the compositor publishes it before ShellReady), so they are read before the rectangle below overwrites them.

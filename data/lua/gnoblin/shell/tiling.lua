@@ -10,10 +10,12 @@ local function clamp(value, low, high)
     return math.max(low, math.min(high, value))
 end
 
--- Sets a window's rectangle to whole pixels. Visibility is left alone unless the class sets it.
+-- Sets a window's rectangle to whole pixels, and marks it tiled so its client drops the border and rounding it draws for
+-- itself. Visibility is left alone unless the class sets it.
 local function place(win, x, y, width, height)
     win.x, win.y = math.floor(x), math.floor(y)
     win.width, win.height = math.floor(width), math.floor(height)
+    win.tiled = true
 end
 
 -- The window the seat focuses, if it is one of `wins`; otherwise the first window.
