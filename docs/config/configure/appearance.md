@@ -39,6 +39,13 @@ named accent. When `accent` is unset, toolkits keep their own accent.
 suppresses its own animations, so window changes land at once. `false` states
 no preference.
 
+A shell reads the setting from the main seat node as `seat.reduced_motion`.
+
+- The stock shell passes every animation duration through `motion(seconds)`, which returns `0` while the setting is on.
+- A duration of `0` makes `node:to` an instant write.
+- The compositor is the safety net: while reduced motion is on it lands any timed `set` at once, so a custom shell that animates anyway still gets instant changes.
+- Changing the setting affects the next write only. A tween already running finishes.
+
 `high-contrast = true` asks applications for a high-contrast appearance.
 `false` states no preference.
 

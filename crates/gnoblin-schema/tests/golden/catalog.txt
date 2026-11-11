@@ -659,6 +659,7 @@ object seat since 0.2.0 secret false
   property middle_click type string since 0.2.0 secret false
   property right_click type string since 0.2.0 secret false
   property workspaces type list<string> since 0.2.0 secret false
+  property reduced_motion type bool since 0.2.0 secret false
   method warp since 0.2.0 secret false function false
   method claim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
@@ -2390,6 +2391,8 @@ message Seat {
     string right_click = 33;
     // since 0.2.0; list
     repeated string workspaces = 34;
+    // since 0.2.0
+    bool reduced_motion = 35;
   }
 
   // Method `warp`, since 0.2.0.

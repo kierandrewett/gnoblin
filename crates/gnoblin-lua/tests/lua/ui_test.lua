@@ -471,4 +471,71 @@ return {
             H.check(ws3.visible, "the new workspace must be visible after the slide")
         end,
     },
+    {
+        "motion(seconds) is the duration, or 0 while the seat asks for reduced motion",
+        function()
+            local host = setup()
+            H.check(motion(0.25) == 0.25, "the seat has not asked for reduced motion")
+            H.publish_seat(host, { reduced_motion = true })
+            H.frame(host, 1, {})
+            H.check(motion(0.25) == 0, "reduced motion shortens every duration to 0")
+            H.publish_seat(host, { reduced_motion = false })
+            H.frame(host, 2, {})
+            H.check(motion(0.25) == 0.25, "the next call follows the seat when it changes back")
+        end,
+    },
+    {
+        "with reduced motion on, switching workspace writes no tween and still ends in place",
+        function()
+            local host = setup()
+            H.publish_seat(host, { reduced_motion = true })
+            H.frame(host, 1, {})
+            local d = desk()
+            local old, ws3 = d.active, d.space.children[3]
+            seat.data.keys["<Super>3"]()
+            H.frame(host, 2, {})
+            H.frame(host, 3, {})
+            H.check(#host.timed_sets() == 0, "no write may carry a duration, got " .. #host.timed_sets())
+            H.check(ws3.x == 0, "the new workspace must be in place")
+            H.check(ws3.visible and d.active == ws3, "the new workspace must be shown")
+            H.check(not old.visible, "the old workspace must be hidden after the switch")
+        end,
+    },
+    {
+        "with reduced motion on, a closing window is destroyed without a fade",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local screen = root:add(Screen({ width = 1000, height = 800 }))
+            local win = root:add(Window({ app_id = "foot" }))
+            H.load_shell()
+            H.publish_seat(host, { screen = host.ids("Screen")[1], reduced_motion = true })
+            H.start_shell(host)
+            go(function()
+                win:vanish()
+            end)
+            H.frame(host, 1, {})
+            H.check(#host.ids("Window") == 0, "the window must be destroyed by the next frame")
+            H.check(#host.timed_sets() == 0, "the fade must carry no duration")
+        end,
+    },
+    {
+        "with reduced motion on, a toast appears at once",
+        function()
+            local host = setup()
+            H.publish_seat(host, { reduced_motion = true })
+            H.frame(host, 1, {})
+            toast("saved")
+            H.frame(host, 2, {})
+            H.check(#host.timed_sets() == 0, "no write may carry a duration")
+            local shown = false
+            for _, batch in ipairs(host.batches) do
+                for _, o in ipairs(batch) do
+                    shown = shown or (o.op == "set" and o.key == "opacity" and o.value == 1)
+                end
+            end
+            H.check(shown, "the toast must be written fully opaque")
+        end,
+    },
 }

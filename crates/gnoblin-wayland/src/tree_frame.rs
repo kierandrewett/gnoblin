@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
-    Animation, ClassInfo, Code, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
+    ClassInfo, Code, Motion, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
     TreeTransaction, validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
@@ -69,8 +69,6 @@ pub struct TreeBatch {
     pub serial: u64,
     /// Every applied change, in the order the frame applied them.
     pub changes: Vec<TreeChange>,
-    /// Animated sets, for the compositor to play.
-    pub animations: Vec<Animation>,
     /// Method calls, for the compositor to run.
     pub calls: Vec<TreeCall>,
     /// Events the frame delivers to the shell, in the order they arrived.
@@ -439,6 +437,10 @@ pub struct TreeFrame {
     window_writes: Vec<NodeId>,
     /// Method calls on window nodes (`close`), in op order, for the compositor to run.
     window_calls: Vec<TreeCall>,
+    /// What the shell's writes to animated properties asked of the compositor's tracks, in op
+    /// order, for the compositor to play or end. A pending track is not held in the batch: the
+    /// compositor decides how it lands, so reduced motion is applied where the tracks are.
+    motion: Vec<Motion>,
     /// Answers to authentications, published with the next batch.
     answers: Vec<TreeAnswer>,
     /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
@@ -472,6 +474,7 @@ impl TreeFrame {
             authentications: Vec::new(),
             window_writes: Vec::new(),
             window_calls: Vec::new(),
+            motion: Vec::new(),
             answers: Vec::new(),
             destroyed: Vec::new(),
             revisions: TreeRevisions::new(),
@@ -566,6 +569,13 @@ impl TreeFrame {
     /// Take the method calls made on window nodes since the last take, in op order, for the compositor to run.
     pub fn take_window_calls(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.window_calls)
+    }
+
+    /// Take the motion the shell asked for since the last take, in the order the writes applied,
+    /// for the compositor to play. It is not published to the shell: a mirror learns the target
+    /// from the change.
+    pub fn take_motion(&mut self) -> Vec<Motion> {
+        std::mem::take(&mut self.motion)
     }
 
     /// Queue the answer to an `authenticate` call; the next published batch carries it to the shell.
@@ -667,7 +677,7 @@ impl TreeFrame {
             };
             match result {
                 Ok(mut done) => {
-                    changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
+                    changed |= !(done.changes.is_empty() && done.motion.is_empty() && done.calls.is_empty());
                     self.inputs.extend(done.inputs.iter().copied());
                     // The calls move into the batch, and the seat claims and password checks move out to
                     // the compositor: each call has exactly one owner from here, so a password is never
@@ -701,7 +711,7 @@ impl TreeFrame {
                             .cloned(),
                     );
                     batch.changes.extend(done.changes.iter().cloned());
-                    batch.animations.extend(done.animations.iter().cloned());
+                    self.motion.extend(done.motion.iter().cloned());
                     batch.calls.extend(calls);
                     replies.push((submission.reply, Ok(done)));
                 }

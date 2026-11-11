@@ -232,6 +232,23 @@ return {
             H.check(finished, "finished at 0.2")
         end,
     },
+    {
+        "to() with no duration writes at once, sends no duration, and its signal still fires",
+        function()
+            local _, host = H.fresh()
+            local c = Canvas({ x = 0 })
+            local done = c:to(0, { x = 10 }, ease.out_cubic)
+            H.check(c.x == 10, "the value is written at once")
+            local finished = false
+            go(function()
+                await(done)
+                finished = true
+            end)
+            host.frame(0, {})
+            H.check(finished, "the signal fires on the next frame")
+            H.check(#host.timed_sets() == 0, "the write carried neither a duration nor a curve")
+        end,
+    },
 
     -- Selectors.
     {

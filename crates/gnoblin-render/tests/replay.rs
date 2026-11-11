@@ -83,8 +83,8 @@ use std::str::FromStr;
 use gnoblin_animation::{PropertyValue, SampledCurve};
 use gnoblin_render::scene_ids::{Actor, COMPOSITOR_ID_BASE};
 use gnoblin_render::transaction::{
-    ClassInfo, Code, PropertyInfo, Timing, TreeApplied, TreeOp, TreeRefusal, TreeTransaction, TreeValue, ValueType,
-    validate_and_apply, visual_property,
+    ClassInfo, Code, Motion, PropertyInfo, Timing, TreeApplied, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
+    ValueType, validate_and_apply, visual_property,
 };
 use gnoblin_render::{NodeSpec, Scene, TrackSpec, TweenPlayer};
 use gnoblin_types::{NodeId, PointF, Rect, TrackId};
@@ -639,7 +639,7 @@ impl Player {
         let transaction = TreeTransaction::new(ops.to_vec());
         match validate_and_apply(&mut self.scene, &Table, actor, transaction) {
             Ok(applied) => {
-                self.drive_tracks(ops, &applied);
+                self.drive_tracks(&applied);
                 Outcome::Applied
             }
             Err(refusal) => Outcome::Refused(refusal),
@@ -648,24 +648,18 @@ impl Player {
 
     /// Start, retarget or cancel the tracks an applied transaction asks for. Only a
     /// committed transaction reaches here, so a refused one starts nothing.
-    fn drive_tracks(&mut self, ops: &[TreeOp], applied: &TreeApplied) {
-        let mut animations = applied.animations.iter();
-        for op in ops {
-            let TreeOp::Set { node, key, timing, .. } = op else {
-                continue;
-            };
-            if timing.is_none() {
-                if let Some(id) = self.tracks.remove(&(*node, key.clone())) {
-                    self.tween
-                        .cancel(id)
-                        .expect("a track in the map is live until it is reaped");
+    fn drive_tracks(&mut self, applied: &TreeApplied) {
+        for motion in &applied.motion {
+            match motion {
+                Motion::Settle { node, key } => {
+                    if let Some(id) = self.tracks.remove(&(*node, key.clone())) {
+                        self.tween
+                            .cancel(id)
+                            .expect("a track in the map is live until it is reaped");
+                    }
                 }
-                continue;
+                Motion::Play(animation) => self.start_track(animation),
             }
-            let animation = animations
-                .next()
-                .expect("validate_and_apply hands over one animation per timed set");
-            self.start_track(animation);
         }
         self.reap();
     }

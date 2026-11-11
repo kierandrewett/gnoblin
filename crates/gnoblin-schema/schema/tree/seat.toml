@@ -146,6 +146,16 @@ type = "list<string>"
 since = "0.2.0"
 readonly = true
 
+# Whether the user asked for reduced motion (`appearance.reduced-motion`). Read-only: the configuration sets
+# it. The stock shell shortens its durations to zero while it is true, and the compositor lands any timed
+# `set` at once as a safety net, so no shell can animate against the preference.
+[[object.property]]
+name = "reduced_motion"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

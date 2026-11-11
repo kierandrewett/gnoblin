@@ -91,6 +91,6 @@ end
 
 -- Replaces the stock method: fade out, then go.
 function Window:vanish()
-    await(self:to(0.18, { opacity = 0, scale = { 0.92, 0.92, 1 } }, ease.in_cubic))
+    await(self:to(motion(0.18), { opacity = 0, scale = { 0.92, 0.92, 1 } }, ease.in_cubic))
     self:destroy()
 end

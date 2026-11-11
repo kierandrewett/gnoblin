@@ -96,6 +96,7 @@ local SCHEMA = {
             middle_click = { type = "string", default = "lower", readonly = true },
             right_click = { type = "string", default = "menu", readonly = true },
             workspaces = { type = "table", default = {}, readonly = true },
+            reduced_motion = { type = "boolean", default = false, readonly = true },
         },
         signals = { "chord" },
         -- `grab` is not in seat.toml; init.lua drag() calls it. Kept so the stock drag path runs. Gap reported.
@@ -427,6 +428,18 @@ return function()
             close_events[#close_events + 1] = { type = "destroyed", target = i, args = {} }
             closing[#closing + 1] = i
         end
+    end
+    -- Every set the shell has committed that carried a duration, as the compositor would play a track for it.
+    function host.timed_sets()
+        local out = {}
+        for _, b in ipairs(batches) do
+            for _, o in ipairs(b) do
+                if o.op == "set" and o.seconds ~= nil then
+                    out[#out + 1] = o
+                end
+            end
+        end
+        return out
     end
     -- Ids of the live nodes of one class, ascending.
     function host.ids(class)

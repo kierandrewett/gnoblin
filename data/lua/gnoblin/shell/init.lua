@@ -21,6 +21,13 @@ function desk() -- the Desk under the pointer
     return desk_of(seat.screen)
 end
 
+-- The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion
+-- (`appearance.reduced-motion`). A 0 makes `node:to` an instant write. The compositor lands a timed write at once
+-- under reduced motion too, so a shell that forgets this still obeys the preference.
+function motion(seconds)
+    return seat.reduced_motion and 0 or seconds
+end
+
 -- Key and gesture bindings: Gnoblin claims each chord, so no client sees it. `keys` maps a chord to its fn and
 -- `claims` maps the claim id the compositor reports back to its chord. A bound fn runs on press.
 function Seat:bind(map)
@@ -134,8 +141,8 @@ function Desk:show(ws)
     end
     local dir, W = self:position(ws) > self:position(from) and 1 or -1, self.width
     ws.x, ws.visible, ws.active, from.active, self.active = dir * W, true, true, false, ws
-    from:to(0.25, { x = -dir * W }, ease.out_cubic)
-    await(ws:to(0.25, { x = 0 }, ease.out_cubic))
+    from:to(motion(0.25), { x = -dir * W }, ease.out_cubic)
+    await(ws:to(motion(0.25), { x = 0 }, ease.out_cubic))
     if self.active ~= from then
         from.visible, from.x = false, 0
     end

@@ -46,7 +46,7 @@
 //!
 //! # Animated `set`
 //!
-//! A `set` with a `timing` is validated and recorded in [`TreeApplied::animations`]; the
+//! A `set` with a `timing` is validated and recorded in [`TreeApplied::motion`]; the
 //! scene's value is not written here. The compositor plays the track later. The
 //! change is still listed in [`TreeApplied::changes`] so a mirror learns the target.
 //!
@@ -407,6 +407,21 @@ pub struct Animation {
     pub samples: Vec<f64>,
 }
 
+/// What a write to an animated property asks of the compositor's tracks.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Motion {
+    /// An animated `set`: play a track to the target.
+    Play(Animation),
+    /// A `set` without timing: the value was written at once, so a track running on the
+    /// property must end rather than overwrite it.
+    Settle {
+        /// The node written.
+        node: NodeId,
+        /// The property's key.
+        key: String,
+    },
+}
+
 /// A method call, validated and handed to the compositor to run.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreeCall {
@@ -452,8 +467,9 @@ pub struct SeatInput {
 pub struct TreeApplied {
     /// Every change, in op order.
     pub changes: Vec<TreeChange>,
-    /// Animated sets, for the compositor to play.
-    pub animations: Vec<Animation>,
+    /// What the shell's writes to animated properties ask of the compositor's tracks, in op order: a
+    /// track to play, or a track to end because the property was set at once.
+    pub motion: Vec<Motion>,
     /// Method calls, for the compositor to run.
     pub calls: Vec<TreeCall>,
     /// Pointer inputs, for the compositor to deliver to clients in op order.
@@ -695,16 +711,35 @@ fn set_value(
             return Err(Code::NotAnimated);
         }
         check_timing(timing)?;
-        applied.animations.push(Animation {
+        applied.motion.push(Motion::Play(Animation {
             node,
             key: key.to_owned(),
             value: value.clone(),
             seconds: timing.seconds,
             samples: timing.samples.clone(),
-        });
+        }));
         return Ok(());
     }
-    write_value(work, node, key, value)
+    write_value(work, node, key, value)?;
+    if info.animated {
+        applied.motion.push(Motion::Settle {
+            node,
+            key: key.to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// Writes an animated set's target into `scene` at once, as an untimed `set` would. The
+/// compositor uses it when a track is not played: under reduced motion, or for a property the
+/// scene cannot tween.
+///
+/// # Errors
+///
+/// Returns the refusal an untimed `set` of the same value would have drawn, such as a width
+/// that is not a whole number.
+pub fn land_at_once(scene: &mut Scene, animation: &Animation) -> Result<(), Code> {
+    write_value(scene, animation.node, &animation.key, &animation.value)
 }
 
 /// Set the keyboard focus of a seat node to a window node, or clear it with null. The target

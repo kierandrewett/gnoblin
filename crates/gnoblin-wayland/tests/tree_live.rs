@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use gnoblin_backend::render::compose::Composer;
-use gnoblin_render::transaction::{ClassInfo, PropertyInfo, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType};
+use gnoblin_render::transaction::{
+    ClassInfo, PropertyInfo, Timing, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType,
+};
 use gnoblin_render::{Actor, NodeSpec};
 use gnoblin_types::{NodeId, Rect};
 use gnoblin_wayland::{FrameTreeEvent, TreeBatch, TreeFrame, TreeFrameInput, TreeHooks};
@@ -731,4 +733,223 @@ fn a_seat_focus_with_a_non_node_value_is_refused_wrong_type() {
     drain(&mut frame, &mut composer);
     assert_eq!(replies.lock().unwrap().last(), Some(&(1, false)));
     assert_eq!(focus_of(&mut composer), None);
+}
+
+/// A schema whose `node` class has the animated doubles the shell tweens: `x`, `opacity` and `width`.
+struct Animated;
+
+impl ClassInfo for Animated {
+    fn has_class(&self, class: &str) -> bool {
+        class == "node"
+    }
+
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        match (class, key) {
+            ("node", "x" | "y" | "opacity" | "width") => Some(PropertyInfo {
+                kind: ValueType::Double,
+                readonly: false,
+                animated: true,
+            }),
+            _ => None,
+        }
+    }
+
+    fn has_method(&self, _class: &str, _method: &str) -> bool {
+        false
+    }
+}
+
+/// A tween's value is interpolated in single precision, so a midpoint is compared within a hair.
+fn assert_near(actual: f64, expected: f64, what: &str) {
+    assert!((actual - expected).abs() < 1e-3, "{what}: {actual} is not {expected}");
+}
+
+/// A composer and a frame over [`Animated`], as the compositor drives them: the frame drains, then the
+/// composer applies the motion the drain left.
+struct Live {
+    composer: Composer,
+    frame: TreeFrame,
+    replies: Replies,
+    serial: u64,
+}
+
+impl Live {
+    fn new() -> Self {
+        Self {
+            composer: composer_with_window(),
+            frame: TreeFrame::with_hooks(TreeHooks {
+                classes: Arc::new(Animated),
+                publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+                ..TreeHooks::default()
+            }),
+            replies: Arc::default(),
+            serial: 0,
+        }
+    }
+
+    /// One frame in which the shell writes `key` on the window: tweened over `seconds` when given,
+    /// at once otherwise. Whether the write applied.
+    fn write(&mut self, key: &str, value: f64, seconds: Option<f64>) -> bool {
+        let timing = seconds.map(|seconds| Timing {
+            seconds,
+            samples: vec![0.0, 0.5, 1.0],
+        });
+        submit(
+            &self.frame,
+            self.serial,
+            TreeTransaction::new(vec![TreeOp::Set {
+                node: WINDOW,
+                key: key.to_owned(),
+                value: TreeValue::Double(value),
+                timing,
+            }]),
+            &self.replies,
+        );
+        let Self { composer, frame, .. } = self;
+        composer.with_scene(|scene| frame.drain(scene, Instant::now));
+        let motion = frame.take_motion();
+        composer.apply_shell_motion(motion);
+        let (serial, applied) = *self
+            .replies
+            .lock()
+            .expect("the reply lock is not poisoned")
+            .last()
+            .expect("the frame answered");
+        self.serial = serial;
+        applied
+    }
+
+    fn x(&mut self) -> f64 {
+        self.composer
+            .with_scene(|scene| scene.transform(WINDOW).map(|transform| transform.base.offset.x))
+            .expect("the window node has a transform")
+    }
+
+    fn width(&mut self) -> u32 {
+        self.composer
+            .with_scene(|scene| scene.bounds(WINDOW).map(|bounds| bounds.width))
+            .expect("the window node has bounds")
+    }
+}
+
+#[test]
+fn with_reduced_motion_on_a_timed_set_lands_at_once_and_registers_no_track() {
+    let mut live = Live::new();
+    live.composer.set_reduced_motion(true);
+
+    assert!(live.write("x", 40.0, Some(0.5)));
+
+    assert_eq!(live.x(), 40.0, "the node holds the final value on the next frame");
+    assert_eq!(live.composer.shell_tracks_running(), 0, "no track was registered");
+    live.composer.advance_motion(500);
+    assert_eq!(live.x(), 40.0, "and nothing moves it afterwards");
+    take_batches();
+}
+
+#[test]
+fn every_animated_property_lands_at_once_under_reduced_motion() {
+    let mut live = Live::new();
+    live.composer.set_reduced_motion(true);
+
+    assert!(live.write("opacity", 0.25, Some(1.0)));
+    assert!(live.write("width", 80.0, Some(1.0)));
+    assert!(live.write("y", 12.0, Some(1.0)));
+
+    assert_eq!(opacity_of(&mut live.composer), 0.25);
+    assert_eq!(live.width(), 80);
+    let y = live
+        .composer
+        .with_scene(|scene| scene.transform(WINDOW).map(|transform| transform.base.offset.y));
+    assert_eq!(y, Some(12.0));
+    assert_eq!(live.composer.shell_tracks_running(), 0);
+    take_batches();
+}
+
+#[test]
+fn with_reduced_motion_off_a_timed_set_runs_a_tween_to_its_target() {
+    let mut live = Live::new();
+
+    assert!(live.write("x", 40.0, Some(0.5)));
+
+    assert_eq!(live.x(), 0.0, "the node starts where it was");
+    assert_eq!(live.composer.shell_tracks_running(), 1, "one track runs");
+    live.composer.advance_motion(250);
+    assert_near(live.x(), 20.0, "halfway through, the node is halfway there");
+    live.composer.advance_motion(250);
+    assert_eq!(live.x(), 40.0, "the tween lands on its target");
+    assert_eq!(live.composer.shell_tracks_running(), 0, "and its track is gone");
+    take_batches();
+}
+
+#[test]
+fn a_property_the_scene_cannot_tween_lands_at_once_with_reduced_motion_off() {
+    let mut live = Live::new();
+
+    assert!(live.write("width", 80.0, Some(0.5)));
+
+    assert_eq!(live.width(), 80, "a resize has no track to play, so the target lands");
+    assert_eq!(live.composer.shell_tracks_running(), 0);
+    take_batches();
+}
+
+#[test]
+fn toggling_reduced_motion_at_runtime_changes_the_next_write_only() {
+    let mut live = Live::new();
+    assert!(live.write("x", 40.0, Some(1.0)));
+    live.composer.advance_motion(500);
+    assert_near(live.x(), 20.0, "mid-tween");
+
+    live.composer.set_reduced_motion(true);
+    live.composer.advance_motion(250);
+    assert_near(live.x(), 30.0, "a track already running finishes");
+    assert_eq!(live.composer.shell_tracks_running(), 1);
+
+    assert!(live.write("x", 100.0, Some(1.0)));
+    assert_eq!(live.x(), 100.0, "the next write lands at once and ends the old track");
+    assert_eq!(live.composer.shell_tracks_running(), 0);
+    live.composer.advance_motion(1000);
+    assert_eq!(live.x(), 100.0, "the old track does not come back");
+
+    live.composer.set_reduced_motion(false);
+    assert!(live.write("x", 0.0, Some(1.0)));
+    assert_eq!(live.x(), 100.0, "the write after the toggle back tweens again");
+    assert_eq!(live.composer.shell_tracks_running(), 1);
+    live.composer.advance_motion(1000);
+    assert_eq!(live.x(), 0.0);
+    take_batches();
+}
+
+#[test]
+fn a_set_without_a_duration_ends_the_tween_running_on_its_property() {
+    let mut live = Live::new();
+    assert!(live.write("x", 40.0, Some(1.0)));
+    live.composer.advance_motion(250);
+
+    assert!(live.write("x", 7.0, None));
+
+    assert_eq!(live.x(), 7.0, "the plain set lands");
+    assert_eq!(
+        live.composer.shell_tracks_running(),
+        0,
+        "and the tween no longer owns the property"
+    );
+    live.composer.advance_motion(1000);
+    assert_eq!(live.x(), 7.0, "the tween does not overwrite it");
+    take_batches();
+}
+
+#[test]
+fn a_second_timed_set_replaces_the_tween_and_starts_from_where_the_node_is() {
+    let mut live = Live::new();
+    assert!(live.write("x", 40.0, Some(1.0)));
+    live.composer.advance_motion(500);
+    assert_near(live.x(), 20.0, "mid-tween");
+
+    assert!(live.write("x", 0.0, Some(1.0)));
+
+    assert_near(live.x(), 20.0, "the new tween starts from the drawn value");
+    assert_eq!(live.composer.shell_tracks_running(), 1, "one track owns the property");
+    live.composer.advance_motion(500);
+    assert_near(live.x(), 10.0, "mid-tween");
+    take_batches();
 }

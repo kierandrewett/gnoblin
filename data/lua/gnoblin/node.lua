@@ -511,9 +511,14 @@ ease = {
     end,
 }
 function Node:to(seconds, props, curve_fn)
-    local curve = {}
-    for i = 0, 32 do
-        curve[i + 1] = (curve_fn or ease.out)(i / 32)
+    local curve -- a zero duration is an instant write: no seconds and no curve go to the core
+    if seconds > 0 then
+        curve = {}
+        for i = 0, 32 do
+            curve[i + 1] = (curve_fn or ease.out)(i / 32)
+        end
+    else
+        seconds = nil
     end
     local keys = {}
     for k in pairs(props) do
@@ -525,7 +530,7 @@ function Node:to(seconds, props, curve_fn)
     end
     local done = setmetatable({ node = self, name = {} }, Signal) -- a fresh name per motion
     seq = seq + 1
-    timers[#timers + 1] = { at = now + seconds, seq = seq, signal = done }
+    timers[#timers + 1] = { at = now + (seconds or 0), seq = seq, signal = done }
     return done
 end
 

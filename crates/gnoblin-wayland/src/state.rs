@@ -2121,9 +2121,11 @@ impl State {
         }
     }
 
-    /// Sets whether property changes land at once, see [`Composer::set_reduced_motion`].
+    /// Sets whether property changes land at once, see [`Composer::set_reduced_motion`], and
+    /// republishes the main seat's `reduced_motion` for the stock shell to read.
     pub(crate) fn set_reduced_motion(&mut self, reduced: bool) {
         self.composer.set_reduced_motion(reduced);
+        self.publish_seat_policy();
     }
 
     /// Applies the accepted window management options and titlebar gestures, then republishes
@@ -3300,6 +3302,9 @@ impl Host for State {
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;
         self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
+        // The shell's timed writes play as tracks, or land at once under reduced motion.
+        let motion = self.tree.take_motion();
+        self.composer.apply_shell_motion(motion);
         // A `secure` the shell wrote on a window's node marks the window for capture.
         self.composer.follow_shell_secure();
         // A seat focus the shell wrote in the drain moves the keyboard to that window. The

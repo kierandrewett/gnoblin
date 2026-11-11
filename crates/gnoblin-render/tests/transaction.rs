@@ -7,8 +7,8 @@ use common::tree_hash;
 use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_render::scene_ids::{Actor, COMPOSITOR_ID_BASE, MAX_DEPTH, MAX_NODES, NodeIdAllocator};
 use gnoblin_render::transaction::{
-    ClassInfo, Code, MAX_OPS, PropertyInfo, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
-    ValueType, validate_and_apply,
+    ClassInfo, Code, MAX_OPS, Motion, PropertyInfo, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction,
+    TreeValue, ValueType, land_at_once, validate_and_apply,
 };
 use gnoblin_render::{NodeSpec, Scene, SceneError};
 use gnoblin_secret::SecretText;
@@ -587,13 +587,94 @@ fn animated_set_is_validated_and_stored_in_applied() {
     };
     let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(vec![op]))
         .expect("a valid animated set applies");
-    assert_eq!(applied.animations.len(), 1);
-    assert_eq!(applied.animations[0].node, window);
-    assert_eq!(applied.animations[0].seconds, 0.5);
+    assert_eq!(applied.motion.len(), 1);
+    let Motion::Play(animation) = &applied.motion[0] else {
+        panic!("a timed set asks for a track: {:?}", applied.motion);
+    };
+    assert_eq!(animation.node, window);
+    assert_eq!(animation.seconds, 0.5);
     // The compositor plays the track (slice 7); the scene value is not written here.
     assert_eq!(
         scene.property(window, VisualProperty::Opacity).unwrap(),
         PropertyValue::number(1.0)
+    );
+}
+
+#[test]
+fn an_untimed_set_of_an_animated_key_settles_after_the_track_it_follows() {
+    let mut scene = scene();
+    let root = id(ROOT);
+    let window = shell_node(&mut scene, 1, root);
+    let timed = TreeOp::Set {
+        node: window,
+        key: "x".into(),
+        value: TreeValue::Double(40.0),
+        timing: Some(Timing {
+            seconds: 0.5,
+            samples: LINEAR.to_vec(),
+        }),
+    };
+    let applied = validate_and_apply(
+        &mut scene,
+        &Table,
+        Actor::Shell,
+        TreeTransaction::new(vec![timed, set_number(window, "x", 10.0)]),
+    )
+    .expect("the batch applies");
+    assert!(
+        matches!(
+            applied.motion.as_slice(),
+            [Motion::Play(_), Motion::Settle { node, key }] if *node == window && key == "x"
+        ),
+        "the play comes first and the settle ends it: {:?}",
+        applied.motion
+    );
+    assert_eq!(
+        scene.property(window, VisualProperty::OffsetX).unwrap(),
+        PropertyValue::number(10.0),
+        "the untimed write landed"
+    );
+}
+
+#[test]
+fn a_set_of_a_key_that_is_not_animated_asks_nothing_of_the_compositor() {
+    let mut scene = scene();
+    let root = id(ROOT);
+    let window = shell_node(&mut scene, 1, root);
+    let op = TreeOp::Set {
+        node: window,
+        key: "visible".into(),
+        value: TreeValue::Bool(false),
+        timing: None,
+    };
+    let applied =
+        validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(vec![op])).expect("the set applies");
+    assert!(applied.motion.is_empty(), "{:?}", applied.motion);
+}
+
+#[test]
+fn landing_a_timed_set_at_once_writes_its_target() {
+    let mut scene = scene();
+    let root = id(ROOT);
+    let window = shell_node(&mut scene, 1, root);
+    let op = TreeOp::Set {
+        node: window,
+        key: "opacity".into(),
+        value: TreeValue::Double(0.25),
+        timing: Some(Timing {
+            seconds: 2.0,
+            samples: LINEAR.to_vec(),
+        }),
+    };
+    let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(vec![op]))
+        .expect("a valid animated set applies");
+    let Motion::Play(animation) = &applied.motion[0] else {
+        panic!("a timed set asks for a track");
+    };
+    land_at_once(&mut scene, animation).expect("the target lands");
+    assert_eq!(
+        scene.property(window, VisualProperty::Opacity).unwrap(),
+        PropertyValue::number(0.25)
     );
 }
 

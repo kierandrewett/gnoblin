@@ -66,9 +66,9 @@ use std::sync::Arc;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
-use gnoblin_animation::{Easing, PropertyValue, VisualProperty, VisualTransform};
+use gnoblin_animation::{Easing, PropertyValue, SampledCurve, VisualProperty, VisualTransform};
 use gnoblin_render::scene_ids::NodeIdAllocator;
-use gnoblin_render::transaction::{TreeChange, TreeValue};
+use gnoblin_render::transaction::{Animation, Motion, TreeChange, TreeValue, land_at_once, visual_property};
 use gnoblin_render::{
     Damage, Effects, Mat4, NodeKind, NodeSpec, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
@@ -257,6 +257,9 @@ pub struct Composer {
     motion: TweenPlayer,
     /// The live track for each window property, so a retarget can supersede it.
     tracks: BTreeMap<(WindowId, VisualProperty), TrackId>,
+    /// The live track of each property the shell animated with a timed `set`, so a later write to
+    /// the same property ends or supersedes it.
+    shell_tracks: BTreeMap<(NodeId, VisualProperty), TrackId>,
     /// When set, a change lands at once instead of being animated.
     reduced_motion: bool,
     /// Where the cursor was last drawn, in global layout coordinates, or `None` when hidden.
@@ -324,6 +327,7 @@ impl Composer {
             damage: None,
             motion: TweenPlayer::new(),
             tracks: BTreeMap::new(),
+            shell_tracks: BTreeMap::new(),
             reduced_motion: false,
             cursor: None,
             flash: None,
@@ -1330,6 +1334,7 @@ impl Composer {
                 .find(|(_, track)| **track == end.track)
                 .map(|(key, _)| *key);
             self.tracks.retain(|_, track| *track != end.track);
+            self.shell_tracks.retain(|_, track| *track != end.track);
             if let Some((window, VisualProperty::Opacity)) = owner
                 && let Some(on_end) = self
                     .windows
@@ -1341,6 +1346,90 @@ impl Composer {
             }
         }
         self.advance_flash(elapsed_ms);
+    }
+
+    /// Applies what the shell's writes to animated properties asked of the tracks, in the order the
+    /// writes applied. A timed `set` plays a track to its target; with reduced motion on, or for a
+    /// property the scene cannot tween (a width or height), the target lands at once instead, so a
+    /// shell that forgot to shorten its durations still gets instant changes. A write to a
+    /// property ends the track running on it either way.
+    ///
+    /// Reduced motion is read when the write is applied: a track already running when it turns on
+    /// finishes, and the next write lands at once.
+    pub fn apply_shell_motion(&mut self, motion: Vec<Motion>) {
+        for item in motion {
+            match item {
+                Motion::Settle { node, key } => {
+                    if let Some(property) = visual_property(&key) {
+                        self.end_shell_track(node, property);
+                    }
+                }
+                Motion::Play(animation) => self.play_shell_animation(&animation),
+            }
+        }
+    }
+
+    /// How many tracks the shell's timed writes have running.
+    #[must_use]
+    pub fn shell_tracks_running(&self) -> usize {
+        self.shell_tracks.len()
+    }
+
+    /// Ends the track the shell's timed `set` started on `node`'s `property`, leaving the value where it is.
+    fn end_shell_track(&mut self, node: NodeId, property: VisualProperty) {
+        if let Some(track) = self.shell_tracks.remove(&(node, property)) {
+            let _ = self.motion.cancel(track);
+        }
+    }
+
+    /// Plays one timed `set`, or lands its target at once when it cannot be played.
+    fn play_shell_animation(&mut self, animation: &Animation) {
+        let property = visual_property(&animation.key);
+        if let Some(property) = property {
+            self.end_shell_track(animation.node, property);
+        }
+        if let Some(property) = property.filter(|_| !self.reduced_motion)
+            && self.start_shell_track(animation, property)
+        {
+            return;
+        }
+        if let Err(code) = land_at_once(&mut self.scene, animation) {
+            log::warn!(
+                area = "render",
+                node = %animation.node,
+                key = %animation.key,
+                code = code.as_str(),
+                "an animated set could not land: the node keeps its value"
+            );
+        }
+    }
+
+    /// Starts the track for a timed `set`. `false` when the duration rounds to nothing or the scene
+    /// refuses the track, so the caller lands the target at once.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn start_shell_track(&mut self, animation: &Animation, property: VisualProperty) -> bool {
+        let TreeValue::Double(target) = animation.value else {
+            return false;
+        };
+        let duration_ms = (animation.seconds * 1000.0).round() as u32;
+        let Ok(curve) = SampledCurve::new(animation.samples.clone()) else {
+            return false;
+        };
+        if duration_ms == 0 {
+            return false;
+        }
+        let mut spec = TrackSpec::new(animation.node, property, PropertyValue::number(target as f32));
+        spec.duration_ms = duration_ms;
+        let Ok(track) = self.motion.start_sampled(&mut self.scene, spec, curve) else {
+            return false;
+        };
+        // The node keeps the target as its value, so a snapshot read mid-track agrees with the change the
+        // shell's mirror was told.
+        let _ = self
+            .scene
+            .set_value(animation.node, &animation.key, animation.value.clone());
+        self.shell_tracks.insert((animation.node, property), track);
+        true
     }
 
     /// Whether a visual bell's flash is still on screen, so the caller keeps frames coming.
@@ -1609,8 +1698,10 @@ impl Composer {
         let Some(seat) = self.main_seat else {
             return;
         };
+        let reduced_motion = self.reduced_motion;
         for (key, value) in [
             ("edge_tiling", TreeValue::Bool(policy.edge_tiling)),
+            ("reduced_motion", TreeValue::Bool(reduced_motion)),
             ("drag_constraint", TreeValue::Text(policy.drag_constraint.to_owned())),
             ("focus_mode", TreeValue::Text(policy.focus_mode.to_owned())),
             (
@@ -4084,6 +4175,48 @@ mod tests {
             &changes[0],
             TreeChange::Set { node, key, value: TreeValue::Int(900) } if *node == seat && key == "auto_raise_delay"
         ));
+    }
+
+    /// The main seat carries the reduced-motion setting the composer honours, so the stock shell
+    /// reads the same answer the compositor applies. Only a change is published.
+    #[test]
+    fn the_main_seat_publishes_reduced_motion_and_republishes_it_when_it_changes() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        let policy = MainSeatPolicy {
+            edge_tiling: false,
+            drag_constraint: "work_area",
+            focus_mode: "click",
+            focus_new_windows: "prevent",
+            raise_on_click: true,
+            auto_raise: false,
+            auto_raise_delay: 500,
+            focus_change_on_pointer_rest: false,
+            double_click: "toggle-maximize",
+            middle_click: "lower",
+            right_click: "menu",
+            workspaces: Vec::new(),
+        };
+        composer.publish_main_seat_policy(&policy);
+        composer.with_scene(|scene| {
+            assert_eq!(scene.value(seat, "reduced_motion"), Some(&TreeValue::Bool(false)));
+        });
+        composer.take_tree_changes();
+
+        composer.set_reduced_motion(true);
+        composer.publish_main_seat_policy(&policy);
+        let changes = composer.take_tree_changes();
+        assert_eq!(changes.len(), 1, "only the setting changed: {changes:?}");
+        assert!(matches!(
+            &changes[0],
+            TreeChange::Set { node, key, value: TreeValue::Bool(true) } if *node == seat && key == "reduced_motion"
+        ));
+
+        composer.publish_main_seat_policy(&policy);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged setting is not republished"
+        );
     }
 
     #[test]

@@ -14,9 +14,9 @@ function toast(text)
             opacity = 0,
             text,
         }))
-        await(t:to(0.12, { opacity = 1 }))
+        await(t:to(motion(0.12), { opacity = 1 }))
         await(4)
-        await(t:to(0.3, { opacity = 0 }))
+        await(t:to(motion(0.3), { opacity = 0 }))
         t:destroy()
     end)
 end
