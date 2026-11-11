@@ -204,6 +204,7 @@ mod policy;
 mod popup;
 mod process;
 mod protocols;
+mod request_guard;
 mod selection_bridge;
 mod server;
 mod state;

@@ -58,6 +58,7 @@ passing = [
     "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
     "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/5",
     "BadBufferTest.client_lies_about_buffer_size",
+    "BadBufferTest.test_truncated_shm_file",
     "ClientSurfaceEventsTest.frame_timestamp_increases",
     "ClientSurfaceEventsTest.frame_timestamp_never_decreases",
     "ClientSurfaceEventsTest.surface_enters_output",
@@ -436,13 +437,16 @@ passing = [
     "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_y_must_be_non_negative",
     "WpViewporterTest.all_minus_one_destination_unsets_destination_viewport",
     "WpViewporterTest.all_minus_one_source_unsets_source_rect",
+    "WpViewporterTest.assigning_a_viewport_to_a_surface_with_an_existing_viewport_is_an_error",
     "WpViewporterTest.can_destroy_viewport_after_surface_is_destroyed",
     "WpViewporterTest.committing_new_destination_without_new_buffer_still_changes_size",
     "WpViewporterTest.set_destination_sets_output_size",
     "WpViewporterTest.setting_destination_after_surface_has_been_destroyed_is_an_error",
     "WpViewporterTest.setting_source_after_surface_has_been_destroyed_is_an_error",
+    "WpViewporterTest.source_rectangle_out_of_buffer_bounds_raises_protocol_error",
     "WpViewporterTest.when_buffer_is_scaled_destination_is_in_scaled_coordinates",
     "WpViewporterTest.when_buffer_is_scaled_source_is_in_scaled_coordinates",
+    "WpViewporterTest.when_destination_is_not_set_source_must_have_integer_size",
     "WpViewporterTest.when_source_but_no_destination_set_window_has_src_size",
     "XdgOutputV1Test.xdg_output_properties_set",
     "XdgPopupStable/XdgPopupTest.does_not_get_popup_done_event_before_button_press/0",
@@ -474,6 +478,9 @@ passing = [
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_moves_under_input_device_twice/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_of_a_subsurface_handled/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.sync_subsurface_moves_when_only_parent_committed/0",
+    "XdgSurfaceStableTest.creating_xdg_surface_from_wl_surface_with_attached_buffer_is_an_error",
+    "XdgSurfaceStableTest.creating_xdg_surface_from_wl_surface_with_committed_buffer_is_an_error",
+    "XdgSurfaceStableTest.creating_xdg_surface_from_wl_surface_with_existing_role_is_an_error",
     "XdgSurfaceStableTest.gets_configure_event",
     "XdgSurfaceStableTest.supports_xdg_shell_stable_protocol",
     "XdgToplevelStableConfigurationTest.activated_state_follows_pointer",
@@ -537,18 +544,8 @@ reason = "phase 3 protocol"
 issue = "gnoblin-of0d"
 
 [[known_failure]]
-pattern = "XdgSurfaceStableTest.*_is_an_error"
-reason = "xdg_wm_base.get_xdg_surface is not validated: Smithay raises the role and invalid_surface_state errors only at get_toplevel and commit, and the unconfigured_buffer test attaches without committing"
-issue = "gnoblin-ve4a"
-
-[[known_failure]]
-pattern = "WpViewporterTest.*"
-reason = "wp_viewport errors the suite expects (viewport_exists on the wrong interface, out_of_buffer, bad_size) are not raised as the suite reads them"
-issue = "gnoblin-ve4a"
-
-[[known_failure]]
-pattern = "BadBufferTest.*"
-reason = "truncated shm file is not an error"
+pattern = "XdgSurfaceStableTest.attaching_buffer_to_unconfigured_xdg_surface_is_an_error"
+reason = "the suite expects xdg_surface.unconfigured_buffer when a buffer is attached, with no commit; Smithay raises it at commit. Raising it at attach needs the xdg_surface object, which is created inside Smithay's get_xdg_surface handler and kept in private state: the guard in request_guard.rs sees the request before it and has no way to a resource it makes"
 issue = "gnoblin-ve4a"
 
 [[known_failure]]

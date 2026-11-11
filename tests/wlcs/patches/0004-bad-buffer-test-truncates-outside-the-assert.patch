@@ -1,0 +1,27 @@
+wlcs v1.8.1: BadBufferTest.test_truncated_shm_file puts its ftruncate() inside an assert().
+
+The test makes a buffer from a pool and then truncates the pool's file, so the compositor's read of the buffer is a bus
+error it has to turn into `wl_shm.invalid_fd`. The truncation was written as `assert(ftruncate(fd, 12) == 0)`.
+scripts/wlcs.sh builds wlcs in Release, which defines NDEBUG and compiles assert() away, the call with it: the file was
+never truncated, so no compositor could raise the error and the test failed for every one. The call now runs and the
+result is asserted.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the test upstream.
+
+diff --git a/tests/test_bad_buffer.cpp b/tests/test_bad_buffer.cpp
+index 8e77938..f6b4a79 100644
+--- a/tests/test_bad_buffer.cpp
++++ b/tests/test_bad_buffer.cpp
+@@ -59,7 +59,11 @@ create_bad_shm_buffer(wlcs::Client& client, int width, int height)
+ 	/* Truncate the file to a small size, so that the compositor
+ 	 * will access it out-of-bounds, and hit SIGBUS.
+ 	 */
+-	assert(ftruncate(fd, 12) == 0);
++	/* The truncation is the point of the test, so it is not inside the assert: wlcs builds in Release, which compiles
++	 * assert() away and the ftruncate() with it, and the test then tests nothing. */
++	int const truncated = ftruncate(fd, 12);
++	assert(truncated == 0);
++	(void)truncated;
+ 	close(fd);
+ 
+ 	return buffer;

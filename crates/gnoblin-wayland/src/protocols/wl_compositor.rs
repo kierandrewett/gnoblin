@@ -11,27 +11,31 @@
 //!
 //! ## What a commit does
 //!
-//! 1. `on_commit_buffer_handler` applies the pending surface state and, for a
-//!    viewport, validates the source rectangle (a `wp_viewporter` mistake is a
-//!    protocol error for that client, not for the session).
-//! 2. The popup manager is told, so a popup that was waiting for a parent is
+//! 1. `on_commit_buffer_handler` applies the pending surface state.
+//! 2. The buffer the surface now shows is checked: a `wl_shm` pool the client shrank under it
+//!    is `wl_shm.invalid_fd` on the buffer, and a viewport source outside it is
+//!    `wp_viewport.out_of_buffer` (a mistake like these is a protocol error for that client,
+//!    not for the session).
+//! 3. The popup manager is told, so a popup that was waiting for a parent is
 //!    tracked once it has one.
-//! 3. A lock surface's commit is reported to the session lock, which is what makes
+//! 4. A lock surface's commit is reported to the session lock, which is what makes
 //!    it a destination for input once it has a buffer.
-//! 4. Only for a non-synchronous subsurface, the commit is attributed to its root
+//! 5. Only for a non-synchronous subsurface, the commit is attributed to its root
 //!    surface, which is the toplevel the window manager knows.
-//! 5. The window the surface belongs to, through its subsurface parents or its popup root, is marked so its surface
+//! 6. The window the surface belongs to, through its subsurface parents or its popup root, is marked so its surface
 //!    tree (`surface_tree.rs`) is built again before the next frame, and the surface is recorded as having
 //!    committed so its pixels are damaged.
 
 use std::sync::{Arc, OnceLock};
 
-use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::reexports::wayland_server::Client;
+use gnoblin_render_frame::shm::{ShmError, probe};
+use smithay::backend::renderer::utils::{RendererSurfaceStateUserData, on_commit_buffer_handler};
 use smithay::reexports::wayland_server::backend::ClientData;
+use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{Client, Resource};
 use smithay::wayland::compositor::{
-    CompositorClientState, CompositorHandler, CompositorState, get_parent, is_sync_subsurface,
+    CompositorClientState, CompositorHandler, CompositorState, get_parent, is_sync_subsurface, with_states,
 };
 use smithay::xwayland::XWaylandClientData;
 
@@ -101,6 +105,10 @@ impl CompositorHandler for State {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        // A buffer whose pool the client shrank is the client's error; so is a viewport source that reaches
+        // past the buffer the commit left attached.
+        verify_buffer(surface);
+        crate::protocols::wp_viewporter::validate_commit(surface);
         self.popups.commit(surface);
         self.popup_committed(surface);
         // The window the surface belongs to draws its surface tree again, and this surface's pixels with it.
@@ -122,5 +130,28 @@ impl CompositorHandler for State {
             root = parent;
         }
         self.toplevel_committed(&root);
+    }
+}
+
+/// Raises `wl_shm.invalid_fd` on the buffer a surface shows when the client shrank the pool's file under
+/// it, which is the only way its pixels can be gone.
+///
+/// The check reads the last byte of the buffer (`gnoblin_render_frame::shm::probe`), so it costs the same
+/// for any size. Without it the first read of the missing pages is a bus error the renderer survives by
+/// drawing nothing, and the client is never told.
+fn verify_buffer(surface: &WlSurface) {
+    let buffer = with_states(surface, |states| {
+        let renderer = states.data_map.get::<RendererSurfaceStateUserData>()?;
+        let renderer = renderer.lock().ok()?;
+        renderer.buffer().cloned()
+    });
+    let Some(buffer) = buffer else {
+        return;
+    };
+    if probe(&buffer) == Err(ShmError::Unmapped) {
+        buffer.post_error(
+            wl_shm::Error::InvalidFd,
+            "the buffer's pool no longer holds all of the buffer",
+        );
     }
 }

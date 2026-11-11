@@ -53,12 +53,18 @@ Each has a test in `crates/gnoblin-wayland` or `crates/gnoblin-wlcs`.
 
 ## Result
 
-Core subset: 702 tests, 467 pass, 15 fail and 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
+Core subset: 702 tests, 474 pass, 8 fail and 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
 
 - `gnoblin-wrns`: Smithay's zero-size positioner anchor rectangle.
-- `gnoblin-ve4a`: protocol errors the suite expects: `xdg_wm_base.get_xdg_surface` is not validated (Smithay raises `role` and `invalid_surface_state` only at `get_toplevel` and at commit), the `wp_viewport` errors and the truncated shm file.
+- `gnoblin-ve4a`: `XdgSurfaceStableTest.attaching_buffer_to_unconfigured_xdg_surface_is_an_error`. The suite expects `xdg_surface.unconfigured_buffer` when a buffer is attached with no commit; Smithay raises it at commit, which is what the xdg-shell text and every other client-visible case need. Raising it at attach means posting on the `xdg_surface`, an object that Smithay's `get_xdg_surface` handler creates and keeps in private state, so the request guard (`crates/gnoblin-wayland/src/request_guard.rs`) that sees the request before Smithay has no way to the object it makes. It needs a change in Smithay, or a replacement of its xdg_wm_base handler.
 - `gnoblin-v3hw`: subsurface timing. Smithay applies `wl_subsurface.set_position` at the subsurface's own commit and `place_above` and `place_below` at once; the protocol applies both with the parent's state.
 - `gnoblin-of0d`: later-phase protocols.
+
+`gnoblin-ve4a` is resolved but for that test. Seven tests pass that did not, with no change to Smithay:
+
+- `xdg_wm_base.get_xdg_surface` is checked before Smithay handles it (`request_guard.rs`, applied by `dispatch.rs` to every request): a `wl_surface` with a role other than an xdg one is `role`, and one with a buffer attached or committed is `invalid_surface_state`. Three `XdgSurfaceStableTest` tests.
+- `wp_viewporter` is the compositor's own (`protocols/wp_viewporter.rs`). Smithay's raises `viewport_exists` on the `wl_surface`, installs its `bad_size` hook only for a surface that has no viewport data (a surface that has already committed a buffer has it, so the hook was never installed for the surfaces that matter) and checks `out_of_buffer` only when a commit brings a new buffer. The viewport state is still Smithay's `ViewportCachedState`, so the renderer is unchanged. Three `WpViewporterTest` tests.
+- A `wl_shm` pool the client shrank under a buffer is `wl_shm.invalid_fd` on the buffer at the commit that attaches it (`wl_compositor.rs`, `gnoblin_render_frame::shm::probe`, one byte read inside Smithay's SIGBUS guard). The suite test did nothing in any build of ours: it wrote its `ftruncate()` inside an `assert()`, and `scripts/wlcs.sh` builds Release, which compiles the assert away. `tests/wlcs/patches/0004-bad-buffer-test-truncates-outside-the-assert.patch` runs the call. `BadBufferTest.test_truncated_shm_file`.
 
 `gnoblin-f3cp`, `gnoblin-y3yk` and `gnoblin-jpbf` are resolved:
 
@@ -74,7 +80,7 @@ Core subset: 702 tests, 467 pass, 15 fail and 220 skipped (the `wl_shell` and `z
 
 The popup tests (`XdgPopupPositionerTest`, `XdgPopupStable`, `XdgPopupTest`) pass but for one; 88 more are skipped because the suite's popup of a layer surface and of a `zxdg_shell_v6` surface need globals the compositor does not serve.
 
-The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until the issues above are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 467 passing tests, and the list of what is left.
+The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until the issues above are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 474 passing tests, and the list of what is left.
 
 ## CI
 

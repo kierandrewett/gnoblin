@@ -54,7 +54,6 @@ use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellSt
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
 use smithay::wayland::text_input::TextInputManagerState;
-use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xdg_system_bell::XdgSystemBellState;
 use smithay::wayland::xdg_toplevel_icon::{ToplevelIconCachedState, XdgToplevelIconManager};
@@ -268,10 +267,6 @@ pub struct State {
     /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
     #[allow(dead_code)]
     pub(crate) output_manager_state: OutputManagerState,
-    /// Kept alive so the `wp_viewporter` global stays registered. The protocol
-    /// needs no handler trait: Smithay validates a viewport on commit.
-    #[allow(dead_code)]
-    pub(crate) viewporter_state: ViewporterState,
     /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::zxdg_decoration_v1`] answers its requests.
     #[allow(dead_code)]
@@ -619,7 +614,7 @@ impl State {
         let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
         let shm_state = ShmState::new::<Self>(&display_handle, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
-        let viewporter_state = crate::protocols::wp_viewporter::global(&display_handle);
+        crate::protocols::wp_viewporter::create_global(&display_handle);
         let decoration_state = XdgDecorationState::new::<Self>(&display_handle);
         // The lock global is advertised to every client: the standard protocol makes
         // the socket the admission boundary, and `docs/session-lock.md` states that
@@ -756,7 +751,6 @@ impl State {
             surface_trees: crate::surface_tree::SurfaceTrees::default(),
             callbacks_due: false,
             output_manager_state,
-            viewporter_state,
             decoration_state,
             session_lock_state,
             xwayland_shell_state,

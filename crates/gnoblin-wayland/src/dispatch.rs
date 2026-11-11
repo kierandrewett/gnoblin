@@ -2,8 +2,9 @@
 //! the one registry gate that narrows a single-purpose role.
 //!
 //! Smithay's `delegate_dispatch2!(State)` would write these two impls, and the `Dispatch` one
-//! below is exactly what it writes. The `GlobalDispatch` one differs in `can_view`, which is
-//! where the `view` role is kept off every global it has no business with.
+//! below is what it writes, with one addition: [`crate::request_guard`] sees a request first. The
+//! `GlobalDispatch` one differs in `can_view`, which is where the `view` role is kept off every
+//! global it has no business with.
 //!
 //! ## Why here rather than in each global's own filter
 //!
@@ -33,7 +34,8 @@ use crate::protocols::wl_compositor::WlCompositorClientState;
 
 impl<I, UserData> Dispatch<I, UserData> for State
 where
-    I: Resource,
+    I: Resource + 'static,
+    I::Request: 'static,
     UserData: Dispatch2<I, State>,
 {
     fn request(
@@ -45,6 +47,11 @@ where
         dhandle: &DisplayHandle,
         data_init: &mut DataInit<'_, Self>,
     ) {
+        // A rule Smithay's handler does not enforce is checked first; a request it refuses has had its
+        // protocol error posted and goes no further.
+        if !crate::request_guard::admits(resource, &request) {
+            return;
+        }
         data.request(state, client, resource, request, dhandle, data_init);
     }
 

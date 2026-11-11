@@ -131,6 +131,56 @@ pub fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmErr
     .map_err(access_error)?
 }
 
+/// Reads the last byte of a client's buffer, to find out whether its pool still reaches that far.
+///
+/// A client can shrink the file behind a pool after it made a buffer from it, and the next
+/// read of the missing pages is a bus error. Smithay turns that error into
+/// [`ShmError::Unmapped`] while the read happens inside its mapping closure, so this reads the
+/// one byte that decides it: the file ends before the buffer does exactly when the last byte's
+/// page is gone. One byte costs the same for any buffer size, so it can run on every commit.
+///
+/// # Errors
+///
+/// [`ShmError::Unmapped`] when the pool no longer holds the buffer's last byte, and the other
+/// [`ShmError`]s as [`shape`] reports them.
+pub fn probe(buffer: &WlBuffer) -> Result<(), ShmError> {
+    if !buffer.is_alive() {
+        return Err(ShmError::NotShared);
+    }
+    with_buffer_contents(buffer, |pointer, length, data| {
+        let shape = checked_shape(length, &data)?;
+        if pointer.is_null() {
+            return Err(ShmError::Outside);
+        }
+        let offset = usize::try_from(data.offset).map_err(|_| ShmError::Outside)?;
+        let stride = usize::try_from(data.stride).map_err(|_| ShmError::Outside)?;
+        // `checked_shape` bounded this index inside `length`, the mapping's byte length.
+        touch(pointer, last_byte(shape, offset, stride));
+        Ok(())
+    })
+    .map_err(access_error)?
+}
+
+/// The index of the last byte a buffer of `shape` addresses, `offset` bytes into its pool with
+/// rows `stride` bytes apart.
+fn last_byte(shape: ShmShape, offset: usize, stride: usize) -> usize {
+    offset + stride * (shape.height as usize - 1) + shape.width as usize * 4 - 1
+}
+
+/// Reads one byte of the pool.
+///
+/// # Safety
+///
+/// The caller has checked that `index` is inside the mapping that starts at `pointer`
+/// ([`checked_shape`]), and calls this inside the `with_buffer_contents` closure, which is where a
+/// page the file no longer has is turned into an error and not a crash.
+#[allow(unsafe_code)]
+fn touch(pointer: *const u8, index: usize) -> u8 {
+    // SAFETY: `index` is inside the mapping by the caller's bound. The read is volatile because
+    // the client may write the memory at any time, and it makes no reference to it.
+    unsafe { std::ptr::read_volatile(pointer.add(index)) }
+}
+
 /// Copies a client's whole buffer into an [`Image`], so a window that is closing keeps the
 /// last picture it showed after the client destroys the buffer.
 ///
@@ -372,7 +422,7 @@ impl Pixel {
 mod tests {
     use gnoblin_types::{Point, Size};
 
-    use super::{Pixel, ShmShape, to_image_order};
+    use super::{Pixel, ShmShape, last_byte, to_image_order};
     use crate::image::Image;
 
     /// The packed layouts put alpha in the high byte and red next to it, which is the
@@ -441,5 +491,19 @@ mod tests {
             0x80_00_20_F0u32.to_ne_bytes(),
             "a translucent pixel keeps its alpha instead of being made opaque"
         );
+    }
+
+    /// The probe reads the byte a renderer reads last, whatever the stride pads each row with.
+    #[test]
+    fn the_last_byte_is_the_end_of_the_last_row_and_not_of_its_stride() {
+        let shape = ShmShape {
+            width: 10,
+            height: 3,
+            opaque: false,
+        };
+        // Rows of 40 bytes at a stride of 64, starting 16 bytes in: the last row begins at
+        // 16 + 2 * 64 and its pixels end 40 bytes later.
+        assert_eq!(last_byte(shape, 16, 64), 16 + 2 * 64 + 40 - 1);
+        assert_eq!(last_byte(shape, 0, 40), 3 * 40 - 1, "a packed buffer ends at its size");
     }
 }

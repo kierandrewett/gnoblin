@@ -47,7 +47,7 @@
 //! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3` | the text-input conversation |
 //! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2` | the privileged input-method half of a text conversation |
 //! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
-//! | [`wp_viewporter`] | `wp_viewporter` | creates the global; Smithay validates a viewport on commit |
+//! | [`wp_viewporter`] | `wp_viewporter` | a surface's crop and scale, with the three errors Smithay's own handler does not raise (`viewport_exists` on the right object, `bad_size`, `out_of_buffer` on a commit with no new buffer) |
 //! | [`gnoblin_view_source_v1`] | `gnoblin_view_source_manager_v1` | the owner-only capture source of a View node; refused for a node that is not a View |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups (drawn above their window, `surface_tree.rs`), configure and ack |
 //! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its opacity and that of everything hanging from it when the composer draws it: a window's own, or a subsurface's or a popup's |
