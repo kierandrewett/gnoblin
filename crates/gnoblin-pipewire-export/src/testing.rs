@@ -312,7 +312,7 @@ pub fn drive(mainloop: &MainLoopRc, mut done: impl FnMut() -> bool) -> bool {
 /// One frame a consumer received: the picture as the stream's own `BGRA` or `BGRx` bytes, at the size the consumer
 /// had negotiated when it arrived.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Picture {
+pub struct ReceivedFrame {
     /// The width of the picture, in pixels.
     pub width: u32,
     /// The height of the picture, in pixels.
@@ -321,7 +321,7 @@ pub struct Picture {
     pub bytes: Vec<u8>,
 }
 
-impl Picture {
+impl ReceivedFrame {
     /// Whether the bytes are exactly one picture of the size the consumer negotiated.
     pub fn is_whole(&self) -> bool {
         self.width > 0 && self.height > 0 && self.bytes.len() == self.width as usize * self.height as usize * 4
@@ -362,7 +362,7 @@ struct Received {
     /// The size the producer last negotiated, if it has negotiated one.
     size: Option<(u32, u32)>,
     /// The frames that carried bytes, oldest first.
-    frames: Vec<Picture>,
+    frames: Vec<ReceivedFrame>,
     /// How many buffers arrived with no bytes: a frame the producer refused.
     empty: usize,
     /// Every state the consumer's stream went through.
@@ -435,7 +435,7 @@ impl FrameConsumer {
                     return;
                 };
                 let (width, height) = guard.size.unwrap_or_default();
-                guard.frames.push(Picture { width, height, bytes });
+                guard.frames.push(ReceivedFrame { width, height, bytes });
             })
             .register()
             .expect("register the consumer callbacks");
@@ -468,7 +468,7 @@ impl FrameConsumer {
     }
 
     /// The frames received since the last [`FrameConsumer::forget`] that carried bytes, oldest first.
-    pub fn frames(&self) -> Vec<Picture> {
+    pub fn frames(&self) -> Vec<ReceivedFrame> {
         lock(&self.received).frames.clone()
     }
 
@@ -485,7 +485,7 @@ impl FrameConsumer {
     /// Waits for a frame `accept` takes, and answers it. Panics, saying what `what` was and what did arrive, when
     /// none does within [`DEADLINE`].
     #[track_caller]
-    pub fn wait_for_frame(&self, what: &str, accept: impl Fn(&Picture) -> bool) -> Picture {
+    pub fn wait_for_frame(&self, what: &str, accept: impl Fn(&ReceivedFrame) -> bool) -> ReceivedFrame {
         self.wait_for_frame_pumping(what, || {}, accept)
     }
 
@@ -496,8 +496,8 @@ impl FrameConsumer {
         &self,
         what: &str,
         mut pump: impl FnMut(),
-        accept: impl Fn(&Picture) -> bool,
-    ) -> Picture {
+        accept: impl Fn(&ReceivedFrame) -> bool,
+    ) -> ReceivedFrame {
         let mut found = None;
         drive(&self.observer.mainloop, || {
             pump();
