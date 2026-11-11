@@ -127,7 +127,6 @@ Timeouts for protocol and wayland internals are not user-facing and stay as `KEE
 | `chord::WRITTEN_ORDER`                          | crates/gnoblin-input/src/chord.rs:116    | 6 modifiers        | KEEP    | No  | Canonical modifier order for output                                        | Keep                                                        | low  | S      |
 | `chord::PLACEHOLDER_KEYSYMS`                    | crates/gnoblin-input/src/chord.rs:709    | unit struct static | REMOVE  | No  | Used only to format suggestions                                            | Use the unit struct value directly; the static adds nothing | low  | S      |
 | `name::MAX_NAME_LENGTH`                         | crates/gnoblin-input/src/name.rs:12      | 64                 | KEEP    | No  | Our bound                                                                  | Keep                                                        | low  | S      |
-| `policy::MAX_PENDING`                           | crates/gnoblin-input/src/policy.rs:36    | 256                | KEEP    | No  | Our queue bound                                                            | Keep                                                        | low  | S      |
 
 `PLACEHOLDER_KEYSYMS` is a production helper, not a test placeholder. It is correct, but the static is unnecessary, so REMOVE the static and inline the value.
 
@@ -151,11 +150,10 @@ Proposed config leaves for the three defaults: the touchpad record already holds
 
 `GestureConfig` also has `stale_ticks: 1000` (`gesture.rs:358`), a literal with no constant. Verdict: CONFIGURE only if users report stuck gestures; otherwise KEEP. Risk: low.
 
-### 2.9 Gesture and policy numeric helpers (gnoblin-input)
+### 2.9 Gesture helpers (gnoblin-input)
 
 | Constant                       | Location                                   | Value      | Verdict | Q1  | Q2                                      | Q3            | Risk | Effort |
 | ------------------------------ | ------------------------------------------ | ---------- | ------- | --- | --------------------------------------- | ------------- | ---- | ------ |
-| `policy` `capacity.max(1)`     | crates/gnoblin-input/src/policy.rs:146     | 1          | KEEP    | No  | Guard against zero capacity             | Keep          | low  | S      |
 | `router` test keysyms `Q`, `W` | crates/gnoblin-input/src/router.rs:571-572 | 0x71, 0x77 | KEEP    | No  | Test fixtures in `mod tests` (line 564) | Keep in tests | low  | S      |
 
 ### 2.10 Keyboard accessibility timings (gnoblin-a11y)

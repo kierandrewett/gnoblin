@@ -1,8 +1,7 @@
 //! Delivery order for the edges that a chord can claim: grab, then binding, then client.
 //!
-//! The plan's input pipeline is "lock gate, then grabs and bindings, then an optional
-//! script policy decision, then seat delivery". The lock gate runs before this type
-//! and the policy queue runs after it; this module owns the middle: whether a key or
+//! The plan's input pipeline is "lock gate, then grabs and bindings, then seat delivery".
+//! The lock gate runs before this type; this module owns the middle: whether a key or
 //! button edge belongs to an active grab, to a chord binding, or to the focused
 //! client, and it owns that decision for the whole life of the press.
 //!

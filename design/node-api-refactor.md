@@ -110,7 +110,7 @@ Codes used in the tables of sections 1 and 2:
 | ---------------------------------- | ---------------------------------------------------------------------- | ---------------------- | ------- | ------------ |
 | Chords, bindings, grabs (`Router`) | `crates/gnoblin-input/src/router.rs:48-224`                            | config                 | K       | I            |
 | Gestures and action names          | `gesture_router.rs:56-79`, `gnoblin-config/schema/config.toml:298-304` | config                 | K       | I            |
-| Script input policy queue          | `crates/gnoblin-input/src/policy.rs:40-127`                            | K                      | S       | I            |
+| Script input policy queue          | deleted in step 11A (was `policy.rs:40-127`)                           | K                      | S       | I            |
 | EIS endpoint and gate              | `crates/gnoblin-compositor/src/eis.rs:1-49`                            | K                      | C       | I            |
 | Session lock                       | `crates/gnoblin-lock/src/lib.rs:1-30`                                  | C (`ext-session-lock`) | C       | V I          |
 | Capture sessions                   | `crates/gnoblin-capture/src/lib.rs:1-66`                               | C, portal              | C P     | reads pixels |
@@ -219,7 +219,7 @@ an ordinary shell developer must learn the rule to do ordinary work.
 | Chord grammar and conflicts       | `gnoblin-input/src/lib.rs:37-44`                 | one meaning per chord               | no   | keep    | mechanism behind `seat:bind`       |
 | Gesture recogniser thresholds     | `gesture.rs:337-399`                             | touchpad gestures                   | no   | keep    | mechanism behind `Seat:bind`       |
 | Gesture action names (five)       | `config.toml:298-304`, `gesture_router.rs:56-62` | gestures without Lua                | yes  | delete  | handlers are functions             |
-| Script policy queue with deadline | `policy.rs:40-127`                               | script veto on raw input            | yes  | delete  | consumption is decided by the pick |
+| Script policy queue with deadline | deleted in step 11A (was `policy.rs:40-127`)     | script veto on raw input            | yes  | delete  | consumption is decided by the pick |
 | Grab scopes                       | `router.rs:48-89`                                | grabs                               | no   | keep    | `seat:grab`                        |
 | Shortcut inhibit                  | `router.rs:153`                                  | keyboard-shortcuts-inhibit protocol | no   | keep    | protocol semantics                 |
 | Lock input gate                   | `gnoblin-lock/src/lib.rs:20-23`                  | fail-closed lock                    | no   | keep    | `Lock` rule                        |

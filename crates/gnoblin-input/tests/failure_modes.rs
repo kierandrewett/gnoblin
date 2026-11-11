@@ -4,10 +4,10 @@ mod common;
 
 use common::{CODE_Q, CODE_W, E, Q, W, button_event, chord, key_event, name, pointer_chord, press, release};
 use gnoblin_input::{
-    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Decision, Edge,
-    EdgeBand, Expired, GestureAction, GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase,
-    GestureRoute, GestureRouter, GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, PolicyQueue,
-    Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick, Trigger,
+    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Edge, EdgeBand,
+    GestureAction, GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase, GestureRoute,
+    GestureRouter, GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, Recogniser, Routed, Router,
+    Scope, ShortcutInhibit, Target, Tick, Trigger,
 };
 
 fn route(router: &mut Router, event: gnoblin_input::Event) -> Routed {
@@ -225,31 +225,6 @@ fn a_gesture_is_claimed_once_or_not_at_all() {
     ])
     .expect_err("the second would never win");
     assert!(error.to_string().contains("right") && error.to_string().contains("left"));
-}
-
-#[test]
-fn a_late_decision_never_blocks_and_is_recorded() {
-    let mut queue = PolicyQueue::new(4);
-    let Submitted::Queued { id, deadline } = queue.submit(Tick::new(100), 16) else {
-        panic!("an empty queue accepts the request");
-    };
-    assert_eq!(deadline, Tick::new(116));
-
-    // A caller that must deliver now asks what has expired; nothing ever waits.
-    assert!(queue.expire(Tick::new(110)).is_empty());
-    let expired: Vec<Expired> = queue.expire(Tick::new(116));
-    assert_eq!(expired.len(), 1);
-    assert_eq!(expired[0].id, id, "the event resumes as normal delivery");
-    assert_eq!(queue.stats().expired, 1);
-
-    // The decision that arrives afterwards cannot act, and the record says why.
-    assert_eq!(queue.reply(id, Decision::Consume), Reply::Late { id });
-    assert_eq!(queue.stats().late, 1);
-    assert_eq!(queue.stats().applied, 0);
-    assert_eq!(queue.pending(), 0);
-
-    // The next event is queued normally, so one late reply does not disable the policy.
-    assert!(matches!(queue.submit(Tick::new(120), 16), Submitted::Queued { .. }));
 }
 
 #[test]
@@ -492,29 +467,6 @@ fn a_late_tick_does_not_move_the_idle_clock_backwards() {
         activity.is_idle(Tick::new(0), 0),
         "a zero timeout asks whether anything happened"
     );
-}
-
-#[test]
-fn a_reload_retires_requests_before_their_replies() {
-    let mut queue = PolicyQueue::new(8);
-    let Submitted::Queued { id: first, .. } = queue.submit(Tick::new(10), 50) else {
-        panic!("queued");
-    };
-    let Submitted::Queued { id: second, .. } = queue.submit(Tick::new(11), 50) else {
-        panic!("queued");
-    };
-    // The reload retires in submission order, which is the order the caller resumes.
-    assert_eq!(queue.retire_all(), vec![first, second]);
-    assert_eq!(queue.stats().retired, 2);
-    assert!(queue.is_empty());
-    // The script answers after the reload; neither answer may act on a retired event.
-    assert_eq!(queue.reply(first, Decision::Consume), Reply::Late { id: first });
-    assert_eq!(queue.reply(second, Decision::Forward), Reply::Late { id: second });
-    assert_eq!(queue.stats().applied, 0);
-    assert_eq!(queue.stats().late, 2);
-    // A reply for a request this session never issued is not a late one.
-    let forged = RequestId::new(9_000);
-    assert!(matches!(queue.reply(forged, Decision::Forward), Reply::Unknown { .. }));
 }
 
 #[test]

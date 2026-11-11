@@ -425,7 +425,7 @@ optimisation.
 
 | Path          | Stages                                                                                                                                                                                          |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Input         | Backend device event -> libinput config -> lock gate (`gnoblin-lock`) -> grabs and bindings -> optional script policy decision with deadline -> seat delivery -> idle and activity tracking     |
+| Input         | Backend device event -> libinput config -> lock gate (`gnoblin-lock`) -> grabs and bindings -> seat delivery -> idle and activity tracking                                                      |
 | Frame         | Client commit -> `gnoblin-wm` commands -> scene graph (window transforms, effects, animation player) -> damage -> render per output -> present -> frame export taps (capture)                   |
 | Configuration | Script evaluates -> typed `ConfigDocument` -> compositor validates again -> transactional apply or reject -> result and `config.reloaded` signal -> last-good store                             |
 | Request       | Application or system asks (polkit, keyring, GeoClue, portal access, lock) -> `Request` object offered -> one owner claims -> answer or end -> one `finished` outcome -> fail closed on timeout |

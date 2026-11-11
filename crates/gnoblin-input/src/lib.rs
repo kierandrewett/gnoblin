@@ -1,6 +1,5 @@
 //! Pure input policy: the chord grammar, the binding table, the key and button delivery
-//! order, touchpad gesture recognition and routing, the script policy deadline and idle
-//! activity.
+//! order, touchpad gesture recognition and routing, and idle activity.
 //!
 //! This crate is the "Input" card of `design/rust-compositor.md`. It owns everything in
 //! the input path that is a decision rather than a device:
@@ -88,7 +87,6 @@ pub mod gesture;
 pub mod gesture_router;
 pub mod idle;
 pub mod name;
-pub mod policy;
 pub mod router;
 pub mod touchpad;
 
@@ -102,10 +100,9 @@ pub use gesture_router::{
     GestureAction, GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats,
     PinchDirection,
 };
-pub use gnoblin_types::{ButtonState, Edge, KeyCode, KeyState, Keysym, Modifiers, RequestId, Tick};
+pub use gnoblin_types::{ButtonState, Edge, KeyCode, KeyState, Keysym, Modifiers, Tick};
 pub use idle::Activity;
 pub use name::{Name, NameError};
-pub use policy::{Decision, Expired, MAX_PENDING, PolicyQueue, PolicyStats, Reply, Submitted};
 pub use router::{Event, GrabId, Routed, Router, Scope, ShortcutInhibit, Stats, Target};
 
 gnoblin_log::logger!(log = "input");

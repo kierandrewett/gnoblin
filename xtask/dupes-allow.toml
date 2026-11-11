@@ -303,18 +303,6 @@ kind = "same-name"
 reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
 
 [[allow]]
-left = "gnoblin-authority::Decision"
-right = "gnoblin-input::Decision"
-kind = "same-name"
-reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
-
-[[allow]]
-left = "gnoblin-compat-core::Decision"
-right = "gnoblin-input::Decision"
-kind = "same-name"
-reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
-
-[[allow]]
 left = "gnoblin-compat-core::Interface"
 right = "xtask::Interface"
 kind = "same-name"
@@ -391,12 +379,6 @@ left = "gnoblin-schema::Signal"
 right = "gnoblin-session::Signal"
 kind = "same-name"
 reason = "an object-model signal is not a process signal"
-
-[[allow]]
-left = "gnoblin-input::WhenError"
-right = "gnoblin-types::InvalidErrorCode"
-kind = "same-shape"
-reason = "a gesture's timing refusal and a rejected error-code string both carry one text field; they are unrelated failures"
 
 [[allow]]
 left = "gnoblin-input::Trigger"
@@ -571,12 +553,6 @@ left = "gnoblin-compat-core::Refusal"
 right = "gnoblin-service-core::Refusal"
 kind = "same-name"
 reason = "why a slot request could not be offered or answered versus the compat frame's rule refusal; the compat one names a rule and this one names a slot or a request"
-
-[[allow]]
-left = "gnoblin-input::Decision"
-right = "gnoblin-service-core::Decision"
-kind = "same-name"
-reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
 [[allow]]
 left = "gnoblin-lua::Pending"
@@ -861,12 +837,6 @@ left = "gnoblin-input::Key"
 right = "xdg-desktop-portal-gnoblin::Key"
 kind = "same-name"
 reason = "input's Key is the key part of a chord; the portal's Key is one published settings key, the schema property and the name toolkits look up"
-
-[[allow]]
-left = "gnoblin-input::Waiting"
-right = "xdg-desktop-portal-gnoblin::Waiting"
-kind = "same-name"
-reason = "input's Waiting is one waiting request; the portal's Waiting is one prompt waiting for the provider"
 
 [[allow]]
 left = "gnoblin-lock::State"
@@ -1399,3 +1369,9 @@ left = "gnoblin-lua::MirrorChangeKind"
 right = "gnoblin-render::TreeChange"
 kind = "same-shape"
 reason = "the shell mirror's change tag names one step of a snapshot or change batch, while the render crate's tree change names a scene edit; both are a plain tag enum with no shared behaviour"
+
+[[allow]]
+left = "gnoblin-client::LinkFrame"
+right = "gnoblin-proto::StreamFrame"
+kind = "same-shape"
+reason = "the in-process loopback link and the privileged stream each carry a handshake or an envelope, and share no code; the shape is the protocol's two frame kinds"

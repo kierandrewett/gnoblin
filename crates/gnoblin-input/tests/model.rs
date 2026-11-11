@@ -15,8 +15,6 @@
 //!   routed without a release;
 //! - at most one gesture binding reserves a movement, and a reservation ends at the end
 //!   or cancel of its gesture;
-//! - every queued policy request is decided, expired or retired exactly once, and
-//!   retirement is in submission order;
 //! - the idle clock never moves backwards, and activity counts every event.
 
 mod common;
@@ -25,10 +23,9 @@ use std::collections::BTreeMap;
 
 use common::{CODE_Q, CODE_W, Q, W, button_event, chord, name, pointer_chord};
 use gnoblin_input::{
-    Activity, ButtonState, Contact, ContactPhase, Decision, Event, GestureAction, GestureConfig, GestureEvent,
-    GestureKind, GestureLock, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState,
-    Keysym, Modifiers, PinchDirection, PolicyQueue, Recogniser, Reply, RequestId, Routed, Router, Scope,
-    ShortcutInhibit, Submitted, Target, Tick, Trigger,
+    Activity, ButtonState, Contact, ContactPhase, Event, GestureAction, GestureConfig, GestureEvent, GestureKind,
+    GestureLock, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
+    PinchDirection, Recogniser, Routed, Router, Scope, ShortcutInhibit, Target, Tick, Trigger,
 };
 
 /// Sequences per test run.
@@ -72,12 +69,10 @@ struct Model {
     router: Router,
     gestures: GestureRouter,
     recogniser: Recogniser,
-    policy: PolicyQueue,
     activity: Activity,
     held: BTreeMap<KeyCode, Target>,
     held_buttons: BTreeMap<u8, Target>,
     grabs: Vec<GrabId>,
-    waiting: Vec<u64>,
     tick: u64,
     touch: u8,
     presses: u64,
@@ -129,12 +124,10 @@ impl Model {
             router,
             gestures,
             recogniser: Recogniser::new(GestureConfig::default()),
-            policy: PolicyQueue::new(8),
             activity: Activity::new(),
             held: BTreeMap::new(),
             held_buttons: BTreeMap::new(),
             grabs: Vec::new(),
-            waiting: Vec::new(),
             tick: 1,
             touch: 0,
             presses: 0,
@@ -148,7 +141,7 @@ impl Model {
     fn step(&mut self, rng: &mut Rng) {
         self.tick += 1;
         let tick = Tick::new(self.tick);
-        match rng.below(14) {
+        match rng.below(12) {
             0..=2 => {
                 let (code, symbol) = if rng.chance(2) { (CODE_Q, Q) } else { (CODE_W, W) };
                 let modifiers = if rng.chance(2) {
@@ -207,8 +200,7 @@ impl Model {
             }
             7 => self.grab_step(rng),
             8 => self.reload(),
-            9..=10 => self.policy_step(rng, tick),
-            11..=12 => {
+            9..=10 => {
                 if !rng.chance(4) {
                     self.contact_frame(tick);
                 }
@@ -355,61 +347,6 @@ impl Model {
         self.checks += 1;
     }
 
-    fn policy_step(&mut self, rng: &mut Rng, tick: Tick) {
-        match rng.below(4) {
-            0 => {
-                if let Submitted::Queued { id, deadline } = self.policy.submit(tick, 1 + rng.below(5)) {
-                    assert!(deadline >= tick);
-                    self.waiting.push(id.get());
-                }
-            }
-            1 => {
-                for expired in self.policy.expire(tick) {
-                    let position = self
-                        .waiting
-                        .iter()
-                        .position(|raw| *raw == expired.id.get())
-                        .expect("an expired request was waiting");
-                    assert_eq!(position, 0, "retirement starts with the oldest request");
-                    self.waiting.remove(0);
-                }
-            }
-            2 => {
-                if let Some(raw) = self.waiting.first().copied() {
-                    let id = RequestId::new(raw);
-                    let reply = self.policy.reply(id, Decision::Consume);
-                    assert_eq!(
-                        reply,
-                        Reply::Applied {
-                            id,
-                            decision: Decision::Consume
-                        }
-                    );
-                    self.waiting.retain(|other| *other != raw);
-                }
-            }
-            _ => {
-                let retired = self.policy.retire_all();
-                let order: Vec<u64> = retired.iter().map(|id| id.get()).collect();
-                assert_eq!(order, self.waiting, "a reload retires in submission order");
-                self.waiting.clear();
-                // A retired request cannot be decided again.
-                for raw in &order {
-                    let id = RequestId::new(*raw);
-                    assert_eq!(self.policy.reply(id, Decision::Forward), Reply::Late { id });
-                }
-            }
-        }
-        let stats = self.policy.stats();
-        let settled = stats.applied + stats.expired + stats.retired;
-        assert_eq!(
-            stats.queued,
-            settled + self.waiting.len() as u64,
-            "every queued request is decided, expired or retired exactly once"
-        );
-        self.checks += 1;
-    }
-
     fn contact_frame(&mut self, tick: Tick) {
         let frame: Vec<Contact> = match self.touch % 6 {
             0 => vec![
@@ -515,13 +452,6 @@ impl Model {
                 "a gesture that is over holds no reservation"
             );
         }
-        assert_eq!(
-            self.policy.stats().queued,
-            self.policy.stats().applied
-                + self.policy.stats().expired
-                + self.policy.stats().retired
-                + self.waiting.len() as u64
-        );
     }
 }
 
