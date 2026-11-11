@@ -147,30 +147,3 @@ fn salvage_of_a_document_that_is_not_a_table_keeps_nothing() {
     let report = salvaged.report.expect("the refusal is reported");
     assert_eq!(report.problems()[0].path.to_string(), "<document>");
 }
-
-#[test]
-fn salvage_drops_the_workspace_declaration_when_it_conflicts_with_dynamic_workspaces() {
-    let document = table([
-        ("window-management", table([("dynamic-workspaces", flag(true))])),
-        (
-            "workspaces",
-            list(vec![table([("id", text("main")), ("name", text("Main"))])]),
-        ),
-    ]);
-    let salvaged = salvage(document);
-    assert!(
-        salvaged.config.workspaces.is_empty(),
-        "the declaration is the newer setting, so it is the one dropped"
-    );
-    assert_eq!(
-        salvaged
-            .config
-            .window_management
-            .as_ref()
-            .expect("management")
-            .dynamic_workspaces,
-        Some(true)
-    );
-    let report = salvaged.report.expect("the conflict is reported");
-    assert_eq!(report.problems()[0].path.to_string(), "workspaces");
-}

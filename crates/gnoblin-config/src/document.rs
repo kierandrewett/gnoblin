@@ -218,23 +218,6 @@ impl Config {
                     Some(value) => parse_window_rules(value, &root.key("window-rules"), &mut out).rules,
                     None => Vec::new(),
                 };
-                // A declared workspace list fixes the count, so a document that
-                // also asks for dynamic workspaces contradicts itself. The
-                // problem is anchored on the declaration, which is the newer of
-                // the two settings and the one a salvage can drop.
-                if entries.contains_key("workspaces")
-                    && config
-                        .window_management
-                        .as_ref()
-                        .is_some_and(|management| management.dynamic_workspaces.is_some())
-                {
-                    out.problem(
-                        &root.key("workspaces"),
-                        Fault::Conflict {
-                            other: root.key("window-management").key("dynamic-workspaces"),
-                        },
-                    );
-                }
             }
             other => out.problem(
                 &Path::root(),

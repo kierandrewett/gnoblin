@@ -57,6 +57,7 @@
 ### Removed
 
 - `gnoblinctl capabilities` is removed. It printed the IPC capability set and whether this connection held each one. Use `gnoblinctl status` for the session, and `gnoblin.capabilities.list()` in a shell for the shell-API capabilities.
+- `window_management.auto_maximize`, `window_management.workspaces_only_on_primary` and `window_management.button_layout` (both sides, `left` and `right`) are removed, as are the `config.toml` keys `auto-maximize`, `workspaces-only-on-primary`, `dynamic-workspaces` and `button-layout`. Maximise-on-open, workspaces-on-primary and the titlebar button layout are no longer stored or applied; the workspace count is the declared `workspaces` list. The removed `window_management` keys (`center-new-windows`, `new-window-placement`, `workspace-ids`, `workspace-names`, `num-workspaces`) are still refused by name.
 
 - The IPC capability set and the per-role grants are removed. The handshake carries no capability field, and `gnoblin-proto`'s `Capability` type (`capability.rs`) and the role table in `privileged.rs` are deleted. The grants frame (`gnoblin-proto` `grants.rs`) stays only until the D22 extension routing that uses it is removed.
 

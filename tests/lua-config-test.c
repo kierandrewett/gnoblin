@@ -706,10 +706,6 @@ int main(void) {
         g_assert_true(
             g_variant_lookup(example_window_management, "edge-tiling", "b", &edge_tiling));
         g_assert_true(edge_tiling);
-        gboolean only_on_primary = FALSE;
-        g_assert_true(g_variant_lookup(example_window_management, "workspaces-only-on-primary", "b",
-                                       &only_on_primary));
-        g_assert_true(only_on_primary);
         g_autoptr(GVariant) middle_click = g_variant_lookup_value(
             example_window_management, "action-middle-click-titlebar", G_VARIANT_TYPE_STRING);
         g_assert_nonnull(middle_click);
@@ -721,14 +717,9 @@ int main(void) {
         &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);
-    g_assert_no_error(error);
-    g_assert_nonnull(document);
-    g_autoptr(GVariant) window_management =
-        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
-    g_assert_nonnull(window_management);
-    gboolean auto_maximize = TRUE;
-    g_assert_true(g_variant_lookup(window_management, "auto-maximize", "b", &auto_maximize));
-    g_assert_false(auto_maximize);
+    g_assert_null(document);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
 
     g_assert_true(g_file_set_contents(
         explicit_root, "gnoblin.configure {window_management = {disable_workarounds = true}}\n", -1,
@@ -737,8 +728,7 @@ int main(void) {
     document = load(explicit_root, NULL, &error);
     g_assert_no_error(error);
     g_assert_nonnull(document);
-    g_clear_pointer(&window_management, g_variant_unref);
-    window_management =
+    g_autoptr(GVariant) window_management =
         g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(window_management);
     gboolean disable_workarounds = FALSE;
@@ -1045,68 +1035,15 @@ int main(void) {
     g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
     g_clear_error(&error);
 
-    g_assert_true(
-        g_file_set_contents(explicit_root,
-                            "gnoblin.configure {window_management = {button_layout = {"
-                            "left = {'menu'}, right = {'minimize', 'maximize', 'close'}}}}\n",
-                            -1, &error));
-    g_clear_pointer(&document, g_variant_unref);
-    document = load(explicit_root, NULL, &error);
-    g_assert_no_error(error);
-    g_assert_nonnull(document);
-    g_clear_pointer(&window_management, g_variant_unref);
-    window_management =
-        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
-    g_autoptr(GVariant) button_layout =
-        g_variant_lookup_value(window_management, "button-layout", G_VARIANT_TYPE_VARDICT);
-    g_assert_nonnull(button_layout);
-    g_autoptr(GVariant) left_buttons =
-        g_variant_lookup_value(button_layout, "left", G_VARIANT_TYPE("av"));
-    g_autoptr(GVariant) right_buttons =
-        g_variant_lookup_value(button_layout, "right", G_VARIANT_TYPE("av"));
-    g_assert_nonnull(left_buttons);
-    g_assert_nonnull(right_buttons);
-    g_assert_cmpuint(g_variant_n_children(left_buttons), ==, 1);
-    g_assert_cmpuint(g_variant_n_children(right_buttons), ==, 3);
-    g_autoptr(GVariant) left_box = g_variant_get_child_value(left_buttons, 0);
-    g_autoptr(GVariant) left_button = g_variant_get_variant(left_box);
-    g_assert_cmpstr(g_variant_get_string(left_button, NULL), ==, "menu");
-
     g_assert_true(g_file_set_contents(explicit_root,
                                       "gnoblin.configure {window_management = {button_layout = {"
-                                      "left = gnoblin.array {}, right = {'close'}}}}\n",
+                                      "left = {'menu'}, right = {'close'}}}}\n",
                                       -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);
-    g_assert_no_error(error);
-    g_assert_nonnull(document);
-    g_clear_pointer(&window_management, g_variant_unref);
-    window_management =
-        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
-    g_clear_pointer(&button_layout, g_variant_unref);
-    button_layout =
-        g_variant_lookup_value(window_management, "button-layout", G_VARIANT_TYPE_VARDICT);
-    g_clear_pointer(&left_buttons, g_variant_unref);
-    left_buttons = g_variant_lookup_value(button_layout, "left", G_VARIANT_TYPE("av"));
-    g_assert_nonnull(left_buttons);
-    g_assert_cmpuint(g_variant_n_children(left_buttons), ==, 0);
-
-    const char* invalid_button_layouts[] = {
-        "gnoblin.configure {window_management = {button_layout = {center = {'close'}}}}\n",
-        "gnoblin.configure {window_management = {button_layout = {right = {'unknown'}}}}\n",
-        "gnoblin.configure {window_management = {button_layout = {right = {'close', 'close'}}}}\n",
-        "gnoblin.configure {window_management = {button_layout = {right = {'spacer', 'close'}}}}\n",
-        "gnoblin.configure {window_management = {button_layout = {right = {'close', 'spacer'}}}}\n",
-        NULL,
-    };
-    for (guint i = 0; invalid_button_layouts[i]; i++) {
-        g_assert_true(g_file_set_contents(explicit_root, invalid_button_layouts[i], -1, &error));
-        g_clear_pointer(&document, g_variant_unref);
-        document = load(explicit_root, NULL, &error);
-        g_assert_null(document);
-        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
-        g_clear_error(&error);
-    }
+    g_assert_null(document);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
 
     g_assert_true(g_file_set_contents(
         explicit_root,

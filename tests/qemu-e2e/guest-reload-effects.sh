@@ -8,8 +8,6 @@
 # window_management.raise_on_click: a click raises the window above an overlapping one, or leaves the stacking.
 # window_management.edge_tiling: dragging a titlebar to the left screen edge tiles the window to the left half, or
 #            only moves it.
-# window_management.auto_maximize: a nearly monitor-sized new window opens maximized, or does not.
-# window_management.workspaces_only_on_primary: a second-monitor window follows the active workspace, or not.
 # window_management.auto_raise: with sloppy focus a resting pointer raises the window under it, or not.
 # window_management.focus_new_windows: strict keeps focus on the window in use, smart focuses the new window.
 set -u
@@ -198,80 +196,6 @@ for mode in true false; do
         check "edge_tiling false only moves the window (size unchanged)" "$nw $nh" "$ww $wh"
     fi
 done
-
-# window_management.auto_maximize: a new window that nearly fills the monitor opens maximized, or does not.
-cat >/tmp/big-window.py <<'PY'
-import gi
-
-gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk
-
-Gtk.init()
-window = Gtk.Window(title="automax-test")
-window.set_default_size(1270, 700)
-window.set_child(Gtk.Label(label="big"))
-window.present()
-loop = GLib.MainLoop()
-GLib.timeout_add_seconds(9, lambda: (window.destroy(), loop.quit()) and False)
-loop.run()
-PY
-big_window_maximized() {
-    GDK_BACKEND=wayland timeout 12 python3 /tmp/big-window.py >/dev/null 2>&1 &
-    sleep 4
-    "$G" window list | python3 -c '
-import json, sys
-for w in json.load(sys.stdin)["windows"]:
-    if w["title"] == "automax-test":
-        print(w.get("maximized"))'
-    wait
-}
-apply 'gnoblin.configure {window_management = {auto_maximize = true}}'
-check "auto_maximize true maximizes a nearly full-size new window" "$(big_window_maximized)" "True"
-apply 'gnoblin.configure {window_management = {auto_maximize = false}}'
-check "auto_maximize false leaves it unmaximized" "$(big_window_maximized)" "False"
-
-# window_management.workspaces_only_on_primary: with true, a window on a second monitor follows the active
-# workspace (second monitors have no workspaces); with false it stays on its own workspace. Needs two monitors.
-monitor_count="$("$G" monitor list | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-monitors = data.get("monitors", data) if isinstance(data, dict) else data
-print(len(monitors))')"
-workspace_of() {
-    "$G" window list | python3 -c '
-import json, sys
-for w in json.load(sys.stdin)["windows"]:
-    if w["title"] == "'"$1"'":
-        print(w.get("workspace_number"))'
-}
-if [ "$monitor_count" -ge 2 ]; then
-    second_x=$((mon_w + 200))
-    for mode in true false; do
-        apply "gnoblin.configure {window_management = {workspaces_only_on_primary = $mode}}"
-        nohup foot -T ws-primary-A >/dev/null 2>&1 </dev/null &
-        nohup foot -T ws-secondary-B >/dev/null 2>&1 </dev/null &
-        sleep 4
-        "$G" window move "$(window_id ws-primary-A)" 100 200 >/dev/null 2>&1
-        "$G" window move "$(window_id ws-secondary-B)" "$second_x" 200 >/dev/null 2>&1
-        sleep 2
-        "$G" workspace switch 2 >/dev/null 2>&1
-        sleep 2
-        primary_ws="$(workspace_of ws-primary-A)"
-        secondary_ws="$(workspace_of ws-secondary-B)"
-        "$G" workspace switch 1 >/dev/null 2>&1
-        sleep 1
-        pkill -f "foot -T ws-"
-        sleep 2
-        check "workspaces_only_on_primary $mode: the primary-monitor window stays on workspace 1" "$primary_ws" "1"
-        if [ "$mode" = true ]; then
-            check "workspaces_only_on_primary true: the second-monitor window follows to workspace 2" "$secondary_ws" "2"
-        else
-            check "workspaces_only_on_primary false: the second-monitor window stays on workspace 1" "$secondary_ws" "1"
-        fi
-    done
-else
-    echo "SKIP workspaces_only_on_primary needs two monitors (found $monitor_count)"
-fi
 
 # window_management.auto_raise: with sloppy focus, resting the pointer on a lower window raises it after
 # auto_raise_delay, or leaves the stacking alone. Reuses the overlap_pixel helper and pointer-move.py above.

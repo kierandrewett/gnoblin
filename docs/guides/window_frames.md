@@ -25,8 +25,7 @@ A custom SSD renderer implements its own titlebar click behavior.
 
 Use `frame.button_layout` to choose the right-side buttons in Gnoblin's native
 frame and its fallback. External renderers use their own settings.
-`window_management.button_layout` does not change these titlebars. See
-[titlebar button placement](/config/configure/window_management#titlebar-button-placement).
+There is no global titlebar button layout; set the buttons per window with a window rule.
 
 The embedded default config enables Gnoblin's built-in `native` renderer with
 `mode = "auto"` and extents `{32, 1, 1, 1}`. Apps keep their own titlebars;

@@ -22,9 +22,9 @@ use std::collections::BTreeMap;
 use crate::appearance::Accent;
 use crate::engine::{Parser, is_inherit};
 use crate::generated::{
-    AccelCurve, Appearance, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, PadButton,
-    PadButtonAction, Tablet, TouchpadGestures, WindowManagement, WindowRule, WindowRuleType, WindowRules, Workspace,
-    WorkspaceSets, Workspaces, Xwayland,
+    AccelCurve, Appearance, Compositor, FrameRenderers, Gesture, GesturePoint, PadButton, PadButtonAction, Tablet,
+    TouchpadGestures, WindowManagement, WindowRule, WindowRuleType, WindowRules, Workspace, WorkspaceSets, Workspaces,
+    Xwayland,
 };
 use crate::model::Inherit;
 use crate::path::Path;
@@ -122,7 +122,6 @@ pub(crate) fn window_management(
 }
 
 /// The effect and frame keys this build cannot apply yet, with what is missing.
-///
 /// The legacy docs name these; they are refused by name so someone who copies
 /// one from an old config is told why it does nothing here, not that it is a typo.
 const REFUSED_RULE_KEYS: &[(&str, &str)] = &[
@@ -328,66 +327,6 @@ pub(crate) fn workspace(
             },
         );
         valid = false;
-    }
-    valid
-}
-
-/// `button-layout`: the rules Mutter's own parser enforces.
-///
-/// A spacer cannot open or close a side, two spacers cannot sit next to each
-/// other, a button appears at most once per side and a side holds at most seven
-/// entries. A layout Mutter silently ignores is worse than a diagnostic.
-pub(crate) fn button_layout(
-    section: &mut ButtonLayout,
-    _map: &BTreeMap<String, Value>,
-    path: &Path,
-    out: &mut Parser,
-) -> bool {
-    let mut valid = true;
-    for (key, side) in [("left", &section.left), ("right", &section.right)] {
-        let Some(buttons) = side else {
-            continue;
-        };
-        let side_path = path.key(key);
-        if buttons.len() > 7 {
-            out.problem(
-                &side_path,
-                Fault::UnsupportedValue {
-                    expected: "at most 7 entries".to_owned(),
-                },
-            );
-            valid = false;
-            continue;
-        }
-        let mut seen: Vec<&crate::generated::TitlebarButton> = Vec::new();
-        for (index, button) in buttons.iter().enumerate() {
-            let spacer = format!("{button}") == "spacer";
-            if spacer {
-                let first = index == 0;
-                let last = index + 1 == buttons.len();
-                let adjacent = index > 0 && format!("{}", buttons[index - 1]) == "spacer";
-                if first || last || adjacent {
-                    out.problem(
-                        &side_path.entry(index),
-                        Fault::UnsupportedValue {
-                            expected: "a spacer between two buttons".to_owned(),
-                        },
-                    );
-                    valid = false;
-                }
-                continue;
-            }
-            if seen.contains(&button) {
-                out.problem(
-                    &side_path.entry(index),
-                    Fault::UnsupportedValue {
-                        expected: "each button at most once per side".to_owned(),
-                    },
-                );
-                valid = false;
-            }
-            seen.push(button);
-        }
     }
     valid
 }

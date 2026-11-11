@@ -126,8 +126,8 @@ fn pattern(source: Option<&str>, field: &str) -> Result<Option<Pattern>, String>
 ///
 /// A declared name resolves to its workspace: the window manager numbers workspaces from one,
 /// so the workspace declared at position `i` is id `i + 1`. A number is taken as the id it
-/// has always named, so rules written against numbered workspaces, and against workspaces
-/// that dynamic workspaces create, keep working. Any other text is refused, naming the field.
+/// has always named, so rules written against numbered workspaces keep working. Any other text
+/// is refused, naming the field.
 fn workspace_id(text: &str, declared: &[Workspace], field: &str) -> Result<WorkspaceId, String> {
     if let Some(position) = declared
         .iter()

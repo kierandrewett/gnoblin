@@ -93,16 +93,16 @@ pub use document::{CARRIED_SECTIONS, Config, Salvaged, TOP_LEVEL_KEYS, salvage};
 /// Generated enums, settings and the alias table, all from `schema/config.toml`.
 pub use generated::{
     ALIASES, AccelProfile, Accessibility, Appearance, Auth, Autostart, AutostartEntry, AutostartWhen, Blur, BounceKeys,
-    ButtonLayout, CaptureSecureTreatment, CaptureSettings, ClickMethod, ColorScheme, ColourFilter, Compat,
-    CompatCapture, Compositor, Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows,
-    FrameRenderers, Gesture, GestureAction, GestureDirection, GestureKind, GesturePoint, Handedness, Input,
-    InputSource, InputSourceType, InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Layout,
-    LayoutOutput, LayoutWorkspace, Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys,
-    PadButton, PadButtonAction, PointingStick, Protocol, Protocols, RendererChoice, RuleClientType, RuleCorners,
-    RuleWorkspace, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction,
-    StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad,
-    Trackball, VisualAccessibility, VisualBellType, WindowManagement, WindowMatch, WindowRule, WindowRuleType,
-    Workspace, WorkspaceSet, WorkspaceSetEntry, Xwayland, XwaylandExtension,
+    CaptureSecureTreatment, CaptureSettings, ClickMethod, ColorScheme, ColourFilter, Compat, CompatCapture, Compositor,
+    Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers, Gesture,
+    GestureAction, GestureDirection, GestureKind, GesturePoint, Handedness, Input, InputSource, InputSourceType,
+    InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Layout, LayoutOutput, LayoutWorkspace,
+    Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction,
+    PointingStick, Protocol, Protocols, RendererChoice, RuleClientType, RuleCorners, RuleWorkspace, ScrollMethod,
+    Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet,
+    TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType,
+    WindowManagement, WindowMatch, WindowRule, WindowRuleType, Workspace, WorkspaceSet, WorkspaceSetEntry, Xwayland,
+    XwaylandExtension,
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};

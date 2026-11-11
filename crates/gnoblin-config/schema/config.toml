@@ -114,18 +114,6 @@ variants = [
 ]
 
 [[enum]]
-name = "TitlebarButton"
-setting = "button-layout"
-doc = "One entry in a titlebar side."
-variants = [
-    { spelling = "menu", doc = "The window menu." },
-    { spelling = "minimize", doc = "Minimize." },
-    { spelling = "maximize", doc = "Maximize." },
-    { spelling = "close", doc = "Close." },
-    { spelling = "spacer", doc = "A gap between two buttons." },
-]
-
-[[enum]]
 name = "Protocol"
 setting = "protocols"
 doc = "A Wayland protocol Gnoblin can stop advertising."
@@ -565,27 +553,6 @@ kind = "layout-selector"
 required = "a layout name or a module reference"
 accepted = "a layout name or a module reference"
 doc = "The layout name this workspace uses."
-since = "0.2.0"
-
-[[record]]
-name = "ButtonLayout"
-doc = "The ordered titlebar buttons per side."
-hook = "button_layout"
-
-[[record.field]]
-key = "left"
-kind = "enum-list"
-enum = "TitlebarButton"
-accepted = "a list of titlebar buttons"
-doc = "The buttons drawn on the left, in order."
-since = "0.2.0"
-
-[[record.field]]
-key = "right"
-kind = "enum-list"
-enum = "TitlebarButton"
-accepted = "a list of titlebar buttons"
-doc = "The buttons drawn on the right, in order."
 since = "0.2.0"
 
 [[record]]
@@ -1803,14 +1770,6 @@ doc = "When a new window may take focus."
 since = "0.2.0"
 
 [[section.field]]
-key = "auto-maximize"
-kind = "bool"
-accepted = "a boolean"
-default = { bool = true }
-doc = "Maximize a window that nearly fills its monitor."
-since = "0.2.0"
-
-[[section.field]]
 key = "raise-on-click"
 kind = "bool"
 accepted = "a boolean"
@@ -1855,14 +1814,6 @@ doc = "How long a client may take to answer a ping, in milliseconds."
 since = "0.2.0"
 
 [[section.field]]
-key = "workspaces-only-on-primary"
-kind = "bool"
-accepted = "a boolean"
-default = { bool = false }
-doc = "Keep workspaces on the primary monitor."
-since = "0.2.0"
-
-[[section.field]]
 key = "edge-tiling"
 kind = "bool"
 accepted = "a boolean"
@@ -1895,13 +1846,6 @@ doc = "Keep a dragged window inside the work area."
 since = "0.2.0"
 
 [[section.field]]
-key = "dynamic-workspaces"
-kind = "bool"
-accepted = "a boolean"
-doc = "Let the workspace count follow use instead of a declaration."
-since = "0.2.0"
-
-[[section.field]]
 key = "action-double-click-titlebar"
 kind = "enum"
 enum = "TitlebarAction"
@@ -1926,14 +1870,6 @@ enum = "TitlebarAction"
 accepted = "one of toggle-maximize, toggle-maximize-horizontally, toggle-maximize-vertically, minimize, lower, menu, none"
 default = { enum = "menu" }
 doc = "What a titlebar right-click does."
-since = "0.2.0"
-
-[[section.field]]
-key = "button-layout"
-kind = "record"
-record = "ButtonLayout"
-accepted = "a table"
-doc = "The button layout preference stored for compatibility with Mutter."
 since = "0.2.0"
 
 [[section]]

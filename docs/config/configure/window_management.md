@@ -23,9 +23,7 @@ after changing them. Window rules are set on reload; see the window rule guide.
 
 | Key                           | Values          | Default | Effect                                                                   |
 | ----------------------------- | --------------- | ------- | ------------------------------------------------------------------------ |
-| `auto_maximize`               | Boolean         | `true`  | Maximize new windows that nearly fill the monitor.                       |
 | `check_alive_timeout`         | 0–4294967295 ms | `5000`  | Client ping timeout before it is marked frozen; `0` disables the check.  |
-| `workspaces_only_on_primary`  | Boolean         | `false` | Keep workspaces on the primary monitor.                                  |
 | `edge_tiling`                 | Boolean         | `false` | Enable Mutter's edge tiling.                                             |
 | `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                            |
 | `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications.  |
@@ -52,19 +50,17 @@ get unless your own config changes them:
 | `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it.            |
 | `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it.                                |
 | `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind. |
-| `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace.                   |
 | `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                               |
 
 Set any of them in your own config to change it.
 
 ### Titlebar buttons and actions
 
-| Key                            | Values                  | Default                               | Effect                                                                      |
-| ------------------------------ | ----------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
-| `action_double_click_titlebar` | Titlebar action below   | `"toggle-maximize"`                   | Action for a titlebar double-click.                                         |
-| `action_middle_click_titlebar` | Titlebar action below   | `"lower"`                             | Action for a titlebar middle-click.                                         |
-| `action_right_click_titlebar`  | Titlebar action below   | `"menu"`                              | Action for a titlebar right-click.                                          |
-| `button_layout`                | Left/right button lists | Empty left; standard buttons on right | Stores Mutter's layout preference; does not change current frame renderers. |
+| Key                            | Values                | Default             | Effect                              |
+| ------------------------------ | --------------------- | ------------------- | ----------------------------------- |
+| `action_double_click_titlebar` | Titlebar action below | `"toggle-maximize"` | Action for a titlebar double-click. |
+| `action_middle_click_titlebar` | Titlebar action below | `"lower"`           | Action for a titlebar middle-click. |
+| `action_right_click_titlebar`  | Titlebar action below | `"menu"`            | Action for a titlebar right-click.  |
 
 ## Focus behavior
 
@@ -87,44 +83,6 @@ Configure modified dragging and window menus with
 The default Lua callbacks bind Super + left-drag to move and Super + right-drag
 to resize from the nearest corner. These gestures work on application windows
 with client or server decorations.
-
-## Titlebar button placement
-
-`window_management.button_layout` stores Mutter's global layout preference.
-Current Gnoblin frame renderers do not use it to draw buttons, so changing it
-can appear in `gnoblinctl config show` without changing any titlebar.
-
-For Gnoblin's built-in native frame, set `frame.button_layout` in a
-[window rule](/config/window_rule#frame-fields). External renderers and
-client-side titlebars use their own layout settings. Bingux's GTK renderer
-follows GTK settings unless its `--button-layout` argument overrides them.
-
-The global preference accepts the following values for compatibility. Its
-default leaves the left side empty and lists minimize, maximize, and close on
-the right.
-
-Set either side to an ordered list of `"menu"`, `"minimize"`, `"maximize"`, or
-`"close"`. A `"spacer"` between two buttons adds a gap. A button can appear at
-most once on each side.
-
-```lua
-gnoblin.configure {
-    window_management = {
-        button_layout = {
-            left = {"menu"},
-            right = {"minimize", "maximize", "close"},
-        },
-    },
-}
-```
-
-Omitting either side keeps its default. Use `gnoblin.array {}` to hide all
-buttons on a side because an unmarked empty Lua table is treated as a map. See
-[`gnoblin.array`](/config/array).
-
-Mutter ignores changes to the desktop `button-layout` preference in its own
-preference cache while Gnoblin is running. This does not override GTK settings
-in external renderers or client applications.
 
 `focus_new_windows` controls when app activation requests can focus a window.
 Mutter's standard policy has two choices.
@@ -258,7 +216,7 @@ The main seat node publishes these readonly props, so the shell reads the policy
 Some settings are not in this policy, so the shell does not read them from the seat:
 
 - **Window rules:** the stock shell reads them from its own list in `rules.lua`.
-- **`attach-modal-dialogs`** and **`workspaces-only-on-primary`:** not published.
+- **`attach-modal-dialogs`:** not published.
 - **Workspaces:** `Workspace` nodes in the tree, not seat props; see [Workspaces](/shell-api/workspaces). The seat publishes no workspace list.
 
 ## Type definition
@@ -271,7 +229,6 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click" | "hover" | "hover-strict"?,
         focus_new_windows = "allow" | "prevent"?,
-        auto_maximize = boolean?,
         raise_on_click = boolean?,
         auto_raise = boolean?,
         focus_change_on_pointer_rest = boolean?,
@@ -280,11 +237,6 @@ gnoblin.configure {
         action_double_click_titlebar = TitlebarAction?,
         action_middle_click_titlebar = TitlebarAction?,
         action_right_click_titlebar = TitlebarAction?,
-        button_layout = {
-            left = TitlebarButton[]?,
-            right = TitlebarButton[]?,
-        }?,
-        workspaces_only_on_primary = boolean?,
         edge_tiling = boolean?,
         attach_modal_dialogs = boolean?,
         disable_workarounds = boolean?,
@@ -299,5 +251,4 @@ gnoblin.configure {
 -- TitlebarAction = "toggle-maximize" | "toggle-maximize-horizontally"
 --                | "toggle-maximize-vertically" | "minimize" | "lower"
 --                | "menu" | "none"
--- TitlebarButton = "menu" | "minimize" | "maximize" | "close" | "spacer"
 ```

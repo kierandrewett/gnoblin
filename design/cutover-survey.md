@@ -500,11 +500,11 @@ Source: `config.toml:1781-1937`. A seat property is a setting read from the main
 | `attach-modal-dialogs` (1874)                                              | seat property | dialog placement                                     |
 | `disable-workarounds` (1882)                                               | seat property | X11 compatibility; survives only while Xwayland does |
 | `constrain-drag-to-work-area` (1890)                                       | seat property | `DragConstraint` input                               |
-| `auto-maximize` (1806)                                                     | DELETE        | auto-maximise is a shell rule                        |
-| `workspaces-only-on-primary` (1858)                                        | DELETE        | a Desk policy in `shell/`, not a seat key            |
-| `dynamic-workspaces` (1898)                                                | DELETE        | workspace count is the declared list (2370)          |
-| `action-double-click-titlebar` (1905), `-middle-` (1914), `-right-` (1923) | DELETE        | the shell binds these in `Window:on_press`           |
-| `button-layout` (1932)                                                     | DELETE        | no reader in the node world                          |
-| refused-keys hook (`hooks.rs:86-116`)                                      | DELETE        | removed after W3, with a changelog entry             |
+| `auto-maximize` (1806)                                                     | DELETED (W3)  | auto-maximise is a shell rule                        |
+| `workspaces-only-on-primary` (1858)                                        | DELETED (W3)  | a Desk policy in `shell/`, not a seat key            |
+| `dynamic-workspaces` (1898)                                                | DELETED (W3)  | workspace count is the declared list (2370)          |
+| `action-double-click-titlebar` (1905), `-middle-` (1914), `-right-` (1923) | KEPT (W3)     | published as seat props; the shell reads them        |
+| `button-layout` (1932)                                                     | DELETED (W3)  | no reader in the node world                          |
+| refused-keys hook (`hooks.rs:86-116`)                                      | KEPT (W3)     | tombstones for the removed window-management keys    |
 
 Seat-property keys are written to `Seat` nodes at step 11. Until then W3 keeps `config.wayland.wm` as the reader and swaps only the type.

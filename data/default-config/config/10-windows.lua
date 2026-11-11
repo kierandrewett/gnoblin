@@ -9,7 +9,6 @@ gnoblin.configure({
         ["auto-raise-delay"] = 500, -- milliseconds, 0..10000
         ["check-alive-timeout"] = 5000, -- client liveness ping timeout in milliseconds; 0 disables it
         ["focus-change-on-pointer-rest"] = false,
-        ["workspaces-only-on-primary"] = true, -- windows on other monitors follow the active workspace, as in GNOME.
         ["edge-tiling"] = true, -- drag a window to a screen edge to tile it.
         ["attach-modal-dialogs"] = true, -- GNOME Shell sets this too; dialogs stay with their parent.
         ["constrain-drag-to-work-area"] = true,

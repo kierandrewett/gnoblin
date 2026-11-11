@@ -7,7 +7,7 @@
 
 mod support;
 
-use gnoblin_config::{Blur, Config, Fault, FocusMode, Inherit, LayoutSelector, MAX_DEPTH, Path, TapButtonMap, Value};
+use gnoblin_config::{Blur, Config, Fault, FocusMode, Inherit, LayoutSelector, MAX_DEPTH, TapButtonMap, Value};
 
 use support::{flag, int, kitchen_sink, list, number, table, text};
 
@@ -209,26 +209,6 @@ fn inherit_is_kept_apart_from_a_value() {
         .and_then(|input| input.mouse.as_ref())
         .expect("mouse");
     assert_eq!(mouse.speed, Some(Inherit::Inherit));
-}
-
-#[test]
-fn a_declared_workspace_list_and_dynamic_workspaces_conflict() {
-    let document = table([
-        ("window-management", table([("dynamic-workspaces", flag(true))])),
-        (
-            "workspaces",
-            list(vec![table([("id", text("main")), ("name", text("Main"))])]),
-        ),
-    ]);
-    let problems = problems(document);
-    assert_eq!(problems.len(), 1);
-    assert_eq!(problems[0].0, "workspaces");
-    assert_eq!(
-        problems[0].1,
-        Fault::Conflict {
-            other: Path::root().key("window-management").key("dynamic-workspaces")
-        }
-    );
 }
 
 #[test]

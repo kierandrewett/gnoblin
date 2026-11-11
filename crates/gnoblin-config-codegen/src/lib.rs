@@ -399,7 +399,6 @@ impl IdShape {
 pub const HOOKS: &[&str] = &[
     "accel_curve",
     "appearance",
-    "button_layout",
     "compositor",
     "frame_renderers",
     "gesture",
