@@ -265,9 +265,9 @@ return {
             local parent = desk().active:add(Window({ app_id = "main" }))
             local dialog = Window({ app_id = "dialog", parent_window = parent })
             root:add(dialog)
-            window_rules = saved
             H.check(dialog.parent == parent, "the dialog must stay under its parent")
             H.check(parent.parent == desk().active, "the parent must stay on the active workspace")
+            window_rules = saved
         end,
     },
 
@@ -283,8 +283,8 @@ return {
                 return compiled
             end
             local plain = root:add(Window({ app_id = "dialog" }))
-            window_rules = saved
             H.check(plain.parent == desk().space.children[2], "a plain window must follow the rule to workspace 2")
+            window_rules = saved
         end,
     },
 }

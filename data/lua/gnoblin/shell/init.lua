@@ -206,9 +206,13 @@ function Window:apply_rules()
     if key == state.key then
         return
     end
+    local fx = Rules.effects(rules, view)
+    local d = self:closest(Desk)
+    if fx.workspace and not d then
+        return -- not on a desk yet: on_ready applies the rules once the window is placed
+    end
     state.key = key
     rule_state[self] = state
-    local fx = Rules.effects(rules, view)
     for field, default in pairs(RULE_DEFAULTS) do
         if fx[field] ~= nil then
             self[field] = fx[field]
@@ -218,7 +222,6 @@ function Window:apply_rules()
             state.wrote[field] = nil
         end
     end
-    local d = self:closest(Desk)
     if fx.workspace and d and not self.parent_window then -- a dialog follows its parent, whatever a rule says
         for _, ws in ipairs(d.space.children) do
             if ws.name == tostring(fx.workspace.id) and self:closest(Workspace) ~= ws then

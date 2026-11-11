@@ -164,6 +164,8 @@
 
 ### Fixed
 
+- Window rules now apply once a new window is on a desk, so a rule that sends it to another workspace takes effect.
+  A rule that stops matching clears the field it set, such as `secure`, and a title change re-evaluates the rules.
 - The Lua `core.insert` binding takes `(parent, node, index)`, the order `node.lua` calls it in. It had taken `(node, parent, index)`, so each child insert from `node.lua` swapped the parent and the child.
 
 - The `gnoblinctl` and `gnoblin-wasm` catalogs leave out the owner-only `tree` namespace (`Catalog::load_dir_except(dir, &["tree"])`), as `gnoblinctl/build.rs` already did. Its `lock` and `destroyed` classes collided with the public ones, so `the_command_tree_matches_the_schema` and `the_generated_wit_matches_the_schema` failed. `gnoblin-schema/tests/owner_only_tree.rs` fails when any other crate loads the full catalog.
