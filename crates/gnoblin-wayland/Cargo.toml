@@ -101,6 +101,8 @@ gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export" }
 
 [dev-dependencies]
+# The lock's tests read the events a failed password check logs.
+gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # The real client the integration tests run against the server. A `wayland-client`
 # connection over the test's own socket is what proves the round trip: no display,
 # no session, no compositor from the environment.

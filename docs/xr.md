@@ -17,6 +17,12 @@ XR mode is off. The guardian starts `gnoblin-xr` only when you opt in:
    `cargo xtask dist install` installs it as `libexec/gnoblin-xr` when it was built (`just dist` builds it). To run a
    build that is not installed, set `GNOBLIN_XR_PROGRAM` to its path; it has no effect without `GNOBLIN_XR=1`.
 
+Release packages do not ship `gnoblin-xr`:
+
+- The extension is its own workspace, and nothing in the packaging (`pkgsmith`, `nix`, the CI release jobs) builds it.
+- `cargo xtask dist install` installs it only when a developer built it first (`just dist`).
+- A package install therefore has none, and `GNOBLIN_XR=1` logs the one warning and starts without it.
+
 If `GNOBLIN_XR=1` is set and no binary is found, the guardian logs one warning and the session starts without it.
 
 The setting is an environment variable because the guardian starts before the Lua configuration runs and reads no

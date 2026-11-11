@@ -10,6 +10,7 @@ use gnoblin_lock_auth::{AuthOutcome, Authenticator, RateLimiter};
 use gnoblin_secret::SecretText;
 use smithay::reexports::calloop::channel::{self, Channel, Sender};
 
+use crate::log;
 use crate::tree_frame::TreeAnswer;
 
 /// The worker's answer to one check, delivered back to the event loop.
@@ -120,10 +121,15 @@ impl LockAuth {
                     unlock: false,
                 }
             }
-            AuthOutcome::Failed(message) => LockSettlement {
-                answer: refused(done.token, &format!("failed: {message}")),
-                unlock: false,
-            },
+            AuthOutcome::Failed(message) => {
+                // The message names the failure (PAM missing, an account refusal), never the password: the check
+                // that made it only ever saw the password as a borrowed string.
+                log::warn!(area = "lock", error = %message, "the password check could not run; the session stays locked");
+                LockSettlement {
+                    answer: refused(done.token, &format!("failed: {message}")),
+                    unlock: false,
+                }
+            }
         };
         Some(settled)
     }
@@ -246,6 +252,32 @@ mod tests {
         let settled = auth.finish(answers.next(), true, 0).expect("settles");
         assert_eq!(settled.answer.error, "failed: libpam is missing");
         assert!(!settled.unlock);
+    }
+
+    /// A check that cannot run (PAM missing, an account refusal PAM reports as an error) logs one warning that names the
+    /// failure, and neither the warning nor the answer carries the password.
+    #[test]
+    fn a_failed_check_logs_one_warning_without_the_password() {
+        let failing: Arc<dyn Authenticator> = Arc::new(FakeAuthenticator::new().fail("PAM returned error 13"));
+        let (mut auth, results) = LockAuth::new(failing, Some(USER.to_owned()));
+        let mut answers = Answers::new(results);
+        assert!(auth.begin(9, SecretText::new("hunter2"), true, 0).is_none());
+        let done = answers.next();
+        let mut settled = None;
+        let events = gnoblin_log::event::capture::logged(|| settled = auth.finish(done, true, 0));
+        let settled = settled.expect("settles");
+        assert!(!settled.unlock, "the session stays locked");
+        assert_eq!(settled.answer.error, "failed: PAM returned error 13");
+        assert_eq!(events.len(), 1, "exactly one warning: {events:?}");
+        let text = format!("{:?}", events[0]);
+        assert!(
+            text.contains("PAM returned error 13"),
+            "the warning names the failure: {text}"
+        );
+        assert!(
+            !text.contains("hunter2"),
+            "the warning never carries the password: {text}"
+        );
     }
 
     #[test]

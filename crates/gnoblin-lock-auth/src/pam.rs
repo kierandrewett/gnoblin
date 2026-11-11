@@ -96,6 +96,19 @@ mod tests {
         );
     }
 
+    /// `pam_acct_mgmt` refuses an expired (13), locked or denied (6) account or one that needs a new token (12): none of
+    /// them accepts, and none is a wrong password, so each fails closed with its code named.
+    #[test]
+    fn an_account_refusal_is_never_accepted() {
+        for code in [6, 12, 13] {
+            assert_eq!(
+                outcome_from_code(Ok(code)),
+                AuthOutcome::Failed(format!("PAM returned error {code}")),
+                "code {code}"
+            );
+        }
+    }
+
     #[test]
     fn a_pam_that_cannot_be_reached_fails_closed() {
         assert_eq!(

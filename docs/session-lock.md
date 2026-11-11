@@ -123,6 +123,47 @@ gnoblinctl status
 `lock_state` changes from `unlocked` to `locked` after the locker takes the
 lock.
 
+## Password check (PAM)
+
+The stock lock screen unlocks through the compositor's `lock` node: `Lock:unlock(password)` calls `authenticate`, and the
+compositor checks the password for the session user on a worker thread through the PAM service `gnoblin-lock`. The
+session unlocks only when PAM accepts. Every other answer keeps it locked:
+
+| Answer         | Meaning                                                                                        | Session |
+| -------------- | ---------------------------------------------------------------------------------------------- | ------- |
+| `ok`           | PAM accepted the password and the account.                                                     | unlocks |
+| `denied`       | Wrong password or unknown user. Three denials in a row delay the next attempt by 2 s.          | locked  |
+| `rate-limited` | The delay is running; the answer says how many milliseconds remain.                            | locked  |
+| `failed: ...`  | PAM could not decide: it is missing, or `pam_acct_mgmt` refused the account (expired, denied). | locked  |
+
+A `failed` check logs one warning that names the failure. Neither the log nor the answer carries the password.
+
+The service file `data/pam.d/gnoblin-lock` is installed to `lib/pam.d/gnoblin-lock` and holds two lines,
+`auth include login` and `account include login`, so the lock accepts what a console login accepts. `login` is a valid
+include target on each distribution below, checked as follows:
+
+| Distribution | What `login` pulls in for `auth` and `account`                                                                                                | Evidence                                                                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Debian       | `pam_faildelay`, `pam_nologin` (requisite), then `@include common-auth` and `@include common-account` (`pam_unix`)                            | Read from `/etc/pam.d/login`, `common-auth` and `common-account` on a Debian instance.                                                            |
+| Ubuntu       | The same file: Ubuntu ships Debian's `util-linux` `login.pam`.                                                                                | Inferred from the Debian package. The file was not read on an Ubuntu system.                                                                      |
+| Arch         | `login` includes `system-local-login`, which includes `system-login`: `pam_shells`, `pam_nologin`, `pam_access` (account), then `system-auth` | Read from the `pambase` sources (`system-local-login`, `system-login`) in the Arch packaging repository. The `login` file itself was not fetched. |
+| Fedora       | `login` includes `system-auth` (and `postlogin`).                                                                                             | From distribution documentation only. The file could not be fetched, so this row is not verified.                                                 |
+
+Reading the login stack has two consequences:
+
+- `pam_nologin` is in it on Debian and Arch, so while `/etc/nologin` exists a non-root user cannot unlock, as at a
+  console.
+- A system with no `/etc/pam.d/login` makes every check `failed` and the session stays locked.
+
+The real-PAM test is `#[ignore]`d and needs `GNOBLIN_PAM_TEST=1` and a test account.
+
+The answers are tested through the compositor's lock path with a scripted authenticator, in
+`tests/view_capture_e2e.rs` of `gnoblin-wayland`:
+
+- `the_right_password_unlocks_the_session`
+- `a_wrong_password_keeps_the_session_locked_and_repeated_ones_are_rate_limited`
+- `a_check_that_cannot_run_keeps_the_session_locked_and_answers_without_the_password`
+
 ## Portal and remote access while locked
 
 Remote and portal streams are routed by the selected portal backend. While the

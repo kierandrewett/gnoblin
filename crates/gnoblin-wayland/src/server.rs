@@ -252,6 +252,27 @@ pub struct Config {
     /// environment names (`PIPEWIRE_REMOTE`, then `$XDG_RUNTIME_DIR/pipewire-0`). A test names
     /// its private daemon here, so it never reaches the user's own.
     pub pipewire_socket: Option<PathBuf>,
+    /// What checks the lock's password, or [`None`] for PAM's `gnoblin-lock` service against the session user. A test
+    /// names a scripted authenticator and the user it is asked about, so the lock is exercised without PAM.
+    pub lock_check: Option<LockCheck>,
+}
+
+/// An authenticator and the user it checks the lock's password for.
+#[derive(Clone)]
+pub struct LockCheck {
+    /// Answers each password check.
+    pub authenticator: Arc<dyn gnoblin_lock_auth::Authenticator>,
+    /// The user the password is checked for; with none every attempt fails closed.
+    pub user: Option<String>,
+}
+
+impl std::fmt::Debug for LockCheck {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LockCheck")
+            .field("user", &self.user)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for Config {
@@ -279,6 +300,7 @@ impl Default for Config {
             visual_accessibility: VisualAccessibilitySettings::default(),
             window_process_override: None,
             pipewire_socket: None,
+            lock_check: None,
         }
     }
 }
@@ -368,7 +390,7 @@ impl Server {
 
     fn start(
         mut backend: Box<dyn Backend<State>>,
-        config: Config,
+        mut config: Config,
         xwayland: Option<crate::xwayland::XwaylandSession>,
     ) -> Result<Self, StartupError> {
         let event_loop: EventLoop<'static, State> = EventLoop::try_new().map_err(StartupError::EventLoop)?;
@@ -392,13 +414,17 @@ impl Server {
         });
         // The lock's password check runs on a worker thread against the session user; with no
         // user in the environment every attempt fails closed.
-        let lock_user = std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).ok();
-        let (lock_auth, lock_results) = crate::lock_auth::LockAuth::new(
-            Arc::new(gnoblin_lock_auth::PamAuthenticator::new(
-                gnoblin_lock_auth::DEFAULT_SERVICE,
-            )),
-            lock_user,
-        );
+        let (lock_authenticator, lock_user): (Arc<dyn gnoblin_lock_auth::Authenticator>, Option<String>) =
+            match config.lock_check.take() {
+                Some(check) => (check.authenticator, check.user),
+                None => (
+                    Arc::new(gnoblin_lock_auth::PamAuthenticator::new(
+                        gnoblin_lock_auth::DEFAULT_SERVICE,
+                    )),
+                    std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).ok(),
+                ),
+            };
+        let (lock_auth, lock_results) = crate::lock_auth::LockAuth::new(lock_authenticator, lock_user);
         let mut state = State::new(
             display,
             &outputs,

@@ -69,11 +69,11 @@ struct Classes;
 
 impl ClassInfo for Classes {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window" | "view" | "canvas")
+        matches!(class, "node" | "window" | "view" | "canvas" | "lock")
     }
 
     fn is_a(&self, class: &str, ancestor: &str) -> bool {
-        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view" | "canvas"))
+        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view" | "canvas" | "lock"))
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -94,7 +94,7 @@ impl ClassInfo for Classes {
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
-        class == "view" && method == "capture"
+        (class == "view" && method == "capture") || (class == "lock" && method == "authenticate")
     }
 }
 
@@ -174,13 +174,18 @@ impl Owner {
 
     /// Calls `capture(path)` on `view` as the shell does and waits for the answer the compositor publishes.
     fn capture(&self, view: NodeId, path: &str) -> TreeAnswer {
+        self.call(view, "capture", path)
+    }
+
+    /// Calls `method` on `node` with `text` as the call's text, and waits for the answer the compositor publishes.
+    fn call(&self, node: NodeId, method: &str, text: &str) -> TreeAnswer {
         let token = self.token.fetch_add(1, Ordering::SeqCst) + 1;
         self.transact(|| {
             vec![TreeOp::TreeCall {
-                node: view,
-                method: "capture".to_owned(),
+                node,
+                method: method.to_owned(),
                 args: Vec::new(),
-                text: SecretText::new(path),
+                text: SecretText::new(text),
                 token,
             }]
         });
@@ -195,7 +200,7 @@ impl Owner {
             {
                 return answer.clone();
             }
-            assert!(Instant::now() < deadline, "the capture of {path} was never answered");
+            assert!(Instant::now() < deadline, "the {method} call was never answered");
             self.frames(1);
             thread::sleep(Duration::from_millis(5));
         }
@@ -758,7 +763,11 @@ fn start() -> (Session, Owner) {
 fn start_with(observer: Option<Arc<dyn Observer>>, clock: Option<Arc<dyn Clock>>) -> (Session, Owner) {
     let (hooks, answers) = hooks();
     let owner = owner_of(&hooks, answers);
-    let extras = Extras { observer, clock };
+    let extras = Extras {
+        observer,
+        clock,
+        ..Extras::default()
+    };
     (Session::start_with_extras(None, hooks, extras), owner)
 }
 
@@ -1584,4 +1593,122 @@ fn a_buffer_smaller_than_the_view_is_refused_and_left_untouched() {
         frame.destroy();
         assert!(viewer.capture(), "the session still serves a buffer of the right size");
     });
+}
+
+// The password check through the compositor's lock path: a real lock client takes the lock, the shell calls
+// `authenticate` on the compositor's `lock` node, and a scripted authenticator answers where PAM would. The same
+// session is driven from the owner's tree, so these are the calls the stock shell's `Lock:unlock` makes.
+
+const USER: &str = "kieran";
+const PASSWORD: &str = "correct horse";
+
+/// A session whose lock checks passwords with `authenticator` for `USER`.
+fn start_with_lock_check(authenticator: gnoblin_lock_auth::FakeAuthenticator) -> (Session, Owner) {
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras {
+        lock_check: Some(gnoblin_wayland::LockCheck {
+            authenticator: Arc::new(authenticator),
+            user: Some(USER.to_owned()),
+        }),
+        ..Extras::default()
+    };
+    (Session::start_with_extras(None, hooks, extras), owner)
+}
+
+/// The compositor's `lock` node, once the composer has made it.
+fn lock_node(owner: &Owner) -> NodeId {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let (found, _) = owner.read(|scene| scene.node_ids().into_iter().find(|id| scene.class(*id) == Some("lock")));
+        if let Some(node) = found {
+            return node;
+        }
+        assert!(Instant::now() < deadline, "the compositor never made its lock node");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Waits until the `lock` node's `state` reads `want`, or fails with what it read last.
+fn wait_lock_state(owner: &Owner, node: NodeId, want: &str) {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let (state, _) = owner.read(move |scene| scene.text(node, "state").map(str::to_owned));
+        if state.as_deref() == Some(want) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the lock never read `{want}`; it read {state:?}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// What the lock reads right now.
+fn lock_state(owner: &Owner, node: NodeId) -> Option<String> {
+    owner.frames(2);
+    owner.read(move |scene| scene.text(node, "state").map(str::to_owned)).0
+}
+
+#[test]
+fn the_right_password_unlocks_the_session() {
+    let (session, owner) = start_with_lock_check(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, PASSWORD));
+    session.run(move |handle| {
+        let _locker = lock(handle.socket());
+        let node = lock_node(&owner);
+        wait_lock_state(&owner, node, "locked");
+        let answer = owner.call(node, "authenticate", PASSWORD);
+        assert_eq!((answer.error.as_str(), answer.result.as_str()), ("", "ok"));
+        wait_lock_state(&owner, node, "not-locked");
+    });
+}
+
+#[test]
+fn a_wrong_password_keeps_the_session_locked_and_repeated_ones_are_rate_limited() {
+    let (session, owner) = start_with_lock_check(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, PASSWORD));
+    session.run(move |handle| {
+        let _locker = lock(handle.socket());
+        let node = lock_node(&owner);
+        wait_lock_state(&owner, node, "locked");
+        for attempt in 0..gnoblin_lock_auth::DENIALS_BEFORE_DELAY {
+            let answer = owner.call(node, "authenticate", "wrong");
+            assert_eq!(answer.error, "denied", "attempt {attempt}");
+            assert_eq!(lock_state(&owner, node).as_deref(), Some("locked"));
+        }
+        // The next attempt waits out the delay, even with the right password.
+        let limited = owner.call(node, "authenticate", PASSWORD);
+        assert_eq!(limited.error, "rate-limited", "{limited:?}");
+        assert!(
+            limited.result.parse::<u64>().is_ok_and(|ms| ms > 0),
+            "the answer names the wait: {limited:?}"
+        );
+        assert_eq!(
+            lock_state(&owner, node).as_deref(),
+            Some("locked"),
+            "the right password did not unlock"
+        );
+    });
+}
+
+/// A check PAM cannot finish, an expired or denied account among them, never unlocks, and its answer names the failure
+/// without the password.
+#[test]
+fn a_check_that_cannot_run_keeps_the_session_locked_and_answers_without_the_password() {
+    for failure in ["PAM returned error 13", "cannot load libpam.so.0"] {
+        let (session, owner) = start_with_lock_check(gnoblin_lock_auth::FakeAuthenticator::new().fail(failure));
+        session.run(move |handle| {
+            let _locker = lock(handle.socket());
+            let node = lock_node(&owner);
+            wait_lock_state(&owner, node, "locked");
+            let answer = owner.call(node, "authenticate", PASSWORD);
+            assert_eq!(answer.error, format!("failed: {failure}"));
+            assert!(answer.result.is_empty(), "{answer:?}");
+            assert!(
+                !format!("{answer:?}").contains(PASSWORD),
+                "the answer never carries the password"
+            );
+            assert_eq!(lock_state(&owner, node).as_deref(), Some("locked"));
+        });
+    }
 }

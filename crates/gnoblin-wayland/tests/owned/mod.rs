@@ -150,6 +150,8 @@ pub struct Extras {
     pub observer: Option<std::sync::Arc<dyn gnoblin_wayland::Observer>>,
     /// The clock the loop reads; the system's when `None`.
     pub clock: Option<std::sync::Arc<dyn gnoblin_wayland::Clock>>,
+    /// What checks the lock's password; PAM when `None`.
+    pub lock_check: Option<gnoblin_wayland::LockCheck>,
 }
 
 /// A session that has been created but is not running yet.
@@ -269,6 +271,7 @@ impl Session {
             wm,
             tree,
             observer: extras.observer,
+            lock_check: extras.lock_check,
             clock: extras
                 .clock
                 .unwrap_or_else(|| std::sync::Arc::new(gnoblin_wayland::SystemClock)),

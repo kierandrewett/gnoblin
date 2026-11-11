@@ -229,7 +229,7 @@ pub use policy::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     CAST_TIMEOUT, Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME,
-    FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings,
+    FOCUS_TIMEOUT, InputSink, LockCheck, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings,
     VisualBellScope, VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
 };
 /// The dispatch glue a redirect implements.
