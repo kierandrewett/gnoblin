@@ -6,7 +6,7 @@
 //! slot; this module draws into it and queues its flip.
 
 use gnoblin_types::{Scale, Size};
-use smithay::backend::allocator::dmabuf::AsDmabuf;
+use smithay::backend::allocator::dmabuf::{AsDmabuf, Dmabuf};
 use smithay::backend::allocator::format::FormatSet;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBuffer, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::{Allocator, Fourcc, Modifier};
@@ -14,13 +14,14 @@ use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::drm::exporter::ExportBuffer;
 use smithay::backend::drm::exporter::ExportFramebuffer;
 use smithay::backend::drm::exporter::gbm::{GbmFramebufferExporter, NodeFilter};
-use smithay::backend::egl::EGLDisplay;
+use smithay::backend::egl::{EGLDevice, EGLDisplay};
 use smithay::reexports::drm::control::crtc;
 use smithay::utils::{Physical, Size as PhysicalSize};
 
 use crate::frame::Scanout;
 use crate::gpu::Gpu;
 use crate::present::SLOTS;
+use gnoblin_backend::{DmabufImportError, DmabufSupport};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_gles::egl;
@@ -33,6 +34,11 @@ pub(crate) struct Device {
     gbm: GbmDevice<DrmDeviceFd>,
     display: EGLDisplay,
     drm: DrmDeviceFd,
+    /// A 1x1 context on the display, made on the first import of a client's GPU buffer, that decides
+    /// whether the driver accepts one before the client may use it.
+    probe: Option<Gles>,
+    /// What clients were offered, so each import checks a buffer against it.
+    support: Option<DmabufSupport>,
 }
 
 impl Device {
@@ -47,7 +53,46 @@ impl Device {
             RenderError::Unavailable
         })?;
         let display = egl::gbm_display(&gbm)?;
-        Ok(Self { gbm, display, drm })
+        Ok(Self {
+            gbm,
+            display,
+            drm,
+            probe: None,
+            support: None,
+        })
+    }
+
+    /// What the display imports of a client's GPU buffers: the pairs it can sample as a 2D texture, and
+    /// the render node it sits on. `None` when it has no `EGL_EXT_image_dma_buf_import`.
+    pub(crate) fn dmabuf_support(&mut self) -> Option<DmabufSupport> {
+        let formats = self.display.dmabuf_render_formats();
+        if formats.iter().next().is_none() {
+            log::info!(area = "render", "the GPU's EGL display imports no dmabuf format");
+            return None;
+        }
+        let node = EGLDevice::device_for_display(&self.display)
+            .ok()
+            .and_then(|device| device.try_get_render_node().ok().flatten())
+            .map(|node| node.dev_id());
+        let support = DmabufSupport::new(node, formats.iter().copied());
+        self.support = Some(support.clone());
+        Some(support)
+    }
+
+    /// Imports a client's GPU buffer on the device's own display, after the checks that need no driver.
+    pub(crate) fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> Result<(), DmabufImportError> {
+        self.support
+            .as_ref()
+            .ok_or(DmabufImportError::Unsupported)?
+            .check(dmabuf)?;
+        if self.probe.is_none() {
+            self.probe = Some(Gles::on_display(&self.display, Size::new(1, 1)).map_err(DmabufImportError::Refused)?);
+        }
+        self.probe
+            .as_mut()
+            .ok_or(DmabufImportError::Unsupported)?
+            .import_dmabuf(dmabuf)
+            .map_err(DmabufImportError::Refused)
     }
 }
 

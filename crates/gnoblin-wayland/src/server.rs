@@ -444,6 +444,12 @@ impl Server {
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+        state.loop_handle = Some(event_loop.handle());
+        // The renderer's answer to "can you import a client's GPU buffer" decides whether
+        // `zwp_linux_dmabuf_v1` exists at all, so it is asked before any client connects.
+        let dmabuf = backend.dmabuf();
+        let display_handle = state.display_handle.clone();
+        state.start_dmabuf(dmabuf.as_ref(), &display_handle);
         // A View's capture picture replaces a secure node the way the backend replaces a secure layer of an output.
         state.composer.set_secure_treatment(backend.secure_treatment());
         // A node asks for effects the renderer may not draw: the composer names those in its `skipped` list.
@@ -816,6 +822,7 @@ impl Server {
                 }
                 sync_output_manager(state, backend.as_mut(), outputs_changed);
                 state.apply_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+                state.apply_dmabuf_imports(backend.as_mut());
                 crate::frame::render(backend.as_mut(), state, &frames, &control.screenshots);
                 // The frame just drawn produced buffer releases and frame callbacks;
                 // flushing them now rather than on the next wake is the difference

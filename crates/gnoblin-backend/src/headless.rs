@@ -60,8 +60,8 @@ use gnoblin_config::RendererChoice;
 
 use crate::render::renderer::{AnyRenderer, CaptureRequest, RendererKind, capture_redacted};
 use crate::{
-    Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
-    Target,
+    Backend, BackendError, BackendEvent, DmabufImportError, DmabufProvider, DmabufSupport, GammaRamp, Host, InputEvent,
+    InputSource, Output, OutputControls, Present, Target,
 };
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
@@ -227,6 +227,16 @@ impl HeadlessTarget {
     #[must_use]
     pub fn gles(&mut self) -> Option<&mut Gles> {
         self.renderer.gles_mut()
+    }
+
+    /// What this target's renderer imports of a client's GPU buffers; see [`AnyRenderer::dmabuf_support`].
+    fn dmabuf_support(&mut self) -> Option<DmabufSupport> {
+        self.renderer.dmabuf_support()
+    }
+
+    /// Imports a client's GPU buffer into this target's renderer.
+    fn import_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
+        self.renderer.import_dmabuf(dmabuf)
     }
 
     /// How many frames the target was asked to present.
@@ -451,6 +461,11 @@ pub struct Headless {
     secure_treatment: SecureTreatment,
     /// The gamma and power state last applied, shared with the handle a test holds.
     control: Arc<Mutex<HeadlessControl>>,
+    /// A stand-in for the renderers' answers to the dmabuf questions; see [`Headless::with_dmabuf_provider`].
+    dmabuf: Option<Box<dyn DmabufProvider>>,
+    /// What [`Backend::dmabuf`] reported, kept so each import checks a buffer against the formats
+    /// clients were told.
+    dmabuf_support: Option<DmabufSupport>,
 }
 
 impl std::fmt::Debug for Headless {
@@ -517,6 +532,47 @@ impl Headless {
             renderer: RendererKind::default(),
             secure_treatment: SecureTreatment::default(),
             control: Arc::new(Mutex::new(HeadlessControl::default())),
+            dmabuf: None,
+            dmabuf_support: None,
+        }
+    }
+
+    /// Another device's answers to the dmabuf questions, in place of this session's renderers'.
+    ///
+    /// A session with no GPU can serve `zwp_linux_dmabuf_v1` this way: the protocol layer is the
+    /// real one and only the importer is the provider's. A test uses it where no device exists; see
+    /// `crates/gnoblin-wayland/tests/dmabuf.rs`.
+    #[must_use]
+    pub fn with_dmabuf_provider(mut self, provider: Box<dyn DmabufProvider>) -> Self {
+        self.dmabuf = Some(provider);
+        self
+    }
+
+    /// What the session can import of a client's GPU buffers: the provider's answer, or the
+    /// first output's renderer's. `None` when nothing imports (the software renderer, or no output).
+    fn query_dmabuf(&mut self) -> Option<DmabufSupport> {
+        let support = match self.dmabuf.as_mut() {
+            Some(provider) => provider.support(),
+            None => self.targets.first_mut().and_then(HeadlessTarget::dmabuf_support),
+        };
+        self.dmabuf_support.clone_from(&support);
+        support
+    }
+
+    /// Imports `dmabuf` after the checks that need no driver: a format and modifier the clients
+    /// were not offered, and a plane count the modifier cannot have.
+    fn import(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
+        self.dmabuf_support
+            .as_ref()
+            .ok_or(DmabufImportError::Unsupported)?
+            .check(dmabuf)?;
+        match self.dmabuf.as_mut() {
+            Some(provider) => provider.import(dmabuf),
+            None => self
+                .targets
+                .first_mut()
+                .ok_or(DmabufImportError::Unsupported)?
+                .import_dmabuf(dmabuf),
         }
     }
 
@@ -748,6 +804,14 @@ impl<S: Host + 'static> Backend<S> for Headless {
 
     fn effect_kinds(&self) -> &'static [&'static str] {
         self.renderer.effect_kinds()
+    }
+
+    fn dmabuf(&mut self) -> Option<DmabufSupport> {
+        self.query_dmabuf()
+    }
+
+    fn import_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
+        self.import(dmabuf)
     }
 
     fn output_controls(&self) -> OutputControls {
@@ -1241,6 +1305,119 @@ mod tests {
             image.size(),
             Size::new(64, 48),
             "the readback follows the new buffer, not the old one"
+        );
+    }
+
+    /// A `Dmabuf` of `size` in `format`, with `planes` planes of `/dev/null`: the shape of a GPU buffer.
+    fn fake_dmabuf(
+        format: smithay::backend::allocator::Fourcc,
+        modifier: smithay::backend::allocator::Modifier,
+        planes: u32,
+    ) -> smithay::backend::allocator::dmabuf::Dmabuf {
+        use smithay::backend::allocator::dmabuf::{Dmabuf, DmabufFlags};
+        let mut builder = Dmabuf::builder((16, 16), format, modifier, DmabufFlags::empty());
+        for _ in 0..planes {
+            let fd = std::os::fd::OwnedFd::from(std::fs::File::open("/dev/null").expect("/dev/null opens"));
+            assert!(builder.add_plane(fd, 0, 64));
+        }
+        builder.build().expect("a dmabuf with a plane")
+    }
+
+    /// An importer that accepts everything and remembers how many buffers it saw.
+    struct Counting(Arc<Mutex<u32>>);
+
+    impl DmabufProvider for Counting {
+        fn support(&mut self) -> Option<DmabufSupport> {
+            use smithay::backend::allocator::{Format, Fourcc, Modifier};
+            Some(DmabufSupport::new(
+                None,
+                [Format {
+                    code: Fourcc::Argb8888,
+                    modifier: Modifier::Linear,
+                }],
+            ))
+        }
+
+        fn import(&mut self, _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
+            *self.0.lock().expect("the counter") += 1;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_software_renderer_offers_no_dmabuf() {
+        use smithay::backend::allocator::{Fourcc, Modifier};
+        let mut backend = Headless::new();
+        assert!(
+            backend.query_dmabuf().is_none(),
+            "pixman reads CPU memory: it cannot draw a GPU buffer, so nothing is offered"
+        );
+        assert_eq!(
+            backend.import(&fake_dmabuf(Fourcc::Argb8888, Modifier::Linear, 1)),
+            Err(DmabufImportError::Unsupported),
+            "and nothing is imported"
+        );
+        assert!(
+            Headless::empty().query_dmabuf().is_none(),
+            "a session with no output has no renderer to ask"
+        );
+    }
+
+    #[test]
+    fn an_import_checks_the_offer_and_the_planes_before_the_importer() {
+        use smithay::backend::allocator::{Fourcc, Modifier};
+        let seen = Arc::new(Mutex::new(0));
+        let mut backend = Headless::new().with_dmabuf_provider(Box::new(Counting(Arc::clone(&seen))));
+        assert!(
+            backend.query_dmabuf().is_some(),
+            "the provider's answer replaces the renderer's"
+        );
+
+        assert_eq!(
+            backend.import(&fake_dmabuf(Fourcc::Argb8888, Modifier::Linear, 1)),
+            Ok(()),
+            "an offered pair of one plane is imported"
+        );
+        assert_eq!(
+            backend.import(&fake_dmabuf(Fourcc::Argb8888, Modifier::Invalid, 1)),
+            Err(DmabufImportError::NotOffered),
+            "the same code with another modifier is a different pair"
+        );
+        assert_eq!(
+            backend.import(&fake_dmabuf(Fourcc::Abgr8888, Modifier::Linear, 1)),
+            Err(DmabufImportError::NotOffered),
+            "a format that was never offered"
+        );
+        assert_eq!(
+            backend.import(&fake_dmabuf(Fourcc::Argb8888, Modifier::Linear, 2)),
+            Err(DmabufImportError::BadPlanes),
+            "a linear buffer cannot have a second plane"
+        );
+        assert_eq!(
+            *seen.lock().expect("the counter"),
+            1,
+            "only the first reached the importer"
+        );
+    }
+
+    #[test]
+    fn a_gles_session_offers_what_its_display_imports() {
+        let Ok(mut backend) = Headless::with_config(HeadlessConfig::gles()) else {
+            println!("skipping: no surfaceless EGL context on this machine");
+            return;
+        };
+        let formats = backend
+            .targets
+            .first_mut()
+            .and_then(HeadlessTarget::gles)
+            .map(Gles::dmabuf_formats)
+            .expect("a GLES target");
+        let offered = backend.query_dmabuf();
+        println!("the GLES session offers {} dmabuf pair(s)", formats.len());
+        assert_eq!(
+            offered.is_some(),
+            !formats.is_empty(),
+            "the session serves dmabuf exactly when its display can import a format"
         );
     }
 }

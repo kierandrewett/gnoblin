@@ -750,3 +750,58 @@ fn the_shells_own_children_of_a_window_keep_their_place_between_the_surfaces() {
         "a surface behind the window, then the shell's node, then the surfaces above"
     );
 }
+
+/// A `Dmabuf` of `size` with one plane of `/dev/null`: the shape of a GPU buffer, which is all the composer reads.
+fn dmabuf_source(size: Size) -> SurfaceSource {
+    use smithay::backend::allocator::dmabuf::{Dmabuf, DmabufFlags};
+    use smithay::backend::allocator::{Fourcc, Modifier};
+    let fd = std::os::fd::OwnedFd::from(std::fs::File::open("/dev/null").expect("/dev/null opens"));
+    let mut builder = Dmabuf::builder(
+        (size.width as i32, size.height as i32),
+        Fourcc::Argb8888,
+        Modifier::Linear,
+        DmabufFlags::empty(),
+    );
+    assert!(builder.add_plane(fd, 0, size.width * 4));
+    SurfaceSource::Dmabuf(builder.build().expect("a one-plane dmabuf"))
+}
+
+#[test]
+fn a_dmabuf_window_is_composed_as_a_dmabuf_layer() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    let frame = frame_of(&mut composer, output);
+    let layers = surface_layers(&frame);
+    assert_eq!(layers.len(), 1, "one surface layer for the one window");
+    assert!(
+        matches!(layers[0].source, SurfaceSource::Dmabuf(_)),
+        "the layer's pixels are the dmabuf itself, which only a GPU renderer can import"
+    );
+    assert_eq!(layers[0].dst, WINDOW, "placed and cropped as any other buffer");
+}
+
+#[test]
+fn a_window_that_shows_a_dmabuf_leaves_without_a_fade() {
+    let (mut composer, _output, window) = drawing();
+    composer.set_reduced_motion(false);
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    composer.close_window(window);
+    assert!(
+        !composer.windows.contains_key(&window),
+        "a GPU buffer has no CPU picture to fade, so the window is removed at once"
+    );
+}
+
+#[test]
+fn a_view_masks_a_window_that_shows_a_dmabuf() {
+    let (mut composer, _output, window) = drawing();
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    let node = node_of(&composer, window);
+    let pictures = composer.window_pictures(&BTreeSet::from([node]));
+    let picture = pictures.get(&node).expect("a masked window has a picture, not a hole");
+    assert_eq!(
+        picture.colour_at(0, 0),
+        Some([128, 128, 128, 255]),
+        "the neutral grey a secure node is masked with"
+    );
+}

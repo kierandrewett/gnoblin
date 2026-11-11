@@ -152,6 +152,7 @@
 //!     [`nested`]'s own list, because that backend's failure modes are about the wire
 //!     rather than about the contract.
 
+pub mod dmabuf;
 pub mod headless;
 pub mod nested;
 pub mod render;
@@ -164,6 +165,8 @@ use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::{DisplayMode, OutputDescriptor};
+
+pub use dmabuf::{DmabufImportError, DmabufProvider, DmabufSupport};
 
 gnoblin_log::logger!(log = "backend");
 
@@ -740,6 +743,28 @@ pub trait Backend<S: Host + 'static> {
     /// effect a node asks for and the renderer cannot draw in the node's `skipped` list.
     fn effect_kinds(&self) -> &'static [&'static str] {
         &[]
+    }
+
+    /// What this backend can import of a client's GPU buffers, or `None` when it cannot import
+    /// any: the host then never serves `zwp_linux_dmabuf_v1`, and a client shares memory instead.
+    ///
+    /// Asked once, before any client connects. See [`crate::dmabuf`].
+    fn dmabuf(&mut self) -> Option<DmabufSupport> {
+        None
+    }
+
+    /// Imports a client's GPU buffer into the renderer that will draw it, so a buffer the GPU
+    /// cannot read is refused before the client uses it.
+    ///
+    /// # Errors
+    ///
+    /// [`DmabufImportError`] naming why the buffer was refused. The default refuses everything,
+    /// matching the default of [`Backend::dmabuf`].
+    fn import_dmabuf(
+        &mut self,
+        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<(), DmabufImportError> {
+        Err(DmabufImportError::Unsupported)
     }
 
     /// What this backend can control on its outputs: gamma tables and power state.

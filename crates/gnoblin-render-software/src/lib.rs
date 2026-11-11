@@ -251,6 +251,8 @@ impl Software {
         let buffer = match &surface.source {
             SurfaceSource::Snapshot(image) => return Ok(image.as_ref().clone()),
             SurfaceSource::Buffer(buffer) => buffer,
+            // Pixman reads CPU memory only: a GPU buffer has no picture here.
+            SurfaceSource::Dmabuf(_) => return Err(RenderError::Unsupported),
         };
         let texture = self.renderer.import_shm_buffer(buffer, None, &[]).map_err(failed)?;
         read_texture(&mut self.renderer, &texture)
@@ -812,6 +814,13 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
             })
             .ok()?,
         SurfaceSource::Snapshot(image) => import_bitmap(renderer, image)?,
+        SurfaceSource::Dmabuf(_) => {
+            log::warn!(
+                area = "render",
+                "a GPU buffer reached the software renderer, which cannot read it; the layer is skipped"
+            );
+            return None;
+        }
     };
     if surface.tint == Color::WHITE {
         return Some(texture);

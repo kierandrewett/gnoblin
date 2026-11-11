@@ -171,7 +171,7 @@ fn surfaces_of(root: &WlSurface, committed: &BTreeSet<u64>) -> Vec<TreeSurface> 
             offset: gnoblin_types::Point::new(origin.x - parent_origin.x, origin.y - parent_origin.y),
             alpha: committed_factor(surface),
             content,
-            source: SurfaceSource::Buffer(buffer),
+            source: SurfaceSource::of_buffer(buffer),
             damaged: committed.contains(&key),
         });
         push_subsurfaces(surface, Some(key), committed, &mut surfaces);
@@ -225,7 +225,7 @@ fn push_children(
             offset: gnoblin_types::Point::new(location.x, location.y),
             alpha: committed_factor(surface),
             content,
-            source: SurfaceSource::Buffer(buffer),
+            source: SurfaceSource::of_buffer(buffer),
             damaged: committed.contains(&key),
         });
         push_children(painted, surface, Some(key), committed, out);

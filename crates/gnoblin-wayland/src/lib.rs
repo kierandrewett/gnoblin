@@ -86,6 +86,16 @@
 //!   of this slice reads no content type: it composes and presents every surface alike.
 //! - **`wp_single_pixel_buffer_v1`** — a one-pixel buffer is a complete buffer, which is
 //!   what a solid background or a session lock's cover needs.
+//! - **`zwp_linux_dmabuf_v1`** — a client shares a GPU buffer instead of copying pixels. The
+//!   global exists only when the backend's renderer can import one (GLES on an EGL display
+//!   with `EGL_EXT_image_dma_buf_import`): a software session serves shared memory alone,
+//!   with version 4 feedback when the renderer has a render node and version 3 when it has
+//!   none. Every buffer is imported before the client may use it. Tested against a stand-in
+//!   importer in `tests/dmabuf.rs`, and against a real GBM buffer in `tests/dmabuf_gpu.rs`,
+//!   which skips on a machine with no render node. A capture of a window that shows a GPU
+//!   buffer reads the composed output, so it shows the window; a View, which reads CPU
+//!   pictures, shows a grey mask in its place. A closing window that shows one leaves without
+//!   a fade. The capture protocols still offer shared memory only.
 //! - **`wp_tearing_control_v1`** — the hint is kept per surface and read back through
 //!   [`State::tearing_hint`]. A headless output presents nothing, so there is no vsync for
 //!   it to lift and the hint has no visible effect.

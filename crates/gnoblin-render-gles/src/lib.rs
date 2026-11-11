@@ -594,6 +594,14 @@ impl Gles {
                 owned.push(texture);
                 return handle;
             }
+            // The GPU buffer is sampled where it is: the texture is the driver's view of the client's
+            // memory, so nothing is copied, and Smithay's cache on the buffer keeps it across frames.
+            SurfaceSource::Dmabuf(dmabuf) => {
+                let texture = self.dmabuf_texture(dmabuf)?;
+                let handle = Texture::from_smithay(&texture);
+                owned.push(texture);
+                return handle;
+            }
         };
         let texture = self
             .device
@@ -1180,13 +1188,12 @@ fn intersects(layer: &Layer, damage: Rect, scale: Scale) -> bool {
 /// coordinate also starts at the top, so the mapping is the source rectangle divided by the
 /// texture's size with no flip.
 fn texture_mapping(surface: &Surface, texture: Texture) -> [f32; 4] {
-    let (width, height) = texture.size();
-    [
-        surface.src.x as f32 / width as f32,
-        surface.src.y as f32 / height as f32,
-        surface.src.width as f32 / width as f32,
-        surface.src.height as f32 / height as f32,
-    ]
+    let y_inverted = matches!(&surface.source, SurfaceSource::Dmabuf(dmabuf) if dmabuf.y_inverted());
+    dmabuf::mapping(
+        [surface.src.x, surface.src.y, surface.src.width, surface.src.height],
+        texture.size(),
+        y_inverted,
+    )
 }
 
 /// The mapping of a rectangle of the renderer's own target, whose texture starts at the
@@ -1222,6 +1229,7 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
     }
 }
 
+mod dmabuf;
 mod view;
 
 #[cfg(test)]

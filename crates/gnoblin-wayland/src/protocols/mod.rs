@@ -43,6 +43,7 @@
 //! | [`ext_session_lock_v1`] | `ext_session_lock_v1` | the lock request, its cover, its surfaces and the input gate |
 //! | [`zwp_keyboard_shortcuts_inhibit_v1`] | `zwp_keyboard_shortcuts_inhibit_manager_v1` | grants, refuses and revokes shortcut inhibitors |
 //! | [`wp_single_pixel_buffer_v1`] | `wp_single_pixel_buffer_manager_v1` | creates the global; the buffer carries its own colour |
+//! | [`zwp_linux_dmabuf_v1`] | `zwp_linux_dmabuf_v1` | GPU buffers from clients, served only when the backend's renderer can import them; each buffer is imported before the client may use it |
 //! | [`wp_tearing_control_v1`] | `wp_tearing_control_v1` | records the presentation hint a surface asks for |
 //! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3` | the text-input conversation |
 //! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2` | the privileged input-method half of a text conversation |
@@ -149,6 +150,8 @@ pub mod zwp_idle_inhibit_v1;
 pub mod zwp_input_method_v2;
 /// `zwp_keyboard_shortcuts_inhibit_manager_v1`: grants, refuses and revokes shortcut inhibitors.
 pub mod zwp_keyboard_shortcuts_inhibit_v1;
+/// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
+pub mod zwp_linux_dmabuf_v1;
 /// `zwp_pointer_constraints_v1`: locked and confined pointers.
 pub mod zwp_pointer_constraints_v1;
 /// `zwp_pointer_gestures_v1`: gesture objects for pointer input.

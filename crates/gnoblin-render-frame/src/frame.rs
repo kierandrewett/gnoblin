@@ -46,8 +46,10 @@
 
 use std::sync::Arc;
 
+use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
+use smithay::wayland::dmabuf::get_dmabuf;
 
 use gnoblin_render::{Effects, Mat4};
 use gnoblin_types::{Color, Rect, RectF};
@@ -129,6 +131,30 @@ pub enum SurfaceSource {
     /// be drawn again without a conversion. This is the same convention the overlay
     /// bitmap uses, and it is why the copy is not straight-alpha like a readback.
     Snapshot(Arc<Image>),
+    /// A GPU buffer a client shared through `zwp_linux_dmabuf_v1`.
+    ///
+    /// The handle owns the plane file descriptors, so the picture outlives the client's
+    /// `wl_buffer` the way a [`SurfaceSource::Snapshot`] outlives it, and the GLES renderer keys
+    /// its imported texture on the handle's identity, so a buffer that is drawn again is not
+    /// imported again. Only a renderer that can import a dmabuf draws it: the software and
+    /// Vulkan renderers skip the layer with a log line, and they are never offered one in a
+    /// session that serves the protocol, because the compositor advertises `zwp_linux_dmabuf_v1`
+    /// only when its backend reports a renderer that can import (see `Backend::dmabuf`). A
+    /// capture that has to read the pixels on the CPU (a View's) cannot read it and leaves the
+    /// window out.
+    Dmabuf(Dmabuf),
+}
+
+impl SurfaceSource {
+    /// The source of a client's committed buffer: its dmabuf when it is one, the `wl_buffer`
+    /// otherwise (shared memory or a single colour).
+    #[must_use]
+    pub fn of_buffer(buffer: WlBuffer) -> Self {
+        match get_dmabuf(&buffer) {
+            Ok(dmabuf) => Self::Dmabuf(dmabuf.clone()),
+            Err(_) => Self::Buffer(buffer),
+        }
+    }
 }
 
 /// A client buffer on the output.

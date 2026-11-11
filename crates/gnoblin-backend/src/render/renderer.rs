@@ -213,6 +213,35 @@ impl AnyRenderer {
             _ => None,
         }
     }
+
+    /// What this renderer imports of a client's GPU buffers, or `None` when it imports none.
+    ///
+    /// Only the GLES renderer does, and only on a display that reports an importable format: the
+    /// software renderer reads CPU memory, and the Vulkan renderer has no import path yet. The
+    /// device is the render node of the context, when it has one.
+    #[must_use]
+    pub fn dmabuf_support(&mut self) -> Option<crate::DmabufSupport> {
+        let gles = self.gles_mut()?;
+        let formats = gles.dmabuf_formats();
+        if formats.is_empty() {
+            return None;
+        }
+        Some(crate::DmabufSupport::new(gles.render_node(), formats))
+    }
+
+    /// Imports a client's GPU buffer, so a draw of it finds the texture made.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::DmabufImportError::Unsupported`] for a renderer that imports none, and
+    /// [`crate::DmabufImportError::Refused`] when the driver refuses the buffer.
+    pub fn import_dmabuf(
+        &mut self,
+        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<(), crate::DmabufImportError> {
+        let gles = self.gles_mut().ok_or(crate::DmabufImportError::Unsupported)?;
+        gles.import_dmabuf(dmabuf).map_err(crate::DmabufImportError::Refused)
+    }
 }
 
 /// What a redacted capture reads: the frame last drawn, where the capture covers, and how

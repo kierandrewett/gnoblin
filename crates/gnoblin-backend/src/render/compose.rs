@@ -820,8 +820,9 @@ impl Composer {
         (Some(image), Some(redacted))
     }
 
-    /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A
-    /// buffer that cannot be read (a DMA-BUF, say) leaves its window out, so it draws nothing.
+    /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A GPU buffer (a
+    /// DMA-BUF) cannot be read on the CPU, so its window is drawn as the neutral grey a secure node is masked with,
+    /// and the first one is logged: see [`source_picture`].
     fn window_pictures(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, Image> {
         let mut pictures: BTreeMap<NodeId, Image> = BTreeMap::new();
         for entry in self.windows.values() {
@@ -1243,6 +1244,8 @@ impl Composer {
         let image = match source {
             SurfaceSource::Buffer(buffer) => Arc::new(shm::readback(buffer).ok()?),
             SurfaceSource::Snapshot(image) => Arc::clone(image),
+            // A GPU buffer has no CPU picture to keep, so a window that shows one leaves without a fade.
+            SurfaceSource::Dmabuf(_) => return None,
         };
         Some(Closing { image, content, on_end })
     }
@@ -2256,7 +2259,7 @@ impl Composer {
     /// The scene does not look inside it, so it carries no damage of its own; the
     /// commit that attached it went through [`Composer::set_window_content`].
     pub fn set_window_buffer(&mut self, window: WindowId, buffer: Option<WlBuffer>) {
-        self.set_window_source(window, buffer.map(SurfaceSource::Buffer));
+        self.set_window_source(window, buffer.map(SurfaceSource::of_buffer));
     }
 
     /// [`Composer::set_window_buffer`] for pixels that are not a client's live buffer.
@@ -3282,12 +3285,26 @@ fn secure_mask() -> Image {
     Image::new(Size::new(1, 1), 4, vec![128, 128, 128, 255]).expect("a one-pixel image is valid")
 }
 
-/// The pixels of a surface's source as the view renderer reads them, or `None` for a buffer that cannot be read
-/// (a DMA-BUF, say).
+/// The pixels of a surface's source as the view renderer reads them.
+///
+/// A GPU buffer (a DMA-BUF) cannot be read without a GL readback this renderer does not have, so it is masked as a
+/// secure node is, rather than dropped: a View shows a grey rectangle where the window is and not a hole through
+/// which whatever lies behind it shows. The first such window is logged; the rest are not, because a View redraws on
+/// every change.
 fn source_picture(source: &SurfaceSource) -> Option<Image> {
+    static LOGGED: std::sync::Once = std::sync::Once::new();
     match source {
         SurfaceSource::Buffer(buffer) => shm::readback(buffer).ok(),
         SurfaceSource::Snapshot(image) => Some(Image::clone(image)),
+        SurfaceSource::Dmabuf(_) => {
+            LOGGED.call_once(|| {
+                log::error!(
+                    area = "render",
+                    "a View captured a window that shows a GPU buffer, which it cannot read; the window is masked"
+                );
+            });
+            Some(secure_mask())
+        }
     }
 }
 
@@ -5853,7 +5870,7 @@ mod tests {
             .filter_map(|layer| match layer {
                 Layer::Surface(surface) => match &surface.source {
                     SurfaceSource::Snapshot(image) => Some((surface.dst, surface.opacity, Arc::clone(image))),
-                    SurfaceSource::Buffer(_) => None,
+                    SurfaceSource::Buffer(_) | SurfaceSource::Dmabuf(_) => None,
                 },
                 _ => None,
             })

@@ -341,6 +341,12 @@ pub struct State {
     /// Kept alive so `wp_single_pixel_buffer_manager_v1` stays registered.
     #[allow(dead_code)]
     pub(crate) single_pixel_buffer_state: SinglePixelBufferState,
+    /// `zwp_linux_dmabuf_v1`: the global, once the backend reports a renderer that imports GPU
+    /// buffers, and the buffers waiting for its answer. See [`crate::protocols::zwp_linux_dmabuf_v1`].
+    pub(crate) dmabuf: crate::protocols::zwp_linux_dmabuf_v1::DmabufServing,
+    /// The event loop's handle, for a hook that must wait on a file descriptor from inside a
+    /// protocol handler (a dmabuf's fences). Set by [`crate::Server`] right after the state exists.
+    pub(crate) loop_handle: Option<smithay::reexports::calloop::LoopHandle<'static, State>>,
     /// Kept alive so `wp_tearing_control_manager_v1` stays registered; the handler in
     /// [`crate::protocols::wp_tearing_control_v1`] records the hints.
     #[allow(dead_code)]
@@ -773,6 +779,8 @@ impl State {
             presentation_state,
             content_type_state,
             single_pixel_buffer_state,
+            dmabuf: crate::protocols::zwp_linux_dmabuf_v1::DmabufServing::new(),
+            loop_handle: None,
             tearing_control_global,
             idle_notify_global,
             background_effect_global,

@@ -71,7 +71,10 @@ use crate::libinput::map::Screen;
 use crate::present::{OutputPresenter, Presenter, complete_flips};
 use crate::scanout::{Buffers, Device as ScanoutDevice, Flip};
 use crate::session::{SeatEvent, SeatState, Transition};
-use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
+use gnoblin_backend::{
+    Backend, BackendError, BackendEvent, DmabufImportError, DmabufSupport, Host, InputEvent, InputSource, Output,
+    Present, Target,
+};
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
 use std::collections::HashMap;
@@ -432,6 +435,14 @@ impl<S: Host + 'static> Backend<S> for Drm {
     fn effect_kinds(&self) -> &'static [&'static str] {
         // The scan-out path draws with the GLES renderer.
         gnoblin_backend::render::renderer::RendererKind::Gles.effect_kinds()
+    }
+
+    fn dmabuf(&mut self) -> Option<DmabufSupport> {
+        self.scanout.dmabuf_support()
+    }
+
+    fn import_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
+        self.scanout.import_dmabuf(dmabuf)
     }
 
     fn output_controls(&self) -> gnoblin_backend::OutputControls {

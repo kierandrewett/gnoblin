@@ -678,6 +678,9 @@ workspace pins (D7).
 - **Buffers and timing:** linux-dmabuf, drm-syncobj, drm-lease, fifo,
   commit-timing, presentation-time, single-pixel-buffer, alpha-modifier,
   viewporter, fractional-scale, content-type.
+  linux-dmabuf is served (2026-11-11, `design/xr-extension.md` G4) when the
+  backend's renderer can import a GPU buffer, and not otherwise; drm-syncobj
+  is not.
 - **X11:** xwayland-shell, xwayland keyboard grab.
 
 Gnoblin writes these itself:

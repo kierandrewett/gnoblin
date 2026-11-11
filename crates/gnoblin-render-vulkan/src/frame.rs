@@ -864,6 +864,12 @@ fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
             },
             // A snapshot is premultiplied pixels already, the same as the overlay bitmap.
             SurfaceSource::Snapshot(image) => found.push((TextureSlot::Layer(index), PixelSource::Bitmap(image))),
+            SurfaceSource::Dmabuf(_) => {
+                log::warn!(
+                    area = "render",
+                    "a GPU buffer reached the Vulkan renderer, which cannot import it; the layer is skipped"
+                );
+            }
         }
     }
     if let Some(overlay) = overlay_of(frame) {

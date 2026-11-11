@@ -1138,3 +1138,103 @@ fn turning_the_view_off_repaints_the_pixels_it_left_behind() {
         "the unmagnified scene is shown everywhere, not only where the frame damaged"
     );
 }
+
+/// A `Dmabuf` no driver can import: its plane is `/dev/null`, which is not GPU memory. It has the
+/// shape of a real one (size, format, modifier, a plane), so everything before the driver accepts it.
+fn unimportable_dmabuf(width: i32, height: i32) -> smithay::backend::allocator::dmabuf::Dmabuf {
+    use smithay::backend::allocator::dmabuf::{Dmabuf, DmabufFlags};
+    use smithay::backend::allocator::{Fourcc, Modifier};
+    let fd = std::os::fd::OwnedFd::from(std::fs::File::open("/dev/null").expect("/dev/null opens"));
+    let mut builder = Dmabuf::builder(
+        (width, height),
+        Fourcc::Argb8888,
+        Modifier::Linear,
+        DmabufFlags::empty(),
+    );
+    assert!(builder.add_plane(fd, 0, width.unsigned_abs() * 4));
+    builder.build().expect("a one-plane dmabuf")
+}
+
+#[test]
+fn a_dmabuf_the_driver_refuses_is_skipped() {
+    let size = Size::new(32, 32);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let dmabuf = unimportable_dmabuf(16, 16);
+    assert_eq!(
+        renderer.import_dmabuf(&dmabuf),
+        Err(RenderError::Failed),
+        "a buffer that is not GPU memory is refused, never imported"
+    );
+
+    // A layer whose buffer cannot be imported is left out and the frame is still drawn: one
+    // client's buffer must not stop the output.
+    let mut frame = frame_with(
+        Color::BLACK,
+        size,
+        Rect::new(0, 0, 4, 4),
+        Color::from_rgba8(0, 255, 0, 255),
+    );
+    frame.push_layer(Layer::Surface(Surface {
+        source: SurfaceSource::Dmabuf(dmabuf),
+        src: gnoblin_types::RectF::new(0.0, 0.0, 16.0, 16.0),
+        dst: Rect::new(8, 8, 16, 16),
+        transform: smithay::utils::Transform::Normal,
+        opacity: 1.0,
+        tint: Color::WHITE,
+        corner_radius: 0.0,
+        effects: Effects::default(),
+        model: None,
+        secure: false,
+    }));
+    renderer
+        .draw(&frame, Scale::IDENTITY)
+        .expect("the frame is drawn without the layer");
+    let image = renderer.screenshot().expect("a readback");
+    assert_eq!(probe(&image, 1, 1), [0, 255, 0, 255], "the rest of the frame is drawn");
+    assert_eq!(
+        probe(&image, 16, 16),
+        [0, 0, 0, 255],
+        "the refused buffer's rectangle shows the background"
+    );
+}
+
+#[test]
+fn the_formats_a_display_offers_are_the_ones_it_imports() {
+    let Some(mut renderer) = gles(Size::new(8, 8)) else {
+        return;
+    };
+    let formats = renderer.dmabuf_formats();
+    println!(
+        "dmabuf formats on {}: {} pair(s), render node {:?}",
+        renderer.driver(),
+        formats.len(),
+        renderer.render_node()
+    );
+    // The set does not change between asks, and every pair names a format Smithay can decode:
+    // a pair is a promise to a client.
+    assert_eq!(formats, renderer.dmabuf_formats());
+}
+
+#[test]
+fn an_inverted_dmabuf_reverses_the_v_axis() {
+    // A 64x32 buffer cropped to its lower half: rows 16..32.
+    let src = [0.0, 16.0, 64.0, 16.0];
+    assert_eq!(
+        crate::dmabuf::mapping(src, (64, 32), false),
+        [0.0, 0.5, 1.0, 0.5],
+        "an upright buffer starts at the crop's top row and reads downwards"
+    );
+    // The same crop of a buffer stored bottom row first starts at v = (32 - 16) / 32 and reads upwards.
+    assert_eq!(
+        crate::dmabuf::mapping(src, (64, 32), true),
+        [0.0, 0.5, 1.0, -0.5],
+        "an inverted buffer reads upwards from the crop's top row"
+    );
+    // The first and last rows of the whole buffer swap ends.
+    assert_eq!(
+        crate::dmabuf::mapping([0.0, 0.0, 64.0, 32.0], (64, 32), true),
+        [0.0, 1.0, 1.0, -1.0]
+    );
+}

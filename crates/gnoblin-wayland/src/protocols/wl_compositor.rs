@@ -96,6 +96,11 @@ impl CompositorHandler for State {
             .compositor_state
     }
 
+    fn new_surface(&mut self, surface: &WlSurface) {
+        // A commit that attaches a dmabuf waits for the buffer's fences: see the protocol module.
+        crate::protocols::zwp_linux_dmabuf_v1::hold_commit_until_ready(surface);
+    }
+
     fn destroyed(&mut self, surface: &WlSurface) {
         // A touch point on a surface cannot outlive it, whether it was a toplevel or a subsurface.
         self.end_touches_on(surface);

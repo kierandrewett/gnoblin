@@ -473,7 +473,7 @@ impl State {
             && let Some((buffer, content)) = crate::state::committed_content(&surface)
         {
             frame.push_layer(Layer::Surface(Surface {
-                source: SurfaceSource::Buffer(buffer),
+                source: SurfaceSource::of_buffer(buffer),
                 src: content.src,
                 dst: Rect::new(0, 0, rect.width, rect.height),
                 transform: content.transform,
