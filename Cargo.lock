@@ -1790,6 +1790,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wlcs"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-backend",
+ "gnoblin-types",
+ "gnoblin-wayland",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
 name = "gnoblin-xwayland"
 version = "0.2.0-alpha.0"
 dependencies = [

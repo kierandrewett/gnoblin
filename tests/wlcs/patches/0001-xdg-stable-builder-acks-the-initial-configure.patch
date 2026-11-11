@@ -1,0 +1,40 @@
+wlcs v1.8.1: XdgStableSurfaceBuilder attaches a buffer before the compositor's initial configure is acknowledged.
+
+xdg_surface says a client must wait for the first configure and acknowledge it before it attaches a buffer, and a
+compositor that enforces the rule (Smithay does, and so does the XdgSurfaceStableTest this builder sits beside)
+answers `unconfigured_buffer`. The builder skipped the wait, so every test built on `xdg_surface_stable` failed with
+a protocol error before it tested anything: about 250 of the 1225 tests. This does what
+`Client::create_xdg_shell_stable_surface` in src/in_process_server.cpp already does.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the builder upstream.
+
+diff --git a/src/surface_builder.cpp b/src/surface_builder.cpp
+index 9d2ef84..f89171e 100644
+--- a/src/surface_builder.cpp
++++ b/src/surface_builder.cpp
+@@ -96,6 +96,25 @@ auto wlcs::XdgStableSurfaceBuilder::build(
+         *xdg_surface,
+         left_offset, top_offset,
+         size.first - left_offset - right_offset, size.second -bottom_offset - top_offset);
++    // The initial commit carries no buffer. The compositor answers it with a configure, which has to be acknowledged
++    // before a buffer is attached (xdg_surface.unconfigured_buffer); the builder used to attach at once.
++    bool initial_configure_received = false;
++    EXPECT_CALL(*xdg_surface, configure(testing::_))
++        .WillOnce(
++            [&initial_configure_received, raw = static_cast<struct xdg_surface*>(*xdg_surface)](uint32_t serial)
++            {
++                xdg_surface_ack_configure(raw, serial);
++                initial_configure_received = true;
++            });
++    wl_surface_commit(*surface);
++    client.dispatch_until([&initial_configure_received]() { return initial_configure_received; });
++    testing::Mock::VerifyAndClearExpectations(xdg_surface.get());
++    ON_CALL(*xdg_surface, configure(testing::_))
++        .WillByDefault(
++            [raw = static_cast<struct xdg_surface*>(*xdg_surface)](uint32_t serial)
++            {
++                xdg_surface_ack_configure(raw, serial);
++            });
+     surface->attach_visible_buffer(size.first, size.second);
+     surface->run_on_destruction(
+         [xdg_surface, xdg_toplevel]() mutable

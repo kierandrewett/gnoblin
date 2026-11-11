@@ -1,0 +1,39 @@
+wlcs v1.8.1: the xdg_popup tests' parent window attaches a buffer before the compositor's initial configure is acknowledged.
+
+Same defect as 0001, in tests/xdg_popup.cpp: `XdgPopupStableManager` makes a toplevel and calls
+`wait_for_frame_to_render()`, whose first commit carries a buffer. A compositor that enforces
+xdg_surface.unconfigured_buffer closes the connection, so every `Anchor`, `Gravity`, `ConstraintAdjustment`
+and `XdgPopupStable` test (about 70) failed before it tested a popup. The constructor now does the initial
+commit and acknowledges the configure first.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the fixture upstream.
+
+diff --git a/tests/xdg_popup.cpp b/tests/xdg_popup.cpp
+index e7582de..3e2aa6f 100644
+--- a/tests/xdg_popup.cpp
++++ b/tests/xdg_popup.cpp
+@@ -266,6 +266,24 @@ public:
+           toplevel{std::in_place, xdg_shell_surface.value()},
+           parent{&*xdg_shell_surface}
+     {
++        // The initial commit carries no buffer; the compositor answers it with a configure, which has to be
++        // acknowledged before wait_for_frame_to_render() attaches one (xdg_surface.unconfigured_buffer).
++        bool initial_configure_received = false;
++        ON_CALL(xdg_shell_surface.value(), configure(testing::_))
++            .WillByDefault(
++                [&initial_configure_received, raw = static_cast<xdg_surface*>(xdg_shell_surface.value())](uint32_t serial)
++                {
++                    xdg_surface_ack_configure(raw, serial);
++                    initial_configure_received = true;
++                });
++        wl_surface_commit(surface);
++        client->dispatch_until([&initial_configure_received]() { return initial_configure_received; });
++        ON_CALL(xdg_shell_surface.value(), configure(testing::_))
++            .WillByDefault(
++                [raw = static_cast<xdg_surface*>(xdg_shell_surface.value())](uint32_t serial)
++                {
++                    xdg_surface_ack_configure(raw, serial);
++                });
+         wait_for_frame_to_render();
+     }
+ 

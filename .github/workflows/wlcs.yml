@@ -1,0 +1,72 @@
+name: wlcs conformance
+
+# Canonical's Wayland Conformance Suite against the Rust compositor, headless (design/e2e-wlcs.md). The job runs only
+# the tests tests/wlcs/expected.toml lists as passing, so a regression in a protocol the compositor already serves
+# fails the job and a known failure never does. wlcs is GPL-2.0: it is built in the job's workspace, never shipped.
+
+on:
+  push:
+    paths:
+      - "crates/gnoblin-wayland/**"
+      - "crates/gnoblin-wlcs/**"
+      - "crates/gnoblin-backend/**"
+      - "crates/gnoblin-render*/**"
+      - "crates/gnoblin-input/**"
+      - "crates/gnoblin-model/**"
+      - "Cargo.lock"
+      - "scripts/wlcs.sh"
+      - "scripts/wlcs-run.py"
+      - "tests/wlcs/**"
+      - ".github/workflows/wlcs.yml"
+  pull_request:
+    paths:
+      - "crates/gnoblin-wayland/**"
+      - "crates/gnoblin-wlcs/**"
+      - "crates/gnoblin-backend/**"
+      - "crates/gnoblin-render*/**"
+      - "crates/gnoblin-input/**"
+      - "crates/gnoblin-model/**"
+      - "Cargo.lock"
+      - "scripts/wlcs.sh"
+      - "scripts/wlcs-run.py"
+      - "tests/wlcs/**"
+      - ".github/workflows/wlcs.yml"
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "gate (the passing set), core (the core subset against expected.toml) or all (every wlcs test)"
+        default: gate
+        type: choice
+        options: [gate, core, all]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  wlcs:
+    name: wlcs against the headless compositor
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      # What the compositor's crates link (PipeWire, xkbcommon, libinput, udev, seat, GBM) and what wlcs needs.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ pkg-config libwayland-dev libgtest-dev libgmock-dev libboost-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev libxkbcommon-dev libinput-dev libudev-dev \
+            libseat-dev libgbm-dev libdrm-dev libdbus-1-dev libpam0g-dev
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Run wlcs
+        run: |
+          case "${{ inputs.scope }}" in
+            all) scripts/wlcs.sh --all ;;
+            core) scripts/wlcs.sh ;;
+            *) scripts/wlcs.sh --gate ;;
+          esac

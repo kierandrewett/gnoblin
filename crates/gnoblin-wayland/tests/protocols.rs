@@ -1008,17 +1008,18 @@ fn a_scroll_over_a_window_reaches_the_pointer_in_pixels_and_steps() {
         let _window = client.map_window("org.gnoblin.Scrolled");
         let geometry = session.focused_window();
         session.move_pointer(centre(geometry));
-        client.wait_for(|state| state.pointer_enters == 1);
+        // The enter is a group of its own and closes with its frame, so the scroll's frames are counted from there.
+        let before = client.wait_for(|state| state.pointer_enters == 1).pointer_frames;
 
         // One wheel notch is 120 units: 15 logical pixels, with the step count alongside.
         session.scroll(0, 120);
-        let state = client.wait_for(|state| state.pointer_frames == 1);
+        let state = client.wait_for(|state| state.pointer_frames == before + 1);
         assert_eq!(state.scrolls, vec![(wl_pointer::Axis::VerticalScroll, 15.0)]);
         assert_eq!(state.scroll_steps, vec![(wl_pointer::Axis::VerticalScroll, 120)]);
 
         // Two notches on the horizontal axis: 30 pixels, and 240 units.
         session.scroll(-240, 0);
-        let state = client.wait_for(|state| state.pointer_frames == 2);
+        let state = client.wait_for(|state| state.pointer_frames == before + 2);
         assert_eq!(state.scrolls[1], (wl_pointer::Axis::HorizontalScroll, -30.0));
         assert_eq!(state.scroll_steps[1], (wl_pointer::Axis::HorizontalScroll, -240));
     });

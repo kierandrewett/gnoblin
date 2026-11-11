@@ -84,6 +84,7 @@ members = [
     "crates/gnoblin-testkit",
     "crates/gnoblin-types",
     "crates/gnoblin-wayland",
+    "crates/gnoblin-wlcs",
     "crates/gnoblin-xwayland",
     "crates/gnoblinctl",
     "crates/xdg-desktop-portal-gnoblin",

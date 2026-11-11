@@ -549,6 +549,24 @@ impl Server {
                                     log::warn!(%error, "a view connection could not be adopted");
                                 }
                             }
+                            Command::AdoptClient { stream, reply } => {
+                                let tag = state.adopt_client(stream);
+                                if let Err(error) = &tag {
+                                    log::warn!(%error, "an application connection could not be adopted");
+                                }
+                                let _ = reply.send(tag.ok());
+                            }
+                            Command::PlaceSurface {
+                                client,
+                                surface,
+                                at,
+                                reply,
+                            } => {
+                                let _ = reply.send(state.place_surface(client, surface, at));
+                            }
+                            Command::Sync { reply } => {
+                                let _ = reply.send(());
+                            }
                             Command::ProtectSession { pid, reply } => {
                                 let _ = reply.send(state.protect_hosted_session(pid));
                             }
@@ -1010,6 +1028,46 @@ impl ControlHandle {
         self.control.push(Command::AdoptView { stream });
     }
 
+    /// Adopts `stream` as an ordinary application and returns the tag that names the client afterwards.
+    ///
+    /// For an embedder that made both ends of the pair and cannot tell its clients apart by process (the wlcs
+    /// integration is one: every conformance client shares its pid). The tag is what [`Self::place_surface`] takes.
+    /// [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`] or could not insert the stream.
+    #[must_use]
+    pub fn adopt_client(&self, stream: std::os::unix::net::UnixStream) -> Option<u64> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::AdoptClient { stream, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok().flatten()
+    }
+
+    /// Places the window of the surface an adopted client names by its protocol object id, keeping its size.
+    ///
+    /// The position is exact: it is not clamped to the work area. `true` when the window was placed, `false` when
+    /// the tag or the id names nothing, the surface is no managed window, or the window is maximised or fullscreen.
+    /// [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`].
+    #[must_use]
+    pub fn place_surface(&self, client: u64, surface: u32, at: gnoblin_types::Point) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::PlaceSurface {
+            client,
+            surface,
+            at,
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Waits until the loop has run every command queued before this call, such as injected input.
+    ///
+    /// Injection returns once the command is queued, so a client that asks for a round trip right after it can be
+    /// answered before the loop has applied the input. A caller that must see the effect on the wire first calls this
+    /// after injecting. `false` means the loop did not answer within [`FOCUS_TIMEOUT`] because it is stopping.
+    pub fn sync(&self) -> bool {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::Sync { reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).is_ok()
+    }
+
     /// Asks for a hosted session to be protected, as the manager's `Protect` does.
     ///
     /// [`None`] means the loop did not answer in time; `false` means no session runs
@@ -1304,6 +1362,20 @@ enum Command {
     GrantRole { pid: u32, role: ClientRole },
     /// Adopt a connected socket as a client with the `view` role; see `ControlHandle::adopt_view`.
     AdoptView { stream: std::os::unix::net::UnixStream },
+    /// Adopt a connected socket as an unprivileged client and name it; see `ControlHandle::adopt_client`.
+    AdoptClient {
+        stream: std::os::unix::net::UnixStream,
+        reply: std::sync::mpsc::SyncSender<Option<u64>>,
+    },
+    /// Place the window of a surface an adopted client names; see `ControlHandle::place_surface`.
+    PlaceSurface {
+        client: u64,
+        surface: u32,
+        at: gnoblin_types::Point,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// A barrier: answered once every command queued before it has run; see `ControlHandle::sync`.
+    Sync { reply: std::sync::mpsc::SyncSender<()> },
     /// Protect a hosted session, and answer whether the process was found.
     ProtectSession {
         pid: u32,

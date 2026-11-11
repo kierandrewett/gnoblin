@@ -1,0 +1,445 @@
+# What wlcs is expected to do against the Rust compositor (design/e2e-wlcs.md).
+#
+# `core` is the Phase 2 subset: the gtest-name globs scripts/wlcs.sh runs by default. `passing` is every test that
+# passes today and is generated (`scripts/wlcs.sh --update`): a test in it that stops passing is a regression, and
+# CI runs exactly this list. Everything else in the subset has to match a `known_failure` pattern, each with the
+# reason and the Beads issue that owns it; a known failure that starts passing must move to `passing`.
+
+core = [
+    "SelfTest.*",
+    "FrameSubmission.*",
+    "BadBufferTest.*",
+    "WlOutputTest.*",
+    "XdgOutputV1Test.*",
+    "WpViewporter*",
+    "XdgSurfaceStableTest.*",
+    "XdgToplevelStable*",
+    "XdgPopupStable/*",
+    "XdgPopupTest.*",
+    "*XdgPopupPositionerTest.*",
+    "XdgShellStableSubsurfaces/*",
+    "*RegionSurfaceInputCombinations.*",
+    "SurfaceInputRegions/*",
+    "ToplevelInputRegions/*",
+    "AllSurfaceTypes/TouchTest.*",
+    "*SurfacePointerMotionTest.*",
+    "ClientSurfaceEventsTest.*",
+]
+
+passing = [
+    "AllSurfaceTypes/TouchTest.touch_and_drag_on_surface_seen/xdg_surface_stable",
+    "AllSurfaceTypes/TouchTest.touch_drag_outside_of_surface_and_back_not_lost/subsurface_at_x0_y0",
+    "AllSurfaceTypes/TouchTest.touch_drag_outside_of_surface_and_back_not_lost/subsurface_at_x7_y12",
+    "AllSurfaceTypes/TouchTest.touch_drag_outside_of_surface_and_back_not_lost/xdg_surface_stable",
+    "AllSurfaceTypes/TouchTest.touch_on_surface_seen/subsurface_at_x0_y0",
+    "AllSurfaceTypes/TouchTest.touch_on_surface_seen/subsurface_at_x7_y12",
+    "AllSurfaceTypes/TouchTest.touch_on_surface_seen/xdg_surface_stable",
+    "BadBufferTest.client_lies_about_buffer_size",
+    "ClientSurfaceEventsTest.frame_timestamp_increases",
+    "ClientSurfaceEventsTest.frame_timestamp_never_decreases",
+    "ClientSurfaceEventsTest.surface_enters_output",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/0",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/1",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/2",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/3",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/4",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/5",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/6",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/7",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/0",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/1",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/2",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/3",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/4",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
+    "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/16",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/17",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/28",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/29",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/4",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/40",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/41",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/5",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/10",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/11",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/16",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/17",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/20",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/21",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/22",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/23",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/28",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/29",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/32",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/33",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/34",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/35",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/4",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/40",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/41",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/42",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/43",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/44",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/45",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/46",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/47",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/8",
+    "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/9",
+    "FrameSubmission.frame_requests_without_buffer_are_called_back_eventually",
+    "FrameSubmission.post_one_frame_at_a_time",
+    "FrameSubmission.test_buffer_can_be_deleted_after_attached",
+    "FrameSubmission.when_client_endlessly_requests_frame_then_callbacks_are_throttled",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/0",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/1",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/2",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/3",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/4",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/5",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/6",
+    "FullSurface/RegionSurfaceInputCombinations.input_inside_region_seen/7",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/0",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/1",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/2",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/3",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/4",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
+    "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/0",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/1",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/10",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/11",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/2",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/3",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/4",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/5",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/6",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/7",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/8",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/9",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/0",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/1",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/10",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/11",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/2",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/3",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/4",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/8",
+    "MultiRectCorners/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/9",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/16",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/17",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/28",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/29",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/4",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/40",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/41",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/5",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/52",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_inside_region_seen/53",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/10",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/11",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/16",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/17",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/20",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/21",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/22",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/23",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/28",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/29",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/30",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/31",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/32",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/33",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/34",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/35",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/4",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/40",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/41",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/42",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/43",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/44",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/45",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/46",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/47",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/52",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/53",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/56",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/57",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/58",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/59",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/8",
+    "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/9",
+    "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/0",
+    "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/1",
+    "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/2",
+    "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/3",
+    "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/0",
+    "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/1",
+    "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/2",
+    "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/3",
+    "SelfTest.dispatch_until_times_out_at_the_right_time",
+    "SelfTest.dispatch_until_times_out_on_failure",
+    "SelfTest.does_not_acquire_version_newer_than_wlcs_supports",
+    "SelfTest.given_second_client_when_both_create_a_surface_nothing_bad_happens",
+    "SelfTest.given_second_client_when_first_creates_a_surface_nothing_bad_happens",
+    "SelfTest.given_second_client_when_roundtripping_both_clients_nothing_bad_happens",
+    "SelfTest.given_second_client_when_roundtripping_first_client_nothing_bad_happens",
+    "SelfTest.when_a_client_creates_a_surface_nothing_bad_happens",
+    "SelfTest.when_creating_second_client_nothing_bad_happens",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/0",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/1",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/2",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/3",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/4",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/5",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/6",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_inside_region_seen/7",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/0",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/1",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/2",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/3",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/4",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
+    "SmallerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_parent_unmapped/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_falls_through_subsurface_when_unmapped/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_hits_parent_after_falling_through_subsurface/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_hits_parent_after_falling_through_subsurface/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_hits_parent_after_falling_through_subsurface/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_hits_parent_after_falling_through_subsurface/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_hits_parent_after_falling_through_subsurface/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_hits_parent_after_falling_through_subsurface/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_region_after_null_buffer_committed/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_in_surface_without_region_after_null_buffer_committed/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_not_seen_over_empty_region/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_dragged_off_surface/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_dragged_off_surface/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_dragged_off_surface/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_dragged_off_surface/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_dragged_off_surface/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_dragged_off_surface/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_surface_unmapped_and_remapped/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_surface_unmapped_and_remapped/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_surface_unmapped_and_remapped/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_surface_unmapped_and_remapped/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_surface_unmapped_and_remapped/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_after_surface_unmapped_and_remapped/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.input_seen_by_second_surface_after_drag_off_first_and_up/9",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/10",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/11",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/4",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/5",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/6",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/7",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/8",
+    "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/9",
+    "ToplevelInputRegions/ToplevelInputCombinations.input_falls_through_surface_without_region_after_null_buffer_committed/4",
+    "ToplevelInputRegions/ToplevelInputCombinations.input_falls_through_surface_without_region_after_null_buffer_committed/5",
+    "WlOutputTest.wl_output_properties_set",
+    "WlOutputTest.wl_output_release",
+    "WpViewporterDestParamsTest.raises_protocol_error_on_invalid_value/height_must_be_non_negative",
+    "WpViewporterDestParamsTest.raises_protocol_error_on_invalid_value/height_must_be_positive",
+    "WpViewporterDestParamsTest.raises_protocol_error_on_invalid_value/width_must_be_non_negative",
+    "WpViewporterDestParamsTest.raises_protocol_error_on_invalid_value/width_must_be_positive",
+    "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_height_must_be_non_negative",
+    "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_height_must_be_positive",
+    "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_width_must_be_non_negative",
+    "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_width_must_be_positive",
+    "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_x_must_be_non_negative",
+    "WpViewporterSrcParamsTest.raises_protocol_error_on_invalid_value/src_y_must_be_non_negative",
+    "WpViewporterTest.all_minus_one_destination_unsets_destination_viewport",
+    "WpViewporterTest.all_minus_one_source_unsets_source_rect",
+    "WpViewporterTest.can_destroy_viewport_after_surface_is_destroyed",
+    "WpViewporterTest.committing_new_destination_without_new_buffer_still_changes_size",
+    "WpViewporterTest.set_destination_sets_output_size",
+    "WpViewporterTest.setting_destination_after_surface_has_been_destroyed_is_an_error",
+    "WpViewporterTest.setting_source_after_surface_has_been_destroyed_is_an_error",
+    "WpViewporterTest.when_buffer_is_scaled_destination_is_in_scaled_coordinates",
+    "WpViewporterTest.when_buffer_is_scaled_source_is_in_scaled_coordinates",
+    "WpViewporterTest.when_source_but_no_destination_set_window_has_src_size",
+    "XdgOutputV1Test.xdg_output_properties_set",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.by_default_subsurface_is_sync/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_can_be_set_to_sync/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_moves_after_both_sync_parent_and_grandparent_commit/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_desync_parent_does_not_move_when_only_grandparent_committed/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_desync_parent_moves_when_only_parent_committed/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_sync_parent_does_not_move_when_only_parent_committed/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.gets_input_over_surface_with_empty_region/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.input_falls_through_empty_subsurface_input_region/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.one_subsurface_to_another_fallthrough/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.pointer_input_correctly_offset_for_subsurface/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_gets_pointer_input/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_has_correct_parent/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_of_a_subsurface_handled/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.sync_subsurface_moves_when_only_parent_committed/0",
+    "XdgSurfaceStableTest.gets_configure_event",
+    "XdgSurfaceStableTest.supports_xdg_shell_stable_protocol",
+    "XdgToplevelStableConfigurationTest.activated_state_follows_pointer",
+    "XdgToplevelStableConfigurationTest.window_can_fullscreen_itself",
+    "XdgToplevelStableConfigurationTest.window_can_maximize_itself",
+    "XdgToplevelStableConfigurationTest.window_can_unfullscreen_itself",
+    "XdgToplevelStableConfigurationTest.window_can_unmaximize_itself",
+    "XdgToplevelStableTest.null_parent_can_be_set",
+    "XdgToplevelStableTest.parent_can_be_set",
+    "XdgToplevelStableTest.when_parent_is_set_to_child_descendant_error_is_raised",
+    "XdgToplevelStableTest.when_parent_is_set_to_self_error_is_raised",
+]
+
+[[known_failure]]
+pattern = "XdgToplevelStableTest.*geom_offset"
+reason = "xdg window geometry offsets are ignored: a surface is placed and hit at its own origin"
+issue = "gnoblin-f3cp"
+
+[[known_failure]]
+pattern = "*xdg_surface_stable_12_5_20_6*"
+reason = "windows with an xdg window-geometry offset are placed by surface origin, not geometry origin"
+issue = "gnoblin-f3cp"
+
+[[known_failure]]
+pattern = "*RegionSurfaceInputCombinations.*"
+reason = "edge cases on the geometry-offset builder and the subsurface builder (see the issue)"
+issue = "gnoblin-f3cp"
+
+[[known_failure]]
+pattern = "SurfaceInputRegions/*"
+reason = "fall-through to the parent after a subsurface region, geometry-offset builder"
+issue = "gnoblin-f3cp"
+
+[[known_failure]]
+pattern = "*XdgPopupPositionerTest.*"
+reason = "popup tests fail; cause not triaged"
+issue = "gnoblin-6hac"
+
+[[known_failure]]
+pattern = "XdgPopupStable/*"
+reason = "popup tests fail; cause not triaged; pointer hit-testing of popups is also missing"
+issue = "gnoblin-6hac"
+
+[[known_failure]]
+pattern = "XdgPopupTest.*"
+reason = "popup tests fail; cause not triaged"
+issue = "gnoblin-6hac"
+
+[[known_failure]]
+pattern = "AllSurfaceTypes/TouchTest.*"
+reason = "touch focus ignores subsurfaces; wlcs aborts on wl_touch.frame"
+issue = "gnoblin-y3yk"
+
+[[known_failure]]
+pattern = "XdgSurfaceStableTest.*"
+reason = "protocol errors the suite expects are not raised"
+issue = "gnoblin-ve4a"
+
+[[known_failure]]
+pattern = "WpViewporterTest.*"
+reason = "protocol errors the suite expects are not raised"
+issue = "gnoblin-ve4a"
+
+[[known_failure]]
+pattern = "BadBufferTest.*"
+reason = "truncated shm file is not an error"
+issue = "gnoblin-ve4a"
+
+[[known_failure]]
+pattern = "XdgToplevelStable*"
+reason = "initial configure suggests 800x600, wm_capabilities, activation follows pointer, interactive move and resize"
+issue = "gnoblin-jpbf"
+
+[[known_failure]]
+pattern = "XdgShellStableSubsurfaces/*"
+reason = "sync/desync subsurface position and input cases"
+issue = "gnoblin-v3hw"
+
+[[known_failure]]
+pattern = "ClientSurfaceEventsTest.*"
+reason = "no pointer enter/leave when a window moves under a stationary pointer"
+issue = "gnoblin-v3hw"
+
+[[known_failure]]
+pattern = "PointerConstraints.*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"
+
+[[known_failure]]
+pattern = "RelativePointer.*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"
+
+[[known_failure]]
+pattern = "TextInputV3*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"
+
+[[known_failure]]
+pattern = "CopyCutPaste.*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"
+
+[[known_failure]]
+pattern = "PrimarySelection.*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"
+
+[[known_failure]]
+pattern = "XdgDecorationV1Test.*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"
+
+[[known_failure]]
+pattern = "FractionalScaleV1Test.*"
+reason = "phase 3 protocol"
+issue = "gnoblin-of0d"

@@ -668,7 +668,7 @@ fn a_scroll_while_locked_reaches_only_the_lock_surface() {
 
         session.scroll(0, 120);
         wait_for_client(&mut locker, "the lock surface never received the scroll", |state| {
-            state.pointer_frames >= 1
+            !state.scrolls.is_empty() && !state.scroll_steps.is_empty()
         });
         let locker_state = &locker.state;
         assert_eq!(locker_state.scrolls, vec![(wl_pointer::Axis::VerticalScroll, 15.0)]);

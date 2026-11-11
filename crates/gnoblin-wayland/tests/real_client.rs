@@ -593,6 +593,27 @@ fn a_second_client_takes_focus_and_a_click_switches_it_back() {
 }
 
 #[test]
+fn a_toplevel_is_told_it_is_activated_while_it_holds_focus_and_not_after() {
+    let session = Session::start_allowing_focus(Headless::new());
+    session.run(|session| {
+        let mut first = Client::connect(session.socket());
+        let _alpha = first.map_window("org.gnoblin.Alpha", "Alpha");
+        first.wait_until("the focused window's activated state", |seen| {
+            seen.state.states.contains(&xdg_toplevel::State::Activated)
+        });
+
+        let mut second = Client::connect(session.socket());
+        let _beta = second.map_window("org.gnoblin.Beta", "Beta");
+        second.wait_until("the new window's activated state", |seen| {
+            seen.state.states.contains(&xdg_toplevel::State::Activated)
+        });
+        first.wait_until("the first window losing its activated state", |seen| {
+            !seen.state.states.contains(&xdg_toplevel::State::Activated)
+        });
+    });
+}
+
+#[test]
 fn a_client_that_disconnects_leaves_no_ghost_window() {
     let session = Session::start(Headless::new());
     session.run(|session| {

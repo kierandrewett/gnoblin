@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_types::{Insets, OutputId, Rect, Size, WindowId, cascade_position};
+use gnoblin_types::{Insets, OutputId, Point, Rect, Size, WindowId, cascade_position};
 
 use crate::policy::NewWindowFocus;
 
@@ -460,6 +460,28 @@ impl Fallback {
         }
         window.geometry = fitted;
         window.restore = fitted;
+        Ok(vec![Self::configured(window)])
+    }
+
+    /// Puts a floating window's top left at an exact position and keeps its size, with no work-area constraint.
+    ///
+    /// [`Fallback::move_resize`] is the policy for a request that comes from a user or a script: it keeps the window
+    /// where a person can reach it. This is for the embedder that positions windows deliberately, such as the
+    /// conformance suite's `position_window_absolute`, whose tests place a window wherever its geometry needs.
+    ///
+    /// # Errors
+    /// [`FallbackRefusal::Gone`] for a window that is not open, [`FallbackRefusal::NotFloating`] for a maximised or fullscreen one.
+    pub(crate) fn place(&mut self, id: WindowId, at: Point) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
+        let window = self.windows.get_mut(&id).ok_or(FallbackRefusal::Gone)?;
+        if window.state.maximised || window.state.fullscreen {
+            return Err(FallbackRefusal::NotFloating);
+        }
+        let placed = Rect::new(at.x, at.y, window.geometry.width, window.geometry.height);
+        if placed == window.geometry {
+            return Ok(Vec::new());
+        }
+        window.geometry = placed;
+        window.restore = placed;
         Ok(vec![Self::configured(window)])
     }
 
@@ -1241,6 +1263,28 @@ mod tests {
         desk.fallback.set_maximised(id(1), true);
         assert_eq!(
             desk.fallback.move_resize(id(1), Rect::new(0, 0, 10, 10)),
+            Err(FallbackRefusal::NotFloating)
+        );
+    }
+
+    #[test]
+    fn a_placement_is_exact_where_a_control_move_is_clamped_and_refused_for_a_maximised_window() {
+        let mut desk = Desk::new();
+        desk.open(1);
+        let effects = desk
+            .fallback
+            .place(id(1), Point::new(1800, 1000))
+            .expect("a floating window is placed");
+        assert_eq!(
+            configured(&effects, id(1)),
+            Some(Rect::new(1800, 1000, 600, 400)),
+            "the position is kept as asked and the size does not change"
+        );
+        assert_eq!(desk.fallback.place(id(1), Point::new(1800, 1000)), Ok(Vec::new()));
+        assert_eq!(desk.fallback.place(id(9), Point::new(0, 0)), Err(FallbackRefusal::Gone));
+        desk.fallback.set_maximised(id(1), true);
+        assert_eq!(
+            desk.fallback.place(id(1), Point::new(0, 0)),
             Err(FallbackRefusal::NotFloating)
         );
     }

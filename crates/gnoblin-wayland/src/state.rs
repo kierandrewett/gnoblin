@@ -12,7 +12,8 @@ use std::time::Instant;
 
 use smithay::backend::input::{Axis, AxisSource, ButtonState, InputTime, TouchSlot};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
-use smithay::desktop::PopupManager;
+use smithay::desktop::utils::under_from_surface_tree;
+use smithay::desktop::{PopupManager, WindowSurfaceType};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorImageStatus, MotionEvent, RelativeMotionEvent};
 use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, TouchHandle, UpEvent};
@@ -25,7 +26,9 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
-use smithay::wayland::compositor::{CompositorState, SurfaceAttributes, with_states};
+use smithay::wayland::compositor::{
+    CompositorState, SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward,
+};
 use smithay::wayland::content_type::ContentTypeState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelListState;
@@ -503,6 +506,8 @@ pub struct State {
     pub(crate) outputs: Vec<OutputEntry>,
     /// The next window identity to hand out.
     next_window: u32,
+    /// The clients an embedder adopted through [`State::adopt_client`], by the tag it was handed.
+    adopted: HashMap<u64, Client>,
     /// The protection generation the frame being drawn was described under.
     ///
     /// Read when the scene is described and reported when the frame is presented, so
@@ -815,6 +820,7 @@ impl State {
             windows: BTreeMap::new(),
             outputs: Vec::new(),
             next_window: 1,
+            adopted: HashMap::new(),
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             shell_hover: None,
@@ -1026,6 +1032,52 @@ impl State {
         self.access.promise(pid, role);
     }
 
+    /// Adopts a connected socket as an ordinary application and returns the tag that names it.
+    ///
+    /// The embedder that made both ends of the pair (the wlcs integration, which hands the other end to a conformance
+    /// client) cannot tell its clients apart by process, because they all share one. The tag is what it names a client
+    /// by afterwards, in [`State::place_surface`]. The role is the unprivileged socket's, as a connection to the
+    /// public socket would have.
+    ///
+    /// # Errors
+    ///
+    /// The display's own error when it cannot take the stream.
+    pub(crate) fn adopt_client(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<u64> {
+        let client = self.insert_client(
+            stream,
+            Arc::new(crate::protocols::wl_compositor::WlCompositorClientState::new(
+                &self.access,
+            )),
+            ClientRole::Unprivileged,
+        )?;
+        let tag = u64::try_from(self.adopted.len()).unwrap_or(u64::MAX).saturating_add(1);
+        self.adopted.insert(tag, client);
+        Ok(tag)
+    }
+
+    /// Puts the window whose surface a client names by its protocol object id at an exact position, keeping its size.
+    ///
+    /// The position is not clamped to the work area: the embedder places windows deliberately, which is what the
+    /// record's [`Fallback::place`] is for. `false` when the tag names no client, the id names no surface of it, the
+    /// surface is no managed window, or the record refuses (a maximised or fullscreen window is not placed).
+    pub(crate) fn place_surface(&mut self, tag: u64, surface: u32, at: gnoblin_types::Point) -> bool {
+        let Some(client) = self.adopted.get(&tag) else {
+            return false;
+        };
+        let Ok(surface) = client.object_from_protocol_id::<WlSurface>(&self.display_handle, surface) else {
+            return false;
+        };
+        let Some(window) = self.window_of(&surface) else {
+            return false;
+        };
+        let Ok(effects) = self.fallback.place(window, at) else {
+            return false;
+        };
+        self.apply(effects);
+        self.publish();
+        true
+    }
+
     /// Adopts a connected socket the guardian made as a client with the `view` role.
     ///
     /// The role is the connection's own, recorded before its first request, so the client's
@@ -1107,6 +1159,7 @@ impl State {
         };
         let pointer = self.pointer.clone();
         pointer.relative_motion(self, Some((surface, origin)), &event);
+        pointer.frame(self);
     }
 
     /// An output's Smithay object and the rectangle it occupies, for the frame path.
@@ -1512,6 +1565,28 @@ impl State {
         self.set_keyboard_focus(target);
     }
 
+    /// Tells every Wayland toplevel whether it holds the keyboard: `xdg_toplevel.state.activated` is how a client
+    /// learns to draw itself focused, and the only one of the window states the focus decides.
+    ///
+    /// A toplevel whose state changes is sent a configure with the new state, as the focus-follows rule does for
+    /// every other state; one that has not had its initial configure yet carries the state into that configure.
+    fn announce_activation(&self, focused: Option<WindowId>) {
+        for (window, entry) in &self.windows {
+            let Managed::Wayland(surface) = &entry.surface else {
+                continue;
+            };
+            let activated = Some(*window) == focused;
+            let changed = surface.with_pending_state(|pending| {
+                let was = pending.states.contains(xdg_toplevel::State::Activated);
+                set_flag(&mut pending.states, xdg_toplevel::State::Activated, activated);
+                was != activated
+            });
+            if changed && surface.is_initial_configure_sent() {
+                surface.send_configure();
+            }
+        }
+    }
+
     /// Installs the keyboard focus target. This is the only place focus is set.
     ///
     /// The clipboard follows the keyboard: `wl_data_device` delivers a selection to the
@@ -1547,6 +1622,7 @@ impl State {
         let client = target.as_ref().and_then(|surface| surface.client());
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, target.clone(), serial);
+        self.announce_activation(focused);
         let windows: Vec<WindowId> = self.fallback.windows().map(|window| window.id).collect();
         for window in windows {
             self.publish_window_state(window);
@@ -1581,6 +1657,9 @@ impl State {
                 time,
             },
         );
+        // The enter, leave and motion of one move are a group: a client that bound `wl_pointer` at version 5 or
+        // later (GTK and Qt both do) applies none of them before the frame that closes it.
+        pointer.frame(self);
     }
 
     /// The layout position nearest `wanted` that is inside an output.
@@ -1627,6 +1706,7 @@ impl State {
                 time,
             },
         );
+        pointer.frame(self);
     }
 
     /// The surface of the window the window manager has focused.
@@ -2234,20 +2314,33 @@ impl State {
         }
     }
 
-    /// Answers every frame callback the surface has queued, which is what tells a client
-    /// its frame was presented and it may draw the next one.
+    /// Answers every frame callback queued on the surface, on its subsurfaces and on its popups, which is what tells a
+    /// client its frame was presented and it may draw the next one.
+    ///
+    /// The callbacks of a subsurface or a popup are the client's to wait for exactly as a toplevel's are: they are
+    /// part of the same frame, and a client that paces a subsurface or a menu by them would stall for ever on a
+    /// compositor that answered the root alone.
     fn done_frame_callbacks(surface: &WlSurface, time: u32) {
-        with_states(surface, |states| {
-            for callback in states
-                .cached_state
-                .get::<SurfaceAttributes>()
-                .current()
-                .frame_callbacks
-                .drain(..)
-            {
-                callback.done(time);
-            }
-        });
+        with_surface_tree_downward(
+            surface,
+            (),
+            |_, _, ()| TraversalAction::DoChildren(()),
+            |_, states, ()| {
+                for callback in states
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .current()
+                    .frame_callbacks
+                    .drain(..)
+                {
+                    callback.done(time);
+                }
+            },
+            |_, _, ()| true,
+        );
+        for (popup, _) in PopupManager::popups_for_surface(surface) {
+            Self::done_frame_callbacks(popup.wl_surface(), time);
+        }
     }
 
     /// Ends the iteration the frame hook ran, dropping the damage it consumed.
@@ -2813,10 +2906,23 @@ impl State {
             return None;
         }
         let (window, local) = self.window_pick(position)?;
-        let surface = self.windows.get(&window)?.surface.wl_surface()?;
-        // The local point is the surface point under the pointer, so the origin that makes the
-        // surface-relative position come out as that point is the global position less it.
-        let origin = SmithayPoint::from((position.x - local.x, position.y - local.y));
+        let root = self.windows.get(&window)?.surface.wl_surface()?;
+        // The scene picks the window by its bounds. The surface the pointer is over is the topmost one of the window's
+        // tree, subsurfaces included, whose input region holds the point: a point the root's input region leaves out
+        // reaches a subsurface laid over it, or nothing.
+        let (surface, offset) = under_from_surface_tree(
+            &root,
+            SmithayPoint::from((local.x, local.y)),
+            (0, 0),
+            WindowSurfaceType::ALL,
+        )?;
+        // The local point is the point of the root surface under the pointer, so the root's origin is the global
+        // position less it, and the origin that makes the surface-relative position come out right is the found
+        // surface's own, which the tree reports relative to the root's.
+        let origin = SmithayPoint::from((
+            position.x - local.x + f64::from(offset.x),
+            position.y - local.y + f64::from(offset.y),
+        ));
         Some((surface, origin))
     }
 }
@@ -3292,6 +3398,7 @@ impl Host for State {
                         time,
                     },
                 );
+                pointer.frame(self);
             }
             InputEvent::PointerButton { button, pressed } => {
                 // A press or release over a shell node, or over a window while a shell holds the tree, is an
@@ -3326,6 +3433,9 @@ impl Host for State {
                         },
                     },
                 );
+                // A press or release is a group of its own, and a client that bound `wl_pointer` at version 5 or
+                // later applies nothing of it before the frame that closes the group.
+                pointer.frame(self);
             }
             InputEvent::Key { keycode, pressed } => {
                 let serial = SERIAL_COUNTER.next_serial();

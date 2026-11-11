@@ -8,3 +8,7 @@ reason = "gnoblin-parity is a command-line tool: its stdout is the report it exi
 [[allow]]
 path = "crates/gnoblin-log/src/file.rs"
 reason = "the stderr report of a failed log write: it names the failure once per run of failures, and it must not go through the log pipeline it is reporting on, since the same write would fail again"
+
+[[allow]]
+path = "crates/gnoblin-wlcs"
+reason = "gnoblin-wlcs is a plugin the wlcs executable loads: its stderr is the only channel to the person running the suite, and it reports a session that did not start or a window it could not place, which no log sink is configured to show inside that process"
