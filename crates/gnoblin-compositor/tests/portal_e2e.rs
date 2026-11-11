@@ -35,7 +35,7 @@ use gnoblin_proto::CodecError;
 use support::ei::{EiClient, focused_client, frame, wait_for_key};
 use support::pipewire::Daemon;
 use support::{PointerEvent, Session, Wire, wait_for};
-use xdg_desktop_portal_gnoblin::serve::{Options as ServeOptions, serve};
+use xdg_desktop_portal_gnoblin::serve::{ServeOptions, serve};
 use xdg_desktop_portal_gnoblin::{BUS_NAME, IpcHost};
 use zbus::connection::Builder;
 use zbus::{Connection, ObjectPath, OwnedVariant, Proxy, Variant};

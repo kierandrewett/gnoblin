@@ -40,7 +40,7 @@ pub const CONSENT_LIFETIME: u64 = 120_000;
 
 /// What the process was started with, besides its connections.
 #[derive(Clone, Debug)]
-pub struct Options {
+pub struct ServeOptions {
     /// The folder screenshots are written to, if the user has one.
     pub pictures: Option<PathBuf>,
     /// Whether Gnoblin serves the Secret portal: `keyring.enabled`.
@@ -62,7 +62,7 @@ pub struct Options {
 pub async fn serve<T>(
     connection: Connection,
     shell: Option<(IpcHost, IpcLoop<T>)>,
-    options: Options,
+    options: ServeOptions,
     ready: &mut dyn FnMut(),
 ) -> Result<(), Box<dyn std::error::Error>>
 where

@@ -36,7 +36,7 @@ use std::process::ExitCode;
 
 use gnoblin_client::{Client, Reporter, UnixTransport, inherited_stream, socket_path};
 use gnoblin_types::Version;
-use xdg_desktop_portal_gnoblin::serve::{CONSENT_LIFETIME, Options, serve};
+use xdg_desktop_portal_gnoblin::serve::{CONSENT_LIFETIME, ServeOptions, serve};
 use xdg_desktop_portal_gnoblin::{IpcHost, IpcLoop, picture};
 
 gnoblin_log::logger!(log = "portal");
@@ -112,7 +112,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             true
         }
     };
-    let options = Options {
+    let options = ServeOptions {
         pictures: picture::pictures_dir(|name| std::env::var(name).ok()),
         secret_served,
         consent_lifetime: CONSENT_LIFETIME,
