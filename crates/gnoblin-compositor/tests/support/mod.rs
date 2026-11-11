@@ -17,6 +17,9 @@
 
 #![allow(dead_code)]
 
+pub mod ei;
+pub mod pipewire;
+
 use std::io::Write as _;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;

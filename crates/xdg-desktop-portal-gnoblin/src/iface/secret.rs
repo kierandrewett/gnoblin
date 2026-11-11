@@ -44,7 +44,7 @@ impl SecretPortal {
 #[zbus::interface(name = "org.freedesktop.impl.portal.Secret")]
 impl SecretPortal {
     /// The interface version, so a frontend can tell what this build serves.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         SECRET_VERSION
     }

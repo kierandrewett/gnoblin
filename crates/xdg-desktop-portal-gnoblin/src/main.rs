@@ -33,26 +33,13 @@
 //! process waits on: it exits when the session bus goes away.
 
 use std::process::ExitCode;
-use std::sync::Arc;
 
-use futures_lite::future;
 use gnoblin_client::{Client, Reporter, UnixTransport, inherited_stream, socket_path};
 use gnoblin_types::Version;
-use xdg_desktop_portal_gnoblin::backends::Missing;
-use xdg_desktop_portal_gnoblin::capture_relay::CaptureRelay;
-use xdg_desktop_portal_gnoblin::host::NoShell;
-use xdg_desktop_portal_gnoblin::{
-    BUS_NAME, Backends, CaptureBackend, EisBackend, EisRelay, Host, IpcHost, IpcLoop, Portal, picture,
-};
-use zbus::fdo::RequestNameReply;
+use xdg_desktop_portal_gnoblin::serve::{CONSENT_LIFETIME, Options, serve};
+use xdg_desktop_portal_gnoblin::{IpcHost, IpcLoop, picture};
 
 gnoblin_log::logger!(log = "portal");
-
-/// How long one consent prompt stays open, in milliseconds.
-///
-/// Two minutes is the frontend's own default for a response, so a portal that waits longer
-/// than the frontend is a dialogue whose answer nobody can use.
-const CONSENT_LIFETIME: u64 = 120_000;
 
 fn main() -> ExitCode {
     // The configuration is read before the log exists, so a problem with it is reported once
@@ -106,23 +93,13 @@ fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptio
     options
 }
 
-/// Connect if a shell is reachable, export, own the name and serve until the bus goes.
+/// Connect if a shell is reachable, then serve until the bus goes.
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let (host, loop_, capture, eis) = match ipc() {
-        Ok((host, loop_)) => {
-            let folder = picture::pictures_dir(|name| std::env::var(name).ok());
-            let capture = Arc::new(CaptureRelay::new(host.clone(), folder)) as Arc<dyn CaptureBackend>;
-            let eis = Arc::new(EisRelay::new(host.clone())) as Arc<dyn EisBackend>;
-            (Box::new(host) as Box<dyn Host>, Some(loop_), capture, eis)
-        }
+    let shell = match ipc() {
+        Ok(shell) => Some(shell),
         Err(error) => {
             log::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
-            (
-                Box::new(NoShell) as Box<dyn Host>,
-                None,
-                Arc::new(Missing) as Arc<dyn CaptureBackend>,
-                Arc::new(Missing) as Arc<dyn EisBackend>,
-            )
+            None
         }
     };
 
@@ -135,54 +112,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             true
         }
     };
+    let options = Options {
+        pictures: picture::pictures_dir(|name| std::env::var(name).ok()),
+        secret_served,
+        consent_lifetime: CONSENT_LIFETIME,
+    };
     zbus::block_on(async move {
         let connection = zbus::Connection::session().await?;
-        let portal = Portal::new(
-            connection.clone(),
-            host,
-            Backends {
-                capture,
-                eis,
-                ..Backends::default()
-            },
-            CONSENT_LIFETIME,
-            secret_served,
-        );
-        portal.export().await?;
-        // The name is requested after the objects exist, and without queueing: a second
-        // portal for one session is a configuration mistake, and the one that lost says so
-        // instead of waiting behind the winner.
-        let mut reporter = Reporter::new(|name| std::env::var(name).ok());
-        match connection
-            .request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE)
-            .await
-        {
-            Ok(RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner) => {}
-            // Another portal serves this name. That is a second instance for the session: it
-            // leaves quietly, and it reports ready so the guardian's start sequence goes on.
-            Ok(RequestNameReply::Exists | RequestNameReply::InQueue) | Err(zbus::Error::NameTaken) => {
-                log::info!(name = BUS_NAME, "another portal serves this name; this instance exits");
-                reporter.ready(&[]);
-                return Ok(());
-            }
-            Err(error) => return Err(error.into()),
-        }
-        log::info!(name = BUS_NAME, "serving the Gnoblin portal backend");
-
-        if let Some(loop_) = loop_ {
-            let serving = portal.clone();
-            std::thread::Builder::new()
-                .name("gnoblin-portal-ipc".to_owned())
-                .spawn(move || loop_.run(serving))
-                .map_err(|error| format!("the IPC loop could not be started: {error}"))?;
-        }
         // The guardian starts the front and the autostart applications only after this report.
-        reporter.ready(&[]);
-
-        // The owner watch and the expiry loop run here. The bus closing is the end of the
-        // process: a bus-activated backend has no other reason to outlive its session.
-        future::or(portal.run(), connection.closed()).await;
-        Ok(())
+        let mut reporter = Reporter::new(|name| std::env::var(name).ok());
+        serve(connection, shell, options, &mut || reporter.ready(&[])).await
     })
 }
 

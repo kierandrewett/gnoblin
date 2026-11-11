@@ -177,6 +177,20 @@ impl Portal {
         self.shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// The lock, if nobody holds it at this moment.
+    ///
+    /// The thread that reads the compositor's connection takes the lock only through this. A
+    /// handler holds the lock across a consent offer, and that thread is the one that sends
+    /// the offer, so a thread that waited for the lock could wait for ever on a handler that is
+    /// waiting for it.
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, Shared>> {
+        match self.shared.try_lock() {
+            Ok(guard) => Some(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        }
+    }
+
     /// The input backend, cloned out of the shared state so a call to it is made without the
     /// lock: the compositor's answers are applied by a thread that takes the same lock.
     #[must_use]
@@ -362,6 +376,17 @@ impl Portal {
     /// Apply the settings object's observation and emit its changes.
     pub async fn observe(&self, observation: &gnoblin_model::Observation) {
         let changes = self.lock().settings.apply(observation);
+        self.announce(changes).await;
+    }
+
+    /// Apply the settings object's observation if the lock is free, and answer the changes to
+    /// announce; `None` means the lock was held and nothing was applied.
+    pub fn try_apply(&self, observation: &gnoblin_model::Observation) -> Option<Vec<crate::settings::Change>> {
+        self.try_lock().map(|mut shared| shared.settings.apply(observation))
+    }
+
+    /// Emit the signals for changes [`Portal::try_apply`] returned.
+    pub async fn announce(&self, changes: Vec<crate::settings::Change>) {
         let emitter = match SignalEmitter::new(&self.connection, PATH) {
             Ok(emitter) => emitter,
             Err(error) => {

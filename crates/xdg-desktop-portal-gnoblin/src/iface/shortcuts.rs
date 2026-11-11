@@ -186,7 +186,7 @@ impl GlobalShortcuts {
     }
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         GLOBAL_SHORTCUTS_VERSION
     }
@@ -349,7 +349,7 @@ impl Clipboard {
     }
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         CLIPBOARD_VERSION
     }

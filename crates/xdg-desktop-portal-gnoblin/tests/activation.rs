@@ -173,3 +173,62 @@ fn exits_when_the_bus_goes_away() {
     let status = backend.wait_for_exit();
     assert!(status.success(), "a bus loss is a clean exit, got {status}");
 }
+
+/// `org.freedesktop.impl.portal.*` names a member and a property the frontend looks up by
+/// spelling: `ConnectToEIS`, and a lowercase `version`. A backend that spells either another way
+/// is a backend the frontend cannot call or read, with no error to say why.
+#[test]
+fn spells_the_members_and_properties_the_frontend_looks_up() {
+    const VERSIONED: [&str; 8] = [
+        "org.freedesktop.impl.portal.Screenshot",
+        "org.freedesktop.impl.portal.ScreenCast",
+        "org.freedesktop.impl.portal.RemoteDesktop",
+        "org.freedesktop.impl.portal.InputCapture",
+        "org.freedesktop.impl.portal.GlobalShortcuts",
+        "org.freedesktop.impl.portal.Clipboard",
+        "org.freedesktop.impl.portal.Settings",
+        "org.freedesktop.impl.portal.Inhibit",
+    ];
+    let bus = Bus::start();
+    let directory = scratch("activation-spelling");
+    let mut backend = Backend::start(&bus, &directory);
+    zbus::block_on(async {
+        let connection = caller(&bus).await;
+        wait_for_name(&connection, &mut backend).await;
+
+        let properties = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.DBus.Properties")
+            .await
+            .expect("the properties proxy");
+        for interface in VERSIONED {
+            let version: OwnedVariant = properties
+                .call("Get", &(interface, "version"))
+                .await
+                .unwrap_or_else(|error| panic!("{interface} serves `version`: {error}"));
+            let version = u32::try_from(&version).expect("`version` is a u32");
+            assert!(version >= 1, "{interface} reports a version");
+        }
+
+        let introspectable = Proxy::new(&connection, BUS_NAME, PATH, "org.freedesktop.DBus.Introspectable")
+            .await
+            .expect("the introspection proxy");
+        let description: String = introspectable
+            .call("Introspect", &())
+            .await
+            .expect("Introspect answers");
+        for interface in [
+            "org.freedesktop.impl.portal.RemoteDesktop",
+            "org.freedesktop.impl.portal.InputCapture",
+        ] {
+            let start = description
+                .find(&format!("<interface name=\"{interface}\">"))
+                .unwrap_or_else(|| panic!("{interface} is exported"));
+            let end = description[start..]
+                .find("</interface>")
+                .map_or(description.len(), |offset| start + offset);
+            assert!(
+                description[start..end].contains("<method name=\"ConnectToEIS\">"),
+                "{interface} serves ConnectToEIS, spelled as the spec does"
+            );
+        }
+    });
+}

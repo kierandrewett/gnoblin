@@ -1,0 +1,229 @@
+//! A minimal EI client and the Wayland helpers the EIS tests share: enough of libei to bind
+//! the capabilities a seat advertises and send input, and a focused Wayland client to watch
+//! the input arrive at.
+
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::thread;
+use std::time::{Duration, Instant};
+
+use reis::{PendingRequestResult, ei};
+
+use super::{Client, Session};
+use gnoblin_input_eis::Caps;
+
+/// How long a test waits for a state before failing.
+const TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The Wayland key state for a press, from `wl_keyboard.key_state`.
+const PRESSED: u32 = 1;
+
+/// A minimal EI client: enough of the protocol to bind a keyboard and send keys.
+pub struct EiClient {
+    pub context: ei::Context,
+    pub seat: Option<ei::Seat>,
+    pub capabilities: u64,
+    pub devices: Vec<Device>,
+    pub serial: u32,
+    /// Whether the server told this client it was disconnected.
+    pub disconnected: bool,
+}
+
+/// One device the server created, with its interfaces and resume state.
+pub struct Device {
+    pub wire: ei::Device,
+    pub interfaces: std::collections::HashMap<String, reis::Object>,
+    pub done: bool,
+    pub resumed: Option<u32>,
+}
+
+impl EiClient {
+    /// Connects to `path` and completes the handshake as a sender.
+    pub fn connect(path: &Path) -> Self {
+        Self::over(UnixStream::connect(path).expect("the EIS endpoint is listening"))
+    }
+
+    /// Completes the handshake as a sender on a stream the test already holds, such as the
+    /// descriptor the portal handed out.
+    pub fn over(stream: UnixStream) -> Self {
+        let context = ei::Context::new(stream).expect("an EI connection");
+        let handshake =
+            reis::handshake::ei_handshake_blocking(&context, "eis-test", ei::handshake::ContextType::Sender)
+                .expect("the handshake completes");
+        Self {
+            context,
+            seat: None,
+            capabilities: 0,
+            devices: Vec::new(),
+            serial: handshake.serial,
+            disconnected: false,
+        }
+    }
+
+    /// Reads and answers everything the server has sent so far.
+    pub fn pump(&mut self) {
+        while let Ok(read) = self.context.read() {
+            if read == 0 {
+                break;
+            }
+        }
+        while let Some(pending) = self.context.pending_event() {
+            match pending {
+                PendingRequestResult::Request(event) => self.dispatch(event),
+                PendingRequestResult::ParseError(error) => panic!("the server sent an unparseable event: {error}"),
+                PendingRequestResult::InvalidObject(object) => {
+                    panic!("the server sent an event for an unknown object: {object}")
+                }
+            }
+        }
+        let _ = self.context.flush();
+    }
+
+    /// Pumps for `duration`, so anything the server will send has arrived.
+    pub fn settle(&mut self, duration: Duration) {
+        let deadline = Instant::now() + duration;
+        while Instant::now() < deadline {
+            self.pump();
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// Pumps until `ready`, or fails.
+    pub fn wait_for(&mut self, what: &str, ready: impl Fn(&Self) -> bool) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.pump();
+            if ready(self) {
+                return;
+            }
+            assert!(Instant::now() < deadline, "the EI client never saw {what}");
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    fn dispatch(&mut self, event: ei::Event) {
+        match event {
+            ei::Event::Connection(_, ei::connection::Event::Seat { seat }) => self.seat = Some(seat),
+            ei::Event::Connection(_, ei::connection::Event::Disconnected { .. }) => self.disconnected = true,
+            ei::Event::Connection(_, ei::connection::Event::Ping { ping }) => ping.done(u64::from(self.serial)),
+            ei::Event::Seat(_, ei::seat::Event::Capability { mask, .. }) => self.capabilities |= mask,
+            ei::Event::Seat(_, ei::seat::Event::Device { device }) => self.devices.push(Device {
+                wire: device,
+                interfaces: std::collections::HashMap::new(),
+                done: false,
+                resumed: None,
+            }),
+            ei::Event::Device(device, request) => {
+                let Some(entry) = self.devices.iter_mut().find(|entry| entry.wire == device) else {
+                    return;
+                };
+                match request {
+                    ei::device::Event::Interface { object } => {
+                        entry.interfaces.insert(object.interface().to_owned(), object);
+                    }
+                    ei::device::Event::Done => entry.done = true,
+                    ei::device::Event::Resumed { serial } => {
+                        entry.resumed = Some(serial);
+                        self.serial = serial;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Binds the capabilities in `mask`, which the seat advertised.
+    pub fn bind(&mut self, mask: u64) {
+        let seat = self.seat.as_ref().expect("the seat arrived");
+        seat.bind(mask);
+        let _ = self.context.flush();
+    }
+
+    /// Binds the keyboard capability the seat advertised.
+    pub fn bind_keyboard(&mut self) {
+        self.bind(u64::from(Caps::KEYBOARD.bits()));
+    }
+
+    /// The device that has `interface`, which must be resumed, and that interface.
+    pub fn device_with<T: reis::Interface>(&self) -> (ei::Device, u32, T) {
+        let device = self
+            .devices
+            .iter()
+            .find(|device| device.interfaces.contains_key(T::NAME))
+            .unwrap_or_else(|| panic!("a device with {}", T::NAME));
+        let serial = device.resumed.expect("the device resumed");
+        let interface: T = device
+            .interfaces
+            .get(T::NAME)
+            .expect("the device has the interface")
+            .clone()
+            .downcast()
+            .expect("the interface type matches its name");
+        (device.wire.clone(), serial, interface)
+    }
+
+    /// Presses or releases `key` on the keyboard device, which must be resumed.
+    pub fn key(&mut self, key: u32, pressed: bool) {
+        let (wire, serial, keyboard) = self.device_with::<ei::Keyboard>();
+        wire.start_emulating(serial, 1);
+        keyboard.key(
+            key,
+            if pressed {
+                ei::keyboard::KeyState::Press
+            } else {
+                ei::keyboard::KeyState::Released
+            },
+        );
+        wire.frame(serial, 0);
+        let _ = self.context.flush();
+    }
+
+    /// Moves the absolute pointer to `(x, y)` in the layout's own coordinates.
+    pub fn motion_absolute(&mut self, x: f32, y: f32) {
+        let (wire, serial, pointer) = self.device_with::<ei::PointerAbsolute>();
+        wire.start_emulating(serial, 1);
+        pointer.motion_absolute(x, y);
+        wire.frame(serial, 0);
+        let _ = self.context.flush();
+    }
+}
+
+/// A Wayland client with a mapped window, which the keyboard enters.
+pub fn focused_client(session: &Session) -> Client {
+    let mut client = Client::connect(session.wayland());
+    client.map_window("eis-test", "eis-test");
+    client.roundtrip();
+    client
+}
+
+/// Waits until `client` has seen a key press, or fails with what it saw.
+pub fn wait_for_key(client: &mut Client, code: u32) {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        client.roundtrip();
+        if client
+            .keys()
+            .iter()
+            .any(|&(key, state)| key == code && state == PRESSED)
+        {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the Wayland client never saw key {code}");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// A window's frame rectangle, as `window get` prints it.
+pub fn frame(session: &Session, title: &str) -> (f32, f32, f32, f32) {
+    let id = super::wait_for_listed_id(session, title).to_string();
+    let number = |property: &str| -> f32 {
+        let value = session.ctl(&["window", "get", &id, property]).ok();
+        value
+            .out
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("`{property}` is a number, got {:?}", value.out))
+    };
+    (number("x"), number("y"), number("width"), number("height"))
+}

@@ -239,7 +239,7 @@ impl Screenshot {
     }
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         SCREENSHOT_VERSION
     }
@@ -429,7 +429,7 @@ impl ScreenCast {
     }
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         SCREENCAST_VERSION
     }

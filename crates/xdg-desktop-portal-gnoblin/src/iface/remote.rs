@@ -435,6 +435,7 @@ impl RemoteDesktop {
     /// The grant is checked again here rather than trusted from `Start`: the descriptor is
     /// the thing that injects, and a caller that reached this member has to hold the grant
     /// now, not at some earlier call.
+    #[zbus(name = "ConnectToEIS")]
     async fn connect_to_eis(
         &self,
         #[zbus(header)] header: Header<'_>,
@@ -460,7 +461,7 @@ impl RemoteDesktop {
     }
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         REMOTE_DESKTOP_VERSION
     }
@@ -737,6 +738,7 @@ impl InputCapture {
     }
 
     /// Connect an EIS session and hand the caller its descriptor.
+    #[zbus(name = "ConnectToEIS")]
     async fn connect_to_eis(
         &self,
         #[zbus(header)] header: Header<'_>,
@@ -765,7 +767,7 @@ impl InputCapture {
     }
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         INPUT_CAPTURE_VERSION
     }

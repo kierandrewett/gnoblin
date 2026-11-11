@@ -85,3 +85,12 @@ tempfile = "3.23.0"
 reis = { version = "0.7.1", default-features = false }
 # The protobuf codec the tree test decodes replies and events with.
 prost.workspace = true
+# The portal backend's own library, served on a private session bus against a live session:
+# the consent end to end test drives the real D-Bus methods into the real compositor.
+xdg-desktop-portal-gnoblin = { path = "../xdg-desktop-portal-gnoblin" }
+zbus.workspace = true
+# The portal test's request bodies are serialised D-Bus tuples, and its stress test bounds a
+# D-Bus call with a timer.
+serde.workspace = true
+futures-lite.workspace = true
+async-io.workspace = true

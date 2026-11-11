@@ -1234,6 +1234,8 @@ dependencies = [
 name = "gnoblin-compositor"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "async-io",
+ "futures-lite",
  "gnoblin-a11y",
  "gnoblin-backend",
  "gnoblin-capture",
@@ -1261,10 +1263,13 @@ dependencies = [
  "prost",
  "reis",
  "rustix 1.1.6",
+ "serde",
  "tempfile",
  "wayland-client",
  "wayland-protocols",
  "x11rb",
+ "xdg-desktop-portal-gnoblin",
+ "zbus",
  "zeroize",
 ]
 

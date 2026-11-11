@@ -150,7 +150,7 @@ impl Inhibit {
     ) -> zbus::Result<()>;
 
     /// The interface version.
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         VERSION
     }

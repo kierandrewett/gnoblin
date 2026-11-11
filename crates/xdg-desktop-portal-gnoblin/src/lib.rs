@@ -93,6 +93,8 @@ pub mod host;
 pub mod iface;
 /// Screenshot file storage: the Pictures folder, the file name and the `file://` URI.
 pub mod picture;
+/// What `main` does with its connections, as a function a test can serve on a private bus.
+pub mod serve;
 /// The `settings` object's properties as the namespaces toolkits read.
 pub mod settings;
 

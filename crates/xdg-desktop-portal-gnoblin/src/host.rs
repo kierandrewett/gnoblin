@@ -37,7 +37,7 @@
 //! shape: `allow` or `deny`. A provider that answers anything else, or declines the
 //! request, refuses — an unreadable answer never consents.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use futures_channel::{mpsc, oneshot};
@@ -181,6 +181,7 @@ impl IpcHost {
                 pending: HashMap::new(),
                 next_request: 0,
                 secrets: HashMap::new(),
+                deferred: VecDeque::new(),
             },
         )
     }
@@ -321,6 +322,23 @@ pub struct IpcLoop<T: Transport> {
     /// Where each offered secret read delivers its answer, keyed by the request the
     /// compositor gave it. Only the offering connection receives the answer.
     secrets: HashMap<RequestId, oneshot::Sender<Option<Zeroizing<Vec<u8>>>>>,
+    /// What this thread has read and not yet applied to the portal's state. See [`Deferred`].
+    deferred: VecDeque<Deferred>,
+}
+
+/// Work for the portal's state that this thread read from the compositor.
+///
+/// The state is behind a lock a D-Bus handler holds while it offers a prompt, and the offer
+/// is sent by this thread. So this thread never waits for that lock: it queues what it read,
+/// and applies the queue at the end of each pass, when the lock is free.
+enum Deferred {
+    /// A change in the compositor's object graph, for the settings object.
+    Observation(gnoblin_model::Observation),
+    /// The user's answer to a prompt this connection offered.
+    Answer {
+        request: RequestId,
+        answer: Option<Vec<u8>>,
+    },
 }
 
 impl<T: Transport> std::fmt::Debug for IpcLoop<T> {
@@ -461,7 +479,7 @@ impl<T: Transport> IpcLoop<T> {
             }
             match self.client.next_event() {
                 Ok(Event::Model(observation)) => {
-                    futures_lite::future::block_on(portal.observe(&observation));
+                    self.deferred.push_back(Deferred::Observation(observation));
                 }
                 Ok(Event::RequestAnswered { request, answer }) => {
                     // Only the connection that offered a request receives its answer. A
@@ -488,27 +506,49 @@ impl<T: Transport> IpcLoop<T> {
                     return;
                 }
             }
-            self.settle_outcomes(&portal);
+            self.settle_outcomes();
+            self.apply_deferred(&portal);
         }
     }
 
-    /// Apply one delivered answer to the guard.
+    /// Apply the queued work to the portal's state, in order, for as long as the lock is free.
     ///
-    /// The answer's request is one this connection offered, so a failure here is a request
-    /// that already expired or one the guard never offered; both are logged and neither
-    /// wakes anything.
-    fn answer(&mut self, portal: &crate::iface::Portal, request: RequestId, answer: Option<Vec<u8>>) {
-        let outcome = {
-            let mut shared = portal.lock();
-            let now = shared.now();
-            shared.guard.answer(now, request, answer.as_deref())
-        };
-        match outcome {
-            Ok(outcome) => {
-                log::info!(request = request.get(), ?outcome, "a consent answer arrived")
-            }
-            Err(error) => {
-                log::debug!(%error, request = request.get(), "an answer arrived for no prompt")
+    /// The lock is only ever *tried*. A handler holds it across a consent offer, and the offer
+    /// is sent by this thread, so a thread that waited for the lock could wait for ever on a
+    /// handler that is waiting for it. Work that finds the lock held stays queued, in order,
+    /// and this pass ends: the next one runs after the loop has served the offer, which is
+    /// what makes the handler let go.
+    ///
+    /// An answer's request is one this connection offered, so a failure to apply it is a
+    /// request that already expired or one the guard never offered; both are logged and
+    /// neither wakes anything.
+    fn apply_deferred(&mut self, portal: &crate::iface::Portal) {
+        while let Some(work) = self.deferred.pop_front() {
+            match work {
+                Deferred::Observation(observation) => {
+                    let Some(changes) = portal.try_apply(&observation) else {
+                        self.deferred.push_front(Deferred::Observation(observation));
+                        return;
+                    };
+                    futures_lite::future::block_on(portal.announce(changes));
+                }
+                Deferred::Answer { request, answer } => {
+                    let Some(mut shared) = portal.try_lock() else {
+                        self.deferred.push_front(Deferred::Answer { request, answer });
+                        return;
+                    };
+                    let now = shared.now();
+                    let outcome = shared.guard.answer(now, request, answer.as_deref());
+                    drop(shared);
+                    match outcome {
+                        Ok(outcome) => {
+                            log::info!(request = request.get(), ?outcome, "a consent answer arrived")
+                        }
+                        Err(error) => {
+                            log::debug!(%error, request = request.get(), "an answer arrived for no prompt")
+                        }
+                    }
+                }
             }
         }
     }
@@ -520,12 +560,12 @@ impl<T: Transport> IpcLoop<T> {
         RequestId::new(self.next_request)
     }
 
-    /// Apply every portal outcome that has settled since the last pass.
+    /// Queue every portal outcome that has settled since the last pass.
     ///
     /// A `Handled` outcome is an allow and a `Declined` one a deny. A cancelled or failed
     /// prompt has no answer, so the guard releases its caller as it does for a request that
-    /// finished without one.
-    fn settle_outcomes(&mut self, portal: &crate::iface::Portal) {
+    /// finished without one. The answer is queued, not applied: see [`Deferred`].
+    fn settle_outcomes(&mut self) {
         let tickets: Vec<PortalTicket> = self.pending.keys().copied().collect();
         for ticket in tickets {
             let Some(outcome) = self.client.take_portal_outcome(ticket) else {
@@ -550,7 +590,7 @@ impl<T: Transport> IpcLoop<T> {
                     None
                 }
             };
-            self.answer(portal, request, answer);
+            self.deferred.push_back(Deferred::Answer { request, answer });
         }
     }
 }
