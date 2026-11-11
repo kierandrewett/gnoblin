@@ -409,9 +409,19 @@ mod tests {
         let f = fixture(STOCK);
         f.write("shell/10-broken.lua", "this is not lua (");
         f.write("shell/20-fine.lua", "after_broken = true");
-        let lua = Lua::new();
-        let mut errors = Vec::new();
-        let logged = gnoblin_log::event::capture::logged(|| errors = f.load(&lua));
+        // Tests in this crate log from many threads; tracing caches each call site's interest per process, so the
+        // first capture can miss an event another thread's call registered first. Capture again until it is seen.
+        let mut attempts = 0;
+        let (lua, errors, logged) = loop {
+            let lua = Lua::new();
+            let mut errors = Vec::new();
+            let logged = gnoblin_log::event::capture::logged(|| errors = f.load(&lua));
+            attempts += 1;
+            if !logged.is_empty() || attempts >= 50 {
+                break (lua, errors, logged);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
         assert_eq!(logged.len(), 1, "exactly one event is logged: {logged:?}");
         assert!(
             format!("{} {}", logged[0].message, logged[0].fields_line()).contains("10-broken.lua"),

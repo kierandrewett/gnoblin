@@ -102,12 +102,21 @@ end
 function Desk:work_area()
     return { x = 0, y = self.space.y, w = self.width, h = self.space.height }
 end
+-- A workspace's place among the Desk's workspaces, from 1. The native `index` is only set on workspaces the compositor
+-- made, so the shell's own come from tree order.
+function Desk:position(ws)
+    for i, c in ipairs(self.space.children) do
+        if c == ws then
+            return i
+        end
+    end
+end
 function Desk:show(ws)
     local from = self.active
     if not ws or ws == from then
         return
     end
-    local dir, W = ws.index > from.index and 1 or -1, self.width
+    local dir, W = self:position(ws) > self:position(from) and 1 or -1, self.width
     ws.x, ws.visible, ws.active, from.active, self.active = dir * W, true, true, false, ws
     from:to(0.25, { x = -dir * W }, ease.out_cubic)
     await(ws:to(0.25, { x = 0 }, ease.out_cubic))
@@ -116,7 +125,7 @@ function Desk:show(ws)
     end
 end
 function Desk:step(n)
-    self:show(self.space.children[self.active.index + n])
+    self:show(self.space.children[self:position(self.active) + n])
 end
 -- Removes a workspace from the Desk. Its top-level windows move to the neighbour before it (the one after it, for the
 -- first), and that neighbour shows if the removed one was active. Refused (false) for a workspace of another Desk, or

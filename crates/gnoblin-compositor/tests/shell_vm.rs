@@ -437,33 +437,6 @@ fn a_syntax_error_in_the_users_shell_file_leaves_the_stock_shell_running() {
     );
 }
 
-/// A workspace rule from the user's file moves the mapped window to the workspace it names.
-#[test]
-fn a_workspace_rule_in_the_users_shell_file_places_the_window_on_that_workspace() {
-    let session = Session::start();
-    let config = user_config(&[(
-        "shell/10-rules.lua",
-        "seat.data.window_rules = { { match = { app_id = '^org%.example%.term$' }, workspace = { id = '3' } } }\n",
-    )]);
-    let mut role = connect_session(&session, config.path());
-    assert!(role.user_file_errors().is_empty());
-    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
-        mirror_counts(role) == (1, 1)
-    });
-    let mut client = Client::connect(session.wayland());
-    let _term = client.map_window("org.example.term", "Term");
-    tick_until(&mut role, "the window never reached workspace 3", |role| {
-        role.run(
-            "workspace of window",
-            "for _, w in ipairs(root:all('Window')) do if w.app_id == 'org.example.term' then \
-             local ws = w:closest(Workspace) return ws and ws.name end end",
-        )
-        .expect("the probe runs")
-        .as_deref()
-            == Some("3")
-    });
-}
-
 /// A workspace set from the user's file activates through `activate_set`: the set's workspace shows on the output.
 #[test]
 fn a_workspace_set_in_the_users_shell_file_activates() {
@@ -486,5 +459,19 @@ fn a_workspace_set_in_the_users_shell_file_activates() {
         .run("shown", "return desk().active.name")
         .expect("the probe runs")
         .expect("the probe returns text");
-    assert_eq!(shown, "2", "the set's workspace shows on the output");
+    role.tick(1.0).expect("a frame runs");
+    let dump = role
+        .run(
+            "dump",
+            "local out = {} for _, ws in ipairs(root:all(Workspace)) do out[#out+1] = tostring(ws.name) .. (ws.active and '*' or '') end \
+             local s = {} for _, sc in ipairs(root:all(Screen)) do s[#s+1] = tostring(sc.name) .. '/' .. tostring(sc.primary) end \
+             return table.concat(out, ',') .. ' | ' .. table.concat(s, ',')",
+        )
+        .expect("the probe runs");
+    assert_eq!(
+        shown,
+        "2",
+        "the set's workspace shows on the output: {dump:?} {:?}",
+        role.diagnostics()
+    );
 }

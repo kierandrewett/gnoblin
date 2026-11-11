@@ -239,7 +239,9 @@ return {
             local _, screens = shell({ set("work", { { workspace = 3, output = "DP-1" } }) })
             H.check(activate_set("work") == true, "first activation")
             local d = desk_of(screens[1])
-            d:show(d.space.children[1])
+            go(function()
+                d:show(d.space.children[1])
+            end)
             H.check(activate_set("work") == true, "second activation")
             H.check(shown(screens[1]) == "1", "the live set is not applied again")
         end,
