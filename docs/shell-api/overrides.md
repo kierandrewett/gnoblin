@@ -43,9 +43,10 @@ Only a setting that can change while the session runs is accepted:
 [compositor]: /config/configure/compositor
 
 The call raises an error for any other path, and the error says why. For example, `xwayland.*` needs an Xwayland
-restart, `shortcuts.*` are registered when the configuration loads, and `window_rules` are matched when a window
-appears. The call raises an error too for a value that the configuration would not accept, with the message of the
-configuration check.
+restart, and `shortcuts.*` are registered when the configuration loads.
+
+Window rules are not a setting: they are `seat.data.window_rules` in a [shell file](/user-shell). The call also raises
+an error for a value that the configuration would not accept, with the message of the configuration check.
 
 `monitors.privacy_screen` needs an output that has a privacy screen. The orientation lock and the privacy screen take
 `true` or `false`; to follow the configuration or the system setting again, revoke the override.

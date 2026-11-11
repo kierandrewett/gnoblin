@@ -17,20 +17,13 @@ gnoblin.configure {
     },
 }
 
-gnoblin.window_rule {
-    match = {type = "window", app_id = [[^org%.gnome%.TextEditor$]]},
-    workspace = {id = "write"},
-    corners = {radius = 10, smoothing = 0.5},
-}
+```
 
-gnoblin.window_rule {
-    match = {
-        type = "window",
-        app_id = [[^org%.gnome%.TextEditor$]],
-        workspace_id = "write",
-        focused = true,
-    },
-    corners = {border_width = 2, border_color = "#72c7ce"},
+Put the placement rule in `~/.config/gnoblin/shell.lua`:
+
+```lua
+seat.data.window_rules = {
+    { match = { app_id = [[^org%.gnome%.TextEditor$]] }, workspace = { id = "write" } },
 }
 ```
 

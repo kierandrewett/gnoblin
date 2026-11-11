@@ -1,5 +1,7 @@
 # shaders
 
+> **Status:** not available: `gnoblin.window_rule` was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only, so the rule fields here do not work. The page describes the target, not current behaviour.
+
 [Configuration API](/config)
 
 A fragment shader changes the colour of each pixel in a window. This example

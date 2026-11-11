@@ -1,5 +1,7 @@
 # Frame renderer architecture
 
+> **Status:** the `gnoblin.window_rule` example here is not available: the call was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only. The page describes the target, not current behaviour.
+
 Gnoblin owns decoration policy, geometry and input. An external process draws
 the frame. The private v1 protocol is experimental.
 

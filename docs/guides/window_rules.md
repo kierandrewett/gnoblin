@@ -1,50 +1,46 @@
 # window_rules
 
-[Configuration API](/config)
+[Shell files](/user-shell)
 
-A rule has two parts: `match` selects the windows, and the other fields change
-what happens to them. Add rules to `~/.config/gnoblin/init.lua` after any
-`gnoblin.load(...)` lines. Put rules for all windows before rules for specific ones.
+A window rule changes what the stock shell does to the windows it matches. Rules are a Lua table in your shell files,
+not a configuration key. They load with the shell when the session starts.
 
 ## Add a rule
 
-This places every editor window on the `code` workspace and maximises it:
+Put this in `~/.config/gnoblin/shell.lua`. It places every editor window on workspace `3` and maximises it:
 
 ```lua
-gnoblin.window_rule {
-    match = {type = "window", app_id = "^org%.example%.Editor$"},
-    workspace = {id = "code"},
-    maximise = true,
+seat.data.window_rules = {
+    {
+        match = { app_id = "^org%.example%.Editor$" },
+        workspace = { id = "3" },
+        maximised = true,
+    },
 }
 ```
 
-Save and run `gnoblinctl config reload`. The rule applies to windows that open
-after the reload. Windows that are already open keep their current placement.
+Restart the session to apply it. A rule runs when a window opens, so it does not move windows that are already open.
+
+The [window rule reference](/config/window_rule) lists every match key and field. [Shell files](/user-shell) explains
+where the files go and what they can reach.
 
 ## Choose what to match
 
-Every condition in `match` must match. For example,
-`{type = "window", focused = false}` selects unfocused application windows.
-If `focused` is omitted, the rule can match both focused and unfocused windows.
+Every condition in `match` must match. If a key is omitted, the rule can match any value of it.
 
-| Key                         | Matches                                                  |
-| --------------------------- | -------------------------------------------------------- |
-| `type = "window"`           | Application windows                                      |
-| `focused = true` or `false` | Focus state                                              |
-| `app_id`                    | GTK application ID, or WM class when the GTK ID is empty |
-| `title`                     | Current window title                                     |
-| `workspace_id`              | Stable ID of the current workspace                       |
-| `workspace_number`          | Current one-based workspace position, 1–1024             |
-| `client_type`               | `"wayland"`, or `"x11"` for an Xwayland client           |
+| Key            | Matches                                                                      |
+| -------------- | ---------------------------------------------------------------------------- |
+| `app_id`       | A Lua pattern on the application ID, or on the WM class when the ID is empty |
+| `title`        | A Lua pattern on the current title                                           |
+| `focused`      | `true` or `false`                                                            |
+| `workspace_id` | The name of the window's workspace, such as `"2"`                            |
 
-Choose the match field based on what should identify the window:
+Choose the key based on what identifies the window:
 
 - Use `app_id` to match an application across its windows.
-- Use `title` to target a particular document or window. Titles often change
-  as the document or page changes.
+- Use `title` to target a particular document or window. Titles often change as the document or page changes.
 
-Layer-shell surfaces such as bars and launchers cannot be matched yet. A rule
-that sets `match.layer` is refused at load.
+Layer-shell surfaces are not windows, so a rule never matches them.
 
 ## Find the values
 
@@ -54,142 +50,76 @@ List the live windows with:
 gnoblinctl window list
 ```
 
-Use the `app_id` and `title` of the window you want as the values to match.
-The `app_id` matches the GTK application ID, or the WM class when the GTK ID is
-empty, so it can differ from the desktop-entry name shown elsewhere.
+Use the `app_id` and `title` of the window you want as the values to match. The `app_id` is the GTK application ID, or
+the WM class when the GTK ID is empty, so it can differ from the desktop-entry name shown elsewhere.
 
 ## Write a matcher
 
-The string fields `app_id` and `title` accept **Lua 5.4 patterns**. They are
-case-sensitive and search anywhere by default. Use `^` and `$` to match the
-whole value.
+`app_id` and `title` take [Lua patterns](https://www.lua.org/manual/5.4/manual.html#6.4.1):
 
-A dot (`.`) matches any character; write `%.` to match a literal dot. See the
-[Lua pattern reference](https://www.lua.org/manual/5.4/manual.html#6.4.1) for
-other pattern characters. JavaScript and PCRE regex syntax is not supported.
+- They are case-sensitive and search anywhere by default.
+- Use `^` and `$` to match the whole value.
+- A dot matches any character; write `%.` for a literal dot.
+- JavaScript and PCRE regex syntax is not supported.
 
 To match `org.gnome.Nautilus` only:
 
 ```lua
-gnoblin.window_rule {
-    match = {type = "window", app_id = [[^org%.gnome%.Nautilus$]]},
-    maximise = true,
-}
+{ match = { app_id = [[^org%.gnome%.Nautilus$]] }, maximised = true }
 ```
 
-In Lua's `[[...]]` string, percent signs are kept as written. The `%` before
-each dot makes it a literal dot in the pattern.
-
-To match a title containing `Notes` anywhere, omit the anchors:
+To match a title that contains `Notes` anywhere, omit the anchors:
 
 ```lua
-gnoblin.window_rule {
-    match = {type = "window", title = "Notes"},
-    maximise = false,
-}
+{ match = { title = "Notes" }, maximised = false }
 ```
 
-This also matches titles such as `Notes — Work`. To match only the exact title
-`Notes`, write `title = "^Notes$"`.
+This also matches `Notes — Work`. To match only the title `Notes`, write `title = "^Notes$"`.
 
-When a rule has more than one condition, all of them must match. This targets
-only unfocused windows from one app:
+This rule targets only unfocused windows from one app:
 
 ```lua
-gnoblin.window_rule {
-    match = {
-        type = "window",
-        app_id = [[^org%.gnome%.Nautilus$]],
-        focused = false,
-    },
-    maximise = false,
-}
+{ match = { app_id = [[^org%.gnome%.Nautilus$]], focused = false }, opacity = 0.9 }
 ```
 
 ## Workspaces {#workspaces}
 
-Use a workspace ID when a rule should keep targeting the same workspace as
-workspace positions change. Declare persistent workspaces in the `workspaces`
-field of `gnoblin.configure`:
+The stock desk has nine workspaces, named `"1"` to `"9"`. When your configuration declares `workspaces`, the desk builds
+those instead, and each workspace is named by its `id`. Declare them in `init.lua`:
 
 ```lua
 gnoblin.configure {
     workspaces = {
-        {id = "code", name = "Code"},
-        {id = "web", name = "Web"},
-        {id = "chat", name = "Chat"},
+        { id = "code", name = "Code" },
+        { id = "web", name = "Web" },
     },
 }
 ```
 
-Match a window's current workspace by ID or by its current one-based position:
+Name the workspace by that id in a rule:
 
 ```lua
-gnoblin.window_rule {
-    match = {type = "window", workspace_id = "code"},
-    maximise = true,
-}
-
-gnoblin.window_rule {
-    match = {type = "window", workspace_number = 2},
-    maximise = false,
+seat.data.window_rules = {
+    { match = { app_id = [[^org%.example%.Editor$]] }, workspace = { id = "code" } },
+    { match = { workspace_id = "web" }, maximised = true },
 }
 ```
 
-Workspace matches update when a window moves. Numbers can change as
-workspaces are created, removed, or reordered, so use IDs for rules that need
-a lasting target.
-
-To place a window on a workspace, add a `workspace` field to its rule:
-
-```lua
-gnoblin.window_rule {
-    match = {type = "window", app_id = [[^org%.example%.Editor$]]},
-    workspace = {id = "code"},
-}
-```
-
-Use `workspace = {number = 2}` to target a position instead; numbers range from
-1 to 1024.
-
-An `{id = ...}` target that names a declared workspace resolves to that
-workspace's position when the configuration is committed. The id is then fixed
-until the configuration is committed again.
-
-A name that is not declared, and is not a number, is refused at commit with the
-field named; the previous accepted rules stay in force. A number is kept as the
-workspace id it was written as. If no such workspace exists, the window stays
-where it is and a warning is logged.
+A `workspace` that names no workspace of the desk logs one error for each match, and the window stays where it is.
 
 ## When rules run again
 
-A rule runs when a window opens. It runs again when that window's title or
-app ID changes. The fields apply again only when the set of matching rules
-changes, so a title change that keeps the same matches does nothing.
+A rule runs when a window opens. It runs again when the window's title, app ID, focus or workspace changes the set of
+rules that match. The fields apply again only when that set changes, so a title change that keeps the same matches does
+nothing.
 
-A re-match can move a window, for example when a title change makes a rule
-with `workspace` start to match. A window that loses its match keeps the
-placement or maximised state the rule gave it.
-
-A configuration reload does not re-run rules on windows that are already open.
+A field that no rule sets falls back to its default. A window whose title stops matching a `secure` rule is not secure,
+and a window that stops matching a `maximised` rule is unmaximised.
 
 ## Rule order
 
-Matching does not stop at the first rule. Later rules override only the fields
-they set. For example, a rule that sets `maximise` for every window can be
-followed by a rule for one application that sets `maximise = false`.
+Matching does not stop at the first rule. Later rules override only the fields they set, so a rule that maximises every
+window can be followed by a rule for one application that sets `maximised = false`.
 
-Use `gnoblin.window_rule` to add rules without removing earlier ones. Passing
-a complete `window_rules` list to `gnoblin.configure` replaces the configured list;
-see [load order](/guides/files_and_load_order#override-or-append). A list holds at
-most 256 rules.
-
-## What else is planned
-
-The effect keys from earlier versions are refused in this build:
-
-- `blur`, `blur-ignore-shadows`, `opacity`, `corners`
-- `shader`, `shader-uniforms`, `animation` and `frame`
-
-The planned replacement is an ordered `effects` list. See the
-[window rule reference](/config/window_rule#refused-keys) for the migration note.
+Assign a whole new list to change the rules. The shell compiles a list once, when it first reads it. A list with a
+mistake is refused as a whole, with one logged error, and the rules already in force stay.

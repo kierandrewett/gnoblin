@@ -1,127 +1,58 @@
-# gnoblin.window_rule
+# Window rule reference
 
-Add an ordered window rule. Every key in `match` must hold for the rule to
-apply. Matching rules run in list order, and a later rule overrides an earlier
-one only for the fields it sets.
+[Shell files](/user-shell)
 
-See the [window rules guide](/guides/window_rules) for usage patterns.
+A window rule is one table in the list `seat.data.window_rules`, set in `~/.config/gnoblin/shell.lua`. The
+[window rules guide](/guides/window_rules) has usage patterns.
 
 ```lua
-gnoblin.window_rule {
-    match = {type = "window", app_id = "^org%.example%.Editor$"},
-    workspace = {id = "code"},
-    maximise = true,
+seat.data.window_rules = {
+    {
+        match = { app_id = "^org%.example%.Editor$", focused = false },
+        workspace = { id = "3" },
+        maximised = true,
+        opacity = 0.9,
+    },
 }
 ```
 
+## Rule fields {#rule-fields}
+
+| Field        | Type    | Effect                                                       |
+| ------------ | ------- | ------------------------------------------------------------ |
+| `match`      | Table   | The conditions a window must meet. Every key given must hold |
+| `workspace`  | Table   | `{ id = "3" }`: the workspace, by name, the window opens on  |
+| `maximised`  | Boolean | `true` maximises the window, `false` unmaximises it          |
+| `fullscreen` | Boolean | `true` or `false`                                            |
+| `secure`     | Boolean | `true` masks the window in screen capture                    |
+| `opacity`    | Number  | From 0 to 1                                                  |
+
+A rule with an unknown field, or a field of the wrong type, is refused. So is an `opacity` outside 0 to 1.
+
 ## Match keys
 
-| Key                | Values                                                   |
-| ------------------ | -------------------------------------------------------- |
-| `type`             | `"window"`                                               |
-| `focused`          | Boolean; matches the window's keyboard focus             |
-| `app_id`           | Lua pattern against GTK app ID, falling back to WM class |
-| `title`            | Lua pattern against the current window title             |
-| `workspace_id`     | Exact workspace ID                                       |
-| `workspace_number` | Current one-based workspace position, 1–1024             |
-| `client_type`      | `"wayland"` or `"x11"`; `"x11"` is an Xwayland client    |
+| Key            | Type    | Matches                                                  |
+| -------------- | ------- | -------------------------------------------------------- |
+| `app_id`       | Pattern | The application ID, or the WM class when the ID is empty |
+| `title`        | Pattern | The current title                                        |
+| `focused`      | Boolean | Whether the window has keyboard focus                    |
+| `workspace_id` | String  | The name of the window's workspace                       |
 
-All supplied match keys must match. An omitted or empty `match` selects every
-window.
+A pattern is a [Lua pattern](https://www.lua.org/manual/5.4/manual.html#6.4.1), case-sensitive, matched anywhere in the
+text. A malformed pattern refuses the whole list.
 
-Text patterns use Lua 5.4 `string.find` syntax. They are case-sensitive and
-search anywhere by default. Use `^` and `$` to match the whole value.
+## Merging
 
-- `.` matches any character, and `%.` matches a literal dot.
-- `^org%.example%.App$` matches the complete ID `org.example.App`.
-- JavaScript and PCRE regex syntax is not supported.
-- A malformed pattern is a load error.
+Rules merge in list order. The last matching rule wins for each field, and a field a later rule does not set keeps the
+earlier value. A field that no matching rule sets falls back to its default.
 
-See the [window rules guide](/guides/window_rules#find-the-values) for ways to
-find a live app ID or title.
+## Removed fields {#refused-keys}
 
-Declare persistent workspaces in `gnoblin.configure`'s `workspaces` field and
-match them by ID here.
+The stock shell draws blur and shadow only, so these fields from earlier versions are refused. A rule that names one is
+an unknown field.
 
-## Rule fields
-
-| Field       | Values                                                             |
-| ----------- | ------------------------------------------------------------------ |
-| `workspace` | `{id = "code"}` or `{number = 1..1024}`, exactly one of the two    |
-| `maximise`  | Boolean; `true` maximises, `false` restores, when the rule applies |
-| `secure`    | Boolean; `true` makes the window secure while the rule matches     |
-| `opacity`   | Number from 0 to 1; multiplies window alpha while matched          |
-| `corners`   | `{radius = n}`, n >= 0 logical px; rounds window corners           |
-
-`workspace` places the window on that workspace. A `{id = ...}` target must
-exist; otherwise the window stays where it is and Gnoblin logs a warning.
-
-`maximise` takes effect at the window's first match and again when a re-match
-changes the set of matching rules. A fullscreen window is not maximised.
-
-`secure` sets the window's surface secure while the rule matches. It is a live
-state, not a one-off action: it is recomputed on every match change.
-
-It clears when the rule stops matching, when the window closes, and when a
-reload removes the rule. The default is `false`.
-
-A secure window is masked in screen captures according to
-`capture.secure-treatment`: `mask`, the default, draws a neutral shape in its
-place; `omit` draws nothing.
-
-`opacity` multiplies the window's alpha while the rule matches. `corners` takes
-only `radius`, in logical pixels; `radius = 0` leaves the corners square. As
-with every field, the last matching rule that sets it wins.
-
-## When rules apply
-
-Rules are matched when a window opens. They are matched again when its title or
-application ID changes. The fields of the matching rules apply again only when
-the set of matching rules differs from the set the window last had. The whole
-current set is merged, so the last matching rule still wins.
-
-A re-match can therefore move a window or change its maximised state, for
-example when a title change makes a rule with `workspace` start to match.
-
-A window that loses its match keeps what the rule already did, except `secure`,
-which clears. A configuration reload does not re-run placement rules on windows
-that are already open; new rules apply only to windows that open afterwards. A
-reload does re-evaluate `secure` on open windows, so a rule the reload removed
-cannot leave a window masked.
-
-## Limits
-
-A `window-rules` list holds at most 256 rules. A longer list is a load error.
-
-## Refused keys
-
-A configuration that sets one of these keys is rejected at load, and the last
-accepted configuration stays in force. Each refusal names the key and ends with
-"not built in this compositor". Either the dashed or underscored spelling
-of a key is refused.
-
-| Key                         | Reason given                           |
-| --------------------------- | -------------------------------------- |
-| `blur`                      | Needs the blur pass                    |
-| `blur-ignore-shadows`       | Needs the blur pass                    |
-| `shader`, `shader-uniforms` | Needs the shader pass (render)         |
-| `animation`                 | Needs the animation system             |
-| `frame`                     | Needs the layer-shell surface renderer |
-| `match.layer`               | Needs the layer-shell surface selector |
-
-## Migrating from the legacy effect keys
-
-The older docs describe flat effect keys, which do not apply in this build:
-
-- `blur`
-- `shader`, `animation` and `frame`
-
-None of them takes effect here. Remove them from `window_rule` tables, or the
-load fails. Keep the rules that set `workspace`, `maximise`, `opacity`,
-`corners` or match keys.
-
-The planned replacement is an ordered `effects` list on each rule. Each entry
-is one pass, added in stack order, so the author decides the order of blur,
-shadow and shader. The design is D26 in `design/rust-compositor.md`. The flat
-`blur` and `shader` keys are removed in the same cutover that replaces
-`window:set_effect`, so no config should depend on either until that lands.
+- `corners` {#corners}
+- `blur`, `blur-ignore-shadows`, `shader`, `shader-uniforms` and `animation` {#animation-fields}
+- `frame` {#frame-fields}
+- `match.type`, `match.layer`, `match.client_type` and `match.workspace_number`: use `match.app_id` or
+  `match.workspace_id` instead.

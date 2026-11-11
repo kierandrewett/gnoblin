@@ -1,5 +1,7 @@
 # window_state_shortcuts
 
+> **Status:** the `gnoblin.window_rule` example here is not available: the call was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)). The page describes the target, not current behaviour.
+
 [Configuration reference](/config/configure)
 
 Bind Super+Down to restore a maximised/snapped window first, then minimise it

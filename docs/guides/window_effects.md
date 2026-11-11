@@ -1,5 +1,7 @@
 # window_effects
 
+> **Status:** not available: `gnoblin.window_rule` was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only, so the rule fields here do not work. The page describes the target, not current behaviour.
+
 This page says which window effects work today and which do not. The source of
 truth is the loader, not this page: a window rule that names an unsupported key
 is refused at load with a reason. The list of refused keys is in the

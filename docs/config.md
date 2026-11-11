@@ -5,7 +5,7 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 ## Functions
 
 - [`gnoblin.configure`](/config/configure) — set compositor, input and window-management options.
-- [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
+- [Shell files](/user-shell) — window rules and workspace sets, as Lua tables the stock shell reads.
 - [`gnoblin.animation`](/config/animation) — register a named animation.
 - [`gnoblin.config`](/config/config) — find the config file, read the bundled default and restore it.
 - [`gnoblin.load`](/config/load) — load another Lua config file.

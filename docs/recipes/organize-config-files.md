@@ -12,12 +12,12 @@ gnoblin.load("appearance.lua")
 gnoblin.load("bindings.lua")
 ```
 
-Put window rules in `appearance.lua`:
+Put window rules in `shell.lua`, which the shell loads itself. `init.lua` does not load it:
 
 ```lua
-gnoblin.window_rule {
-    match = {type = "window"},
-    corners = {radius = 12, smoothing = 0.5},
+-- ~/.config/gnoblin/shell.lua
+seat.data.window_rules = {
+    { match = { app_id = [[^org%.gnome%.TextEditor$]] }, maximised = true },
 }
 ```
 

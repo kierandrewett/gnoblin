@@ -115,10 +115,9 @@ Each entry has a required `id` and `name`. Names must be nonempty and at most
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.
 
 Declare at least one workspace. List order sets their initial positions.
-IDs stay attached as positions change. If `workspaces` is omitted, Gnoblin
-starts with four unconfigured workspaces. A declaration list replaces that
-baseline, and its length sets the persistent workspace count. Scripts can add
-temporary workspaces at runtime.
+IDs stay attached as positions change. The stock desk builds one workspace for each declared entry and names it by
+its `id`. If `workspaces` is omitted, the desk builds nine workspaces, named `1` to `9`. The shell reads the list when
+the session starts.
 
 See the
 [workspace rules guide](/guides/window_rules#workspaces) for matching and
@@ -140,44 +139,8 @@ gnoblin.configure {
 }
 ```
 
-Declare named workspace sets in the top-level `workspace_sets` field of
-`gnoblin.configure`. A set names the workspace each output shows, so one name
-describes a whole arrangement of workspaces across outputs.
-
-```lua
-gnoblin.configure {
-    workspaces = {
-        {id = "main", name = "Main"},
-        {id = "chat", name = "Chat"},
-    },
-    workspace_sets = {
-        {
-            name = "desk",
-            workspaces = {
-                {workspace = "main", output = "DP-1"},
-                {workspace = "chat", output = "DP-2"},
-            },
-        },
-    },
-}
-```
-
-Each set needs a `name`, which is unique among the sets, and a nonempty
-`workspaces` list. Each entry needs a `workspace`: the id of a workspace declared
-in `workspaces`, or its position in that list counted from 1.
-
-An entry may name an `output`, the connector name of the output that shows the
-workspace. An entry without `output` is for the primary output, the first
-connected one. Each output may appear once in a set.
-
-Gnoblin checks the whole `workspace_sets` list when the session starts. A set
-that names an undeclared workspace, repeats a set name, has no workspaces or
-repeats an output refuses the whole list. No set applies and the log names the
-field.
-
-Declaring a set does not change what the outputs show. The session does not activate a set when it starts.
-`gnoblin.workspaces.activate_set(name)` and `gnoblinctl workspace activate-set NAME` make a set live; see
-[Workspaces](/shell-api/workspaces#workspace-sets).
+Workspace sets are not a configuration setting. They are a Lua table in your shell files: see
+[Shell files](/user-shell#workspace-sets).
 
 ## Titlebar actions
 

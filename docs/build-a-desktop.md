@@ -95,7 +95,7 @@ several languages.
 | Maintain a live switcher or dock     | Compositor bridge `windows` subscription                   |
 | Place a bar or dock                  | `zwlr_layer_shell_v1`                                      |
 | Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
-| Apply per-app styling                | `gnoblin.window_rule` in Lua                               |
+| Apply per-app styling                | `seat.data.window_rules` in a [shell file](/user-shell)    |
 | React to a window or workspace event | Lua callback registered with `gnoblin.on`                  |
 | Supply an application titlebar       | Frame rule and optional renderer service                   |
 

@@ -1,5 +1,7 @@
 # Animation guide
 
+> **Status:** the `gnoblin.window_rule` examples here are not available: the call was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only. The page describes the target, not current behaviour.
+
 Without animation declarations or matching animation rules, Gnoblin runs no
 animations. Remove those declarations or rule fields to return to instant
 window and workspace changes.

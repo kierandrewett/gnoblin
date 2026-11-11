@@ -1,5 +1,7 @@
 # Write a frame renderer
 
+> **Status:** the `gnoblin.window_rule` example here is not available: the call was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only. The page describes the target, not current behaviour.
+
 [Configuration reference](/config/configure/frame_renderers)
 
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,

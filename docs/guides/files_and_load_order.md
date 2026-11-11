@@ -123,16 +123,8 @@ gnoblin.configure {window_management = {raise_on_click = true}}
 The result keeps sloppy focus and raises windows when clicked. The second call
 does not remove settings that it does not mention.
 
-Lists replace earlier values. This applies to `window_rules`, `shortcuts`, and `autostart`.
-
-To add a window rule while keeping previous rules, use:
-
-```lua
-gnoblin.window_rule {
-    match = {type = "window", focused = false},
-    opacity = 0.95,
-}
-```
+Lists replace earlier values. This applies to `shortcuts` and `autostart`. Window rules are not part of the
+configuration: see [Shell files](/user-shell).
 
 The `shortcuts` and `autostart` maps merge entries with the same name. Set an
 entry's `enable` field to `false` to disable an imported shortcut or autostart.

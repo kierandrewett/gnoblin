@@ -95,7 +95,8 @@ whole value. Write `%.` for a literal dot.
 | `secure`     | `true` masks the window in screen capture                                 |
 | `opacity`    | A number from 0 to 1                                                      |
 
-The stock desk has nine workspaces, named `"1"` to `"9"`.
+The stock desk builds the workspaces your configuration declares in `workspaces`, named by their `id`. With none
+declared it has nine, named `"1"` to `"9"`.
 
 Rules merge in list order. A later rule overrides only the fields it sets, so a
 rule for every window can be followed by a rule for one app that undoes one
@@ -137,7 +138,7 @@ seat:bind({
 })
 ```
 
-An entry names a workspace (the desk's workspace names, `"1"` to `"9"`) and the
+An entry names a workspace (the desk's workspace names; with no declared `workspaces` these are `"1"` to `"9"`) and the
 output it shows on, by connector name. An entry with no `output` shows on the
 primary output. If an output is not connected, its workspace shows on the
 primary output and one error is logged. Activating the set that is already live
@@ -158,3 +159,50 @@ error there:
 ```sh
 gnoblinctl log --role runtime --level error
 ```
+
+## Moving from `window-rules` and `workspace-sets`
+
+These are gone, and a document that sets `window-rules` or `workspace-sets` is refused with an error that names this
+page:
+
+- The `window-rules` and `workspace-sets` settings of `gnoblin.configure`.
+- `gnoblin.window_rule`, which raises an error that names `seat.data.window_rules`.
+- `gnoblin.workspaces.activate_set` and `gnoblinctl workspace activate-set`. Call `activate_set(name)` from a binding
+  in a shell file.
+
+| Old                                                       | New                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------- |
+| `gnoblin.window_rule { ... }` or `window-rules = { ... }` | An entry in `seat.data.window_rules`                    |
+| `match = { type = "window", ... }`                        | Drop `type`: every rule is for windows                  |
+| `match["app-id"]`, `match["workspace-id"]`                | `match.app_id`, `match.workspace_id`                    |
+| `match.title`, `match.focused`                            | The same keys                                           |
+| `match.workspace_number`, `match.client_type`             | No equivalent. Match `workspace_id` instead             |
+| `workspace = { id = "code" }`                             | The same, naming a declared workspace                   |
+| `workspace = { number = 2 }`                              | `workspace = { id = "2" }`                              |
+| `maximise = true`                                         | `maximised = true`                                      |
+| `fullscreen`, `secure`, `opacity`                         | The same fields                                         |
+| `corners = { radius = 8 }`                                | Removed. The stock shell draws blur and shadow only     |
+| `workspace-sets = { { name, workspaces = { ... } } }`     | An entry in `seat.data.workspace_sets`, with `entries`  |
+| `gnoblinctl workspace activate-set NAME`                  | `activate_set(NAME)` from a `seat:bind` in a shell file |
+
+For example, this configuration:
+
+```lua
+gnoblin.window_rule {
+    match = { type = "window", ["app-id"] = [[^org%.example%.Editor$]] },
+    workspace = { number = 2 },
+    maximise = true,
+}
+```
+
+becomes this shell file:
+
+```lua
+-- ~/.config/gnoblin/shell.lua
+seat.data.window_rules = {
+    { match = { app_id = [[^org%.example%.Editor$]] }, workspace = { id = "2" }, maximised = true },
+}
+```
+
+A `workspace-sets` entry such as `{ name = "work", workspaces = { { workspace = "1", output = "DP-1" } } }` becomes
+`{ name = "work", entries = { { workspace = "1", output = "DP-1" } } }`.

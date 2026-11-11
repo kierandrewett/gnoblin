@@ -1,5 +1,7 @@
 # Give an app a springy entrance
 
+> **Status:** not available: `gnoblin.window_rule` was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only, so the rule fields here do not work. The page describes the target, not current behaviour.
+
 Animate one application's windows with a small overshoot when they open, then
 shrink and fade them when they close. Replace the example app ID with the value
 reported by `gnoblinctl window list --json`.

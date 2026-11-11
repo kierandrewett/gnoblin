@@ -1,5 +1,7 @@
 # gnoblin.configure.frame_renderers
 
+> **Status:** the `gnoblin.window_rule` example here is not available: the call was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only. The page describes the target, not current behaviour.
+
 Register a frame renderer by name, then select it in a window rule. Names can
 contain up to 64 letters, numbers, `_` or `-`; `native` is reserved. Each value
 is an array of 1–32 strings: the first item is the executable, and later items

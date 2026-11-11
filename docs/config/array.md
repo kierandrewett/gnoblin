@@ -4,7 +4,7 @@ Mark a Lua table as a list. This is useful for an empty list, because `{}` other
 
 ```lua
 gnoblin.configure {
-    window_rules = gnoblin.array {},
+    touchpad_gestures = gnoblin.array {},
 }
 ```
 

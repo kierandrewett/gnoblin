@@ -29,37 +29,9 @@ Gnoblin does not pick an application theme. It makes the desktop preference
 available to Lua configs, which can update compositor styling and settings for
 shells or apps that opt in.
 
-## Follow the preference in window rules
+## Window styling
 
-Add a later rule for the selected palette. The example keeps all rules already
-loaded, then replaces the window-rule list with the current palette each time
-GNOME reports a change:
+Window rules carry no border fields, so a palette change cannot recolour window borders from Lua. The `corners` rule
+field was removed, and the stock shell draws blur and shadow only.
 
-```lua
-local base_rules = gnoblin.snapshot()["window-rules"] or {}
-
-gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
-    local rules = {}
-    for i, rule in ipairs(base_rules) do rules[i] = rule end
-
-    local border = event.color_scheme == "prefer-dark" and "#aab2bd99" or "#35405299"
-    rules[#rules + 1] = {
-        match = {type = "window"},
-        corners = {border_width = 1, border_color = border},
-    }
-    gnoblin.configure {window_rules = rules}
-end)
-```
-
-The example takes the snapshot while the config loads, because `gnoblin.snapshot()`
-raises an error at run time. Inside the handler, `gnoblin.configure` returns an
-`Operation` that succeeds when the compositor commits the rules.
-
-The event reports changes after the subscription starts; it does not replay the
-current preference. Add an initial window rule to the config if you want a
-palette before the first change event. Other values use the light palette in
-this short example; branch on `default` separately if your shell has its own
-default colors.
-
-See [Lua events](/events/) for the event fields and
-[window effects](/guides/window_effects) for the window effects you can set today.
+See [Lua events](/events/) for the `gnoblin.appearance.color-scheme-changed` event fields.
