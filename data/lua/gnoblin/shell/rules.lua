@@ -17,8 +17,11 @@ local FIELDS = {
     secure = function(v)
         return type(v) == "boolean"
     end,
-    corners = function(v)
-        return type(v) == "table" and type(v.radius) == "number"
+    maximised = function(v)
+        return type(v) == "boolean"
+    end,
+    opacity = function(v)
+        return type(v) == "number" and v >= 0 and v <= 1
     end,
 }
 
@@ -58,6 +61,9 @@ function M.compile(list)
         local values = {}
         for k, v in pairs(rule) do
             if k ~= "match" then
+                if k == "corners" then
+                    fail(i, "corners is not supported: the stock shell draws blur and shadow only")
+                end
                 local check = FIELDS[k]
                 if not check then
                     fail(i, ("unknown field %q"):format(tostring(k)))

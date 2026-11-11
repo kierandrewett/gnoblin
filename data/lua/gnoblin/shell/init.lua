@@ -176,10 +176,10 @@ function Window:on_ready()
     if Focus.opens_focused(focus_settings(), self.from_launcher) then
         seat.focus = self
     end
-    self:apply_rules()
 end
--- The rule key each window last applied, kept off the node: the core does not declare it.
-local rule_keys = setmetatable({}, { __mode = "k" })
+-- What the rules last did to each window, kept off the node: the key of the rules that matched, and the
+-- fields the rules wrote, so a field no rule sets any more goes back to its default.
+local rule_state = setmetatable({}, { __mode = "k" })
 -- The window as the rules read it: plain values, so rules.lua stays pure.
 local function rule_view(w)
     local ws = w:closest(Workspace)
@@ -190,23 +190,35 @@ local function rule_view(w)
         workspace_id = ws and ws.name or nil,
     }
 end
+-- The fields the rules own, with the value each takes when no rule sets it.
+local RULE_DEFAULTS = { secure = false, fullscreen = false, maximised = false, opacity = 1.0 }
+-- The rules are a binding: arrange runs again when a rule's inputs (title, app id, focus, workspace) change.
+function Window:arrange()
+    self:apply_rules()
+end
 function Window:apply_rules()
     local rules = window_rules()
     local view = rule_view(self)
     local key = Rules.key(rules, view)
-    if key == rule_keys[self] then
+    local state = rule_state[self] or { wrote = {} }
+    if key == state.key then
         return
     end
-    rule_keys[self] = key
+    state.key = key
+    rule_state[self] = state
     local fx = Rules.effects(rules, view)
-    if fx.fullscreen ~= nil then
-        self.fullscreen = fx.fullscreen
+    for field, default in pairs(RULE_DEFAULTS) do
+        if fx[field] ~= nil then
+            self[field] = fx[field]
+            state.wrote[field] = true
+        elseif state.wrote[field] then
+            self[field] = default
+            state.wrote[field] = nil
+        end
     end
-    if fx.secure ~= nil then
-        self.secure = fx.secure
-    end
-    if fx.workspace and not self.parent_window then -- a dialog follows its parent, whatever a rule says
-        for _, ws in ipairs(self:closest(Desk).space.children) do
+    local d = self:closest(Desk)
+    if fx.workspace and d and not self.parent_window then -- a dialog follows its parent, whatever a rule says
+        for _, ws in ipairs(d.space.children) do
             if ws.name == tostring(fx.workspace.id) and self:closest(Workspace) ~= ws then
                 ws:add(self)
             end
