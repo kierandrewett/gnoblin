@@ -1,7 +1,7 @@
 {
   "packages": [
     {
-      "name": "gnoblin-wm",
+      "name": "gnoblin-model",
       "dependencies": [
         {
           "name": "gnoblin-testkit",

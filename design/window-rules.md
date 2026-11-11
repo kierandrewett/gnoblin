@@ -1,5 +1,7 @@
 # Window rules: legacy contract, Rust target and gap
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Status: proposed. Base: `origin/rust-compositor` at `2f2ff7c5b`. Nothing here is built yet.
 
 Window rules are the user's main way to change how windows look and where they open. The legacy compositor

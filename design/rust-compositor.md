@@ -1,5 +1,7 @@
 # Gnoblin compositor rewrite: Rust and Smithay
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 **Status:** decided and partly built. The workspace, the object schema, the IPC
 envelope, the parity runner and the pure policy crates are on
 `origin/rust-compositor`, and the engine runs one slice.
@@ -477,7 +479,7 @@ gnoblin/
     gnoblin-model/            live object graph, revisions, property diffs, subscriptions
     gnoblin-config/           configuration document, validation, merge, salvage, last-good store, extension manifest parse and hash check (D22) (no Lua)
     gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
-    gnoblin-wm/               pure window management policy and the layout module (no Smithay types)
+    gnoblin-wm/               deleted in lane W6: window state is `gnoblin-wayland/src/fallback.rs`, policy is the stock Lua shell
     gnoblin-lock/             pure session lock and protection cover state machine
     gnoblin-authority/        pure attribution, activation and capability grant rules (D22)
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol; dynamic globals from provider XML at run time (D22)
@@ -984,7 +986,7 @@ flowchart TB
 | OBJ  | `gnoblin-model`, `gnoblin-client`, `gnoblinctl`                               | F schema and proto                         | 1         |
 | CFG  | `gnoblin-config`, `gnoblin-lua`                                               | F schema                                   | 1         |
 | SVC  | `gnoblin-session`, `gnoblin-services`, portal relay                           | OBJ client                                 | 1         |
-| WM   | `gnoblin-wm`                                                                  | F schema                                   | 1         |
+| WM   | `gnoblin-wm` (deleted in lane W6)                                             | F schema                                   | 1         |
 | SEC  | `gnoblin-lock`, `gnoblin-authority`                                           | failure-mode lists                         | 1         |
 | ENG  | `gnoblin-wayland`, `gnoblin-xwayland`                                         | F workspace                                | 2         |
 | BE   | `gnoblin-backend`, `gnoblin-output`                                           | F workspace                                | 2         |
@@ -1032,7 +1034,7 @@ dependency is a git revision:
 Each card is a brief for one lane. "Failure modes first" lists the start of the
 failure-mode list that must be complete before isolated tests or code.
 
-### Policy core: `gnoblin-wm`
+### Policy core: `gnoblin-wm` (deleted in lane W6)
 
 - **Owns:** floating placement, stacking, focus model and history, workspaces
   with stable IDs, maximise, fullscreen, minimise, snapping and edge resistance,

@@ -1,5 +1,7 @@
 # Docs parity: config
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Scope: `docs/config.md` and `docs/config/` (configure, configure/input, animation, array, config, load, snapshot, window_rule). Audit is read-only. Rust tree at `origin/rust-compositor` (crates/). MISSING means "not in the Rust candidate". The live Mutter C runtime in `src/` is a separate tree (`lua-api.md:1809`); where it already has the surface, the Evidence column cites it as `src/...:line`. Tags: BUILT, PARTIAL, MISSING, CHANGED. `[INFERENCE]` marks unverified claims.
 
 ## Summary

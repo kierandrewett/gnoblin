@@ -188,7 +188,7 @@ impl Default for TitlebarActions {
 pub enum Titlebar {
     /// The action reached the window manager.
     Performed,
-    /// The configured action is one `gnoblin-wm` has no event for yet, so nothing
+    /// The configured action is one the compositor has no request for yet, so nothing
     /// happened and the caller logs `reason` rather than pretending otherwise.
     Unavailable(&'static str),
 }
@@ -331,7 +331,7 @@ impl Shell1Host for State {
 ///
 /// Both answers are read-only: the relation itself is the adapter's to record,
 /// because applying a transient to a window that is already mapped needs a
-/// window-manager event `gnoblin-wm` does not have yet. What only the compositor
+/// window request the compositor does not have yet. What only the compositor
 /// knows is which windows exist on either side of the X11 boundary.
 pub trait X11InteropHost {
     /// The managed Wayland window a surface belongs to.

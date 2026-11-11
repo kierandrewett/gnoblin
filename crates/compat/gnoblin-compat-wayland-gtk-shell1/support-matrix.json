@@ -14,7 +14,7 @@
           "kind": "method",
           "name": "set_modal",
           "support": "partial",
-          "note": "recorded by the protocol object; gnoblin-wm has no kind-change event, so the parent is not blocked yet"
+          "note": "recorded by the protocol object; the compositor's window record has no kind-change event, so the parent is not blocked yet"
         },
         {
           "kind": "method",
@@ -32,7 +32,7 @@
           "kind": "method",
           "name": "request_focus",
           "support": "partial",
-          "note": "the same rule as present; an unfocused request is refused and no attention state is recorded, because gnoblin-wm has none"
+          "note": "the same rule as present; an unfocused request is refused and no attention state is recorded, because the compositor has none"
         },
         {
           "kind": "method",
@@ -43,7 +43,7 @@
           "kind": "method",
           "name": "titlebar_gesture",
           "support": "partial",
-          "note": "resolved through window_management.action_double_click_titlebar, action_middle_click_titlebar and action_right_click_titlebar; toggle-maximize, minimize and lower are performed, while the horizontal and vertical maximise and the window menu have no gnoblin-wm event and are logged as unavailable"
+          "note": "resolved through window_management.action_double_click_titlebar, action_middle_click_titlebar and action_right_click_titlebar; toggle-maximize, minimize and lower are performed, while the horizontal and vertical maximise and the window menu have no window request and are logged as unavailable"
         },
         {
           "kind": "method",
@@ -55,7 +55,7 @@
           "kind": "signal",
           "name": "configure",
           "support": "unsupported",
-          "reason": "the tiled states and edge constraints are not sent: gnoblin-wm computes geometry from its own state and the adapter has no change hook to announce it"
+          "reason": "the tiled states and edge constraints are not sent: the shell computes geometry from its own state and the adapter has no change hook to announce it"
         },
         {
           "kind": "signal",

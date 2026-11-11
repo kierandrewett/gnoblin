@@ -698,6 +698,31 @@ fn a_node_rotated_40_degrees_about_y_is_hit_at_the_point_in_its_own_coordinates(
 }
 
 #[test]
+fn a_point_in_the_unrotated_rectangle_but_outside_a_rotated_node_hits_nothing() {
+    let mut scene = Scene::new();
+    let mut node = NodeSpec::new(rect(0, 0, 100, 100));
+    node.transform.base.rotation_degrees = Vec3::new(0.0, 40.0, 0.0);
+    scene.insert(id(1), node).expect("node");
+    // Turned about its centre the node's left edge is drawn inside its own rectangle, so the strip between the two
+    // is where the node is no longer drawn.
+    let edge = project(&scene, id(1), [0.0, 50.0]);
+    assert!(
+        edge.x > 5.0,
+        "the turned left edge is drawn inside the old rectangle: {edge:?}"
+    );
+    let missed = PointF::new(edge.x - 2.0, edge.y);
+    assert!(missed.x > 0.0, "the point is inside the unrotated rectangle");
+    assert!(
+        scene.hit_test(missed).is_none(),
+        "a point left of the drawn edge hits nothing"
+    );
+    let hit = scene
+        .hit_test(PointF::new(edge.x + 2.0, edge.y))
+        .expect("a point right of the drawn edge hits");
+    assert_eq!(hit.node, id(1));
+}
+
+#[test]
 fn an_opacity_write_is_stored_on_the_node() {
     let mut scene = Scene::new();
     scene.insert(id(1), NodeSpec::new(rect(0, 0, 10, 10))).expect("node");

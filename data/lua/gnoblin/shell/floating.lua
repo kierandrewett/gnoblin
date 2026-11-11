@@ -1,5 +1,5 @@
 -- data/lua/gnoblin/shell/floating.lua: free-space, cascade and centred placement of new windows.
--- Replaces the removed Rust engine (crates/gnoblin-wm/src/placement.rs, last at commit 370564286). Loaded by
+-- Replaces the removed Rust engine (its `placement.rs`, last at commit 370564286). Loaded by
 -- shell/init.lua after node.lua. `M.place` is the pure function; the three classes call it. The golden cases
 -- (tests/shell/placement_cases.toml) and tests/lua/floating_test.lua test both.
 local M = {}

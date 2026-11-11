@@ -291,7 +291,7 @@ pub fn handle_surface_request<H: Shell1Host>(
             if !admit(&data.admission, Call::SetModal) {
                 return;
             }
-            // `gnoblin-wm` has no kind-change event, so the modality is recorded by the
+            // The compositor's window record has no kind-change event, so the modality is recorded by the
             // protocol object and not by the window manager: the matrix says `partial`
             // and this is the line that keeps it visible.
             log::debug!("a window declared itself modal");

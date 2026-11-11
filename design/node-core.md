@@ -1,5 +1,7 @@
 # Node core: protocol and schema
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Status: proposal for D35 step 3 (`node-api-refactor.md` 7.2). Nothing here is built. Code claims cite `file:line` at
 `origin/rust-compositor` (`d6a9d2032`). Anything not read is marked (unverified).
 

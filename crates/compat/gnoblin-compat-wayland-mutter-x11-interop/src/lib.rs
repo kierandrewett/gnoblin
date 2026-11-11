@@ -15,10 +15,10 @@
 //! compositor's own window table.
 //!
 //! Not delivered, and stated rather than implied: **applying the relation to a window
-//! that is already managed**. `gnoblin-wm` takes a window's transient at
-//! `Event::WindowOpened` and has no event to change it afterwards, so a dialog that is
+//! that is already managed**. The compositor's window record takes a window's transient when the
+//! window opens and has no request to change it afterwards, so a dialog that is
 //! already mapped keeps its own stacking. The relation is recorded and the support matrix
-//! says `partial`; the missing piece is a window-manager event, not code in this crate.
+//! says `partial`; the missing piece is a window request, not code in this crate.
 //!
 //! # Failure modes first
 //!

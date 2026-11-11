@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn structured_console_lines_are_not_raw() {
-        assert!(is_structured("INFO  [compositor] gnoblin_wm: started"));
+        assert!(is_structured("INFO  [compositor] gnoblin_wayland: started"));
         assert!(is_structured("WARN  [guardian] gnoblin_session: slow"));
         assert!(!is_structured("panicked at src/main.rs:3"));
         assert!(!is_structured("INFO started without a role"));

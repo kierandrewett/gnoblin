@@ -12,7 +12,7 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 /// Crates that define shared types, pure policy or the client half of the IPC.
 ///
 /// The plan's "Dependency rules" first bullet names `gnoblin-schema`,
-/// `gnoblin-proto`, `gnoblin-config`, `gnoblin-model`, `gnoblin-wm`,
+/// `gnoblin-proto`, `gnoblin-config`, `gnoblin-model`,
 /// `gnoblin-lock` and `gnoblin-authority`; `gnoblin-client` joins them because
 /// the runtime, services, portal and shells link it and it must never pull a
 /// compositor in behind itself. `gnoblin-types` joins them because it holds the
@@ -24,7 +24,7 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 /// type, no device and no clock, and the plan's Renderer card is what makes it the
 /// *owner* of those sessions rather than a helper of the protocol layer.
 ///
-/// `gnoblin-output` joins them for the same reason as `gnoblin-wm`: it is pure
+/// `gnoblin-output` joins them because it is pure
 /// policy. It holds no Smithay, DRM, udev or Wayland type, reads no clock and
 /// touches no hardware — an output arrives as a descriptor and a configuration
 /// becomes a layout of rectangles (`crates/gnoblin-output/src/lib.rs`). The plan
@@ -46,7 +46,6 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-proto",
     "gnoblin-schema",
     "gnoblin-types",
-    "gnoblin-wm",
 ];
 
 /// The shared primitives: the root of every other crate's dependency graph.
@@ -1281,7 +1280,7 @@ mod tests {
         let reported: Vec<String> = violations.iter().map(DepViolation::to_string).collect();
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
-            reported[0].starts_with("gnoblin-wm -> gnoblin-testkit [dev-crates]"),
+            reported[0].starts_with("gnoblin-model -> gnoblin-testkit [dev-crates]"),
             "unexpected violation: {}",
             reported[0]
         );
@@ -1653,7 +1652,7 @@ mod tests {
         // The exception is for mechanism crates only: a policy crate that reached the
         // renderer would make the window manager depend on the render path.
         let reported = violations(&[
-            ("gnoblin-wm", &["gnoblin-render"]),
+            ("gnoblin-model", &["gnoblin-render"]),
             ("gnoblin-render", &["gnoblin-types"]),
         ]);
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");

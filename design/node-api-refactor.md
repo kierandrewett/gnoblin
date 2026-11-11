@@ -1,5 +1,7 @@
 # Node API: one tree for every shell
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Status: proposal, second pass (syntax); nothing here is built. Pass 1 claims about current code cite `file:line` at
 `a1d6d13aa`; claims added in pass 2 say `c28c0c671` (both `origin/rust-compositor`). What I could not check is listed
 in section 10.

@@ -1769,15 +1769,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-wm"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-layers",
- "gnoblin-lua-pattern",
- "gnoblin-types",
-]
-
-[[package]]
 name = "gnoblin-xwayland"
 version = "0.2.0-alpha.0"
 dependencies = [

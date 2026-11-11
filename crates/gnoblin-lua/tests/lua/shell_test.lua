@@ -775,6 +775,18 @@ return {
         end,
     },
     {
+        "a fullscreen window does not move to another output",
+        function()
+            local host, w = window_setup({})
+            local home = w.parent
+            w.fullscreen = true
+            local second = root:add(Screen({ width = 600, height = 400 }))
+            H.check(w:move_to_output(second) == false, "a fullscreen window must refuse an output move")
+            H.check(w.parent == home, "a refused window must stay on its workspace")
+            H.check(w.fullscreen, "a refused window must stay fullscreen")
+        end,
+    },
+    {
         "a dialog does not move to another workspace on its own",
         function()
             local host, w = window_setup({})
@@ -868,6 +880,20 @@ return {
             H.check(ws2.visible, "the neighbour must be visible")
             H.check(w:closest(Workspace) == ws2, "the window must move to the neighbour")
             H.check(seat_focus() == w, "the moved window must keep focus")
+        end,
+    },
+    {
+        "removing an inactive workspace keeps focus on the focused window and moves the stray window beside it",
+        function()
+            local host, w = window_setup({})
+            local d = desk()
+            local ws1, ws2 = d.space.children[1], d.space.children[2]
+            local stray = ws2:add(Window({ app_id = "stray" }))
+            root:find(Seat).focus = w
+            H.check(d:remove_workspace(ws2) == true, "an inactive workspace must be removable")
+            H.check(stray:closest(Workspace) == ws1, "the stray window must move to the neighbour before it")
+            H.check(d.active == ws1, "the active workspace must stay")
+            H.check(seat_focus() == w, "the focused window must keep focus when another workspace goes")
         end,
     },
     {

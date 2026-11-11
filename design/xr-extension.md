@@ -1,5 +1,7 @@
 # XR extension: `gnoblin-xr`
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Status: proposal (D34), revised 2026-11-08 after Kieran's second review. Nothing is built. This document replaces the
 plan in the Doop frames XR 1 to XR 4 (three levels, portals, parked questions).
 

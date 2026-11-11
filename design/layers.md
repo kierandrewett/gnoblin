@@ -1,5 +1,7 @@
 # Layers
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers `gnoblin.portals` and `gnoblin.alerts`, and a Wayland provider registers the client surfaces (`gnoblin.surface_*`). Extensions register under `ext.<id>.`, and the window menu is one of them (D29). Decisions live in the main document; this file holds the detail.
 
 Status: proposed. Phases 1, 2 and 4 are implemented and tested. Phases 3, 5, 7 and 9 are partly done. Phases 6, 8 and 10 are not started. Window frames are not layers and are not drawn yet. The evidence and the ranked plan are in `layers-status.md`.

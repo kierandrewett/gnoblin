@@ -1,6 +1,6 @@
 -- tests/lua/sets_test.lua: workspace sets of data/lua/gnoblin/shell/sets.lua. Pure: a set is { name, entries = { {
--- workspace, output? } }. Ports the workspace-set cases of crates/gnoblin-wm/tests/failure_modes.rs. A refused list is
--- never partly applied: `define` returns nil and the previous list stays with the caller.
+-- workspace, output? } }. Ports the workspace-set cases of the removed Rust window manager's failure-mode tests. A
+-- refused list is never partly applied: `define` returns nil and the previous list stays with the caller.
 local H = require("harness")
 
 local function sets()

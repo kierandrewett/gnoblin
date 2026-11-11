@@ -6,7 +6,7 @@
 //! its windows identities from the same numbering as everything else.
 //!
 //! The table is separate from the dispatch so a test can state a relation without a
-//! socket: `gnoblin-wm` has no event to change an already-managed window's transient, so
+//! socket: the compositor has no request to change an already-managed window's transient, so
 //! what this crate does with a relation today is record it, and what it records is
 //! observable in exactly one place.
 

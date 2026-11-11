@@ -33,12 +33,6 @@ kind = "same-name"
 reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-a11y::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
-
-[[allow]]
 left = "gnoblin-a11y::Event"
 right = "gnoblin-authority::Event"
 kind = "same-name"
@@ -65,12 +59,6 @@ reason = "each crate's event enum is the input vocabulary of its own state machi
 [[allow]]
 left = "gnoblin-a11y::Event"
 right = "gnoblin-session::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-a11y::Event"
-right = "gnoblin-wm::Event"
 kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
@@ -111,12 +99,6 @@ kind = "same-name"
 reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-authority::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
-
-[[allow]]
 left = "gnoblin-authority::Event"
 right = "gnoblin-client::Event"
 kind = "same-name"
@@ -137,12 +119,6 @@ reason = "each crate's event enum is the input vocabulary of its own state machi
 [[allow]]
 left = "gnoblin-authority::Event"
 right = "gnoblin-session::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-authority::Event"
-right = "gnoblin-wm::Event"
 kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
@@ -177,12 +153,6 @@ kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-client::Event"
-right = "gnoblin-wm::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
 left = "gnoblin-config::Value"
 right = "gnoblin-model::Value"
 kind = "same-name"
@@ -201,12 +171,6 @@ kind = "same-name"
 reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-lock::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
-
-[[allow]]
 left = "gnoblin-lock::Event"
 right = "gnoblin-output::Event"
 kind = "same-name"
@@ -215,12 +179,6 @@ reason = "each crate's event enum is the input vocabulary of its own state machi
 [[allow]]
 left = "gnoblin-lock::Event"
 right = "gnoblin-session::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-lock::Event"
-right = "gnoblin-wm::Event"
 kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
@@ -243,32 +201,8 @@ kind = "same-name"
 reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-output::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
-
-[[allow]]
 left = "gnoblin-output::Event"
 right = "gnoblin-session::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-output::Event"
-right = "gnoblin-wm::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-session::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-session::Event"
-right = "gnoblin-wm::Event"
 kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
@@ -277,18 +211,6 @@ left = "gnoblin-output::Verdict"
 right = "gnoblin-parity::Verdict"
 kind = "same-name"
 reason = "a caller's test result of a proposed layout and a parity report's verdict are unrelated judgments"
-
-[[allow]]
-left = "gnoblin-output::Broken"
-right = "gnoblin-wm::Broken"
-kind = "same-name"
-reason = "each state machine names its own invariant failure; the name is shared, the failure is not"
-
-[[allow]]
-left = "gnoblin-output::Rejection"
-right = "gnoblin-wm::Rejection"
-kind = "same-name"
-reason = "each state machine names its own refused request; the name is shared, the refusal is not"
 
 [[allow]]
 left = "gnoblin-output::Edge"
@@ -345,12 +267,6 @@ kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-input::Event"
-right = "gnoblin-wm::Event"
-kind = "same-name"
-reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
-
-[[allow]]
 left = "gnoblin-lock::Rng"
 right = "gnoblin-render::Rng"
 kind = "same-name"
@@ -399,12 +315,6 @@ kind = "same-name"
 reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
 
 [[allow]]
-left = "gnoblin-compat-core::Rule"
-right = "gnoblin-wm::Rule"
-kind = "same-name"
-reason = "a declared compatibility support rule and a window rule share a word and nothing else"
-
-[[allow]]
 left = "gnoblin-compat-core::Interface"
 right = "xtask::Interface"
 kind = "same-name"
@@ -424,12 +334,6 @@ reason = "a workspace tool's local types never cross into the product; the names
 
 [[allow]]
 left = "gnoblin-compat-core::Rule"
-right = "xtask::Rule"
-kind = "same-name"
-reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
-
-[[allow]]
-left = "gnoblin-wm::Rule"
 right = "xtask::Rule"
 kind = "same-name"
 reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
@@ -465,22 +369,10 @@ kind = "same-name"
 reason = "each state machine's record of what it observed is its own"
 
 [[allow]]
-left = "gnoblin-a11y::Output"
-right = "gnoblin-wm::Output"
-kind = "same-name"
-reason = "an a11y output is the layout bounds the magnifier clamps into; the window manager's output is the managed output with its panel reservation"
-
-[[allow]]
 left = "gnoblin-authority::GestureKind"
 right = "gnoblin-input::GestureKind"
 kind = "same-name"
 reason = "authority names the input that created a trusted context (a pointer button, a key press, a touch); the input router names a recognised multi-touch gesture (swipe, pinch)"
-
-[[allow]]
-left = "gnoblin-backend::Output"
-right = "gnoblin-wm::Output"
-kind = "same-name"
-reason = "a backend output is what the engine drives (connector, mode, scale) and has no position; the window manager's output is where windows are placed, plus the space panels reserve on it"
 
 [[allow]]
 left = "gnoblin-lock::State"
@@ -523,12 +415,6 @@ left = "gnoblin-a11y::Key"
 right = "gnoblin-input::Key"
 kind = "same-name"
 reason = "an a11y key is one key event as the compositor saw it; an input key is the key half of a parsed chord, which may be a pointer button or the bare word Super"
-
-[[allow]]
-left = "gnoblin-a11y::Output"
-right = "gnoblin-wm::Output"
-kind = "same-name"
-reason = "an a11y output is the layout bounds the magnifier clamps into; the window manager's output is the managed output with its reservation"
 
 [[allow]]
 left = "gnoblin-authority::GestureKind"
@@ -1342,20 +1228,8 @@ kind = "same-name"
 reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-compositor::Effect"
-right = "gnoblin-wm::Effect"
-kind = "same-name"
-reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
-
-[[allow]]
 left = "gnoblin-compositor::Event"
 right = "gnoblin-session::Event"
-kind = "same-name"
-reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
-
-[[allow]]
-left = "gnoblin-compositor::Event"
-right = "gnoblin-wm::Event"
 kind = "same-name"
 reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1389,76 +1263,10 @@ right = "gnoblin-portal-core::ConsentDecision"
 kind = "same-shape"
 reason = "a portal consent value and an authority value share a shape but answer different questions"
 [[allow]]
-left = "gnoblin-config::Origin"
-right = "gnoblin-wm::Origin"
-kind = "same-name"
-reason = "a config file's origin (which file it came from) is not a layout placement origin"
-
-[[allow]]
-left = "gnoblin-input-eis::Origin"
-right = "gnoblin-wm::Origin"
-kind = "same-name"
-reason = "an input device origin is not a layout placement origin"
-
-[[allow]]
-left = "gnoblin-input::Reply"
-right = "gnoblin-wm::Reply"
-kind = "same-name"
-reason = "each subsystem answers its own request with its own reply; the name is shared, the messages are not"
-
-[[allow]]
-left = "gnoblin-input-eis::Request"
-right = "gnoblin-wm::Request"
-kind = "same-name"
-reason = "each subsystem asks its own question; the name is shared, the messages are not"
-
-[[allow]]
-left = "gnoblin-wm::Camera"
-right = "gnoblin-render::Camera"
-kind = "same-name"
-reason = "a layout's camera is a pose description the renderer consumes; the renderer owns the projection math"
-
-[[allow]]
-left = "gnoblin-wm::Camera"
-right = "gnoblin-render::Projection"
-kind = "same-shape"
-reason = "a layout's camera carries pose and lens intent; the renderer's projection carries the derived matrices"
-
-[[allow]]
-left = "gnoblin-wm::Layout"
-right = "gnoblin-output::Layout"
-kind = "same-name"
-reason = "a layout is a Lua-provided placement policy; an output layout is the monitor arrangement"
-
-[[allow]]
-left = "gnoblin-wm::Placement"
-right = "gnoblin-output::Placement"
-kind = "same-name"
-reason = "a window placement in a layout run is not an output placement on a monitor"
-
-[[allow]]
-left = "gnoblin-wm::Subject"
-right = "gnoblin-lock::Subject"
-kind = "same-name"
-reason = "a layout subject names a layout target; the lock subject names a lock-screen target"
-
-[[allow]]
-left = "gnoblin-wm::Request"
-right = "gnoblin-compositor::Request"
-kind = "same-name"
-reason = "a layout request asks the Lua layout provider; a portal UI request is a portal prompt"
-
-[[allow]]
 left = "gnoblin-a11y::Model"
 right = "gnoblin-render-frame::Model"
 kind = "same-name"
 reason = "a backend layer's 3D model matrix is a draw transform; the accessibility model is the tree of exposed objects"
-
-[[allow]]
-left = "gnoblin-lua::LayoutCall"
-right = "gnoblin-wm::Job"
-kind = "same-shape"
-reason = "the VM's call selector is a payload-free projection of the wm Job; the wm type carries the params the VM reads from its snapshot, which the VM does not need"
 
 [[allow]]
 left = "gnoblin-authority::Grant"
@@ -1545,18 +1353,6 @@ kind = "same-shape"
 reason = "each compat adapter is a one-field agent holding its own mode gate; the shape is the frame's, the adapters are separate services"
 
 [[allow]]
-left = "gnoblin-layers::LayerProvider"
-right = "gnoblin-wm::ClaimOrigin"
-kind = "same-shape"
-reason = "a provider names the party that registers a layer and owns a String for extensions; a claim origin only orders claims on one window in the stack, and it must stay Copy, so the stack cannot hold a provider"
-
-[[allow]]
-left = "gnoblin-wayland::Managed"
-right = "gnoblin-wm::WindowProtocol"
-kind = "same-shape"
-reason = "Managed holds the live protocol object behind a window (an xdg_toplevel or a boxed X11 surface); WindowProtocol is a Copy tag the manager reads to pick a surface record, and it cannot hold the object"
-
-[[allow]]
 left = "gnoblin-backend::Record"
 right = "gnoblinctl::Record"
 kind = "same-name"
@@ -1639,51 +1435,3 @@ left = "gnoblin-lua::MirrorChangeKind"
 right = "gnoblin-render::TreeChange"
 kind = "same-shape"
 reason = "the shell mirror's change tag names one step of a snapshot or change batch, while the render crate's tree change names a scene edit; both are a plain tag enum with no shared behaviour"
-
-[[allow]]
-left = "gnoblin-wayland::DragConstraint"
-right = "gnoblin-wm::DragConstraint"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::FocusMode"
-right = "gnoblin-wm::FocusMode"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::NewWindowFocus"
-right = "gnoblin-wm::NewWindowFocus"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::WmOptions"
-right = "gnoblin-wm::WmOptions"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::Window"
-right = "gnoblin-wm::Window"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::WindowKind"
-right = "gnoblin-wm::WindowKind"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::WindowState"
-right = "gnoblin-wm::WindowState"
-kind = "same-name"
-reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
-
-[[allow]]
-left = "gnoblin-wayland::LayerRecordError"
-right = "gnoblin-wm::LayerRegisterError"
-kind = "same-shape"
-reason = "lane W5 moved the layer-record refusals out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"

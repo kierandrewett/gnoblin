@@ -13,7 +13,7 @@
           "kind": "method",
           "name": "set_x11_parent",
           "support": "partial",
-          "note": "the relation is resolved on both sides of the X11 boundary and recorded, but not applied to a window that is already managed: gnoblin-wm has no transient-change event, so an already-mapped dialog keeps its own stacking until that event exists"
+          "note": "the relation is resolved on both sides of the X11 boundary and recorded, but not applied to a window that is already managed: the compositor has no transient-change request, so an already-mapped dialog keeps its own stacking until that request exists"
         }
       ]
     }

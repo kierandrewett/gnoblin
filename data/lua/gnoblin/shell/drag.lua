@@ -3,7 +3,7 @@
 -- screen but a STRIP-pixel edge stays inside, so it can never become unreachable.
 local M = {}
 
--- The visible strip of a window kept inside the work area under minimum_strip (crates/gnoblin-wm/src/drag.rs).
+-- The visible strip of a window kept inside the work area under minimum_strip.
 M.STRIP = 75
 
 -- The constraint named by the seat's drag_constraint. Absent is work_area; any other value raises.

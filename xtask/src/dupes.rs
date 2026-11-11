@@ -700,6 +700,6 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let crates = workspace_crates(&root).expect("workspace members");
         assert!(crates.iter().any(|krate| krate.name == "gnoblin-types"));
-        assert!(crates.iter().any(|krate| krate.name == "gnoblin-wm"));
+        assert!(crates.iter().any(|krate| krate.name == "gnoblin-wayland"));
     }
 }

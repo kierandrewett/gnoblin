@@ -12,4 +12,4 @@ target = { candidate = {} }
 [[steps]]
 id = "workspace.list"
 description = "The workspaces `gnoblinctl workspace list` reports at start."
-expect = { objects = [{ id = "<id:1>", type = "gnoblin.workspace", properties = { id = "<id:2>", layout = "floating" } }] }
+expect = { objects = [{ id = "<id:1>", type = "gnoblin.workspace", properties = { id = "<id:2>" } }] }

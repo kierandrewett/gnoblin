@@ -1,5 +1,7 @@
 # Docs parity: guides, recipes, events
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Scope: `docs/guides/`, `docs/recipes/`, `docs/events/`, and `docs/background-effects.md`, `docs/frame-renderer-api.md`, `docs/gnome-apps.md`, `docs/bring-your-own-shell.md`, `docs/build-a-desktop.md`, `docs/bingux.md`. Rust evidence means `crates/`. MISSING (Rust) means "not in the Rust candidate". Where the live Mutter C runtime in `src/` has the surface, the evidence column cites it (`lua-api.md:1809` explains the split).
 
 Status: partial audit. Verified rows below cover the Lua global table, schema objects, window, workspace and output members, gnoblinctl, log format, config keys, autostart and window rules. Recipes, most event pages and most guide pages were not audited line by line. Those items are not counted and are listed as open work.

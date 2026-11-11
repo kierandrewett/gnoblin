@@ -1,5 +1,7 @@
 # Constants audit: master summary
 
+> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+
 Eight read-only audits of hard-coded constants across all crates. This file consolidates the findings, verifies the highest-impact claims, lists decisions for Kieran, and proposes a batch plan for implementation.
 
 ## Method
