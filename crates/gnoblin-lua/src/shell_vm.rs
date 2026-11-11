@@ -143,8 +143,8 @@ pub struct ShellVm {
     /// The serial and ops of each sent transaction, oldest first, until its reply arrives. The compositor
     /// answers in order, but a refusal carries the serial the tree had then, not the serial the shell
     /// stamped, so a reply is matched to its transaction by position. A refusal names its failed op from
-    /// this record, and a stale-base or unknown-node refusal re-sends the rest. A call that carries
-    /// text is recorded as `None`: its text is not kept past the send, so a retry cannot send it again.
+    /// this record, and a stale-base or unknown-node refusal re-sends the rest. A call that carries a
+    /// secret is recorded as `None`: its text is not kept past the send, so a retry cannot send it again.
     sent: VecDeque<(u64, Vec<Option<LuaOp>>)>,
     /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it:
     /// a second transaction built on the same base is refused as stale.
@@ -154,11 +154,16 @@ pub struct ShellVm {
     retry: Vec<LuaOp>,
 }
 
-/// What the sent-log keeps of one op for a stale-base retry. A call that carries text is not kept:
-/// its text is secret and is not held past the send, so a retry cannot send it again.
+/// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, and a
+/// `Seat.claim` the chord to grab. Every other call that carries text is treated as carrying a password.
+const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim"];
+
+/// What the sent-log keeps of one op for a stale-base retry. A call that carries a secret is not kept: its text
+/// is not held past the send, so a retry cannot send it again. A call whose text is plain content is kept, so a
+/// race with a published batch does not leave a text unmeasured or a chord unclaimed for good.
 fn retained_op(op: &LuaOp) -> Option<LuaOp> {
     match op {
-        LuaOp::Call { text, .. } if !text.is_empty() => None,
+        LuaOp::Call { method, text, .. } if !text.is_empty() && !PLAIN_TEXT_CALLS.contains(&method.as_str()) => None,
         other => Some(other.clone()),
     }
 }

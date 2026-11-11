@@ -51,6 +51,7 @@ fn classes() -> Vec<ClassSpec> {
     let window = ClassSpec {
         name: "Window".into(),
         base: Some("Node".into()),
+        methods: vec!["measure".into(), "authenticate".into()],
         ..ClassSpec::default()
     };
     vec![node, window]
@@ -619,6 +620,58 @@ fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
         check(&mut vm, "title", "return root.children[1].title"),
         "ext",
         "the native title stands"
+    );
+}
+
+// (R1) a stale-base refusal sends a call whose text is content (a measure's string) again, and drops one whose
+// text is a password, saying so: the password is never held past the send.
+#[test]
+fn stale_base_refusal_resends_a_measure_and_drops_a_password() {
+    let comp = compositor_with_root_and_window();
+    comp.borrow_mut().hold = true;
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "write",
+        "local w = root.children[1]\nw.title = \"mine\"\nw:measure(\"\", \"sans\\nhello\")\nw:authenticate(\"\", \"hunter2\")",
+    )
+    .expect("run write");
+    let first = vm.frame(1.0, vec![]).expect("write frame");
+    assert!(first.diagnostics.is_empty(), "{:?}", first.diagnostics);
+    assert_eq!(sent(&comp).len(), 1, "first transaction held in flight");
+
+    FakeLink(comp.clone()).external_title(2, "ext");
+    FakeLink(comp.clone()).release();
+    let refused = vm.frame(2.0, vec![]).expect("refusal frame");
+    assert_eq!(
+        refused.diagnostics.len(),
+        1,
+        "only the password call is reported: {:?}",
+        refused.diagnostics
+    );
+    assert!(
+        refused.diagnostics[0].contains("was dropped and not sent again"),
+        "{:?}",
+        refused.diagnostics
+    );
+    assert!(
+        !refused.diagnostics[0].contains("hunter2"),
+        "the report does not carry the password: {:?}",
+        refused.diagnostics
+    );
+    let txs = sent(&comp);
+    assert_eq!(txs.len(), 2, "the surviving op is sent again");
+    let calls: Vec<(&str, &str)> = txs[1]
+        .iter()
+        .filter_map(|op| match op {
+            LuaOp::Call { method, text, .. } => Some((method.as_str(), text.expose())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        calls,
+        vec![("measure", "sans\nhello")],
+        "the measure is sent again with its text, the password is not"
     );
 }
 
