@@ -68,7 +68,28 @@ confidence-threshold = 0.9
 # ones it has today, so an allowance no current dependency matches is expected
 # and is not a warning.
 unused-allowed-license = "allow"
-exceptions = []
+# Per-crate exceptions, one reviewed entry each. A crate's licence is checked as
+# a whole, so an exception names the crate and the licence terms it is allowed,
+# and nothing else.
+#
+# sqlcipher-src: the SQLCipher amalgamation behind `rusqlite`'s bundled SQLCipher,
+# which `gnoblin-keyring-store` uses for its database. Its expression is
+# `MIT AND BSD-3-Clause AND blessing AND WTFPL`. `blessing` is the SQLite blessing
+# (the dedication at the top of sqlcipher.c); `WTFPL` is the bundled libtomcrypt
+# licence (sqlcipher/LICENSE-libtomcrypt). Both are permissive and place no
+# obligation on Gnoblin's own code. Removal: drop when the keyring store no longer
+# links SQLCipher.
+[[licenses.exceptions]]
+name = "sqlcipher-src"
+allow = ["blessing", "WTFPL"]
+
+# epaint_default_fonts: the fonts egui bundles behind its `default_fonts` feature,
+# used by the portal dialogs. Its expression is `(MIT OR Apache-2.0) AND OFL-1.1
+# AND Ubuntu-font-1.0`; the font files ship with their own OFL.txt and UFL.txt.
+# Removal: drop when egui no longer bundles these fonts.
+[[licenses.exceptions]]
+name = "epaint_default_fonts"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]
 
 [sources]
 unknown-registry = "deny"
