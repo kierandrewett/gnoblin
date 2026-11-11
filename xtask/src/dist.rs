@@ -773,7 +773,7 @@ mod tests {
             "lib/security/pam_gnoblin_keyring.so",
             "lib/pam.d/gnoblin-lock",
             "share/gnoblin/default-config/init.lua",
-            "share/gnoblin/lua/gnoblin/layouts/dwindle.lua",
+            "share/gnoblin/lua/gnoblin/shell/init.lua",
             "share/xdg-desktop-portal/gnoblin-portals.conf",
         ] {
             assert!(seen.contains(expected), "missing {expected}");
