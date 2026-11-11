@@ -569,6 +569,12 @@ pub trait Backend<S: Host + 'static> {
     /// pointer where the user left it.
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent>;
 
+    /// What a capture draws in place of a secure layer, from the `capture.secure-treatment` setting this backend was
+    /// built with. The host reads it to treat a View's capture the way the backend treats an output's.
+    fn secure_treatment(&self) -> gnoblin_render_frame::frame::SecureTreatment {
+        gnoblin_render_frame::frame::SecureTreatment::default()
+    }
+
     /// What this backend can control on its outputs: gamma tables and power state.
     ///
     /// The default is nothing, so a backend that does not implement the controls is

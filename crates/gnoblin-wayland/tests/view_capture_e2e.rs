@@ -79,6 +79,7 @@ impl ClassInfo for Classes {
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
         let kind = match (class, key) {
             (_, "x" | "y" | "width" | "height") => ValueType::Double,
+            (_, "secure") => ValueType::Bool,
             (_, "visible") => ValueType::Bool,
             ("canvas", "content") => ValueType::Bytes,
             ("view", "source" | "camera") => ValueType::Node("node".to_owned()),
@@ -374,11 +375,28 @@ impl Pixels {
         format: wl_shm::Format,
         colour: u32,
     ) -> Self {
+        Self::patterned(shm, qh, width, height, format, |_, _| colour)
+    }
+
+    /// A buffer of `width` by `height` pixels in `format`, pixel `(x, y)` the word `pattern(x, y)`.
+    fn patterned(
+        shm: &wl_shm::WlShm,
+        qh: &QueueHandle<App>,
+        width: u32,
+        height: u32,
+        format: wl_shm::Format,
+        pattern: impl Fn(u32, u32) -> u32,
+    ) -> Self {
         let stride = width * 4;
         let length = (stride * height) as usize;
         let mut file = tempfile::tempfile().expect("a shared memory file");
         file.set_len(length as u64).expect("a file that big");
-        let bytes: Vec<u8> = (0..width * height).flat_map(|_| colour.to_ne_bytes()).collect();
+        let mut bytes = Vec::with_capacity(length);
+        for y in 0..height {
+            for x in 0..width {
+                bytes.extend_from_slice(&pattern(x, y).to_ne_bytes());
+            }
+        }
         file.write_all(&bytes).expect("the pixels");
         let pool = shm.create_pool(file.as_fd(), length as i32, qh, ());
         let buffer = pool.create_buffer(0, width as i32, height as i32, stride as i32, format, qh, ());
@@ -389,6 +407,14 @@ impl Pixels {
             height,
             format,
         }
+    }
+
+    /// Overwrites every pixel with `colour`, as a client clears a buffer before it asks for a frame.
+    fn fill(&self, colour: u32) {
+        let bytes: Vec<u8> = (0..self.width * self.height)
+            .flat_map(|_| colour.to_ne_bytes())
+            .collect();
+        self.file.write_all_at(&bytes, 0).expect("the pixels");
     }
 
     /// One pixel of the buffer, as a native-endian word.
@@ -411,6 +437,19 @@ impl Pixels {
             .flat_map(|y| (0..self.width).map(move |x| (x, y)))
             .map(|(x, y)| (x, y, self.word(x, y)))
             .find(|(_, _, word)| word & mask != colour & mask)
+    }
+
+    /// How many pixels are `colour`. An `xrgb8888` buffer has no alpha, so its fourth byte is not compared.
+    fn count_of(&self, colour: u32) -> usize {
+        let mask = if self.format == wl_shm::Format::Argb8888 {
+            u32::MAX
+        } else {
+            0x00FF_FFFF
+        };
+        (0..self.height)
+            .flat_map(|y| (0..self.width).map(move |x| (x, y)))
+            .filter(|(x, y)| self.word(*x, *y) & mask == colour & mask)
+            .count()
     }
 }
 
@@ -448,6 +487,17 @@ impl Window {
     /// Commits a new buffer of `colour`.
     fn paint(&mut self, client: &mut Connected<App>, colour: u32) {
         let pixels = Pixels::solid(&client.shm, &client.qh, SIDE, SIDE, wl_shm::Format::Argb8888, colour);
+        self.surface.attach(Some(&pixels.buffer), 0, 0);
+        self.surface.damage(0, 0, SIDE as i32, SIDE as i32);
+        self.surface.commit();
+        self.buffers.push(pixels);
+        client.roundtrip();
+    }
+
+    /// Commits a buffer whose every pixel is its own [`gradient`] word, so a copy of any part of the window says
+    /// where in the window it came from.
+    fn paint_gradient(&mut self, client: &mut Connected<App>) {
+        let pixels = Pixels::patterned(&client.shm, &client.qh, SIDE, SIDE, wl_shm::Format::Argb8888, gradient);
         self.surface.attach(Some(&pixels.buffer), 0, 0);
         self.surface.damage(0, 0, SIDE as i32, SIDE as i32);
         self.surface.commit();
@@ -517,6 +567,17 @@ impl Viewer {
     /// The client binds `wl_shm`, the view source manager and the copy manager, which are all
     /// its registry holds: it has no compositor to make a surface with.
     fn open(handle: &Handle) -> Self {
+        Self::open_view(handle, VIEW)
+    }
+
+    /// [`Viewer::open`] for the View `view`.
+    fn open_view(handle: &Handle, view: NodeId) -> Self {
+        Self::open_as(handle, view, None)
+    }
+
+    /// [`Viewer::open_view`] with a buffer of `wanted` when one is named, the first format the session offers
+    /// otherwise.
+    fn open_as(handle: &Handle, view: NodeId, wanted: Option<wl_shm::Format>) -> Self {
         let mut client = handle.connect_bare(ClientRole::View, App::default());
         assert_eq!(
             client.interfaces(),
@@ -539,7 +600,7 @@ impl Viewer {
             .globals
             .bind(&client.qh, 1..=1, ())
             .expect("the view role binds the image copy capture manager");
-        let source = sources.create_source((VIEW.get() >> 32) as u32, VIEW.get() as u32, &client.qh, ());
+        let source = sources.create_source((view.get() >> 32) as u32, view.get() as u32, &client.qh, ());
         let session = copies.create_session(
             &source,
             ext_image_copy_capture_manager_v1::Options::empty(),
@@ -552,15 +613,25 @@ impl Viewer {
             Some((SIDE, SIDE)),
             "the session is the View's size"
         );
-        let format = [wl_shm::Format::Argb8888, wl_shm::Format::Xrgb8888]
-            .into_iter()
-            .find(|format| client.state.session_formats.contains(&(*format as u32)))
-            .unwrap_or_else(|| {
-                panic!(
-                    "the session offers argb8888 or xrgb8888; it offered {:?}",
+        let format = match wanted {
+            Some(format) => {
+                assert!(
+                    client.state.session_formats.contains(&(format as u32)),
+                    "the session offers {format:?}; it offered {:?}",
                     client.state.session_formats
-                )
-            });
+                );
+                format
+            }
+            None => [wl_shm::Format::Argb8888, wl_shm::Format::Xrgb8888]
+                .into_iter()
+                .find(|format| client.state.session_formats.contains(&(*format as u32)))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "the session offers argb8888 or xrgb8888; it offered {:?}",
+                        client.state.session_formats
+                    )
+                }),
+        };
         let target = Pixels::solid(&shm, &client.qh, SIDE, SIDE, format, 0);
         Self {
             client,
@@ -1143,5 +1214,374 @@ fn a_views_fps_paces_its_picture_on_the_session_clock() {
             0xC0_40_20,
             "the slot's end draws the last state, not the one before it"
         );
+    });
+}
+
+/// The word a secure node's place holds in a View's capture: the neutral grey an output capture draws over a secure
+/// layer, opaque.
+const MASKED: u32 = 0xFF80_8080;
+
+/// The second View of the nested arrangement, a plain node holding it, and the View of that node.
+const INNER: NodeId = NodeId::new((1 << 32) | 0x103);
+const HOLDER: NodeId = NodeId::new(0x104);
+const OUTER: NodeId = NodeId::new((1 << 32) | 0x105);
+
+/// Every pixel of a PNG, as `0xRRGGBB`, and its size.
+fn png_words(path: &std::path::Path) -> ((u32, u32), Vec<u32>) {
+    let decoder = png::Decoder::new(std::io::BufReader::new(File::open(path).expect("the PNG was written")));
+    let mut reader = decoder.read_info().expect("a PNG header");
+    let mut data = vec![0; reader.output_buffer_size().expect("a PNG buffer size")];
+    let info = reader.next_frame(&mut data).expect("a PNG frame");
+    assert_eq!(info.color_type, png::ColorType::Rgba, "the PNG is RGBA");
+    let words = data
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|pixel| u32::from(pixel[0]) << 16 | u32::from(pixel[1]) << 8 | u32::from(pixel[2]))
+        .collect();
+    ((info.width, info.height), words)
+}
+
+/// Writes `secure` on `node`, as the shell does for a window it marks.
+fn mark_secure(owner: &Owner, node: NodeId, secure: bool) {
+    owner.transact(|| {
+        vec![TreeOp::Set {
+            node,
+            key: "secure".to_owned(),
+            value: TreeValue::Bool(secure),
+            timing: None,
+        }]
+    });
+    // The mark is applied by the frame after the write, and the View is drawn again in the frame that follows.
+    owner.frames(3);
+}
+
+/// Captures `view` to a PNG in the session's runtime directory and answers its pixels.
+fn still_of(owner: &Owner, handle: &Handle, view: NodeId, name: &str) -> Vec<u32> {
+    let runtime = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+    let target = runtime.join(name);
+    let answer = owner.capture(view, target.to_str().expect("a utf-8 path"));
+    assert_eq!(answer.error, "", "the View {view:?} was captured");
+    let (size, words) = png_words(&target);
+    assert_eq!(size, (SIDE, SIDE), "the PNG is the View's size");
+    words
+}
+
+/// A secure window's pixels are masked in the PNG of a View, and come back when the mark is cleared.
+#[test]
+fn a_png_of_a_view_holds_none_of_a_secure_windows_pixels() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let (window, ..) = owner.window();
+        let source = SOURCE & 0x00FF_FFFF;
+
+        assert!(
+            still_of(&owner, handle, VIEW, "open.png")
+                .iter()
+                .all(|word| *word == source),
+            "an unmarked window is captured as it is drawn"
+        );
+        mark_secure(&owner, window, true);
+        let masked = still_of(&owner, handle, VIEW, "secure.png");
+        assert!(
+            masked.iter().all(|word| *word == MASKED & 0x00FF_FFFF),
+            "every pixel of the secure window is the mask"
+        );
+        mark_secure(&owner, window, false);
+        assert!(
+            still_of(&owner, handle, VIEW, "cleared.png")
+                .iter()
+                .all(|word| *word == source),
+            "a cleared mark shows the window again"
+        );
+    });
+}
+
+/// A `view`-role session's frames never carry a secure window's pixels, however long it runs, and show the window
+/// again when the mark is cleared.
+#[test]
+fn a_view_role_session_never_receives_a_secure_windows_pixels() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until(SOURCE);
+        let (window, ..) = owner.window();
+
+        mark_secure(&owner, window, true);
+        viewer.capture_until(MASKED);
+        for _ in 0..5 {
+            assert!(viewer.capture(), "the session keeps delivering frames");
+            assert_eq!(
+                viewer.target.count_of(SOURCE),
+                0,
+                "no frame holds a pixel of the secure window"
+            );
+        }
+
+        mark_secure(&owner, window, false);
+        viewer.capture_until(SOURCE);
+    });
+}
+
+/// A secure node marks everything below it: a window under a secure plain node is masked though the window itself is
+/// not marked.
+#[test]
+fn a_window_under_a_secure_node_is_masked_in_a_views_capture() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+
+        mark_secure(&owner, PARENT, true);
+        let masked = still_of(&owner, handle, VIEW, "parent.png");
+        assert!(
+            masked.iter().all(|word| *word == MASKED & 0x00FF_FFFF),
+            "the window below the secure node is masked"
+        );
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until(MASKED);
+    });
+}
+
+/// A View of a View: the outer View's source holds an inner View of the secure window. Neither capture carries the
+/// window's pixels: the inner View's is masked, and the outer one draws no picture of the inner at all.
+#[test]
+fn a_view_of_a_view_never_shows_a_secure_windows_pixels() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let (window, _, root) = owner.window();
+        owner.transact(|| {
+            let set = |node, key: &str, value| TreeOp::Set {
+                node,
+                key: key.to_owned(),
+                value,
+                timing: None,
+            };
+            let side = TreeValue::Double(f64::from(SIDE));
+            vec![
+                TreeOp::New {
+                    class: "node".to_owned(),
+                    id: HOLDER,
+                },
+                TreeOp::Insert {
+                    node: HOLDER,
+                    parent: root,
+                    index: None,
+                },
+                TreeOp::New {
+                    class: "view".to_owned(),
+                    id: INNER,
+                },
+                TreeOp::Insert {
+                    node: INNER,
+                    parent: HOLDER,
+                    index: None,
+                },
+                set(INNER, "width", side.clone()),
+                set(INNER, "height", side.clone()),
+                set(INNER, "source", TreeValue::Node(Some(PARENT))),
+                TreeOp::New {
+                    class: "view".to_owned(),
+                    id: OUTER,
+                },
+                TreeOp::Insert {
+                    node: OUTER,
+                    parent: root,
+                    index: None,
+                },
+                set(OUTER, "width", side.clone()),
+                set(OUTER, "height", side),
+                set(OUTER, "source", TreeValue::Node(Some(HOLDER))),
+            ]
+        });
+        owner.frames(3);
+        let source = SOURCE & 0x00FF_FFFF;
+        assert!(
+            still_of(&owner, handle, INNER, "inner-open.png")
+                .iter()
+                .all(|word| *word == source),
+            "the inner View shows the window while it is not secure"
+        );
+
+        mark_secure(&owner, window, true);
+        let inner = still_of(&owner, handle, INNER, "inner.png");
+        assert!(
+            inner.iter().all(|word| *word == MASKED & 0x00FF_FFFF),
+            "the inner View's capture is the mask"
+        );
+        let outer = still_of(&owner, handle, OUTER, "outer.png");
+        assert!(
+            outer.iter().all(|word| *word != source),
+            "the outer View's capture holds no pixel of the secure window"
+        );
+        let mut viewer = Viewer::open_view(handle, OUTER);
+        for _ in 0..3 {
+            assert!(viewer.capture(), "the outer session delivers frames");
+            assert_eq!(
+                viewer.target.count_of(SOURCE),
+                0,
+                "no frame of the outer View holds the window"
+            );
+        }
+    });
+}
+
+/// The word of window pixel `(x, y)` when the window is painted by `paint_gradient`: opaque, green the column and blue
+/// the row, so no two pixels of the window share a word.
+fn gradient(x: u32, y: u32) -> u32 {
+    0xFF00_0000 | (x << 8) | y
+}
+
+/// What a client leaves in a buffer it asked a frame into, so a pixel the compositor did not write is plain.
+const UNTOUCHED: u32 = 0xFF11_2233;
+
+/// A frame of a View that has shrunk below its session's size holds the View's whole picture where the picture is, and
+/// nothing where it is not; one of a View that grew holds the session's size of it.
+#[test]
+fn a_resized_view_is_copied_as_the_matching_sub_image() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        window.paint_gradient(&mut app);
+        arrange(&owner);
+        let mut viewer = Viewer::open_as(handle, VIEW, Some(wl_shm::Format::Argb8888));
+
+        viewer.target.fill(UNTOUCHED);
+        viewer.capture_until_pixel(SIDE - 1, SIDE - 1, gradient(SIDE - 1, SIDE - 1));
+        for (x, y) in [(0, 0), (SIDE - 1, 0), (0, SIDE - 1), (SIDE - 1, SIDE - 1), (17, 41)] {
+            assert_eq!(
+                viewer.target.word(x, y),
+                gradient(x, y),
+                "pixel ({x}, {y}) of the full frame"
+            );
+        }
+
+        // The View is now half the size its session negotiated: its picture is the window's top left quarter.
+        let half = SIDE / 2;
+        owner.transact(|| {
+            ["width", "height"]
+                .map(|key| TreeOp::Set {
+                    node: VIEW,
+                    key: key.to_owned(),
+                    value: TreeValue::Double(f64::from(half)),
+                    timing: None,
+                })
+                .into()
+        });
+        owner.frames(3);
+        viewer.target.fill(UNTOUCHED);
+        assert!(viewer.capture(), "the frame of the smaller View is delivered");
+        for (x, y) in [(0, 0), (half - 1, 0), (0, half - 1), (half - 1, half - 1), (9, 21)] {
+            assert_eq!(
+                viewer.target.word(x, y),
+                gradient(x, y),
+                "pixel ({x}, {y}) inside the View is the window's pixel at that place"
+            );
+        }
+        for (x, y) in [(half, 0), (0, half), (half, half), (SIDE - 1, SIDE - 1), (50, 7)] {
+            assert_eq!(
+                viewer.target.word(x, y),
+                UNTOUCHED,
+                "pixel ({x}, {y}) outside the View is left as the client had it"
+            );
+        }
+
+        // Grown to twice the session's size, the View still fills exactly the session's buffer.
+        owner.transact(|| {
+            ["width", "height"]
+                .map(|key| TreeOp::Set {
+                    node: VIEW,
+                    key: key.to_owned(),
+                    value: TreeValue::Double(f64::from(SIDE * 2)),
+                    timing: None,
+                })
+                .into()
+        });
+        owner.frames(3);
+        viewer.target.fill(UNTOUCHED);
+        assert!(viewer.capture(), "the frame of the larger View is delivered");
+        for (x, y) in [(0, 0), (SIDE - 1, 0), (0, SIDE - 1), (SIDE - 1, SIDE - 1), (33, 5)] {
+            assert_eq!(
+                viewer.target.word(x, y),
+                gradient(x, y),
+                "pixel ({x}, {y}) of the buffer is the window's pixel at that place"
+            );
+        }
+    });
+}
+
+/// An `xrgb8888` buffer is converted by its own format: the same pixels arrive, with an opaque fourth byte, and an
+/// `argb8888` buffer receives the picture's alpha.
+#[test]
+fn an_xrgb_buffer_receives_the_views_pixels_converted() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        window.paint_gradient(&mut app);
+        arrange(&owner);
+        for format in [wl_shm::Format::Xrgb8888, wl_shm::Format::Argb8888] {
+            let mut viewer = Viewer::open_as(handle, VIEW, Some(format));
+            viewer.target.fill(UNTOUCHED);
+            viewer.capture_until_pixel(SIDE - 1, SIDE - 1, gradient(SIDE - 1, SIDE - 1));
+            for (x, y) in [(0, 0), (SIDE - 1, SIDE - 1), (30, 12)] {
+                assert_eq!(
+                    viewer.target.word(x, y),
+                    gradient(x, y),
+                    "pixel ({x}, {y}) of a {format:?} buffer, fourth byte included"
+                );
+            }
+        }
+    });
+}
+
+/// A buffer smaller than the size the session advertised is refused with the frame's `failed` event, and nothing is
+/// written into it.
+#[test]
+fn a_buffer_smaller_than_the_view_is_refused_and_left_untouched() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let mut viewer = Viewer::open(handle);
+        let small = Pixels::solid(
+            &viewer._shm,
+            &viewer.client.qh,
+            SIDE / 2,
+            SIDE / 2,
+            viewer.target.format,
+            UNTOUCHED,
+        );
+        let (ready, failed) = (viewer.client.state.frame_ready, viewer.client.state.frame_failed);
+        let frame = viewer.session.create_frame(&viewer.client.qh, ());
+        frame.attach_buffer(&small.buffer);
+        frame.capture();
+        viewer.client.wait_until("an answer to the frame request", |state| {
+            state.frame_ready > ready || state.frame_failed > failed
+        });
+        assert_eq!(
+            viewer.client.state.frame_ready, ready,
+            "the undersized buffer is not served"
+        );
+        assert_eq!(viewer.client.state.frame_failed, failed + 1, "the frame fails");
+        assert_eq!(
+            small.first_other_than(UNTOUCHED),
+            None,
+            "nothing was written into the buffer"
+        );
+        frame.destroy();
+        assert!(viewer.capture(), "the session still serves a buffer of the right size");
     });
 }

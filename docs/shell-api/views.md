@@ -80,6 +80,21 @@ the file is written.
 
 Each capture leaves an audit record in the log, with the View, the path and the outcome.
 
+### Secure nodes
+
+A node whose `secure` is true is never captured. The View still shows it on screen.
+
+- The capture picture (the PNG `capture` writes, and every frame of a `gnoblin_view_source_v1` session) holds a neutral
+  grey rectangle in the node's place, the same thing a capture of an output draws over a secure window.
+- Everything below a secure node is secure with it, so a window under a secure parent is masked though the window is
+  not marked.
+- With `capture.secure-treatment = "omit"` the node is left out of the picture instead, and what lies beneath it in the
+  View's source shows.
+- The mark is read every frame: a node that becomes secure is masked in the next picture, whatever the View's `fps`.
+- A capture of an output that shows a View with a secure node in its source replaces the whole View, so the portal's
+  screenshot and screen cast never carry the node's pixels through a View either.
+- A View of a View draws no picture of the inner View, so no capture of it can hold what the inner View's source holds.
+
 ### Not covered
 
 A View has no cursor, so `capture` takes no cursor option. A client that wants frames continuously uses

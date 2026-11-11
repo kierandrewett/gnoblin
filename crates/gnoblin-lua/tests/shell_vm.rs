@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gnoblin_lua::Limits;
-use gnoblin_lua::shell_vm::{LuaEvent, REPORT_INTERVAL, ShellLimits, ShellVm};
+use gnoblin_lua::shell_vm::{LuaEvent, REPORT_INTERVAL, STALE_RETRIES, ShellLimits, ShellVm};
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
 use gnoblin_lua::tree_mirror::{
     Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
@@ -54,7 +54,18 @@ fn classes() -> Vec<ClassSpec> {
         methods: vec!["measure".into(), "authenticate".into()],
         ..ClassSpec::default()
     };
-    vec![node, window]
+    let seat = ClassSpec {
+        name: "Seat".into(),
+        base: Some("Node".into()),
+        props: vec![PropSpec {
+            name: "focus".into(),
+            kind: TreeValueKind::Node,
+            readonly: false,
+            default: None,
+        }],
+        ..ClassSpec::default()
+    };
+    vec![node, window, seat]
 }
 
 /// Compositor-side state shared between the test and the fake link.
@@ -73,6 +84,8 @@ struct Compositor {
     /// compositor echoes them later.
     hold: bool,
     held: Vec<LuaTransaction>,
+    /// The value of every property a transaction or a native write set: what the compositor holds.
+    props: BTreeMap<(u64, String), LuaValue>,
     /// Incoming messages waiting for the next `poll`.
     queue: Vec<LuaIncoming>,
 }
@@ -150,6 +163,7 @@ impl FakeLink {
                     });
                 }
                 LuaOp::Set { node, key, value, .. } => {
+                    c.props.insert((*node, key.clone()), value.clone());
                     if let (Some(entry), LuaValue::Text(text), true) = (c.nodes.get_mut(node), value, key == "title") {
                         entry.2 = text.clone();
                     }
@@ -310,6 +324,23 @@ impl FakeLink {
         });
     }
 
+    /// A native write of `node.key` the shell did not make, published as a batch of its own.
+    fn external_set(&self, node: u64, key: &str, value: LuaValue) {
+        let mut c = self.0.borrow_mut();
+        c.serial += 1;
+        let serial = c.serial;
+        c.props.insert((node, key.to_owned()), value.clone());
+        c.changed.insert(node, serial);
+        c.queue.push(LuaIncoming::Changes {
+            serial,
+            changes: vec![LuaChange {
+                key: key.into(),
+                value: Some(value),
+                ..change(MirrorChangeKind::Set, node)
+            }],
+        });
+    }
+
     /// The compositor destroys `node` on its own, as it does a window whose client closed.
     fn destroy_natively(&self, node: u64) {
         let mut c = self.0.borrow_mut();
@@ -341,6 +372,25 @@ fn compositor_with_root_and_window() -> Rc<RefCell<Compositor>> {
     c.nodes.insert(2, ("Window".into(), 1, "term".into()));
     c.serial = 1;
     Rc::new(RefCell::new(c))
+}
+
+/// A root, two windows (2 and 3) and the seat (4), which holds the focus.
+fn compositor_with_seat() -> Rc<RefCell<Compositor>> {
+    let comp = compositor_with_root_and_window();
+    {
+        let mut c = comp.borrow_mut();
+        c.nodes.insert(3, ("Window".into(), 1, "other".into()));
+        c.nodes.insert(4, ("Seat".into(), 1, String::new()));
+    }
+    comp
+}
+
+/// The node the compositor holds `node.focus` at, or 0 when it holds none.
+fn focus_of(comp: &Rc<RefCell<Compositor>>, node: u64) -> u64 {
+    match comp.borrow().props.get(&(node, "focus".to_owned())) {
+        Some(LuaValue::Node(target)) => *target,
+        _ => 0,
+    }
 }
 
 fn boot(comp: &Rc<RefCell<Compositor>>) -> ShellVm {
@@ -572,7 +622,7 @@ fn holds_ops_while_transaction_in_flight() {
 }
 
 // (R) a transaction refused `stale-base` because a native batch changed a node it writes is sent
-// again without the refused op, on the new base, and the native change stands.
+// again whole, on the new base, so the shell's write lands after the native one and stands.
 #[test]
 fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
     let comp = compositor_with_root_and_window();
@@ -607,7 +657,11 @@ fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, vec!["new", "insert"], "the refused title write is dropped");
+    assert_eq!(
+        kinds,
+        vec!["new", "insert", "set"],
+        "every op is sent again, the refused title write with them"
+    );
 
     FakeLink(comp.clone()).release();
     let done = vm.frame(3.0, vec![]).expect("applied frame");
@@ -619,8 +673,8 @@ fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
     );
     assert_eq!(
         check(&mut vm, "title", "return root.children[1].title"),
-        "ext",
-        "the native title stands"
+        "mine",
+        "the refused write was sent again after the native one, so the shell's intent is what stands"
     );
 }
 
@@ -673,6 +727,178 @@ fn stale_base_refusal_resends_a_measure_and_drops_a_password() {
         calls,
         vec![("measure", "sans\nhello")],
         "the measure is sent again with its text, the password is not"
+    );
+}
+
+// (R3) a refused transaction's writes are forgotten, and the same write made again goes out: nothing between the Lua
+// assignment and the link skips a `set` because the value looks unchanged (there is no equality guard on `TreeCore::set`).
+#[test]
+fn the_same_write_made_again_after_a_refusal_is_sent() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    comp.borrow_mut().refuse_next = true;
+    vm.run("write", "root.children[1].title = \"mine\"").expect("run write");
+    vm.frame(1.0, vec![]).expect("write frame");
+    let refused = vm.frame(2.0, vec![]).expect("refusal frame");
+    assert_eq!(
+        refused.diagnostics.len(),
+        1,
+        "the refusal is reported once: {:?}",
+        refused.diagnostics
+    );
+    assert_eq!(sent(&comp).len(), 1, "the refused transaction is not sent again");
+    assert_ne!(
+        check(&mut vm, "title", "return tostring(root.children[1].title)"),
+        "mine",
+        "a refused write is forgotten"
+    );
+
+    vm.run("again", "root.children[1].title = \"mine\"")
+        .expect("run the write again");
+    vm.frame(3.0, vec![]).expect("second write frame");
+    let txs = sent(&comp);
+    assert_eq!(txs.len(), 2, "the same write is sent: {txs:?}");
+    assert!(
+        matches!(txs[1].as_slice(), [LuaOp::Set { key, value: LuaValue::Text(text), .. }] if key == "title" && text == "mine"),
+        "{:?}",
+        txs[1]
+    );
+    vm.frame(4.0, vec![]).expect("echo frame");
+    assert_eq!(check(&mut vm, "title", "return root.children[1].title"), "mine");
+}
+
+// (R3b) the same write made while the first is still in flight is queued behind it, not skipped as a repeat.
+#[test]
+fn the_same_write_made_while_the_first_is_in_flight_is_sent_after_it() {
+    let comp = compositor_with_root_and_window();
+    comp.borrow_mut().hold = true;
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run("first", "root.children[1].title = \"mine\"").expect("run first");
+    vm.frame(1.0, vec![]).expect("first frame");
+    vm.run("second", "root.children[1].title = \"mine\"")
+        .expect("run second");
+    vm.frame(2.0, vec![]).expect("second frame");
+    assert_eq!(sent(&comp).len(), 1, "the second write waits for the first's echo");
+
+    FakeLink(comp.clone()).release();
+    vm.frame(3.0, vec![]).expect("echo frame");
+    let txs = sent(&comp);
+    assert_eq!(txs.len(), 2, "the repeat goes out after the echo: {txs:?}");
+    assert!(
+        matches!(txs[1].as_slice(), [LuaOp::Set { key, .. }] if key == "title"),
+        "{:?}",
+        txs[1]
+    );
+}
+
+// (R4) the compositor moves the focus, then the shell writes its own focus, having seen that: the shell's write is sent
+// on the new base and is the last thing written, so the compositor ends with the shell's intent.
+#[test]
+fn a_focus_the_shell_writes_after_the_compositor_moved_it_is_the_final_focus() {
+    let comp = compositor_with_seat();
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    FakeLink(comp.clone()).external_set(4, "focus", LuaValue::Node(3));
+    vm.run("focus", "root.children[3].focus = root.children[1]")
+        .expect("run focus");
+    let write = vm.frame(1.0, vec![]).expect("write frame");
+    assert!(write.diagnostics.is_empty(), "{:?}", write.diagnostics);
+    vm.frame(2.0, vec![]).expect("echo frame");
+    assert_eq!(focus_of(&comp, 4), 2, "the shell's focus is what the compositor holds");
+}
+
+// (R5) the compositor moves the focus while the shell's focus write is in flight: the write is refused `stale-base`
+// because the seat node changed, and it is a one-shot intent (a click) that nothing writes again. It stays pending, is
+// sent again on the refreshed base and lands last, so the compositor ends with the shell's intent in either order.
+#[test]
+fn a_focus_write_refused_stale_base_is_sent_again_and_is_the_final_focus() {
+    let comp = compositor_with_seat();
+    comp.borrow_mut().hold = true;
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run("focus", "root.children[3].focus = root.children[1]")
+        .expect("run focus");
+    vm.frame(1.0, vec![]).expect("write frame");
+    assert_eq!(sent(&comp).len(), 1, "the focus write is in flight");
+
+    FakeLink(comp.clone()).external_set(4, "focus", LuaValue::Node(3));
+    FakeLink(comp.clone()).release();
+    assert_eq!(focus_of(&comp, 4), 3, "the refused write changed nothing");
+    let refused = vm.frame(2.0, vec![]).expect("refusal frame");
+    assert!(
+        refused.diagnostics.is_empty(),
+        "a stale-base refusal is retried, not reported: {:?}",
+        refused.diagnostics
+    );
+    let txs = sent(&comp);
+    assert_eq!(
+        txs.len(),
+        2,
+        "the focus write is sent again on the refreshed base: {txs:?}"
+    );
+    assert!(
+        matches!(txs[1].as_slice(), [LuaOp::Set { node: 4, key, .. }] if key == "focus"),
+        "{:?}",
+        txs[1]
+    );
+
+    FakeLink(comp.clone()).release();
+    vm.frame(3.0, vec![]).expect("applied frame");
+    assert_eq!(focus_of(&comp, 4), 2, "the compositor ends with the shell's focus");
+    assert_eq!(
+        check(
+            &mut vm,
+            "focus",
+            "return tostring(root.children[3].focus == root.children[1])"
+        ),
+        "true",
+        "and the shell reads the same"
+    );
+}
+
+// (R6) a node the compositor changes before every landing would refuse a retried write for ever, and the writes beside it
+// with it. The write is sent again `STALE_RETRIES` times, then dropped, and the others go through: progress is certain.
+#[test]
+fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_others_land() {
+    let comp = compositor_with_seat();
+    comp.borrow_mut().hold = true;
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "write",
+        "root.children[3].focus = root.children[1]\nlocal n = Node()\nroot:add(n)",
+    )
+    .expect("run write");
+    vm.frame(1.0, vec![]).expect("write frame");
+    for round in 0..=STALE_RETRIES {
+        FakeLink(comp.clone()).external_set(4, "focus", LuaValue::Node(3));
+        FakeLink(comp.clone()).release();
+        let refused = vm.frame(2.0 + f64::from(round), vec![]).expect("refusal frame");
+        assert!(refused.diagnostics.is_empty(), "{:?}", refused.diagnostics);
+    }
+    FakeLink(comp.clone()).release();
+    vm.frame(10.0, vec![]).expect("applied frame");
+
+    let txs = sent(&comp);
+    let with_focus = txs
+        .iter()
+        .filter(|ops| {
+            ops.iter()
+                .any(|op| matches!(op, LuaOp::Set { key, .. } if key == "focus"))
+        })
+        .count();
+    assert_eq!(
+        with_focus,
+        STALE_RETRIES as usize + 1,
+        "the write was sent once and then sent again {STALE_RETRIES} times: {txs:?}"
+    );
+    assert_eq!(txs.len(), with_focus + 1, "then the other writes went alone: {txs:?}");
+    assert_eq!(
+        check(&mut vm, "count", "return #root.children"),
+        "4",
+        "the new node was inserted though the focus write never landed"
     );
 }
 

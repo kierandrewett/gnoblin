@@ -10,8 +10,9 @@
 //!   read until after the file is written, and a reader that waits for the count sees the capture run;
 //! - the lock's answer is asked at the copy ([`gnoblin_capture::Table::capture`]), so a locked or embargoed session
 //!   writes nothing and answers `locked`;
-//! - the picture is the one the composer drew for the View on the frame in progress, so it holds exactly what the
-//!   View shows, and a `secure` node in its source was never drawn into it.
+//! - the picture is the capture picture the composer drew for the View on the frame in progress: exactly what the View
+//!   shows, except that each `secure` node in its source is replaced by the mask an output capture draws over a secure
+//!   layer (`Composer::view_pictures`), so a secure node's pixels never reach the file.
 //!
 //! The path is the shell's, and the shell is trusted, but a path is still checked: it must be absolute, free of `.` and
 //! `..`, name a `.png` file whose directory exists inside the session's runtime directory (the directory of the
@@ -73,6 +74,8 @@ impl CaptureSource for StillSource<'_> {
         (target == Target::View(self.view)).then(|| Rect::from_size(self.picture.size()))
     }
 
+    /// A still ignores the buffer format it was opened with: the PNG is always RGBA, whatever pixel layout the table's
+    /// session carries, and the region must be the whole picture.
     fn copy(&mut self, target: Target, region: Rect, _format: Format) -> Copied {
         if target != Target::View(self.view) || region != Rect::from_size(self.picture.size()) {
             return Copied::Nothing;
@@ -309,5 +312,50 @@ mod tests {
         assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o600);
         let leftovers: Vec<_> = fs::read_dir(root.path()).unwrap().collect();
         assert_eq!(leftovers.len(), 1, "no staging file is left behind");
+    }
+
+    fn picture() -> Image {
+        let (width, height) = (4u32, 3u32);
+        let bytes = (0..width * height).flat_map(|index| [index as u8, 0, 0, 255]).collect();
+        Image::new(gnoblin_types::Size::new(width, height), width as usize * 4, bytes).expect("a picture")
+    }
+
+    /// A still takes the picture whole: the table asks for the target's full rectangle, and a copy of anything else,
+    /// or of another target, copies nothing, so a PNG is never a part of the picture presented as all of it.
+    #[test]
+    fn a_still_copies_only_the_whole_picture_of_its_view() {
+        let view = NodeId::new(7);
+        let image = picture();
+        let whole = Rect::from_size(image.size());
+        let format = Format::new(image.size(), 16, PixelFormat::Argb8888).expect("a format");
+        let mut source = StillSource {
+            view,
+            picture: &image,
+            encoded: None,
+        };
+        assert_eq!(source.bounds(Target::View(view)), Some(whole));
+        assert_eq!(
+            source.bounds(Target::View(NodeId::new(8))),
+            None,
+            "another View is not this still's"
+        );
+
+        let part = Rect::new(0, 0, 2, 2);
+        assert_eq!(
+            source.copy(Target::View(view), part, format),
+            Copied::Nothing,
+            "a part is refused"
+        );
+        assert!(source.encoded.is_none(), "a refused copy encodes nothing");
+        assert_eq!(
+            source.copy(Target::View(NodeId::new(8)), whole, format),
+            Copied::Nothing,
+            "another target is refused"
+        );
+        assert!(source.encoded.is_none());
+
+        assert_eq!(source.copy(Target::View(view), whole, format), Copied::Copied);
+        let png = source.encoded.expect("the copy encoded").expect("a PNG");
+        assert!(png.starts_with(b"\x89PNG"), "the copy is a PNG");
     }
 }

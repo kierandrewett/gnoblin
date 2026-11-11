@@ -75,7 +75,7 @@ use gnoblin_render::{
 };
 use gnoblin_types::{Color, NodeId, OutputId, PointF, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
-use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, SurfaceSource};
+use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 use gnoblin_render_software::{ViewCamera, ViewProjection, render_view};
@@ -109,10 +109,20 @@ const VIEW_FOV: f64 = 60.0;
 /// A View node's rendered picture: the size it was drawn at, the image of its source
 /// subtree (or `None` when it has no source or the source cannot be drawn), and the view
 /// clock's reading when it was drawn, which `fps` paces the next draw from.
+///
+/// The image is what the display shows. A capture never reads it when the source holds a `secure` node: it reads
+/// `redacted`, the same subtree drawn with each secure node replaced the way an output capture replaces a secure
+/// layer ([`SecureTreatment`]). `secure` names those nodes as they were when the picture was drawn, so a node that
+/// becomes secure, or stops being, draws the View again at once.
 #[derive(Debug)]
 struct ViewPicture {
     size: Size,
     image: Option<Arc<Image>>,
+    /// The picture a capture reads when the source holds a secure node, or `None` when it holds none and `image` is
+    /// the capture's picture too.
+    redacted: Option<Arc<Image>>,
+    /// The nodes of the source subtree a capture may not show: each node marked secure, and everything below it.
+    secure: BTreeSet<NodeId>,
     drawn_at_ms: u64,
 }
 
@@ -316,6 +326,9 @@ pub struct Composer {
     /// The Views whose source changed inside their `fps` slot: each is drawn at the slot's end, from the state it is
     /// in then, so any number of changes in a slot cost one draw.
     paced_views: BTreeSet<NodeId>,
+    /// What a View's capture picture draws in place of a secure node, the same choice an output capture makes for a
+    /// secure layer. It is fixed for the session by the `capture.secure-treatment` setting.
+    secure_treatment: SecureTreatment,
     /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
     /// changes.
     canvases: BTreeMap<NodeId, CanvasPicture>,
@@ -377,6 +390,7 @@ impl Composer {
             views: BTreeMap::new(),
             view_clock_ms: 0,
             paced_views: BTreeSet::new(),
+            secure_treatment: SecureTreatment::default(),
             canvases: BTreeMap::new(),
             painter,
         }
@@ -578,12 +592,14 @@ impl Composer {
 
     /// Re-renders the View nodes whose picture is stale and damages the pixels each one
     /// redraws. A view is stale when it has no picture yet, changed size, or when it, or a
-    /// node in its source or camera subtree, is in `dirty`.
+    /// node in its source or camera subtree, is in `dirty`, or when a node in its source became secure or stopped
+    /// being.
     ///
     /// A View with `fps` set is drawn at most `fps` times a second: a source that changes inside the slot waits,
     /// however often it changes, and the view is drawn at the slot's end from the state it is in then. A View with
     /// no picture or one of another size is drawn at once, so a picture of the wrong size is never kept, and `fps`
-    /// zero draws on every change.
+    /// zero draws on every change. A change in what is secure is drawn at once as well, whatever `fps` says: a
+    /// capture must not wait out a slot with pixels the user has since marked secure.
     fn render_views(&mut self, dirty: &BTreeSet<NodeId>) {
         let views = self.view_nodes();
         self.views.retain(|view, _| views.contains(view));
@@ -600,8 +616,11 @@ impl Composer {
                 .chain(self.scene.camera(view))
                 .flat_map(|root| self.subtree(root))
                 .collect();
+            let secure = self.secure_nodes(self.scene.source(view).into_iter().flat_map(|root| self.subtree(root)));
             let picture = self.views.get(&view).filter(|picture| picture.size == size);
+            let secure_changed = picture.is_some_and(|picture| picture.secure != secure);
             let stale = picture.is_none()
+                || secure_changed
                 || dirty.contains(&view)
                 || inputs.iter().any(|node| dirty.contains(node))
                 || self.paced_views.contains(&view);
@@ -609,7 +628,7 @@ impl Composer {
                 continue;
             }
             let fps = self.scene.unsigned(view, "fps").unwrap_or(0);
-            if let (Some(picture), 1..) = (picture, fps) {
+            if let (Some(picture), 1.., false) = (picture, fps, secure_changed) {
                 let slot_ms = 1000u64.div_ceil(fps);
                 if self.view_clock_ms.saturating_sub(picture.drawn_at_ms) < slot_ms {
                     self.paced_views.insert(view);
@@ -617,12 +636,14 @@ impl Composer {
                 }
             }
             self.paced_views.remove(&view);
-            let image = self.draw_view(view, size);
+            let (image, redacted) = self.draw_view(view, size, &secure);
             self.views.insert(
                 view,
                 ViewPicture {
                     size,
                     image,
+                    redacted,
+                    secure,
                     drawn_at_ms: self.view_clock_ms,
                 },
             );
@@ -632,19 +653,75 @@ impl Composer {
         }
     }
 
+    /// The nodes among `nodes` a capture may not show: a window the shell or a rule marked secure, and any node whose
+    /// own `secure` value is true, each with everything below it.
+    ///
+    /// A node that is not drawn from pixels of its own (a plain parent) is in the set when it is secure, so its
+    /// children are: a secure subtree is secure as a whole.
+    fn secure_nodes(&self, nodes: impl IntoIterator<Item = NodeId>) -> BTreeSet<NodeId> {
+        let nodes: BTreeSet<NodeId> = nodes.into_iter().collect();
+        let marked_windows = self
+            .windows
+            .values()
+            .filter(|entry| entry.secure)
+            .filter_map(|entry| entry.node);
+        let marked_nodes = nodes
+            .iter()
+            .copied()
+            .filter(|node| matches!(self.scene.value(*node, "secure"), Some(TreeValue::Bool(true))));
+        let mut secure = BTreeSet::new();
+        for root in marked_windows.chain(marked_nodes).filter(|node| nodes.contains(node)) {
+            secure.extend(self.subtree(root).into_iter().filter(|node| nodes.contains(node)));
+        }
+        secure
+    }
+
     /// The image of a View's source subtree through its camera, or `None` when the view has no
     /// source, the source is missing, or the source contains the view itself.
-    fn draw_view(&self, view: NodeId, size: Size) -> Option<Arc<Image>> {
-        let source = self.scene.source(view)?;
-        self.scene.node(source)?;
+    ///
+    /// The second picture is the one a capture reads when `secure` is not empty: the same subtree with every secure
+    /// node's pixels replaced as an output capture replaces a secure layer. `Mask` draws a neutral grey in the node's
+    /// place, `Omit` draws nothing there, so whatever lies beneath it in the source shows. Both pictures are `None`
+    /// when the view draws nothing, and the second is `None` when no node is secure.
+    fn draw_view(
+        &self,
+        view: NodeId,
+        size: Size,
+        secure: &BTreeSet<NodeId>,
+    ) -> (Option<Arc<Image>>, Option<Arc<Image>>) {
+        let Some(source) = self.scene.source(view) else {
+            return (None, None);
+        };
+        if self.scene.node(source).is_none() {
+            return (None, None);
+        }
         let nodes: BTreeSet<NodeId> = self.subtree(source).into_iter().collect();
         if nodes.contains(&view) {
             log::debug!(area = "render", %view, "a view inside its own source draws nothing");
-            return None;
+            return (None, None);
         }
         let camera = self.view_camera(view, size);
-        let pictures = self.window_pictures(&nodes);
-        Some(render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image())
+        let mut pictures = self.window_pictures(&nodes);
+        let image = render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image();
+        if secure.is_empty() {
+            return (Some(image), None);
+        }
+        // A nested View is drawn as a plain node and has no pixels of its own here, so it can never carry a secure
+        // node's pixels into this picture: only a window or a canvas below the source does, and those are replaced.
+        for node in secure {
+            match self.secure_treatment {
+                SecureTreatment::Mask => {
+                    if let Some(picture) = pictures.get_mut(node) {
+                        *picture = secure_mask();
+                    }
+                }
+                SecureTreatment::Omit => {
+                    pictures.remove(node);
+                }
+            }
+        }
+        let redacted = render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image();
+        (Some(image), Some(redacted))
     }
 
     /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A
@@ -1695,14 +1772,32 @@ impl Composer {
             .find_map(|(view, size)| (view == node).then_some(size))
     }
 
-    /// The picture each View drew the last time it was rendered, keyed by its node. A View
-    /// with no source has no picture and is left out. Capture copies a View from here.
+    /// The picture each View's capture reads, keyed by its node. A View with no source has no picture and is left
+    /// out. Capture copies a View from here.
+    ///
+    /// It is the picture the View drew the last time it was rendered, unless a node in its source is `secure`: then it
+    /// is the same subtree with those nodes replaced as an output capture replaces a secure layer, so no capture of a
+    /// View, whether the shell's still, a `view`-role session or a stream, ever holds a secure node's pixels.
     #[must_use]
     pub fn view_pictures(&self) -> Vec<(NodeId, Arc<Image>)> {
         self.views
             .iter()
-            .filter_map(|(view, picture)| Some((*view, Arc::clone(picture.image.as_ref()?))))
+            .filter_map(|(view, picture)| {
+                let capture = picture.redacted.as_ref().or(picture.image.as_ref())?;
+                Some((*view, Arc::clone(capture)))
+            })
             .collect()
+    }
+
+    /// Sets what a View's capture picture draws in place of a secure node. It is the same choice an output capture
+    /// makes, and the compositor sets it once, from the `capture.secure-treatment` setting, before any frame.
+    pub fn set_secure_treatment(&mut self, treatment: SecureTreatment) {
+        if self.secure_treatment == treatment {
+            return;
+        }
+        self.secure_treatment = treatment;
+        // A picture drawn under the other treatment would keep the wrong pixels in a secure node's place.
+        self.views.clear();
     }
 
     /// The scene node of a window, once the composer has given it one.
@@ -2252,7 +2347,9 @@ impl Composer {
                 corner_radius: 0.0,
                 effects: Effects::new(),
                 model: None,
-                secure: false,
+                // A capture of the output replaces the picture of a View that holds a secure node, so the output
+                // reveals nothing a View's own capture hides.
+                secure: !picture.secure.is_empty(),
             }));
         }
         if let Some(flash) = self.flash {
@@ -2584,7 +2681,13 @@ impl Composer {
     }
 }
 
-/// A global rectangle in an output's own coordinates.
+/// The picture a View's capture draws in place of a secure node's pixels: the neutral grey an output capture draws
+/// over a secure layer ([`SecureTreatment::Mask`]). One texel is enough, as the view renderer stretches a picture over
+/// its node's bounds.
+fn secure_mask() -> Image {
+    Image::new(Size::new(1, 1), 4, vec![128, 128, 128, 255]).expect("a one-pixel image is valid")
+}
+
 /// A premultiplied pixel as straight alpha.
 fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
     let alpha = u32::from(pixel[3]);
@@ -2595,6 +2698,7 @@ fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
     [lift(pixel[0]), lift(pixel[1]), lift(pixel[2]), pixel[3]]
 }
 
+/// A global rectangle in an output's own coordinates.
 fn local(rect: Rect, output: Rect) -> Rect {
     rect.translate(-output.x, -output.y)
 }
@@ -5297,6 +5401,175 @@ mod tests {
         let pictures = composer.view_pictures();
         assert_eq!(pictures.len(), 1);
         assert_eq!(pictures[0].1.pixel(Point::new(5, 5)), Some([77, 0, 0, 255]));
+    }
+
+    /// What a canvas filled with red 77 looks like under a View, and what the neutral grey of a secure node is.
+    const CANVAS_PIXEL: [u8; 4] = [77, 0, 0, 255];
+    const MASK_PIXEL: [u8; 4] = [128, 128, 128, 255];
+    const BACKGROUND_PIXEL: [u8; 4] = [0, 0, 0, 255];
+
+    /// A View (node 1) of a canvas (node 2) filled with red 77, drawn once, as `secure` or not.
+    fn view_of_a_canvas(secure: bool) -> (Composer, OutputId) {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(2);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        add_view(&mut composer, NodeId::new(1), None, Some(canvas));
+        if secure {
+            mark_secure(&mut composer, canvas, true);
+        }
+        (composer, output)
+    }
+
+    /// Writes the `secure` value a shell writes on a node.
+    fn mark_secure(composer: &mut Composer, node: NodeId, secure: bool) {
+        composer.with_scene(|scene| {
+            scene
+                .set_value(node, "secure", TreeValue::Bool(secure))
+                .expect("the node's secure value")
+        });
+    }
+
+    /// The pixel at (5, 5) of the picture capture reads for a View, or `None` when it has none.
+    fn captured_pixel(composer: &Composer, view: NodeId) -> Option<[u8; 4]> {
+        let (_, picture) = composer.view_pictures().into_iter().find(|(node, _)| *node == view)?;
+        picture.pixel(Point::new(5, 5))
+    }
+
+    /// What the next frame for `output` draws for each View, at the rectangle `add_view` gives it: whether the layer
+    /// is secure, and its pixel at (5, 5).
+    fn drawn_views(composer: &mut Composer, output: OutputId) -> Vec<(bool, Option<[u8; 4]>)> {
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Surface(Surface {
+                    source: SurfaceSource::Snapshot(image),
+                    secure,
+                    dst,
+                    ..
+                }) if *dst == Rect::new(10, 20, 40, 30) => Some((*secure, image.pixel(Point::new(5, 5)))),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_secure_node_in_a_views_source_is_masked_in_its_capture_picture_and_not_on_the_display() {
+        let (mut composer, output) = view_of_a_canvas(true);
+        let drawn = drawn_views(&mut composer, output);
+        assert_eq!(
+            drawn,
+            vec![(true, Some(CANVAS_PIXEL))],
+            "the display shows the canvas, and its layer is secure so an output capture replaces the whole View"
+        );
+        assert_eq!(
+            captured_pixel(&composer, NodeId::new(1)),
+            Some(MASK_PIXEL),
+            "a capture of the View reads the mask in the secure node's place"
+        );
+    }
+
+    #[test]
+    fn a_view_with_no_secure_node_is_captured_as_drawn_and_is_not_a_secure_layer() {
+        let (mut composer, output) = view_of_a_canvas(false);
+        assert_eq!(drawn_views(&mut composer, output), vec![(false, Some(CANVAS_PIXEL))]);
+        assert_eq!(captured_pixel(&composer, NodeId::new(1)), Some(CANVAS_PIXEL));
+    }
+
+    #[test]
+    fn omit_leaves_a_secure_node_out_of_a_views_capture_picture() {
+        let (mut composer, output) = view_of_a_canvas(true);
+        composer.set_secure_treatment(SecureTreatment::Omit);
+        let _ = drawn_views(&mut composer, output);
+        assert_eq!(
+            captured_pixel(&composer, NodeId::new(1)),
+            Some(BACKGROUND_PIXEL),
+            "nothing is drawn where the secure node is, as an output capture omits a secure layer"
+        );
+    }
+
+    #[test]
+    fn the_children_of_a_secure_node_are_masked_with_it() {
+        let (mut composer, output) = screen();
+        let (parent, canvas) = (NodeId::new(3), NodeId::new(2));
+        add_source(&mut composer, parent, Rect::new(0, 0, 40, 30));
+        add_canvas(
+            &mut composer,
+            canvas,
+            Some(parent),
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        add_view(&mut composer, NodeId::new(1), None, Some(parent));
+        mark_secure(&mut composer, parent, true);
+        let _ = drawn_views(&mut composer, output);
+        assert_eq!(captured_pixel(&composer, NodeId::new(1)), Some(MASK_PIXEL));
+    }
+
+    #[test]
+    fn a_node_that_becomes_secure_is_masked_in_the_next_picture_and_one_that_stops_is_shown() {
+        let (mut composer, output) = view_of_a_canvas(false);
+        let _ = drawn_views(&mut composer, output);
+        assert_eq!(captured_pixel(&composer, NodeId::new(1)), Some(CANVAS_PIXEL));
+        mark_secure(&mut composer, NodeId::new(2), true);
+        let _ = drawn_views(&mut composer, output);
+        assert_eq!(captured_pixel(&composer, NodeId::new(1)), Some(MASK_PIXEL));
+        mark_secure(&mut composer, NodeId::new(2), false);
+        let _ = drawn_views(&mut composer, output);
+        assert_eq!(captured_pixel(&composer, NodeId::new(1)), Some(CANVAS_PIXEL));
+    }
+
+    #[test]
+    fn a_secure_mark_is_drawn_at_once_though_the_view_is_paced() {
+        let (mut composer, output) = paced_view(1);
+        assert_eq!(view_red(&composer), Some(1), "the first picture is drawn at once");
+        // A second of the slot is far from over, so a plain change would wait.
+        composer.advance_motion(20);
+        mark_secure(&mut composer, PACED_CANVAS, true);
+        let _ = damage_of(&mut composer, output);
+        assert_eq!(
+            view_red(&composer),
+            Some(128),
+            "the capture picture holds the mask, not the pixels drawn before the mark"
+        );
+    }
+
+    #[test]
+    fn a_view_of_a_view_never_carries_a_secure_nodes_pixels() {
+        let (mut composer, output) = screen();
+        let (outer, inner, holder, canvas) = (NodeId::new(1), NodeId::new(3), NodeId::new(4), NodeId::new(2));
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        mark_secure(&mut composer, canvas, true);
+        add_source(&mut composer, holder, Rect::new(0, 0, 40, 30));
+        add_view(&mut composer, inner, Some(holder), Some(canvas));
+        add_view(&mut composer, outer, None, Some(holder));
+        let _ = drawn_views(&mut composer, output);
+        assert_eq!(
+            captured_pixel(&composer, inner),
+            Some(MASK_PIXEL),
+            "the inner View's own capture is masked"
+        );
+        let outer_pixel = captured_pixel(&composer, outer).expect("the outer View has a picture");
+        assert_ne!(
+            outer_pixel, CANVAS_PIXEL,
+            "the outer View holds none of the secure node's pixels"
+        );
     }
 
     const PACED_CANVAS: NodeId = NodeId::new(2);

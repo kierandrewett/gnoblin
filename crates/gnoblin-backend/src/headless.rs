@@ -742,6 +742,10 @@ impl<S: Host + 'static> Backend<S> for Headless {
         std::mem::take(&mut self.pending)
     }
 
+    fn secure_treatment(&self) -> SecureTreatment {
+        self.secure_treatment
+    }
+
     fn output_controls(&self) -> OutputControls {
         OutputControls {
             gamma: true,

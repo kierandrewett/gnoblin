@@ -94,6 +94,16 @@ impl Default for ShellLimits {
 /// handler that fails every frame does not fill the log.
 pub const REPORT_INTERVAL: f64 = 5.0;
 
+/// How many times a write the compositor refused `stale-base` is sent again before it is dropped.
+///
+/// A node the compositor changes between the shell's reads and the landing of its transaction refuses every write to
+/// that node, whatever the property. The refused write is the shell's intent and nothing writes a one-shot intent (a
+/// click's focus) again, so it is sent again on the refreshed base, ahead of what the next tick writes. A node that
+/// changes before every landing would refuse it for ever, and the writes beside it with it, so after this many
+/// refusals in a row the refused write is dropped as the rest of its transaction goes on: the published change wins
+/// and the shell, which reads the change, decides again.
+pub const STALE_RETRIES: u32 = 3;
+
 /// The protocol version the VM attaches with.
 const ATTACH_VERSION: u64 = 1;
 
@@ -177,6 +187,9 @@ pub struct ShellVm {
     /// Ops refused `stale-base` that are sent again, ahead of the next tick's writes, once the
     /// mirror reaches the refused serial.
     retry: Vec<LuaOp>,
+    /// How many transactions in a row were refused `stale-base` and sent again: reset by an applied one. Once it
+    /// reaches [`STALE_RETRIES`] the refused op is dropped rather than sent again.
+    stale_refusals: u32,
 }
 
 /// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, a
@@ -279,6 +292,7 @@ impl ShellVm {
             in_flight: None,
             sent: VecDeque::new(),
             retry: Vec::new(),
+            stale_refusals: 0,
         })
     }
 
@@ -362,17 +376,28 @@ impl ShellVm {
                 }
                 LuaIncoming::Reply(reply) => {
                     let (sent_serial, ops) = self.sent.pop_front().unwrap_or((reply.serial, Vec::new()));
+                    if reply.applied {
+                        self.stale_refusals = 0;
+                    }
                     let resend = matches!(reply.code.as_str(), "stale-base" | "unknown-node");
                     if !reply.applied && resend && reply.failed_op >= 0 {
                         // A published batch changed a node this transaction writes (stale-base), or
                         // destroyed it (unknown-node). The refused transaction applied nothing, so its
-                        // other ops are sent again on the next base; the failed op is dropped, since
-                        // the published change wins. The gate stays shut until the mirror reaches
+                        // ops are sent again on the next base, ahead of what the next tick writes, so the
+                        // shell's newest write lands last. The gate stays shut until the mirror reaches
                         // this serial, which that batch does.
+                        //
+                        // The failed op is sent again too under stale-base: the node still exists, the
+                        // op is the shell's intent, and a one-shot intent (a click's focus) is written by
+                        // nothing else. It is sent again `STALE_RETRIES` times in a row, so a node that
+                        // changes before every landing cannot hold the writes beside it back for ever;
+                        // after that, and always under unknown-node (its node is gone), it is dropped.
                         let failed = usize::try_from(reply.failed_op).ok();
+                        let retry_failed = reply.code == "stale-base" && self.stale_refusals < STALE_RETRIES;
+                        self.stale_refusals = self.stale_refusals.saturating_add(1);
                         let mut kept: Vec<LuaOp> = Vec::new();
                         for (index, op) in ops.into_iter().enumerate() {
-                            if Some(index) == failed {
+                            if Some(index) == failed && !retry_failed {
                                 continue;
                             }
                             match op {

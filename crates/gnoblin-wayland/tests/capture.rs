@@ -167,23 +167,115 @@ impl Handle {
             thread::sleep(Duration::from_millis(5));
         }
     }
+
+    /// Puts a View of `side` by `side` pixels at `(x, y)` that draws the window with `app_id`: the window is taken
+    /// under a node of the shell's own, which is the View's `source`. Waits for the compositor to make the window's
+    /// node and for the frame that applies the transaction.
+    fn view_of_window(&self, app_id: &str, x: f64, y: f64, side: f64) {
+        const SOURCE: NodeId = NodeId::new(0x100);
+        const VIEW: NodeId = NodeId::new((1 << 32) | 0x102);
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let (sender, receiver) = mpsc::channel();
+            let wanted = app_id.to_owned();
+            self.tree.read(move |scene, serial| {
+                let mut stack: Vec<NodeId> = scene.root_ids().to_vec();
+                let mut found = None;
+                while let Some(node) = stack.pop() {
+                    if scene.class(node) == Some("window") && scene.text(node, "app_id") == Some(wanted.as_str()) {
+                        found = Some(node);
+                        break;
+                    }
+                    stack.extend(scene.children(node).unwrap_or(&[]));
+                }
+                let _ = sender.send((found.zip(scene.root()), serial));
+            });
+            let (found, serial) = receiver.recv_timeout(TIMEOUT).expect("the frame loop ran the read");
+            if let Some((window, root)) = found {
+                let set = |node, key: &str, value| TreeOp::Set {
+                    node,
+                    key: key.to_owned(),
+                    value,
+                    timing: None,
+                };
+                let (reply, answer) = mpsc::channel();
+                self.tree.submit(
+                    serial,
+                    TreeTransaction::new(vec![
+                        TreeOp::New {
+                            class: "node".to_owned(),
+                            id: SOURCE,
+                        },
+                        TreeOp::Insert {
+                            node: SOURCE,
+                            parent: root,
+                            index: None,
+                        },
+                        TreeOp::Insert {
+                            node: window,
+                            parent: SOURCE,
+                            index: None,
+                        },
+                        TreeOp::New {
+                            class: "view".to_owned(),
+                            id: VIEW,
+                        },
+                        TreeOp::Insert {
+                            node: VIEW,
+                            parent: root,
+                            index: None,
+                        },
+                        set(VIEW, "x", TreeValue::Double(x)),
+                        set(VIEW, "y", TreeValue::Double(y)),
+                        set(VIEW, "width", TreeValue::Double(side)),
+                        set(VIEW, "height", TreeValue::Double(side)),
+                        set(VIEW, "source", TreeValue::Node(Some(SOURCE))),
+                    ]),
+                    || true,
+                    move |_, result| {
+                        let _ = reply.send(result.map(|_| ()));
+                    },
+                );
+                match answer
+                    .recv_timeout(TIMEOUT)
+                    .expect("the frame loop answered the transaction")
+                {
+                    Ok(()) => return,
+                    Err(refusal) if refusal.code == Code::StaleBase && Instant::now() < deadline => continue,
+                    Err(refusal) => panic!("the shell's transaction was refused: {refusal}"),
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the compositor never made a node for {app_id}"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
 
-/// The schema the tree checks the test's transactions against: every node takes a `secure` flag.
+/// The schema the tree checks the test's transactions against: every node takes a `secure` flag and a place, and a View
+/// takes a `source`.
 struct SecureClasses;
 
 impl ClassInfo for SecureClasses {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window")
+        matches!(class, "node" | "window" | "view")
     }
 
     fn is_a(&self, class: &str, ancestor: &str) -> bool {
-        class == ancestor || (ancestor == "node" && class == "window")
+        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view"))
     }
 
-    fn property(&self, _class: &str, key: &str) -> Option<PropertyInfo> {
-        (key == "secure").then_some(PropertyInfo {
-            kind: ValueType::Bool,
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        let kind = match (class, key) {
+            (_, "secure") => ValueType::Bool,
+            (_, "x" | "y" | "width" | "height") => ValueType::Double,
+            ("view", "source") => ValueType::Node("node".to_owned()),
+            _ => return None,
+        };
+        Some(PropertyInfo {
+            kind,
             readonly: false,
             animated: false,
         })
@@ -1710,6 +1802,58 @@ fn a_shell_that_clears_the_secure_mark_unmasks_the_window() {
             );
             thread::sleep(Duration::from_millis(20));
         }
+    });
+}
+
+/// A View over a secure window is masked in a capture of the output: the View draws the window's pixels above
+/// everything, and an output capture, which is what the portal's screen cast and screenshot read, must not carry them.
+#[test]
+fn a_view_of_a_secure_window_is_masked_in_a_capture_of_the_output() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _secret = app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);
+        let observation = session.wait_for(|observation| observation.titled("Secret").is_some());
+        let secret_id = observation.titled("Secret").expect("the window").id;
+        session
+            .control
+            .move_window(secret_id, gnoblin_types::Rect::new(0, 0, 512, 768));
+        session.wait_for(|observation| {
+            observation
+                .titled("Secret")
+                .is_some_and(|window| window.geometry == gnoblin_types::Rect::new(0, 0, 512, 768))
+        });
+        // The View sits beside the window, so the pixel read below is the View's and never the window's own.
+        session.view_of_window("org.gnoblin.Secret", 600.0, 0.0, 64.0);
+        let view = gnoblin_types::Rect::new(600, 0, 64, 64);
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        assert_eq!(
+            screencopy_window_pixel_until(&mut capture, view, RED),
+            RED,
+            "the View shows the window while it is not secure, so the test reads the View"
+        );
+
+        session.mark_secure("org.gnoblin.Secret", true);
+        assert_ne!(
+            screencopy_window_pixel_where(&mut capture, view, |pixel| pixel != RED),
+            RED,
+            "the secure window's pixels, drawn through the View, never reach a capture of the output"
+        );
+        for _ in 0..5 {
+            assert_ne!(
+                screencopy_window_pixel_where(&mut capture, view, |_| true),
+                RED,
+                "a later capture of the output is masked too"
+            );
+        }
+
+        session.mark_secure("org.gnoblin.Secret", false);
+        assert_eq!(
+            screencopy_window_pixel_until(&mut capture, view, RED),
+            RED,
+            "a cleared mark shows the window through the View again"
+        );
     });
 }
 

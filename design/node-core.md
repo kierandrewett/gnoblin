@@ -491,13 +491,23 @@ Decision: the conflict check is per node. Two transactions conflict only when th
 
 The shell VM keeps its own view true while a transaction is in flight. The compositor answers transactions in order,
 and a refusal carries the tree's serial, not the one the shell stamped, so the VM matches a reply to the oldest
-transaction it sent. A refusal `stale-base` or `unknown-node` drops the failed op and sends the others again on the next
-base, without any op on a node the mirror no longer holds (a window that closed meanwhile takes its titlebar with it),
-so a one-shot op such as a destroy is not lost with a write that was moot. What a sent transaction wrote stays
+transaction it sent. A refusal `unknown-node` drops the failed op and sends the others again on the next base, without
+any op on a node the mirror no longer holds (a window that closed meanwhile takes its titlebar with it), so a one-shot
+op such as a destroy is not lost with a write that was moot. A refusal `stale-base` sends every op again, the failed
+one included: its node still exists and the op is the shell's intent, which for a one-shot write such as a click's
+focus nothing else writes again. The ops sent again go ahead of what the next tick writes, so the shell's newest write
+lands last and the compositor ends with the shell's intent, whichever order the compositor's own change and the
+shell's write reached the tree in (`a_focus_write_refused_stale_base_is_sent_again_and_is_the_final_focus`). A node
+the compositor changes before every landing would refuse the retry for ever, and the writes beside it with it, so
+after `STALE_RETRIES` (3) refusals in a row the failed op is dropped, the rest of the transaction goes on and the
+published change wins (`a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_others_land`). What
+a sent transaction wrote stays
 readable to the shell's next ticks until every transaction sent has been answered: the nodes it made, and the values it
 set on nodes the mirror holds (a Desk sizes its workspaces; a window placed the next frame must read that size, not
-the mirror's zero). Then the mirror says what is so, so a refused transaction's writes are forgotten and a native write
-that crossed the shell's own wins. A destroyed subtree is announced to the shell node by node, the deepest first, so
+the mirror's zero). Then the mirror says what is so, so a transaction refused for another reason forgets its writes and
+a native write that crossed them wins; no step skips a write because its value looks unchanged, so the same write made
+again is sent (`the_same_write_made_again_after_a_refusal_is_sent`). A destroyed subtree is announced to the shell node
+by node, the deepest first, so
 each node's bindings stop.
 
 Change batch entries (`tree.changes`):

@@ -655,6 +655,10 @@ impl<S: Host + 'static> Backend<S> for Nested {
         "nested"
     }
 
+    fn secure_treatment(&self) -> SecureTreatment {
+        self.secure_treatment
+    }
+
     fn outputs(&self) -> &[Output] {
         &self.outputs
     }

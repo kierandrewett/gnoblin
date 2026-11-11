@@ -418,6 +418,8 @@ impl Server {
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+        // A View's capture picture replaces a secure node the way the backend replaces a secure layer of an output.
+        state.composer.set_secure_treatment(backend.secure_treatment());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
         let clock = config.clock.clone();
         // A worker's answer lands here, so the lock settles on the loop that owns the state.

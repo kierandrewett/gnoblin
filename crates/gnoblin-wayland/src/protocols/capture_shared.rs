@@ -440,6 +440,17 @@ impl PixelSource for Pixels<'_> {
         self.targets.bounds(target)
     }
 
+    /// Copies `region` of `target` into the client's buffer.
+    ///
+    /// The region is honoured for every target: only the pixels of `region` are written, at the same place in the
+    /// buffer, and the rest of the buffer is left as the client had it. The table never asks for more than the target
+    /// has or the session negotiated, and a View that shrank below its session's size is copied as the smaller region.
+    ///
+    /// `_format` is the session's negotiated geometry and is not what converts the pixels. The conversion is the
+    /// buffer's own: [`copy_into`] writes `argb8888` or `xrgb8888` according to the `wl_shm` format the client made
+    /// the buffer with (`xrgb8888` forces an opaque alpha), and refuses any other layout. A buffer whose format the
+    /// session never offered, or that is smaller than the size it advertised, is refused by the protocol layer before
+    /// this runs, with the frame's `failed` event: `a_buffer_smaller_than_the_view_is_refused_and_left_untouched`.
     fn copy(&mut self, target: Target, region: Rect, _format: Format) -> Copied {
         if let Target::View(view) = target {
             // A View is copied from its own picture: it has no output frame, no

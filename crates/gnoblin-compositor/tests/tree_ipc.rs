@@ -10,7 +10,8 @@ mod support;
 use std::time::{Duration, Instant};
 
 use gnoblin_proto::tree::tree::{
-    AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload,
+    TransactArgs,
 };
 use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
@@ -1996,5 +1997,115 @@ fn an_observer_does_not_become_the_holder_when_the_holder_detaches() {
     transact(&mut next, 2, 0, 1, create(1000, taken.root));
     let applied: ReplyPayload = reply_skipping_changes(&mut next, "transact");
     assert!(applied.applied, "the new shell holds the tree: {applied:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+/// `KEY_A` and `KEY_B` from `linux/input-event-codes.h`.
+const KEY_A: u32 = 30;
+const KEY_B: u32 = 48;
+
+/// The `key` events the shell is sent within `window`, in order, as `(node, key, pressed)`. Every other frame (a change
+/// batch, the lock's `requested`) is read and skipped.
+fn key_events_within(wire: &mut Wire, window: Duration, want: usize) -> Vec<(u64, String, bool)> {
+    wire.set_read_timeout(Duration::from_millis(100));
+    let deadline = Instant::now() + window;
+    let mut keys = Vec::new();
+    while Instant::now() < deadline && keys.len() < want {
+        let Some(envelope) = wire.receive_within() else {
+            continue;
+        };
+        if envelope.member != "event" {
+            continue;
+        }
+        let event: EventPayload = envelope.payload_as().expect("the payload decodes");
+        if event.kind == "key" {
+            keys.push((event.node, event.key, event.pressed));
+        }
+    }
+    keys
+}
+
+/// Reads frames until the lock node's `requested` event arrives, which says the compositor took the lock request.
+fn wait_for_lock_request(wire: &mut Wire) {
+    wire.set_read_timeout(Duration::from_millis(100));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        assert!(Instant::now() < deadline, "the lock request never reached the shell");
+        let Some(envelope) = wire.receive_within() else {
+            continue;
+        };
+        if envelope.member != "event" {
+            continue;
+        }
+        let event: EventPayload = envelope.payload_as().expect("the payload decodes");
+        if event.kind == "requested" {
+            return;
+        }
+    }
+}
+
+/// A key from the real input path, an EI client's keyboard, reaches the shell as an `event` of kind `key` on the node
+/// that holds the seat focus, press then release; and once the session is locked, a key emits nothing. The session
+/// lock's cover owns every key, so none reaches the shell's node.
+#[test]
+fn a_key_reaches_the_shell_node_holding_the_focus_and_nothing_reaches_it_while_locked() {
+    use gnoblin_input_eis::Caps;
+    use support::ei::EiClient;
+
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, nodes) = attach_and_snapshot(&mut wire, 1);
+    let seat = nodes
+        .iter()
+        .find(|node| node.class == "seat")
+        .expect("the main seat node")
+        .id;
+    // The shell makes a node that takes input (`input` is true by default) and holds the seat's focus on it.
+    let mut ops = create(1000, attached.root);
+    ops.push(set_node_ref(seat, "focus", 1000));
+    transact(&mut wire, 2, attached.serial, attached.serial + 1, ops);
+    let applied: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+    assert!(applied.applied, "the shell's node takes the seat focus: {applied:?}");
+
+    // The keyboard is the real input path: an EI client the session grants the keyboard to.
+    let socket = session.directory().join("eis.sock");
+    let mut remote = EiClient::connect(&socket);
+    remote.wait_for("the seat", |client| client.seat.is_some());
+    assert!(session.eis().grant(Caps::KEYBOARD), "the endpoint is running");
+    remote.wait_for("the keyboard capability", |client| {
+        client.capabilities & u64::from(Caps::KEYBOARD.bits()) != 0
+    });
+    remote.bind_keyboard();
+    remote.wait_for("the keyboard device", |client| {
+        client
+            .devices
+            .first()
+            .is_some_and(|device| device.done && device.resumed.is_some())
+    });
+
+    remote.key(KEY_A, true);
+    remote.key(KEY_A, false);
+    let unlocked = key_events_within(&mut wire, Duration::from_secs(5), 2);
+    assert_eq!(
+        unlocked,
+        vec![(1000, "a".to_owned(), true), (1000, "a".to_owned(), false)],
+        "the key reaches the shell as an event on the focused node, press then release"
+    );
+
+    // The session locks: the compositor tells the shell, and from then on a key reaches nobody the shell owns.
+    let mut locker = support::Locker::connect(session.wayland());
+    locker.lock();
+    wait_for_lock_request(&mut wire);
+    // The lock ends the EI session itself, so the real input path is closed at the EIS gate before the router sees a key.
+    // The router's own `Unlocked` gate for the shell's node is covered at the unit level (`tests/tree_frame.rs`,
+    // `tests/tree_live.rs` in gnoblin-wayland); this test pins that no key edge reaches the shell on the real path.
+    remote.wait_for("the lock to end the EI session", |client| client.disconnected);
+    remote.key(KEY_B, true);
+    remote.key(KEY_B, false);
+    let locked = key_events_within(&mut wire, Duration::from_millis(1500), 1);
+    assert!(
+        locked.is_empty(),
+        "no key reaches the shell while the session is locked: {locked:?}"
+    );
     session.stop().expect("the session stops cleanly");
 }
