@@ -1543,6 +1543,14 @@ impl Composer {
         self.scene.absolute_bounds(node)
     }
 
+    /// The rectangle a window's node covers on the output plane, rounded to whole pixels: where a shell that holds
+    /// the tree put the window. `None` when the window has no node yet or it is not drawn.
+    #[must_use]
+    pub fn window_frame(&self, window: WindowId) -> Option<Rect> {
+        let node = self.windows.get(&window)?.node?;
+        self.scene.content_bounds(node).map(gnoblin_types::RectF::to_pixel)
+    }
+
     /// The window drawn under a point on the output plane, and the point in that window's local
     /// space, which is the surface point the pointer is over. The topmost window wins, and a window
     /// `accept` refuses passes the point through to what lies under it.
@@ -1970,6 +1978,35 @@ impl Composer {
         for window in windows {
             self.sync(window, false);
         }
+    }
+
+    /// Every window, topmost first.
+    ///
+    /// With no shell the order is the one [`Composer::set_stacking`] keeps. While a shell holds the tree its windows
+    /// sit under its own nodes, so the order is the scene's: a depth-first walk, children after their parent, each
+    /// sibling after the one below it. A window that has no node yet is not drawn, and counts as the topmost.
+    #[must_use]
+    pub fn window_stack(&self) -> Vec<WindowId> {
+        if !self.scene.shell_places() {
+            return self.order.iter().rev().copied().collect();
+        }
+        let by_node: BTreeMap<NodeId, WindowId> = self
+            .windows
+            .iter()
+            .filter_map(|(window, entry)| Some((entry.node?, *window)))
+            .collect();
+        let mut bottom_first: Vec<WindowId> = Vec::with_capacity(self.windows.len());
+        let mut pending: Vec<NodeId> = self.scene.root_ids().iter().rev().copied().collect();
+        while let Some(node) = pending.pop() {
+            bottom_first.extend(by_node.get(&node));
+            if let Some(children) = self.scene.children(node) {
+                pending.extend(children.iter().rev());
+            }
+        }
+        let placed: BTreeSet<WindowId> = bottom_first.iter().copied().collect();
+        bottom_first.extend(self.order.iter().filter(|window| !placed.contains(window)));
+        bottom_first.reverse();
+        bottom_first
     }
 
     /// Draws one output's frame from the damage [`Composer::begin_frame`] took.

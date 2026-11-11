@@ -105,6 +105,7 @@ use crate::protocols::wire::window_frame::gnoblin_window_frame_v1::{
 };
 
 use crate::log;
+use crate::window_request::WindowRequest;
 
 /// The surface role a frame claims, which is what stops a renderer reusing an
 /// application's surface.
@@ -557,11 +558,7 @@ impl State {
         let Some(entry) = self.frame_tables.frames.get(&window) else {
             return;
         };
-        let origin = self
-            .wm
-            .window(window)
-            .map(|managed| self.shown_geometry(managed))
-            .unwrap_or_default();
+        let origin = self.geometry_of(window).unwrap_or_default();
         let local = (
             i32::try_from((position.x - f64::from(origin.x)).round() as i64).unwrap_or(i32::MAX),
             i32::try_from((position.y - f64::from(origin.y)).round() as i64).unwrap_or(i32::MAX),
@@ -612,13 +609,10 @@ impl State {
                 }
             }
             GnoblinWindowFrameV1Action::Maximize => {
-                let effects = self.wm.apply(gnoblin_wm::Event::ToggleMaximise { window });
-                self.apply(effects);
+                let maximised = self.window_flags(window).is_some_and(|state| state.maximised);
+                self.window_request(window, WindowRequest::Maximise(!maximised));
             }
-            GnoblinWindowFrameV1Action::Minimize => {
-                let effects = self.wm.apply(gnoblin_wm::Event::Minimise { window });
-                self.apply(effects);
-            }
+            GnoblinWindowFrameV1Action::Minimize => self.window_request(window, WindowRequest::Minimise(true)),
             GnoblinWindowFrameV1Action::Drag
             | GnoblinWindowFrameV1Action::North
             | GnoblinWindowFrameV1Action::NorthEast
@@ -638,24 +632,23 @@ impl State {
 
     /// The topmost window whose presented frame covers a global position.
     fn frame_window_at(&self, position: SmithayPoint<f64, Logical>) -> Option<WindowId> {
-        for window in self.wm.stack().iter() {
-            let Some(managed) = self.wm.window(*window) else {
-                continue;
-            };
-            if !self.wm.is_visible(*window) {
+        for window in self.composer.window_stack() {
+            if !self.window_shown(window) {
                 continue;
             }
-            let frame = self.frame_tables.frames.get(window)?;
+            let frame = self.frame_tables.frames.get(&window)?;
             if frame.closed || !frame.presented || frame.surface.is_none() {
                 continue;
             }
-            let geometry = self.shown_geometry(managed);
+            let Some(geometry) = self.geometry_of(window) else {
+                continue;
+            };
             let inside = position.x >= f64::from(geometry.x)
                 && position.y >= f64::from(geometry.y)
                 && position.x < geometry.right() as f64
                 && position.y < geometry.bottom() as f64;
             if inside {
-                return Some(*window);
+                return Some(window);
             }
         }
         None
@@ -679,7 +672,7 @@ impl State {
         let Some(manager) = self.frame_tables.manager().cloned() else {
             return;
         };
-        let Some(managed) = self.wm.window(window).cloned() else {
+        let Some(managed) = self.fallback.window(window).cloned() else {
             return;
         };
         let extents = [0; 4];
@@ -699,27 +692,30 @@ impl State {
                 })
                 .flatten()
             });
-        let shown = self.shown_geometry(&managed);
+        let shown = self.geometry_of(window).unwrap_or(managed.geometry);
         let size = logical.unwrap_or((
             i32::try_from(shown.width).unwrap_or(i32::MAX),
             i32::try_from(shown.height).unwrap_or(i32::MAX),
         ));
-        let focused = self.wm.focused() == Some(window);
+        let focused = self.focus == Some(window);
+        let flags = self.effective_state(window, managed.state);
         let mut state = FrameState::empty();
         if focused {
             state |= FrameState::Focused;
         }
-        if managed.state.maximised {
+        if flags.maximised {
             state |= FrameState::Maximized;
         }
         // A client can always be asked to close and can always be minimised; a
         // fullscreen or maximised window has no size for a resize handle.
         state |= FrameState::CanClose | FrameState::CanMaximize | FrameState::CanMinimize;
-        if !managed.state.maximised && !managed.state.fullscreen {
+        if !flags.maximised && !flags.fullscreen {
             state |= FrameState::CanResize;
         }
-        let title = managed.title.clone();
-        let app_id = managed.app_id.clone();
+        let (title, app_id) = self
+            .windows
+            .get(&window)
+            .map_or_else(Default::default, |entry| (entry.title.clone(), entry.app_id.clone()));
         // The style label is the renderer's own theme hook; this slice has no
         // theme to name, so the renderer is handed the empty string and uses its
         // default.

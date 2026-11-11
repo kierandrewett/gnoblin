@@ -131,16 +131,17 @@ impl ToplevelChanges {
 }
 
 impl State {
-    /// Brings both published lists in step with the window manager.
+    /// Brings both published lists in step with the window record.
     ///
     /// Called from [`State::publish`] after every change, so a title, a state flag or a
     /// visibility change is announced once and an idle iteration announces nothing.
     pub(crate) fn sync_foreign_toplevels(&mut self) {
-        let focused = self.wm.focused();
+        let focused = self.focus;
         let windows: Vec<ToplevelState> = self
-            .wm
+            .fallback
             .windows()
             .map(|window| {
+                let entry = self.windows.get(&window.id);
                 // A shell that holds the tree writes these three on the window's node.
                 let flags = self.effective_state(window.id, window.state);
                 let mut states = States::default();
@@ -158,10 +159,10 @@ impl State {
                 }
                 ToplevelState {
                     window: window.id,
-                    title: window.title.clone(),
-                    app_id: window.app_id.clone(),
+                    title: entry.map_or_else(String::new, |entry| entry.title.clone()),
+                    app_id: entry.map_or_else(String::new, |entry| entry.app_id.clone()),
                     states,
-                    outputs: if self.wm.is_visible(window.id) && !flags.minimised {
+                    outputs: if self.window_shown(window.id) {
                         self.output_ids()
                     } else {
                         Vec::new()

@@ -27,6 +27,36 @@ local function window_setup(props)
     return host, win
 end
 
+-- Every write the shell made to a node's `x`, in order: the value, and whether it was a tween (it carried a duration).
+local function x_writes(host, id)
+    local out = {}
+    for _, batch in ipairs(host.batches) do
+        for _, o in ipairs(batch) do
+            if o.op == "set" and o.id == id and o.key == "x" then
+                out[#out + 1] = { value = o.value, tweened = o.seconds ~= nil }
+            end
+        end
+    end
+    return out
+end
+
+-- The position of the first write of `value` that is (or is not) a tween, or nil.
+local function x_write_index(writes, value, tweened)
+    for i, w in ipairs(writes) do
+        if w.value == value and w.tweened == tweened then
+            return i
+        end
+    end
+end
+
+local function dump_writes(writes)
+    local parts = {}
+    for _, w in ipairs(writes) do
+        parts[#parts + 1] = tostring(w.value) .. (w.tweened and " (tween)" or "")
+    end
+    return table.concat(parts, ", ")
+end
+
 -- The focused node of the seat, or nil.
 local function seat_focus()
     return root:find(Seat).focus
@@ -423,6 +453,84 @@ return {
             H.check(desk().active == back, "switching back must complete")
             H.check(win.parent == back, "the fullscreen window must stay on its workspace")
             H.check(win.fullscreen == true, "the fullscreen window must stay fullscreen")
+        end,
+    },
+    {
+        "showing a later workspace starts it one width to the right and tweens it in while the old one tweens out to the left",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            local d = desk()
+            local from, to = d.active, d.space.children[2]
+            local from_id, to_id = host.ids("Workspace")[1], host.ids("Workspace")[2]
+            H.frame(host, 1, {})
+            H.check(d.width == 1000, "the desk is as wide as its screen: " .. tostring(d.width))
+            go(function()
+                d:show(to)
+            end)
+            H.check(to.visible and to.active and not from.active, "the new workspace is shown at once")
+            H.frame(host, 1.1, {})
+            H.frame(host, 1.5, {})
+            local entering, leaving = x_writes(host, to_id), x_writes(host, from_id)
+            H.check(
+                x_write_index(entering, 1000, false),
+                "the new workspace starts one output width to the right: " .. dump_writes(entering)
+            )
+            H.check(
+                x_write_index(entering, 0, true),
+                "the new workspace is tweened to the origin: " .. dump_writes(entering)
+            )
+            H.check(
+                x_write_index(entering, 1000, false) < x_write_index(entering, 0, true),
+                "it starts before it is tweened"
+            )
+            H.check(
+                x_write_index(leaving, -1000, true),
+                "the old workspace is tweened out to the left: " .. dump_writes(leaving)
+            )
+            H.check(to.x == 0 and to.visible, "the new workspace settles at the origin")
+            H.check(from.visible == false and from.x == 0, "the old workspace is hidden and reset once it has left")
+            H.check(win.parent == from, "the window stays on its workspace")
+        end,
+    },
+    {
+        "showing an earlier workspace starts it one width to the left and tweens it in while the old one tweens out to the right",
+        function()
+            local host = window_setup({ app_id = "foot" })
+            local d = desk()
+            local first, second = d.space.children[1], d.space.children[2]
+            local first_id, second_id = host.ids("Workspace")[1], host.ids("Workspace")[2]
+            H.frame(host, 1, {})
+            go(function()
+                d:show(second)
+            end)
+            H.frame(host, 1.5, {})
+            H.frame(host, 1.6, {})
+            H.check(d.active == second and second.x == 0, "the later workspace is shown first")
+            local before = #x_writes(host, first_id)
+            go(function()
+                d:show(first)
+            end)
+            H.frame(host, 2.0, {})
+            H.frame(host, 2.5, {})
+            local entering, leaving = x_writes(host, first_id), x_writes(host, second_id)
+            local started = {}
+            for i = before + 1, #entering do
+                started[#started + 1] = entering[i]
+            end
+            H.check(
+                x_write_index(started, -1000, false),
+                "the new workspace starts one output width to the left: " .. dump_writes(started)
+            )
+            H.check(
+                x_write_index(started, 0, true),
+                "the new workspace is tweened to the origin: " .. dump_writes(started)
+            )
+            H.check(
+                x_write_index(leaving, 1000, true),
+                "the old workspace is tweened out to the right: " .. dump_writes(leaving)
+            )
+            H.check(first.x == 0 and first.visible, "the new workspace settles at the origin")
+            H.check(second.visible == false and second.x == 0, "the old workspace is hidden and reset once it has left")
         end,
     },
     {

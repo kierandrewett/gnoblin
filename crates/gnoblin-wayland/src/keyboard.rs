@@ -438,7 +438,7 @@ impl State {
         }
         self.keyboard_tables.active = index;
         if self.keyboard_tables.per_window
-            && let Some(window) = self.wm().focused()
+            && let Some(window) = self.focus
         {
             self.keyboard_tables.remembered.insert(window, index);
         }
@@ -817,7 +817,7 @@ impl State {
     /// anchor is the window's top-left in output coordinates, which is where the keyboard
     /// default places the menu.
     fn open_focused_window_menu(&mut self) {
-        let Some(window) = self.wm.focused() else {
+        let Some(window) = self.focus else {
             log::debug!(area = "menu", "the window-menu key was pressed with no focused window");
             return;
         };

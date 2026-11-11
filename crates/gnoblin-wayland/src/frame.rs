@@ -255,9 +255,9 @@ mod tests {
     use smithay::reexports::calloop::LoopHandle;
     use smithay::reexports::wayland_server::Display;
 
+    use crate::policy::WmOptions;
     use gnoblin_lock::{Event as LockEvent, State as LockState};
     use gnoblin_types::ClientId;
-    use gnoblin_wm::WmOptions;
 
     use super::*;
 
@@ -271,7 +271,6 @@ mod tests {
             &outputs,
             "seat0",
             WmOptions::default(),
-            1,
             None,
             None,
             crate::tree_frame::TreeHooks::default(),
@@ -607,7 +606,6 @@ mod tests {
             &outputs,
             "seat0",
             WmOptions::default(),
-            1,
             None,
             None,
             crate::tree_frame::TreeHooks::default(),

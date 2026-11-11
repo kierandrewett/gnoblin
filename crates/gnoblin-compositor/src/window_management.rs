@@ -11,8 +11,7 @@ use std::time::Duration;
 
 use gnoblin_config::{FocusMode as ConfiguredFocusMode, FocusNewWindows, SearchPaths, Store, WindowManagement};
 
-use gnoblin_wayland::TitlebarActions;
-use gnoblin_wm::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
+use gnoblin_wayland::{DragConstraint, FocusMode, NewWindowFocus, TitlebarActions, WmOptions};
 
 use crate::SessionConfig;
 
@@ -39,9 +38,6 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.window_management.clone().unwrap_or_default();
             apply(config, &section);
-            if !stored.config.workspaces.is_empty() {
-                config.wayland.workspaces = u32::try_from(stored.config.workspaces.len()).unwrap_or(u32::MAX);
-            }
             config.wayland.workspace_names = workspace_names(&stored.config.workspaces);
             log::debug!(
                 area = "window-management",

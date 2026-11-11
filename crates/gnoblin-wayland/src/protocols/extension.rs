@@ -409,9 +409,9 @@ mod tests {
     fn state() -> crate::State {
         use smithay::reexports::wayland_server::Display;
 
+        use crate::policy::WmOptions;
         use gnoblin_backend::headless::Headless;
         use gnoblin_config::Protocols;
-        use gnoblin_wm::WmOptions;
 
         let backend = Headless::new();
         let outputs = gnoblin_backend::Backend::<crate::State>::outputs(&backend).to_vec();
@@ -421,7 +421,6 @@ mod tests {
             &outputs,
             "seat0",
             WmOptions::default(),
-            1,
             None,
             None,
             crate::tree_frame::TreeHooks::default(),

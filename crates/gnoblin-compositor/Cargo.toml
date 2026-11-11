@@ -16,7 +16,6 @@ gnoblin-secret.workspace = true
 # The Wayland engine this process runs: the protocol handlers, the seat, the window
 # manager glue and the frame hook.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
-gnoblin-wm = { path = "../gnoblin-wm" }
 # The Lua host that runs the layout modules.
 gnoblin-lua = { path = "../gnoblin-lua" }
 # The backend trait and the backends this build selects between: headless, nested in

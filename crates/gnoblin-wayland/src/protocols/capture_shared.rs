@@ -590,9 +590,9 @@ impl State {
             };
             targets.outputs.insert(output, scale_size(rect.size(), scale));
         }
-        for managed in self.wm().windows() {
-            let shown = self.shown_geometry(managed);
+        for managed in self.fallback.windows() {
             let window = managed.id;
+            let shown = self.geometry_of(window).unwrap_or(managed.geometry);
             let Some(output) = managed.output else {
                 continue;
             };

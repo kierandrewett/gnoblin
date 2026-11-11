@@ -81,9 +81,9 @@ use smithay::xwayland::{XWayland, XWaylandClientData, XwmHandler};
 use gnoblin_backend::x11::{
     self, Launch, NodeChange, Opened, Restart, Session, Start, WindowEvent, WindowMeta, X11Request,
 };
-use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec, LocalName};
 use gnoblin_types::{Rect, WindowId};
-use gnoblin_wm::{ActivationDecision, Effect, Event, WindowProtocol, WindowSpec, Wm};
+
+use crate::fallback::{Open, WindowKind};
 
 use crate::selection_bridge::ToWayland;
 use crate::state::State;
@@ -456,10 +456,10 @@ impl State {
         self.x11.as_ref().and_then(Running::display)
     }
 
-    /// Removes an X11 window from the manager after its server went away.
+    /// Removes an X11 window from the record after its server went away.
     pub(crate) fn x11_window_gone(&mut self, window: WindowId) {
-        // The composer may still hold a window the manager has forgotten at its unmap, fading
-        // or hidden, so it is closed before the manager is asked.
+        // The composer may still hold a window the record has forgotten at its unmap, fading
+        // or hidden, so it is closed before the record is asked.
         self.composer.close_window(window);
         if self.windows.remove(&window).is_none() {
             return;
@@ -473,8 +473,7 @@ impl State {
             }
         }
         self.release_window(window);
-        let effects = self.wm.apply(Event::WindowClosed { window });
-        self.apply(effects);
+        self.window_closed(window);
         self.publish();
     }
 
@@ -488,32 +487,53 @@ impl State {
             _ => None,
         };
         let outcome = running.windows.handle(event);
-        // The window manager hears the changes first, as it does for a toplevel: the scene
-        // learns a window with the geometry the manager gave it.
+        // The record hears the changes that place and remove windows first, as it does for a toplevel: the
+        // scene learns a window with the geometry the record gave it.
         let mut effects = Vec::new();
         for change in &outcome.changes {
-            effects.extend(apply_change(&mut self.wm, change));
+            match change {
+                NodeChange::Opened(opened) => {
+                    let opened = self.with_seat(|fallback, seat| fallback.open(open_of(opened), seat));
+                    match opened {
+                        Ok(opened) => effects.extend(opened),
+                        Err(refusal) => log::debug!(area = "xwayland", ?refusal, "an X11 window is left unmanaged"),
+                    }
+                }
+                NodeChange::Closed { window } => self.window_closed(*window),
+                NodeChange::Geometry { window, geometry } => {
+                    if let Ok(moved) = self.fallback.move_resize(*window, *geometry) {
+                        effects.extend(moved);
+                    }
+                }
+                NodeChange::Activate { .. } | NodeChange::Title { .. } | NodeChange::AppId { .. } => {}
+            }
         }
         if let (Some(window), Some(surface)) = (outcome.window, surface) {
             running.surfaces.insert(window, surface.clone());
             if !self.windows.contains_key(&window) {
-                // A deferred open has no geometry yet; the window is placed when the policy
-                // answers, as for a Wayland toplevel.
-                let geometry = self.wm.window(window).map_or(Rect::EMPTY, |managed| managed.geometry);
+                // A window the record refused has no geometry; it is inserted at the empty rectangle and stays
+                // unmanaged.
+                let geometry = self
+                    .fallback
+                    .window(window)
+                    .map_or(Rect::EMPTY, |managed| managed.geometry);
                 self.windows
                     .insert(window, crate::state::WindowEntry::x11(surface.clone()));
                 self.composer.insert_window(window, geometry);
             }
         }
         for change in &outcome.changes {
-            if let NodeChange::Opened(Opened { window, .. })
-            | NodeChange::Title { window, .. }
-            | NodeChange::AppId { window, .. } = change
-            {
-                self.publish_x11_text(*window);
+            match change {
+                NodeChange::Opened(Opened {
+                    window, app_id, title, ..
+                }) => self.set_x11_text(*window, Some(title), Some(app_id)),
+                NodeChange::Title { window, title } => self.set_x11_text(*window, Some(title), None),
+                NodeChange::AppId { window, app_id } => self.set_x11_text(*window, None, Some(app_id)),
+                NodeChange::Activate { window } => self.x11_activated(*window),
+                NodeChange::Closed { .. } | NodeChange::Geometry { .. } => {}
             }
         }
-        self.apply(effects);
+        self.apply_decided(effects);
         for command in outcome.commands {
             running.send(command);
         }
@@ -527,7 +547,7 @@ impl State {
             self.release_window(window);
             running.surfaces.remove(&window);
         } else if let Some(window) = outcome.window
-            && self.wm.window(window).is_none()
+            && self.fallback.window(window).is_none()
         {
             self.windows.remove(&window);
             self.composer.unmap_window(window);
@@ -537,18 +557,34 @@ impl State {
         self.publish();
     }
 
-    /// Writes a window's title and application id, as the window manager holds them, to its
-    /// entry and its node. Each one that changed reaches the shell as a property change.
-    fn publish_x11_text(&mut self, window: WindowId) {
-        let Some(managed) = self.wm.window(window) else {
+    /// Records the title and application id an X11 event gave a window, and publishes them on its node. A
+    /// window the session holds no entry for takes nothing.
+    fn set_x11_text(&mut self, window: WindowId, title: Option<&str>, app_id: Option<&str>) {
+        let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
-        let (title, app_id) = (managed.title.clone(), managed.app_id.clone());
-        self.composer.set_window_text(window, &title, &app_id);
-        if let Some(entry) = self.windows.get_mut(&window) {
-            entry.title = title;
-            entry.app_id = app_id;
+        if let Some(title) = title {
+            title.clone_into(&mut entry.title);
         }
+        if let Some(app_id) = app_id {
+            app_id.clone_into(&mut entry.app_id);
+        }
+        let (title, app_id) = (entry.title.clone(), entry.app_id.clone());
+        self.composer.set_window_text(window, &title, &app_id);
+    }
+
+    /// An X11 window asked for focus, or was shown again, which is the same request. The record focuses and
+    /// raises it; while a shell holds the tree the request is its to answer, and a window it has no node for yet
+    /// is the shell's to focus when it is ready.
+    fn x11_activated(&mut self, window: WindowId) {
+        if self.composer.shell_places() {
+            if let Some(node) = self.composer.window_node(window) {
+                self.tree.event(node, crate::tree_frame::TreeRequest::Activate);
+            }
+            return;
+        }
+        let effects = self.with_seat(|fallback, seat| fallback.activate(window, true, seat));
+        self.apply(effects);
     }
 
     /// An X11 window's surface committed: its content, text and state reach its node.
@@ -556,7 +592,7 @@ impl State {
     /// The commit is where an X11 window's node first has pixels, so it is also where the
     /// shell hears the window is ready, exactly as for a toplevel's first buffer.
     pub(crate) fn x11_committed(&mut self, window: WindowId, surface: &WlSurface) {
-        self.publish_x11_text(window);
+        self.set_x11_text(window, None, None);
         self.publish_window_state(window);
         self.sync_content(window, surface);
         self.publish();
@@ -580,65 +616,17 @@ impl State {
     }
 }
 
-/// The spec the window manager takes an X11 window in with.
-fn window_spec(opened: &Opened) -> WindowSpec {
-    let spec = match opened.transient_for {
-        Some(parent) => WindowSpec::transient(opened.window, &opened.app_id, parent),
-        None => WindowSpec::normal(opened.window, &opened.app_id),
-    };
-    // The window is an X11 window, so the manager records it as `surface_x11` rather than
-    // a Wayland toplevel.
-    WindowSpec {
-        protocol: WindowProtocol::X11,
-        ..spec.with_title(&opened.title).with_requested(opened.requested)
-    }
-}
-
-/// Registers the `gnoblin.surface_x11:<window id>` record for a managed X11 window.
-///
-/// Only the X11 side knows the window is an X11 one, so the record is registered here and
-/// not by the manager, under the provider name the X11 policy crate has always used (not
-/// the compositor's own, which carries more rights). The record is scoped to the window,
-/// so closing the window ends it and the close path needs no extra step.
-fn register_surface_record(wm: &mut Wm, window: WindowId) {
-    if wm.window(window).is_none() {
-        // The manager refused the window, and that refusal is already in the effects.
-        return;
-    }
-    let Ok(local) = LocalName::keyed("surface_x11", &window.get().to_string()) else {
-        debug_assert!(false, "a numeric window id always forms a valid local name");
-        return;
-    };
-    let spec = LayerSpec::new(local, LayerScope::Window(Some(window)), Band::Windows);
-    let result = wm.register_surface(&LayerProvider::Gnoblin("gnoblin-xwayland"), spec);
-    debug_assert!(result.is_ok(), "surface record for {window} refused: {result:?}");
-}
-
-/// Applies one change the X11 policy made to the window manager and answers its effects.
-fn apply_change(wm: &mut Wm, change: &NodeChange) -> Vec<Effect> {
-    match change {
-        NodeChange::Opened(opened) => {
-            let effects = wm.apply(Event::WindowOpened(window_spec(opened)));
-            register_surface_record(wm, opened.window);
-            effects
-        }
-        NodeChange::Activate { window } => wm.apply(Event::ActivationRequested {
-            window: *window,
-            decision: ActivationDecision::Allow,
-        }),
-        NodeChange::Closed { window } => wm.apply(Event::WindowClosed { window: *window }),
-        NodeChange::Geometry { window, geometry } => wm.apply(Event::MoveResize {
-            window: *window,
-            geometry: *geometry,
-        }),
-        NodeChange::Title { window, title } => wm.apply(Event::WindowTitleChanged {
-            window: *window,
-            title: title.clone(),
-        }),
-        NodeChange::AppId { window, app_id } => wm.apply(Event::WindowAppIdChanged {
-            window: *window,
-            app_id: app_id.clone(),
-        }),
+/// What the record is told of an X11 window that opened: a client's transient parent makes it a dialog.
+fn open_of(opened: &Opened) -> Open {
+    Open {
+        id: opened.window,
+        kind: if opened.transient_for.is_some() {
+            WindowKind::Dialog
+        } else {
+            WindowKind::Normal
+        },
+        transient_for: opened.transient_for,
+        requested: Some(opened.requested),
     }
 }
 
@@ -999,19 +987,18 @@ impl XWaylandKeyboardGrabHandler for State {
 mod tests {
     use super::*;
 
-    use gnoblin_types::{OutputId, WorkspaceId};
-    use gnoblin_wm::{WindowKind, WmOptions};
+    use gnoblin_types::OutputId;
 
-    fn session() -> Wm {
-        let mut wm = Wm::new(WmOptions::default());
-        wm.apply(Event::WorkspaceAdded {
-            workspace: WorkspaceId::new(1),
-        });
-        wm.apply(Event::OutputConnected {
-            output: OutputId::new(1),
-            rect: Rect::new(0, 0, 1920, 1080),
-        });
-        wm
+    use crate::fallback::{Fallback, FallbackEffect, Standing};
+
+    fn session() -> Fallback {
+        let mut fallback = Fallback::default();
+        let seat = Standing {
+            stack: &[],
+            focus: None,
+        };
+        fallback.output_added(OutputId::new(1), Rect::new(0, 0, 1920, 1080), seat);
+        fallback
     }
 
     fn id(x11: u64) -> WindowId {
@@ -1028,10 +1015,10 @@ mod tests {
         }
     }
 
-    /// The rectangle the manager told a window to use, if it told it anything.
-    fn configured(effects: &[Effect], window: WindowId) -> Option<Rect> {
+    /// The rectangle the record told a window to use, if it told it anything.
+    fn configured(effects: &[FallbackEffect], window: WindowId) -> Option<Rect> {
         effects.iter().find_map(|effect| match effect {
-            Effect::Configure {
+            FallbackEffect::Configure {
                 window: configured,
                 geometry,
                 ..
@@ -1040,127 +1027,84 @@ mod tests {
         })
     }
 
-    /// Opening is what takes an X11 window into management, and the manager's answer is
-    /// the geometry the client is told to adopt.
+    fn seat(stack: &[WindowId], focus: Option<WindowId>) -> Standing<'_> {
+        Standing { stack, focus }
+    }
+
+    /// Opening is what takes an X11 window into management, and the record's answer is the geometry the client is
+    /// told to adopt.
     #[test]
-    fn an_opened_window_is_managed_with_its_title_and_class() {
-        let mut wm = session();
+    fn an_opened_window_is_managed_and_told_where_to_sit() {
+        let mut fallback = session();
 
-        let effects = apply_change(&mut wm, &NodeChange::Opened(open(3, "XTerm", "kieran@fsociety")));
+        let effects = fallback
+            .open(open_of(&open(3, "XTerm", "kieran@fsociety")), seat(&[], None))
+            .expect("the window opens");
 
-        let managed = wm.window(id(3)).expect("the window is managed");
-        assert_eq!(managed.app_id, "XTerm");
-        assert_eq!(managed.title, "kieran@fsociety");
+        let managed = fallback.window(id(3)).expect("the window is managed");
         assert_eq!(configured(&effects, id(3)), Some(managed.geometry));
+        assert_eq!(managed.geometry, Rect::new(32, 32, 300, 200));
     }
 
-    /// A managed X11 window is a surface record, so layer tooling sees it beside the Wayland
-    /// toplevels. Its record is scoped to the window, so closing it ends the record too.
+    /// A closed window leaves the record: no window, no focus, no ghost.
     #[test]
-    fn an_opened_x11_window_registers_a_surface_record_that_closing_ends() {
-        let mut wm = session();
-        let window = id(3);
-        let name = format!("gnoblin.surface_x11:{}", window.get());
+    fn a_closed_window_leaves_the_record() {
+        let mut fallback = session();
+        fallback
+            .open(open_of(&open(4, "XTerm", "t")), seat(&[], None))
+            .expect("opens");
+        let stack = [id(4)];
+        let activate = fallback.activate(id(4), true, seat(&stack, None));
+        assert_eq!(activate, [FallbackEffect::Focus(Some(id(4)))], "the window takes focus");
 
-        apply_change(&mut wm, &NodeChange::Opened(open(3, "XTerm", "t")));
+        let effects = fallback.close(id(4), seat(&stack, Some(id(4))));
 
-        let record = wm
-            .layers()
-            .records()
-            .find(|record| record.name.to_string() == name)
-            .expect("the opened window has a surface record");
-        assert_eq!(record.spec.band, Band::Windows);
-        assert_eq!(record.spec.scope, LayerScope::Window(Some(window)));
-
-        apply_change(&mut wm, &NodeChange::Closed { window });
-        assert!(wm.layers().records().all(|record| record.name.to_string() != name));
+        assert!(fallback.window(id(4)).is_none(), "the record holds no window");
+        assert_eq!(effects, [FallbackEffect::Focus(None)]);
     }
 
-    /// A closed window leaves the manager: no window, no focus, no ghost.
+    /// A geometry change goes through the record, so the answer is the geometry the work area allows rather than
+    /// the geometry the client asked for.
     #[test]
-    fn a_closed_window_leaves_the_manager() {
-        let mut wm = session();
-        apply_change(&mut wm, &NodeChange::Opened(open(4, "XTerm", "t")));
-        apply_change(&mut wm, &NodeChange::Activate { window: id(4) });
-        assert_eq!(wm.focused(), Some(id(4)), "the opened window took focus");
+    fn a_geometry_change_goes_through_the_record() {
+        let mut fallback = session();
+        fallback
+            .open(open_of(&open(5, "XTerm", "t")), seat(&[], None))
+            .expect("opens");
+        let before = fallback.window(id(5)).expect("managed").geometry;
 
-        apply_change(&mut wm, &NodeChange::Closed { window: id(4) });
+        // Far outside the output, so the record's clamp is what decides.
+        let effects = fallback
+            .move_resize(id(5), Rect::new(9_000, 9_000, 600, 400))
+            .expect("a floating window moves");
 
-        assert!(wm.window(id(4)).is_none(), "the manager holds no window");
-        assert_eq!(wm.focused(), None);
-    }
-
-    /// A title or application id change reaches the manager's record, which is what rules
-    /// and the window's node text read.
-    #[test]
-    fn a_title_and_an_app_id_change_reach_the_manager() {
-        let mut wm = session();
-        apply_change(&mut wm, &NodeChange::Opened(open(5, "XTerm", "old")));
-
-        apply_change(
-            &mut wm,
-            &NodeChange::Title {
-                window: id(5),
-                title: "new".to_owned(),
-            },
-        );
-        apply_change(
-            &mut wm,
-            &NodeChange::AppId {
-                window: id(5),
-                app_id: "Renamed".to_owned(),
-            },
-        );
-
-        let managed = wm.window(id(5)).expect("still managed");
-        assert_eq!(managed.title, "new");
-        assert_eq!(managed.app_id, "Renamed");
-    }
-
-    /// A geometry change reaches the window manager, so the answer is the geometry the work
-    /// area allows rather than the geometry the client asked for.
-    #[test]
-    fn a_geometry_change_goes_through_the_manager() {
-        let mut wm = session();
-        apply_change(&mut wm, &NodeChange::Opened(open(5, "XTerm", "t")));
-        let before = wm.window(id(5)).expect("managed").geometry;
-
-        let effects = apply_change(
-            &mut wm,
-            &NodeChange::Geometry {
-                window: id(5),
-                // Far outside the output, so the manager's clamp is what decides.
-                geometry: Rect::new(9_000, 9_000, 600, 400),
-            },
-        );
-
-        let managed = wm.window(id(5)).expect("still managed");
+        let managed = fallback.window(id(5)).expect("still managed");
         assert_ne!(managed.geometry, before, "the request moved the window");
         assert_eq!(managed.geometry.size().width, 600);
         assert_eq!(managed.geometry.size().height, 400);
-        assert_eq!(
-            configured(&effects, id(5)),
-            Some(managed.geometry),
-            "the client hears the geometry the manager allowed"
-        );
+        assert!(managed.geometry.is_inside(Rect::new(0, 0, 1920, 1080)));
+        assert_eq!(configured(&effects, id(5)), Some(managed.geometry));
     }
 
-    /// A dialog follows the window it is transient for instead of being placed on its
-    /// own, which is what keeps a file chooser over the application that opened it.
+    /// A dialog follows the window it is transient for instead of being placed on its own, which is what keeps a
+    /// file chooser over the application that opened it.
     #[test]
     fn a_transient_window_follows_its_parent() {
-        let mut wm = session();
-        apply_change(&mut wm, &NodeChange::Opened(open(6, "App", "main")));
+        let mut fallback = session();
+        fallback
+            .open(open_of(&open(6, "App", "main")), seat(&[], None))
+            .expect("opens");
         let mut dialog = open(7, "App", "open file");
         dialog.transient_for = Some(id(6));
 
-        apply_change(&mut wm, &NodeChange::Opened(dialog));
+        fallback.open(open_of(&dialog), seat(&[id(6)], None)).expect("opens");
 
-        let child = wm.window(id(7)).expect("the dialog is managed");
+        let child = fallback.window(id(7)).expect("the dialog is managed");
         assert_eq!(child.transient_for, Some(id(6)));
         assert_eq!(child.kind, WindowKind::Dialog);
-        let parent = wm.window(id(6)).expect("the parent is managed");
-        assert_eq!(child.workspace, parent.workspace);
-        assert_eq!(child.output, parent.output);
+        assert_eq!(
+            child.output,
+            fallback.window(id(6)).expect("the parent is managed").output
+        );
     }
 }

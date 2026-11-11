@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::Headless;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
-use gnoblin_wm::{NewWindowFocus, WmOptions};
+use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_callback, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};

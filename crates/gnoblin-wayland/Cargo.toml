@@ -39,7 +39,6 @@ gnoblin-types.workspace = true
 # Window state transitions go through the pure policy state machine: this crate
 # translates protocols into `Wm::apply` events and turns the effects back into
 # configures, focus changes and stacking.
-gnoblin-wm = { path = "../gnoblin-wm" }
 # The session lock and protection-cover policy: `ext-session-lock-v1` is a request
 # for `Lock::apply`, and the cover, the input gate and the embargo are what its
 # effects perform (design/rust-compositor.md, "Session lock: gnoblin-lock").

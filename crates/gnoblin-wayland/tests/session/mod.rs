@@ -26,7 +26,7 @@ use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
 use gnoblin_types::Point;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks};
-use gnoblin_wm::{NewWindowFocus, WmOptions};
+use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_keyboard,

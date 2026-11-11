@@ -25,7 +25,7 @@ use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputSource, Ou
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::OutputId;
 use gnoblin_wayland::{ClientRole, Config, ControlHandle, LoopError, Server, TreeHooks};
-use gnoblin_wm::{NewWindowFocus, WmOptions};
+use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use smithay::reexports::calloop::LoopHandle;
 use wayland_client::DispatchError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};

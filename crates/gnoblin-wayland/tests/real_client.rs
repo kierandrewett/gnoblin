@@ -33,7 +33,7 @@ use gnoblin_types::{Point, Rect, WindowId};
 use gnoblin_wayland::{
     Clock, Config, ControlHandle, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot, SystemClock,
 };
-use gnoblin_wm::{FocusMode, NewWindowFocus, POINTER_REST, WmOptions};
+use gnoblin_wayland::{FocusMode, NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
@@ -359,16 +359,6 @@ impl Client {
         });
     }
 
-    /// Sends a left button press or release and waits until the client receives it.
-    fn left_button(&mut self, session: &Handle, pressed: bool) {
-        let buttons = self.state.pointer_buttons;
-        session.control.inject_input(InputEvent::PointerButton {
-            button: BTN_LEFT,
-            pressed,
-        });
-        self.wait_until("the button event", |seen| seen.state.pointer_buttons != buttons);
-    }
-
     /// Pointer enters and leaves seen so far.
     fn crossings(&self) -> u32 {
         self.state.pointer_enters + self.state.pointer_leaves
@@ -454,24 +444,6 @@ fn focus_session(focus_mode: FocusMode) -> Session {
     )
 }
 
-/// A hover session whose pointer rests before a hover focus change: the change waits
-/// `POINTER_REST` on the new window, and only a test advances the clock that measures it.
-fn rest_session() -> Session {
-    rest_session_on(Arc::new(ManualClock::new()))
-}
-
-/// The rest session on a clock the test owns, so the test decides when wall time passes.
-fn rest_session_on(clock: Arc<ManualClock>) -> Session {
-    session_on(
-        WmOptions {
-            focus_mode: FocusMode::Hover,
-            focus_change_on_pointer_rest: true,
-            ..WmOptions::default()
-        },
-        clock,
-    )
-}
-
 /// A session with the given window manager options on the clock the caller chooses. A
 /// [`ManualClock`] moves only when its owner moves it, so a rest timer never expires during a
 /// client round trip that the test did not ask for.
@@ -484,19 +456,6 @@ fn session_on(wm: WmOptions, clock: Arc<dyn Clock>) -> Session {
             ..Config::default()
         },
     )
-}
-
-/// Maps `Left` and `Right` on the left and right halves of the output and waits until both are
-/// drawn there. The two halves touch, so the output has no empty space between the windows.
-fn map_split_pair(session: &Handle, client: &mut Client) -> (Window, Window) {
-    map_pair(session, client, SPLIT_LEFT, SPLIT_RIGHT)
-}
-
-/// A point outside both windows of the split pair and outside the output. The two windows
-/// cover the whole output, so no point inside it is clear of both.
-fn outside_output_point() -> Point {
-    let (width, height) = headless_screen();
-    Point::new(width + 50, height / 2)
 }
 
 #[test]
@@ -1110,10 +1069,6 @@ impl Dispatch<xdg_popup::XdgPopup, ()> for App {
 const PAIR_LEFT: Rect = Rect::new(100, 100, 300, 200);
 /// The rectangle the pair tests place `Right` at.
 const PAIR_RIGHT: Rect = Rect::new(600, 100, 300, 200);
-/// The left half of the output, which the master tests tile.
-const SPLIT_LEFT: Rect = Rect::new(0, 0, 512, 768);
-/// The right half of the output.
-const SPLIT_RIGHT: Rect = Rect::new(512, 0, 512, 768);
 /// Two overlapping windows: `Right` covers the right part of `Left`.
 const OVERLAP_LOWER: Rect = Rect::new(100, 100, 300, 200);
 /// The window above `OVERLAP_LOWER`, shifted right by 100.
@@ -1371,277 +1326,10 @@ fn click_mode_leaves_focus_where_the_pointer_passes() {
     });
 }
 
-#[test]
-fn hover_focuses_the_window_the_pointer_enters() {
-    let session = focus_session(FocusMode::Hover);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let (first, second) = map_pair(session, &mut client, PAIR_LEFT, PAIR_RIGHT);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-        client.roundtrip();
-        assert!(
-            client.keyboard_is_on(&second),
-            "the keyboard entered the window the pointer entered"
-        );
-        assert!(
-            !client.keyboard_is_on(&first),
-            "the window the pointer left lost the keyboard"
-        );
-    });
-}
-
-#[test]
-fn hover_keeps_focus_when_the_pointer_crosses_a_gap() {
-    let session = focus_session(FocusMode::Hover);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let (_first, second) = map_split_pair(session, &mut client);
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-
-        let left = client.state.pointer_leaves;
-        client.move_pointer(session, outside_output_point());
-        assert!(client.state.pointer_leaves > left, "the pointer left the second window");
-        assert!(
-            session
-                .windows()
-                .focused()
-                .is_some_and(|window| window.title == "Right"),
-            "a gap keeps focus under hover"
-        );
-        assert!(
-            client.keyboard_is_on(&second),
-            "the keyboard stayed on the second window"
-        );
-    });
-}
-
-#[test]
-fn hover_strict_clears_focus_when_the_pointer_crosses_a_gap() {
-    let session = focus_session(FocusMode::HoverStrict);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let (_first, second) = map_split_pair(session, &mut client);
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-
-        let left = client.state.pointer_leaves;
-        client.move_pointer(session, outside_output_point());
-        assert!(client.state.pointer_leaves > left, "the pointer left the second window");
-        session.wait_for(|observation| observation.focused().is_none());
-        client.roundtrip();
-        assert!(!client.keyboard_is_on(&second), "the keyboard left the second window");
-        assert!(client.state.keyboard_surface.is_none(), "nothing holds the keyboard");
-    });
-}
-
-#[test]
-fn a_held_button_stops_hover_from_moving_focus() {
-    let session = focus_session(FocusMode::Hover);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let (first, second) = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Left"));
-        client.left_button(session, true);
-
-        // The press holds the pointer on the first window, so motion into the second does not
-        // move focus. The release that follows is the barrier proving the motion was handled.
-        client.inject_motion(session, only_point_of(session, "Right"));
-        client.left_button(session, false);
-        assert!(client.keyboard_is_on(&first), "a held button keeps focus where it is");
-        assert!(
-            !client.keyboard_is_on(&second),
-            "hover did not move focus during the press"
-        );
-
-        // Leave through the gap, then re-enter the second window to hover-focus it.
-        client.move_pointer(session, outside_output_point());
-        client.move_pointer(session, only_point_of(session, "Right"));
-        client.wait_until("the keyboard on the second window", |seen| seen.keyboard_is_on(&second));
-    });
-}
-
 /// Waits until the loop has run every command queued before this call. Commands and input
 /// share one queue, drained in order, so the reply to this query marks that point.
 fn settle(session: &Handle) {
     let _ = session.control.modal_events();
-}
-
-/// The title of the window with keyboard focus, as of the last settle.
-fn focused_title(session: &Handle) -> Option<String> {
-    session.windows().focused().map(|window| window.title.clone())
-}
-
-#[test]
-fn rest_focus_moves_to_the_window_the_pointer_rests_on() {
-    let session = rest_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.control.advance(POINTER_REST);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-    });
-}
-
-#[test]
-fn rest_focus_waits_the_full_rest_before_moving() {
-    let session = rest_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.control.advance(POINTER_REST - 1);
-        settle(session);
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "focus moved before the rest was up"
-        );
-        session.control.advance(1);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-    });
-}
-
-#[test]
-fn motion_restarts_the_rest_before_focus_moves() {
-    let session = rest_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        let inside = only_point_of(session, "Right");
-        client.move_pointer(session, inside);
-        session.control.advance(POINTER_REST - 1);
-        // Motion inside the same window re-arms the rest, so the old deadline no longer counts.
-        client.inject_motion(session, Point::new(inside.x, inside.y + 1));
-        settle(session);
-        session.control.advance(POINTER_REST - 1);
-        settle(session);
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "motion did not restart the rest"
-        );
-        session.control.advance(1);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-    });
-}
-
-#[test]
-fn leaving_the_window_cancels_a_pending_rest_focus() {
-    let session = rest_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        client.move_pointer(session, outside_output_point());
-        session.control.advance(POINTER_REST);
-        settle(session);
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "a window left behind took focus"
-        );
-    });
-}
-
-#[test]
-fn closing_the_window_cancels_a_pending_rest_focus() {
-    let session = rest_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let (_first, second) = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        client.destroy(second);
-        session.control.advance(POINTER_REST);
-        settle(session);
-        assert!(
-            session.windows().titled("Right").is_none(),
-            "the closed window is still observed"
-        );
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "a closed window took focus"
-        );
-    });
-}
-
-#[test]
-fn a_held_button_ignores_a_pending_rest_focus() {
-    let session = rest_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Left"));
-        client.left_button(session, true);
-        client.inject_motion(session, only_point_of(session, "Right"));
-        session.control.advance(POINTER_REST);
-        settle(session);
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "a held button let the rest move focus"
-        );
-        client.left_button(session, false);
-        session.control.advance(POINTER_REST);
-        settle(session);
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "the release re-armed a rest focus"
-        );
-    });
-}
-
-#[test]
-fn a_client_round_trip_does_not_advance_the_session_clock() {
-    let clock = Arc::new(ManualClock::new());
-    let session = rest_session_on(clock.clone());
-    session.run(move |session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_split_pair(session, &mut client);
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        // The clock only moves when the test moves it, so the round trip must leave the rest
-        // where it was.
-        client.roundtrip();
-        settle(session);
-        assert_eq!(
-            focused_title(session).as_deref(),
-            Some("Left"),
-            "wall time advanced the rest"
-        );
-        clock.advance(Duration::from_millis(POINTER_REST));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-    });
-}
-
-/// The auto-raise delay the session's window manager uses, in milliseconds.
-const AUTO_RAISE_DELAY: u64 = 500;
-
-/// A session where the pointer focuses the window it enters, and an auto-raise follows after
-/// `AUTO_RAISE_DELAY` on a clock the test moves.
-fn auto_raise_session() -> Session {
-    session_on(
-        WmOptions {
-            focus_mode: FocusMode::Hover,
-            auto_raise: true,
-            auto_raise_delay: AUTO_RAISE_DELAY,
-            ..WmOptions::default()
-        },
-        Arc::new(ManualClock::new()),
-    )
 }
 
 /// The title of the topmost window: the first window of the stacking order.
@@ -1699,102 +1387,5 @@ fn raise_on_click_off_focuses_the_window_without_raising_it() {
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         let after = session.windows().stacking().to_vec();
         assert_eq!(after, before, "a press without raise_on_click changed the stacking");
-    });
-}
-
-#[test]
-fn auto_raise_raises_the_window_the_pointer_rests_on_after_the_delay() {
-    let session = auto_raise_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
-        session.wait_for(|observation| topmost(observation) == Some("Right"));
-        // Enter Right first, so the pointer's move onto Left is a real enter that arms the raise.
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-        client.move_pointer(session, only_point_of(session, "Left"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-
-        session.control.advance(AUTO_RAISE_DELAY - 1);
-        settle(session);
-        assert_eq!(
-            topmost(&session.windows()),
-            Some("Right"),
-            "the window rose before its delay ran out"
-        );
-        session.control.advance(1);
-        session.wait_for(|observation| topmost(observation) == Some("Left"));
-    });
-}
-
-#[test]
-fn auto_raise_is_cancelled_when_the_pointer_leaves_before_the_delay() {
-    let session = auto_raise_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
-        session.wait_for(|observation| topmost(observation) == Some("Right"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-        client.move_pointer(session, only_point_of(session, "Left"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-
-        session.control.advance(AUTO_RAISE_DELAY - 1);
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-        session.control.advance(1);
-        settle(session);
-        assert_eq!(
-            topmost(&session.windows()),
-            Some("Right"),
-            "a window the pointer left was raised after the delay"
-        );
-    });
-}
-
-#[test]
-fn auto_raise_does_nothing_once_its_window_is_closed() {
-    let session = auto_raise_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let (lower, _upper) = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
-        session.wait_for(|observation| topmost(observation) == Some("Right"));
-        client.move_pointer(session, only_point_of(session, "Left"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
-
-        client.destroy(lower);
-        session.wait_for(|observation| observation.titled("Left").is_none());
-        session.control.advance(AUTO_RAISE_DELAY);
-        settle(session);
-        assert_eq!(
-            topmost(&session.windows()),
-            Some("Right"),
-            "the closed window's auto-raise changed the stacking"
-        );
-    });
-}
-
-#[test]
-fn auto_raise_ignores_the_pointer_while_a_button_holds_its_grab() {
-    let session = auto_raise_session();
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let _lower = place_window(session, &mut client, "org.gnoblin.Left", "Left", OVERLAP_LOWER);
-        let _upper = place_window(session, &mut client, "org.gnoblin.Right", "Right", OVERLAP_UPPER);
-        session.wait_for(|observation| topmost(observation) == Some("Right"));
-        client.move_pointer(session, only_point_of(session, "Right"));
-        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
-
-        // The press holds a grab on Right, so the pointer crossing into Left must not arm a raise.
-        client.left_button(session, true);
-        client.inject_motion(session, only_point_of(session, "Left"));
-        session.control.advance(AUTO_RAISE_DELAY);
-        settle(session);
-        assert_eq!(
-            topmost(&session.windows()),
-            Some("Right"),
-            "a pointer grab let an auto-raise reorder the stacking"
-        );
-        client.left_button(session, false);
     });
 }

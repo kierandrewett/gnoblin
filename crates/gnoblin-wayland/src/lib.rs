@@ -20,11 +20,10 @@
 //!   performs, and asks `gnoblin_backend::x11` what each X11 event means. A restart after
 //!   a crash is the session's policy, and a server that never becomes ready is a failure
 //!   rather than a hang.
-//! - Window state is `gnoblin-wm`'s: every map, unmap, configure, focus change and
-//!   close is an [`gnoblin_wm::Event`] and comes back as an
-//!   [`gnoblin_wm::Effect`]. Output rectangles come from `gnoblin-output`'s layout
-//!   engine, so the window manager and the `wl_output` globals agree on where a
-//!   monitor is.
+//! - Window state is the compositor's own record ([`fallback`]): every map, unmap, configure, focus change and
+//!   close is a call on it and comes back as an effect. While a shell holds the tree the record is only kept
+//!   current and the shell decides. Output rectangles come from `gnoblin-output`'s layout engine, so the record
+//!   and the `wl_output` globals agree on where a monitor is.
 //! - The frame path runs every iteration: the hook in `frame.rs` asks each output for its
 //!   damage, and a client's committed `wl_shm` buffer reaches the output's pixels
 //!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
@@ -184,6 +183,7 @@ mod access;
 mod clock;
 mod dispatch;
 mod effects;
+mod fallback;
 mod frame;
 mod keyboard;
 mod liveness;
@@ -192,6 +192,7 @@ mod modal;
 mod observation;
 mod output_config;
 mod output_control;
+mod policy;
 mod process;
 mod protocols;
 mod selection_bridge;
@@ -221,6 +222,8 @@ pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVi
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
 /// Output control: the trait a backend implements and the no-op default.
 pub use output_control::{NoOutputControl, OutputControl};
+/// The window management options a configuration carries, and the choices in them.
+pub use policy::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT,

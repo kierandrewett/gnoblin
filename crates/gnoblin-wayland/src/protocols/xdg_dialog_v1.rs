@@ -3,18 +3,19 @@
 //! `xdg_wm_dialog_v1`: a client says a toplevel is a dialog, and whether it is modal.
 //!
 //! Smithay keeps the hint on the toplevel's role. Each change is forwarded to the window
-//! manager through [`State::sync_window_role`], which records the window's kind as
-//! [`gnoblin_wm::WindowKind::Modal`] or [`gnoblin_wm::WindowKind::Dialog`] when the window
-//! has a parent, and as `Normal` otherwise. The kind is exposed on the session snapshot as
-//! `modal`, so a shell can read whether a window asked to be modal.
+//! record through [`State::sync_window_role`], which records the window's kind as
+//! `Modal` or `Dialog` when the window has a parent, and as `Normal` otherwise. The kind
+//! is exposed on the session snapshot as `modal`, so a shell can read whether a window
+//! asked to be modal.
 //!
 //! The hint is only honoured for a toplevel with a parent. The protocol makes the hint
 //! advisory for a parentless toplevel, so a parentless dialog is a normal window.
 //!
-//! Modality is enforced by the window manager, which is why this global is advertised: an
+//! Modality is enforced by the no-shell fallback, which is why this global is advertised: an
 //! open modal child takes focus from its parent, and a parent's focus request is redirected
-//! to that child until the child is no longer modal. A dialog stays a floating transient
-//! above its parent, so it is never tiled over the window it belongs to.
+//! to that child until the child is no longer modal. A dialog stays a transient above its
+//! parent, so it is never tiled over the window it belongs to. While a shell holds the tree
+//! the stock shell makes a dialog a child of its parent and the compositor stacks it above.
 //!
 //! # Failure modes
 //!

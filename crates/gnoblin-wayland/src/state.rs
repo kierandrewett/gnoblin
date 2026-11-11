@@ -1,11 +1,10 @@
-//! The compositor state: the Smithay protocol state, the window manager and the
+//! The compositor state: the Smithay protocol state, the window record and the
 //! translation between them.
 //!
-//! Every protocol handler in [`crate::protocols`] turns a request into an event for
-//! [`gnoblin_wm::Wm::apply`] and hands the returned effects back here, where they
-//! become client configures, seat focus and output enter/leave. Policy never sees a
-//! Smithay type and this module never decides policy: the same split the plan draws
-//! between the composition root and the pure crates.
+//! Every protocol handler in [`crate::protocols`] turns a request into a call on the window record
+//! ([`crate::fallback::Fallback`]) or, while a shell holds the tree, into an event on the window's node. The
+//! decisions the record returns come back here, where they become client configures, seat focus and output
+//! enter/leave. The record decides nothing while a shell is attached: the shell does.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -61,21 +60,22 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy, SlideDirection};
+use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
-use gnoblin_layers::{InputPolicy, LayerHandle, LayerProvider, LayerSpec};
+use gnoblin_layers::{
+    Band, InputPolicy, LayerHandle, LayerProvider, LayerRegistry, LayerScope, LayerSpec, RegisterError,
+};
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
 use gnoblin_render::transaction::PointerInput;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
-use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
-use gnoblin_wm::layout::{Placement, Transform3};
-use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
+use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
+use crate::fallback::{Fallback, FallbackEffect, FallbackRefusal, Open, Standing, WindowKind, WindowState};
 use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
@@ -83,6 +83,7 @@ use crate::observation::{
     WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal,
 };
 use crate::output_control::OutputControlState;
+use crate::policy::WmOptions;
 use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_idle_notify_v1::ExtIdleNotifyV1Tables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
@@ -103,8 +104,27 @@ use crate::window_request::WindowRequest;
 
 use crate::log;
 
-/// How many workspaces a session declares when its configuration names none.
-const DEFAULT_WORKSPACES: u32 = 1;
+/// The one workspace the compositor keeps. The shell owns the workspaces it arranges; this is the single implicit
+/// space the session's object graph publishes, so a control request that names it is a no-op and any other is unknown.
+pub(crate) const IMPLICIT_WORKSPACE: WorkspaceId = WorkspaceId::new(1);
+
+/// The Linux evdev code of the left button, which a touch stands for when the shell is told of it.
+const BTN_LEFT: u32 = 0x110;
+
+/// Why the layer records refused a layer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LayerRecordError {
+    /// The layer registry refused the spec. Its own rule applies.
+    Registry(RegisterError),
+    /// The window the layer sits above is not open.
+    UnknownTarget(WindowId),
+    /// Only a layer scoped to one window can sit above that window.
+    NotWindowScope,
+    /// Only the [`Band::Windows`] band holds window layers.
+    NotWindowBand(Band),
+    /// The output is not connected, so an output-scope surface has nowhere to go.
+    UnknownOutput(OutputId),
+}
 
 /// How many window menu requests the session keeps for a reader to catch up on. A reader
 /// that polls slower than requests arrive loses the oldest, so the bound is generous: a
@@ -213,8 +233,6 @@ impl WindowEntry {
 pub(crate) struct OutputEntry {
     /// The backend's identity for the output.
     pub(crate) backend: OutputId,
-    /// The window manager's identity for it.
-    pub(crate) policy: OutputId,
     /// The mode being driven, as the backend reported it.
     pub(crate) mode: gnoblin_output::DisplayMode,
     /// The scale the output composes at.
@@ -492,12 +510,19 @@ pub struct State {
     /// The liveness pings and the clients that have missed them.
     pub(crate) liveness: crate::liveness::Liveness,
 
-    /// The window management policy.
+    /// The record of windows and outputs, and the minimal policy applied while no shell holds the tree.
     ///
-    /// Crate-visible because every protocol module turns a request into an
-    /// [`gnoblin_wm::Event`] and applies the effects it gets back; the fields around it
-    /// stay private to this module.
-    pub(crate) wm: Wm,
+    /// Crate-visible because every protocol module turns a request into a call on it; while a shell holds
+    /// the tree the record is kept current and its decisions are not applied.
+    pub(crate) fallback: Fallback,
+    /// The window management options, published on the main seat where the shell reads them.
+    pub(crate) options: WmOptions,
+    /// The window that holds focus: the keyboard's, or, while a layer surface or the lock holds the
+    /// keyboard, the one it returns to.
+    pub(crate) focus: Option<WindowId>,
+    /// The layer records layer tooling reads: one per layer-shell surface, and the layers a built-in
+    /// registers above a window.
+    layer_records: LayerRegistry,
     /// The protocol objects of the managed windows, keyed by policy identity.
     pub(crate) windows: BTreeMap<WindowId, WindowEntry>,
     /// The outputs, in connection order.
@@ -512,8 +537,6 @@ pub struct State {
     /// The last pointer position the backend reported, in global logical
     /// coordinates.
     pointer_position: SmithayPoint<f64, Logical>,
-    /// How many pointer buttons are held. Focus does not follow the pointer while one is.
-    held_buttons: u32,
     /// The shell node the pointer ray is over, when the shell's tree picks one. Its edges are
     /// sent to the shell; no client holds the pointer while it is set.
     shell_hover: Option<NodeId>,
@@ -587,7 +610,6 @@ impl State {
         backend_outputs: &[gnoblin_backend::Output],
         seat_name: &str,
         options: WmOptions,
-        workspaces: u32,
         xwayland: Option<crate::xwayland::XwaylandSession>,
         observer: Option<Arc<dyn Observer>>,
         tree: TreeHooks,
@@ -817,13 +839,15 @@ impl State {
             touchpad_gestures: crate::touchpad::TouchpadGestures::default(),
             activity: Activity::new(),
             liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
-            wm: Wm::new(options),
+            fallback: Fallback::default(),
+            options,
+            focus: None,
+            layer_records: LayerRegistry::new(),
             windows: BTreeMap::new(),
             outputs: Vec::new(),
             next_window: 1,
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
-            held_buttons: 0,
             shell_hover: None,
             touch_points: HashMap::new(),
             composer: Composer::new(),
@@ -842,11 +866,6 @@ impl State {
             observer,
         };
 
-        for raw in 0..workspaces.max(DEFAULT_WORKSPACES) {
-            state.wm.apply(Event::WorkspaceAdded {
-                workspace: WorkspaceId::new(u64::from(raw) + 1),
-            });
-        }
         // The main seat is the compositor's own seat in the scene, named as the wl_seat is.
         state.composer.add_main_seat(seat_name);
         state.publish_seat_policy();
@@ -872,12 +891,6 @@ impl State {
         Arc::clone(&self.observation)
     }
 
-    /// The window management policy, for a caller that wants to read it.
-    #[must_use]
-    pub fn wm(&self) -> &Wm {
-        &self.wm
-    }
-
     /// The access roster, so a caller can build a connection's data from it.
     #[must_use]
     pub(crate) fn access(&self) -> Arc<Access> {
@@ -886,15 +899,16 @@ impl State {
 
     /// Applies one window-control request from the IPC. The answer is `Err(Gone)` for a closed
     /// window, so a script learns it asked too late rather than seeing a silent success, and
-    /// `Err` with the window manager's reason when the change is refused. Close goes to the
-    /// toplevel when the window has one and to the X11 policy otherwise; move, resize,
-    /// workspace and output go through the window manager, so the constraints a drag obeys
-    /// apply to them too.
+    /// `Err` with the reason when the change is refused. Close goes to the toplevel when the
+    /// window has one and to the X11 policy otherwise; the three state changes are window
+    /// requests, which the shell answers while it holds the tree. Move, resize and output are
+    /// the record's while no shell holds the tree, and refused while one does: a shell places
+    /// its own windows.
     pub(crate) fn window_control(&mut self, window: WindowId, change: WindowChange) -> Result<(), WindowChangeRefusal> {
-        let Some(managed) = self.wm.window(window) else {
+        let Some(managed) = self.fallback.window(window) else {
             return Err(WindowChangeRefusal::Gone);
         };
-        let current = managed.geometry;
+        let current = self.geometry_of(window).unwrap_or(managed.geometry);
         match change {
             WindowChange::Close => {
                 if self.close_window(window) {
@@ -915,20 +929,20 @@ impl State {
                 self.window_request(window, WindowRequest::Fullscreen(fullscreen));
                 Ok(())
             }
-            WindowChange::MoveTo { x, y } => {
-                let geometry = gnoblin_types::Rect { x, y, ..current };
-                self.wm_change(Event::MoveResize { window, geometry })
-            }
-            WindowChange::Resize { width, height } => {
-                let geometry = gnoblin_types::Rect {
+            WindowChange::MoveTo { x, y } => self.place_by_command(window, Rect { x, y, ..current }),
+            WindowChange::Resize { width, height } => self.place_by_command(
+                window,
+                Rect {
                     width,
                     height,
                     ..current
-                };
-                self.wm_change(Event::MoveResize { window, geometry })
-            }
-            WindowChange::Workspace(workspace) => self.wm_change(Event::MoveToWorkspace { window, workspace }),
-            WindowChange::Output(output) => self.wm_change(Event::MoveToOutput { window, output }),
+                },
+            ),
+            // The compositor keeps one implicit workspace: naming it changes nothing, and any other is the
+            // shell's, which moves a window with `Window:move_to`.
+            WindowChange::Workspace(workspace) if workspace == IMPLICIT_WORKSPACE => Ok(()),
+            WindowChange::Workspace(_) => Err(WindowChangeRefusal::UnknownTarget),
+            WindowChange::Output(output) => self.move_to_output_by_command(window, output),
         }
     }
 
@@ -938,7 +952,7 @@ impl State {
     /// window keeps its drawing. The window's rule opacity and placement animation are separate
     /// and keep applying alongside these values.
     pub(crate) fn window_visual(&mut self, window: WindowId, change: WindowVisual) -> Result<(), WindowVisualRefusal> {
-        if self.wm.window(window).is_none() {
+        if self.fallback.window(window).is_none() {
             return Err(WindowVisualRefusal::Gone);
         }
         if self.lock.state() != LockState::Unlocked {
@@ -958,34 +972,18 @@ impl State {
         Ok(())
     }
 
-    /// Applies a window-management event a control request asked for. A rejected event
-    /// changes nothing and its reason is returned, so the reply never reports a refused
-    /// change as done.
-    fn wm_change(&mut self, event: Event) -> Result<(), WindowChangeRefusal> {
-        let effects = self.wm.apply(event);
-        let rejected = effects.iter().find_map(|effect| match effect {
-            Effect::Rejected { reason } => Some(reason),
-            _ => None,
-        });
-        if let Some(reason) = rejected {
-            return Err(Self::refusal_of(reason));
-        }
-        self.apply(effects);
-        self.publish();
-        Ok(())
-    }
-
-    /// Maps the window manager's reason for refusing an event to the reply a caller sees.
-    /// A window or target that has gone is named apart from a state refusal, so a script
-    /// can tell that it lost a race from a change it can never make.
-    fn refusal_of(reason: &gnoblin_wm::Rejection) -> WindowChangeRefusal {
-        use gnoblin_wm::Rejection;
+    /// Maps the record's reason for refusing a control request to the reply a caller sees. A window or
+    /// target that has gone is named apart from a state refusal, so a script can tell that it lost a
+    /// race from a change it can never make.
+    pub(crate) const fn refusal_of(reason: FallbackRefusal) -> WindowChangeRefusal {
         match reason {
-            Rejection::UnknownWindow(_) => WindowChangeRefusal::Gone,
-            Rejection::UnknownWorkspace(_) | Rejection::UnknownOutput(_) => WindowChangeRefusal::UnknownTarget,
-            Rejection::NotFloating(_) => WindowChangeRefusal::NotFloating,
-            Rejection::TransientFollowsParent(_) => WindowChangeRefusal::TransientFollowsParent,
-            _ => WindowChangeRefusal::Refused,
+            FallbackRefusal::Gone => WindowChangeRefusal::Gone,
+            FallbackRefusal::UnknownOutput => WindowChangeRefusal::UnknownTarget,
+            FallbackRefusal::NotFloating => WindowChangeRefusal::NotFloating,
+            FallbackRefusal::FollowsParent => WindowChangeRefusal::TransientFollowsParent,
+            FallbackRefusal::Duplicate | FallbackRefusal::TooMany | FallbackRefusal::NoOutput => {
+                WindowChangeRefusal::Refused
+            }
         }
     }
 
@@ -1100,14 +1098,6 @@ impl State {
         std::mem::take(&mut self.pending_contexts)
     }
 
-    /// The policy identity a backend output's rectangle is known by.
-    pub(crate) fn policy_output(&self, output: OutputId) -> Option<OutputId> {
-        self.outputs
-            .iter()
-            .find(|entry| entry.backend == output)
-            .map(|entry| entry.policy)
-    }
-
     /// The scale the output a surface is on draws it at.
     ///
     /// A surface with no output of its own takes the first output's scale, and a session
@@ -1117,10 +1107,10 @@ impl State {
     pub(crate) fn surface_scale(&self, surface: &WlSurface) -> f64 {
         let output_id = self
             .window_of(surface)
-            .and_then(|window| self.wm.window(window))
+            .and_then(|window| self.fallback.window(window))
             .and_then(|window| window.output);
         let entry = output_id
-            .and_then(|policy| self.outputs.iter().find(|entry| entry.policy == policy))
+            .and_then(|output| self.outputs.iter().find(|entry| entry.backend == output))
             .or_else(|| self.outputs.first());
         entry.map_or(1.0, |entry| entry.output.current_scale().fractional_scale())
     }
@@ -1166,14 +1156,16 @@ impl State {
     #[must_use]
     pub(crate) fn drawn_surfaces(&self, rect: Rect) -> Vec<WlSurface> {
         let mut surfaces = Vec::new();
-        for window in self.wm.stack() {
-            let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
+        for window in self.composer.window_stack() {
+            let Some(entry) = self.windows.get(&window) else {
                 continue;
             };
-            if !entry.mapped || !self.wm.is_visible(*window) {
+            if !entry.mapped || !self.window_shown(window) {
                 continue;
             }
-            let geometry = self.shown_geometry(managed);
+            let Some(geometry) = self.geometry_of(window) else {
+                continue;
+            };
             let intersects = i64::from(geometry.x) < rect.right()
                 && i64::from(rect.x) < geometry.right()
                 && i64::from(geometry.y) < rect.bottom()
@@ -1274,8 +1266,9 @@ impl State {
             self.composer.remove_output(entry.backend);
             self.output_controls_removed(entry.backend);
             log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
-            let effects = self.wm.apply(Event::OutputDisconnected { output: entry.policy });
-            self.apply(effects);
+            let effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
+            self.layer_records.end_output(entry.backend);
+            self.apply_decided(effects);
         }
     }
 
@@ -1290,7 +1283,7 @@ impl State {
         OutputScale::Fractional(scale.as_f64())
     }
 
-    /// Creates one output's Smithay object, global and window-manager entry.
+    /// Creates one output's Smithay object and global, and records it.
     fn add_output(&mut self, output: &gnoblin_backend::Output, rect: Rect) {
         let smithay_output = Output::new(
             output.connector.clone(),
@@ -1312,31 +1305,19 @@ impl State {
         );
         let global = smithay_output.create_global::<Self>(&self.display_handle);
 
-        let policy = OutputId::new(self.outputs.len() as u64);
-        let policy_rect = rect;
-        let effects = self.wm.apply(Event::OutputConnected {
-            output: policy,
-            rect: policy_rect,
-        });
-        self.apply(effects);
-        let identified = self.wm.apply(Event::OutputIdentified {
-            output: policy,
-            name: output.connector.clone(),
-            scale: Scale::new(1, 1),
-        });
-        self.apply(identified);
         self.composer.set_output(output.id, rect);
         log::debug!(area = "output", connector = %output.connector, ?rect, "connected");
         self.outputs.push(OutputEntry {
             backend: output.id,
-            policy,
             output: smithay_output,
             global,
             mode: output.mode,
             scale: output.scale,
             primary: false,
-            rect: policy_rect,
+            rect,
         });
+        let effects = self.with_seat(|fallback, seat| fallback.output_added(output.id, rect, seat));
+        self.apply_decided(effects);
     }
 
     /// Brings a connected output's mode and scale up to what the backend now reports, then
@@ -1362,147 +1343,122 @@ impl State {
         let Some(entry) = self.outputs.get_mut(index) else {
             return;
         };
-        let policy = entry.policy;
-        let policy_rect = rect;
-        if entry.rect == policy_rect {
+        if entry.rect == rect {
             return;
         }
-        entry.rect = policy_rect;
+        entry.rect = rect;
         entry
             .output
             .change_current_state(None, None, None, Some(SmithayPoint::from((rect.x, rect.y))));
-        self.composer.set_output(entry.backend, policy_rect);
-        let effects = self.wm.apply(Event::OutputMoved {
-            output: policy,
-            rect: policy_rect,
-        });
-        self.apply(effects);
+        let backend = entry.backend;
+        self.composer.set_output(backend, rect);
+        let effects = self.fallback.output_moved(backend, rect);
+        self.apply_decided(effects);
     }
 
-    /// Applies the effects the window manager returned.
+    /// Applies the decisions the record returned.
     ///
-    /// This is the only place a policy answer becomes observable behaviour, so
-    /// every arm says what a window manager command means to a client.
-    pub(crate) fn apply(&mut self, effects: Vec<Effect>) {
+    /// This is the only place a decision becomes observable behaviour, so every arm says what it means to a
+    /// client.
+    pub(crate) fn apply(&mut self, effects: Vec<FallbackEffect>) {
         for effect in effects {
             match effect {
-                Effect::Configure {
+                FallbackEffect::Configure {
                     window,
                     geometry,
                     state,
                 } => {
                     self.composer.place_window(window, geometry);
-                    self.configure(window, geometry, state, TiledEdges::NONE, None);
+                    self.configure(window, geometry, state);
                 }
-                Effect::SetVisible { window, visible } => {
+                FallbackEffect::Visible { window, visible } => {
                     self.composer.set_window_visible(window, visible);
                     self.set_visible(window, visible);
                 }
-                Effect::SecureChanged { window, secure } => {
-                    self.composer.set_window_secure(window, secure);
-                }
-                Effect::Appearance {
-                    window,
-                    opacity,
-                    corner_radius,
-                } => {
-                    self.composer.set_window_rule_opacity(window, opacity);
-                    self.composer.set_window_corner_radius(window, corner_radius);
-                }
-                Effect::Stack { order } => {
-                    // The policy states the order topmost first; the scene keeps its
-                    // paint order bottom first.
+                FallbackEffect::Stack(order) => {
+                    // The record states the order topmost first; the scene keeps its paint order bottom first.
                     self.composer.set_stacking(&order);
                     log::debug!(log = ?order, "[stack]");
                 }
-                Effect::Focus { focused, .. } => self.move_focus(focused),
-                Effect::ActivationDenied { window } => {
-                    log::debug!(area = "focus", %window, "activation refused by the caller");
-                }
-                Effect::WorkspaceShown { workspace, direction } => {
-                    // The switch's visibility changes follow this effect in the same batch, so
-                    // they see the slide begun here.
-                    if let Some(direction) = direction {
-                        self.composer.begin_workspace_slide(match direction {
-                            gnoblin_wm::WorkspaceDirection::Later => SlideDirection::Later,
-                            gnoblin_wm::WorkspaceDirection::Earlier => SlideDirection::Earlier,
-                        });
-                    }
-                    log::debug!(area = "workspace", %workspace, ?direction, "shown");
-                }
-                Effect::WorkspaceSetOutputFallback { set, output } => {
-                    log::warn!(
-                        area = "workspace",
-                        set,
-                        output,
-                        "the set names an output that is not connected; its workspace went to the primary output"
-                    );
-                }
-                Effect::WorkspaceSetActivated { name } => {
-                    log::debug!(area = "workspace", set = name, "workspace set activated");
-                }
-                Effect::RuleRejected { window, rule, reason } => {
-                    log::warn!(area = "rules", %window, rule, ?reason, "rule did not apply")
-                }
-                Effect::Rejected { reason } => log::debug!(area = "wm", ?reason, "the event changed nothing"),
-                // A settled layout places its window: its transform reaches the scene whole.
-                Effect::PlacementTarget {
-                    workspace,
-                    placement,
-                    tiled,
-                    work_area,
-                } => self.place_tiled(workspace, placement, tiled, work_area),
-                Effect::LayoutFailed { workspace, reason } => {
-                    log::warn!(area = "layout", %workspace, reason, "a layout run failed; the workspace runs floating");
-                }
+                FallbackEffect::Focus(focused) => self.move_focus(focused),
             }
         }
-        self.composer.end_workspace_slide();
+    }
+
+    /// Applies the decisions of the no-shell fallback. While a shell holds the tree it decides placement,
+    /// stacking and focus, so only the window's presence on the outputs is kept: the record has otherwise only been
+    /// kept current.
+    pub(crate) fn apply_decided(&mut self, effects: Vec<FallbackEffect>) {
+        self.apply_filtered(effects, |effect| matches!(effect, FallbackEffect::Visible { .. }));
+    }
+
+    /// Applies `effects` in full when no shell holds the tree, and only those `shell_keeps` names while one does.
+    fn apply_filtered(&mut self, effects: Vec<FallbackEffect>, shell_keeps: impl Fn(&FallbackEffect) -> bool) {
+        if self.composer.shell_places() {
+            let (kept, dropped): (Vec<FallbackEffect>, Vec<FallbackEffect>) =
+                effects.into_iter().partition(|effect| shell_keeps(effect));
+            log::trace!(
+                area = "wm",
+                dropped = dropped.len(),
+                "a shell holds the tree; its decisions stand"
+            );
+            self.apply(kept);
+            return;
+        }
+        self.apply(effects);
+    }
+
+    /// Forgets a closed window: its layer records end and the record drops it. Focus moves on when it held it, as
+    /// the record decides without a shell, and is cleared while one holds the tree: the shell moves its own focus.
+    pub(crate) fn window_closed(&mut self, window: WindowId) {
+        self.layer_records.end_target(window);
+        let effects = self.with_seat(|fallback, seat| fallback.close(window, seat));
+        if self.composer.shell_places() {
+            if self.focus == Some(window) {
+                self.focus = None;
+            }
+        } else {
+            self.apply(effects);
+        }
+    }
+
+    /// Runs a decision of the record with the paint order and the focus it starts from, which the scene and the
+    /// keyboard own.
+    pub(crate) fn with_seat<R>(&mut self, decide: impl FnOnce(&mut Fallback, Standing<'_>) -> R) -> R {
+        let stack = self.composer.window_stack();
+        let seat = Standing {
+            stack: &stack,
+            focus: self.focus,
+        };
+        decide(&mut self.fallback, seat)
     }
 
     /// Applies a configure to a toplevel and sends it if the client is ready for it.
     ///
-    /// The state is written to the surface's pending state either way; a toplevel
-    /// that has not had its initial configure yet carries this state into that
-    /// configure, which the client's first commit triggers.
-    ///
-    /// `tiled` and `work_area` come from the layout that placed the window. A window that no
-    /// layout places passes [`TiledEdges::NONE`] and no work area, so it is sent no bounds.
-    fn configure(
-        &mut self,
-        window: WindowId,
-        geometry: Rect,
-        state: gnoblin_wm::WindowState,
-        tiled: TiledEdges,
-        work_area: Option<Rect>,
-    ) {
+    /// The state is written to the surface's pending state either way; a toplevel that has not had its initial
+    /// configure yet carries this state into that configure, which the client's first commit triggers. A window the
+    /// record places is untiled and has no work area to fit, so its client is sent no bounds.
+    fn configure(&mut self, window: WindowId, geometry: Rect, state: WindowState) {
         let state = self.effective_state(window, state);
-        // A window the shell tiled stays tiled through a configure the window manager makes.
-        let (tiled, work_area) = if self.composer.shell_window_tiled(window) {
-            (TiledEdges::ALL, work_area.or_else(|| self.work_area_of(window)))
-        } else {
-            (tiled, work_area)
-        };
         let Some(surface) = self.windows.get(&window).map(|entry| &entry.surface) else {
-            // The window closed between the policy call and this action, which is
-            // the race the policy's rejections describe.
+            // The window closed between the decision and this action.
             return;
         };
         match surface {
             Managed::Wayland(surface) => {
                 surface.with_pending_state(|pending| {
-                    // The work area is the size the window should fit; a window with no
-                    // output has no work area, so the client picks its own size.
-                    pending.bounds = work_area.map(|area| SmithaySize::from((area.width as i32, area.height as i32)));
+                    pending.bounds = None;
                     pending.size = Some(SmithaySize::from((geometry.width as i32, geometry.height as i32)));
                     set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
                     set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
-                    // Each tiled edge says the window sits against a neighbour or the work
-                    // area's edge there, so the client drops the border and rounding it draws.
-                    set_flag(&mut pending.states, xdg_toplevel::State::TiledLeft, tiled.left);
-                    set_flag(&mut pending.states, xdg_toplevel::State::TiledRight, tiled.right);
-                    set_flag(&mut pending.states, xdg_toplevel::State::TiledTop, tiled.top);
-                    set_flag(&mut pending.states, xdg_toplevel::State::TiledBottom, tiled.bottom);
+                    for tiled in [
+                        xdg_toplevel::State::TiledLeft,
+                        xdg_toplevel::State::TiledRight,
+                        xdg_toplevel::State::TiledTop,
+                        xdg_toplevel::State::TiledBottom,
+                    ] {
+                        set_flag(&mut pending.states, tiled, false);
+                    }
                 });
                 if surface.is_initial_configure_sent() {
                     surface.send_configure();
@@ -1546,10 +1502,11 @@ impl State {
 
     /// Moves keyboard focus to a window, or to nothing.
     ///
-    /// While the session is covered nothing moves: the lock's gate routes every key to
-    /// the owner's lock surface or to nothing, and the window manager's answer is
-    /// applied again when the reveal completes.
+    /// The window is recorded as the focus even while nothing moves: while the session is covered the lock's
+    /// gate routes every key to the owner's lock surface or to nothing, and the recorded window is what the
+    /// reveal restores.
     fn move_focus(&mut self, focused: Option<WindowId>) {
+        self.focus = focused;
         if self.lock.state() != LockState::Unlocked {
             log::debug!(area = "focus", ?focused, "withheld while the session is covered");
             return;
@@ -1612,7 +1569,7 @@ impl State {
         let client = target.as_ref().and_then(|surface| surface.client());
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, target.clone(), serial);
-        let windows: Vec<WindowId> = self.wm.windows().map(|window| window.id).collect();
+        let windows: Vec<WindowId> = self.fallback.windows().map(|window| window.id).collect();
         for window in windows {
             self.publish_window_state(window);
         }
@@ -1636,7 +1593,7 @@ impl State {
         // are decided independently.
         self.frame_pointer(Some(position), None);
         self.composer.set_main_seat_pointer(position.x, position.y);
-        self.shell_pointer(self.shell_pick(position));
+        self.shell_pointer(self.pointer_target(position));
         let focus = self.surface_under(position);
         let pointer = self.pointer.clone();
         let serial = SERIAL_COUNTER.next_serial();
@@ -1700,7 +1657,7 @@ impl State {
 
     /// The surface of the window the window manager has focused.
     pub(crate) fn focused_window_surface(&self) -> Option<WlSurface> {
-        let window = self.wm.focused()?;
+        let window = self.focus?;
         if self.window_is_covered(window) {
             // A hosted session under a protection cover keeps no input: its windows
             // are not on screen, so focusing one would type into a screen nobody can
@@ -1776,16 +1733,29 @@ impl State {
                 effects: Vec::new(),
             },
         );
-        // The window is placed now and takes focus when it first maps; the
-        // activation event is sent from `toplevel_committed` for that reason.
-        let effects = self.wm.apply(Event::WindowOpened(WindowSpec::normal(window, "")));
-        // The scene learns the window before the effects are applied, so the initial
-        // configure's geometry has a window to place. A window the policy has deferred (a
-        // layout run answers the open later) has no geometry yet; it is inserted at the
-        // empty rectangle and placed when the policy's first placement or configure arrives.
-        let geometry = self.wm.window(window).map_or(Rect::EMPTY, |managed| managed.geometry);
+        // The window is placed now and takes focus when it first maps; the activation is decided from
+        // `toplevel_committed` for that reason.
+        let opened = self.with_seat(|fallback, seat| {
+            let open = Open {
+                id: window,
+                kind: WindowKind::Normal,
+                transient_for: None,
+                requested: None,
+            };
+            fallback.open(open, seat)
+        });
+        // The scene learns the window before the decision is applied, so the initial configure's geometry has a
+        // window to place. A window the record refused has no geometry: it is inserted at the empty rectangle and
+        // stays unmanaged.
+        let geometry = self
+            .fallback
+            .window(window)
+            .map_or(Rect::EMPTY, |managed| managed.geometry);
         self.composer.insert_window(window, geometry);
-        self.apply(effects);
+        match opened {
+            Ok(effects) => self.apply_decided(effects),
+            Err(refusal) => log::debug!(area = "window", %window, ?refusal, "the window is left unmanaged"),
+        }
         log::debug!(area = "window", %window, surface = ?wl_surface.id(), "opened");
         self.publish();
     }
@@ -1815,8 +1785,7 @@ impl State {
             self.composer.close_window(window);
         }
         self.release_window(window);
-        let effects = self.wm.apply(Event::WindowClosed { window });
-        self.apply(effects);
+        self.window_closed(window);
         self.publish();
     }
 
@@ -1864,18 +1833,11 @@ impl State {
         // tree `set` at the next frame, and an unchanged pair publishes nothing.
         self.composer.set_window_text(window, &title, &app_id);
         self.publish_window_state(window);
-        let mut effects = Vec::new();
         let mut newly_mapped = false;
         let mut initial_configure = None;
         if let Some(entry) = self.windows.get_mut(&window) {
-            if entry.app_id != app_id {
-                entry.app_id.clone_from(&app_id);
-                effects.push(Event::WindowAppIdChanged { window, app_id });
-            }
-            if entry.title != title {
-                entry.title.clone_from(&title);
-                effects.push(Event::WindowTitleChanged { window, title });
-            }
+            entry.app_id = app_id;
+            entry.title = title;
             let mapped = has_buffer(surface);
             newly_mapped = mapped && !entry.mapped;
             entry.mapped = mapped;
@@ -1909,12 +1871,18 @@ impl State {
             surface.send_configure();
         }
         if newly_mapped {
-            // A new window takes focus only as `window_management.focus_new_windows`
-            // allows; the window manager decides, so this path does not guess.
-            let decision = self.wm.new_window_decision(window);
-            effects.push(Event::ActivationRequested { window, decision });
+            // A new window takes focus only as `window_management.focus_new_windows` allows. With no shell the
+            // record decides; a shell decides in its own `Window:on_ready`.
+            let policy = self.options.new_window_focus;
+            let effects = self.with_seat(|fallback, seat| {
+                if fallback.may_take_focus(window, policy, seat) {
+                    fallback.activate(window, true, seat)
+                } else {
+                    Vec::new()
+                }
+            });
+            self.apply_decided(effects);
         }
-        self.apply_events(effects);
         self.sync_content(window, surface);
         // A mapped window is offered a frame, and a window whose geometry or metadata
         // changed gets a fresh configure. A renderer that never answers changes nothing
@@ -1947,22 +1915,10 @@ impl State {
         }
     }
 
-    /// Applies a batch of events to the policy and then their effects.
-    fn apply_events(&mut self, events: Vec<Event>) {
-        let mut effects = Vec::new();
-        for event in events {
-            effects.extend(self.wm.apply(event));
-        }
-        self.apply(effects);
-    }
-
-    /// Every workspace the window manager arranges.
-    fn observed_workspaces(&self) -> Vec<crate::observation::ObservedWorkspace> {
-        self.wm
-            .workspaces()
-            .iter()
-            .map(|&id| crate::observation::ObservedWorkspace { id })
-            .collect()
+    /// The workspaces the object graph publishes: the one the compositor keeps. The shell's workspaces are
+    /// nodes of its own tree, and the shell owns them.
+    fn observed_workspaces() -> Vec<crate::observation::ObservedWorkspace> {
+        vec![crate::observation::ObservedWorkspace { id: IMPLICIT_WORKSPACE }]
     }
 
     /// Every output with the properties the `output` object publishes.
@@ -2049,12 +2005,56 @@ impl State {
         Ok(())
     }
 
-    /// Adds a layer above a window to the window manager's registry, under `provider`. The
-    /// error is the registry's or the stack's refusal, in its debug form.
+    /// Adds a layer above a window to the layer records, under `provider`. The error is the records' refusal, in
+    /// its debug form.
     pub(crate) fn register_layer(&mut self, provider: &LayerProvider, spec: LayerSpec) -> Result<LayerHandle, String> {
-        self.wm
-            .register_layer(provider, spec)
-            .map_err(|error| format!("{error:?}"))
+        let refused = |error: LayerRecordError| format!("{error:?}");
+        let LayerScope::Window(Some(target)) = spec.scope else {
+            return Err(refused(LayerRecordError::NotWindowScope));
+        };
+        if spec.band != Band::Windows {
+            return Err(refused(LayerRecordError::NotWindowBand(spec.band)));
+        }
+        if self.fallback.window(target).is_none() {
+            return Err(refused(LayerRecordError::UnknownTarget(target)));
+        }
+        self.layer_records
+            .register(provider, spec)
+            .map_err(|error| refused(LayerRecordError::Registry(error)))
+    }
+
+    /// Records a surface its protocol owns, such as a layer-shell surface. The record does not stack or draw: it
+    /// says the surface exists, where it is and which band it sits in.
+    ///
+    /// # Errors
+    /// A window or output the record does not hold, or the layer registry's own refusal.
+    pub(crate) fn register_surface(
+        &mut self,
+        provider: &LayerProvider,
+        spec: LayerSpec,
+    ) -> Result<LayerHandle, LayerRecordError> {
+        match spec.scope {
+            LayerScope::Window(Some(target)) if self.fallback.window(target).is_none() => {
+                return Err(LayerRecordError::UnknownTarget(target));
+            }
+            LayerScope::Output(output) if self.fallback.output(output).is_none() => {
+                return Err(LayerRecordError::UnknownOutput(output));
+            }
+            LayerScope::Output(_) | LayerScope::Window(_) => {}
+        }
+        self.layer_records
+            .register(provider, spec)
+            .map_err(LayerRecordError::Registry)
+    }
+
+    /// Ends a surface record its protocol registered, such as when a layer-shell surface is destroyed.
+    pub(crate) fn end_surface(&mut self, handle: LayerHandle, reason: gnoblin_layers::EndReason) {
+        self.layer_records.end(handle, reason);
+    }
+
+    /// Whether a surface record is still live: an output's disconnect ends the records scoped to it.
+    pub(crate) fn surface_record_live(&self, handle: LayerHandle) -> bool {
+        self.layer_records.get(handle).is_some()
     }
 
     /// What is known about the process behind a window's client. `None` when no such
@@ -2077,50 +2077,6 @@ impl State {
         })
     }
 
-    /// Applies one tiled placement from a settled layout run.
-    ///
-    /// The window is configured to the placement's size. Its position is the geometry's
-    /// origin in the composer; the transform's depth offset, rotation and scale ride in the
-    /// node's base transform, so a 3D placement reaches the scene whole.
-    ///
-    /// The tiled edges and the work area come from the layout run. The work area is sent as
-    /// the window's configure bounds, so a client that sizes itself to the bounds fits it.
-    ///
-    /// A matrix transform is refused: the scene takes a decomposed transform only.
-    fn place_tiled(
-        &mut self,
-        workspace: WorkspaceId,
-        placement: Placement,
-        tiled: TiledEdges,
-        work_area: Option<Rect>,
-    ) {
-        let window = placement.window;
-        let Transform3::Trs {
-            position,
-            rotation_degrees,
-            scale,
-        } = placement.transform
-        else {
-            log::warn!(area = "layout", %window, %workspace, "a matrix placement is refused: unsupported-transform");
-            return;
-        };
-        // A window closed since the run was submitted has nothing left to place.
-        let Some(state) = self.wm.window(window).map(|entry| entry.state) else {
-            return;
-        };
-        let geometry = placed_geometry(RectF::new(position.x, position.y, placement.width, placement.height));
-        let base = gnoblin_types::Transform {
-            offset: Vec3::new(0.0, 0.0, position.z),
-            rotation_degrees,
-            scale,
-            depth: 0.0,
-        };
-        self.composer.place_window_animated(window, geometry, base);
-        self.composer.set_window_visible(window, placement.visible);
-        self.composer.set_window_opacity(window, placement.opacity as f32);
-        self.configure(window, geometry, state, tiled, work_area);
-    }
-
     /// The matrix a window's node is drawn with and its projected bounds, or `None` when it
     /// is not drawn.
     pub(crate) fn drawn_node(&self, window: WindowId) -> Option<(Mat4, Rect)> {
@@ -2133,23 +2089,13 @@ impl State {
     /// Publishes the window management policy on the main seat, where the stock shell reads
     /// it. Startup and every reload call this, so the shell always reads the live config.
     pub(crate) fn publish_seat_policy(&mut self) {
-        let options = self.wm.options();
+        let options = self.options;
         let titlebar = self.titlebar_actions;
         let policy = MainSeatPolicy {
             edge_tiling: options.edge_tiling,
-            drag_constraint: match options.drag_constraint {
-                gnoblin_wm::DragConstraint::WorkArea => "work_area",
-                gnoblin_wm::DragConstraint::MinimumStrip => "minimum_strip",
-            },
-            focus_mode: match options.focus_mode {
-                gnoblin_wm::FocusMode::Click => "click",
-                gnoblin_wm::FocusMode::Hover => "hover",
-                gnoblin_wm::FocusMode::HoverStrict => "hover-strict",
-            },
-            focus_new_windows: match options.new_window_focus {
-                gnoblin_wm::NewWindowFocus::Allow => "allow",
-                gnoblin_wm::NewWindowFocus::Prevent => "prevent",
-            },
+            drag_constraint: options.drag_constraint.name(),
+            focus_mode: options.focus_mode.name(),
+            focus_new_windows: options.new_window_focus.name(),
             raise_on_click: options.raise_on_click,
             auto_raise: options.auto_raise,
             auto_raise_delay: i64::try_from(options.auto_raise_delay).unwrap_or(i64::MAX),
@@ -2183,9 +2129,8 @@ impl State {
     /// Applies the accepted window management options and titlebar gestures, then republishes
     /// the seat policy the stock shell reads.
     pub(crate) fn apply_window_management(&mut self, options: WmOptions, titlebar: TitlebarActions) {
-        let effects = self.wm.apply(Event::OptionsChanged { options });
+        self.options = options;
         self.titlebar_actions = titlebar;
-        self.apply(effects);
         self.publish_seat_policy();
     }
 
@@ -2194,19 +2139,17 @@ impl State {
         self.composer.advance_motion(elapsed_ms);
     }
 
-    /// Advances the session clock and gives the window manager the new time, so a rest
-    /// focus that has come due takes effect without any pointer event.
+    /// Advances the session clock.
     pub(crate) fn tick_clock(&mut self, milliseconds: u64) {
         self.advance_clock(milliseconds);
-        self.apply_pointer(Event::PointerTick { at: self.clock });
     }
 
-    /// Feeds a window's role to the window manager when it changed.
+    /// Feeds a window's role to the record when it changed.
     ///
     /// The parent a client names through `xdg-foreign` or `set_parent`, and the dialog
     /// hint `xdg-dialog` sets, are both kept by smithay on the toplevel's role. The
-    /// window manager learns them through [`Event::WindowRoleChanged`], and only when
-    /// its record differs, so an unchanged commit does nothing.
+    /// record learns them only when they differ from what it holds, so an unchanged
+    /// commit does nothing.
     pub(crate) fn sync_window_role(&mut self, window: WindowId) {
         let Some(toplevel) = self.windows.get(&window).and_then(|entry| entry.surface.toplevel()) else {
             return;
@@ -2227,17 +2170,14 @@ impl State {
             (Some(_), _) => WindowKind::Dialog,
             (None, _) => WindowKind::Normal,
         };
-        let Some(current) = self.wm.window(window) else {
+        let Some(current) = self.fallback.window(window) else {
             return;
         };
         if current.kind == kind && current.transient_for == transient_for {
             return;
         }
-        self.apply_events(vec![Event::WindowRoleChanged {
-            window,
-            kind,
-            transient_for,
-        }]);
+        let effects = self.with_seat(|fallback, seat| fallback.set_role(window, kind, transient_for, seat));
+        self.apply_decided(effects);
         self.publish();
     }
 
@@ -2275,17 +2215,18 @@ impl State {
         true
     }
 
-    /// Tells the window manager a window's app id changed from a path that is not the toplevel's own
-    /// commit, so its rules read the new one.
+    /// Records a window's app id that changed from a path that is not the toplevel's own commit, and republishes
+    /// the node's texts, so the shell's rules read the new one.
     pub(crate) fn window_app_id_set(&mut self, window: WindowId, app_id: &str) -> bool {
-        if self.wm.window(window).is_none() {
+        if self.fallback.window(window).is_none() {
             return false;
         }
-        let effects = self.wm.apply(Event::WindowAppIdChanged {
-            window,
-            app_id: app_id.to_owned(),
-        });
-        self.apply(effects);
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return false;
+        };
+        entry.app_id = app_id.to_owned();
+        let title = entry.title.clone();
+        self.composer.set_window_text(window, &title, app_id);
         self.publish();
         true
     }
@@ -2345,9 +2286,15 @@ impl State {
         }
     }
 
-    /// The window's geometry, for popup positioning. `None` when it closed.
+    /// The rectangle a window is drawn at, for popup positioning and the observers: where the shell that holds the
+    /// tree put it, otherwise the record's. `None` when the window closed.
     pub(crate) fn geometry_of(&self, window: WindowId) -> Option<Rect> {
-        Some(self.shown_geometry(self.wm.window(window)?))
+        let managed = self.fallback.window(window)?;
+        Some(if self.composer.shell_places() {
+            self.composer.window_frame(window).unwrap_or(managed.geometry)
+        } else {
+            managed.geometry
+        })
     }
 
     /// Asks for a window's menu at an anchor, on behalf of a source, and publishes it.
@@ -2356,7 +2303,7 @@ impl State {
     /// each request once can see it even after another arrives first. A window that
     /// has closed gets no request: there is no menu to open for it.
     pub(crate) fn request_window_menu(&mut self, window: WindowId, anchor: MenuAnchor, source: MenuSource) -> bool {
-        if self.wm.window(window).is_none() {
+        if self.fallback.window(window).is_none() {
             log::debug!(area = "menu", ?window, "a request for a closed window was dropped");
             return false;
         }
@@ -2377,17 +2324,10 @@ impl State {
         true
     }
 
-    /// The rectangle a window is drawn at: the placement a settled layout gave it, or
-    /// otherwise its own geometry. A tiled window's own geometry is the floating rectangle
-    /// it returns to when it floats, not where it is shown.
-    pub(crate) fn shown_geometry(&self, window: &gnoblin_wm::Window) -> Rect {
-        self.wm.placed_rect(window.id).map_or(window.geometry, placed_geometry)
-    }
-
     /// The monitor rectangle of the output the window is on.
     pub(crate) fn monitor_of(&self, window: WindowId) -> Option<Rect> {
-        let output = self.wm.window(window)?.output?;
-        Some(self.wm.output(output)?.rect())
+        let output = self.fallback.window(window)?.output?;
+        Some(self.fallback.output(output)?.rect)
     }
 
     /// Fires the frame callback every mapped window is waiting for.
@@ -2412,7 +2352,10 @@ impl State {
                 if !entry.mapped {
                     continue;
                 }
-                let on_monitor = self.wm.window(*window).is_some_and(|managed| managed.output.is_some());
+                let on_monitor = self
+                    .fallback
+                    .window(*window)
+                    .is_some_and(|managed| managed.output.is_some());
                 let in_view = self
                     .composer
                     .window_node(*window)
@@ -2576,15 +2519,16 @@ impl State {
         }
     }
 
-    /// Moves a window through the window manager, as a drag would.
+    /// Moves a window through the record, as a drag would.
     ///
-    /// It is the seam a test and the parity harness drive window movement with until
-    /// the input layer produces drag rectangles of its own: the event takes the same
-    /// path a drag's would, including the work-area constraint and the configure the
-    /// client receives.
+    /// It is the seam a test and the parity harness drive window movement with until the input layer produces
+    /// drag rectangles of its own: the request takes the same path a control request's does, including the
+    /// work-area constraint and the configure the client receives. It refuses nothing a shell could place: a
+    /// shell holding the tree is the one that places windows, and the seam is not for it.
     pub(crate) fn move_window(&mut self, window: WindowId, geometry: Rect) {
-        let effects = self.wm.apply(Event::MoveResize { window, geometry });
-        self.apply(effects);
+        if let Ok(effects) = self.fallback.move_resize(window, geometry) {
+            self.apply(effects);
+        }
         self.publish();
     }
 
@@ -2617,7 +2561,7 @@ impl State {
         }
         let target = match self.visual_bell.scope {
             crate::server::VisualBellScope::Fullscreen => None,
-            crate::server::VisualBellScope::Frame => match self.wm.focused() {
+            crate::server::VisualBellScope::Frame => match self.focus {
                 Some(window) => Some(window),
                 None => return,
             },
@@ -2666,23 +2610,23 @@ impl State {
 
     /// Publishes the window state for the tests and for a diagnostics reader.
     pub(crate) fn publish(&mut self) {
-        // A covered window keeps the window manager's focus so the reveal can restore
-        // it, but it holds no keyboard focus: the lock gate routes keys to the lock
-        // surface or to nothing, so the snapshot says nothing is focused.
+        // A covered window keeps the recorded focus so the reveal can restore it, but it holds no keyboard
+        // focus: the lock gate routes keys to the lock surface or to nothing, so the snapshot says nothing is
+        // focused.
         let focused = if self.lock.state() == LockState::Unlocked {
-            self.wm.focused()
+            self.focus
         } else {
             None
         };
-        // The published lists follow the window manager, so a shell and a test read
-        // the same answer as the compositor's own record.
+        // The published lists follow the record, so a shell and a test read the same answer as the
+        // compositor's own.
         self.sync_authority_lock();
         self.sync_foreign_toplevels();
-        let workspaces = self.observed_workspaces();
+        let workspaces = Self::observed_workspaces();
         let output_details = self.observed_outputs();
         let mut snapshot = SessionSnapshot {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
-            stack: self.wm.stack().to_vec(),
+            stack: self.composer.window_stack(),
             workspaces,
             output_details,
             output_rects: self
@@ -2705,19 +2649,19 @@ impl State {
             selection: self.clipboard_mime_types(),
             ..SessionSnapshot::default()
         };
-        for window in self.wm.windows() {
+        for window in self.fallback.windows() {
             let entry = self.windows.get(&window.id);
             let mapped = entry.is_some_and(|entry| entry.mapped);
             snapshot.windows.insert(
                 window.id,
                 ObservedWindow {
                     id: window.id,
-                    title: window.title.clone(),
-                    app_id: window.app_id.clone(),
+                    title: entry.map_or_else(String::new, |entry| entry.title.clone()),
+                    app_id: entry.map_or_else(String::new, |entry| entry.app_id.clone()),
                     mapped,
-                    visible: self.wm.is_visible(window.id),
+                    visible: self.window_shown(window.id),
                     focused: focused == Some(window.id),
-                    geometry: self.shown_geometry(window),
+                    geometry: self.geometry_of(window.id).unwrap_or(window.geometry),
                     pid: self.window_process(window.id).and_then(crate::WindowProcess::pid),
                     icon_name: entry.and_then(|entry| entry.icon_name.clone()),
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
@@ -2759,24 +2703,22 @@ impl State {
         }
     }
 
-    /// Asks the window manager to focus a window, as a shell's `window.focus` does.
+    /// Focuses a window, as a shell's `window.focus` does, through the same decision a click's activation takes. The
+    /// return value is whether the record holds focus on it now, which is what a caller that has to answer an
+    /// operation needs; a window that has closed is not focused and is not invented.
     ///
-    /// It takes the same path a click's activation takes, so the policy decides and
-    /// the result is what the next snapshot says. The return value is whether the
-    /// window manager holds focus on it now, which is what a caller that has to
-    /// answer an operation needs; a window that has closed is not focused and is not
-    /// invented.
+    /// It is an explicit command, not a client's request, so it moves the focus whether or not a shell holds the
+    /// tree. Raising is the shell's, and the record leaves it alone while one does.
     pub(crate) fn focus_window(&mut self, window: WindowId) -> bool {
-        if self.wm.window(window).is_none() {
+        if self.fallback.window(window).is_none() {
             return false;
         }
-        let effects = self.wm.apply(Event::ActivationRequested {
-            window,
-            decision: ActivationDecision::Allow,
+        let effects = self.with_seat(|fallback, seat| fallback.activate(window, true, seat));
+        self.apply_filtered(effects, |effect| {
+            matches!(effect, FallbackEffect::Visible { .. } | FallbackEffect::Focus(_))
         });
-        self.apply(effects);
         self.publish();
-        self.wm.focused() == Some(window)
+        self.focus == Some(window)
     }
 
     /// Asks for a window to take focus on a shell's behalf, as `Window:present()` does.
@@ -2787,13 +2729,13 @@ impl State {
     /// still decides. The quiet gate lives here because the input clock does; the caller
     /// retries `Typing` and `NotShown` until its deadline rather than stealing focus mid-keystroke.
     pub(crate) fn present_window(&mut self, window: WindowId) -> PresentAnswer {
-        if self.wm.window(window).is_none() {
+        if self.fallback.window(window).is_none() {
             return PresentAnswer::Gone;
         }
         if self.lock.state() != LockState::Unlocked {
             return PresentAnswer::Locked;
         }
-        if !self.wm.is_visible(window) {
+        if !self.window_shown(window) {
             return PresentAnswer::NotShown;
         }
         if self.activity.idle_ticks(self.clock) < PRESENT_QUIET_MS {
@@ -2832,38 +2774,36 @@ impl State {
         self.shell_hover = current;
     }
 
-    /// Asks the window manager to focus the window under the pointer.
+    /// Activates the window under the pointer, as the fallback does for a press when no shell holds the tree.
     fn activate_under_pointer(&mut self) {
         self.activate_at(self.pointer_position);
     }
 
-    /// Asks the window manager to focus the window under a point. A pointer press and a
-    /// touch down are the same request.
+    /// Focuses the window under a point, and raises it when `raise_on_click` asks. A pointer press and a touch down
+    /// are the same request. While a shell holds the tree the press is an edge on the window's node instead
+    /// (a touch is a left press and release there), and the shell decides.
     fn activate_at(&mut self, position: SmithayPoint<f64, Logical>) {
+        if self.composer.shell_places() {
+            let on_window = self
+                .pointer_target(position)
+                .filter(|(node, _)| self.composer.window_of_node(*node).is_some());
+            if let Some((node, local)) = on_window {
+                let (x, y) = (local.x, local.y);
+                self.tree.input(node, TreeInput::Press { x, y, button: BTN_LEFT });
+                self.tree.input(node, TreeInput::Release { x, y, button: BTN_LEFT });
+            }
+            return;
+        }
         let Some((surface, _)) = self.surface_under(position) else {
             return;
         };
         let Some(window) = self.window_of(&surface) else {
             return;
         };
-        let effects = self.wm.apply(Event::PointerPressed { window });
+        let raise = self.options.raise_on_click;
+        let effects = self.with_seat(|fallback, seat| fallback.activate(window, raise, seat));
         self.apply(effects);
         self.publish();
-    }
-
-    /// Reports the window under the pointer to the window manager, which decides whether
-    /// focus follows it.
-    fn report_pointer(&mut self) {
-        match self.surface_under(self.pointer_position) {
-            Some((surface, _)) => {
-                // A surface that is no window's toplevel (the lock surface) says nothing about
-                // the windows, so it is not reported as leaving them.
-                if let Some(window) = self.window_of(&surface) {
-                    self.report_window(Some(window));
-                }
-            }
-            None => self.report_window(None),
-        }
     }
 
     /// Routes one touch point. A point goes to the window under it when it goes down; its
@@ -2971,40 +2911,34 @@ impl State {
         touch.cancel(self);
     }
 
-    /// Sends the window the pointer is over, or none, to the window manager.
-    fn report_window(&mut self, window: Option<WindowId>) {
-        self.apply_pointer(Event::PointerMoved { window, at: self.clock });
+    /// The window drawn under a position that may take the pointer, with the point in its node's local space, which
+    /// is the surface point under the pointer. A window is a candidate only while managed, shown and uncovered.
+    fn window_pick(&self, position: SmithayPoint<f64, Logical>) -> Option<(WindowId, PointF)> {
+        // The scene holds each window where it is drawn, transforms included, so a rotated window is hit where it
+        // appears.
+        self.composer.window_at(PointF::new(position.x, position.y), &|window| {
+            self.fallback.window(window).is_some()
+                && self.window_shown(window)
+                && !self.window_is_covered(window)
+                && self
+                    .windows
+                    .get(&window)
+                    .is_some_and(|entry| entry.surface.wl_surface().is_some())
+        })
     }
 
-    /// Gives the window manager a pointer event. A locked session, a modal and an exclusive
-    /// layer surface keep focus where it is, so no pointer event reaches the window manager.
-    fn apply_pointer(&mut self, event: Event) {
-        let held = self.lock.state() != LockState::Unlocked || self.modal.is_some();
-        if held || self.layer_keyboard_focus().is_some() {
-            return;
+    /// The node the shell is told the pointer is over while it holds the tree: a node of its own that the ray
+    /// picks, otherwise the window under the ray. A window's pointer edges are the shell's to read (its focus and
+    /// raise policy follows them), and still reach the window's client as well.
+    fn pointer_target(&self, position: SmithayPoint<f64, Logical>) -> Option<(NodeId, PointF)> {
+        if let Some(pick) = self.shell_pick(position) {
+            return Some(pick);
         }
-        let effects = self.wm.apply(event);
-        if !effects.is_empty() {
-            self.apply(effects);
-            self.publish();
+        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+            return None;
         }
-    }
-
-    /// Counts pointer button presses and releases. The window manager hears the grab when the
-    /// first button goes down and its release when the last one comes up.
-    fn button_grab(&mut self, pressed: bool) {
-        let was_held = self.held_buttons > 0;
-        self.held_buttons = if pressed {
-            self.held_buttons.saturating_add(1)
-        } else {
-            self.held_buttons.saturating_sub(1)
-        };
-        if (self.held_buttons > 0) != was_held {
-            let effects = self.wm.apply(Event::PointerGrab {
-                active: self.held_buttons > 0,
-            });
-            self.apply(effects);
-        }
+        let (window, local) = self.window_pick(position)?;
+        Some((self.composer.window_node(window)?, local))
     }
 
     /// The surface under a global position, topmost first, with the surface's own
@@ -3030,19 +2964,7 @@ impl State {
         if self.shell_pick(position).is_some() {
             return None;
         }
-        // The scene holds each window where it is drawn, transforms included, so a rotated
-        // window is hit where it appears. A window is a candidate only while managed, shown and
-        // uncovered, as it always was.
-        let point = PointF::new(position.x, position.y);
-        let (window, local) = self.composer.window_at(point, &|window| {
-            self.wm.window(window).is_some()
-                && self.wm.is_visible(window)
-                && !self.window_is_covered(window)
-                && self
-                    .windows
-                    .get(&window)
-                    .is_some_and(|entry| entry.surface.wl_surface().is_some())
-        })?;
+        let (window, local) = self.window_pick(position)?;
         let surface = self.windows.get(&window)?.surface.wl_surface()?;
         // The local point is the surface point under the pointer, so the origin that makes the
         // surface-relative position come out as that point is the global position less it.
@@ -3107,17 +3029,6 @@ fn set_suspended(toplevel: &ToplevelSurface, suspended: bool) {
     if changed && toplevel.is_initial_configure_sent() {
         toplevel.send_configure();
     }
-}
-
-/// The whole-pixel rectangle a placement occupies. The scene and the configure draw
-/// with it, and the observers read the same rectangle, so the two never disagree.
-fn placed_geometry(rect: RectF) -> Rect {
-    Rect::new(
-        rect.x.round() as i32,
-        rect.y.round() as i32,
-        rect.width.round() as u32,
-        rect.height.round() as u32,
-    )
 }
 
 /// An X11 rectangle in the policy's coordinates.
@@ -3394,6 +3305,7 @@ impl Host for State {
         // A seat focus the shell wrote in the drain moves the keyboard to that window. The
         // compositor's own focus was published above, before the drain, so it never reads back.
         if self.composer.main_seat_focus_written_by_shell() {
+            self.focus = self.composer.main_seat_focus_window();
             // A shell node holds the seat focus: the window keeps none, and the keys go to the shell.
             if self.composer.main_seat_focus_window().is_none() {
                 self.composer.hold_seat_focus_for_shell();
@@ -3471,11 +3383,6 @@ impl Host for State {
         // notifications are derived from. It is recorded before the event is routed, so a
         // key a binding consumes still counts as the user being present.
         self.record_activity();
-        // Focus does not follow the pointer while a button is held. This is counted before the
-        // modal route, so a release that a modal takes still ends the grab.
-        if let InputEvent::PointerButton { pressed, .. } = event {
-            self.button_grab(pressed);
-        }
         // While a modal is active it takes the keys and pointer buttons, and the clients
         // see none of them; the rest of the input is dropped for the same reason. While the
         // session is locked no modal is active, so the event goes to the lock's own focus.
@@ -3500,7 +3407,6 @@ impl Host for State {
                 }
                 let position = self.confine(position);
                 self.move_pointer(position, time);
-                self.report_pointer();
                 // The vector goes out with the position, so a client that only wants
                 // relative motion does not have to difference two positions.
                 self.send_relative_motion(delta, time);
@@ -3516,7 +3422,6 @@ impl Host for State {
                 ));
                 let position = self.within_layout(wanted);
                 self.move_pointer(position, time);
-                self.report_pointer();
             }
             InputEvent::PointerLeave => {
                 self.shell_pointer(None);
@@ -3532,11 +3437,13 @@ impl Host for State {
                         time,
                     },
                 );
-                self.report_window(None);
             }
             InputEvent::PointerButton { button, pressed } => {
                 self.frame_pointer(Some(self.pointer_position), Some(pressed));
-                if let Some((node, local)) = self.shell_pick(self.pointer_position) {
+                // A press or release over a shell node, or over a window while a shell holds the tree, is an
+                // edge the shell reads: its focus and raise policy follows the window's. Without a shell the
+                // fallback focuses the window a press lands on.
+                if let Some((node, local)) = self.pointer_target(self.pointer_position) {
                     let (x, y) = (local.x, local.y);
                     let input = if pressed {
                         TreeInput::Press { x, y, button }
@@ -3544,12 +3451,7 @@ impl Host for State {
                         TreeInput::Release { x, y, button }
                     };
                     self.tree.input(node, input);
-                }
-                if pressed {
-                    // A press on a window is the activation request the window
-                    // manager expects from the caller: attribution decides whether
-                    // it may take focus in a later slice, and a trusted input
-                    // context is exactly this case.
+                } else if pressed {
                     self.activate_under_pointer();
                 }
                 let pointer = self.pointer.clone();

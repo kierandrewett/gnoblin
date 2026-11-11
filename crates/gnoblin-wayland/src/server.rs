@@ -53,7 +53,6 @@ use gnoblin_config::Protocols;
 use gnoblin_layers::{LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_output::LayoutError;
 use gnoblin_types::{OutputId, Rect, WindowId};
-use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
@@ -61,6 +60,7 @@ use crate::observation::{
     MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
     WindowVisualRefusal,
 };
+use crate::policy::WmOptions;
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
@@ -179,8 +179,6 @@ pub struct Config {
     pub privileged_socket_path: Option<PathBuf>,
     /// The seat name clients see in `wl_seat.name`.
     pub seat_name: String,
-    /// How many workspaces to declare. The first one is active.
-    pub workspaces: u32,
     /// The declared workspaces, one `id:name` item each, published on the main seat for the shell to build from.
     pub workspace_names: Vec<String>,
     /// The window management options from the configuration document.
@@ -251,7 +249,6 @@ impl Default for Config {
             socket_path: None,
             privileged_socket_path: None,
             seat_name: "seat0".to_owned(),
-            workspaces: 1,
             workspace_names: Vec::new(),
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
@@ -395,7 +392,6 @@ impl Server {
             &outputs,
             &config.seat_name,
             config.wm,
-            config.workspaces,
             xwayland,
             config.observer,
             config.tree,
@@ -1021,7 +1017,7 @@ impl ControlHandle {
     /// Applies the accepted window management options and titlebar gestures, and republishes
     /// the seat policy the stock shell reads. Like the rules, it waits for the change to be
     /// applied, so a reload is confirmed before the reply is sent.
-    pub fn set_window_management(&self, options: gnoblin_wm::WmOptions, titlebar: TitlebarActions) {
+    pub fn set_window_management(&self, options: WmOptions, titlebar: TitlebarActions) {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowManagement {
             options,
@@ -1317,7 +1313,7 @@ enum Command {
     ReducedMotion(bool),
     /// The window management options and titlebar gestures from an accepted document.
     WindowManagement {
-        options: gnoblin_wm::WmOptions,
+        options: WmOptions,
         titlebar: TitlebarActions,
         reply: std::sync::mpsc::SyncSender<()>,
     },

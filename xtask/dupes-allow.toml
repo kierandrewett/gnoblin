@@ -1645,3 +1645,51 @@ left = "gnoblin-lua::MirrorChangeKind"
 right = "gnoblin-render::TreeChange"
 kind = "same-shape"
 reason = "the shell mirror's change tag names one step of a snapshot or change batch, while the render crate's tree change names a scene edit; both are a plain tag enum with no shared behaviour"
+
+[[allow]]
+left = "gnoblin-wayland::DragConstraint"
+right = "gnoblin-wm::DragConstraint"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::FocusMode"
+right = "gnoblin-wm::FocusMode"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::NewWindowFocus"
+right = "gnoblin-wm::NewWindowFocus"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::WmOptions"
+right = "gnoblin-wm::WmOptions"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::Window"
+right = "gnoblin-wm::Window"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::WindowKind"
+right = "gnoblin-wm::WindowKind"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::WindowState"
+right = "gnoblin-wm::WindowState"
+kind = "same-name"
+reason = "lane W5 moved the type out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"
+
+[[allow]]
+left = "gnoblin-wayland::LayerRecordError"
+right = "gnoblin-wm::LayerRegisterError"
+kind = "same-shape"
+reason = "lane W5 moved the layer-record refusals out of gnoblin-wm into gnoblin-wayland; the two coexist until lane W6 deletes gnoblin-wm and this entry"

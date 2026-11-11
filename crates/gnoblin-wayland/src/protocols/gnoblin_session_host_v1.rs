@@ -705,7 +705,7 @@ impl State {
         }
         // Input stops at the same moment the pixels do: a covered session that still
         // held the keyboard would type into a screen nobody can see.
-        if self.wm.focused().is_some_and(|window| self.window_is_covered(window)) {
+        if self.focus.is_some_and(|window| self.window_is_covered(window)) {
             self.set_keyboard_focus(None);
             self.clear_pointer_focus();
         }

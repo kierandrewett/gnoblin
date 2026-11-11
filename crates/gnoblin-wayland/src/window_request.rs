@@ -4,28 +4,25 @@
 //! While a shell holds the tree and the session is not locked, the shell is the policy authority. Every request
 //! becomes a `request` event on the window's node ([`TreeRequest`]) and nothing else happens: the shell decides, and
 //! answers by writing the node's `maximised`, `fullscreen`, `minimised`, `width` and `height`, or by calling its
-//! `close`. The compositor turns those writes into the toplevel's configure ([`State::answer_window_writes`]) and
-//! runs the call ([`State::run_window_calls`]). A request the shell leaves alone changes nothing.
+//! `close`. The compositor turns those writes into the window's configure ([`State::answer_window_writes`]) and runs
+//! the call ([`State::run_window_calls`]). A request the shell leaves alone changes nothing. A Wayland toplevel is
+//! told through its `xdg_toplevel` states and size, an X11 window through its `_NET_WM_STATE` and a configure.
 //!
-//! With no shell attached the window manager decides, as it always has: the request is applied directly. The
-//! protocol files name a [`WindowRequest`] and never reach the window manager themselves.
-//!
-//! An activation that the compositor itself refuses is not a request: the decision is the compositor's, for
-//! security, and the shell never hears of it (`xdg_activation_v1`, `refuse_activation`).
+//! With no shell attached the fallback decides ([`crate::fallback`]): the request is applied directly. The protocol
+//! files name a [`WindowRequest`] and never reach the record themselves.
 
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::Size as SmithaySize;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use gnoblin_render::transaction::TreeCall;
-use gnoblin_types::{NodeId, Rect, WindowId};
-use gnoblin_wm::{ActivationDecision, Event, WindowState};
+use gnoblin_types::{NodeId, OutputId, Rect, WindowId};
 
-use crate::State;
-use crate::state::set_flag;
+use crate::fallback::WindowState;
+use crate::observation::WindowChangeRefusal;
+use crate::state::{Managed, set_flag, x11_geometry};
 use crate::tree_frame::TreeRequest;
-
-use crate::log;
+use crate::{State, log};
 
 /// What a window is asked to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,7 +64,7 @@ impl WindowRequest {
 impl State {
     /// Whether a window is one the compositor manages.
     pub(crate) fn is_managed(&self, window: WindowId) -> bool {
-        self.wm.window(window).is_some()
+        self.fallback.window(window).is_some()
     }
 
     /// Whether a window holds the seat's keyboard focus, which is the shell's to give while it holds the tree.
@@ -78,15 +75,15 @@ impl State {
             == Some(window)
     }
 
-    /// A window's state, as it stands now: the shell's node values while a shell holds the tree, the window manager's
+    /// A window's state, as it stands now: the shell's node values while a shell holds the tree, the record's
     /// otherwise. `None` for a window that is gone.
     pub(crate) fn window_flags(&self, window: WindowId) -> Option<WindowState> {
-        let state = self.wm.window(window)?.state;
+        let state = self.fallback.window(window)?.state;
         Some(self.effective_state(window, state))
     }
 
     /// `state` with `fullscreen`, `maximised` and `minimised` read from the window's node when a shell holds the
-    /// tree: the node is where the shell writes them, so the window manager's copy must not be published over it.
+    /// tree: the node is where the shell writes them, so the record's copy must not be published over it.
     pub(crate) fn effective_state(&self, window: WindowId, mut state: WindowState) -> WindowState {
         if let Some([fullscreen, maximised, minimised]) = self.composer.shell_window_flags(window) {
             state.fullscreen = fullscreen;
@@ -96,17 +93,24 @@ impl State {
         state
     }
 
+    /// Whether the window is drawn: it is on an output and not minimised, as the shell says while it holds the tree.
+    pub(crate) fn window_shown(&self, window: WindowId) -> bool {
+        self.fallback
+            .window(window)
+            .is_some_and(|managed| managed.output.is_some())
+            && self.window_flags(window).is_some_and(|state| !state.minimised)
+    }
+
     /// Whether the shell decides this window's requests: it holds the tree, the session is not locked, and the
-    /// window is a Wayland toplevel with a node.
+    /// window has a node.
     fn shell_decides(&self, window: WindowId) -> bool {
         self.lock.state() == gnoblin_lock::State::Unlocked
             && self.composer.shell_places()
-            && self.toplevel_of(window).is_some()
             && self.composer.window_node(window).is_some()
     }
 
-    /// Hands a request to whoever decides it: the shell as an event on the window's node, or the window manager
-    /// directly when no shell holds the tree.
+    /// Hands a request to whoever decides it: the shell as an event on the window's node, or the record directly
+    /// when no shell holds the tree.
     pub(crate) fn window_request(&mut self, window: WindowId, request: WindowRequest) {
         if self.shell_decides(window)
             && let Some(node) = self.composer.window_node(window)
@@ -117,38 +121,60 @@ impl State {
         self.window_request_directly(window, request);
     }
 
-    /// Applies a request through the window manager, for a session with no shell. A request that changes nothing
+    /// Applies a request through the record, for a session with no shell. A request that changes nothing
     /// (maximising a maximised window) is dropped, and a window that is gone is a no-op.
     fn window_request_directly(&mut self, window: WindowId, request: WindowRequest) {
-        let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
+        if self.fallback.window(window).is_none() {
             log::trace!(area = "toplevel", %window, ?request, "a request for a window that is gone");
             return;
-        };
-        let event = match request {
-            WindowRequest::Maximise(on) if state.maximised != on => Event::ToggleMaximise { window },
-            WindowRequest::Fullscreen(on) if state.fullscreen != on => Event::ToggleFullscreen { window },
-            WindowRequest::Minimise(true) if !state.minimised => Event::Minimise { window },
-            WindowRequest::Minimise(false) if state.minimised => Event::Unminimise { window },
+        }
+        let effects = match request {
+            WindowRequest::Maximise(on) => self.fallback.set_maximised(window, on),
+            WindowRequest::Fullscreen(on) => self.with_seat(|fallback, seat| fallback.set_fullscreen(window, on, seat)),
+            WindowRequest::Minimise(on) => self.with_seat(|fallback, seat| fallback.set_minimised(window, on, seat)),
             WindowRequest::Activate => {
                 // The caller is privileged (a taskbar's click, or an earned token): the plan's rule against a
                 // client demanding focus is about a client, not about the user's own action.
                 log::debug!(area = "toplevel", %window, "activated");
-                Event::ActivationRequested {
-                    window,
-                    decision: ActivationDecision::Allow,
-                }
+                self.with_seat(|fallback, seat| fallback.activate(window, true, seat))
             }
-            WindowRequest::Raise => Event::Raise { window },
-            WindowRequest::Lower => Event::Lower { window },
+            WindowRequest::Raise => self.with_seat(|fallback, seat| fallback.raise(window, seat)),
+            WindowRequest::Lower => self.with_seat(|fallback, seat| fallback.lower(window, seat)),
             WindowRequest::Close => {
                 self.close_window(window);
                 return;
             }
-            WindowRequest::Maximise(_) | WindowRequest::Fullscreen(_) | WindowRequest::Minimise(_) => return,
         };
-        let effects = self.wm.apply(event);
         self.apply(effects);
         self.publish();
+    }
+
+    /// Moves and resizes a window for a control request. Refused while a shell holds the tree: it places its own
+    /// windows. Otherwise the record keeps the rectangle inside the work area, as a drag would.
+    pub(crate) fn place_by_command(&mut self, window: WindowId, geometry: Rect) -> Result<(), WindowChangeRefusal> {
+        if self.composer.shell_places() {
+            return Err(WindowChangeRefusal::Refused);
+        }
+        let effects = self.fallback.move_resize(window, geometry).map_err(Self::refusal_of)?;
+        self.apply(effects);
+        self.publish();
+        Ok(())
+    }
+
+    /// Moves a window, and its transients, to another output for a control request, with the same rule as
+    /// [`State::place_by_command`].
+    pub(crate) fn move_to_output_by_command(
+        &mut self,
+        window: WindowId,
+        output: OutputId,
+    ) -> Result<(), WindowChangeRefusal> {
+        if self.composer.shell_places() {
+            return Err(WindowChangeRefusal::Refused);
+        }
+        let effects = self.fallback.move_to_output(window, output).map_err(Self::refusal_of)?;
+        self.apply(effects);
+        self.publish();
+        Ok(())
     }
 
     /// Asks a window's client to close: `xdg_toplevel.close` for a Wayland window, the X11 policy's close
@@ -195,13 +221,13 @@ impl State {
 
     /// The work area of the output a window is on, or `None` when it has no output.
     pub(crate) fn work_area_of(&self, window: WindowId) -> Option<Rect> {
-        let output = self.wm.window(window)?.output?;
-        self.wm.work_area(output)
+        let output = self.fallback.window(window)?.output?;
+        self.fallback.work_area(output)
     }
 
-    /// Brings one toplevel's pending configure in line with its node.
+    /// Brings one window's pending configure in line with its node.
     fn configure_from_node(&mut self, window: WindowId) {
-        let Some(managed) = self.wm.window(window) else {
+        let Some(managed) = self.fallback.window(window) else {
             return;
         };
         let state = self.effective_state(window, managed.state);
@@ -210,6 +236,7 @@ impl State {
             .window_node_size(window)
             .filter(|&(width, height)| width > 0 && height > 0);
         let Some(toplevel) = self.toplevel_of(window) else {
+            self.configure_x11_from_node(window, state, size);
             return;
         };
         // A minimised window is hidden: its client is told it is suspended and leaves the outputs, as a window on
@@ -234,6 +261,45 @@ impl State {
             ?size,
             tiled,
             "configured from the shell's node"
+        );
+    }
+
+    /// Brings an X11 window in line with its node: the three flags become its `_NET_WM_STATE`, and the frame
+    /// the shell placed it in becomes its configure, so the client hears where it is and how big.
+    fn configure_x11_from_node(&mut self, window: WindowId, state: WindowState, size: Option<(u32, u32)>) {
+        let frame = self.composer.window_frame(window);
+        let hidden = state.minimised;
+        let Some(Managed::X11(surface)) = self.windows.get(&window).map(|entry| &entry.surface) else {
+            return;
+        };
+        if let Err(error) = surface.set_maximized(state.maximised) {
+            log::debug!(area = "toplevel", %error, %window, "the X11 maximised state was not sent");
+        }
+        if let Err(error) = surface.set_fullscreen(state.fullscreen) {
+            log::debug!(area = "toplevel", %error, %window, "the X11 fullscreen state was not sent");
+        }
+        if let Err(error) = surface.set_hidden(hidden) {
+            log::debug!(area = "toplevel", %error, %window, "the X11 hidden state was not sent");
+        }
+        let rect = match (frame, size) {
+            (Some(frame), Some((width, height))) => Some(Rect::new(frame.x, frame.y, width, height)),
+            (Some(frame), None) => Some(frame),
+            (None, _) => None,
+        };
+        if let Some(rect) = rect
+            && let Err(error) = surface.configure(Some(x11_geometry(rect)))
+        {
+            log::debug!(area = "toplevel", %error, %window, "the X11 configure failed");
+        }
+        self.set_visible(window, !hidden);
+        log::debug!(
+            area = "toplevel",
+            %window,
+            maximised = state.maximised,
+            fullscreen = state.fullscreen,
+            minimised = state.minimised,
+            ?rect,
+            "configured an X11 window from the shell's node"
         );
     }
 }

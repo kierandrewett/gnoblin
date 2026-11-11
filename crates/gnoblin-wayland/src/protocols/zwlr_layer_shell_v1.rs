@@ -3,17 +3,17 @@
 //! `zwlr_layer_shell_v1`: bars, docks, overlays and what they reserve.
 //!
 //! A layer surface is placed against an output's edges rather than by the window
-//! manager: the client names its layer, its anchors, its margins and its exclusive
+//! policy: the client names its layer, its anchors, its margins and its exclusive
 //! zone, and the compositor answers with a configure size. This module is the whole
 //! of that: it computes the rectangle, sends the configure, and turns the exclusive
-//! zones into [`gnoblin_wm::Event::OutputReserved`] so the work area a maximised
-//! window gets is the space the bars left over.
+//! zones into the output's reserved insets, so the work area a maximised window
+//! gets is the space the bars left over.
 //!
 //! ## What a layer surface is not
 //!
-//! A layer surface is not a [`gnoblin_wm`] window. The window manager places, stacks
-//! and focuses windows; a bar is placed by its anchors and focused by its keyboard
-//! interactivity, so routing it through the policy would invent a window with a
+//! A layer surface is not a window. The window record places, stacks and focuses
+//! windows; a bar is placed by its anchors and focused by its keyboard
+//! interactivity, so routing it through the record would invent a window with a
 //! work-area constraint of its own. The two meet at exactly one point, the reserved
 //! insets, which is the same seam a configuration's monitor insets would use.
 //!
@@ -57,7 +57,6 @@
 
 use gnoblin_layers::{Band, EndReason, LayerHandle, LayerProvider, LayerScope, LayerSpec, LocalName, RegisterError};
 use gnoblin_types::{Edge, Insets, OutputId, Rect};
-use gnoblin_wm::LayerRegisterError;
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -70,6 +69,7 @@ use smithay::wayland::shell::wlr_layer::{
 
 use crate::State;
 use crate::observation::ObservedLayer;
+use crate::state::LayerRecordError;
 
 use crate::log;
 
@@ -331,7 +331,7 @@ impl State {
         };
         let entry = self.layers.entries.remove(index);
         if let Some(record) = entry.record {
-            self.wm.end_surface(record.handle, EndReason::Removed);
+            self.end_surface(record.handle, EndReason::Removed);
         }
         log::debug!(area = "layer", namespace = %entry.namespace, "destroyed");
         // The strip goes back with the surface: a bar that exits must not keep the
@@ -371,7 +371,7 @@ impl State {
             .map(|entry| entry.surface.wl_surface().clone())
     }
 
-    /// Recomputed the reserved insets of every output and tells the window manager.
+    /// Recomputes the reserved insets of every output and tells the window record.
     ///
     /// It runs after every layer change and every destruction, so the answer is always
     /// the sum over the surfaces that exist now: nothing has to be un-reserved
@@ -396,15 +396,9 @@ impl State {
             if previous == Some(reserved) {
                 continue;
             }
-            let Some(policy) = self.policy_output(*output) else {
-                continue;
-            };
-            let effects = self.wm.apply(gnoblin_wm::Event::OutputReserved {
-                output: policy,
-                reserved,
-            });
+            let effects = self.fallback.reserve(*output, reserved);
             log::debug!(area = "layer", ?reserved, "reserved");
-            self.apply(effects);
+            self.apply_decided(effects);
         }
         // An output that disconnected keeps no reservation.
         self.layers.reserved.retain(|output, _| outputs.contains(output));
@@ -425,8 +419,7 @@ impl State {
 }
 
 impl State {
-    /// Keeps the window manager's `surface_layer_shell` record in line with a layer
-    /// surface's band and output.
+    /// Keeps the `surface_layer_shell` record in line with a layer surface's band and output.
     ///
     /// The record is made at the first commit that places the surface, because its
     /// output is only known then. A band change or an output the record no longer
@@ -434,20 +427,16 @@ impl State {
     /// one an output's disconnect removed, is registered again.
     fn sync_layer_record(&mut self, index: usize) {
         let entry = &self.layers.entries[index];
-        let Some(backend) = entry.output else {
-            return;
-        };
-        let Some(output) = self.policy_output(backend) else {
+        let Some(output) = entry.output else {
             return;
         };
         let band = band_of(entry.layer);
         let namespace = entry.namespace.clone();
         if let Some(record) = entry.record {
-            let live = self.wm.layers().get(record.handle).is_some();
-            if live && record.band == band && record.output == output {
+            if self.surface_record_live(record.handle) && record.band == band && record.output == output {
                 return;
             }
-            self.wm.end_surface(record.handle, EndReason::Removed);
+            self.end_surface(record.handle, EndReason::Removed);
         }
         let record = self.register_layer_record(&namespace, band, output);
         self.layers.entries[index].record = record;
@@ -473,12 +462,9 @@ impl State {
                 return None;
             };
             let spec = LayerSpec::new(local, LayerScope::Output(output), band);
-            match self
-                .wm
-                .register_surface(&LayerProvider::Gnoblin("gnoblin-wayland"), spec)
-            {
+            match self.register_surface(&LayerProvider::Gnoblin("gnoblin-wayland"), spec) {
                 Ok(handle) => return Some(RecordedLayer { handle, band, output }),
-                Err(LayerRegisterError::Registry(RegisterError::NameTaken(_))) => continue,
+                Err(LayerRecordError::Registry(RegisterError::NameTaken(_))) => continue,
                 Err(error) => {
                     log::warn!(area = "layer", namespace = %namespace, ?error, "a layer surface could not be recorded");
                     return None;
