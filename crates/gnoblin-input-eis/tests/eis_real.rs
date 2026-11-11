@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{DEFAULT_MODE, Headless};
 use gnoblin_input_eis::{Caps, Endpoint, Grant, Options, Quota, Region};
-use gnoblin_types::{OutputId, Point, Rect};
+use gnoblin_types::{OutputId, Rect};
 use gnoblin_wayland::{Config, ControlHandle, InputSink, LoopError, Server, SessionSnapshot};
 use reis::{PendingRequestResult, ei};
 use tempfile::TempDir;
@@ -161,14 +161,22 @@ impl Handle {
         Endpoint::bind(options, move |event| sink.inject(event)).expect("the EIS endpoint binds")
     }
 
-    /// The centre of a window, in the layout's coordinates.
-    fn centre(&self, title: &str) -> Point {
+    /// The rectangle a window's content is drawn at, in the layout's coordinates.
+    ///
+    /// The pointer hits what the scene draws, not the size the compositor configured: a client that
+    /// commits a smaller buffer than its configure owns only that buffer's rectangle, so this is the
+    /// target a test aims at.
+    fn drawn(&self, title: &str) -> Rect {
         let observation = self.wait_for(|observation| observation.titled(title).is_some_and(|window| window.mapped));
         let window = observation.titled(title).expect("the window is managed");
-        Point::new(
-            window.geometry.x + i32::try_from(window.geometry.width / 2).unwrap_or(0),
-            window.geometry.y + i32::try_from(window.geometry.height / 2).unwrap_or(0),
-        )
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some((_, bounds)) = self.control.drawn_node(window.id).flatten() {
+                return bounds;
+            }
+            assert!(Instant::now() < deadline, "the window `{title}` is never drawn");
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 }
 
@@ -883,12 +891,8 @@ fn a_real_client_moves_the_pointer_to_absolute_coordinates() {
     Session::start().run(|session| {
         let mut app = Client::app(&session.wayland);
         let _window = app.map_window("org.gnoblin.Eis", "Pointer");
-        let centre = session.centre("Pointer");
-        let geometry = session
-            .wait_for(|observation| observation.titled("Pointer").is_some_and(|window| window.mapped))
-            .titled("Pointer")
-            .expect("the window is managed")
-            .geometry;
+        let drawn = session.drawn("Pointer");
+        let centre = drawn.centre();
 
         let _endpoint = session.endpoint(pointer_and_keyboard());
         let mut eis = emulating(session, pointer_and_keyboard(), 2, 1);
@@ -899,14 +903,14 @@ fn a_real_client_moves_the_pointer_to_absolute_coordinates() {
         let (x, y) = app.state.motions[0];
         // `wl_pointer` states the position in the surface's own coordinates, so the
         // global position the EI client sent arrives as the offset inside the window.
-        let expected = (f64::from(centre.x - geometry.x), f64::from(centre.y - geometry.y));
+        let expected = (f64::from(centre.x - drawn.x), f64::from(centre.y - drawn.y));
         assert!(
             (x - expected.0).abs() <= 1.0 && (y - expected.1).abs() <= 1.0,
             "the motion landed at ({x}, {y}), expected {expected:?}"
         );
         assert!(
-            x >= 0.0 && x < f64::from(geometry.width) && y >= 0.0 && y < f64::from(geometry.height),
-            "the position ({x}, {y}) is inside the window ({geometry:?})"
+            x >= 0.0 && x < f64::from(drawn.width) && y >= 0.0 && y < f64::from(drawn.height),
+            "the position ({x}, {y}) is inside the drawn window ({drawn:?})"
         );
     });
 }
@@ -1032,7 +1036,7 @@ fn malformed_events_are_refused_and_the_server_keeps_serving() {
     Session::start().run(|session| {
         let mut app = Client::app(&session.wayland);
         let _window = app.map_window("org.gnoblin.Eis", "Malformed");
-        let centre = session.centre("Malformed");
+        let centre = session.drawn("Malformed").centre();
 
         let _endpoint = session.endpoint(pointer_and_keyboard());
         let mut bad = emulating(session, pointer_and_keyboard(), 2, 1);

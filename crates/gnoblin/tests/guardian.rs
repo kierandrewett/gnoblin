@@ -20,6 +20,7 @@
 //! (`gnoblin_session::supervisor`), and the shipped path is what the rest of the numbers
 //! are.
 
+use std::io::{BufRead as _, BufReader};
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -35,6 +36,46 @@ const BIN: &str = env!("CARGO_BIN_EXE_gnoblin");
 /// How long a test waits for a line before failing.
 const TIMEOUT: Duration = Duration::from_secs(60);
 
+/// A private message bus for one session, killed on drop.
+///
+/// `dbus-daemon --session --nofork --print-address` writes the address of a bus with a fresh socket. Nothing
+/// reads the ambient `DBUS_SESSION_BUS_ADDRESS`, so a test can never reach the developer's session bus and two
+/// tests can never share one.
+struct Bus {
+    child: Child,
+    address: String,
+}
+
+impl Bus {
+    /// Start a bus and read its address.
+    fn start() -> Bus {
+        let mut child = Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("dbus-daemon is required by the guardian tests (Debian/Ubuntu: apt install dbus-daemon; Fedora: dbus-daemon)");
+        let stdout = child.stdout.take().expect("stdout is piped");
+        let address = BufReader::new(stdout)
+            .lines()
+            .map_while(Result::ok)
+            .find(|line| line.starts_with("unix:"))
+            .expect("dbus-daemon prints the address of its bus");
+        Bus { child, address }
+    }
+
+    fn address(&self) -> &str {
+        &self.address
+    }
+}
+
+impl Drop for Bus {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 /// A running session: the guardian process, its log, and the directory it owns.
 struct Session {
     /// Kept alive for the session's lifetime: dropping it would remove the sockets' directory
@@ -44,6 +85,8 @@ struct Session {
     log: PathBuf,
     /// Set when the test ends, so the watchdog below stops waiting.
     finished: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The session bus the children connect to, killed after the guardian when the session drops.
+    _bus: Bus,
 }
 
 impl Session {
@@ -58,9 +101,13 @@ impl Session {
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let log = directory.path().join("session.log");
         let file = std::fs::File::create(&log).expect("the log file");
+        let bus = Bus::start();
         let mut command = Command::new(BIN);
         command
             .env("XDG_RUNTIME_DIR", directory.path())
+            // The portal child owns a name on the session bus, so the session gets a bus of its own: the
+            // ambient one is another session's (or, on a build machine, there is none at all).
+            .env("DBUS_SESSION_BUS_ADDRESS", bus.address())
             .env("XDG_STATE_HOME", directory.path().join("state"))
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
@@ -114,6 +161,7 @@ impl Session {
             guardian: Some(guardian),
             log,
             finished,
+            _bus: bus,
         }
     }
 

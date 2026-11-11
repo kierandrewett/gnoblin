@@ -30,6 +30,34 @@ run.
   `maximise = true` matching app_id `^smoke%-foot$`.
 - Clients: `weston-simple-shm` and `foot --app-id=smoke-foot` (`run3/clients.txt`).
 
+## Test machine prerequisites
+
+The real-process test suites need no display, seat or GPU. The system program the guardian and the D-Bus
+suites start is `dbus-daemon`; the Agent37 `gnoblin-rust` template (Debian 12) has it, so the template needs no new
+package. On another Debian or Ubuntu machine:
+
+```
+apt-get install dbus-daemon
+```
+
+- `dbus-daemon` (Fedora: `dbus-daemon`): the guardian suite (`crates/gnoblin/tests/guardian.rs`) and the
+  `gnoblin-compat-dbus-*` suites start a private session bus per test and point the session at it with
+  `DBUS_SESSION_BUS_ADDRESS`; nothing reads the ambient bus. The guardian suite fails at once with a message
+  naming the package when the program is missing.
+- Present on the template and used by the build and other suites: `xwayland`, `fontconfig` and `pipewire`,
+  with `libpipewire-0.3-dev` and `libfontconfig-dev` to build.
+- Not needed: `libei`/`liboeffis` (the EIS tests use the `reis` crate in-process), a seat, `udev` rules,
+  portal packages (the portal under test is the workspace's own `xdg-desktop-portal-gnoblin`), or a
+  real `XDG_RUNTIME_DIR` (each test makes its own).
+
+Two failures were waved through as environment gaps for a long time and were not: the guardian tests
+(gnoblin-iv5p) started `xdg-desktop-portal-gnoblin` whenever a build had left it beside `gnoblin`, and gave
+it no bus (the test's own `XDG_RUNTIME_DIR` held none), so the portal failed three restarts and the session
+never reached `session ready`; they now start their own bus. The EIS pointer tests (gnoblin-7x2q) aimed at the
+centre of a window's configured 800x600 geometry, but the test client commits a 200x150 buffer, and since
+pointer picking went through the scene hit test (`2e68c8e2c`) only drawn content takes the pointer; they now
+aim at the drawn rectangle.
+
 ## Results
 
 | #   | Check                                                         | Result                | Evidence                                                                              | Notes                                                                                                                                                                                                                                                                                               |
