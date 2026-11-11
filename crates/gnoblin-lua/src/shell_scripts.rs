@@ -34,7 +34,8 @@ use crate::loader::{self, Resolution};
 use crate::require::{ModuleRoots, is_module_name, read_source, resolve, runtime};
 
 /// What loading may use: the stock shell as a whole, and each user file on its own. It is run under the VM's
-/// guard, so the count hook the sandbox installed enforces it and stays installed.
+/// guard, so the count hook the sandbox installed enforces it and stays installed. Every entry into Lua the load
+/// makes runs through [`LoadBudget::run`], so none of it is left to the budget of whatever ran before.
 pub(crate) struct LoadBudget<'a> {
     pub guard: &'a Guard,
     pub limits: Limits,
@@ -183,7 +184,9 @@ pub(crate) fn load(
     let root = stock
         .parent()
         .ok_or_else(|| format!("{} has no parent directory to load gnoblin.shell from", stock.display()))?;
-    install_sys(lua).map_err(|error| format!("installing sys: {error}"))?;
+    budget
+        .run(|| install_sys(lua))
+        .map_err(|error| format!("installing sys: {error}"))?;
     budget
         .run(|| lua.load("require('gnoblin.shell')").set_name("gnoblin.shell").exec())
         .map_err(|error| format!("loading gnoblin.shell: {error}"))?;
@@ -222,7 +225,7 @@ fn load_user_files(lua: &Lua, shipped: &Path, dir: &Path, budget: &LoadBudget<'_
     if files.is_empty() {
         return errors;
     }
-    let env = match user_env(lua, shipped, &root) {
+    let env = match budget.run(|| user_env(lua, shipped, &root)) {
         Ok(env) => env,
         Err(error) => {
             crate::log::error!(area = "shell-vm", "the user's shell files were not loaded: {error}");

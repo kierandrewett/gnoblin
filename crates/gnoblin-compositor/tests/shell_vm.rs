@@ -2,13 +2,15 @@
 //!
 //! The shell connects through the runtime role's own path: [`connect_owner_socket_with_limits`] reads the
 //! session's IPC socket from the environment and boots a [`ShellVm`] over the stock Lua
-//! library. The tree is the compositor's: the nodes come from the session, not from a fake.
+//! library, under the shipped budgets with only the handler and frame deadlines widened (`patient_handlers`); the
+//! stock shell loads under the shipped load budget. The tree is the compositor's: the nodes come from the session, not from a fake.
 
 mod support;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use gnoblin_lua::Limits;
 use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket_with_limits, connect_session_shell_with_limits};
 use gnoblin_lua::shell_vm::ShellLimits;
 use support::{Client, Locker, Session};
@@ -17,41 +19,41 @@ use support::{Client, Locker, Session};
 /// long; it is the margin a busy machine gets, so a failure is a state that never came and not a slow turn.
 const PATIENCE: Duration = Duration::from_secs(60);
 
-/// The stock Lua library the shell VM loads (`node.lua` and the modules beside it).
-fn stock_library() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/lua/gnoblin")
-}
-
-/// The budgets the tests run the VM under: the shipped ones, with the wall-clock handler deadline widened.
+/// The budgets the tests that run handlers (every test that ticks the shell) run the VM under: the shipped ones, with
+/// the wall-clock handler and frame deadlines widened and nothing else changed. In particular the load budget is the
+/// shipped one, so loading the stock shell and the user's files is tested as production runs it.
 ///
-/// The instruction and memory budgets are what stop a runaway script, and they count the same on every machine.
-/// The deadline is elapsed time, so a test machine that is busy (a full workspace build and test run share its
-/// cores) can pass 100 ms inside one handler or 500 ms loading the shell without the script being slow. A test
-/// that fails on that is measuring the machine, so the deadline here is a minute.
-fn patient_limits() -> ShellLimits {
+/// The instruction and memory budgets are what stop a runaway script, and they count the same on every machine. The
+/// handler and frame deadlines are elapsed time (100 ms and 500 ms), so a test machine that is busy (a full workspace
+/// build and test run share its cores) can pass them inside a handler without the script being slow: a run under
+/// twelve busy loops on four cores failed `Window on_ready handler: the handler deadline (100 ms) passed`. A test
+/// that fails on that measures the machine, so these two deadlines are a minute.
+fn patient_handlers() -> ShellLimits {
     const DEADLINE_TICKS: u64 = 60_000;
     let shipped = ShellLimits::default();
     ShellLimits {
-        entry: gnoblin_lua::Limits {
+        entry: Limits {
             handler_ticks: DEADLINE_TICKS,
             ..shipped.entry
         },
-        frame: gnoblin_lua::Limits {
+        frame: Limits {
             handler_ticks: DEADLINE_TICKS,
             ..shipped.frame
         },
-        load: gnoblin_lua::Limits {
-            handler_ticks: DEADLINE_TICKS,
-            ..shipped.load
-        },
+        load: shipped.load,
     }
+}
+
+/// The stock Lua library the shell VM loads (`node.lua` and the modules beside it).
+fn stock_library() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/lua/gnoblin")
 }
 
 /// Connects the shell VM to `session` as the runtime role does, with the socket in the environment.
 fn connect(session: &Session) -> ShellRole {
     let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-    connect_owner_socket_with_limits(&env, &stock_library(), patient_limits())
+    connect_owner_socket_with_limits(&env, &stock_library(), patient_handlers())
         .expect("the shell VM attaches to the tree")
 }
 
@@ -100,17 +102,20 @@ fn the_shell_vm_attaches_and_its_mirror_holds_the_seat_and_a_screen() {
     });
 }
 
-/// Runs the stock shell inside the VM the way production loads it: `require("gnoblin.shell")`
-/// loads `shell/init.lua` from the shipped Lua root, which requires its siblings.
-/// `sys` is the host's system table, which the shell reads when it loads; the test supplies it inert.
+/// Loads the stock shell inside the VM the way production does, under the load budget: `load_shell` runs
+/// `require("gnoblin.shell")`, which loads `shell/init.lua` from the shipped Lua root and its siblings.
+/// `sys` is the host's system table, which the shell reads when it loads; the test supplies it inert, and the load
+/// leaves a table that is already there.
 fn load_stock_shell(role: &mut ShellRole) {
     role.run(
         "sys",
         "sys = sys or { spawn = function() end, date = function() return '' end }",
     )
     .expect("the host table is set");
-    role.run("gnoblin.shell", "require('gnoblin.shell')")
+    let errors = role
+        .load_shell(&stock_library(), None)
         .unwrap_or_else(|error| panic!("gnoblin.shell loads in the shell VM: {error:?}"));
+    assert!(errors.is_empty(), "{errors:?}");
 }
 
 /// The `x,y,placed` of every window node in the mirror, in tree order, read inside the VM (`placed` is `data.placed`).
@@ -440,13 +445,14 @@ fn user_config(files: &[(&str, &str)]) -> tempfile::TempDir {
     dir
 }
 
-/// Starts the shell the way the runtime role does: [`connect_session_shell`] over the session's owner socket
+/// Starts the shell the way the runtime role does: [`connect_session_shell_with_limits`] over the session's owner socket
 /// attaches the VM, loads the stock shell from the shipped library, then the user's files in `config`.
-/// `crates/gnoblin-lua/src/role.rs` passes this same function to `ShellSlot::from_env`.
+/// `crates/gnoblin-lua/src/role.rs` passes `connect_session_shell`, which is this under the default budgets, to
+/// `ShellSlot::from_env`; the load budget is the same, and the handler deadlines are widened for a busy machine.
 fn connect_session(session: &Session, config: &Path) -> ShellRole {
     let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-    connect_session_shell_with_limits(&env, &stock_library(), Some(config), patient_limits())
+    connect_session_shell_with_limits(&env, &stock_library(), Some(config), patient_handlers())
         .expect("the runtime's shell entry starts the shell")
 }
 
@@ -708,7 +714,7 @@ fn reconnect(session: &Session) -> ShellRole {
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
     let deadline = Instant::now() + PATIENCE;
     loop {
-        match connect_owner_socket_with_limits(&env, &stock_library(), patient_limits()) {
+        match connect_owner_socket_with_limits(&env, &stock_library(), patient_handlers()) {
             Ok(role) => return role,
             Err(error) => {
                 assert!(Instant::now() < deadline, "the tree was never released: {error:?}");
@@ -1223,4 +1229,109 @@ fn a_text_node_takes_the_width_the_compositor_measures() {
         "no handler failed and no transaction was refused: {:?}",
         role.diagnostics()
     );
+}
+
+// ---- Loading under the load budget --------------------------------------------------------------------------------
+
+/// The shipped budgets with the handler and frame limits cut to what could run nothing: one thousand instructions and
+/// no time. The load budget is the shipped one.
+fn starved_frames() -> ShellLimits {
+    let starved = Limits {
+        instructions: 1_000,
+        memory_bytes: 64 * 1024 * 1024,
+        handler_ticks: 0,
+    };
+    ShellLimits {
+        entry: starved,
+        frame: starved,
+        ..ShellLimits::default()
+    }
+}
+
+/// The regression: `require("gnoblin.shell")` ran under the frame budget, so a machine busy enough to pass 500 ms
+/// failed the shell's start. Loading is not a frame: a VM whose frames could run nothing still boots `node.lua`
+/// and loads the stock shell and the user's files.
+#[test]
+fn the_stock_shell_and_the_users_files_load_though_a_frame_could_run_nothing() {
+    let session = Session::start();
+    let config = user_config(&[("shell.lua", "user_ran = true")]);
+    let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
+    let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
+    let mut role = connect_owner_socket_with_limits(&env, &stock_library(), starved_frames())
+        .expect("node.lua boots under the load budget");
+    // The control: the frame budget refuses even a short loop, so the load below did not pass for lack of work.
+    role.run("control", "local n = 0 for i = 1, 20000 do n = n + i end")
+        .expect_err("a frame's budget cannot run this");
+    let errors = role
+        .load_shell(&stock_library(), Some(config.path()))
+        .expect("the stock shell loads under the load budget");
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+/// The shipped load budget is far wider than the stock shell needs: it loads inside a fiftieth of the instructions
+/// (measured at about twenty thousand, against a budget of a hundred million), so a user's own files and a slower
+/// stock shell fit with room to spare.
+#[test]
+fn the_stock_shell_needs_under_a_fiftieth_of_the_shipped_load_instruction_budget() {
+    let session = Session::start();
+    let shipped = ShellLimits::default();
+    let limits = ShellLimits {
+        load: Limits {
+            instructions: shipped.load.instructions / 50,
+            ..shipped.load
+        },
+        ..shipped
+    };
+    let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
+    let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
+    let mut role = connect_owner_socket_with_limits(&env, &stock_library(), limits).expect("node.lua boots");
+    role.load_shell(&stock_library(), None)
+        .expect("the stock shell loads inside a fiftieth of the budget");
+}
+
+/// A user file that never ends, through the runtime's own entry: it is stopped by the load budget (here test-sized),
+/// reported once naming the file, and the stock shell and the files after it still load. The shell then runs.
+#[test]
+fn a_runaway_user_file_is_stopped_by_the_load_budget_and_the_shell_still_runs() {
+    let session = Session::start();
+    let config = user_config(&[
+        ("shell/10-before.lua", "ran_before = true"),
+        ("shell/20-loop.lua", "while true do end"),
+        ("shell/30-after.lua", "ran_after = true"),
+    ]);
+    let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
+    let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
+    let patient = patient_handlers();
+    let limits = ShellLimits {
+        load: Limits {
+            instructions: 3_000_000,
+            handler_ticks: 600_000,
+            ..patient.load
+        },
+        ..patient
+    };
+    let started = Instant::now();
+    let mut role = connect_session_shell_with_limits(&env, &stock_library(), Some(config.path()), limits)
+        .expect("a runaway user file does not fail the start");
+    assert!(
+        started.elapsed() < PATIENCE,
+        "the loop was stopped by its instruction budget, not left to the clock: {:?}",
+        started.elapsed()
+    );
+    let errors = role.user_file_errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("20-loop.lua") && errors[0].contains("instruction budget"),
+        "{errors:?}"
+    );
+    let flags = role
+        .run(
+            "flags",
+            "return tostring(ran_before) .. ' ' .. tostring(ran_after) .. ' ' .. tostring(seat ~= nil)",
+        )
+        .expect("the probe runs");
+    assert_eq!(flags.as_deref(), Some("true true true"));
+    tick_until(&mut role, "the shell never built the screen's Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
 }

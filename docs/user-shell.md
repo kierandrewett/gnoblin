@@ -42,16 +42,42 @@ stock shell uses. Any other name, such as `require("mine.rules")`, loads
 `mine/rules.lua` from the configuration directory. Names with `..` or a path
 separator are refused.
 
-A file that runs for more than two seconds is stopped. The same limits hold for
-the whole shell, not only for the file: it runs in one sandboxed state, so the
-stock shell's own code cannot reach the host either.
+The whole shell runs in one sandboxed state, so the stock shell's own code cannot
+reach the host either.
 
-A handler, binding or timer has its own limit of 10 million Lua instructions or
-100 milliseconds, whichever comes first.
+## Time limits
 
-- One that goes past it is stopped and reported by name, for example
-  `Window on_ready handler: ... instruction budget ... is exhausted`. The other
-  handlers of the frame still run.
+Every entry into Lua has two bounds, and the first one reached stops it:
+
+- **A count of Lua instructions.** This is the real limit. It is the same on a
+  busy machine and an idle one, so a slow machine never fails a script with it,
+  and it stops a loop that never ends in a fraction of a second.
+- **A wall clock.** This is the backstop for what a count cannot see.
+
+| Entry                                                                  | Instructions | Wall clock | When it goes past                                    |
+| ---------------------------------------------------------------------- | ------------ | ---------- | ---------------------------------------------------- |
+| Starting the shell: the stock shell, and each of your files on its own | 100 million  | 10 seconds | The file is stopped and reported; the next one loads |
+| One handler, binding or timer                                          | 10 million   | 100 ms     | It is stopped and reported; the frame goes on        |
+| One frame, all its handlers together                                   | 100 million  | 500 ms     | The shell VM ends                                    |
+
+The start has the wide budget because it runs once, before the first frame, and
+a loaded machine can be slow without the script being wrong:
+
+- The stock shell needs about 20 thousand instructions and 10 to 20
+  milliseconds on an idle machine, so a file has thousands of times that.
+- Each file gets the whole start budget to itself. A slow file does not take
+  time from the next.
+- A process that is descheduled loses wall-clock time and no instructions, so a
+  start fails on the clock only after ten seconds of it.
+- The frame and handler clocks stay tight, because a frame that late is one you
+  would see.
+
+What happens when an entry goes past its limit:
+
+- It is stopped and reported by name, for example
+  `Window on_ready handler: ... instruction budget ... is exhausted`, or, for a
+  file that never ends, `.../shell/20-loop.lua: ... instruction budget ...`. The
+  other handlers of the frame, and the other files, still run.
 - One that raises is reported the same way (`Workspace:arrange: ...`). Its node
   keeps what it was last given.
 - The same report is logged once every five seconds, with a count of the copies
@@ -151,10 +177,12 @@ workspace no desk has, or two entries in one set name the same output.
 
 ## When a file fails
 
-A file with a syntax error, or one that raises, logs one error that names the
-file. What it set before it raised stays. The stock shell is already running and
-the files after it still load. The shell runs in the runtime role, so read the
-error there:
+A file with a syntax error, one that raises, or one that runs past its start
+budget (a loop that never ends) logs one error that names the file. What it set
+before it stopped stays. The stock shell is already running and the files after
+it still load.
+
+The shell runs in the runtime role, so read the error there:
 
 ```sh
 gnoblinctl log --role runtime --level error

@@ -181,10 +181,11 @@ pub fn connect_owner_socket(env: &dyn Fn(&str) -> Option<String>, dir: &Path) ->
     connect_owner_socket_with_limits(env, dir, ShellLimits::default())
 }
 
-/// Connects like [`connect_owner_socket`], under the budgets `limits`.
+/// Connects like [`connect_owner_socket`], under the budgets `limits` (see [`ShellLimits`] for what each bounds).
 ///
-/// The instruction and memory budgets bound a script the same on every machine; the handler deadline is wall
-/// clock, so a caller that runs the VM on a loaded machine (a test) widens it and leaves the rest.
+/// The production entry takes the default budgets, and loading the stock shell and the user's files has its own,
+/// wide `load` budget, so a slow machine does not fail the start. A caller narrows or widens a budget only for a
+/// test of that budget, or for one that stresses handlers on a machine it knows is busy.
 pub fn connect_owner_socket_with_limits(
     env: &dyn Fn(&str) -> Option<String>,
     dir: &Path,

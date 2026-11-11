@@ -30,7 +30,27 @@ use crate::tree_mirror::{
     LuaChange, LuaChord, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId, SnapshotNode, TreeLink,
 };
 
-/// The budgets the shell VM runs under.
+/// The budgets the shell VM runs under. Three kinds of entry into Lua, each with its own:
+///
+/// | Entry | Instructions | Wall clock |
+/// |---|---|---|
+/// | a handler, binding or timer (`entry`) | 10 million | 100 ms |
+/// | a whole frame (`frame`) | 100 million | 500 ms |
+/// | startup: `node.lua`, the stock shell, each user file (`load`) | 100 million | 10 s |
+///
+/// Each limit has two bounds and the first to run out stops the entry. The **instruction count** is the
+/// primary bound: it is the same on a busy machine and an idle one, so it never fails a script for the
+/// machine's load, and it stops a runaway on a healthy machine in well under a second. The **wall clock**
+/// is the backstop for what a count cannot see (a native call that blocks, a machine that has all but stopped).
+/// A process that is descheduled for part of an entry loses wall-clock time and no instructions, so the load
+/// deadline is wide: a startup fails on the clock only when it has been held for ten seconds, and the per-frame
+/// and per-handler deadlines stay tight because a frame that late is a frame the user sees.
+///
+/// Measured on an Agent37 instance (debug build, idle): `node.lua` runs about 11 thousand instructions, and
+/// `require("gnoblin.shell")` about 20 thousand in 10 to 20 ms. The load instruction budget is therefore thousands
+/// of times the measured need, and the wall-clock load budget about 500 times it (the compositor test
+/// `the_stock_shell_needs_under_a_fiftieth_of_the_shipped_load_instruction_budget` holds the instruction factor at 50
+/// at least).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShellLimits {
     /// What one handler, binding or timer may use. A handler that goes past it is stopped and
@@ -39,8 +59,9 @@ pub struct ShellLimits {
     /// What one whole frame may use, all of its entries together. It stops a frame made of
     /// many slow entries, and a loop in the shell's own code; a frame that goes past it ends the VM.
     pub frame: Limits,
-    /// What loading the stock shell may use, and what each of the user's shell files may use on its own.
-    /// A file that goes past it is stopped and reported, and the next file loads.
+    /// What starting the shell may use: `node.lua`, the stock shell as a whole, and each of the user's shell files
+    /// on its own. A user file that goes past it is stopped and reported, and the next file loads. A VM whose
+    /// `node.lua` or stock shell goes past it does not start.
     pub load: Limits,
 }
 
@@ -58,10 +79,12 @@ impl Default for ShellLimits {
                 memory_bytes: 256 * 1024 * 1024,
                 handler_ticks: 500,
             },
+            // Startup runs once, before the first frame, and may be slow on a loaded machine: the instruction
+            // count decides, and the clock only backstops it.
             load: Limits {
-                instructions: 400_000_000,
+                instructions: 100_000_000,
                 memory_bytes: 256 * 1024 * 1024,
-                handler_ticks: 2_000,
+                handler_ticks: 10_000,
             },
         }
     }
@@ -220,7 +243,7 @@ impl ShellVm {
         let core = TreeCore::shared(mirror, classes).map_err(ShellVmError::Core)?;
 
         let guard = Rc::new(Guard::new());
-        guard.begin(&limits.frame);
+        guard.begin(&limits.load);
         let lua = gnoblin_lua_sandbox::create(
             Profile::Config,
             &limits.entry,

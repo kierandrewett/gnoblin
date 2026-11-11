@@ -1012,3 +1012,214 @@ fn a_report_that_repeats_is_passed_on_once_per_interval_with_its_count() {
         "the second report counts what it held back: {failures:?}"
     );
 }
+
+// Loading. The stock library and the user's shell files run once at startup under the load budget
+// (`ShellLimits::load`), which is far wider than a frame's: a slow or busy machine must not fail the shell's
+// start for what a frame could never be allowed.
+
+/// A stock library (`node.lua` and a one-file shell) and a config directory with `files` in it.
+struct Loading {
+    _dir: tempfile::TempDir,
+    stock: PathBuf,
+    config: PathBuf,
+}
+
+fn loading(shell_init: &str, files: &[(&str, &str)]) -> Loading {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let stock = dir.path().join("lua/gnoblin");
+    let config = dir.path().join("config");
+    std::fs::create_dir_all(stock.join("shell")).expect("the stock directory");
+    std::fs::create_dir_all(&config).expect("the config directory");
+    std::fs::copy(lua_dir().join("node.lua"), stock.join("node.lua")).expect("node.lua");
+    std::fs::write(stock.join("shell/init.lua"), shell_init).expect("the stock shell");
+    for (name, text) in files {
+        let path = config.join(name);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("a directory");
+        std::fs::write(path, text).expect("a user file");
+    }
+    Loading {
+        _dir: dir,
+        stock,
+        config,
+    }
+}
+
+impl Loading {
+    fn boot(&self, comp: &Rc<RefCell<Compositor>>, limits: ShellLimits) -> ShellVm {
+        let link = FakeLink(comp.clone());
+        ShellVm::with_limits(Box::new(link), &self.stock, classes(), limits).expect("boot ShellVm")
+    }
+}
+
+/// Limits whose entry and frame budgets could run nothing of any size, and whose load budget is the shipped one.
+fn starved_frames() -> ShellLimits {
+    let starved = Limits {
+        instructions: 1_000,
+        memory_bytes: 64 * 1024 * 1024,
+        handler_ticks: 0,
+    };
+    ShellLimits {
+        entry: starved,
+        frame: starved,
+        ..ShellLimits::default()
+    }
+}
+
+/// A busy shipped VM with a frame deadline of nothing: the stock shell and `node.lua` are still loaded, because
+/// loading is not a frame.
+#[test]
+fn the_vm_boots_and_loads_under_the_load_budget_when_a_frame_could_run_nothing() {
+    let comp = compositor_with_root_and_window();
+    let shell = loading(
+        "local n = 0\nfor i = 1, 200000 do n = n + i end\nstock_sum = n\n",
+        &[("shell.lua", "user_ran = true")],
+    );
+    let mut vm = shell.boot(&comp, starved_frames());
+    let errors = vm
+        .load_shell(&shell.stock, Some(&shell.config))
+        .expect("the stock shell loads");
+    assert!(errors.is_empty(), "{errors:?}");
+    // The same work as a frame's entry is refused: this is what the load budget is for.
+    let refused = run_error(&mut vm, "local n = 0 for i = 1, 200000 do n = n + i end");
+    assert!(refused.contains("instruction budget"), "{refused}");
+}
+
+#[test]
+fn the_shipped_load_budget_is_wide_and_stays_a_budget() {
+    let shipped = ShellLimits::default();
+    assert_eq!(shipped.load.handler_ticks, 10_000, "ten seconds of wall clock");
+    assert!(
+        shipped.load.instructions >= shipped.entry.instructions * 10,
+        "the instruction budget is several times a handler's"
+    );
+    assert!(
+        shipped.load.instructions >= shipped.frame.instructions,
+        "startup is never narrower than a frame"
+    );
+    assert_eq!(shipped.entry.handler_ticks, 100, "the handler deadline is unchanged");
+    assert_eq!(shipped.frame.handler_ticks, 500, "the frame deadline is unchanged");
+}
+
+/// A user file that never ends is stopped inside the load budget (the instruction budget, which counts the
+/// same on a busy machine), logged once naming the file, and costs neither the stock shell nor later files.
+#[test]
+fn a_user_file_that_never_ends_is_stopped_by_the_load_budget_and_logged_once() {
+    let shell = loading(
+        "stock_loaded = true\n",
+        &[
+            ("shell/10-fine.lua", "before_loop = true"),
+            ("shell/20-loop.lua", "while true do end"),
+            ("shell/30-fine.lua", "after_loop = true"),
+        ],
+    );
+    // Test-sized: the instruction budget stops the loop long before the wall clock does.
+    let limits = ShellLimits {
+        load: Limits {
+            instructions: 2_000_000,
+            memory_bytes: 64 * 1024 * 1024,
+            handler_ticks: 600_000,
+        },
+        ..ShellLimits::default()
+    };
+    // Tracing caches each call site's interest per process, so the first capture can miss an event another thread's
+    // call registered first. Capture again until it is seen.
+    let mut attempts = 0;
+    let (mut vm, errors, logged, took) = loop {
+        let comp = compositor_with_root_and_window();
+        let mut vm = shell.boot(&comp, limits);
+        let mut errors = Vec::new();
+        let started = std::time::Instant::now();
+        let logged = gnoblin_log::event::capture::logged(|| {
+            errors = vm
+                .load_shell(&shell.stock, Some(&shell.config))
+                .expect("the stock shell loads");
+        });
+        attempts += 1;
+        if !logged.is_empty() || attempts >= 50 {
+            break (vm, errors, logged, started.elapsed());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert!(
+        took < std::time::Duration::from_secs(30),
+        "the loop was stopped by its budget: {took:?}"
+    );
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("20-loop.lua") && errors[0].contains("instruction budget"),
+        "{errors:?}"
+    );
+    assert_eq!(logged.len(), 1, "reported once: {logged:?}");
+    assert!(
+        format!("{} {}", logged[0].message, logged[0].fields_line()).contains("20-loop.lua"),
+        "the report names the file: {:?}",
+        logged[0]
+    );
+    for name in ["stock_loaded", "before_loop", "after_loop"] {
+        assert_eq!(
+            check(&mut vm, name, &format!("return tostring({name})")),
+            "true",
+            "{name} was set: the rest of the load went on"
+        );
+    }
+}
+
+/// The wall clock is the backstop for what the instruction count cannot see; it stops a file on its own.
+#[test]
+fn the_wall_clock_stops_a_file_the_instruction_budget_would_not() {
+    let shell = loading(
+        "stock_loaded = true\n",
+        &[
+            ("shell/10-loop.lua", "while true do end"),
+            ("shell/20-fine.lua", "after_loop = true"),
+        ],
+    );
+    let limits = ShellLimits {
+        load: Limits {
+            instructions: 1 << 50,
+            memory_bytes: 64 * 1024 * 1024,
+            handler_ticks: 100,
+        },
+        ..ShellLimits::default()
+    };
+    let comp = compositor_with_root_and_window();
+    let mut vm = shell.boot(&comp, limits);
+    let errors = vm
+        .load_shell(&shell.stock, Some(&shell.config))
+        .expect("the stock shell loads");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("10-loop.lua") && errors[0].contains("deadline"),
+        "{errors:?}"
+    );
+    assert_eq!(check(&mut vm, "after", "return tostring(after_loop)"), "true");
+}
+
+/// The budget is each file's own, and a file's work does not count against the next.
+#[test]
+fn each_user_file_gets_the_whole_load_budget() {
+    let spin = "local n = 0 for i = 1, 1000000 do n = n + i end";
+    let shell = loading(
+        "stock_loaded = true\n",
+        &[
+            ("shell/10-a.lua", spin),
+            ("shell/20-b.lua", spin),
+            ("shell/30-c.lua", spin),
+        ],
+    );
+    // One file costs a few million instructions; three files would not fit one budget of five million.
+    let limits = ShellLimits {
+        load: Limits {
+            instructions: 5_000_000,
+            memory_bytes: 64 * 1024 * 1024,
+            handler_ticks: 600_000,
+        },
+        ..ShellLimits::default()
+    };
+    let comp = compositor_with_root_and_window();
+    let mut vm = shell.boot(&comp, limits);
+    let errors = vm
+        .load_shell(&shell.stock, Some(&shell.config))
+        .expect("the stock shell loads");
+    assert!(errors.is_empty(), "{errors:?}");
+}
