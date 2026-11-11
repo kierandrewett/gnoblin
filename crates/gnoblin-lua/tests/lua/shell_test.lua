@@ -347,4 +347,67 @@ return {
             H.check(root:find(Seat).focus == w, "activate must focus")
         end,
     },
+    {
+        "raising a window keeps a fullscreen sibling above it, and a fullscreen window stays on top when raised",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local screen = root:add(Screen({ width = 1000, height = 800 }))
+            local a = root:add(Window({ app_id = "a" }))
+            local b = root:add(Window({ app_id = "b" }))
+            local c = root:add(Window({ app_id = "c" }))
+            H.load_shell()
+            root:find(Seat).screen = screen
+            H.start_shell(host)
+            H.frame(host, 1, {})
+            local names = { [a] = "a", [b] = "b", [c] = "c" }
+            local ws = a.parent
+            local function order()
+                local out = {}
+                for i, w in ipairs(ws.children) do
+                    out[i] = names[w]
+                end
+                return out
+            end
+            a:raise()
+            b:raise()
+            c:raise()
+            H.same(order(), { "a", "b", "c" })
+            b.fullscreen = true
+            a:raise()
+            H.same(order(), { "c", "a", "b" })
+            c:raise()
+            H.same(order(), { "a", "c", "b" })
+            b:raise()
+            H.same(order(), { "a", "c", "b" })
+        end,
+    },
+
+    {
+        "a workspace switch keeps a fullscreen window fullscreen and on its workspace when that workspace returns",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            local back = win.parent
+            local away = desk().space.children[2]
+            win.fullscreen = true
+            go(function()
+                desk():show(away)
+            end)
+            for i = 1, 10 do
+                H.frame(host, i * 0.1, {})
+            end
+            H.check(desk().active == away, "the switch must complete")
+            H.check(back.visible == false, "the old workspace must be hidden")
+            go(function()
+                desk():show(back)
+            end)
+            for i = 11, 20 do
+                H.frame(host, i * 0.1, {})
+            end
+            H.check(desk().active == back, "switching back must complete")
+            H.check(win.parent == back, "the fullscreen window must stay on its workspace")
+            H.check(win.fullscreen == true, "the fullscreen window must stay fullscreen")
+        end,
+    },
 }

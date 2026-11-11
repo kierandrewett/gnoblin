@@ -282,6 +282,20 @@ function Window:on_activate() -- an activation request raises and focuses a wind
         self:raise()
     end
 end
+-- A raised window goes last among its siblings, which draws on top. A fullscreen sibling keeps the top: it is put back
+-- over the raised window, so a window that raises or is activated lands under the fullscreen ones.
+function Window:raise()
+    local parent, above = self.parent, {}
+    for _, c in ipairs(parent.children) do
+        if c ~= self and c.fullscreen and not self.fullscreen then
+            above[#above + 1] = c
+        end
+    end
+    parent:add(self)
+    for _, c in ipairs(above) do
+        parent:add(c)
+    end
+end
 function Window:on_move(e)
     drag(e.seat, self)
 end
