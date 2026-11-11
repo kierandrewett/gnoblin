@@ -274,3 +274,39 @@ Old tests in `crates/gnoblin-wm/tests/failure_modes.rs`, mapped to the stock she
 | `a_click_with_raise_on_click_off_keeps_the_stacking`              | `raise_on_click off: a press focuses but does not raise`                                                                |
 | `auto_raise_is_cancelled_by_leaving_the_window`                   | `a leave cancels an armed auto-raise`                                                                                   |
 | `closing_the_armed_window_cancels_its_auto_raise`                 | `closing an armed window cancels its auto-raise`                                                                        |
+
+### Ported: window rules and workspace sets (lane PortRules)
+
+Rules: stock cases are in `rules_test.lua`. Sets: stock cases are in `sets_test.lua`. Status is one of ported, partial (stated), drop (design line given), or open (no stock case yet).
+
+| Old test                                                      | Stock test (file:case) or status                                                                                                    |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `rules_do_not_reapply_while_the_same_rules_match`             | `rules_test.lua`: re-applying unchanged rules writes nothing to the core                                                            |
+| `a_title_that_newly_matches_a_rule_applies_it`                | `rules_test.lua`: a title change re-evaluates the rules: secure follows the new title                                               |
+| `an_app_id_that_newly_matches_a_rule_applies_it`              | Partial: `rules_test.lua`: a rule that stops matching clears secure (the stop direction only; the newly-matching direction is open) |
+| `a_re_match_merges_all_matching_rules_in_list_order`          | `rules_test.lua`: rules merge in list order: the last matching rule wins for each field, the others are kept                        |
+| `contradicting_rules_settle_on_the_last_match`                | `rules_test.lua`: the last matching rule wins for a field                                                                           |
+| `a_rule_naming_a_missing_workspace_reports_a_rejection`       | Open: no stock check that a rule's workspace exists                                                                                 |
+| `a_refused_rules_list_leaves_the_rules_in_force`              | Partial: `rules_test.lua`: a malformed pattern is a compile error; the old rules staying in force on refusal is open                |
+| `reserved_space_reapplies_to_maximised_windows`               | `rules_test.lua`: a maximised rule fills the work area, not only sets the flag                                                      |
+| `a_secure_rule_marks_the_matching_window_secure`              | `rules_test.lua`: a rule that stops matching clears secure (asserts the set first)                                                  |
+| `a_non_matching_window_is_not_secure`                         | `rules_test.lua`: a title change re-evaluates the rules (asserts secure false before the match)                                     |
+| `an_out_of_range_opacity_is_refused_and_the_old_rules_stay`   | Partial: `rules_test.lua`: a rule's opacity must be a number in [0, 1]; the old rules staying is open                               |
+| `a_negative_corner_radius_is_refused`                         | DROP: corners is refused at load (`rules_test.lua`: corners is refused at load). Design: the stock shell draws blur and shadow only |
+| `a_matching_appearance_rule_announces_opacity_and_radius`     | Partial: `rules_test.lua`: an opacity rule sets the window's opacity. The radius half is DROP (see above)                           |
+| `reloading_without_the_secure_rule_clears_secure`             | `rules_test.lua`: a rule that stops matching clears secure                                                                          |
+| `a_title_change_toggles_secure_with_the_match`                | `rules_test.lua`: a title change re-evaluates the rules: secure follows the new title                                               |
+| `a_closed_secure_window_leaves_no_secure_record`              | DROP: design: `secure` is a node property in Lua, so a closed node holds no record; there is no compositor-side registry to leak    |
+| `activating_an_unknown_set_is_refused_and_changes_nothing`    | `sets_test.lua`: activating an unknown set is refused and changes nothing                                                           |
+| `a_set_with_no_entries_is_refused_and_the_previous_sets_stay` | `sets_test.lua`: a set with no entries is refused and the previous sets stay                                                        |
+| `a_set_naming_an_undeclared_workspace_is_refused_as_a_whole`  | `sets_test.lua`: a set naming an undeclared workspace is refused as a whole                                                         |
+| `a_set_whose_workspace_is_removed_refuses_to_activate`        | `sets_test.lua`: a set whose workspace is removed refuses to activate                                                               |
+| `duplicate_set_names_are_refused`                             | `sets_test.lua`: duplicate set names are refused                                                                                    |
+| `an_empty_set_name_is_refused`                                | `sets_test.lua`: an empty set name is refused                                                                                       |
+| `two_entries_for_one_output_in_a_set_are_refused`             | `sets_test.lua`: two entries for one output in a set are refused                                                                    |
+| `activating_a_set_twice_is_idempotent`                        | `sets_test.lua`: activating the live set again changes nothing                                                                      |
+| `a_set_shows_each_named_workspace_on_its_own_output`          | `sets_test.lua`: a set shows each named workspace on its own output                                                                 |
+
+Stock-only (no old test): `sets_test.lua`: an unknown output falls back to the primary with a warning.
+
+Design line for rules: `corners` is refused at load. The stock shell draws blur and shadow only, so the carousel depth fade is also DROP.
