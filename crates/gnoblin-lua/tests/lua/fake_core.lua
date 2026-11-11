@@ -60,7 +60,11 @@ local SCHEMA = {
         props = { source = { type = "node" } },
         methods = { "camera", "capture" },
     },
-    { name = "Screen", base = "View", props = { connector = { type = "string", default = "" } } },
+    {
+        name = "Screen",
+        base = "View",
+        props = { connector = { type = "string", default = "" }, primary = { type = "boolean", default = false } },
+    },
     {
         name = "Camera",
         base = "Node",

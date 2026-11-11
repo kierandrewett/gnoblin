@@ -3,6 +3,7 @@
 local Focus = require("gnoblin.shell.focus")
 local Snap = require("gnoblin.shell.snap")
 local Rules = require("gnoblin.shell.rules")
+local Sets = require("gnoblin.shell.sets")
 local Drag = require("gnoblin.shell.drag")
 require("gnoblin.shell.ui")
 local Placement = require("gnoblin.shell.floating")
@@ -171,6 +172,7 @@ function Screen:on_ready()
         return
     end
     desk_by_screen[self] = root:add(Desk({ screen = self }))
+    workspace_sets() -- the user's sets are checked now that a desk has the workspaces they name
 end
 function Screen:on_destroyed() -- unplugged: its windows move to another desk, or wait hidden for the next output
     local gone = desk_by_screen[self]
@@ -213,15 +215,143 @@ function focus_settings()
         focus_change_on_pointer_rest = seat.focus_change_on_pointer_rest,
     })
 end
--- Window rules: seat.data.window_rules is the user's list, compiled once per table (a bad rule fails at load).
-local rules_src, rules_compiled, rules_seen
+-- Window rules: seat.data.window_rules is the user's list. A new list is compiled once, when it is first read. A list
+-- that does not compile (a bad pattern, an unknown field, an opacity outside [0, 1]) is reported once and refused
+-- whole: the rules in force stay. Assign a new table to change the rules; editing the table in place is not seen.
+local rules_src, rules_compiled = nil, {}
 function window_rules()
     local src = seat and seat.data.window_rules or nil
-    if not rules_seen or rules_src ~= src then
-        rules_seen, rules_src = true, src
-        rules_compiled = Rules.compile(src or {})
+    if src ~= rules_src then
+        rules_src = src
+        local ok, compiled = pcall(Rules.compile, src or {})
+        if ok then
+            rules_compiled = compiled
+        else
+            report(("window rules refused, the rules in force stay: %s"):format(tostring(compiled)))
+        end
     end
     return rules_compiled
+end
+
+-- Workspace sets: seat.data.workspace_sets is the user's list of { name, entries = { { workspace, output? } } }. An
+-- entry names a workspace of the Desk (its name, "1" to "9" in the stock Desk) and the output it shows on; no output
+-- means the primary one. A new list is checked once, when it is first read: a list that does not check (empty or
+-- duplicate name, no entries, a workspace no Desk has, two entries for one output) is reported once and refused whole,
+-- and the sets in force stay. Assign a new table to change the sets; editing the table in place is not seen.
+local sets_src, sets_list, sets_active = nil, {}, nil
+local function declared_workspaces()
+    local out = {}
+    for _, d in ipairs(root:all(Desk)) do
+        for _, ws in ipairs(d.space.children) do
+            out[ws.name] = true
+        end
+    end
+    return out
+end
+-- The sets as Sets.define reads them: workspace names as text, whatever the user wrote.
+local function set_entries(list)
+    local out = {}
+    for i, s in ipairs(list) do
+        local entries = {}
+        for j, e in ipairs(s.entries or {}) do
+            entries[j] = { workspace = tostring(e.workspace), output = e.output }
+        end
+        out[i] = { name = s.name, entries = entries }
+    end
+    return out
+end
+local SET_ERRORS = {
+    empty_name = function()
+        return "a set has an empty name"
+    end,
+    duplicate_name = function(e)
+        return ("two sets are named %q"):format(e.name)
+    end,
+    empty_set = function(e)
+        return ("set %q has no entries"):format(e.name)
+    end,
+    undeclared_workspace = function(e)
+        return ("set %q names workspace %q, which no desk has"):format(e.set, tostring(e.workspace))
+    end,
+    duplicate_output = function(e)
+        return ("set %q has two entries for output %q"):format(e.set, e.output)
+    end,
+    unknown_set = function(e)
+        return ("no set is named %q"):format(tostring(e.name))
+    end,
+}
+local function explain_set_error(err)
+    local f = SET_ERRORS[err.kind]
+    return f and f(err) or tostring(err.kind)
+end
+function workspace_sets()
+    local src = seat and seat.data.workspace_sets or nil
+    if src ~= sets_src then
+        sets_src = src
+        local ok, list, err = pcall(function()
+            return Sets.define(sets_list, set_entries(src or {}), declared_workspaces())
+        end)
+        if not ok then
+            err = { kind = tostring(list) }
+            list = nil
+        end
+        if list then
+            sets_list = list
+        else
+            report(("workspace sets refused, the sets in force stay: %s"):format(explain_set_error(err)))
+        end
+    end
+    return sets_list
+end
+-- Makes the set `name` live: each entry shows its workspace on its output (the Desk of the Screen with that name), and
+-- an entry whose output is gone shows on the primary output, with a report. Activating the live set again changes
+-- nothing. Refused (false, and a report) for an unknown set or a workspace that has since gone.
+function activate_set(name)
+    local list = workspace_sets()
+    local outputs, primary = {}, nil
+    for _, s in ipairs(root:all(Screen)) do
+        outputs[#outputs + 1] = s.name
+        if s.primary then
+            primary = s.name
+        end
+    end
+    local plan, err = Sets.activate(list, name, {
+        declared = declared_workspaces(),
+        outputs = outputs,
+        primary = primary or outputs[1],
+        active = sets_active,
+    })
+    if not plan then
+        report(("workspace set refused: %s"):format(explain_set_error(err)))
+        return false
+    end
+    for _, w in ipairs(plan.warnings) do
+        report(
+            ("workspace set %q: output %q is not connected; its workspace shows on the primary output"):format(
+                w.set,
+                w.output
+            )
+        )
+    end
+    if not plan.changed then
+        return true
+    end
+    sets_active = name
+    for _, p in ipairs(plan.placements) do
+        for _, s in ipairs(root:all(Screen)) do
+            local d = s.name == p.output and desk_of(s)
+            if d then
+                for _, ws in ipairs(d.space.children) do
+                    if ws.name == p.workspace then
+                        go(function()
+                            d:show(ws)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+    return true
 end
 
 function Window:on_ready()
@@ -294,10 +424,21 @@ function Window:apply_rules()
         end
     end
     if fx.workspace and d and not self.parent_window then -- a dialog follows its parent, whatever a rule says
+        local target
         for _, ws in ipairs(d.space.children) do
-            if ws.name == tostring(fx.workspace.id) and self:closest(Workspace) ~= ws then
-                ws:add(self)
+            if ws.name == tostring(fx.workspace.id) then
+                target = ws
             end
+        end
+        if not target then -- reported once per match: the key above stops a repeat. The window stays where it is.
+            report(
+                ("window rule: workspace %q does not exist; %s stays where it is"):format(
+                    tostring(fx.workspace.id),
+                    self.app_id ~= "" and self.app_id or "the window"
+                )
+            )
+        elseif self:closest(Workspace) ~= target then
+            target:add(self)
         end
     end
 end

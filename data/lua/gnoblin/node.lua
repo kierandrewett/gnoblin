@@ -161,6 +161,10 @@ function every(seconds, fn)
         end
     end)
 end
+-- Logs `message` as a script report. It never raises, so a refused rule or set does not stop the handler reporting it.
+function report(message)
+    core.report(tostring(message))
+end
 
 -- Nodes. Values of native properties live in the native tree; Lua properties live in VALS.
 local readied = {} -- node id -> true once its `ready` has been emitted

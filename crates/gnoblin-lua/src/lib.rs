@@ -133,6 +133,7 @@ pub mod role;
 mod session_api;
 mod session_status;
 pub mod shell_role;
+mod shell_scripts;
 pub mod shell_vm;
 pub mod tree_core;
 pub mod tree_link;

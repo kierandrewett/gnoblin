@@ -38,7 +38,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::shell_role::{ShellSlot, connect_owner_socket, installed_stock_dir};
+use crate::shell_role::{ShellSlot, connect_session_shell, installed_stock_dir};
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
@@ -189,7 +189,10 @@ impl RoleRunner {
         reporter.ready(&[("GNOBLIN_CONFIG_REVISION".to_owned(), revision.to_string())]);
 
         let installed = installed_stock_dir(&self.env);
-        let mut shell = ShellSlot::from_env(&self.env, &installed, |dir| connect_owner_socket(&self.env, dir));
+        let user_dir = loaded.path.path().parent().map(Path::to_path_buf);
+        let mut shell = ShellSlot::from_env(&self.env, &installed, |dir| {
+            connect_session_shell(&self.env, dir, user_dir.as_deref())
+        });
         serve(&mut host, &stop, &self.paths, &self.stock, &mut reporter, &mut shell)
     }
 }

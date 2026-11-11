@@ -231,4 +231,82 @@ return {
             H.check(w.opacity == 0.5, "the rule's opacity must reach the window")
         end,
     },
+
+    {
+        "an app_id that newly matches a rule applies it",
+        function()
+            local _, host, w = shell({ { match = { app_id = "^bank$" }, secure = true } }, { app_id = "notes" })
+            H.check(w.secure == false, "no rule matches the first app_id")
+            host.external(host.ids("Window")[1], "app_id", "bank")
+            H.frame(host, 1)
+            H.check(w.secure == true, "the new app_id must match the rule")
+        end,
+    },
+
+    {
+        "a workspace rule moves the window to the workspace it names",
+        function()
+            local _, host, w = shell({ { match = { app_id = "term" }, workspace = { id = "2" } } }, { app_id = "term" })
+            H.check(w.parent.name == "2", "the window must be on workspace 2")
+            H.check(#host.reports == 0, "a rule naming a workspace that exists reports nothing")
+        end,
+    },
+
+    {
+        "a rule naming a missing workspace is reported once and the window stays where it is",
+        function()
+            local rules = { { match = { app_id = "term" }, workspace = { id = "99" } } }
+            local _, host, w = shell(rules, { app_id = "term" })
+            H.check(w.parent.name == "1", "the window must stay on its workspace")
+            H.check(#host.reports == 1, "one report expected, got " .. #host.reports)
+            H.check(
+                host.reports[1]:find("\"99\"", 1, true) ~= nil,
+                "the report names the workspace: " .. host.reports[1]
+            )
+            H.frame(host, 1)
+            H.frame(host, 2)
+            H.check(#host.reports == 1, "a frame with no change must not report again")
+        end,
+    },
+
+    {
+        "a refused rules list is reported once and the rules in force stay",
+        function()
+            local _, host, w = shell({ { match = { app_id = "^bank$" }, secure = true } }, { app_id = "bank" })
+            H.check(w.secure == true, "the good rules apply")
+            root:find(Seat).data.window_rules = { { match = { app_id = "^bank$" }, opacity = 3 } }
+            local second = root:add(Window({ app_id = "bank" }))
+            H.frame(host, 1)
+            local third = root:add(Window({ app_id = "bank" }))
+            H.frame(host, 2)
+            H.check(second.secure == true and third.secure == true, "the old rules still apply to new windows")
+            H.check(#host.reports == 1, "one report expected, got " .. #host.reports)
+            H.check(
+                host.reports[1]:find("opacity", 1, true) ~= nil,
+                "the report names the refused field: " .. host.reports[1]
+            )
+        end,
+    },
+
+    {
+        "a refused first rules list leaves no rules in force",
+        function()
+            local _, host, w = shell({ { match = { title = "[unclosed" }, secure = true } }, { title = "x" })
+            H.check(w.secure == false, "a refused list applies nothing")
+            H.check(#host.reports == 1, "one report expected, got " .. #host.reports)
+        end,
+    },
+
+    {
+        "a new valid list replaces the rules in force",
+        function()
+            local _, host = shell({ { match = { app_id = "^bank$" }, secure = true } }, { app_id = "bank" })
+            root:find(Seat).data.window_rules = { { match = { app_id = "^bank$" }, fullscreen = true } }
+            local fresh = root:add(Window({ app_id = "bank" }))
+            H.frame(host, 1)
+            H.check(fresh.secure == false, "the replaced rule no longer applies")
+            H.check(fresh.fullscreen == true, "the new rule applies")
+            H.check(#host.reports == 0, "a valid list reports nothing")
+        end,
+    },
 }

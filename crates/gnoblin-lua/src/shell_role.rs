@@ -85,6 +85,11 @@ impl ShellRole {
     pub fn run(&mut self, name: &str, src: &str) -> Result<Option<String>, ShellVmError> {
         self.vm.run(name, src)
     }
+
+    /// Loads the stock shell and the user's shell files into the VM (see [`ShellVm::load_shell`]).
+    pub fn load_shell(&mut self, stock: &Path, user: Option<&Path>) -> Result<Vec<String>, ShellVmError> {
+        self.vm.load_shell(stock, user)
+    }
 }
 
 /// The shell VM's slot in the runtime role: empty when the VM is off or ended.
@@ -161,4 +166,18 @@ pub fn connect_owner_socket(env: &dyn Fn(&str) -> Option<String>, dir: &Path) ->
         .into_stream()
         .map_err(|error| ShellVmError::Link(error.to_string()))?;
     connect_shell(dir, stream, tree_classes())
+}
+
+/// What the runtime role runs: [`connect_owner_socket`], then the stock shell and the user's shell files.
+///
+/// `user` is the config directory the user's `shell.lua` and `shell/*.lua` live in. An error loading the stock
+/// shell fails the connect, so the slot stays empty and the role serves without a shell VM.
+pub fn connect_session_shell(
+    env: &dyn Fn(&str) -> Option<String>,
+    dir: &Path,
+    user: Option<&Path>,
+) -> Result<ShellRole, ShellVmError> {
+    let mut role = connect_owner_socket(env, dir)?;
+    role.load_shell(dir, user)?;
+    Ok(role)
 }

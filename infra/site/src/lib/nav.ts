@@ -156,6 +156,7 @@ export const NAV: NavSection[] = [
         items: [
             { label: "Integration guide", slug: "shell-integration" },
             { label: "Lua event handlers", slug: "user-scripts" },
+            { label: "Shell files", slug: "user-shell" },
             {
                 label: "Lua runtime API",
                 slug: "shell-api",

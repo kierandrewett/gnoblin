@@ -170,6 +170,17 @@ impl ShellVm {
         })
     }
 
+    /// Loads the stock shell (`require("gnoblin.shell")`) from `stock`, the directory holding `node.lua`, and then the
+    /// user's shell files from the config directory `user`: `shell.lua`, then `shell/*.lua`. Both run before the first
+    /// frame. The user's files run in the config sandbox's environment (see `shell_scripts.rs`).
+    ///
+    /// Returns the errors the user's files raised, in load order; each was also logged and none stops the VM. An error
+    /// loading the stock shell is `Err`: the VM has no shell and the caller decides what to do.
+    pub fn load_shell(&mut self, stock: &Path, user: Option<&Path>) -> Result<Vec<String>> {
+        let budget = crate::shell_scripts::USER_FILE_BUDGET;
+        crate::shell_scripts::load(&self.lua, stock, user, budget).map_err(ShellVmError::Load)
+    }
+
     /// Runs `src` as a chunk named `name` and returns its result, if it has one.
     pub fn run(&mut self, name: &str, src: &str) -> Result<Option<String>> {
         let value: Value = self.lua.load(src).set_name(name).eval().map_err(lua_error)?;

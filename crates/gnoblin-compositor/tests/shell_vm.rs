@@ -336,3 +336,146 @@ fn a_session_lock_request_engages_the_stock_lock_screen() {
         role.diagnostics()
     );
 }
+
+/// A config directory holding the given user shell files, as the user's `~/.config/gnoblin` does.
+fn user_config(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a temporary config directory");
+    for (name, text) in files {
+        let path = dir.path().join(name);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("a directory");
+        std::fs::write(path, text).expect("a user shell file");
+    }
+    dir
+}
+
+/// Loads the stock shell and then the user's files in `config`, the way the runtime role does after it connects.
+/// Returns the errors the user's files raised.
+fn load_session_shell(role: &mut ShellRole, config: &Path) -> Vec<String> {
+    role.load_shell(&stock_library(), Some(config))
+        .expect("the stock shell loads from the shipped library")
+}
+
+/// `prop` of the window whose app id is `app_id`, as text, read inside the VM; `none` when there is no such window.
+fn window_prop(role: &mut ShellRole, app_id: &str, prop: &str) -> String {
+    role.run(
+        "window prop",
+        &format!(
+            "for _, w in ipairs(root:all('Window')) do if w.app_id == '{app_id}' then return tostring(w.{prop}) end end return 'none'"
+        ),
+    )
+    .expect("the probe runs")
+    .expect("the probe returns text")
+}
+
+/// A rule in the user's `shell.lua` reaches a window the compositor maps: the stock shell reads
+/// `seat.data.window_rules` when the window is ready and writes the rule's fields to the node.
+#[test]
+fn a_window_rule_in_the_users_shell_file_applies_to_a_mapped_window() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    let config = user_config(&[(
+        "shell.lua",
+        "seat.data.window_rules = {\n\
+         \x20 { match = { app_id = '^org%.example%.secret$' }, secure = true },\n\
+         \x20 { match = { app_id = '^org%.example%.faded$' }, opacity = 0.5 },\n\
+         }\n",
+    )]);
+    let errors = load_session_shell(&mut role, config.path());
+    assert!(errors.is_empty(), "the user's file loads: {errors:?}");
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+
+    let mut client = Client::connect(session.wayland());
+    let _secret = client.map_window("org.example.secret", "Secret");
+    let _faded = client.map_window("org.example.faded", "Faded");
+    let _plain = client.map_window("org.example.plain", "Plain");
+    tick_until(&mut role, "the rules never reached the mapped windows", |role| {
+        window_prop(role, "org.example.secret", "secure") == "true"
+            && window_prop(role, "org.example.faded", "opacity") == "0.5"
+    });
+    assert_eq!(window_prop(&mut role, "org.example.plain", "secure"), "false");
+    assert_eq!(window_prop(&mut role, "org.example.secret", "opacity"), "1.0");
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}
+
+/// A user file with a syntax error costs the session nothing: the stock shell is running and places windows, and
+/// the error comes back once for the file.
+#[test]
+fn a_syntax_error_in_the_users_shell_file_leaves_the_stock_shell_running() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    let config = user_config(&[("shell.lua", "seat.data.window_rules = {{{ this is not lua")]);
+    let errors = load_session_shell(&mut role, config.path());
+    assert_eq!(errors.len(), 1, "one error for the one broken file: {errors:?}");
+    assert!(errors[0].contains("shell.lua"), "the error names the file: {errors:?}");
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    let mut client = Client::connect(session.wayland());
+    let _first = client.map_window("org.example.first", "First");
+    tick_until(&mut role, "the stock shell never placed the window", |role| {
+        window_placements(role).iter().any(|(_, _, placed)| *placed)
+    });
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}
+
+/// A workspace rule from the user's file moves the mapped window to the workspace it names.
+#[test]
+fn a_workspace_rule_in_the_users_shell_file_places_the_window_on_that_workspace() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    let config = user_config(&[(
+        "shell/10-rules.lua",
+        "seat.data.window_rules = { { match = { app_id = '^org%.example%.term$' }, workspace = { id = '3' } } }\n",
+    )]);
+    assert!(load_session_shell(&mut role, config.path()).is_empty());
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    let mut client = Client::connect(session.wayland());
+    let _term = client.map_window("org.example.term", "Term");
+    tick_until(&mut role, "the window never reached workspace 3", |role| {
+        role.run(
+            "workspace of window",
+            "for _, w in ipairs(root:all('Window')) do if w.app_id == 'org.example.term' then \
+             local ws = w:closest(Workspace) return ws and ws.name end end",
+        )
+        .expect("the probe runs")
+        .as_deref()
+            == Some("3")
+    });
+}
+
+/// A workspace set from the user's file activates through `activate_set`: the set's workspace shows on the output.
+#[test]
+fn a_workspace_set_in_the_users_shell_file_activates() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    let config = user_config(&[(
+        "shell.lua",
+        "seat.data.workspace_sets = { { name = 'work', entries = { { workspace = '2' } } } }\n",
+    )]);
+    assert!(load_session_shell(&mut role, config.path()).is_empty());
+    tick_until(&mut role, "the stock shell never built the screen's Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
+    let activated = role
+        .run("activate", "return tostring(activate_set('work'))")
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    assert_eq!(activated, "true", "diagnostics {:?}", role.diagnostics());
+    let shown = role
+        .run("shown", "return desk().active.name")
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    assert_eq!(shown, "2", "the set's workspace shows on the output");
+}
