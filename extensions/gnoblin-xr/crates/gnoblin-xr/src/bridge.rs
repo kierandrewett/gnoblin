@@ -5,11 +5,13 @@
 //! located. The plan is handed to the caller and not submitted: the frame loop
 //! ends every frame with no layers.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::thread;
 use std::time::Duration;
 
-use xr_scene::{IDENTITY, Options, Plan, Pose, plan};
+use xr_capture::views::ViewCaptures;
+use xr_scene::{IDENTITY, Layer, Options, Plan, Pose, plan};
 use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
 use xr_tree::{TreeClient, TreeError};
@@ -70,6 +72,7 @@ pub fn run<R: Runtime>(
     tree: &mut TreeClient,
     frames: &mut FrameLoop<R>,
     opts: &Options,
+    captures: &mut ViewCaptures,
     mut on_plan: impl FnMut(&Plan),
 ) -> Result<Outcome, BridgeError> {
     let mut pointer = Pointer::default();
@@ -78,6 +81,9 @@ pub fn run<R: Runtime>(
             Ok(_) => {}
             Err(TreeError::Closed) => return Ok(Outcome::OwnerClosed),
             Err(error) => return Err(error.into()),
+        }
+        for (node, error) in captures.pump() {
+            eprintln!("gnoblin-xr: view capture {node:?} failed: {error}");
         }
         match frames.tick()? {
             Tick::Idle => thread::sleep(IDLE_INTERVAL),
@@ -89,11 +95,24 @@ pub fn run<R: Runtime>(
                 let planned = plan(tree.model(), &head, opts);
                 let ray = frames.locate_ray(frame.display_time)?;
                 pointer.update(tree, &planned.layers, ray)?;
+                for (node, error) in captures.sync(&view_nodes(&planned.layers)) {
+                    eprintln!("gnoblin-xr: capture of view {node:?} failed: {error}");
+                }
                 on_plan(&planned);
             }
             Tick::Exit => return Ok(Outcome::SessionExited),
         }
     }
+}
+
+/// The View nodes the plan draws. Each is captured so its picture can be shown in the headset.
+fn view_nodes(layers: &[Layer]) -> BTreeSet<u64> {
+    layers
+        .iter()
+        .map(|layer| match layer {
+            Layer::Quad(placement) | Layer::Projection(placement) => placement.id,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -383,8 +402,9 @@ mod tests {
         ];
         let mut frames = FrameLoop::new(FakeRuntime::new(script));
         let mut plans = Vec::new();
+        let mut captures = ViewCaptures::new(None);
 
-        let outcome = run(&mut tree, &mut frames, &Options::default(), |plan| {
+        let outcome = run(&mut tree, &mut frames, &Options::default(), &mut captures, |plan| {
             plans.push(plan.clone())
         })
         .expect("bridge runs");
@@ -400,8 +420,9 @@ mod tests {
         let mut tree = TreeClient::from_stream(serve(room_with_one_view(), true)).expect("attach");
         let mut frames = FrameLoop::new(FakeRuntime::new(Vec::new()));
         let mut plans = Vec::new();
+        let mut captures = ViewCaptures::new(None);
 
-        let outcome = run(&mut tree, &mut frames, &Options::default(), |plan| {
+        let outcome = run(&mut tree, &mut frames, &Options::default(), &mut captures, |plan| {
             plans.push(plan.clone())
         })
         .expect("bridge runs");

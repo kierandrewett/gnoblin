@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 gnoblin-client = { path = "../../../../crates/gnoblin-client" }
 xr-scene = { path = "../xr-scene" }
+xr-capture = { path = "../xr-capture" }
 xr-session = { path = "../xr-session" }
 xr-tree = { path = "../xr-tree" }
 

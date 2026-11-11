@@ -6,6 +6,7 @@
 mod bridge;
 mod pointer;
 
+use xr_capture::views::ViewCaptures;
 use xr_scene::Options;
 use xr_session::frame_loop::FrameLoop;
 use xr_session::openxr_runtime::OpenxrRuntime;
@@ -48,10 +49,19 @@ fn run_bridge() -> Result<(), String> {
     let mut tree = TreeClient::connect(&socket).map_err(|error| format!("owner socket: {error}"))?;
     let runtime = OpenxrRuntime::connect("gnoblin-xr").map_err(|error| error.to_string())?;
     let mut frames = FrameLoop::new(runtime);
+    // Capture is best effort: without a view-source connection the bridge still plans and submits.
+    let client = match xr_capture::wayland::Client::connect_from_env() {
+        Ok(client) => client,
+        Err(error) => {
+            eprintln!("gnoblin-xr: view capture disabled: {error}");
+            None
+        }
+    };
+    let mut captures = ViewCaptures::new(client);
 
     // Planning runs every frame, but the summary is only worth a line when it changes.
     let mut last_summary = None;
-    let outcome = bridge::run(&mut tree, &mut frames, &Options::default(), |plan| {
+    let outcome = bridge::run(&mut tree, &mut frames, &Options::default(), &mut captures, |plan| {
         let summary = (plan.layers.len(), plan.skipped.len());
         if last_summary != Some(summary) {
             eprintln!("gnoblin-xr: plan: {} layers, {} skipped", summary.0, summary.1);
