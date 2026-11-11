@@ -1,9 +1,9 @@
 # Touchpad gestures
 
-Configure touchpad swipes and pinches in `gnoblin.configure`. The standalone
-compositor can run a built-in window or workspace action, or start a command
-when a gesture completes. The packaged `init.lua.example` includes two
-three-finger workspace swipe bindings.
+Configure touchpad swipes and pinches in `gnoblin.configure`. A configured
+gesture starts a command when it completes. Acting inside the desktop (switching
+workspace, closing a window) is the shell's job: see
+[Handle gestures in the shell](#handle-gestures-in-the-shell).
 
 An empty or omitted `touchpad_gestures` list adds no direct actions or
 commands. Mutter gesture events are still available to Lua and integrations;
@@ -58,7 +58,7 @@ gnoblin.configure {
 
 Commands are argument arrays, not shell command strings. Gnoblin starts the
 program after the gesture ends, using the executable name or an absolute path.
-Set exactly one of `action` or `command` for each entry.
+Every entry needs a `command`.
 
 | Field       | Accepted values                                           | Default and meaning                                                                      |
 | ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -68,8 +68,7 @@ Set exactly one of `action` or `command` for each entry.
 | `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1 | Required for swipes. Starts at `{x = 0, y = 0}` and describes movement.                  |
 | `direction` | Pinch: `"in"` or `"out"`                                  | Required for pinches; do not set `path`.                                                 |
 | `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                       |
-| `action`    | One of the built-in actions below                         | Set this or `command`, but not both.                                                     |
-| `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                      |
+| `command`   | Nonempty array of strings                                 | Required. The program and its arguments.                                                 |
 | `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Minimum movement before the path can match. |
 
 At gesture start, Gnoblin reserves input when a binding matches the gesture
@@ -80,35 +79,71 @@ the movement also matches the configured path or pinch direction and threshold.
 A reserved gesture whose movement does not match has no direct action and is
 not passed to another Mutter gesture handler.
 
-## Built-in actions
+## The removed `action` key
 
-Built-in actions are listed below as not executed. The names are accepted by
-validation; when a matching gesture ends with one, Gnoblin logs a warning
-naming the action and runs nothing. Only `command` bindings run.
+The built-in `action` names never ran: the compositor only logged them. The key
+is gone, and a document that sets it is refused with a pointer here. The stock
+shell carries the five as Lua in `shell/gestures.lua`:
 
-| Action                     | Effect                                     |
-| -------------------------- | ------------------------------------------ |
-| `"workspace.next"`         | Switch to the next workspace.              |
-| `"workspace.previous"`     | Switch to the previous workspace.          |
-| `"window.close"`           | Close the focused window.                  |
-| `"window.minimize"`        | Minimize the focused window.               |
-| `"window.toggle-maximize"` | Toggle maximization of the focused window. |
+| Old action                 | Stock shell                               |
+| -------------------------- | ----------------------------------------- |
+| `"workspace.next"`         | `Gestures.actions.workspace_next`         |
+| `"workspace.previous"`     | `Gestures.actions.workspace_previous`     |
+| `"window.close"`           | `Gestures.actions.window_close`           |
+| `"window.minimize"`        | `Gestures.actions.window_minimise`        |
+| `"window.toggle-maximize"` | `Gestures.actions.window_toggle_maximise` |
+
+The stock shell binds a three-finger swipe to the workspace slide, which follows
+the fingers. Bind any other gesture in a shell file:
+
+```lua
+local Gestures = require("gnoblin.shell.gestures")
+seat:bind({
+    Swipe4 = Gestures.on_swipe({ up = Gestures.actions.window_toggle_maximise }),
+})
+```
 
 Bindings never run while the session is locked. Gestures on the lock screen are
 left to the lock screen, so no action or command starts there.
 
+## Handle gestures in the shell
+
+`seat:bind` takes a key spelled `Swipe3` or `Pinch4`: the gesture and its finger
+count (2 to 5). Gnoblin claims every such gesture, so no client and no
+configured binding sees it, and the function runs for each phase of it.
+
+The event carries:
+
+- `phase`: `begin`, `update`, `end` or `cancel`.
+- `dx` and `dy`: movement since the begin, x right and y down.
+- `scale`: 1 for a swipe, above 1 for a spread.
+- `rotation`: radians, clockwise.
+
+Nothing is delivered while the session is locked. A lock that comes up
+mid-gesture delivers one `cancel`.
+
+```lua
+seat:bind({
+    Swipe4 = function(e)
+        if e.phase == "update" then print(e.dx, e.dy) end
+    end,
+})
+```
+
+One holder claims one kind and finger count. A claim shadows a configured
+command binding of the same kind and finger count.
+
+The stock shell claims `Swipe3`, so give a command binding four fingers.
+
+`Gestures.on_swipe`, `Gestures.on_pinch` and `Gestures.direction` run one
+function per direction when a gesture ends. At the schema level these are
+`Seat:claim_gesture(kind, fingers)` and the `gesture` signal. Holds are not
+claimable.
+
 ## Status and testing
 
-Command bindings are wired from libinput gesture events through the touchpad
-router to the configured command. The routing, cancel, lock, no-match and
-finger-count rules are covered by unit tests that feed synthetic samples. They
-have not been run against a touchpad: no hardware proof is claimed here.
-
-## Handle gestures in a shell
-
-Shells can subscribe to the raw `mutter.touchpad.gesture` signal or the stable
-`gnoblin.input.gesture` event and decide how to respond. These events report
-gesture phases and movement; they do not provide overview, emoji-picker, or
-lock-screen progress animations. Shells that need animated UI
-can implement that behavior themselves. See [Lua events](/events/)
-for event payloads and a listener example.
+Command bindings and claims are wired from libinput gesture events through the
+touchpad router. The routing, cancel, lock, no-match and finger-count rules are
+covered by unit and tree-level tests that feed synthetic samples. They have not
+been run against a touchpad: no hardware proof is claimed, and the stock slide's
+`Gestures.travel` is not tuned on one.

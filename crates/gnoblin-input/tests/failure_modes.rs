@@ -5,9 +5,9 @@ mod common;
 use common::{CODE_Q, CODE_W, E, Q, W, button_event, chord, key_event, name, pointer_chord, press, release};
 use gnoblin_input::{
     Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Edge, EdgeBand,
-    GestureAction, GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase, GestureRoute,
-    GestureRouter, GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, Recogniser, Routed, Router,
-    Scope, ShortcutInhibit, Target, Tick, Trigger,
+    GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase, GestureRoute, GestureRouter,
+    GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, Recogniser, Routed, Router, Scope,
+    ShortcutInhibit, Target, Tick, Trigger,
 };
 
 fn route(router: &mut Router, event: gnoblin_input::Event) -> Routed {
@@ -20,7 +20,7 @@ fn swipe_spec(label: &str, fingers: u8) -> GestureSpec {
         gesture: Some(GestureKind::Swipe),
         fingers: Some(fingers),
         path: Some(vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]),
-        action: Some(GestureAction::Command(vec!["kgx".to_owned()])),
+        command: Some(vec!["kgx".to_owned()]),
         ..GestureSpec::default()
     }
 }
@@ -31,7 +31,7 @@ fn pinch_spec(label: &str, fingers: u8, direction: PinchDirection) -> GestureSpe
         gesture: Some(GestureKind::Pinch),
         fingers: Some(fingers),
         direction: Some(direction),
-        action: Some(GestureAction::Action("workspace.next".to_owned())),
+        command: Some(vec!["kgx".to_owned()]),
         ..GestureSpec::default()
     }
 }

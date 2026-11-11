@@ -266,25 +266,54 @@ fn inherit_is_kept_apart_from_a_value() {
     assert_eq!(mouse.speed, Some(Inherit::Inherit));
 }
 
+/// A swipe along x from the origin, the path every gesture test below starts from.
+fn swipe_right_path() -> Value {
+    list(vec![
+        table([("x", number(0.0)), ("y", number(0.0))]),
+        table([("x", number(1.0)), ("y", number(0.0))]),
+    ])
+}
+
 #[test]
-fn a_gesture_needs_exactly_one_of_action_and_command() {
+fn a_gesture_needs_a_command() {
     let gesture = table([
-        ("name", text("both")),
+        ("name", text("bare")),
         ("gesture", text("swipe")),
         ("fingers", int(3)),
-        (
-            "path",
-            list(vec![
-                table([("x", number(0.0)), ("y", number(0.0))]),
-                table([("x", number(1.0)), ("y", number(0.0))]),
-            ]),
-        ),
-        ("action", text("workspace.next")),
-        ("command", list(vec![text("kgx")])),
+        ("path", swipe_right_path()),
     ]);
     let problems = problems(table([("touchpad-gestures", list(vec![gesture]))]));
     assert_eq!(problems.len(), 1);
-    assert_eq!(problems[0].0, "touchpad-gestures[1]");
+    assert_eq!(problems[0].0, "touchpad-gestures[1].command");
+    assert!(matches!(problems[0].1, Fault::Missing { .. }));
+}
+
+#[test]
+fn a_gesture_that_still_names_an_action_is_refused_with_where_it_went() {
+    let alone = table([
+        ("name", text("old")),
+        ("gesture", text("swipe")),
+        ("fingers", int(3)),
+        ("path", swipe_right_path()),
+        ("action", text("workspace.next")),
+    ]);
+    let with_command = table([
+        ("name", text("old")),
+        ("gesture", text("swipe")),
+        ("fingers", int(3)),
+        ("path", swipe_right_path()),
+        ("action", text("workspace.next")),
+        ("command", list(vec![text("kgx")])),
+    ]);
+    for entry in [alone, with_command] {
+        let problems = problems(table([("touchpad-gestures", list(vec![entry]))]));
+        assert_eq!(problems.len(), 1, "the removed key is the only problem: {problems:?}");
+        assert_eq!(problems[0].0, "touchpad-gestures[1].action");
+        let Fault::Removed { detail } = &problems[0].1 else {
+            panic!("expected a removed key, got {:?}", problems[0].1);
+        };
+        assert!(detail.contains("Seat") || detail.contains("seat:bind"), "{detail}");
+    }
 }
 
 #[test]
@@ -300,7 +329,7 @@ fn a_gesture_that_still_sets_when_is_refused_as_an_unknown_key() {
                 table([("x", number(1.0)), ("y", number(0.0))]),
             ]),
         ),
-        ("action", text("workspace.next")),
+        ("command", list(vec![text("kgx")])),
         ("when", text("locked")),
     ]);
     let problems = problems(table([("touchpad-gestures", list(vec![gesture]))]));
@@ -323,7 +352,7 @@ fn two_gestures_that_claim_the_same_movement_conflict() {
                     table([("x", number(1.0)), ("y", number(0.0))]),
                 ]),
             ),
-            ("action", text("workspace.next")),
+            ("command", list(vec![text("kgx")])),
         ])
     };
     let problems = problems(table([(
@@ -348,7 +377,7 @@ fn a_swipe_path_must_start_at_the_origin() {
                 table([("x", number(1.0)), ("y", number(0.0))]),
             ]),
         ),
-        ("action", text("workspace.next")),
+        ("command", list(vec![text("kgx")])),
     ]);
     let problems = problems(table([("touchpad-gestures", list(vec![gesture]))]));
     assert_eq!(problems[0].0, "touchpad-gestures[1].path");

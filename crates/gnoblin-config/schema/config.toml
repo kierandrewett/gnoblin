@@ -269,18 +269,6 @@ variants = [
 ]
 
 [[enum]]
-name = "GestureAction"
-setting = "touchpad-gesture-action"
-doc = "A built-in touchpad gesture action."
-variants = [
-    { spelling = "workspace.next", doc = "Switch to the next workspace." },
-    { spelling = "workspace.previous", doc = "Switch to the previous workspace." },
-    { spelling = "window.close", doc = "Close the focused window." },
-    { spelling = "window.minimize", doc = "Minimize the focused window." },
-    { spelling = "window.toggle-maximize", doc = "Toggle maximize on the focused window." },
-]
-
-[[enum]]
 name = "ShortcutTrigger"
 setting = "trigger"
 doc = "The key edge that starts a shortcut's command."
@@ -1276,14 +1264,6 @@ kind = "record-list"
 record = "GesturePoint"
 accepted = "a path of 2 to 16 points"
 doc = "The swipe path; only for a swipe."
-since = "0.2.0"
-
-[[record.field]]
-key = "action"
-kind = "enum"
-enum = "GestureAction"
-accepted = "a built-in gesture action"
-doc = "The built-in action, or none when this runs a command."
 since = "0.2.0"
 
 [[record.field]]

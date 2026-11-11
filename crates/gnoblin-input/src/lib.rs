@@ -98,11 +98,11 @@ pub use gesture::{
     Recogniser,
 };
 pub use gesture_claims::{
-    ClaimError, ClaimRoute, GestureClaim, GestureClaims, GestureDelivery, Holder, MAX_CLAIM_FINGERS, MIN_CLAIM_FINGERS,
+    ClaimRoute, GestureClaim, GestureClaimError, GestureClaims, GestureDelivery, Holder, MAX_CLAIM_FINGERS,
+    MIN_CLAIM_FINGERS,
 };
 pub use gesture_router::{
-    GestureAction, GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats,
-    PinchDirection,
+    GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats, PinchDirection,
 };
 pub use gnoblin_types::{ButtonState, Edge, KeyCode, KeyState, Keysym, Modifiers, Tick};
 pub use idle::Activity;

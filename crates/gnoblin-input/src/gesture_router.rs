@@ -2,9 +2,9 @@
 //!
 //! The published rules are short and strict: at gesture start Gnoblin reserves input
 //! when a binding matches the gesture type and the finger count while the session is
-//! unlocked, and at the end it runs the action or command only if the movement also
+//! unlocked, and at the end it starts the command only if the movement also
 //! matches the configured path or pinch direction and threshold. A reserved gesture
-//! whose movement does not match has no direct action and is not passed to another
+//! whose movement does not match runs nothing and is not passed to another
 //! handler.
 //!
 //! Two bindings that could reserve the same gesture are therefore a configuration
@@ -51,15 +51,6 @@ pub enum GestureLock {
     Locked,
 }
 
-/// What a matched gesture does.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum GestureAction {
-    /// Run a built-in action by its documented name, such as `workspace.next`.
-    Action(String),
-    /// Start a program with these arguments.
-    Command(Vec<String>),
-}
-
 /// How a swipe's movement is compared with the configured path.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Matcher {
@@ -82,7 +73,7 @@ pub struct GestureBinding {
     fingers: u8,
     matcher: Matcher,
     threshold: f64,
-    action: GestureAction,
+    command: Vec<String>,
 }
 
 /// Accessors and the two match tests for one validated binding.
@@ -113,9 +104,9 @@ impl GestureBinding {
         self.threshold
     }
 
-    /// What it runs.
-    pub const fn action(&self) -> &GestureAction {
-        &self.action
+    /// The program and arguments it starts.
+    pub fn command(&self) -> &[String] {
+        &self.command
     }
 
     /// Whether this binding reserves a gesture that began as given. A binding never
@@ -201,8 +192,8 @@ pub struct GestureSpec {
     pub tolerance: Option<f64>,
     /// The minimum movement.
     pub threshold: Option<f64>,
-    /// The action or command, exactly one of which is required.
-    pub action: Option<GestureAction>,
+    /// The command to start when the movement matches.
+    pub command: Option<Vec<String>>,
 }
 
 /// Turns the loose configuration fields into one checked binding.
@@ -220,10 +211,10 @@ impl GestureSpec {
         if !(crate::gesture::MIN_FINGERS..=crate::gesture::MAX_FINGERS).contains(&fingers) {
             return Err(GestureError::FingersOutOfRange { fingers });
         }
-        let Some(action) = self.action else {
-            return Err(GestureError::MissingAction);
+        let Some(command) = self.command else {
+            return Err(GestureError::MissingCommand);
         };
-        if matches!(&action, GestureAction::Command(arguments) if arguments.is_empty()) {
+        if command.is_empty() {
             return Err(GestureError::EmptyCommand);
         }
         let matcher = match kind {
@@ -278,7 +269,7 @@ impl GestureSpec {
             fingers,
             matcher,
             threshold,
-            action,
+            command,
         })
     }
 }
@@ -361,8 +352,8 @@ pub enum GestureError {
         /// The refused threshold.
         threshold: f64,
     },
-    /// Neither an action nor a command was given.
-    MissingAction,
+    /// No command was given.
+    MissingCommand,
     /// The command is empty.
     EmptyCommand,
     /// Two bindings would reserve the same gesture.
@@ -413,7 +404,7 @@ impl fmt::Display for GestureError {
                     "threshold = {threshold} is outside its range: 16 to 240 for a swipe, 0.05 to 0.5 for a pinch"
                 )
             }
-            Self::MissingAction => formatter.write_str("a touchpad gesture needs exactly one of action or command"),
+            Self::MissingCommand => formatter.write_str("a touchpad gesture needs a command"),
             Self::EmptyCommand => formatter.write_str("command needs at least one argument"),
             Self::Conflict { first, second } => write!(
                 formatter,
@@ -435,7 +426,7 @@ pub enum GestureRoute {
         /// The binding, by position in the router.
         binding: usize,
     },
-    /// The movement matched: run this binding's action or command.
+    /// The movement matched: run this binding's command.
     Fired {
         /// The binding, by position in the router.
         binding: usize,
@@ -503,7 +494,7 @@ impl GestureRouter {
         &self.bindings
     }
 
-    /// The binding at a position, for running a fired action.
+    /// The binding at a position, for running a fired command.
     pub fn binding(&self, index: usize) -> Option<&GestureBinding> {
         self.bindings.get(index)
     }
@@ -582,20 +573,18 @@ impl GestureRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        GestureAction, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, Matcher, PinchDirection,
-    };
+    use super::{GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, Matcher, PinchDirection};
     use crate::gesture::{GestureEvent, GestureKind, GesturePath};
     use crate::name::Name;
     use gnoblin_types::Tick;
 
-    fn swipe(name: &str, fingers: u8, path: Vec<(f64, f64)>, action: GestureAction) -> GestureSpec {
+    fn swipe(name: &str, fingers: u8, path: Vec<(f64, f64)>, command: Vec<String>) -> GestureSpec {
         GestureSpec {
             name: name.to_owned(),
             gesture: Some(GestureKind::Swipe),
             fingers: Some(fingers),
             path: Some(path),
-            action: Some(action),
+            command: Some(command),
             ..GestureSpec::default()
         }
     }
@@ -606,13 +595,13 @@ mod tests {
             gesture: Some(GestureKind::Pinch),
             fingers: Some(fingers),
             direction: Some(direction),
-            action: Some(GestureAction::Action("workspace.next".to_owned())),
+            command: Some(command()),
             ..GestureSpec::default()
         }
     }
 
-    fn command() -> GestureAction {
-        GestureAction::Command(vec!["kgx".to_owned()])
+    fn command() -> Vec<String> {
+        vec!["kgx".to_owned()]
     }
 
     fn begin(kind: GestureKind, fingers: u8) -> GestureEvent {
@@ -809,12 +798,12 @@ mod tests {
             GestureError::ThresholdOutOfRange { .. }
         ));
 
-        spec = swipe("action", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
-        spec.action = None;
-        assert_eq!(spec.validate().expect_err("action"), GestureError::MissingAction);
-
         spec = swipe("command", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
-        spec.action = Some(GestureAction::Command(Vec::new()));
+        spec.command = None;
+        assert_eq!(spec.validate().expect_err("command"), GestureError::MissingCommand);
+
+        spec = swipe("empty", 3, vec![(0.0, 0.0), (1.0, 0.0)], command());
+        spec.command = Some(Vec::new());
         assert_eq!(spec.validate().expect_err("empty"), GestureError::EmptyCommand);
 
         let mut pinch_with_path = pinch("path", 3, PinchDirection::In);

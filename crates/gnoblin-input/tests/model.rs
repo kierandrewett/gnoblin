@@ -23,8 +23,8 @@ use std::collections::BTreeMap;
 
 use common::{CODE_Q, CODE_W, Q, W, button_event, chord, name, pointer_chord};
 use gnoblin_input::{
-    Activity, ButtonState, Contact, ContactPhase, Event, GestureAction, GestureConfig, GestureEvent, GestureKind,
-    GestureLock, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
+    Activity, ButtonState, Contact, ContactPhase, Event, GestureConfig, GestureEvent, GestureKind, GestureLock,
+    GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
     PinchDirection, Recogniser, Routed, Router, Scope, ShortcutInhibit, Target, Tick, Trigger,
 };
 
@@ -103,7 +103,7 @@ impl Model {
                 gesture: Some(GestureKind::Swipe),
                 fingers: Some(2),
                 path: Some(vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]),
-                action: Some(GestureAction::Command(vec!["kgx".to_owned()])),
+                command: Some(vec!["kgx".to_owned()]),
                 ..GestureSpec::default()
             }
             .validate()
@@ -113,7 +113,7 @@ impl Model {
                 gesture: Some(GestureKind::Pinch),
                 fingers: Some(2),
                 direction: Some(PinchDirection::Out),
-                action: Some(GestureAction::Action("workspace.next".to_owned())),
+                command: Some(vec!["kgx".to_owned()]),
                 ..GestureSpec::default()
             }
             .validate()

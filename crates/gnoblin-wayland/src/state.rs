@@ -3446,11 +3446,11 @@ impl Host for State {
                     gnoblin_input::GestureLock::Locked
                 };
                 match self.touchpad_gestures.route(self.clock, lock, sample) {
-                    crate::touchpad::Routed::Fire(fire) => crate::touchpad::run(&fire),
-                    crate::touchpad::Routed::Claimed(delivery) => {
+                    crate::touchpad::TouchpadRoute::Fire(fire) => crate::touchpad::run(&fire),
+                    crate::touchpad::TouchpadRoute::Claimed(delivery) => {
                         self.tree.gesture(NodeId::new(delivery.holder), delivery);
                     }
-                    crate::touchpad::Routed::Dropped => {}
+                    crate::touchpad::TouchpadRoute::Dropped => {}
                 }
             }
             InputEvent::Touch {

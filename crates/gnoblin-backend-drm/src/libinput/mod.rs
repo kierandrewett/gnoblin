@@ -254,7 +254,13 @@ impl Libinput {
     ///
     /// A device the seat has not announced has no number to name, so its sample is dropped
     /// rather than attributed to another device.
-    fn gesture(&mut self, device: &libinput::Device, kind: RawTouchpadKind, phase: RawTouchpadPhase, step: Step) {
+    fn gesture(
+        &mut self,
+        device: &libinput::Device,
+        kind: RawTouchpadKind,
+        phase: RawTouchpadPhase,
+        step: GestureStep,
+    ) {
         let sysname = device.sysname().to_string();
         let Some(known) = self.devices.iter().find(|known| known.sysname == sysname) else {
             log::warn!(area = "input", sysname = %sysname, "a gesture from a device that was never announced");
@@ -378,7 +384,7 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Swipe,
                     RawTouchpadPhase::Begin,
-                    Step::begin(fingers),
+                    GestureStep::begin(fingers),
                 );
             }
             BackendEvent::GestureSwipeUpdate { event } => {
@@ -387,15 +393,15 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Swipe,
                     RawTouchpadPhase::Update,
-                    Step {
+                    GestureStep {
                         delta: (delta.x, delta.y),
-                        ..Step::REST
+                        ..GestureStep::REST
                     },
                 );
             }
             BackendEvent::GestureSwipeEnd { event } => {
                 let phase = end_phase(event.cancelled());
-                self.gesture(&event.device(), RawTouchpadKind::Swipe, phase, Step::REST);
+                self.gesture(&event.device(), RawTouchpadKind::Swipe, phase, GestureStep::REST);
             }
             BackendEvent::GesturePinchBegin { event } => {
                 let fingers = fingers_of(event.fingers());
@@ -403,7 +409,7 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Pinch,
                     RawTouchpadPhase::Begin,
-                    Step::begin(fingers),
+                    GestureStep::begin(fingers),
                 );
             }
             BackendEvent::GesturePinchUpdate { event } => {
@@ -411,17 +417,17 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Pinch,
                     RawTouchpadPhase::Update,
-                    Step {
+                    GestureStep {
                         delta: (event.delta_x(), event.delta_y()),
                         scale: event.scale(),
                         angle: event.angle_delta().to_radians(),
-                        ..Step::REST
+                        ..GestureStep::REST
                     },
                 );
             }
             BackendEvent::GesturePinchEnd { event } => {
                 let phase = end_phase(event.cancelled());
-                self.gesture(&event.device(), RawTouchpadKind::Pinch, phase, Step::REST);
+                self.gesture(&event.device(), RawTouchpadKind::Pinch, phase, GestureStep::REST);
             }
             BackendEvent::GestureHoldBegin { event } => {
                 let fingers = fingers_of(event.fingers());
@@ -429,12 +435,12 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Hold,
                     RawTouchpadPhase::Begin,
-                    Step::begin(fingers),
+                    GestureStep::begin(fingers),
                 );
             }
             BackendEvent::GestureHoldEnd { event } => {
                 let phase = end_phase(event.cancelled());
-                self.gesture(&event.device(), RawTouchpadKind::Hold, phase, Step::REST);
+                self.gesture(&event.device(), RawTouchpadKind::Hold, phase, GestureStep::REST);
             }
             // A touch frame is the boundary between two atomic updates, which the seat applies
             // in order anyway; a tablet tool is read by `gnoblin-input` from the raw channel,
@@ -509,14 +515,14 @@ fn fingers_of(fingers: u32) -> u8 {
 
 /// What one gesture sample carries besides its phase and kind.
 #[derive(Clone, Copy)]
-struct Step {
+struct GestureStep {
     fingers: u8,
     delta: (f64, f64),
     scale: f64,
     angle: f64,
 }
 
-impl Step {
+impl GestureStep {
     /// A sample that moved nothing: no fingers named, no movement, a scale of one.
     const REST: Self = Self {
         fingers: 0,

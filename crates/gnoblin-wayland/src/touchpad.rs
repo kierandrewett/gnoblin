@@ -3,17 +3,16 @@
 //!
 //! A sample is turned into the router's gesture events by [`gnoblin_input::touchpad`]. A gesture
 //! a shell claimed goes to that shell from its begin to its end, and to nothing else; every other
-//! gesture goes to the bindings, and a fired binding runs its command or names its built-in
-//! action. Nothing here reads a device: the caller passes the tick, the lock state and the
+//! gesture goes to the bindings, and a fired binding starts its command. Nothing here reads a
+//! device: the caller passes the tick, the lock state and the
 //! sample. Whether a configured binding can ever receive a sample on real hardware is not proven
 //! by these tests; they cover the chain without a device.
 
 use crate::log;
 use crate::state::State;
 use gnoblin_backend::{RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample};
-use gnoblin_config::{Gesture, GestureAction as ConfigAction, GestureDirection, GestureKind as ConfigKind};
+use gnoblin_config::{Gesture, GestureDirection, GestureKind as ConfigKind};
 use gnoblin_input::ClaimRoute;
-use gnoblin_input::GestureAction;
 use gnoblin_input::GestureClaims;
 use gnoblin_input::GestureDelivery;
 use gnoblin_input::GestureError;
@@ -35,13 +34,13 @@ use gnoblin_types::Tick;
 pub(crate) struct Fire {
     /// The binding's declared name, for logs.
     pub(crate) name: String,
-    /// The command or built-in action the binding declared.
-    pub(crate) action: GestureAction,
+    /// The program and arguments the binding declared.
+    pub(crate) command: Vec<String>,
 }
 
 /// What the touchpad router did with one sample.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Routed {
+pub(crate) enum TouchpadRoute {
     /// A binding whose movement matched: run it.
     Fire(Fire),
     /// A claimed gesture advanced: tell its holder.
@@ -89,7 +88,7 @@ impl TouchpadGestures {
     /// Routes one libinput sample. A claimed gesture is delivered to its holder and never reaches
     /// a binding; any other returns the binding it fired, if any, and every other outcome is
     /// logged here and dropped.
-    pub(crate) fn route(&mut self, tick: Tick, lock: GestureLock, sample: RawTouchpadSample) -> Routed {
+    pub(crate) fn route(&mut self, tick: Tick, lock: GestureLock, sample: RawTouchpadSample) -> TouchpadRoute {
         let Some(event) = self.stream.feed(tick, input_sample(sample)) else {
             log::debug!(
                 area = "touchpad",
@@ -97,16 +96,16 @@ impl TouchpadGestures {
                 phase = ?sample.phase,
                 "a touchpad sample was dropped: it has no binding kind, or no gesture was begun"
             );
-            return Routed::Dropped;
+            return TouchpadRoute::Dropped;
         };
         match self.claims.observe(&event, lock) {
-            ClaimRoute::Deliver(delivery) => return Routed::Claimed(delivery),
+            ClaimRoute::Deliver(delivery) => return TouchpadRoute::Claimed(delivery),
             ClaimRoute::Withheld => {
                 log::debug!(
                     area = "touchpad",
                     "a claimed gesture's holder is gone or the session is locked; the sample was withheld"
                 );
-                return Routed::Dropped;
+                return TouchpadRoute::Dropped;
             }
             ClaimRoute::Unclaimed => {}
         }
@@ -114,35 +113,40 @@ impl TouchpadGestures {
     }
 
     /// Routes a gesture nobody claimed through the configured bindings.
-    fn route_to_bindings(&mut self, event: &GestureEvent, lock: GestureLock, sample: RawTouchpadSample) -> Routed {
+    fn route_to_bindings(
+        &mut self,
+        event: &GestureEvent,
+        lock: GestureLock,
+        sample: RawTouchpadSample,
+    ) -> TouchpadRoute {
         let Some(router) = self.router.as_mut() else {
             log::debug!(
                 area = "touchpad",
                 "a touchpad gesture was dropped: no bindings are configured"
             );
-            return Routed::Dropped;
+            return TouchpadRoute::Dropped;
         };
         match router.observe(event, lock) {
             GestureRoute::Fired { binding } => {
                 let Some(bound) = router.binding(binding) else {
-                    return Routed::Dropped;
+                    return TouchpadRoute::Dropped;
                 };
-                Routed::Fire(Fire {
+                TouchpadRoute::Fire(Fire {
                     name: bound.name().as_str().to_owned(),
-                    action: bound.action().clone(),
+                    command: bound.command().to_vec(),
                 })
             }
-            GestureRoute::Reserved { .. } => Routed::Dropped,
+            GestureRoute::Reserved { .. } => TouchpadRoute::Dropped,
             GestureRoute::MatchedNothing { .. } => {
                 log::debug!(
                     area = "touchpad",
                     "a reserved gesture matched no binding's movement; nothing ran"
                 );
-                Routed::Dropped
+                TouchpadRoute::Dropped
             }
             GestureRoute::Cancelled { .. } => {
                 log::debug!(area = "touchpad", "a gesture was cancelled; nothing ran");
-                Routed::Dropped
+                TouchpadRoute::Dropped
             }
             GestureRoute::Unclaimed => {
                 log::debug!(
@@ -151,24 +155,15 @@ impl TouchpadGestures {
                     fingers = sample.fingers,
                     "no touchpad binding claims this gesture; it was dropped"
                 );
-                Routed::Dropped
+                TouchpadRoute::Dropped
             }
         }
     }
 }
 
-/// Runs a fired binding: a command starts without a shell, a built-in action has no
-/// executor yet and so is named in the log and does nothing.
+/// Runs a fired binding: its command starts without a shell.
 pub(crate) fn run(fire: &Fire) {
-    match &fire.action {
-        GestureAction::Command(argv) => crate::keyboard::spawn_shortcut_command(&fire.name, argv),
-        GestureAction::Action(action) => log::warn!(
-            area = "touchpad",
-            gesture = fire.name.as_str(),
-            action = action.as_str(),
-            "the built-in gesture action has no executor yet; nothing ran"
-        ),
-    }
+    crate::keyboard::spawn_shortcut_command(&fire.name, &fire.command);
 }
 
 impl State {
@@ -197,11 +192,6 @@ impl State {
 
 /// The configuration's entry as the router's loose spec, before validation.
 fn spec_of(gesture: &Gesture) -> GestureSpec {
-    let action = match (&gesture.action, &gesture.command) {
-        (Some(action), _) => Some(GestureAction::Action(action_name(*action).to_owned())),
-        (None, Some(command)) => Some(GestureAction::Command(command.clone())),
-        (None, None) => None,
-    };
     GestureSpec {
         name: gesture.name.clone().unwrap_or_default(),
         gesture: gesture.gesture.map(|kind| match kind {
@@ -221,18 +211,7 @@ fn spec_of(gesture: &Gesture) -> GestureSpec {
         }),
         tolerance: gesture.tolerance,
         threshold: gesture.threshold,
-        action,
-    }
-}
-
-/// The name a built-in action is documented under.
-fn action_name(action: ConfigAction) -> &'static str {
-    match action {
-        ConfigAction::WorkspaceNext => "workspace.next",
-        ConfigAction::WorkspacePrevious => "workspace.previous",
-        ConfigAction::WindowClose => "window.close",
-        ConfigAction::WindowMinimize => "window.minimize",
-        ConfigAction::WindowToggleMaximize => "window.toggle-maximize",
+        command: gesture.command.clone(),
     }
 }
 
@@ -263,15 +242,14 @@ mod tests {
     use super::*;
     use gnoblin_config::GesturePoint;
 
-    fn gesture(name: &str, kind: ConfigKind, fingers: i64, action: ConfigAction) -> Gesture {
+    fn gesture(name: &str, kind: ConfigKind, fingers: i64) -> Gesture {
         Gesture {
             name: Some(name.to_owned()),
             gesture: Some(kind),
             fingers: Some(fingers),
             direction: None,
             path: None,
-            action: Some(action),
-            command: None,
+            command: Some(vec!["kgx".to_owned()]),
             threshold: None,
             tolerance: None,
         }
@@ -290,7 +268,7 @@ mod tests {
                 },
             ]),
             tolerance: Some(0.5),
-            ..gesture(name, ConfigKind::Swipe, fingers, ConfigAction::WorkspaceNext)
+            ..gesture(name, ConfigKind::Swipe, fingers)
         }
     }
 
@@ -308,15 +286,15 @@ mod tests {
     }
 
     /// The binding a routed sample fired, if it fired one.
-    fn fired_of(routed: Routed) -> Option<Fire> {
+    fn fired_of(routed: TouchpadRoute) -> Option<Fire> {
         match routed {
-            Routed::Fire(fire) => Some(fire),
-            Routed::Claimed(_) | Routed::Dropped => None,
+            TouchpadRoute::Fire(fire) => Some(fire),
+            TouchpadRoute::Claimed(_) | TouchpadRoute::Dropped => None,
         }
     }
 
     /// Feeds a swipe of `fingers` fingers moving right, then its end, and returns every routing.
-    fn swipe_routes(routes: &mut TouchpadGestures, fingers: u8, lock: GestureLock, cancel: bool) -> Vec<Routed> {
+    fn swipe_routes(routes: &mut TouchpadGestures, fingers: u8, lock: GestureLock, cancel: bool) -> Vec<TouchpadRoute> {
         let mut out = vec![routes.route(
             Tick::new(1),
             lock,
@@ -358,7 +336,7 @@ mod tests {
         let mut routes = routes(&[swipe_path("three", 3)]);
         let fire = swipe(&mut routes, 3, GestureLock::Unlocked, false).expect("the swipe fires");
         assert_eq!(fire.name, "three");
-        assert_eq!(fire.action, GestureAction::Action("workspace.next".to_owned()));
+        assert_eq!(fire.command, ["kgx"]);
     }
 
     #[test]
@@ -392,7 +370,7 @@ mod tests {
             gesture: Some(ConfigKind::Pinch),
             direction: Some(GestureDirection::Out),
             path: None,
-            ..gesture("spread", ConfigKind::Pinch, 4, ConfigAction::WindowClose)
+            ..gesture("spread", ConfigKind::Pinch, 4)
         };
         let mut bound = routes(&[pinch]);
         let pinched = |routes: &mut TouchpadGestures| {
@@ -413,7 +391,10 @@ mod tests {
     fn a_hold_is_dropped_without_reaching_a_binding() {
         let mut routes = routes(&[swipe_path("three", 3)]);
         let hold = sample(3, RawTouchpadPhase::Begin, RawTouchpadKind::Hold, 0.0, 1.0);
-        assert_eq!(routes.route(Tick::new(1), GestureLock::Unlocked, hold), Routed::Dropped);
+        assert_eq!(
+            routes.route(Tick::new(1), GestureLock::Unlocked, hold),
+            TouchpadRoute::Dropped
+        );
     }
 
     #[test]
@@ -423,11 +404,11 @@ mod tests {
     }
 
     /// The deliveries in a run of routings, as `(phase, dx)`.
-    fn deliveries(routed: &[Routed]) -> Vec<(gnoblin_input::GesturePhase, f64)> {
+    fn deliveries(routed: &[TouchpadRoute]) -> Vec<(gnoblin_input::GesturePhase, f64)> {
         routed
             .iter()
             .filter_map(|routed| match routed {
-                Routed::Claimed(delivery) => Some((delivery.phase, delivery.dx)),
+                TouchpadRoute::Claimed(delivery) => Some((delivery.phase, delivery.dx)),
                 _ => None,
             })
             .collect()
@@ -485,7 +466,10 @@ mod tests {
         let mut routes = routes(&[swipe_path("three", 3)]);
         claim_swipe(&mut routes, 1, 3);
         let routed = swipe_routes(&mut routes, 3, GestureLock::Locked, false);
-        assert!(routed.iter().all(|routed| *routed == Routed::Dropped), "{routed:?}");
+        assert!(
+            routed.iter().all(|routed| *routed == TouchpadRoute::Dropped),
+            "{routed:?}"
+        );
     }
 
     #[test]
@@ -503,13 +487,13 @@ mod tests {
             GestureLock::Locked,
             sample(3, RawTouchpadPhase::Update, RawTouchpadKind::Swipe, 50.0, 1.0),
         );
-        assert!(matches!(locked, Routed::Claimed(delivery) if delivery.phase == Cancel));
+        assert!(matches!(locked, TouchpadRoute::Claimed(delivery) if delivery.phase == Cancel));
         let end = routes.route(
             Tick::new(3),
             GestureLock::Locked,
             sample(3, RawTouchpadPhase::End, RawTouchpadKind::Swipe, 0.0, 1.0),
         );
-        assert_eq!(end, Routed::Dropped);
+        assert_eq!(end, TouchpadRoute::Dropped);
     }
 
     #[test]
@@ -528,7 +512,7 @@ mod tests {
                 GestureLock::Unlocked,
                 sample(3, phase, RawTouchpadKind::Swipe, 120.0, 1.0),
             );
-            assert_eq!(routed, Routed::Dropped);
+            assert_eq!(routed, TouchpadRoute::Dropped);
         }
         // The next gesture is nobody's claim again and reaches the binding.
         let fire = swipe(&mut routes, 3, GestureLock::Unlocked, false).expect("the binding fires again");
@@ -539,7 +523,7 @@ mod tests {
     fn a_refused_binding_names_itself_and_is_not_routed() {
         let bad = Gesture {
             fingers: Some(9),
-            ..gesture("nine", ConfigKind::Swipe, 3, ConfigAction::WorkspaceNext)
+            ..gesture("nine", ConfigKind::Swipe, 3)
         };
         let error = TouchpadGestures::from_config(&[bad]).expect_err("nine fingers are refused");
         assert!(error.starts_with("nine:"), "{error}");

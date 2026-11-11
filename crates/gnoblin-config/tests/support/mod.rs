@@ -92,7 +92,7 @@ pub fn kitchen_sink() -> Value {
                         table([("x", number(1.0)), ("y", number(0.0))]),
                     ]),
                 ),
-                ("action", text("workspace.next")),
+                ("command", list(vec![text("kgx")])),
             ])]),
         ),
         (

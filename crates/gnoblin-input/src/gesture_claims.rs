@@ -81,7 +81,7 @@ pub enum ClaimRoute {
 
 /// Why a claim was refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ClaimError {
+pub enum GestureClaimError {
     /// The finger count is outside [`MIN_CLAIM_FINGERS`] to [`MAX_CLAIM_FINGERS`].
     Fingers {
         /// The refused count.
@@ -96,7 +96,7 @@ pub enum ClaimError {
     },
 }
 
-impl fmt::Display for ClaimError {
+impl fmt::Display for GestureClaimError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Fingers { fingers } => write!(
@@ -110,7 +110,7 @@ impl fmt::Display for ClaimError {
     }
 }
 
-impl std::error::Error for ClaimError {}
+impl std::error::Error for GestureClaimError {}
 
 /// The gesture in flight, and whom its events still go to.
 #[derive(Clone, Copy, Debug)]
@@ -172,19 +172,19 @@ impl GestureClaims {
     ///
     /// # Errors
     ///
-    /// [`ClaimError::Fingers`] for a count outside the accepted range, and [`ClaimError::Taken`]
+    /// [`GestureClaimError::Fingers`] for a count outside the accepted range, and [`GestureClaimError::Taken`]
     /// when another claim takes the same kind and count.
-    pub fn claim(&mut self, holder: Holder, id: i64, kind: GestureKind, fingers: i64) -> Result<(), ClaimError> {
+    pub fn claim(&mut self, holder: Holder, id: i64, kind: GestureKind, fingers: i64) -> Result<(), GestureClaimError> {
         let fingers = u8::try_from(fingers)
             .ok()
             .filter(|count| (MIN_CLAIM_FINGERS..=MAX_CLAIM_FINGERS).contains(count))
-            .ok_or(ClaimError::Fingers { fingers })?;
+            .ok_or(GestureClaimError::Fingers { fingers })?;
         if let Some(taken) = self
             .claims
             .iter()
             .find(|claim| claim.kind == kind && claim.fingers == fingers && (claim.holder, claim.id) != (holder, id))
         {
-            return Err(ClaimError::Taken {
+            return Err(GestureClaimError::Taken {
                 holder: taken.holder,
                 id: taken.id,
             });
@@ -561,11 +561,11 @@ mod tests {
         let mut claims = claims_swipe3();
         assert_eq!(
             claims.claim(8, 1, GestureKind::Swipe, 3),
-            Err(ClaimError::Taken { holder: SHELL, id: 1 })
+            Err(GestureClaimError::Taken { holder: SHELL, id: 1 })
         );
         assert_eq!(
             claims.claim(SHELL, 2, GestureKind::Swipe, 3),
-            Err(ClaimError::Taken { holder: SHELL, id: 1 })
+            Err(GestureClaimError::Taken { holder: SHELL, id: 1 })
         );
         claims
             .claim(8, 1, GestureKind::Swipe, 4)
@@ -599,7 +599,7 @@ mod tests {
         for fingers in [-1, 0, 1, 6, 300] {
             assert_eq!(
                 claims.claim(SHELL, 1, GestureKind::Swipe, fingers),
-                Err(ClaimError::Fingers { fingers })
+                Err(GestureClaimError::Fingers { fingers })
             );
         }
         assert!(claims.claims().is_empty());
