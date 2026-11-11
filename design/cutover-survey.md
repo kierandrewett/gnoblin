@@ -83,25 +83,9 @@ protocol, which the stock shell replaces with Lua arrange functions, so they map
 **(d) Lane.** L2, the largest lane. Port tests first, then delete. Depends on L1 and on the fallback move (section 6).
 Conflicts with L3 and L4 (both edit `wm.rs`-linked files), so it cannot run in parallel with them.
 
-## 5. Failure-mode mapping (gnoblin-wm `tests/failure_modes.rs`, 80 tests)
+## 5. Failure-mode mapping
 
-Only the names are checked here. Each row needs a stock test name or a drop decision; that is the next step.
-
-| Old test group (from names)                                                    | Count (approx.) | Stock equivalent                           | Status  |
-| ------------------------------------------------------------------------------ | --------------- | ------------------------------------------ | ------- |
-| Focus: never lands on closed window; minimise moves focus; focus without raise | ~3              | `strip_test.lua` closing-column focus only | partial |
-| Output unplug keeps windows valid; last output hides all                       | ~2              | none found                                 | gap     |
-| Rules: reapply, new title/app_id match, merge order, last match wins           | ~5              | `rules_test.lua`                           | partial |
-| Rule naming a missing workspace reports rejection; refused list keeps rules    | ~2              | none found                                 | gap     |
-| Reserved space reapplies to maximised and snapped windows                      | ~2              | `snap_test.lua` (snap only)                | gap     |
-| Fullscreen layer kept on top; workspace switch keeps fullscreen                | ~2              | none found                                 | gap     |
-
-Counts are from names only; the full 80-name list was written to a scratch file and not yet mapped one by one.
-Stock shell Lua tests: 23 `case()` titles in `tiling_test.lua`; the other eight `*_test.lua` files use a different
-naming form, not yet listed.
-
-Gaps listed above are real only as far as the names go: no stock test with a matching name was found. Whether the
-behaviour is missing from the stock shell has not been checked against the Lua code.
+Moved to section 12, which holds the group-level mapping and the keep, port or drop decision for each group. The earlier name-only gap list is superseded.
 
 ## 6. No-shell fallback (risk to step 5 and step 7)
 
@@ -193,13 +177,52 @@ XR uses the stock shell's layout or focus at runtime.
 - No-shell fallback: lost if L2 runs before L0 (section 6).
 - `FrameRenderer` vs step 8 (section 7c): cannot be resolved by the survey.
 - `wm.rs` is the shared file of L1, L2 and L3; the three cannot run in parallel.
-- Failure-mode gaps (section 5): not checked against the Lua code, so some gaps may be false.
+- Failure-mode gaps: section 12 replaces the name-only gap list. The Lua side is not checked test by test, so some Drop or Port verdicts may change.
 
 ## 11. Not verified (blockers for a complete survey)
 
-- The full 80-name mapping to stock tests, one by one.
-- The stock shell's Lua test names for eight of nine `*_test.lua` files.
+- Test-by-test Lua mapping for the 76 placed names, the 4 unplaced names, and the failure-mode names beyond the first 100 in the list read.
+- Lua case titles for the `*_test.lua` files other than `tiling_test.lua` are counted in section 12, not listed.
 - Config keys in `config.toml` and `schema/config.toml` beyond the six focus keys already in 7.4.
 - `gnoblinctl` capabilities verb (`cli.rs:386,456`) and the schema for `effect.toml`/`layers.toml`.
 - Goldens (`catalog.txt`), `xtask/src/deps.rs` allow lists (lines 41, 49, 120-129), `layout-allow.toml:74`, root `Cargo.toml` lines 56, 85, 87, 267 beyond the crate names above.
 - Packaging lists (`*.spec`, Meson, CMake) for `window-frame` and `frame-renderer`.
+
+## 12. Failure-mode mapping
+
+Group-level mapping of the tests in `crates/gnoblin-wm/tests/failure_modes.rs` to the stock shell. Names come from the file; the Lua side is not mapped test by test. `Keep` means the behaviour survives in the object model. `Port` means the assertion moves to a stock Lua test. `Drop` means the behaviour goes. Design citations are to `design/node-core.md` and `design/node-api-refactor.md`.
+
+| Group                            | Tests (count)                                                                                                                                                                                                                | Stock equivalent                             | Decision                     | Evidence                                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------- |
+| Focus and activation             | never lands on closed window; minimise moves focus; focus without raise; denied activation; hidden activation refused; no-op events (6)                                                                                      | `focus_test.lua` (12 cases, not mapped)      | Port                         | request signals incl. activate, `node-api-refactor.md:666`                               |
+| Output unplug and placement      | unplug keeps valid output; last output hides all; no workspace or output; new windows follow focused output; output move reclamps floating (5)                                                                               | none found                                   | Keep                         | unplug keeps rect, `node-core.md:633`; the window stays as a node                        |
+| Identity                         | duplicate and unknown identities rejected (1)                                                                                                                                                                                | none                                         | Keep                         | owner not verified                                                                       |
+| Rules                            | no reapply; title match; app_id match; merge in list order; last match wins; missing workspace rejection; refused list keeps rules (7)                                                                                       | `rules_test.lua` (9 cases, not mapped)       | Port; `layer` match deleted  | `node-api-refactor.md:183`                                                               |
+| Secure                           | secure match; non-match not secure; reload clears; title toggles; closed secure leaves no record (5)                                                                                                                         | none                                         | Keep                         | `secure` stays (`node-core.md:124`); mask treatment deleted (`node-api-refactor.md:208`) |
+| Appearance                       | opacity refused; corner radius refused; appearance rule announces (3)                                                                                                                                                        | none                                         | Port; opacity has one writer | four writers fold, `node-api-refactor.md:189`                                            |
+| Fullscreen and workspace switch  | raising keeps fullscreen on top; switching keeps fullscreen intact (2)                                                                                                                                                       | none                                         | Rewrite as tree order        | `StackLayer` deleted, `node-api-refactor.md:176`, `:2165`                                |
+| Workspace removal                | removing workspace moves windows and keeps focus; active neighbour refocused (2)                                                                                                                                             | none                                         | Keep                         | windows go to root, not destroyed, `node-core.md:627`                                    |
+| Reserved space                   | reapply to maximised; reapply to snapped (2)                                                                                                                                                                                 | `snap_test.lua` (snap only)                  | Drop from WM                 | `Desk:arrange` docks `Bar`, `node-api-refactor.md:1553`                                  |
+| Snap, drag, maximise, fullscreen | snap and unsnap; snap maximised floats; snap refused without edge tiling; drag constrained; drag may leave strip; drag maximised floats; fullscreen restore; maximise refused (8)                                            | `snap_test.lua` (6 cases), `tiling_test.lua` | Port                         | drag 7 and snap 6 Lua cases, not mapped                                                  |
+| Dialog and transient             | dialog above parent; rules do not move dialog; transient cannot leave parent; moving parent takes transient; transient follows to output (5)                                                                                 | `floating_test.lua` (14 cases)               | Port                         | not mapped                                                                               |
+| Workspace direction              | switch reports direction (1)                                                                                                                                                                                                 | `workspaces` script                          | Port                         | not mapped                                                                               |
+| Moves                            | move to workspace; unknown rejected; current is no-op; focused moved away hands focus; unknown output rejected; move reshapes to output; maximised fills new area; fullscreen not moved; transient follows (7)               | `strip_test.lua` (8 cases)                   | Port                         | not mapped                                                                               |
+| Sets                             | unknown set refused; empty set refused; undeclared workspace refused; removed workspace refused; duplicate names refused; empty name refused; two entries for one output refused; unknown output falls back with warning (8) | none                                         | Keep as Lua table validation | sets are a Lua table, `node-api-refactor.md:185`, `:1596`                                |
+| No-shell cascade                 | cascade from 32,32; three distinct cascades (2)                                                                                                                                                                              | none                                         | Drop                         | F1, `node-core.md:589`; `fallback.rs:15-34`                                              |
+| Pointer and hover                | click mode ignores motion; hover keeps focus; hover strict clears; motion cancels rest focus; rest focus after settle; closed window cancels rest focus; held button ignores focus change; rest focus not while held (8)     | `focus_test.lua`                             | Port                         | not mapped                                                                               |
+| Raise and auto-raise             | click on buried window raises; raise off keeps stacking; leaving cancels auto-raise; closing armed window cancels (4)                                                                                                        | `focus_test.lua`                             | Port                         | not mapped                                                                               |
+
+Placed: 76 names. Not placed: the failure-mode names beyond the first 100 in the list read, including the surface-cap test at `failure_modes.rs:1918`. Its per-provider cap of 32 has no node-tree equivalent; the node cap is 65536 (`node-core.md:304`), so that test is replaced by a node-cap test, not ported. The `model.rs` (2), `wm_layout` (5) and inline (93, grouped) tests are counted only.
+
+## 13. Port lanes
+
+Groups from section 12 mapped to the lanes in section 9:
+
+| Lane | Groups                                                                                                                          | Notes                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| L0   | No-shell cascade (2)                                                                                                            | Conflict: L0 moves the cascade out of `layout/`, but section 12 drops it (F1). Decide before L0 runs. |
+| L1   | Focus and activation (6), pointer and hover (8), raise and auto-raise (4)                                                       | Stock focus parity first; port `focus_test.lua` cases before deleting `pointer_focus.rs`.             |
+| L2   | Output, identity, rules, secure, appearance, fullscreen, removal, reserved space, snap and drag, dialog, direction, moves, sets | Largest lane. Port each group to stock Lua tests, then delete `gnoblin-wm`.                           |
+| L3   | None directly                                                                                                                   | Layers and modal are not in the failure-mode groups.                                                  |
+| L4   | None directly                                                                                                                   | Views and capture are not in the failure-mode groups.                                                 |
+| L5   | None directly                                                                                                                   | Grant and config removal are not in the failure-mode groups.                                          |
