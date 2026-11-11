@@ -886,6 +886,14 @@ impl State {
         }
         // The main seat is the compositor's own seat in the scene, named as the wl_seat is.
         state.composer.add_main_seat(seat_name);
+        let options = state.wm.options();
+        let drag_constraint = match options.drag_constraint {
+            gnoblin_wm::DragConstraint::WorkArea => "work_area",
+            gnoblin_wm::DragConstraint::MinimumStrip => "minimum_strip",
+        };
+        state
+            .composer
+            .publish_main_seat_policy(options.edge_tiling, drag_constraint);
         // The session lock's node: a shell that attaches while the session is locked reads its
         // state in the snapshot.
         state.composer.add_lock_node();

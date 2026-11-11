@@ -1646,6 +1646,31 @@ impl Composer {
         self.publish_seat_screen();
     }
 
+    /// Publishes the main seat's window management policy from the configuration: whether edge
+    /// tiling is on, and the name of the drag constraint. Only a change is published.
+    pub fn publish_main_seat_policy(&mut self, edge_tiling: bool, drag_constraint: &str) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        if self.scene.value(seat, "edge_tiling") != Some(&TreeValue::Bool(edge_tiling)) {
+            let value = TreeValue::Bool(edge_tiling);
+            let _ = self.scene.set_value(seat, "edge_tiling", value.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node: seat,
+                key: "edge_tiling".to_owned(),
+                value,
+            });
+        }
+        if self.scene.text(seat, "drag_constraint") != Some(drag_constraint) {
+            let _ = self.scene.set_text(seat, "drag_constraint", drag_constraint.to_owned());
+            self.tree_changes.push(TreeChange::Set {
+                node: seat,
+                key: "drag_constraint".to_owned(),
+                value: TreeValue::Text(drag_constraint.to_owned()),
+            });
+        }
+    }
+
     /// Publishes the window that holds keyboard focus on the main seat, or none. Only a change
     /// is published. What is published is remembered, so a shell write can be told apart.
     pub fn set_main_seat_focus(&mut self, window: Option<WindowId>) {
@@ -4078,6 +4103,34 @@ mod tests {
         assert!(composer.take_tree_changes().iter().any(|change| matches!(
             change,
             TreeChange::Created { node, class, .. } if *node == seat && class == "seat"
+        )));
+    }
+
+    #[test]
+    fn the_main_seat_publishes_its_window_management_policy() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        let (edge, drag) = composer.with_scene(|scene| {
+            (
+                scene.value(seat, "edge_tiling").cloned(),
+                scene.text(seat, "drag_constraint").map(str::to_owned),
+            )
+        });
+        assert_eq!(edge, None, "the default is not stored, so the snapshot lists nothing");
+        assert_eq!(drag, None, "the default is not stored, so the snapshot lists nothing");
+
+        composer.publish_main_seat_policy(true, "minimum_strip");
+        let (edge, drag) = composer.with_scene(|scene| {
+            (
+                scene.value(seat, "edge_tiling").cloned(),
+                scene.text(seat, "drag_constraint").map(str::to_owned),
+            )
+        });
+        assert_eq!(edge, Some(TreeValue::Bool(true)));
+        assert_eq!(drag.as_deref(), Some("minimum_strip"));
+        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::Bool(true) } if *node == seat && key == "edge_tiling"
         )));
     }
 

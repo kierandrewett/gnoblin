@@ -49,6 +49,24 @@ since = "0.2.0"
 default = ""
 readonly = true
 
+# The window management options the compositor was configured with (`window_management`). Read-only:
+# the shell reads them, the configuration sets them. Appended after `device` so existing field
+# numbers stay put.
+[[object.property]]
+name = "edge_tiling"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# The drag constraint: `work_area` (the default) or `minimum_strip`.
+[[object.property]]
+name = "drag_constraint"
+type = "string"
+since = "0.2.0"
+default = "work_area"
+readonly = true
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

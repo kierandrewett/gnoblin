@@ -669,6 +669,8 @@ object seat since 0.2.0 secret false
   property pointer_x type double since 0.2.0 secret false
   property pointer_y type double since 0.2.0 secret false
   property device type string since 0.2.0 secret false
+  property edge_tiling type bool since 0.2.0 secret false
+  property drag_constraint type string since 0.2.0 secret false
   method warp since 0.2.0 secret false function false
   method claim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
@@ -2431,6 +2433,10 @@ message Seat {
     double pointer_y = 21;
     // since 0.2.0
     string device = 22;
+    // since 0.2.0
+    bool edge_tiling = 23;
+    // since 0.2.0
+    string drag_constraint = 24;
   }
 
   // Method `warp`, since 0.2.0.
