@@ -26,25 +26,17 @@ use gnoblin_model::{
     Fields, Graph, ModelError, ObjectId, OperationId, OperationOutcome, OwnerId, RequestBroker, RequestError,
     RequestEvent, RequestId, Subscription, Tick, TypeKey, Value,
 };
-use gnoblin_proto::{CodecError, Envelope, Handshake, HandshakeKind, Version};
+use gnoblin_proto::{CodecError, Envelope, Handshake, HandshakeKind, StreamFrame, Version};
 
 use crate::client::Client;
 use crate::error::{ConnectError, HandshakeError};
 use crate::wire;
 
-/// One frame on the in-process link. A handshake and an envelope never share a
-/// queue position, exactly as on a socket.
-#[derive(Clone, Debug)]
-enum LinkFrame {
-    Handshake(Handshake),
-    Envelope(Envelope),
-}
-
 /// One client connection's state.
 struct Link {
     owner: OwnerId,
-    inbound: VecDeque<LinkFrame>,
-    outbound: VecDeque<LinkFrame>,
+    inbound: VecDeque<StreamFrame>,
+    outbound: VecDeque<StreamFrame>,
     subscriptions: Vec<Subscription>,
     /// Correlation ids this link has used for the offers it was sent.
     next_offer: u64,
@@ -85,13 +77,13 @@ impl Inner {
 
     /// Run everything a client just sent, then hand it its frames.
     fn serve(&mut self, owner: OwnerId) {
-        let inbound: Vec<LinkFrame> = match self.link(owner) {
+        let inbound: Vec<StreamFrame> = match self.link(owner) {
             Ok(link) => link.inbound.drain(..).collect(),
             Err(_) => return,
         };
         let mut out = Vec::new();
         for frame in inbound {
-            if let LinkFrame::Envelope(envelope) = frame {
+            if let StreamFrame::Envelope(envelope) = frame {
                 self.handle(owner, &envelope, &mut out);
             }
         }
@@ -105,7 +97,7 @@ impl Inner {
     }
 
     /// Decode and answer one request.
-    fn handle(&mut self, owner: OwnerId, envelope: &Envelope, out: &mut Vec<LinkFrame>) {
+    fn handle(&mut self, owner: OwnerId, envelope: &Envelope, out: &mut Vec<StreamFrame>) {
         if envelope.namespace != wire::NAMESPACE {
             out.push(refusal(
                 envelope,
@@ -121,7 +113,7 @@ impl Inner {
                     let subscription = self.graph.subscribe(filter);
                     // The snapshot is queued before the link starts forwarding
                     // diffs, which is the whole of the late-subscriber rule.
-                    out.push(LinkFrame::Envelope(Envelope::reply(
+                    out.push(StreamFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::SUBSCRIBE,
                         envelope.request_id,
@@ -139,7 +131,7 @@ impl Inner {
             },
             wire::member::CALL => match wire::read_call(payload) {
                 Ok((object, method, arguments)) => match self.graph.call(object, &method, arguments) {
-                    Ok(operation) => out.push(LinkFrame::Envelope(Envelope::reply(
+                    Ok(operation) => out.push(StreamFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::CALL,
                         envelope.request_id,
@@ -155,7 +147,7 @@ impl Inner {
             },
             wire::member::CLAIM => match wire::read_claim(payload) {
                 Ok(request) => match self.broker.claim(request, owner) {
-                    Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
+                    Ok(()) => out.push(StreamFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::CLAIM,
                         envelope.request_id,
@@ -171,7 +163,7 @@ impl Inner {
             },
             wire::member::DECLINE => match wire::read_decline(payload) {
                 Ok((request, reason)) => match self.broker.decline_with(request, owner, reason) {
-                    Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
+                    Ok(()) => out.push(StreamFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::DECLINE,
                         envelope.request_id,
@@ -188,7 +180,7 @@ impl Inner {
             wire::member::ANSWER => match wire::read_answer(payload) {
                 // The broker owns the bytes now, so the move leaves nothing behind to wipe.
                 Ok((request, mut answer)) => match self.broker.answer(request, owner, std::mem::take(&mut *answer)) {
-                    Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
+                    Ok(()) => out.push(StreamFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::ANSWER,
                         envelope.request_id,
@@ -211,14 +203,14 @@ impl Inner {
     }
 
     /// Move every queued observation into one link's outbox.
-    fn flush_subscriptions(&mut self, owner: OwnerId, out: &mut Vec<LinkFrame>) {
+    fn flush_subscriptions(&mut self, owner: OwnerId, out: &mut Vec<StreamFrame>) {
         let subscriptions = match self.link(owner) {
             Ok(link) => link.subscriptions.clone(),
             Err(_) => return,
         };
         for subscription in subscriptions {
             while let Some(observation) = self.graph.next(&subscription) {
-                out.push(LinkFrame::Envelope(wire::observation(&observation)));
+                out.push(StreamFrame::Envelope(wire::observation(&observation)));
             }
         }
     }
@@ -230,7 +222,7 @@ impl Inner {
             let mut out = Vec::new();
             for subscription in subscriptions {
                 while let Some(observation) = self.graph.next(&subscription) {
-                    out.push(LinkFrame::Envelope(wire::observation(&observation)));
+                    out.push(StreamFrame::Envelope(wire::observation(&observation)));
                 }
             }
             let link = &mut self.links[index];
@@ -263,7 +255,7 @@ impl Inner {
                     }
                     RequestEvent::Finished { request, outcome } => wire::finished(*request, outcome.into()),
                 };
-                self.links[index].outbound.push_back(LinkFrame::Envelope(frame));
+                self.links[index].outbound.push_back(StreamFrame::Envelope(frame));
             }
         }
     }
@@ -278,8 +270,8 @@ fn refusal_code(error: &ModelError) -> &'static str {
 }
 
 /// An error frame answering a request.
-fn refusal(envelope: &Envelope, code: &str, message: &str) -> LinkFrame {
-    LinkFrame::Envelope(Envelope::error(
+fn refusal(envelope: &Envelope, code: &str, message: &str) -> StreamFrame {
+    StreamFrame::Envelope(Envelope::error(
         wire::NAMESPACE,
         envelope.member.clone(),
         envelope.request_id,
@@ -289,7 +281,7 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> LinkFrame {
 }
 
 /// An error frame for a refused request transition.
-fn request_refusal(envelope: &Envelope, error: &RequestError) -> LinkFrame {
+fn request_refusal(envelope: &Envelope, error: &RequestError) -> StreamFrame {
     let code = match error {
         RequestError::Taken { .. } | RequestError::NotOwner { .. } => wire::code::REQUEST_TAKEN,
         RequestError::Finished { .. } => wire::code::REQUEST_FINISHED,
@@ -466,16 +458,16 @@ impl crate::transport::Transport for Loopback {
             Handshake::refuse(version)
         };
         let link = inner.link(self.owner)?;
-        link.inbound.push_back(LinkFrame::Handshake(*frame));
-        link.outbound.push_back(LinkFrame::Handshake(reply));
+        link.inbound.push_back(StreamFrame::Handshake(*frame));
+        link.outbound.push_back(StreamFrame::Handshake(reply));
         Ok(())
     }
 
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {
         let mut inner = self.inner.borrow_mut();
         match inner.link(self.owner)?.outbound.pop_front() {
-            Some(LinkFrame::Handshake(handshake)) => Ok(handshake),
-            Some(LinkFrame::Envelope(_)) => Err(HandshakeError::NotAHandshake),
+            Some(StreamFrame::Handshake(handshake)) => Ok(handshake),
+            Some(StreamFrame::Envelope(_)) => Err(HandshakeError::NotAHandshake),
             None => Err(HandshakeError::Codec(disconnected())),
         }
     }
@@ -493,7 +485,7 @@ impl gnoblin_proto::Transport for Loopback {
         inner
             .link(self.owner)?
             .inbound
-            .push_back(LinkFrame::Envelope(envelope.clone()));
+            .push_back(StreamFrame::Envelope(envelope.clone()));
         inner.serve(self.owner);
         Ok(())
     }
@@ -502,8 +494,8 @@ impl gnoblin_proto::Transport for Loopback {
         // The link never produces descriptors, so the caller's vector is left as it was.
         let mut inner = self.inner.borrow_mut();
         match inner.link(self.owner)?.outbound.pop_front() {
-            Some(LinkFrame::Envelope(envelope)) => Ok(Some(envelope)),
-            Some(LinkFrame::Handshake(_)) => Err(CodecError::Io(io::Error::new(
+            Some(StreamFrame::Envelope(envelope)) => Ok(Some(envelope)),
+            Some(StreamFrame::Handshake(_)) => Err(CodecError::Io(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "a handshake arrived after the connection started",
             ))),

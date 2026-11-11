@@ -919,11 +919,6 @@ reason = "both wrap the bus's NameOwnerChanged stream to end a gone caller's gra
 # Each compat adapter's `Admission` holds its own declaration and gate. The struct shape is
 # the frame's and so coincides across adapters; the names belong to each adapter.
 
-[[allow]]
-left = "gnoblin-proto::Capabilities"
-right = "gnoblin-xwayland::Capabilities"
-kind = "same-name"
-reason = "a connection's held capability set versus one Xwayland binary's feature record read from its help text; the name is shared, the values are not"
 
 [[allow]]
 left = "gnoblin-compat-dbus-gnome-shell-introspect::IntrospectAdmission"
@@ -1220,11 +1215,6 @@ right = "gnoblin-render-frame::Model"
 kind = "same-name"
 reason = "a backend layer's 3D model matrix is a draw transform; the accessibility model is the tree of exposed objects"
 
-[[allow]]
-left = "gnoblin-capture::Target"
-right = "gnoblin-layers::LayerScope"
-kind = "same-shape"
-reason = "a capture target names what a screen-cast exports; a layer scope names what a layer is attached to; both are an output or a window, but the lifetimes and rules differ"
 
 [[allow]]
 left = "gnoblin-backend::Setting"
@@ -1370,8 +1360,3 @@ right = "gnoblin-render::TreeChange"
 kind = "same-shape"
 reason = "the shell mirror's change tag names one step of a snapshot or change batch, while the render crate's tree change names a scene edit; both are a plain tag enum with no shared behaviour"
 
-[[allow]]
-left = "gnoblin-client::LinkFrame"
-right = "gnoblin-proto::StreamFrame"
-kind = "same-shape"
-reason = "the in-process loopback link and the privileged stream each carry a handshake or an envelope, and share no code; the shape is the protocol's two frame kinds"
