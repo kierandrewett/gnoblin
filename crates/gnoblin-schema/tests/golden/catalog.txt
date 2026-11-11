@@ -1,7 +1,6 @@
 namespace gnoblin version 0.2.0
 error too-many-inhibitors since 0.2.0
 error idle-unavailable since 0.2.0
-error power-missing since 0.2.0
 error layer-refused since 0.2.0
 error not-locked since 0.2.0
 error unknown-member since 0.2.0
@@ -1774,39 +1773,37 @@ enum GnoblinError {
   // since 0.2.0
   GNOBLIN_IDLE_UNAVAILABLE = 2;
   // since 0.2.0
-  GNOBLIN_POWER_MISSING = 3;
+  GNOBLIN_LAYER_REFUSED = 3;
   // since 0.2.0
-  GNOBLIN_LAYER_REFUSED = 4;
+  GNOBLIN_NOT_LOCKED = 4;
   // since 0.2.0
-  GNOBLIN_NOT_LOCKED = 5;
+  GNOBLIN_UNKNOWN_MEMBER = 5;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_MEMBER = 6;
+  GNOBLIN_DENIED = 6;
   // since 0.2.0
-  GNOBLIN_DENIED = 7;
+  GNOBLIN_UNSUPPORTED = 7;
   // since 0.2.0
-  GNOBLIN_UNSUPPORTED = 8;
+  GNOBLIN_BUSY = 8;
   // since 0.2.0
-  GNOBLIN_BUSY = 9;
+  GNOBLIN_UNAVAILABLE = 9;
   // since 0.2.0
-  GNOBLIN_UNAVAILABLE = 10;
+  GNOBLIN_TIMED_OUT = 10;
   // since 0.2.0
-  GNOBLIN_TIMED_OUT = 11;
+  GNOBLIN_INTERNAL = 11;
   // since 0.2.0
-  GNOBLIN_INTERNAL = 12;
+  GNOBLIN_TOO_MANY_PASSES = 12;
   // since 0.2.0
-  GNOBLIN_TOO_MANY_PASSES = 13;
+  GNOBLIN_UNKNOWN_EFFECT_KIND = 13;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_EFFECT_KIND = 14;
+  GNOBLIN_NOT_FLOATING = 14;
   // since 0.2.0
-  GNOBLIN_NOT_FLOATING = 15;
+  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 15;
   // since 0.2.0
-  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 16;
+  GNOBLIN_REFUSED = 16;
   // since 0.2.0
-  GNOBLIN_REFUSED = 17;
+  GNOBLIN_UNKNOWN_LAYOUT = 17;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_LAYOUT = 18;
-  // since 0.2.0
-  GNOBLIN_UNKNOWN_SET = 19;
+  GNOBLIN_UNKNOWN_SET = 18;
 }
 -- tree.proto
 // Generated from the object schema by gnoblin-proto's build script. Do not

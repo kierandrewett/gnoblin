@@ -2,8 +2,8 @@
 #
 # It carries no properties and no identity worth keeping: its one verb registers a layer
 # under the caller's own provider, which the compositor derives from the connection. A
-# caller without the `register-layer` capability is refused `power-missing` before the
-# graph sees the call, so the schema never admits a provider name from the wire.
+# connection that is not the session owner's is refused `denied` before the graph sees the
+# call, so the schema never admits a provider name from the wire.
 #
 # Lua does not reach this object yet. Extensions need per-extension Lua environments
 # first (design/layers.md, phase 10), so only built-in providers may call it.
@@ -31,12 +31,6 @@ since = "0.2.0"
 [[object.method.param]]
 name = "target"
 type = "uint"
-since = "0.2.0"
-
-# The connection does not hold the `register-layer` capability. Only built-in providers
-# registered by the compositor may create layers over the IPC.
-[[error]]
-name = "power-missing"
 since = "0.2.0"
 
 # The registry or the stack refused the layer. The reason names the rule that refused it.

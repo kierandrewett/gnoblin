@@ -198,17 +198,19 @@ fn requester_disconnect_tears_the_dialog_down_and_late_keys_do_nothing() {
 }
 
 #[test]
-fn a_connection_without_the_portal_role_is_refused() {
+fn the_owner_connection_may_request_a_portal_dialog() {
+    // The trust boundary is the session owner's connection (D35), and a test socket is the
+    // owner's uid, so a plain socket is admitted. The request is held until it is settled;
+    // cancelling it settles it for its requester, which proves the dialog was admitted.
     let session = Session::start();
-    let mut plain = session.wire();
-    plain.set_read_timeout(REPLY_WAIT);
+    let mut owner = session.wire();
+    owner.set_read_timeout(REPLY_WAIT);
 
-    plain.send(&portal_ui(9, &consent(SCREENSHOT)));
-    let reply = receive_for(&mut plain, 9);
-    assert!(
-        reply.error_code().is_some(),
-        "a core connection is refused with a typed error"
-    );
+    owner.send(&portal_ui(9, &consent(SCREENSHOT)));
+    owner.send(&portal_cancel(9));
+
+    let reply = receive_for(&mut owner, 9);
+    assert_eq!(outcome(&reply), ("cancelled".to_owned(), "user".to_owned()));
     drop(session);
 }
 

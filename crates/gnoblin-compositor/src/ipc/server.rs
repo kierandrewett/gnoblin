@@ -2019,8 +2019,7 @@ impl Dispatcher {
     /// A missing argument, a name the provider may not use, and a refused registration all
     /// complete `layer-refused`; the reason is logged here, since the code names no rule.
     fn register_layer_outcome(&mut self, arguments: &gnoblin_model::Fields) -> OperationOutcome {
-        let (Some(local), Some(target)) = (text_argument(arguments, "local"), uint_argument(arguments, "target"))
-        else {
+        let (Some(local), Some(target)) = (text_argument(arguments, "name"), uint_argument(arguments, "target")) else {
             return OperationOutcome::Failed(LAYER_REFUSED);
         };
         let provider = LayerProvider::Gnoblin(COMPOSITOR_CRATE);
