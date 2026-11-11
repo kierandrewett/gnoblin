@@ -14,7 +14,9 @@
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::Size as SmithaySize;
 use smithay::wayland::shell::xdg::ToplevelSurface;
+use smithay::xwayland::xwm::X11Surface;
 
+use gnoblin_backend::x11::WindowAsk;
 use gnoblin_render::transaction::TreeCall;
 use gnoblin_types::{NodeId, OutputId, Rect, WindowId};
 
@@ -44,6 +46,16 @@ pub(crate) enum WindowRequest {
 }
 
 impl WindowRequest {
+    /// The request an X11 client's own ask is: the one an `xdg_toplevel` makes for the same thing.
+    pub(crate) const fn of_ask(ask: WindowAsk) -> Self {
+        match ask {
+            WindowAsk::Maximise(on) => Self::Maximise(on),
+            WindowAsk::Fullscreen(on) => Self::Fullscreen(on),
+            WindowAsk::Minimise(on) => Self::Minimise(on),
+            WindowAsk::Close => Self::Close,
+        }
+    }
+
     /// The request event the shell reads.
     const fn tree(self) -> TreeRequest {
         match self {
@@ -270,18 +282,15 @@ impl State {
     /// the shell placed it in becomes its configure, so the client hears where it is and how big.
     fn configure_x11_from_node(&mut self, window: WindowId, state: WindowState, size: Option<(u32, u32)>) {
         let answer = x11_answer(state, self.composer.window_frame(window), size);
+        // `_NET_WM_STATE_HIDDEN` follows the window's visibility, which `set_visible` owns below.
+        self.sync_x11_flags(window, |flags| X11Flags {
+            maximised: answer.maximised,
+            fullscreen: answer.fullscreen,
+            ..flags
+        });
         let Some(Managed::X11(surface)) = self.windows.get(&window).map(|entry| &entry.surface) else {
             return;
         };
-        if let Err(error) = surface.set_maximized(answer.maximised) {
-            log::debug!(area = "toplevel", %error, %window, "the X11 maximised state was not sent");
-        }
-        if let Err(error) = surface.set_fullscreen(answer.fullscreen) {
-            log::debug!(area = "toplevel", %error, %window, "the X11 fullscreen state was not sent");
-        }
-        if let Err(error) = surface.set_hidden(answer.hidden) {
-            log::debug!(area = "toplevel", %error, %window, "the X11 hidden state was not sent");
-        }
         if let Some(rect) = answer.frame
             && let Err(error) = surface.configure(Some(x11_geometry(rect)))
         {
@@ -297,6 +306,31 @@ impl State {
             rect = ?answer.frame,
             "configured an X11 window from the shell's node"
         );
+    }
+
+    /// Writes the `_NET_WM_STATE` flags an X11 window is told. `update` turns the flags the window holds into the
+    /// ones it should, and only the atoms that differ are written, so each caller owns the flags it names and
+    /// leaves the rest as they are: a window the table holds no X11 surface for is left alone.
+    pub(crate) fn sync_x11_flags(&self, window: WindowId, update: impl FnOnce(X11Flags) -> X11Flags) {
+        let Some(Managed::X11(surface)) = self.windows.get(&window).map(|entry| &entry.surface) else {
+            return;
+        };
+        let writes = X11Flags::of(surface).writes_to(update(X11Flags::of(surface)));
+        if let Some(maximised) = writes.maximised
+            && let Err(error) = surface.set_maximized(maximised)
+        {
+            log::debug!(area = "toplevel", %error, %window, "the X11 maximised state was not sent");
+        }
+        if let Some(fullscreen) = writes.fullscreen
+            && let Err(error) = surface.set_fullscreen(fullscreen)
+        {
+            log::debug!(area = "toplevel", %error, %window, "the X11 fullscreen state was not sent");
+        }
+        if let Some(hidden) = writes.hidden
+            && let Err(error) = surface.set_hidden(hidden)
+        {
+            log::debug!(area = "toplevel", %error, %window, "the X11 hidden state was not sent");
+        }
     }
 }
 
@@ -342,6 +376,61 @@ fn x11_answer(state: WindowState, frame: Option<Rect>, size: Option<(u32, u32)>)
         fullscreen: state.fullscreen,
         hidden: state.minimised,
         frame,
+    }
+}
+
+/// The `_NET_WM_STATE` flags the compositor owns on an X11 window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct X11Flags {
+    /// `_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ`.
+    pub(crate) maximised: bool,
+    /// `_NET_WM_STATE_FULLSCREEN`.
+    pub(crate) fullscreen: bool,
+    /// `_NET_WM_STATE_HIDDEN`.
+    pub(crate) hidden: bool,
+}
+
+/// The flags to write to an X11 window: `None` for one that already holds the wanted value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct X11Writes {
+    pub(crate) maximised: Option<bool>,
+    pub(crate) fullscreen: Option<bool>,
+    pub(crate) hidden: Option<bool>,
+}
+
+impl X11Flags {
+    /// The writes that take a window holding `self` to `wanted`.
+    pub(crate) fn writes_to(self, wanted: Self) -> X11Writes {
+        let change = |current: bool, wanted: bool| (current != wanted).then_some(wanted);
+        X11Writes {
+            maximised: change(self.maximised, wanted.maximised),
+            fullscreen: change(self.fullscreen, wanted.fullscreen),
+            hidden: change(self.hidden, wanted.hidden),
+        }
+    }
+
+    /// What a window that maps with these flags already set is asking for: one ask per flag it holds.
+    pub(crate) fn asks(self) -> Vec<WindowAsk> {
+        let mut asks = Vec::new();
+        if self.maximised {
+            asks.push(WindowAsk::Maximise(true));
+        }
+        if self.fullscreen {
+            asks.push(WindowAsk::Fullscreen(true));
+        }
+        if self.hidden {
+            asks.push(WindowAsk::Minimise(true));
+        }
+        asks
+    }
+
+    /// The flags an X11 surface holds now.
+    pub(crate) fn of(surface: &X11Surface) -> Self {
+        Self {
+            maximised: surface.is_maximized(),
+            fullscreen: surface.is_fullscreen(),
+            hidden: surface.is_hidden(),
+        }
     }
 }
 
@@ -394,9 +483,10 @@ fn write_pending(
 
 #[cfg(test)]
 mod tests {
+    use gnoblin_backend::x11::WindowAsk;
     use gnoblin_types::Rect;
 
-    use super::{Decider, WindowRequest, X11Answer, decider, x11_answer};
+    use super::{Decider, WindowRequest, X11Answer, X11Flags, X11Writes, decider, x11_answer};
     use crate::fallback::WindowState;
     use crate::tree_frame::TreeRequest;
 
@@ -482,5 +572,102 @@ mod tests {
     fn an_x11_window_with_no_frame_is_sent_no_configure() {
         let answer = x11_answer(WindowState::default(), None, Some((640, 480)));
         assert_eq!(answer.frame, None);
+    }
+
+    // An X11 client's own ask is the request an `xdg_toplevel` makes for the same thing, so a shell reads one name
+    // for both and the record applies one rule to both.
+    #[test]
+    fn an_x11_clients_own_ask_is_the_request_an_xdg_toplevel_makes() {
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Maximise(true)),
+            WindowRequest::Maximise(true)
+        );
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Maximise(false)),
+            WindowRequest::Maximise(false)
+        );
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Fullscreen(true)),
+            WindowRequest::Fullscreen(true)
+        );
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Fullscreen(false)),
+            WindowRequest::Fullscreen(false)
+        );
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Minimise(true)),
+            WindowRequest::Minimise(true)
+        );
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Minimise(false)),
+            WindowRequest::Minimise(false)
+        );
+        assert_eq!(WindowRequest::of_ask(WindowAsk::Close), WindowRequest::Close);
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Maximise(true)).tree().name(),
+            "maximize"
+        );
+        assert_eq!(
+            WindowRequest::of_ask(WindowAsk::Minimise(true)).tree().name(),
+            "minimize"
+        );
+    }
+
+    // Only the `_NET_WM_STATE` atoms that differ are written: a state the window already has costs the X server no
+    // property change, and a flag the caller does not own is left as the window has it.
+    #[test]
+    fn only_the_x11_flags_that_change_are_written() {
+        let current = X11Flags {
+            maximised: true,
+            fullscreen: false,
+            hidden: false,
+        };
+        assert_eq!(
+            current.writes_to(current),
+            X11Writes::default(),
+            "nothing changed, nothing written"
+        );
+        assert_eq!(
+            current.writes_to(X11Flags {
+                maximised: false,
+                fullscreen: true,
+                hidden: false,
+            }),
+            X11Writes {
+                maximised: Some(false),
+                fullscreen: Some(true),
+                hidden: None,
+            }
+        );
+        assert_eq!(
+            current.writes_to(X11Flags {
+                hidden: true,
+                ..current
+            }),
+            X11Writes {
+                hidden: Some(true),
+                ..X11Writes::default()
+            }
+        );
+    }
+
+    // A window that maps with `_NET_WM_STATE` already set, or with `WM_HINTS` initial state iconic, is asking for
+    // that state: each flag it holds is the ask the same message would have made, and a plain window asks nothing.
+    #[test]
+    fn a_window_that_maps_with_state_set_asks_for_it() {
+        assert_eq!(X11Flags::default().asks(), Vec::<WindowAsk>::new());
+        assert_eq!(
+            X11Flags {
+                maximised: true,
+                fullscreen: true,
+                hidden: true,
+            }
+            .asks(),
+            vec![
+                WindowAsk::Maximise(true),
+                WindowAsk::Fullscreen(true),
+                WindowAsk::Minimise(true)
+            ]
+        );
     }
 }

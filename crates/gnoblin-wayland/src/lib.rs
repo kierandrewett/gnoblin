@@ -201,6 +201,7 @@ mod state;
 mod touchpad;
 mod tree_frame;
 mod window_request;
+mod x11_root;
 mod xwayland;
 
 /// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.

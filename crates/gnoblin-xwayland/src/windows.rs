@@ -34,6 +34,11 @@
 //! 7. **A rename never reaches the node.** A title or class change on a managed window
 //!    is a change to its node, and one on an unmanaged window is nothing:
 //!    `a_title_and_a_class_change_reach_the_node`.
+//! 8. **A client's own state request does nothing.** A maximise, fullscreen, minimise or
+//!    close the client asks for is a change to its node a shell or the record decides,
+//!    exactly as an `xdg_toplevel` request is, and one from a window the table does not
+//!    manage (a menu) is nothing: `a_state_ask_reaches_the_node_of_a_managed_window`,
+//!    `a_state_ask_from_an_unmanaged_window_changes_nothing`.
 
 use std::collections::BTreeMap;
 
@@ -315,6 +320,18 @@ impl Windows for Xwm {
                     commands: Vec::new(),
                 }
             }
+            WindowEvent::Asked { x11, ask } => {
+                let Some(window) = self.managed(x11) else {
+                    // A menu cannot maximise itself, and a window the table never took in
+                    // has no node for the answer to land on.
+                    return EventOutcome::nothing();
+                };
+                EventOutcome {
+                    window: Some(window),
+                    changes: vec![NodeChange::Asked { window, ask }],
+                    commands: Vec::new(),
+                }
+            }
             WindowEvent::ActivationRequested(x11) => {
                 let Some(window) = self.managed(x11) else {
                     // The request came from a window the table does not hold, which
@@ -354,6 +371,7 @@ impl Windows for Xwm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_backend::x11::WindowAsk;
 
     fn meta<'a>(x11: u32, class: &'a str, title: &'a str) -> WindowMeta<'a> {
         WindowMeta {
@@ -509,6 +527,10 @@ mod tests {
             WindowEvent::Destroyed(77),
             WindowEvent::Mapped(77),
             WindowEvent::ActivationRequested(77),
+            WindowEvent::Asked {
+                x11: 77,
+                ask: WindowAsk::Maximise(true),
+            },
             WindowEvent::TitleChanged { x11: 77, title: "late" },
             WindowEvent::Configured {
                 x11: 77,
@@ -666,6 +688,55 @@ mod tests {
             xwm.handle(WindowEvent::ActivationRequested(3)).changes,
             vec![NodeChange::Activate { window: window_id(3) }]
         );
+    }
+
+    /// Every ask a client makes of its own window is a change to its node, with the ask
+    /// unchanged, so the compositor can map it onto the request an `xdg_toplevel` would have
+    /// made.
+    #[test]
+    fn a_state_ask_reaches_the_node_of_a_managed_window() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "t")));
+        let window = window_id(3);
+
+        for ask in [
+            WindowAsk::Maximise(true),
+            WindowAsk::Maximise(false),
+            WindowAsk::Fullscreen(true),
+            WindowAsk::Fullscreen(false),
+            WindowAsk::Minimise(true),
+            WindowAsk::Minimise(false),
+            WindowAsk::Close,
+        ] {
+            assert_eq!(
+                xwm.handle(WindowEvent::Asked { x11: 3, ask }),
+                EventOutcome {
+                    window: Some(window),
+                    changes: vec![NodeChange::Asked { window, ask }],
+                    commands: Vec::new(),
+                }
+            );
+        }
+    }
+
+    /// A menu, a tooltip and a window the table never saw cannot change anyone's state: the
+    /// ask is dropped rather than answered.
+    #[test]
+    fn a_state_ask_from_an_unmanaged_window_changes_nothing() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        let mut popup = meta(9, "Gimp", "menu");
+        popup.override_redirect = true;
+        xwm.handle(WindowEvent::MapRequested(popup));
+
+        for x11 in [9, 123] {
+            assert_eq!(
+                xwm.handle(WindowEvent::Asked {
+                    x11,
+                    ask: WindowAsk::Fullscreen(true)
+                }),
+                EventOutcome::nothing()
+            );
+        }
     }
 
     /// Closing a managed window is a `WM_DELETE_WINDOW` request, so a client with

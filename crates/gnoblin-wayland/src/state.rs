@@ -100,7 +100,7 @@ use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
-use crate::window_request::WindowRequest;
+use crate::window_request::{WindowRequest, X11Flags};
 
 use crate::log;
 
@@ -1474,6 +1474,13 @@ impl State {
                 }
             }
         }
+        // The state follows the geometry on the X connection as well: `_NET_WM_STATE` is how an X11 client learns it
+        // is maximised or fullscreen. `_NET_WM_STATE_HIDDEN` is `set_visible`'s.
+        self.sync_x11_flags(window, |flags| X11Flags {
+            maximised: state.maximised,
+            fullscreen: state.fullscreen,
+            ..flags
+        });
         log::debug!(area = "wm", %window, width = geometry.width, height = geometry.height, "configured");
     }
 
@@ -1498,6 +1505,11 @@ impl State {
         if let Some(toplevel) = entry.surface.toplevel() {
             set_suspended(toplevel, !visible);
         }
+        // An X11 window is told the same thing as `_NET_WM_STATE_HIDDEN`, which is how it learns it may stop drawing.
+        self.sync_x11_flags(window, |flags| X11Flags {
+            hidden: !visible,
+            ..flags
+        });
     }
 
     /// Moves keyboard focus to a window, or to nothing.

@@ -163,6 +163,46 @@ services role starts at line 12 and `session ready` is at line 28.
   `ext-image-copy-capture` (row 24).
 - Xwayland (F6).
 
+## Xwayland 23.2 on an Agent37 instance
+
+The `gnoblin-rust` template is Debian bookworm, whose Xwayland is 22.1.9. That server does not bind
+`xwayland-shell-v1`: it names a window's surface by a Wayland object id that Smithay does not let a compositor
+pair with the window, so an X11 window never gets content and the tests that need a real X11 window node skip
+with a printed reason (`an_x11_window_node_reaches_the_shell_like_a_wayland_window`, and the window-request
+tests in `crates/gnoblin-xwayland/tests/real_xwayland.rs`). Bookworm-backports has no `xwayland`, and trixie's
+24.1.6 needs glibc 2.38, which bookworm lacks. Building 23.2.7 from source needs one newer package, `xorgproto`
+(2024.1) for `presentproto >= 1.3`, and installs under `/opt` so the system server is left alone. As root on the
+instance (`a37 exec ID --root -- ...`; a37 drops a leading `cd`, so put the commands in a script):
+
+```
+# deb-src for bookworm (the signed-by line avoids "conflicting values set for option Signed-By")
+echo "deb-src [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian bookworm main" \
+    > /etc/apt/sources.list.d/src.list
+apt-get update && DEBIAN_FRONTEND=noninteractive apt-get build-dep -y xwayland
+apt-get install -y meson ninja-build xz-utils curl
+mkdir -p /opt/xwsrc && cd /opt/xwsrc
+curl -sSfLO https://www.x.org/releases/individual/proto/xorgproto-2024.1.tar.xz
+tar xf xorgproto-2024.1.tar.xz && (cd xorgproto-2024.1 && meson setup build --prefix=/opt/xwayland-23.2 && ninja -C build install)
+curl -sSfLO https://www.x.org/releases/individual/xserver/xwayland-23.2.7.tar.xz
+tar xf xwayland-23.2.7.tar.xz && cd xwayland-23.2.7
+PKG_CONFIG_PATH=/opt/xwayland-23.2/share/pkgconfig meson setup build --prefix=/opt/xwayland-23.2 \
+    -Dxvfb=false -Dxdmcp=false -Dsecure-rpc=false -Ddocs=false
+ninja -C build -j4 && ninja -C build install
+/opt/xwayland-23.2/bin/Xwayland -version        # 23.2.7
+```
+
+The build takes about 35 seconds on a 4-CPU instance. The tests find the server on `PATH`, so put it first for the
+run:
+
+```
+a37-gate.sh in ID WORKTREE env PATH=/opt/xwayland-23.2/bin:/usr/local/cargo/bin:/usr/bin:/bin \
+    cargo test -p gnoblin-xwayland --test real_xwayland
+```
+
+Proof, instance `yshe8wpmsn` (lane X11States): all 11 tests in `real_xwayland.rs` pass with no skip line, among them
+`an_x11_clients_own_state_requests_are_answered_by_the_shell`. The instance is deleted at the end of a lane, so
+the recipe has to be run again on the next one.
+
 ## Reproduce
 
 ```

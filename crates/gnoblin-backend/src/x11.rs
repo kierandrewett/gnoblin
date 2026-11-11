@@ -186,6 +186,29 @@ pub enum WindowEvent<'a> {
     /// The window asked to be active, for example when it was clicked in an X11
     /// application that has no X11 window manager of its own.
     ActivationRequested(u32),
+    /// The window's client asked to change its own state, or to be closed.
+    Asked {
+        /// The X11 window id.
+        x11: u32,
+        /// What the client asked for.
+        ask: WindowAsk,
+    },
+}
+
+/// What an X11 client asks of its own window, as the EWMH messages it sends the root window spell it.
+///
+/// This is the X11 half of the vocabulary an `xdg_toplevel` request already carries (`set_maximized`,
+/// `set_fullscreen`, `set_minimized`, close), so both kinds of window reach the same decision.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WindowAsk {
+    /// `_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` together: fill the work area (`true`) or go back (`false`).
+    Maximise(bool),
+    /// `_NET_WM_STATE_FULLSCREEN`: cover the output (`true`) or leave it (`false`).
+    Fullscreen(bool),
+    /// `WM_CHANGE_STATE` to `IconicState` (`true`) or `NormalState` (`false`): hide the window or bring it back.
+    Minimise(bool),
+    /// `_NET_CLOSE_WINDOW`: ask the client to close.
+    Close,
 }
 
 /// An X11 request the compositor has to send, and the policy cannot.
@@ -248,6 +271,15 @@ pub enum NodeChange {
         window: WindowId,
         /// The rectangle, with the fields the client did not change filled in.
         geometry: Rect,
+    },
+    /// The window's own client asked for a state change: `_NET_WM_STATE` or `WM_CHANGE_STATE` on the root window,
+    /// or `_NET_CLOSE_WINDOW`. The same facts an `xdg_toplevel` request carries, and answered the same way: the
+    /// shell decides while it holds the tree, the compositor's record otherwise.
+    Asked {
+        /// The managed window.
+        window: WindowId,
+        /// What the client asked for.
+        ask: WindowAsk,
     },
     /// The title changed.
     Title {

@@ -33,6 +33,10 @@ wayland-protocols-misc = { version = "0.3.12", features = ["client", "server"] }
 # the only one that owns the display the Xwayland client is inserted into; the policy
 # crate stays free of Smithay.
 smithay = { workspace = true, features = ["xwayland"] }
+# The second X connection that reads the root-window messages Smithay's window manager does not decode
+# (`_NET_CLOSE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_REQUEST_FRAME_EXTENTS`). The version is the one Smithay
+# resolves, so cargo links one copy.
+x11rb = "0.14.0"
 # Rectangles, sizes, scales and output identities, so a geometry value is the same
 # value the window manager and the output layout already know.
 gnoblin-types.workspace = true

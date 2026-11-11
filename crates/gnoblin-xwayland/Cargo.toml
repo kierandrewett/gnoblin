@@ -27,6 +27,8 @@ gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The tree's change and value types, which the node test reads from the batches the session
 # publishes.
 gnoblin-render = { path = "../gnoblin-render" }
+# The stand-in shell the window-request tests share with `gnoblin-wayland` names a secret call argument.
+gnoblin-secret.workspace = true
 # The X11 client the tests use: a real client on a real display, not a mock peer.
 x11rb = "0.14.0"
 # A temporary runtime directory for the test socket and the X11 lock files.

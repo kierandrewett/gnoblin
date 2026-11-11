@@ -34,7 +34,17 @@
 //! 4. **The X server outlives the session.** Dropping the session drops the process handle
 //!    and the X11 connection, which is what ends the server; a session that is never
 //!    started has no process at all.
-//! 5. **A menu takes the keyboard.** The keyboard grab handler asks the policy before it
+//! 5. **A client's own state request is ignored.** `_NET_WM_STATE` maximise and fullscreen,
+//!    `WM_CHANGE_STATE` iconify and a window that maps already holding that state become
+//!    [`WindowAsk`]s, which reach the same [`WindowRequest`] an `xdg_toplevel`'s do: the shell
+//!    decides while it holds the tree, the record otherwise, and the answer is written back as
+//!    the window's `_NET_WM_STATE` and a configure
+//!    (`an_x11_clients_own_state_requests_are_answered_by_the_shell` and
+//!    `without_a_shell_an_x11_clients_own_state_requests_are_applied_by_the_fallback`). The three
+//!    messages Smithay's window manager does not decode (`_NET_CLOSE_WINDOW`,
+//!    `_NET_MOVERESIZE_WINDOW`, `_NET_REQUEST_FRAME_EXTENTS`) are read from a second connection
+//!    ([`crate::x11_root`]): `an_x11_client_can_move_and_resize_itself_and_ask_for_its_frame`.
+//! 6. **A menu takes the keyboard.** The keyboard grab handler asks the policy before it
 //!    installs a grab, so an override-redirect window's grab is refused when the
 //!    configuration does not allow grabs.
 //!
@@ -47,9 +57,8 @@
 //!   window with no buffer follows.
 //! - Interactive move and resize from an X11 client's title bar are reported by Smithay
 //!   and answered with nothing; the same drag works from the Wayland side.
-//! - Maximise, fullscreen, minimise, above/below, sticky and shade requests from X11
-//!   clients are not carried into the policy, so an X11 client that asks for them keeps
-//!   its floating geometry.
+//! - Above/below, sticky and shade requests from X11 clients are not carried into the
+//!   policy, so an X11 client that asks for them keeps its floating geometry.
 
 use std::os::unix::io::OwnedFd;
 use std::process::Stdio;
@@ -79,7 +88,7 @@ use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, X11Surface, 
 use smithay::xwayland::{XWayland, XWaylandClientData, XwmHandler};
 
 use gnoblin_backend::x11::{
-    self, Launch, NodeChange, Opened, Restart, Session, Start, WindowEvent, WindowMeta, X11Request,
+    self, Launch, NodeChange, Opened, Restart, Session, Start, WindowAsk, WindowEvent, WindowMeta, X11Request,
 };
 use gnoblin_types::{Rect, WindowId};
 
@@ -87,6 +96,8 @@ use crate::fallback::{Open, WindowKind};
 
 use crate::selection_bridge::ToWayland;
 use crate::state::State;
+use crate::window_request::{WindowRequest, X11Flags};
+use crate::x11_root::{RootMessage, RootWatch};
 
 use crate::log;
 
@@ -135,6 +146,8 @@ pub(crate) struct Running {
     client_id: Option<ClientId>,
     /// The X11 window manager, once the server answered ready.
     wm: Option<X11Wm>,
+    /// The second connection that hears the root-window messages `wm` does not decode.
+    root: Option<RootWatch>,
     /// The X11 surfaces the manager holds, by policy identity.
     pub(crate) surfaces: std::collections::BTreeMap<gnoblin_types::WindowId, X11Surface>,
     /// When the next attempt may start.
@@ -177,6 +190,7 @@ impl Running {
             client: None,
             client_id: None,
             wm: None,
+            root: None,
             surfaces: std::collections::BTreeMap::new(),
             next_start: None,
             deadline: None,
@@ -308,6 +322,12 @@ impl Running {
             Ok(wm) => {
                 log::info!(area = "xwayland", display_number = number, "ready");
                 self.wm = Some(wm);
+                match RootWatch::start(handle, number) {
+                    Ok(root) => self.root = Some(root),
+                    Err(reason) => {
+                        log::warn!(area = "xwayland", %reason, "close and move-resize messages are not heard")
+                    }
+                }
                 self.publish_settings();
             }
             Err(error) => {
@@ -349,8 +369,9 @@ impl Running {
     /// Ends the attempt, removes its windows and schedules the next one.
     fn fail(&mut self, state: &mut State, now: Instant, why: &str) {
         let number = self.display();
-        // The window manager goes first: it owns the X connection, and dropping it stops
-        // its event source before the process handle is dropped.
+        // The root watcher and the window manager go first: each owns a connection to the server, and dropping
+        // either stops its event source before the process handle is dropped.
+        self.root = None;
         self.wm = None;
         self.client = None;
         let client = self.client_id.take();
@@ -505,7 +526,10 @@ impl State {
                         effects.extend(moved);
                     }
                 }
-                NodeChange::Activate { .. } | NodeChange::Title { .. } | NodeChange::AppId { .. } => {}
+                NodeChange::Activate { .. }
+                | NodeChange::Asked { .. }
+                | NodeChange::Title { .. }
+                | NodeChange::AppId { .. } => {}
             }
         }
         if let (Some(window), Some(surface)) = (outcome.window, surface) {
@@ -522,6 +546,7 @@ impl State {
                 self.composer.insert_window(window, geometry);
             }
         }
+        let mut asks = Vec::new();
         for change in &outcome.changes {
             match change {
                 NodeChange::Opened(Opened {
@@ -530,6 +555,7 @@ impl State {
                 NodeChange::Title { window, title } => self.set_x11_text(*window, Some(title), None),
                 NodeChange::AppId { window, app_id } => self.set_x11_text(*window, None, Some(app_id)),
                 NodeChange::Activate { window } => self.x11_activated(*window),
+                NodeChange::Asked { window, ask } => asks.push((*window, *ask)),
                 NodeChange::Closed { .. } | NodeChange::Geometry { .. } => {}
             }
         }
@@ -554,7 +580,68 @@ impl State {
             self.release_window(window);
         }
         self.x11 = Some(running);
+        // A client's own state request is the request an `xdg_toplevel` makes for the same thing, so it goes
+        // through the same entry. It runs with the session put back: a close the record decides is sent through it.
+        for (window, ask) in asks {
+            self.window_request(window, WindowRequest::of_ask(ask));
+        }
         self.publish();
+    }
+
+    /// An X11 client asked to change its own window's state, or to close it. The policy decides whether the window
+    /// is one the compositor manages, and the compositor routes the ask as it routes an `xdg_toplevel` request.
+    fn x11_ask(&mut self, window: &X11Surface, ask: WindowAsk) {
+        self.x11_event(
+            WindowEvent::Asked {
+                x11: window.window_id(),
+                ask,
+            },
+            Some(window),
+        );
+    }
+
+    /// A root-window message Smithay's window manager does not decode: the policy answers it as it answers the
+    /// events it does.
+    pub(crate) fn x11_root_message(&mut self, message: RootMessage) {
+        match message {
+            RootMessage::Close { window } => self.x11_event(
+                WindowEvent::Asked {
+                    x11: window,
+                    ask: WindowAsk::Close,
+                },
+                None,
+            ),
+            RootMessage::MoveResize {
+                window,
+                x,
+                y,
+                width,
+                height,
+            } => {
+                // The fields the client left alone are the window's own, which only the surface knows.
+                let current = self
+                    .x11
+                    .as_ref()
+                    .and_then(|running| running.window_for_x11(window).and_then(|id| running.surface(id)))
+                    .map_or(Rect::EMPTY, |surface| rect_of(surface.geometry()));
+                let geometry = Rect::new(
+                    x.unwrap_or(current.x),
+                    y.unwrap_or(current.y),
+                    width.unwrap_or(current.width).max(1),
+                    height.unwrap_or(current.height).max(1),
+                );
+                self.x11_event(
+                    WindowEvent::ConfigureRequested {
+                        x11: window,
+                        geometry,
+                        position: x.is_some() || y.is_some(),
+                        size: width.is_some() || height.is_some(),
+                    },
+                    None,
+                );
+            }
+            RootMessage::FrameExtents { .. } => {}
+        }
     }
 
     /// Records the title and application id an X11 event gave a window, and publishes them on its node. A
@@ -804,7 +891,24 @@ impl XwmHandler for State {
 
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         let meta = Meta::of(&window);
+        // A window that maps holding `_NET_WM_STATE_FULLSCREEN` or `_MAXIMIZED_*`, or asking for an iconic start, is
+        // asking for that state. The flags are read before the open, which tells the window the state the record
+        // gave it and so overwrites them.
+        let initial = X11Flags::of(&window).asks();
+        // The window has no frame, and says so before it is shown.
+        if let Some(root) = self.x11.as_ref().and_then(|running| running.root.as_ref()) {
+            root.set_frame_extents(window.window_id());
+        }
         self.x11_event(WindowEvent::MapRequested(meta.borrowed()), Some(&window));
+        for ask in initial {
+            self.x11_event(
+                WindowEvent::Asked {
+                    x11: window.window_id(),
+                    ask,
+                },
+                Some(&window),
+            );
+        }
     }
 
     fn map_window_notify(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -909,6 +1013,30 @@ impl XwmHandler for State {
         _currently_active_window: Option<X11Surface>,
     ) {
         self.x11_event(WindowEvent::ActivationRequested(window.window_id()), Some(&window));
+    }
+
+    fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.x11_ask(&window, WindowAsk::Maximise(true));
+    }
+
+    fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.x11_ask(&window, WindowAsk::Maximise(false));
+    }
+
+    fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.x11_ask(&window, WindowAsk::Fullscreen(true));
+    }
+
+    fn unfullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.x11_ask(&window, WindowAsk::Fullscreen(false));
+    }
+
+    fn minimize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.x11_ask(&window, WindowAsk::Minimise(true));
+    }
+
+    fn unminimize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.x11_ask(&window, WindowAsk::Minimise(false));
     }
 
     fn resize_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32, _resize_edge: ResizeEdge) {

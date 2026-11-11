@@ -25,7 +25,9 @@ use std::time::{Duration, Instant};
 use x11rb::connection::Connection as _;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::ConnectionExt as _;
-use x11rb::protocol::xproto::{AtomEnum, CreateGCAux, CreateWindowAux, PropMode, Rectangle, WindowClass};
+use x11rb::protocol::xproto::{
+    AtomEnum, ClientMessageEvent, CreateGCAux, CreateWindowAux, EventMask, PropMode, Rectangle, WindowClass,
+};
 use x11rb::rust_connection::{DefaultStream, RustConnection};
 use x11rb::wrapper::ConnectionExt as _;
 
@@ -37,6 +39,13 @@ use gnoblin_wayland::{
 };
 
 use gnoblin_xwayland::{Capabilities, Handle, Settings, Status, Xwayland};
+
+/// The stand-in shell the window-request tests of `gnoblin-wayland` use: it holds the tree, reads what the compositor
+/// publishes and writes the answers a real shell writes. It is the same file, so the two suites cannot drift apart.
+#[path = "../../gnoblin-wayland/tests/session/shell.rs"]
+#[allow(dead_code)]
+mod shell;
+use shell::Shell;
 
 /// How long a test waits for a state before failing.
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -739,5 +748,412 @@ fn an_x11_window_node_reaches_the_shell_like_a_wayland_window() {
                 .any(|change| matches!(change, TreeChange::Destroyed { node: gone, .. } if *gone == node))
         });
         assert_eq!(ready_nodes(&batches).len(), 1, "an unmap announces no second window");
+    });
+}
+
+/// What an X11 window manager's client sends the root window: an EWMH or ICCCM message about `window`.
+impl XClient {
+    fn atom(&self, name: &str) -> u32 {
+        self.connection
+            .intern_atom(false, name.as_bytes())
+            .expect("an intern request")
+            .reply()
+            .expect("an atom")
+            .atom
+    }
+
+    /// Sends the root window a 32-bit client message of type `kind` about `window`, with the mask the EWMH names so
+    /// that the window manager receives it.
+    fn root_message(&self, window: u32, kind: &str, data: [u32; 5]) {
+        let event = ClientMessageEvent::new(32, window, self.atom(kind), data);
+        self.connection
+            .send_event(
+                false,
+                self.root,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+                event,
+            )
+            .expect("a send_event request");
+        self.connection.flush().expect("the message reaches the server");
+    }
+
+    /// `_NET_WM_STATE`: `action` is 0 to remove, 1 to add and 2 to toggle `first` and `second`.
+    fn net_wm_state(&self, window: u32, action: u32, first: &str, second: Option<&str>) {
+        let first = self.atom(first);
+        let second = second.map_or(0, |name| self.atom(name));
+        self.root_message(window, "_NET_WM_STATE", [action, first, second, 1, 0]);
+    }
+
+    /// `WM_CHANGE_STATE`: 3 asks for `IconicState` and 1 for `NormalState`.
+    fn wm_change_state(&self, window: u32, state: u32) {
+        self.root_message(window, "WM_CHANGE_STATE", [state, 0, 0, 0, 0]);
+    }
+
+    /// The names of the atoms in the window's `_NET_WM_STATE`.
+    fn state_names(&self, window: u32) -> Vec<String> {
+        let property = self
+            .connection
+            .get_property(false, window, self.atom("_NET_WM_STATE"), AtomEnum::ATOM, 0, 64)
+            .expect("a property request")
+            .reply()
+            .expect("a property");
+        property
+            .value32()
+            .map(|atoms| {
+                atoms
+                    .map(|atom| {
+                        let name = self
+                            .connection
+                            .get_atom_name(atom)
+                            .expect("a name request")
+                            .reply()
+                            .expect("a name")
+                            .name;
+                        String::from_utf8_lossy(&name).into_owned()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The size the server gives the window.
+    fn size(&self, window: u32) -> (u16, u16) {
+        let geometry = self
+            .connection
+            .get_geometry(window)
+            .expect("a geometry request")
+            .reply()
+            .expect("a geometry");
+        (geometry.width, geometry.height)
+    }
+
+    /// Waits until `check` holds for what the client can read of its window, or fails with `what`.
+    #[track_caller]
+    fn wait_until(&self, what: &str, check: impl Fn(&Self) -> bool) {
+        let deadline = Instant::now() + TIMEOUT;
+        while !check(self) {
+            assert!(Instant::now() < deadline, "the window never reached {what}");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// Waits until the window's `_NET_WM_STATE` holds (or no longer holds) `name`.
+    #[track_caller]
+    fn wait_for_state(&self, window: u32, name: &str, present: bool) {
+        self.wait_until(
+            &format!("`{name}` {}", if present { "set" } else { "cleared" }),
+            |client| client.state_names(window).iter().any(|held| held == name) == present,
+        );
+    }
+
+    /// Waits until the window is this size.
+    #[track_caller]
+    fn wait_for_size(&self, window: u32, size: (u16, u16)) {
+        self.wait_until(&format!("{}x{}", size.0, size.1), |client| client.size(window) == size);
+    }
+
+    /// Declares that the window handles `WM_DELETE_WINDOW`, so a close request reaches it as a message rather than a
+    /// destroy.
+    fn accept_delete(&self, window: u32) {
+        let protocols = self.atom("WM_PROTOCOLS");
+        self.connection
+            .change_property32(
+                PropMode::REPLACE,
+                window,
+                protocols,
+                AtomEnum::ATOM,
+                &[self.atom("WM_DELETE_WINDOW")],
+            )
+            .expect("a protocols property");
+        self.connection.flush().expect("the requests reach the server");
+    }
+
+    /// Waits for the `WM_DELETE_WINDOW` message a window manager sends to close a window.
+    #[track_caller]
+    fn wait_for_delete(&self, window: u32) {
+        let (protocols, delete) = (self.atom("WM_PROTOCOLS"), self.atom("WM_DELETE_WINDOW"));
+        let deadline = Instant::now() + TIMEOUT;
+        while Instant::now() < deadline {
+            while let Some(event) = self.connection.poll_for_event().expect("an event") {
+                if let Event::ClientMessage(message) = event
+                    && message.window == window
+                    && message.type_ == protocols
+                    && message.data.as_data32()[0] == delete
+                {
+                    return;
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        panic!("the window never received WM_DELETE_WINDOW");
+    }
+
+    /// The window's `_NET_FRAME_EXTENTS`, once it has one.
+    fn frame_extents(&self, window: u32) -> Option<Vec<u32>> {
+        let property = self
+            .connection
+            .get_property(false, window, self.atom("_NET_FRAME_EXTENTS"), AtomEnum::CARDINAL, 0, 4)
+            .expect("a property request")
+            .reply()
+            .expect("a property");
+        property
+            .value32()
+            .map(Iterator::collect)
+            .filter(|values: &Vec<u32>| !values.is_empty())
+    }
+
+    /// The atoms the window manager lists in the root window's `_NET_SUPPORTED`.
+    fn supported(&self) -> Vec<u32> {
+        self.connection
+            .get_property(false, self.root, self.atom("_NET_SUPPORTED"), AtomEnum::ATOM, 0, 256)
+            .expect("a property request")
+            .reply()
+            .expect("a property")
+            .value32()
+            .map(Iterator::collect)
+            .unwrap_or_default()
+    }
+
+    /// Where the window's top left corner is on the root window.
+    fn position(&self, window: u32) -> (i16, i16) {
+        let reply = self
+            .connection
+            .translate_coordinates(window, self.root, 0, 0)
+            .expect("a translate request")
+            .reply()
+            .expect("coordinates");
+        (reply.dst_x, reply.dst_y)
+    }
+
+    /// Whether the window holds `name` in its `_NET_WM_STATE` right now.
+    fn has_state(&self, window: u32, name: &str) -> bool {
+        self.state_names(window).iter().any(|held| held == name)
+    }
+}
+
+const MAXIMISED_VERT: &str = "_NET_WM_STATE_MAXIMIZED_VERT";
+const MAXIMISED_HORZ: &str = "_NET_WM_STATE_MAXIMIZED_HORZ";
+const FULLSCREEN: &str = "_NET_WM_STATE_FULLSCREEN";
+const HIDDEN: &str = "_NET_WM_STATE_HIDDEN";
+
+/// The Xwayland on `PATH`, or a skip: the requests below need a server that pairs surfaces through
+/// `xwayland-shell-v1` (23.1 and later), because a window with no content has no node to answer on.
+fn xwayland_with_surfaces() -> Option<std::ffi::OsString> {
+    let path = display_path()?;
+    if xwayland_version(&path).is_none_or(|version| version < (23, 1)) {
+        println!(
+            "skipping: the Xwayland on PATH is older than 23.1 or unreadable ({:?}), so it does not pair surfaces through xwayland-shell-v1",
+            xwayland_version(&path)
+        );
+        return None;
+    }
+    Some(path)
+}
+
+/// An X11 client's own maximise, fullscreen, iconify and activate messages are requests the shell hears on the
+/// window's node, exactly as an `xdg_toplevel`'s are: nothing changes until the shell answers by writing the node, and
+/// the answer is the window's `_NET_WM_STATE` and its size.
+#[test]
+fn an_x11_clients_own_state_requests_are_answered_by_the_shell() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_with_tree(real_settings(), Some(path), hooks);
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        shell.attach();
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window("shell asked", "ShellAsked", false);
+        client.accept_delete(window);
+        client.map(window);
+        handle.wait_for_title("shell asked");
+        client.paint(window);
+        let node = shell.wait_window_node();
+        let steady = client.size(window);
+
+        // Maximise: a request, and no change until the shell answers.
+        client.net_wm_state(window, 1, MAXIMISED_VERT, Some(MAXIMISED_HORZ));
+        shell.wait_request(node, "maximize", 1);
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            !client.has_state(window, MAXIMISED_VERT) && !client.has_state(window, MAXIMISED_HORZ),
+            "nothing maximises the window until the shell answers: {:?}",
+            client.state_names(window)
+        );
+        assert_eq!(client.size(window), steady, "the size is the shell's to change");
+        shell.write(
+            node,
+            &[
+                ("maximised", TreeValue::Bool(true)),
+                ("width", TreeValue::Double(640.0)),
+                ("height", TreeValue::Double(480.0)),
+            ],
+        );
+        client.wait_for_state(window, MAXIMISED_VERT, true);
+        client.wait_for_state(window, MAXIMISED_HORZ, true);
+        client.wait_for_size(window, (640, 480));
+
+        client.net_wm_state(window, 0, MAXIMISED_VERT, Some(MAXIMISED_HORZ));
+        shell.wait_request(node, "unmaximize", 1);
+        shell.write(
+            node,
+            &[
+                ("maximised", TreeValue::Bool(false)),
+                ("width", TreeValue::Double(300.0)),
+                ("height", TreeValue::Double(200.0)),
+            ],
+        );
+        client.wait_for_state(window, MAXIMISED_VERT, false);
+        client.wait_for_state(window, MAXIMISED_HORZ, false);
+        client.wait_for_size(window, (300, 200));
+
+        // Fullscreen.
+        client.net_wm_state(window, 1, FULLSCREEN, None);
+        shell.wait_request(node, "fullscreen", 1);
+        thread::sleep(Duration::from_millis(200));
+        assert!(!client.has_state(window, FULLSCREEN), "the shell has not answered yet");
+        shell.write(
+            node,
+            &[
+                ("fullscreen", TreeValue::Bool(true)),
+                ("width", TreeValue::Double(1024.0)),
+                ("height", TreeValue::Double(768.0)),
+            ],
+        );
+        client.wait_for_state(window, FULLSCREEN, true);
+        client.wait_for_size(window, (1024, 768));
+        client.net_wm_state(window, 0, FULLSCREEN, None);
+        shell.wait_request(node, "unfullscreen", 1);
+        shell.write(
+            node,
+            &[
+                ("fullscreen", TreeValue::Bool(false)),
+                ("width", TreeValue::Double(300.0)),
+                ("height", TreeValue::Double(200.0)),
+            ],
+        );
+        client.wait_for_state(window, FULLSCREEN, false);
+        client.wait_for_size(window, (300, 200));
+
+        // Iconify.
+        client.wm_change_state(window, 3);
+        shell.wait_request(node, "minimize", 1);
+        thread::sleep(Duration::from_millis(200));
+        assert!(!client.has_state(window, HIDDEN), "the shell has not answered yet");
+        shell.write(node, &[("minimised", TreeValue::Bool(true))]);
+        client.wait_for_state(window, HIDDEN, true);
+        client.wm_change_state(window, 1);
+        shell.wait_request(node, "unminimize", 1);
+        shell.write(node, &[("minimised", TreeValue::Bool(false))]);
+        client.wait_for_state(window, HIDDEN, false);
+
+        // Activate: another request, which the shell hears again on top of the one the map made.
+        let activations = shell.requests(node).iter().filter(|name| **name == "activate").count();
+        client.root_message(window, "_NET_ACTIVE_WINDOW", [1, 0, 0, 0, 0]);
+        shell.wait_request(node, "activate", activations + 1);
+
+        // Close: the shell hears a request, and the client is asked nothing until the shell calls `close`.
+        client.root_message(window, "_NET_CLOSE_WINDOW", [1, 0, 0, 0, 0]);
+        shell.wait_request(node, "close", 1);
+        shell.call(node, "close");
+        client.wait_for_delete(window);
+    });
+}
+
+/// With no shell holding the tree the compositor's record decides, and applies what the client asked for: its
+/// `_NET_WM_STATE` and its size follow the request, and the client can leave the state again.
+#[test]
+fn without_a_shell_an_x11_clients_own_state_requests_are_applied_by_the_fallback() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let session = Session::start(real_settings(), Some(path));
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window("fallback asked", "FallbackAsked", false);
+        client.accept_delete(window);
+        client.map(window);
+        handle.wait_for_title("fallback asked");
+        client.paint(window);
+        let floating = client.size(window);
+
+        client.net_wm_state(window, 1, MAXIMISED_VERT, Some(MAXIMISED_HORZ));
+        client.wait_for_state(window, MAXIMISED_VERT, true);
+        client.wait_for_state(window, MAXIMISED_HORZ, true);
+        client.wait_until("a size larger than the floating one", |client| {
+            let (width, height) = client.size(window);
+            width > floating.0 && height > floating.1
+        });
+        client.net_wm_state(window, 0, MAXIMISED_VERT, Some(MAXIMISED_HORZ));
+        client.wait_for_state(window, MAXIMISED_VERT, false);
+        client.wait_for_state(window, MAXIMISED_HORZ, false);
+        client.wait_for_size(window, floating);
+
+        client.net_wm_state(window, 1, FULLSCREEN, None);
+        client.wait_for_state(window, FULLSCREEN, true);
+        client.wait_until("a size larger than the floating one", |client| {
+            let (width, height) = client.size(window);
+            width > floating.0 && height > floating.1
+        });
+        client.net_wm_state(window, 0, FULLSCREEN, None);
+        client.wait_for_state(window, FULLSCREEN, false);
+        client.wait_for_size(window, floating);
+
+        client.wm_change_state(window, 3);
+        client.wait_for_state(window, HIDDEN, true);
+        client.wm_change_state(window, 1);
+        client.wait_for_state(window, HIDDEN, false);
+
+        // `_NET_CLOSE_WINDOW` is the window's own `WM_DELETE_WINDOW`.
+        client.root_message(window, "_NET_CLOSE_WINDOW", [1, 0, 0, 0, 0]);
+        client.wait_for_delete(window);
+    });
+}
+
+/// The window manager says it understands the root-window messages Smithay does not decode, a window has no frame,
+/// and `_NET_MOVERESIZE_WINDOW` places a window as the record places any window.
+#[test]
+fn an_x11_client_can_move_and_resize_itself_and_ask_for_its_frame() {
+    let Some(path) = xwayland_with_surfaces() else {
+        return;
+    };
+    let session = Session::start(real_settings(), Some(path));
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        client.wait_until("the three messages in _NET_SUPPORTED", |client| {
+            let supported = client.supported();
+            [
+                "_NET_CLOSE_WINDOW",
+                "_NET_MOVERESIZE_WINDOW",
+                "_NET_REQUEST_FRAME_EXTENTS",
+            ]
+            .iter()
+            .all(|name| supported.contains(&client.atom(name)))
+        });
+        let window = client.create_window("moved", "Moved", false);
+        client.root_message(window, "_NET_REQUEST_FRAME_EXTENTS", [0; 5]);
+        client.wait_until("the answer to _NET_REQUEST_FRAME_EXTENTS", |client| {
+            client.frame_extents(window) == Some(vec![0, 0, 0, 0])
+        });
+        client.map(window);
+        handle.wait_for_title("moved");
+        client.paint(window);
+
+        // Flags: x, y, width and height are all valid; the gravity is the default.
+        let flags = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11);
+        client.root_message(window, "_NET_MOVERESIZE_WINDOW", [flags, 120, 90, 400, 300]);
+        client.wait_for_size(window, (400, 300));
+        client.wait_until("the position 120,90", |client| client.position(window) == (120, 90));
+
+        // Only the size is flagged, so the position is left where it is.
+        client.root_message(window, "_NET_MOVERESIZE_WINDOW", [1 << 10 | 1 << 11, 0, 0, 500, 350]);
+        client.wait_for_size(window, (500, 350));
+        assert_eq!(client.position(window), (120, 90), "an unflagged field is not asked");
     });
 }
