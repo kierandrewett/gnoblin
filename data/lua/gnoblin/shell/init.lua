@@ -251,14 +251,80 @@ function drag(s, w) -- follow the pointer until release, then tile it if dropped
     await(w.release)
     s:grab(nil)
     w.x, w.y = w.x, w.y -- a plain write ends the bindings
-    if not Snap.enabled({ edge_tiling = seat.edge_tiling }) then
-        return
+    local zone = Snap.edge_zone(s.x, s.y, work_area(), EDGE_MARGIN)
+    if zone then
+        w:snap(zone)
     end
+end
+
+-- The area a snapped or maximised window fills: the Desk's work area, inside the bars.
+function work_area()
     local d = desk()
-    local area = { x = 0, y = d.space.y, w = d.width, h = d.space.height }
-    local rect = Snap.tile_rect(Snap.edge_zone(s.x, s.y, area, EDGE_MARGIN), area)
-    if rect then
-        w.x, w.y, w.width, w.height = rect.x, rect.y, rect.w, rect.h
+    return { x = 0, y = d.space.y, w = d.width, h = d.space.height }
+end
+-- A window's floating rectangle, kept while it is snapped or maximised so that leaving either state restores it.
+local function keep_floating(w)
+    if not w.data.floating then
+        w.data.floating = { x = w.x, y = w.y, w = w.width, h = w.height }
+    end
+end
+local function restore_floating(w)
+    local r = w.data.floating
+    if r then
+        w.data.floating = nil
+        w.x, w.y, w.width, w.height = r.x, r.y, r.w, r.h
+    end
+end
+-- Tile the window to a snap zone. Refused (false) when edge tiling is off or the zone does not tile. A maximised
+-- window floats first, so unsnapping returns it to the rectangle it had before.
+function Window:snap(zone)
+    local rect = Snap.enabled({ edge_tiling = seat.edge_tiling }) and Snap.tile_rect(zone, work_area())
+    if not rect then
+        return false
+    end
+    if self.maximised then
+        self:unmaximise()
+    end
+    keep_floating(self)
+    self.data.snapped = zone
+    self.x, self.y, self.width, self.height = rect.x, rect.y, rect.w, rect.h
+    return true
+end
+function Window:unsnap()
+    if not self.data.snapped then
+        return false
+    end
+    self.data.snapped = nil
+    restore_floating(self)
+    return true
+end
+function Window:maximise()
+    if self.maximised or self.fullscreen then
+        return false
+    end
+    if self.data.snapped then
+        self:unsnap()
+    end
+    keep_floating(self)
+    self.maximised = true
+    local a = work_area()
+    self.x, self.y, self.width, self.height = a.x, a.y, a.w, a.h
+    return true
+end
+function Window:unmaximise()
+    if not self.maximised then
+        return false
+    end
+    self.maximised = false
+    restore_floating(self)
+    return true
+end
+-- The client asks for a state change; the shell decides and the window's properties echo the answer.
+function Window:on_request(e)
+    if e.request == "maximize" then
+        self:maximise()
+    elseif e.request == "unmaximize" then
+        self:unmaximise()
     end
 end
 -- Super+Left and Super+Right move focus between the columns of a Strip; on any other layout they do nothing.

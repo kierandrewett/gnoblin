@@ -44,8 +44,9 @@ local SCHEMA = {
             parent_window = { type = "node" },
             title = { type = "string", default = "" },
             fullscreen = { type = "boolean", default = false },
+            maximised = { type = "boolean", default = false },
         },
-        signals = { "closed" },
+        signals = { "closed", "request" },
         methods = { "close" },
     },
     { name = "Canvas", base = "Node", methods = { "measure" } },
@@ -60,7 +61,11 @@ local SCHEMA = {
     {
         name = "Seat",
         base = "Node",
-        props = { focus = { type = "node" }, screen = { type = "node" } },
+        props = {
+            focus = { type = "node" },
+            screen = { type = "node" },
+            edge_tiling = { type = "boolean", default = false },
+        },
         signals = { "chord" },
         methods = { "claim", "unclaim", "grab" },
     },

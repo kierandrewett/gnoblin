@@ -8,6 +8,28 @@ end
 
 local AREA = { x = 0, y = 32, w = 1920, h = 1048 }
 
+-- A 1000 by 800 shell with one window on its Desk, placed by the stock floating placement. edge_tiling sets the seat.
+local function shell_window(props, edge_tiling)
+    local core, host = require("fake_core")()
+    H.boot(core, host)
+    local seat = root:add(Seat({ edge_tiling = edge_tiling }))
+    local screen = root:add(Screen({ width = 1000, height = 800 }))
+    local win = root:add(Window(props))
+    H.load_shell()
+    root:find(Seat).screen = screen
+    H.start_shell(host)
+    H.frame(host, 1, {})
+    return host, win
+end
+
+local function rect(w)
+    return { x = w.x, y = w.y, w = w.width, h = w.height }
+end
+
+local function same(a, b)
+    return a.x == b.x and a.y == b.y and a.w == b.w and a.h == b.h
+end
+
 return {
     {
         "edge tiling is off by default",
@@ -58,6 +80,75 @@ return {
         "an unknown zone has no rectangle",
         function()
             H.check(snap().tile_rect("bottom", AREA) == nil, "bottom does not tile")
+        end,
+    },
+
+    {
+        "snapping tiles a window to an edge and unsnapping restores its floating rectangle",
+        function()
+            local _, win = shell_window({ app_id = "foot" }, true)
+            local floating = rect(win)
+            H.check(win:snap("left"), "a snap with edge tiling on must be taken")
+            local a = work_area()
+            H.check(same(rect(win), { x = 0, y = a.y, w = a.w // 2, h = a.h }), "left tiles to the left half")
+            H.check(win.data.snapped == "left", "the snapped zone must be kept")
+            H.check(win:unsnap(), "unsnap must restore the window")
+            H.check(same(rect(win), floating), "unsnap restores the floating rectangle")
+            H.check(not win:unsnap(), "a second unsnap does nothing")
+        end,
+    },
+
+    {
+        "snapping a maximised window floats it first, and unsnapping restores the floating rectangle",
+        function()
+            local _, win = shell_window({ app_id = "foot" }, true)
+            local floating = rect(win)
+            H.check(win:maximise(), "maximise must be taken")
+            H.check(win:snap("left"), "snap must be taken")
+            H.check(win.maximised == false, "snapping must float a maximised window")
+            H.check(win.data.snapped == "left", "the snapped zone must be kept")
+            win:unsnap()
+            H.check(same(rect(win), floating), "unsnap restores the rectangle the window had before it was maximised")
+        end,
+    },
+
+    {
+        "snapping is refused when edge tiling is off and leaves the window where it was",
+        function()
+            local _, win = shell_window({ app_id = "foot" }, false)
+            local before = rect(win)
+            H.check(win:snap("left") == false, "a snap with edge tiling off must be refused")
+            H.check(win.data.snapped == nil, "a refused snap must not mark the window snapped")
+            H.check(same(rect(win), before), "a refused snap must not move the window")
+        end,
+    },
+
+    {
+        "a client maximise request fills the work area, and is refused while the window is fullscreen",
+        function()
+            local host, win = shell_window({ app_id = "foot" }, true)
+            local floating = rect(win)
+            H.frame(
+                host,
+                2,
+                { { type = "request", bubbles = true, target = host.ids("Window")[1], request = "maximize" } }
+            )
+            H.check(win.maximised == true, "a maximise request must be granted")
+            local a = work_area()
+            H.check(same(rect(win), { x = 0, y = a.y, w = a.w, h = a.h }), "maximised fills the work area")
+            H.frame(
+                host,
+                3,
+                { { type = "request", bubbles = true, target = host.ids("Window")[1], request = "unmaximize" } }
+            )
+            H.check(same(rect(win), floating), "unmaximise restores the floating rectangle")
+            win.fullscreen = true
+            H.frame(
+                host,
+                4,
+                { { type = "request", bubbles = true, target = host.ids("Window")[1], request = "maximize" } }
+            )
+            H.check(win.maximised == false, "a maximise request must be refused while fullscreen")
         end,
     },
 }

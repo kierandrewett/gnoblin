@@ -226,3 +226,14 @@ Groups from section 12 mapped to the lanes in section 9:
 | L3   | None directly                                                                                                                   | Layers and modal are not in the failure-mode groups.                                                  |
 | L4   | None directly                                                                                                                   | Views and capture are not in the failure-mode groups.                                                 |
 | L5   | None directly                                                                                                                   | Grant and config removal are not in the failure-mode groups.                                          |
+
+### Ported: snap and maximise (lane PortSnap, steps 1-2)
+
+Old tests in `crates/gnoblin-wm/tests/failure_modes.rs`, mapped to the stock shell (`crates/gnoblin-lua/tests/lua/snap_test.lua`). Later steps append their rows here.
+
+| Old test                                                           | Stock test (file:case)                                                                                        |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `snapping_and_unsnapping_restore_the_floating_rectangle`           | `snap_test.lua`: snapping tiles a window to an edge and unsnapping restores its floating rectangle            |
+| `snapping_a_maximised_window_floats_it_and_unsnapping_restores_it` | `snap_test.lua`: snapping a maximised window floats it first, and unsnapping restores the floating rectangle  |
+| `snapping_is_refused_when_edge_tiling_is_off`                      | `snap_test.lua`: snapping is refused when edge tiling is off and leaves the window where it was               |
+| `maximising_a_fullscreen_window_is_refused`                        | `snap_test.lua`: a client maximise request fills the work area, and is refused while the window is fullscreen |
