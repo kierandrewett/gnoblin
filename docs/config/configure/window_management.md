@@ -247,16 +247,19 @@ See [titlebars](/guides/window_frames).
 
 ## Reading the policy from Lua
 
+The stock shell reads these keys from the main seat node, not from its own copy of the configuration. A reload updates the seat, so the shell's next focus, raise or titlebar decision uses the new value. Its auto-raise timer uses `auto_raise_delay` in milliseconds.
+
 The main seat node publishes these readonly props, so the shell reads the policy it runs under. A reload publishes only the values it changed:
 
 - **Edges and drags:** `edge_tiling`, `drag_constraint` (`work_area` or `minimum_strip`).
 - **Focus:** `focus_mode`, `focus_new_windows`, `raise_on_click`, `auto_raise`, `auto_raise_delay`, `focus_change_on_pointer_rest`.
-- **Titlebar gestures:** `double_click`, `middle_click`, `right_click`.
+- **Titlebar gestures:** `double_click`, `middle_click`, `right_click`. The stock shell performs `toggle-maximize`, `lower` and `none`. `menu`, `minimize` and the one-axis maximise values are accepted and do nothing yet, because the Lua API has no menu or minimise surface. A value the schema does not name raises.
 
-Some settings are not in this policy. Window rules are read by the stock shell from
-its own rule list. `attach-modal-dialogs` and `workspaces-only-on-primary` are not
-published. Workspaces are `Workspace` nodes in the tree, not seat props; see
-[Workspaces](/shell-api/workspaces).
+Some settings are not in this policy, so the shell does not read them from the seat:
+
+- **Window rules:** the stock shell reads them from its own list in `rules.lua`.
+- **`attach-modal-dialogs`** and **`workspaces-only-on-primary`:** not published.
+- **Workspaces:** `Workspace` nodes in the tree, not seat props; see [Workspaces](/shell-api/workspaces). The seat publishes no workspace list.
 
 ## Type definition
 
