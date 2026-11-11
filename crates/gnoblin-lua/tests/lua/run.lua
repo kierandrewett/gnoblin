@@ -15,6 +15,7 @@ for _, file in ipairs({
     "snap_test",
     "drag_test",
     "rules_test",
+    "sets_test",
     "floating_test",
     "tiling_test",
     "strip_test",

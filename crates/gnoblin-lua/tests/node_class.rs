@@ -23,6 +23,7 @@ fn node_class_and_shell_cases_pass_on_lua_55() -> mlua::Result<()> {
             "snap_test.lua",
             "drag_test.lua",
             "rules_test.lua",
+            "sets_test.lua",
         ],
     )
 }
