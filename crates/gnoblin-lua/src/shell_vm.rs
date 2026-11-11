@@ -8,17 +8,68 @@
 //! The link must answer the attach with the snapshot in its `poll` results: the
 //! VM cannot load `node.lua` without a mirror, so `ShellVm::new` drains the link
 //! until the last snapshot chunk arrives.
+//!
+//! The Lua state is the sandbox's configuration profile, the one the config host runs
+//! scripts in: no `io`, `debug`, `package`, `dofile` or `loadfile`, and `load` accepts text
+//! only. `require` answers only from the stock library; the user's shell files get their own `require`
+//! over the config directory when they load (see `shell_scripts.rs`). Every entry into Lua has a budget
+//! (`ShellLimits`): the frame as a whole, and each handler, binding or timer inside it. A handler that
+//! runs away is stopped and reported by name, and the frame goes on with the next one.
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use mlua::{Function, Lua, Table, Value};
+use gnoblin_lua_sandbox::{Guard, Limits, Profile};
+use mlua::{Function, Lua, MultiValue, Table, Thread, Value};
 
+use crate::require::{ModuleRoots, Modules};
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
 use crate::tree_mirror::{
     LuaChange, LuaChord, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId, SnapshotNode, TreeLink,
 };
+
+/// The budgets the shell VM runs under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShellLimits {
+    /// What one handler, binding or timer may use. A handler that goes past it is stopped and
+    /// reported, and the frame carries on.
+    pub entry: Limits,
+    /// What one whole frame may use, all of its entries together. It stops a frame made of
+    /// many slow entries, and a loop in the shell's own code; a frame that goes past it ends the VM.
+    pub frame: Limits,
+    /// What loading the stock shell may use, and what each of the user's shell files may use on its own.
+    /// A file that goes past it is stopped and reported, and the next file loads.
+    pub load: Limits,
+}
+
+impl Default for ShellLimits {
+    fn default() -> Self {
+        Self {
+            // A handler should finish inside a frame.
+            entry: Limits {
+                instructions: 10_000_000,
+                memory_bytes: 256 * 1024 * 1024,
+                handler_ticks: 100,
+            },
+            frame: Limits {
+                instructions: 100_000_000,
+                memory_bytes: 256 * 1024 * 1024,
+                handler_ticks: 500,
+            },
+            load: Limits {
+                instructions: 400_000_000,
+                memory_bytes: 256 * 1024 * 1024,
+                handler_ticks: 2_000,
+            },
+        }
+    }
+}
+
+/// The same report text is logged at most once in this many seconds of the frame clock, so a
+/// handler that fails every frame does not fill the log.
+pub const REPORT_INTERVAL: f64 = 5.0;
 
 /// The protocol version the VM attaches with.
 const ATTACH_VERSION: u64 = 1;
@@ -83,6 +134,10 @@ pub struct ShellVm {
     lua: Lua,
     core: Shared,
     tick: Function,
+    guard: Rc<Guard>,
+    limits: ShellLimits,
+    /// When each report text was last passed on, and how many copies were held back since.
+    reported: BTreeMap<String, (f64, u64)>,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
     incoming: Vec<LuaIncoming>,
     /// The ops of each sent transaction, by serial, until its reply arrives. A refusal names its
@@ -139,16 +194,37 @@ pub fn describe_op(index: usize, op: &LuaOp, mirror: &LuaMirror) -> String {
 }
 
 impl ShellVm {
-    /// Boots node.lua from `lua_dir` over the real core and attaches `link`.
+    /// Boots node.lua from `lua_dir` over the real core and attaches `link`, under the default budgets.
     ///
     /// Fails when the link does not deliver a complete snapshot in its first poll.
-    pub fn new(mut link: Box<dyn TreeLink>, lua_dir: &Path, classes: Vec<ClassSpec>) -> Result<Self> {
+    pub fn new(link: Box<dyn TreeLink>, lua_dir: &Path, classes: Vec<ClassSpec>) -> Result<Self> {
+        Self::with_limits(link, lua_dir, classes, ShellLimits::default())
+    }
+
+    /// Boots like [`ShellVm::new`], with the given budgets.
+    pub fn with_limits(
+        mut link: Box<dyn TreeLink>,
+        lua_dir: &Path,
+        classes: Vec<ClassSpec>,
+        limits: ShellLimits,
+    ) -> Result<Self> {
         link.attach(ATTACH_VERSION).map_err(|e| ShellVmError::Link(e.0))?;
         let (mirror, incoming) = Self::boot_mirror(link.as_mut())?;
         let core = TreeCore::shared(mirror, classes).map_err(ShellVmError::Core)?;
 
-        let lua = Lua::new();
+        let guard = Rc::new(Guard::new());
+        guard.begin(&limits.frame);
+        let lua = gnoblin_lua_sandbox::create(
+            Profile::Config,
+            &limits.entry,
+            Rc::clone(&guard),
+            crate::host::script_sink(),
+        )
+        .map_err(lua_error)?;
         let core_table = tree_core::install(&lua, &core).map_err(lua_error)?;
+        install_entries(&lua, &core_table, &guard, limits.entry).map_err(lua_error)?;
+        let shipped = lua_dir.parent().unwrap_or(lua_dir).to_path_buf();
+        install_require(&lua, Modules::new(ModuleRoots { shipped, user: None })).map_err(lua_error)?;
         let path = lua_dir.join("node.lua");
         let source =
             std::fs::read_to_string(&path).map_err(|e| ShellVmError::Load(format!("{}: {e}", path.display())))?;
@@ -163,6 +239,9 @@ impl ShellVm {
             lua,
             core,
             tick,
+            guard,
+            limits,
+            reported: BTreeMap::new(),
             incoming,
             in_flight: None,
             sent: BTreeMap::new(),
@@ -172,17 +251,24 @@ impl ShellVm {
 
     /// Loads the stock shell (`require("gnoblin.shell")`) from `stock`, the directory holding `node.lua`, and then the
     /// user's shell files from the config directory `user`: `shell.lua`, then `shell/*.lua`. Both run before the first
-    /// frame. The user's files run in the config sandbox's environment (see `shell_scripts.rs`).
+    /// frame, the stock shell under `ShellLimits::load` as a whole and each user file under it on its own. The state is
+    /// the sandbox's, so neither can reach the host; the user's files also run in an environment of their own (see
+    /// `shell_scripts.rs`).
     ///
     /// Returns the errors the user's files raised, in load order; each was also logged and none stops the VM. An error
     /// loading the stock shell is `Err`: the VM has no shell and the caller decides what to do.
     pub fn load_shell(&mut self, stock: &Path, user: Option<&Path>) -> Result<Vec<String>> {
-        let budget = crate::shell_scripts::USER_FILE_BUDGET;
-        crate::shell_scripts::load(&self.lua, stock, user, budget).map_err(ShellVmError::Load)
+        let budget = crate::shell_scripts::LoadBudget {
+            guard: &self.guard,
+            limits: self.limits.load,
+        };
+        crate::shell_scripts::load(&self.lua, stock, user, &budget).map_err(ShellVmError::Load)
     }
 
-    /// Runs `src` as a chunk named `name` and returns its result, if it has one.
+    /// Runs `src` as a chunk named `name` and returns its result, if it has one. The chunk runs
+    /// under the frame's budget.
     pub fn run(&mut self, name: &str, src: &str) -> Result<Option<String>> {
+        self.guard.begin(&self.limits.frame);
         let value: Value = self.lua.load(src).set_name(name).eval().map_err(lua_error)?;
         match value {
             Value::Nil => Ok(None),
@@ -330,7 +416,8 @@ impl ShellVm {
         }
 
         let wake = self.tick_lua(now, &touched, &created, events.into_iter().chain(tree_events))?;
-        diagnostics.extend(self.core.borrow_mut().take_reports());
+        let reports = self.core.borrow_mut().take_reports();
+        diagnostics.extend(self.throttle(now, reports));
 
         let ready = self.in_flight.is_none_or(|s| self.core.borrow().mirror().serial() >= s);
         let tx = if ready {
@@ -447,10 +534,88 @@ impl ShellVm {
             }
             events_table.set(i + 1, entry).map_err(lua_error)?;
         }
+        self.guard.begin(&self.limits.frame);
         self.tick
             .call((now, changes, events_table, created_table))
             .map_err(lua_error)
     }
+
+    /// Passes on each distinct report text at most once per [`REPORT_INTERVAL`] seconds. The
+    /// first copy after the interval says how many were held back, so a handler that fails every
+    /// frame costs one log line per interval, and the count shows it is still failing.
+    fn throttle(&mut self, now: f64, reports: Vec<String>) -> Vec<String> {
+        let mut passed = Vec::new();
+        for report in reports {
+            match self.reported.get_mut(&report) {
+                Some((at, held)) if now - *at < REPORT_INTERVAL => *held += 1,
+                Some((at, held)) => {
+                    let text = match *held {
+                        0 => report.clone(),
+                        n => format!("{report} (repeated {n} more times since it was last reported)"),
+                    };
+                    *at = now;
+                    *held = 0;
+                    passed.push(text);
+                }
+                None => {
+                    self.reported.insert(report.clone(), (now, 0));
+                    passed.push(report);
+                }
+            }
+        }
+        self.reported.retain(|_, (at, _)| now - *at < REPORT_INTERVAL * 12.0);
+        passed
+    }
+}
+
+/// Puts `resume` and `pcall` on the core table: protected calls that give the call its own
+/// budget. `node.lua` starts every handler, binding and timer through one of them, so a loop in
+/// one of them is stopped, reported and cleared, and the rest of the frame is not aborted with it.
+/// Both answer as the Lua functions of those names do: `true` and the results, or `false` and the
+/// message.
+fn install_entries(lua: &Lua, core: &Table, guard: &Rc<Guard>, entry: Limits) -> mlua::Result<()> {
+    fn answer(lua: &Lua, result: mlua::Result<MultiValue>) -> mlua::Result<MultiValue> {
+        match result {
+            Ok(values) => Ok(std::iter::once(Value::Boolean(true)).chain(values).collect()),
+            Err(error) => {
+                let message = match error {
+                    mlua::Error::RuntimeError(message) => message,
+                    other => other.to_string(),
+                };
+                Ok([Value::Boolean(false), Value::String(lua.create_string(&message)?)]
+                    .into_iter()
+                    .collect())
+            }
+        }
+    }
+    let guarded = Rc::clone(guard);
+    core.set(
+        "resume",
+        lua.create_function(move |lua, (thread, args): (Thread, MultiValue)| {
+            let (result, _) = guarded.scoped(&entry, || thread.resume::<MultiValue>(args));
+            answer(lua, result)
+        })?,
+    )?;
+    let guarded = Rc::clone(guard);
+    core.set(
+        "pcall",
+        lua.create_function(move |lua, (function, args): (Function, MultiValue)| {
+            let thread = lua.create_thread(function)?;
+            let (result, _) = guarded.scoped(&entry, || thread.resume::<MultiValue>(args));
+            answer(lua, result)
+        })?,
+    )
+}
+
+/// Replaces the cleared `require` with the module loader: a dotted name is a file under the
+/// stock library or the user's directory, `a.b` being `a/b.lua` or `a/b/init.lua`, read as text
+/// and run once. Nothing outside those two roots can be named.
+pub(crate) fn install_require(lua: &Lua, modules: Modules) -> mlua::Result<()> {
+    let modules = Rc::new(modules);
+    lua.globals().set(
+        "require",
+        lua.create_function(move |lua, name: String| modules.fetch(lua, &name).map(|(value, _)| value))?,
+    )
 }
 
 fn lua_error(e: mlua::Error) -> ShellVmError {

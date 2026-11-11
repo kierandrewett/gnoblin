@@ -11,31 +11,41 @@
 //! 1. **A user file has a syntax error or raises.** One error is logged, naming the file, and the next file
 //!    still loads. What the file did before it raised stays. The stock shell is already running, so a broken
 //!    user file never costs the session its shell (`tests::a_syntax_error_logs_one_error_and_the_stock_shell_and_other_files_still_run`).
-//! 2. **A user file loops for ever.** A count hook stops the file after [`USER_FILE_BUDGET`] and logs it as an
-//!    error like any other.
-//! 3. **A user file reaches for the host.** Each file runs in an environment with no `io`, `debug`, `package`,
-//!    `dofile`, `loadfile` or binary `load`, and `os` cut to its clock half: the same boundary as the
-//!    configuration sandbox (`gnoblin-lua-sandbox`, `Profile::Config`). Its `require` reads `gnoblin.*` from
-//!    the shipped library and any other name from the config directory, each confined to its root.
+//! 2. **A user file loops for ever.** The VM's own count hook stops the file when it has used its [`LoadBudget`]
+//!    (instructions or time), and it is logged as an error like any other. The hook is the sandbox's, so it stays on
+//!    for every handler the file defines.
+//! 3. **A user file reaches for the host.** The VM's state is the configuration sandbox
+//!    (`gnoblin-lua-sandbox`, `Profile::Config`): no `io`, `debug`, `package`, `dofile`, `loadfile` or binary
+//!    `load`, and `os` cut to its clock half. Each file also runs in an environment of its own that names none of
+//!    them. Its `require` reads `gnoblin.*` from the shipped library and any other name from the config directory,
+//!    each confined to its root.
 //! 4. **The stock shell does not load.** The error comes back to the caller, which leaves the VM off.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 
-use mlua::{Error, Function, HookTriggers, Lua, Table, Value, VmState};
+use gnoblin_lua_sandbox::{Guard, Limits};
+use mlua::{Function, Lua, Table, Value};
 use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::loader::{self, Resolution};
 use crate::require::{ModuleRoots, is_module_name, read_source, resolve, runtime};
 
-/// How long one user file may run before it is stopped.
-pub const USER_FILE_BUDGET: Duration = Duration::from_secs(2);
+/// What loading may use: the stock shell as a whole, and each user file on its own. It is run under the VM's
+/// guard, so the count hook the sandbox installed enforces it and stays installed.
+pub(crate) struct LoadBudget<'a> {
+    pub guard: &'a Guard,
+    pub limits: Limits,
+}
 
-/// Instructions between two looks at the clock while a user file runs.
-const HOOK_INSTRUCTIONS: u32 = 1000;
+impl LoadBudget<'_> {
+    /// Runs `run` as one entry with its own budget. A budget that runs out ends the entry with an error.
+    fn run<T>(&self, run: impl FnOnce() -> mlua::Result<T>) -> mlua::Result<T> {
+        self.guard.scoped(&self.limits, run).0
+    }
+}
 
 /// The Lua that builds the environment a user file runs in. It takes the real globals and the user's
 /// `require`, and returns the environment table.
@@ -164,18 +174,18 @@ fn spawn(lua: &Lua, command: Value) -> mlua::Result<Table> {
 ///
 /// Returns the errors the user's files raised, one text each, in load order; each was also logged. An error
 /// loading the stock shell itself is returned as `Err`.
-pub(crate) fn load(lua: &Lua, stock: &Path, user: Option<&Path>, budget: Duration) -> Result<Vec<String>, String> {
+pub(crate) fn load(
+    lua: &Lua,
+    stock: &Path,
+    user: Option<&Path>,
+    budget: &LoadBudget<'_>,
+) -> Result<Vec<String>, String> {
     let root = stock
         .parent()
         .ok_or_else(|| format!("{} has no parent directory to load gnoblin.shell from", stock.display()))?;
     install_sys(lua).map_err(|error| format!("installing sys: {error}"))?;
-    let path_prefix = format!("{root}/?.lua;{root}/?/init.lua;", root = root.display());
-    lua.load("package.path = ... .. package.path")
-        .call::<()>(path_prefix)
-        .map_err(|error| format!("setting the package path: {error}"))?;
-    lua.load("require('gnoblin.shell')")
-        .set_name("gnoblin.shell")
-        .exec()
+    budget
+        .run(|| lua.load("require('gnoblin.shell')").set_name("gnoblin.shell").exec())
         .map_err(|error| format!("loading gnoblin.shell: {error}"))?;
     let Some(user) = user else {
         return Ok(Vec::new());
@@ -200,7 +210,7 @@ fn user_files(dir: &Path) -> Result<(PathBuf, Vec<PathBuf>), String> {
     Ok((root, files))
 }
 
-fn load_user_files(lua: &Lua, shipped: &Path, dir: &Path, budget: Duration) -> Vec<String> {
+fn load_user_files(lua: &Lua, shipped: &Path, dir: &Path, budget: &LoadBudget<'_>) -> Vec<String> {
     let mut errors = Vec::new();
     let (root, files) = match user_files(dir) {
         Ok(found) => found,
@@ -228,35 +238,15 @@ fn load_user_files(lua: &Lua, shipped: &Path, dir: &Path, budget: Duration) -> V
     errors
 }
 
-/// Runs one file in `env`, stopped by the count hook after `budget`.
-fn run_user_file(lua: &Lua, env: &Table, file: &Path, budget: Duration) -> mlua::Result<()> {
+/// Runs one file in `env`, stopped by the VM's count hook when it has used `budget`.
+fn run_user_file(lua: &Lua, env: &Table, file: &Path, budget: &LoadBudget<'_>) -> mlua::Result<()> {
     let source = read_source(file, &file.display().to_string()).map_err(runtime)?;
-    with_deadline(lua, budget, || {
+    budget.run(|| {
         lua.load(source.as_str())
             .set_name(format!("@{}", file.display()))
             .set_environment(env.clone())
             .exec()
     })
-}
-
-/// Runs `run` with the count hook armed, then takes the hook off again.
-fn with_deadline<T>(lua: &Lua, budget: Duration, run: impl FnOnce() -> mlua::Result<T>) -> mlua::Result<T> {
-    let deadline = Instant::now() + budget;
-    lua.set_global_hook(
-        HookTriggers::new().every_nth_instruction(HOOK_INSTRUCTIONS),
-        move |_, _| {
-            if Instant::now() >= deadline {
-                Err(Error::runtime(format!(
-                    "the file ran for more than {budget:?} and was stopped"
-                )))
-            } else {
-                Ok(VmState::Continue)
-            }
-        },
-    )?;
-    let result = run();
-    lua.remove_global_hook();
-    result
 }
 
 /// The environment user files run in, with its own `require`.
@@ -319,10 +309,60 @@ fn user_env(lua: &Lua, shipped: &Path, user: &Path) -> mlua::Result<Table> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::ops::Deref;
+    use std::rc::Rc;
+    use std::time::Duration;
+
+    use gnoblin_lua_sandbox::Profile;
 
     use super::*;
+    use crate::require::Modules;
 
-    const BUDGET: Duration = Duration::from_secs(5);
+    /// What loading may use in these tests: plenty, so only the test that loops runs into it.
+    fn roomy() -> Limits {
+        Limits {
+            instructions: 400_000_000,
+            memory_bytes: 64 * 1024 * 1024,
+            handler_ticks: 5_000,
+        }
+    }
+
+    /// A Lua state as the shell VM builds it: the config sandbox, its count hook, and a `require` that reads the
+    /// stock library beside `stock`.
+    struct State {
+        lua: Lua,
+        guard: Rc<Guard>,
+        limits: Limits,
+    }
+
+    impl State {
+        fn new(stock: &Path, limits: Limits) -> Self {
+            let guard = Rc::new(Guard::new());
+            guard.begin(&limits);
+            let lua = gnoblin_lua_sandbox::create(Profile::Config, &limits, Rc::clone(&guard), Rc::new(|_, _| {}))
+                .expect("the sandbox builds");
+            let roots = ModuleRoots {
+                shipped: stock.parent().expect("a parent").to_path_buf(),
+                user: None,
+            };
+            crate::shell_vm::install_require(&lua, Modules::new(roots)).expect("require installs");
+            Self { lua, guard, limits }
+        }
+
+        fn budget(&self) -> LoadBudget<'_> {
+            LoadBudget {
+                guard: &self.guard,
+                limits: self.limits,
+            }
+        }
+    }
+
+    impl Deref for State {
+        type Target = Lua;
+        fn deref(&self) -> &Lua {
+            &self.lua
+        }
+    }
 
     /// A stock library with a one-file shell, and a config directory beside it.
     struct Fixture {
@@ -353,8 +393,12 @@ mod tests {
             fs::write(path, text).expect("a user file");
         }
 
-        fn load(&self, lua: &Lua) -> Vec<String> {
-            load(lua, &self.stock, Some(&self.config), BUDGET).expect("the stock shell loads")
+        fn state(&self) -> State {
+            State::new(&self.stock, roomy())
+        }
+
+        fn load(&self, state: &State) -> Vec<String> {
+            load(&state.lua, &self.stock, Some(&self.config), &state.budget()).expect("the stock shell loads")
         }
     }
 
@@ -370,7 +414,7 @@ mod tests {
         f.write("shell.lua", "table.insert(order, 'shell.lua')");
         f.write("shell/20-b.lua", "table.insert(order, '20-b')");
         f.write("shell/10-a.lua", "table.insert(order, '10-a')");
-        let lua = Lua::new();
+        let lua = f.state();
         assert!(f.load(&lua).is_empty());
         let order: Table = global(&lua, "order");
         let order: Vec<String> = order.sequence_values().collect::<mlua::Result<_>>().expect("names");
@@ -384,7 +428,7 @@ mod tests {
             "shell.lua",
             "local Rules = require('gnoblin.shell.rules')\nRules.list = { 'mine' }\nmy_setting = 7\nseat_value = _G.stock_loaded",
         );
-        let lua = Lua::new();
+        let lua = f.state();
         assert!(f.load(&lua).is_empty());
         assert_eq!(
             global::<i64>(&lua, "my_setting"),
@@ -413,7 +457,7 @@ mod tests {
         // first capture can miss an event another thread's call registered first. Capture again until it is seen.
         let mut attempts = 0;
         let (lua, errors, logged) = loop {
-            let lua = Lua::new();
+            let lua = f.state();
             let mut errors = Vec::new();
             let logged = gnoblin_log::event::capture::logged(|| errors = f.load(&lua));
             attempts += 1;
@@ -437,7 +481,7 @@ mod tests {
     fn a_file_that_raises_keeps_what_it_set_first() {
         let f = fixture(STOCK);
         f.write("shell.lua", "before = 1\nlocal x = nil + 1\nafter = 2");
-        let lua = Lua::new();
+        let lua = f.state();
         assert_eq!(f.load(&lua).len(), 1);
         assert_eq!(global::<i64>(&lua, "before"), 1);
         assert!(global::<Value>(&lua, "after").is_nil());
@@ -459,7 +503,7 @@ mod tests {
             seen.text = load("return 1")()
             "#,
         );
-        let lua = Lua::new();
+        let lua = f.state();
         let errors = f.load(&lua);
         assert!(errors.is_empty(), "{errors:?}");
         let seen: Table = global(&lua, "seen");
@@ -487,11 +531,10 @@ mod tests {
             "functionfunctionfunctionfunction"
         );
         assert_eq!(seen.get::<i64>("text").expect("text"), 1, "text chunks still load");
-        // The shell itself keeps its libraries.
-        assert!(
-            !global::<Value>(&lua, "io").is_nil(),
-            "the sandbox is the file's environment, not the VM's"
-        );
+        // The VM's own state has none of them either: stock code and handlers a file defines run in it.
+        for name in ["io", "debug", "package", "dofile", "loadfile"] {
+            assert!(global::<Value>(&lua, name).is_nil(), "{name} is not in the shell VM");
+        }
     }
 
     #[test]
@@ -510,7 +553,7 @@ mod tests {
         f.write("shell/70-cycle.lua", "require('cycle.a')");
         f.write("cycle/a.lua", "return require('cycle.b')");
         f.write("cycle/b.lua", "return require('cycle.a')");
-        let lua = Lua::new();
+        let lua = f.state();
         let errors = f.load(&lua);
         assert_eq!(errors.len(), 2, "the missing module and the cycle: {errors:?}");
         assert!(errors[0].contains("nothing.here"), "{errors:?}");
@@ -532,31 +575,39 @@ mod tests {
         let f = fixture(STOCK);
         f.write("shell/10-loop.lua", "while true do end");
         f.write("shell/20-fine.lua", "after_loop = true");
-        let lua = Lua::new();
-        let errors = load(&lua, &f.stock, Some(&f.config), Duration::from_millis(50)).expect("the stock shell loads");
+        let limits = Limits {
+            handler_ticks: 50,
+            ..roomy()
+        };
+        let lua = State::new(&f.stock, limits);
+        let errors = load(&lua.lua, &f.stock, Some(&f.config), &lua.budget()).expect("the stock shell loads");
         assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains("was stopped"), "{errors:?}");
+        assert!(errors[0].contains("deadline"), "{errors:?}");
         assert!(global::<bool>(&lua, "after_loop"));
     }
 
     #[test]
     fn no_user_files_and_no_config_directory_load_nothing() {
         let f = fixture(STOCK);
-        let lua = Lua::new();
+        let lua = f.state();
         assert!(f.load(&lua).is_empty(), "an empty config directory");
-        let lua = Lua::new();
+        let lua = f.state();
         let absent = f.config.join("absent");
-        assert!(load(&lua, &f.stock, Some(&absent), BUDGET).expect("loads").is_empty());
-        let lua = Lua::new();
-        assert!(load(&lua, &f.stock, None, BUDGET).expect("loads").is_empty());
+        assert!(
+            load(&lua, &f.stock, Some(&absent), &lua.budget())
+                .expect("loads")
+                .is_empty()
+        );
+        let lua = f.state();
+        assert!(load(&lua, &f.stock, None, &lua.budget()).expect("loads").is_empty());
     }
 
     #[test]
     fn a_stock_shell_that_does_not_load_is_an_error() {
         let f = fixture("error('the stock shell is broken')");
         f.write("shell.lua", "user_ran = true");
-        let lua = Lua::new();
-        let error = load(&lua, &f.stock, Some(&f.config), BUDGET).expect_err("the stock shell fails");
+        let lua = f.state();
+        let error = load(&lua, &f.stock, Some(&f.config), &lua.budget()).expect_err("the stock shell fails");
         assert!(error.contains("the stock shell is broken"), "{error}");
         assert!(
             global::<Value>(&lua, "user_ran").is_nil(),

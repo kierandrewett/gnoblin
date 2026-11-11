@@ -107,6 +107,10 @@ pub enum Profile {
 #[derive(Debug)]
 pub struct Guard {
     remaining: Cell<u64>,
+    /// The instruction budget the current entry was armed with, named in the abort message.
+    budget: Cell<u64>,
+    /// How long the current entry may run, in milliseconds.
+    deadline_ms: Cell<u64>,
     started: Cell<Option<Instant>>,
     aborted: Cell<bool>,
     /// The message of the abort that latched `aborted`. Every later raise repeats it, so a
@@ -129,6 +133,8 @@ impl Guard {
     pub fn new() -> Guard {
         Guard {
             remaining: Cell::new(0),
+            budget: Cell::new(0),
+            deadline_ms: Cell::new(0),
             started: Cell::new(None),
             aborted: Cell::new(false),
             abort_message: Default::default(),
@@ -140,8 +146,39 @@ impl Guard {
     /// Arm the budgets for one entry into Lua.
     pub fn begin(&self, limits: &Limits) {
         self.remaining.set(limits.instructions);
+        self.budget.set(limits.instructions);
+        self.deadline_ms.set(limits.handler_ticks);
         self.aborted.set(false);
         self.started.set(Some(Instant::now()));
+    }
+
+    /// Run `f` as a nested entry with its own budgets, and give the outer entry back its state.
+    ///
+    /// The nested entry starts with fresh instructions and a fresh deadline. When `f` returns,
+    /// an abort inside it is cleared, so the outer entry carries on and only a runaway
+    /// entry is stopped. What the nested entry spent comes off the outer entry's instructions,
+    /// so many entries cannot together outrun the outer budget. Returns `f`'s result and the
+    /// message of the budget the nested entry exhausted, if it did.
+    pub fn scoped<R>(&self, limits: &Limits, f: impl FnOnce() -> R) -> (R, Option<String>) {
+        let outer = (
+            self.remaining.get(),
+            self.budget.get(),
+            self.deadline_ms.get(),
+            self.started.get(),
+            self.aborted.get(),
+        );
+        let outer_message = self.abort_message.borrow().clone();
+        self.begin(limits);
+        let result = f();
+        let aborted = self.aborted.get().then(|| self.abort_message());
+        let spent = limits.instructions.saturating_sub(self.remaining.get());
+        self.remaining.set(outer.0.saturating_sub(spent));
+        self.budget.set(outer.1);
+        self.deadline_ms.set(outer.2);
+        self.started.set(outer.3);
+        self.aborted.set(outer.4);
+        self.abort_message.replace(outer_message);
+        (result, aborted)
     }
 
     /// Whether the hook stopped the last entry for exhausting a budget.
@@ -200,7 +237,7 @@ pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>, sink: Sink) -
     cap_unpack(&lua)?;
     output::install(&lua, sink)?;
     strlib::install(&lua, Rc::clone(&guard), limits.instructions)?;
-    install_hook(&lua, limits, Rc::clone(&guard))?;
+    install_hook(&lua, Rc::clone(&guard))?;
     guard_protected_calls(&lua, guard)?;
     Ok(lua)
 }
@@ -582,12 +619,8 @@ pub(crate) fn budget_message(budget: u64) -> String {
     )
 }
 
-/// Install the count hook that enforces the instruction and deadline budgets.
-fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Error> {
-    // The closure outlives this call, so the numbers it names are copied in.
-    let budget = limits.instructions;
-    let deadline_ms = limits.handler_ticks;
-    let deadline = Duration::from_millis(deadline_ms);
+/// Install the count hook that enforces the instruction and deadline budgets the guard was armed with.
+fn install_hook(lua: &Lua, guard: Rc<Guard>) -> Result<(), Error> {
     // A global hook, not a thread hook. mlua's thread hook answers only for the thread it
     // was set on, so a coroutine would run unbounded. A global hook is copied into every
     // coroutine that `lua_newthread` creates, so no thread escapes the budgets.
@@ -602,11 +635,12 @@ fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Erro
             let remaining = guard.remaining.get();
             if remaining <= u64::from(HOOK_INSTRUCTIONS) {
                 guard.remaining.set(0);
-                return Err(guard.latch(budget_message(budget)));
+                return Err(guard.latch(budget_message(guard.budget.get())));
             }
             guard.remaining.set(remaining - u64::from(HOOK_INSTRUCTIONS));
+            let deadline_ms = guard.deadline_ms.get();
             if let Some(started) = guard.started.get()
-                && started.elapsed() >= deadline
+                && started.elapsed() >= Duration::from_millis(deadline_ms)
             {
                 return Err(guard.latch(format!("the handler deadline ({deadline_ms} ms) passed")));
             }
@@ -629,6 +663,30 @@ mod tests {
         let guard = Rc::new(Guard::new());
         guard.begin(&limits);
         create(profile, &limits, guard, quiet()).expect("the sandbox builds")
+    }
+
+    #[test]
+    fn a_scoped_entry_that_runs_away_is_stopped_and_leaves_the_outer_entry_running() {
+        let limits = Limits {
+            instructions: 200_000,
+            ..Limits::default()
+        };
+        let guard = Rc::new(Guard::new());
+        guard.begin(&limits);
+        let lua = create(Profile::Config, &limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
+        let spin = lua
+            .load("while true do end")
+            .into_function()
+            .expect("the loop compiles");
+        let (result, aborted) = guard.scoped(&limits, || spin.call::<()>(()));
+        assert!(result.is_err(), "the loop is stopped");
+        assert!(
+            aborted.is_some_and(|message| message.contains("instruction budget")),
+            "the abort names the budget"
+        );
+        assert!(!guard.aborted(), "the outer entry is not aborted");
+        let sum: i64 = lua.load("return 1 + 1").eval().expect("the outer entry still runs");
+        assert_eq!(sum, 2);
     }
 
     #[test]

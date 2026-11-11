@@ -1,5 +1,6 @@
 //! The loader behind `require`. A name is a dot-separated list of identifiers, and `a.b.c`
-//! is the file `a/b/c.lua` under one of the two roots in [`ModuleRoots`]. A name that starts
+//! is the file `a/b/c.lua`, or `a/b/c/init.lua` when that does not exist, under one of the
+//! two roots in [`ModuleRoots`]. A name that starts
 //! with `gnoblin.` is read from the shipped root alone, so that namespace is reserved. Any
 //! other name is read from the user root first and then from the shipped root. The roots are
 //! fixed, not taken from the document being built, so a module is found before that document
@@ -111,12 +112,16 @@ pub(crate) fn resolve(roots: &ModuleRoots, name: &str) -> Result<Resolved, Strin
         searched.push(user);
     }
     searched.push(roots.shipped.as_path());
-    let relative = format!("{}.lua", name.replace('.', "/"));
+    let name_path = name.replace('.', "/");
+    let relatives = [format!("{name_path}.lua"), format!("{name_path}/init.lua")];
     for dir in &searched {
-        let candidate = dir.join(&relative);
-        if !candidate.is_file() {
+        let Some(candidate) = relatives
+            .iter()
+            .map(|relative| dir.join(relative))
+            .find(|path| path.is_file())
+        else {
             continue;
-        }
+        };
         let base = dir.canonicalize().map_err(|error| error.to_string())?;
         let path = candidate.canonicalize().map_err(|error| error.to_string())?;
         if !path.starts_with(&base) {

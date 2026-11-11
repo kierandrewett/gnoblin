@@ -69,8 +69,8 @@ fn the_shell_vm_attaches_and_its_mirror_holds_the_seat_and_a_screen() {
     });
 }
 
-/// Runs the stock shell inside the VM the way production loads it: the package path is the shipped
-/// Lua root, then `require("gnoblin.shell")` loads `shell/init.lua`, which requires its siblings.
+/// Runs the stock shell inside the VM the way production loads it: `require("gnoblin.shell")`
+/// loads `shell/init.lua` from the shipped Lua root, which requires its siblings.
 /// `sys` is the host's system table, which the shell reads when it loads; the test supplies it inert.
 fn load_stock_shell(role: &mut ShellRole) {
     role.run(
@@ -78,12 +78,6 @@ fn load_stock_shell(role: &mut ShellRole) {
         "sys = sys or { spawn = function() end, date = function() return '' end }",
     )
     .expect("the host table is set");
-    let root = stock_library().join("..");
-    let setup = format!(
-        "package.path = '{root}/?.lua;{root}/?/init.lua;' .. package.path",
-        root = root.display()
-    );
-    role.run("package.path", &setup).expect("the package path is set");
     role.run("gnoblin.shell", "require('gnoblin.shell')")
         .unwrap_or_else(|error| panic!("gnoblin.shell loads in the shell VM: {error:?}"));
 }

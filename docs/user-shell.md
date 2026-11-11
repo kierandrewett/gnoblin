@@ -42,7 +42,20 @@ stock shell uses. Any other name, such as `require("mine.rules")`, loads
 `mine/rules.lua` from the configuration directory. Names with `..` or a path
 separator are refused.
 
-A file that runs for more than two seconds is stopped.
+A file that runs for more than two seconds is stopped. The same limits hold for
+the whole shell, not only for the file: it runs in one sandboxed state, so the
+stock shell's own code cannot reach the host either.
+
+A handler, binding or timer has its own limit of 10 million Lua instructions or
+100 milliseconds, whichever comes first.
+
+- One that goes past it is stopped and reported by name, for example
+  `Window on_ready handler: ... instruction budget ... is exhausted`. The other
+  handlers of the frame still run.
+- One that raises is reported the same way (`Workspace:arrange: ...`). Its node
+  keeps what it was last given.
+- The same report is logged once every five seconds, with a count of the copies
+  it held back.
 
 ## Window rules
 

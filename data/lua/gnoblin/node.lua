@@ -38,15 +38,15 @@ local function run(b)
     b.sources, b.queued = {}, false
     local outer = current
     current = b
-    local ok, err = pcall(b.fn)
+    local ok, err = core.pcall(b.fn)
     current = outer
     if not ok then
-        core.report(tostring(err))
+        core.report(b.label .. ": " .. tostring(err))
     end
 end
-local function bind(fn)
+local function bind(fn, label)
     seq = seq + 1
-    local b = { fn = fn, seq = seq, sources = {} }
+    local b = { fn = fn, seq = seq, sources = {}, label = label or "binding" }
     run(b)
     return b
 end
@@ -76,6 +76,7 @@ end
 -- Scheduler. Every handler runs in its own coroutine, so `await` works anywhere but in a binding.
 -- A coroutine belongs to the node whose handler started it and stops when that node is destroyed.
 local owners = setmetatable({}, { __mode = "k" })
+local labels = setmetatable({}, { __mode = "k" }) -- what a coroutine is, named in a report of its failure
 local function resume(co, ...)
     local o = owners[co]
     if o and not nodes[rawget(o, ID)] then
@@ -83,20 +84,21 @@ local function resume(co, ...)
     end
     local outer = current
     current = nil -- a handler may await even when a binding started it
-    local ok, err = coroutine.resume(co, ...)
+    local ok, err = core.resume(co, ...)
     current = outer
     if not ok then
-        core.report(tostring(err))
+        core.report((labels[co] or "handler") .. ": " .. tostring(err))
     end
 end
-local function start(o, fn, ...)
+local function start(o, label, fn, ...)
     local co = coroutine.create(fn)
     owners[co] = o
+    labels[co] = label
     resume(co, ...)
     return co
 end
 function go(fn, ...)
-    return start(owners[coroutine.running()], fn, ...)
+    return start(owners[coroutine.running()], "go", fn, ...)
 end
 local function emit(n, name, ...)
     local chain, c = {}, rawget(n, CLASS)
@@ -106,7 +108,7 @@ local function emit(n, name, ...)
     end -- base class handlers first
     for _, k in ipairs(chain) do
         for _, fn in ipairs(meta(k).handlers[name] or {}) do
-            start(n, fn, n, ...)
+            start(n, ("%s on_%s handler"):format(meta(k).name, name), fn, n, ...)
         end
     end
     local l = rawget(n, HANDLERS)
@@ -115,7 +117,7 @@ local function emit(n, name, ...)
     for _, h in ipairs(list) do
         if h.fn then
             keep[#keep + 1] = h
-            start(n, h.fn, n, ...)
+            start(n, ("%s %s handler"):format(meta(rawget(n, CLASS)).name, name), h.fn, n, ...)
         else
             resume(h.co, ...)
         end
@@ -249,7 +251,7 @@ Instance.__newindex = function(n, k, v)
     if type(v) == "function" then -- a function value is a binding
         rawget(n, BOUND)[k] = bind(function()
             write(n, k, p, v(n))
-        end)
+        end, ("%s.%s binding"):format(m.name, k))
     else
         write(n, k, p, v)
     end
@@ -304,7 +306,7 @@ function make(cls, id, spec) -- spec is nil for a node Gnoblin made
         if n.arrange ~= classes.Node.arrange then
             rawget(n, BOUND)[CLASS] = bind(function()
                 n:arrange()
-            end)
+            end, m.name .. ":arrange")
         end
     end
     return n

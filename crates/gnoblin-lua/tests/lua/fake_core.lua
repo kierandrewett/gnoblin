@@ -361,6 +361,10 @@ return function()
     function core.report(message)
         reports[#reports + 1] = tostring(message)
     end
+    -- The native core runs each handler and binding under its own budget. The plain Lua tests run them
+    -- unbudgeted; a runaway is covered by the Rust tests of the shell VM.
+    core.resume = coroutine.resume
+    core.pcall = pcall
 
     -- Runs one frame: the tick gets the native changes and the events, then the batch of writes is committed.
     -- Changes and removals made during the frame are delivered on the next one.

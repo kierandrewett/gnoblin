@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use gnoblin_lua::shell_vm::{LuaEvent, ShellVm};
+use gnoblin_lua::Limits;
+use gnoblin_lua::shell_vm::{LuaEvent, REPORT_INTERVAL, ShellLimits, ShellVm};
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
 use gnoblin_lua::tree_mirror::{
     Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
@@ -567,5 +568,300 @@ fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
         check(&mut vm, "title", "return root.children[1].title"),
         "ext",
         "the native title stands"
+    );
+}
+
+// The sandbox and the budgets. The shell VM runs the stock shell and the user's files, so neither
+// may reach the host, and neither may hold the frame loop.
+
+/// The limits of a VM whose handlers get `instructions` and `milliseconds`, and whose frame gets
+/// far more, so a test stops a runaway handler quickly without the frame backstop firing.
+fn tight(instructions: u64, milliseconds: u64) -> ShellLimits {
+    let entry = Limits {
+        instructions,
+        memory_bytes: 64 * 1024 * 1024,
+        handler_ticks: milliseconds,
+    };
+    ShellLimits {
+        entry,
+        frame: Limits {
+            instructions: instructions * 1000,
+            memory_bytes: entry.memory_bytes,
+            handler_ticks: 60_000,
+        },
+        ..ShellLimits::default()
+    }
+}
+
+fn boot_with(comp: &Rc<RefCell<Compositor>>, limits: ShellLimits) -> ShellVm {
+    let link = FakeLink(comp.clone());
+    ShellVm::with_limits(Box::new(link), &lua_dir(), classes(), limits).expect("boot ShellVm")
+}
+
+/// The compositor changes `node`'s title itself, so a binding that reads it runs again.
+fn native_title(comp: &Rc<RefCell<Compositor>>, node: u64, title: &str) {
+    let mut c = comp.borrow_mut();
+    c.nodes.get_mut(&node).expect("node").2 = title.into();
+    let serial = c.serial + 1;
+    c.serial = serial;
+    c.queue.push(LuaIncoming::Changes {
+        serial,
+        changes: vec![set_change(node, "title", title)],
+    });
+}
+
+fn run_error(vm: &mut ShellVm, src: &str) -> String {
+    match vm.run("probe", src) {
+        Ok(value) => panic!("`{src}` was meant to fail and returned {value:?}"),
+        Err(error) => error.to_string(),
+    }
+}
+
+#[test]
+fn a_shell_script_cannot_reach_the_filesystem_or_a_library_the_sandbox_withholds() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    for name in ["io", "debug", "package", "dofile", "loadfile"] {
+        assert_eq!(
+            check(&mut vm, name, &format!("return type({name})")),
+            "nil",
+            "`{name}` must not exist in the shell VM"
+        );
+    }
+    assert_eq!(
+        check(
+            &mut vm,
+            "os",
+            "return tostring(os.execute == nil and os.getenv == nil and os.remove == nil \
+             and os.rename == nil and os.tmpname == nil and os.exit == nil)"
+        ),
+        "true",
+        "`os` keeps only its time functions"
+    );
+    assert_eq!(
+        check(&mut vm, "os time", "return type(os.time()) .. type(os.clock())"),
+        "numbernumber"
+    );
+    assert_eq!(
+        check(
+            &mut vm,
+            "bytecode",
+            "return tostring(load(string.dump(function() end)) == nil)"
+        ),
+        "true",
+        "`load` refuses binary chunks"
+    );
+    for name in [
+        "io",
+        "debug",
+        "package",
+        "os",
+        "..",
+        "../../etc/passwd",
+        "a/b",
+        "gnoblin.nothing_here",
+    ] {
+        let message = run_error(&mut vm, &format!("return require('{name}')"));
+        assert!(
+            message.contains("module"),
+            "require('{name}') must be refused as a module, got: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_handler_that_never_returns_is_stopped_and_the_frame_goes_on() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot_with(&comp, tight(300_000, 10_000));
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "handlers",
+        r#"
+        function Window:on_ready() while true do end end
+        function Window:on_ready() root.children[1].title = "survived" end
+        "#,
+    )
+    .expect("install handlers");
+    let frame = vm.frame(1.0, vec![event(2, "ready")]).expect("the frame is not lost");
+    assert_eq!(frame.diagnostics.len(), 1, "one report: {:?}", frame.diagnostics);
+    assert!(
+        frame.diagnostics[0].contains("Window on_ready handler") && frame.diagnostics[0].contains("instruction budget"),
+        "the report names the handler and the budget: {:?}",
+        frame.diagnostics
+    );
+    assert_eq!(sent(&comp).len(), 1, "the frame still sent its writes");
+    vm.frame(2.0, vec![]).expect("the next frame applies the echo");
+    assert_eq!(
+        check(&mut vm, "after", "return tostring(root.children[1].title)"),
+        "survived",
+        "the handler after the runaway one still ran in the same frame"
+    );
+    assert_eq!(check(&mut vm, "alive", "return 1 + 1"), "2");
+}
+
+#[test]
+fn a_runaway_that_catches_every_error_is_still_stopped() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot_with(&comp, tight(300_000, 10_000));
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "handler",
+        "function Window:on_ready() while true do pcall(error, 'again') end end",
+    )
+    .expect("install handler");
+    let frame = vm.frame(1.0, vec![event(2, "ready")]).expect("the frame is not lost");
+    assert!(
+        frame.diagnostics.iter().any(|d| d.contains("instruction budget")),
+        "a pcall loop cannot outrun the budget: {:?}",
+        frame.diagnostics
+    );
+}
+
+#[test]
+fn a_handler_that_runs_out_its_time_is_stopped_by_the_deadline() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot_with(&comp, tight(u64::MAX / 4_000, 30));
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run("handler", "function Window:on_ready() while true do end end")
+        .expect("install handler");
+    let started = std::time::Instant::now();
+    let frame = vm.frame(1.0, vec![event(2, "ready")]).expect("the frame is not lost");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the frame took {:?}",
+        started.elapsed()
+    );
+    assert!(
+        frame.diagnostics.iter().any(|d| d.contains("deadline")),
+        "the report names the deadline: {:?}",
+        frame.diagnostics
+    );
+}
+
+#[test]
+fn a_binding_that_never_returns_is_stopped_and_named() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot_with(&comp, tight(300_000, 10_000));
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "bind",
+        "local n = Node() root:add(n) n.title = function() while true do end end",
+    )
+    .expect("a runaway binding does not fail the chunk that made it");
+    let frame = vm.frame(1.0, vec![]).expect("the frame is not lost");
+    assert!(
+        frame
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("Node.title binding") && d.contains("instruction budget")),
+        "the report names the binding: {:?}",
+        frame.diagnostics
+    );
+    assert_eq!(check(&mut vm, "alive", "return 1 + 1"), "2");
+}
+
+#[test]
+fn a_loop_in_the_shells_own_code_is_bounded_by_the_frame_budget() {
+    let comp = compositor_with_root_and_window();
+    let mut options = tight(300_000, 10_000);
+    options.frame.instructions = 300_000;
+    let mut vm = boot_with(&comp, options);
+    let message = run_error(&mut vm, "while true do end");
+    assert!(message.contains("instruction budget"), "{message}");
+    assert_eq!(
+        check(&mut vm, "next entry", "return 1 + 1"),
+        "2",
+        "the next entry gets a fresh budget"
+    );
+}
+
+// A handler that fails is a report, not a dead shell. `Workspace:arrange` is the case the design names:
+// a user layout that throws must not blank the desktop, so the nodes keep what they were last given.
+
+#[test]
+fn a_failing_arrange_is_reported_and_the_nodes_keep_their_last_titles() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "pile",
+        r#"
+        FAIL = false
+        Node:extend("Pile")({})
+        function Pile:arrange()
+            local kids = self.children
+            if FAIL then error("layout exploded") end
+            for i, c in ipairs(kids) do c.title = "slot" .. i end
+        end
+        PILE = Pile()
+        root:add(PILE)
+        PILE:add(Node())
+        PILE:add(Node())
+        "#,
+    )
+    .expect("build the pile");
+    for t in 1..=3 {
+        let frame = vm.frame(f64::from(t), vec![]).expect("frame");
+        assert!(frame.diagnostics.is_empty(), "{:?}", frame.diagnostics);
+    }
+    let titles = "local out = {} for i, c in ipairs(PILE.children) do out[i] = tostring(c.title) end return table.concat(out, ',')";
+    assert_eq!(check(&mut vm, "titles", titles), "slot1,slot2");
+
+    vm.run("fail", "FAIL = true PILE:add(Node())")
+        .expect("break the layout");
+    let mut reports = Vec::new();
+    for t in 4..=7 {
+        let frame = vm
+            .frame(f64::from(t), vec![])
+            .expect("a failing layout does not end the VM");
+        reports.extend(frame.diagnostics);
+    }
+    assert_eq!(reports.len(), 1, "one report, not one per frame: {reports:?}");
+    assert!(
+        reports[0].contains("Pile:arrange") && reports[0].contains("layout exploded"),
+        "the report names the layout and the error: {reports:?}"
+    );
+    assert_eq!(
+        check(&mut vm, "titles", titles),
+        "slot1,slot2,nil",
+        "the nodes laid out before keep their titles and the failing pass wrote none"
+    );
+    assert_eq!(check(&mut vm, "alive", "return #root.children"), "2");
+}
+
+#[test]
+fn a_report_that_repeats_is_passed_on_once_per_interval_with_its_count() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run(
+        "bind",
+        r#"
+        local n = Node()
+        root:add(n)
+        n.title = function() local _ = root.children[1].title error("title binding failed") end
+        "#,
+    )
+    .expect("bind");
+    let mut seen: Vec<(f64, String)> = Vec::new();
+    let mut at = 1.0;
+    while at < REPORT_INTERVAL * 2.0 + 2.0 {
+        native_title(&comp, 2, &format!("t{at}"));
+        let frame = vm.frame(at, vec![]).expect("frame");
+        seen.extend(frame.diagnostics.into_iter().map(|d| (at, d)));
+        at += 1.0;
+    }
+    let failures: Vec<&(f64, String)> = seen
+        .iter()
+        .filter(|(_, d)| d.contains("title binding failed"))
+        .collect();
+    assert!(
+        failures.len() >= 2 && failures.len() <= 3,
+        "one report per interval, not per frame: {failures:?}"
+    );
+    assert!(
+        failures[1].1.contains("repeated") && failures[1].0 - failures[0].0 >= REPORT_INTERVAL,
+        "the second report counts what it held back: {failures:?}"
     );
 }
