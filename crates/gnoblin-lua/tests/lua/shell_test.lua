@@ -565,4 +565,86 @@ return {
             H.check(root:find(Seat).focus == w, "repeat activation keeps the focus on the window")
         end,
     },
+    {
+        "moving a window to another workspace takes it there",
+        function()
+            local host, w = window_setup({})
+            local other = desk().space.children[2]
+            w:move_to(other)
+            H.check(w.parent == other, "the window must sit on the target workspace")
+        end,
+    },
+    {
+        "moving a window to a workspace that is not in any desk is rejected",
+        function()
+            local host, w = window_setup({})
+            local home = w.parent
+            local stray = Floating({})
+            w:move_to(stray)
+            H.check(w.parent == home, "an unknown workspace must leave the window where it was")
+        end,
+    },
+    {
+        "moving a window to its current workspace is a no-op",
+        function()
+            local host, w = window_setup({})
+            local home = w.parent
+            local before = #home.children
+            w:move_to(home)
+            H.check(w.parent == home and #home.children == before, "moving to the current workspace changes nothing")
+        end,
+    },
+    {
+        "a focused window moved to another workspace hands focus on",
+        function()
+            local host, w = window_setup({})
+            second_window(host)
+            local other_win = host.ids("Window")[2]
+            root:find(Seat).focus = w
+            w:move_to(desk().space.children[2])
+            H.check(root:find(Seat).focus ~= w, "the moved window must give up focus")
+            H.check(root:find(Seat).focus == other_win, "focus must pass to the window left on the active workspace")
+        end,
+    },
+    {
+        "moving a window to an output that is not a screen is rejected",
+        function()
+            local host, w = window_setup({})
+            local home = w.parent
+            local stray = Screen({ width = 500, height = 500 })
+            w:move_to_output(stray)
+            H.check(w.parent == home, "an unknown output must leave the window where it was")
+        end,
+    },
+    {
+        "moving a window to another output reshapes it into that output's work area",
+        function()
+            local host, w = window_setup({})
+            local second = root:add(Screen({ width = 600, height = 400, x = 1920, y = 32 }))
+            w:move_to_output(second)
+            H.check(w.x >= 1920 and w.x + w.width <= 1920 + 600, "the window must fit the new output horizontally")
+            H.check(w.y >= 32 and w.y + w.height <= 32 + 400, "the window must fit the new output vertically")
+        end,
+    },
+    {
+        "a maximised window fills the new output when it moves",
+        function()
+            local host, w = window_setup({})
+            w:maximise()
+            local second = root:add(Screen({ width = 600, height = 400, x = 1920, y = 32 }))
+            w:move_to_output(second)
+            H.check(w.maximised, "the window must stay maximised")
+            H.check(w.x == 1920 and w.y == 32 and w.width == 600 and w.height == 400, "it must fill the new output")
+        end,
+    },
+    {
+        "a fullscreen window does not move to another workspace",
+        function()
+            local host, w = window_setup({})
+            w.fullscreen = true
+            local home = w.parent
+            w:move_to(desk().space.children[2])
+            H.check(w.parent == home, "a fullscreen window must stay on its workspace")
+        end,
+    },
 }
