@@ -40,6 +40,7 @@
 
 ### Changed
 
+- Window rules are the only writer of a window's `opacity` and `maximised`. A `maximised` rule maximises or restores the window through the same path as a maximise request, so the floating rectangle is kept. The carousel no longer writes window opacity, so a rule's opacity is not overwritten by an arrange. The tests are in `crates/gnoblin-lua/tests/lua/rules_test.lua` and `strip_test.lua`. The carousel's depth fade is dropped.
 - Attaching the tree shell from a connection without the owner grant is refused `not-owner` (`failed_op` -1), not `not-privileged`. Test `attach_refuses_a_non_owner_peer` replaces `attach_refuses_an_unprivileged_peer`. A transaction from a connection that does not hold the tree is still refused `not-privileged`.
 
 - The `gnoblin-xr` pointer's seat is named `xr`, not `gnoblin-xr-pointer`. The bridge reuses a seat named `xr` already in the owner snapshot and creates one only when none exists. Tests `pointer_creates_the_xr_seat_when_the_snapshot_has_none` and `pointer_reuses_an_existing_xr_seat` in `bridge.rs`.

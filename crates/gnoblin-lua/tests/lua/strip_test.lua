@@ -197,4 +197,16 @@ return {
             H.check(not pcall(car.rotate, car, "one"), "a non-number step is an error")
         end,
     },
+
+    {
+        "a rule's opacity survives a Carousel3d arrange, which multiplies its fade into the same window opacity",
+        function()
+            local _, car, w = shell_with("Carousel3d", 2)
+            root:find(Seat).data.window_rules = { { match = { app_id = "w2" }, opacity = 0.5 } }
+            w[2]:arrange()
+            H.check(math.abs(w[2].opacity - 0.5) < 1e-9, "the rule sets the front card's opacity")
+            car:arrange()
+            H.check(math.abs(w[2].opacity - 0.5) < 1e-9, "a carousel arrange must not overwrite the rule's opacity")
+        end,
+    },
 }

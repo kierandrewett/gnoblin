@@ -123,8 +123,8 @@ end
 
 -- The pure ring layout. `n` windows, `focus` the 1-based index at the front, `area` {x, y, width, height}.
 -- Returns one slot per window: x, y, width, height (the projected top-left and size), opacity, rotation (degrees),
--- and z (depth, negative in front of the camera). The arrange applies only x, y, width, height and opacity; rotation
--- and z are for a renderer that can use them.
+-- and z (depth, negative in front of the camera). The arrange applies only x, y, width and height: window opacity
+-- belongs to the rules, so the ring's depth fade is not applied. Rotation and z are for a renderer that can use them.
 function M.ring(n, focus, area, opts)
     opts = opts or {}
     if n == 0 then
@@ -184,7 +184,7 @@ function Carousel3d:arrange()
     })
     for i, win in ipairs(wins) do
         local s = slots[i]
-        win.x, win.y, win.width, win.height, win.opacity = s.x, s.y, s.width, s.height, s.opacity
+        win.x, win.y, win.width, win.height = s.x, s.y, s.width, s.height
     end
 end
 

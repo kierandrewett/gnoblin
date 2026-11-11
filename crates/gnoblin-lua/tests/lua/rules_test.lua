@@ -208,4 +208,27 @@ return {
             H.check(not pcall(r.compile, { { match = { app_id = "x" }, maximised = "yes" } }), "non-boolean refused")
         end,
     },
+
+    {
+        "a maximised rule fills the work area, not only sets the flag",
+        function()
+            local _, _, w = shell({ { match = { app_id = "foo" }, maximised = true } }, {
+                app_id = "foo",
+                x = 40,
+                y = 30,
+                width = 300,
+                height = 200,
+            })
+            H.check(w.maximised == true, "the rule must maximise the window")
+            H.check(w.x == 0 and w.y == 0 and w.width == 800 and w.height == 600, "the window must fill the work area")
+        end,
+    },
+
+    {
+        "an opacity rule sets the window's opacity",
+        function()
+            local _, _, w = shell({ { match = { app_id = "foo" }, opacity = 0.5 } }, { app_id = "foo" })
+            H.check(w.opacity == 0.5, "the rule's opacity must reach the window")
+        end,
+    },
 }

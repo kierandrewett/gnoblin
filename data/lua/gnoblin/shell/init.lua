@@ -192,7 +192,9 @@ local function rule_view(w)
         workspace_id = ws and ws.name or nil,
     }
 end
--- The fields the rules own, with the value each takes when no rule sets it.
+-- The fields the rules own, applied in this order (fullscreen before maximised: a fullscreen window does not maximise),
+-- with the value each takes when no rule sets it. Rules are the only writer of these fields.
+local RULE_FIELDS = { "secure", "fullscreen", "maximised", "opacity" }
 local RULE_DEFAULTS = { secure = false, fullscreen = false, maximised = false, opacity = 1.0 }
 -- The rules are a binding: arrange runs again when a rule's inputs (title, app id, focus, workspace) change.
 function Window:arrange()
@@ -208,17 +210,27 @@ function Window:apply_rules()
     end
     local fx = Rules.effects(rules, view)
     local d = self:closest(Desk)
-    if fx.workspace and not d then
+    if (fx.workspace or fx.maximised) and not d then
         return -- not on a desk yet: on_ready applies the rules once the window is placed
     end
     state.key = key
     rule_state[self] = state
-    for field, default in pairs(RULE_DEFAULTS) do
-        if fx[field] ~= nil then
+    for _, field in ipairs(RULE_FIELDS) do
+        if field == "maximised" and fx.maximised ~= nil then
+            if fx.maximised then
+                self:maximise()
+            else
+                self:unmaximise()
+            end
+            state.wrote[field] = true
+        elseif field == "maximised" and state.wrote[field] then
+            self:unmaximise()
+            state.wrote[field] = nil
+        elseif fx[field] ~= nil then
             self[field] = fx[field]
             state.wrote[field] = true
         elseif state.wrote[field] then
-            self[field] = default
+            self[field] = RULE_DEFAULTS[field]
             state.wrote[field] = nil
         end
     end
