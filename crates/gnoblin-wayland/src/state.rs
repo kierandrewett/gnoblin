@@ -2931,8 +2931,9 @@ impl State {
     /// Ends the touch points that went down on `surface`, as lifts, because the surface is going away.
     ///
     /// A point a surface held ends for that surface's client alone, and the points of every other client go on. This
-    /// is a lift, not the protocol's cancel: a cancel ends every point of the seat for every client, which a surface
-    /// closing is no reason for.
+    /// is a lift, not the protocol's cancel: `wl_touch.up` says "the touch point has disappeared", while `cancel` is
+    /// "sent if the compositor decides the touch stream is a global gesture" and ends every point of the seat for every
+    /// client, which a surface closing is no reason for.
     pub(crate) fn end_touches_on(&mut self, surface: &WlSurface) {
         let slots: Vec<u32> = self
             .touch_points

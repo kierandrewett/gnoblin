@@ -1185,6 +1185,31 @@ fn a_cancelled_touch_ends_its_point_without_an_up() {
     });
 }
 
+/// wl_touch.cancel is "sent if the compositor decides the touch stream is a global gesture" and ends every point of
+/// the client; wl_touch.up says "the touch point has disappeared". A window that is destroyed under a finger is the
+/// second: the point ends with an up, closed by a frame, and nothing is cancelled.
+#[test]
+fn a_touch_point_on_a_destroyed_window_ends_with_an_up() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let window = client.map_window("org.gnoblin.Destroyed");
+        let at = centre(session.focused_window());
+        client.touch_device();
+
+        session.touch(0, at, TouchPhase::Down);
+        client.wait_for(|state| state.touch_frames == 1);
+
+        window.toplevel.destroy();
+        window.xdg_surface.destroy();
+        window.surface.destroy();
+        let state = client.wait_for(|state| !state.touch_ups.is_empty());
+        assert_eq!(state.touch_ups, vec![0], "the destroyed window's point lifted");
+        assert_eq!(state.touch_cancels, 0, "a destroyed window is not a cancelled gesture");
+        assert_eq!(state.touch_frames, 2, "the up is closed by a frame");
+    });
+}
+
 #[test]
 fn each_touch_point_keeps_its_own_id() {
     let session = Session::start();
