@@ -386,65 +386,6 @@ fn a_failed_operation_exits_1() {
     assert!(err.is_empty(), "{err}");
 }
 
-/// The one `workspace` object the session publishes; set activation is a verb on it.
-fn workspace() -> (Graph, ObjectId) {
-    let mut graph = Graph::new(catalog());
-    let mut fields = Fields::new();
-    fields.insert("id".to_owned(), Value::Uint(1));
-    fields.insert("layout".to_owned(), Value::Text("floating".to_owned()));
-    let object = graph
-        .create(TypeKey::gnoblin("workspace"), fields)
-        .expect("workspace is in the schema");
-    (graph, object)
-}
-
-#[test]
-fn activating_a_set_exits_0_once_it_is_live() {
-    let (graph, _) = workspace();
-    let steps = vec![Step::Complete(OperationOutcome::Done)];
-    let (code, out, err) = run(
-        &["workspace", "activate-set", "main"],
-        ModelConnection::new(graph, steps),
-    );
-    assert_eq!(code, 0, "stderr: {err}");
-    assert_eq!(out, "operation 1: done\n");
-}
-
-#[test]
-fn activating_an_unknown_set_exits_1() {
-    let (graph, _) = workspace();
-    let steps = vec![Step::Complete(OperationOutcome::Failed(ErrorCode::from_static(
-        "unknown-set",
-    )))];
-    let (code, out, err) = run(
-        &["--json", "workspace", "activate-set", "nosuch"],
-        ModelConnection::new(graph, steps),
-    );
-    assert_eq!(code, 1);
-    assert!(out.contains("\"code\":\"unknown-set\""), "{out}");
-    assert!(err.is_empty(), "{err}");
-}
-
-#[test]
-fn activating_a_set_with_no_workspace_published_exits_1() {
-    let graph = Graph::new(catalog());
-    let (code, out, err) = run(
-        &["--json", "workspace", "activate-set", "main"],
-        ModelConnection::new(graph, Vec::new()),
-    );
-    assert_eq!(code, 1);
-    assert!(out.is_empty(), "{out}");
-    assert!(err.contains("\"code\":\"no-workspace\""), "{err}");
-}
-
-#[test]
-fn activating_without_a_name_is_a_usage_error() {
-    let (code, out, err) = run(&["workspace", "activate-set"], nowhere());
-    assert_eq!(code, 2, "a missing NAME is refused before connecting, stderr: {err}");
-    assert!(out.is_empty(), "{out}");
-    assert!(!err.is_empty(), "the refusal says what is missing");
-}
-
 #[test]
 fn an_error_response_exits_1() {
     let path = scratch("error.sock");
@@ -669,7 +610,6 @@ fn the_command_tree_matches_the_schema() {
         // A command that is also a hand-written verb carries those verbs beside the object's.
         let verbs: &[&str] = match command.as_str() {
             "config" => &["get", "reload", "validate"],
-            "workspace" => &["activate-set"],
             _ => &[],
         };
         let mut want = vec!["list".to_owned(), "watch".to_owned()];

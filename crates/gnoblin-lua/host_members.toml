@@ -17,7 +17,7 @@ params = [{ name = "settings", type = "table" }]
 [[member]]
 name = "window_rule"
 kind = "function"
-doc = "Append one window rule to the configured list. Load time only; later rules override the fields they set. Unknown keys and refused fields are raised by name."
+doc = "Removed. Raises an error that names the replacement: window rules are a list in `seat.data.window_rules`, set in `~/.config/gnoblin/shell.lua`."
 params = [{ name = "rule", type = "table" }]
 
 [[member]]
@@ -155,21 +155,6 @@ kind = "function"
 doc = "The live workspace with this identity, or nil."
 params = [{ name = "id", type = "integer" }]
 returns = ["gnoblin.workspace|nil"]
-
-[[member.members]]
-name = "activate_set"
-kind = "function"
-doc = "Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name."
-params = [{ name = "name", type = "string" }]
-returns = ["gnoblin.Operation"]
-
-[[member]]
-name = "activate_set"
-kind = "function"
-object = "workspace"
-doc = "Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name."
-params = [{ name = "name", type = "string" }]
-returns = ["gnoblin.Operation"]
 
 [[member]]
 name = "find"

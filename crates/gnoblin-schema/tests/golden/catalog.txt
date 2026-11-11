@@ -15,7 +15,6 @@ error unknown-effect-kind since 0.2.0
 error not-floating since 0.2.0
 error transient-follows-parent since 0.2.0
 error refused since 0.2.0
-error unknown-set since 0.2.0
 object capture since 0.2.0 secret false
   method open since 0.2.0 secret false function false
     param session type uint since 0.2.0 secret false
@@ -371,10 +370,6 @@ object window since 0.2.0 secret false
     field seat type string since 0.2.0 secret false
 object workspace since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
-  method activate_set since 0.2.0 secret false function true
-    param name type string since 0.2.0 secret false
-  signal set_activated since 0.2.0 secret false
-    field set type string since 0.2.0 secret false
   signal created since 0.2.0 secret false
     field workspace type object:workspace since 0.2.0 secret false
   signal removed since 0.2.0 secret false
@@ -1684,18 +1679,6 @@ message Workspace {
     uint64 id = 1;
   }
 
-  // Method `activate_set`, since 0.2.0.
-  message ActivateSetArgs {
-    // since 0.2.0
-    string name = 1;
-  }
-
-  // Signal `set_activated`, since 0.2.0.
-  message SetActivatedPayload {
-    // since 0.2.0
-    string set = 1;
-  }
-
   // Signal `created`, since 0.2.0.
   message CreatedPayload {
     // since 0.2.0; object id of `workspace`
@@ -1747,8 +1730,6 @@ enum GnoblinError {
   GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 15;
   // since 0.2.0
   GNOBLIN_REFUSED = 16;
-  // since 0.2.0
-  GNOBLIN_UNKNOWN_SET = 17;
 }
 -- tree.proto
 // Generated from the object schema by gnoblin-proto's build script. Do not

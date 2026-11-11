@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use gnoblin_client::{Loopback, Server};
 use gnoblin_config::SearchPaths;
-use gnoblin_model::{Fields, Graph, ObjectId, Tick, TypeKey, Value};
+use gnoblin_model::{Fields, Graph, ObjectId, Tick, TypeKey};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, ObjectType, Type};
 
@@ -347,44 +347,6 @@ assert(not refused, "a property cannot be assigned")
 "#,
         id = window.get()
     ));
-    let report = host.run_config(&paths).expect("the run starts");
-    assert!(report.errors.is_empty(), "{:#?}", report.errors);
-}
-
-#[test]
-fn activate_set_is_refused_until_the_session_publishes_a_workspace() {
-    let mut server = Server::new(Graph::new(catalog()), VERSION);
-    let client = server.connect(VERSION).expect("the versions match");
-    let mut host = Host::new(client, Limits::default()).expect("the host starts");
-    let config = Config::new("activate-set-missing");
-    let paths = config.script(
-        r#"
-local refused, message = pcall(gnoblin.workspaces.activate_set, "main")
-assert(not refused, "there is no workspace object to ask")
-assert(string.find(tostring(message), "the workspace object", 1, true), "it names the missing object, was " .. tostring(message))
-"#,
-    );
-    let report = host.run_config(&paths).expect("the run starts");
-    assert!(report.errors.is_empty(), "{:#?}", report.errors);
-}
-
-#[test]
-fn activate_set_answers_an_operation_on_the_live_workspace() {
-    let mut server = Server::new(Graph::new(catalog()), VERSION);
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), Value::Uint(1));
-    server
-        .create(TypeKey::gnoblin("workspace"), properties)
-        .expect("the graph takes a workspace");
-    let client = server.connect(VERSION).expect("the versions match");
-    let mut host = Host::new(client, Limits::default()).expect("the host starts");
-    let config = Config::new("activate-set-operation");
-    let paths = config.script(
-        r#"
-local operation = gnoblin.workspaces.activate_set("main")
-assert(type(operation) == "userdata", "the call answers an operation, was " .. type(operation))
-"#,
-    );
     let report = host.run_config(&paths).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 }

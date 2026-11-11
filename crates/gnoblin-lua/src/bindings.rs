@@ -214,13 +214,15 @@ pub(super) fn install<T: Transport + 'static>(
             lua.create_function(move |lua, settings: Table| crate::configure::declare(lua, &shared, &settings))?,
         )?;
     }
-    {
-        let shared = Rc::clone(&shared);
-        gnoblin.set(
-            "window_rule",
-            lua.create_function(move |lua, rule: Table| crate::configure::append_rule(lua, &shared, &rule))?,
-        )?;
-    }
+    gnoblin.set(
+        "window_rule",
+        lua.create_function(|_, _: Table| -> mlua::Result<()> {
+            Err(Error::runtime(
+                "gnoblin.window_rule was removed: window rules are a list in seat.data.window_rules, set in \
+                 ~/.config/gnoblin/shell.lua (see /user-shell)",
+            ))
+        })?,
+    )?;
     {
         let shared = Rc::clone(&shared);
         let guard = Rc::clone(&guard);

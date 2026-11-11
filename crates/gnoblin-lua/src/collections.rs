@@ -30,7 +30,7 @@ pub(super) fn install<T: Transport + 'static>(
 ) -> mlua::Result<()> {
     gnoblin.set("windows", windows(lua, shared)?)?;
     gnoblin.set("outputs", outputs(lua, shared)?)?;
-    gnoblin.set("workspaces", workspaces(lua, shared, gnoblin)?)?;
+    gnoblin.set("workspaces", workspaces(lua, shared)?)?;
     {
         let shared = Rc::clone(shared);
         gnoblin.set(
@@ -82,19 +82,12 @@ fn outputs<T: Transport + 'static>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -
     Ok(table)
 }
 
-/// `gnoblin.workspaces`: `list()`, `by_id(id)` and `activate_set(name)`. `activate_set` is the
-/// namespace function of the `workspace` class, so it reaches the live workspace the same way.
-fn workspaces<T: Transport + 'static>(
-    lua: &Lua,
-    shared: &Rc<RefCell<Shared<T>>>,
-    gnoblin: &Table,
-) -> mlua::Result<Table> {
+/// `gnoblin.workspaces`: `list()` and `by_id(id)`.
+fn workspaces<T: Transport + 'static>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -> mlua::Result<Table> {
     let spec = core_spec("workspace")?;
     let table = lua.create_table()?;
     table.set("list", list_function(lua, shared, spec)?)?;
     table.set("by_id", by_id_function(lua, shared, spec)?)?;
-    let class: Table = gnoblin.get("workspace")?;
-    table.set("activate_set", class.get::<Function>("activate_set")?)?;
     Ok(table)
 }
 

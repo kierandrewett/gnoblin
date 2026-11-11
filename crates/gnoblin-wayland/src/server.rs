@@ -59,7 +59,7 @@ use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{
     MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
-    WindowVisualRefusal, WorkspaceSetRefusal,
+    WindowVisualRefusal,
 };
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
@@ -243,13 +243,6 @@ pub struct Config {
     /// with no redirect, which is a working session: no global is advertised and no
     /// adapter's code is linked in.
     pub extensions: Vec<Arc<dyn Extension>>,
-    /// The window rules the document declares, in declaration order. They apply to a
-    /// window when it is first taken into management, so a rule set here places every
-    /// window opened after the session starts.
-    pub window_rules: Vec<gnoblin_wm::Rule>,
-    /// The named workspace sets the document declares, in declaration order. Activating
-    /// one makes its workspaces the live ones on their outputs.
-    pub workspace_sets: Vec<gnoblin_wm::WorkspaceSet>,
 }
 
 impl Default for Config {
@@ -268,8 +261,6 @@ impl Default for Config {
             protocols: Protocols::default(),
             input_sources: None,
             keyboard: None,
-            window_rules: Vec::new(),
-            workspace_sets: Vec::new(),
             shortcuts: None,
             touchpad_gestures: Vec::new(),
             titlebar_actions: TitlebarActions::default(),
@@ -379,9 +370,7 @@ impl Server {
         let poll_fd = display.as_fd().try_clone_to_owned().map_err(StartupError::Io)?;
 
         let window_process_override = config.window_process_override;
-        let window_rules = config.window_rules;
         let workspace_names = config.workspace_names;
-        let workspace_sets = config.workspace_sets;
         let global_scale = config.monitors.global_scale;
         apply_global_scale(backend.as_mut(), None, global_scale);
         let outputs = backend.outputs().to_vec();
@@ -451,8 +440,6 @@ impl Server {
             Ok(gestures) => state.touchpad_gestures = gestures,
             Err(error) => log::error!(area = "touchpad", "touchpad gestures refused, none will run: {error}"),
         }
-        state.apply_window_rules(window_rules);
-        state.apply_workspace_sets(workspace_sets);
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
 
@@ -543,10 +530,6 @@ impl Server {
                             Command::VisualAccessibility(settings) => {
                                 state.apply_visual_accessibility_settings(*settings)
                             }
-                            Command::WindowRules { rules, reply } => {
-                                state.apply_window_rules(rules);
-                                let _ = reply.send(());
-                            }
                             Command::WindowManagement {
                                 options,
                                 titlebar,
@@ -590,9 +573,6 @@ impl Server {
                                 let _ = reply.send(state.window_visual(window, change));
                             }
                             Command::Lock { reply } => state.request_lock(reply),
-                            Command::ActivateWorkspaceSet { name, reply } => {
-                                let _ = reply.send(state.activate_workspace_set(&name));
-                            }
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
                             }
@@ -911,17 +891,6 @@ impl ControlHandle {
         answer.recv_timeout(std::time::Duration::from_secs(3)).ok()
     }
 
-    /// Makes the configured workspace set `name` the live set. `None` when the loop did not
-    /// answer in time; otherwise the window manager's answer, `Ok` once the set is shown.
-    pub fn activate_workspace_set(&self, name: &str) -> Option<Result<(), WorkspaceSetRefusal>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::ActivateWorkspaceSet {
-            name: name.to_owned(),
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
     /// Adds (`held` true) or removes one named idle holder. `None` when the loop did not
     /// answer in time; otherwise `Err` when adding would exceed the holder cap, and `Ok`
     /// with whether the set changed (adding a held name, or removing one that was held).
@@ -1047,19 +1016,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::DrawnNode { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Replaces the window rules in force. Existing windows keep what they were given;
-    /// the rules apply to windows taken into management from now on.
-    ///
-    /// Waits until the loop has applied them, so the caller's reply to a commit is ordered
-    /// after the rules: a window the client maps after that reply is never placed under the
-    /// rules the commit removed. A loop that does not answer within [`FOCUS_TIMEOUT`] is
-    /// stopping, so the wait gives up and returns without the rules being confirmed.
-    pub fn set_window_rules(&self, rules: Vec<gnoblin_wm::Rule>) {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::WindowRules { rules, reply });
-        let _ = answer.recv_timeout(FOCUS_TIMEOUT);
     }
 
     /// Applies the accepted window management options and titlebar gestures, and republishes
@@ -1289,11 +1245,6 @@ enum Command {
     /// A session lock request. The answer is sent once the lock settles: `true` when
     /// the session is `locked`, `false` when the lock is refused or the cover fails.
     Lock { reply: std::sync::mpsc::SyncSender<bool> },
-    /// A workspace set's activation; the answer is the refusal, if any.
-    ActivateWorkspaceSet {
-        name: String,
-        reply: std::sync::mpsc::SyncSender<Result<(), WorkspaceSetRefusal>>,
-    },
     /// A shell visual request from the IPC, and the channel its answer goes back on: `Ok(())`
     /// when the drawing changed, `Err` with the reason when it did not.
     WindowVisual {
@@ -1364,12 +1315,6 @@ enum Command {
     },
     /// Whether window property changes land at once instead of animating.
     ReducedMotion(bool),
-    /// The window rules the configuration accepted, replacing the rules in force. The loop
-    /// answers once they are applied.
-    WindowRules {
-        rules: Vec<gnoblin_wm::Rule>,
-        reply: std::sync::mpsc::SyncSender<()>,
-    },
     /// The window management options and titlebar gestures from an accepted document.
     WindowManagement {
         options: gnoblin_wm::WmOptions,

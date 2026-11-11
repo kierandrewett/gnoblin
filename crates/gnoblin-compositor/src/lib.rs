@@ -97,8 +97,6 @@ mod renderer;
 mod schema;
 mod session_tables;
 mod window_management;
-mod window_rules;
-mod workspace_sets;
 mod xwayland;
 
 use std::os::unix::net::UnixStream;

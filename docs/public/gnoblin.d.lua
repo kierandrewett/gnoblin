@@ -71,7 +71,7 @@ function Process:watch(field, callback) end
 ---@param settings table
 function gnoblin.configure(settings) end
 
---- Append one window rule to the configured list. Load time only; later rules override the fields they set. Unknown keys and refused fields are raised by name.
+--- Removed. Raises an error that names the replacement: window rules are a list in `seat.data.window_rules`, set in `~/.config/gnoblin/shell.lua`.
 ---@param rule table
 function gnoblin.window_rule(rule) end
 
@@ -160,11 +160,6 @@ function gnoblin.workspaces.list() end
 ---@param id integer
 ---@return gnoblin.workspace|nil
 function gnoblin.workspaces.by_id(id) end
-
---- Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name.
----@param name string
----@return gnoblin.Operation
-function gnoblin.workspaces.activate_set(name) end
 
 --- The live objects of one kind that match a filter, as a Lua array in identity order. The kinds are `Window`, `Workspace` and `Output`. A table filter keeps the objects whose scalar fields equal every value given; a function filter keeps those it returns a truthy value for. An unknown kind or filter field is raised by name.
 ---@param kind string
@@ -742,10 +737,6 @@ function window:on(name, callback) end
 ---@class gnoblin.workspace
 ---@field id integer
 local workspace = {}
----@param name "set_activated"
----@param callback fun(fields: { set: string })
----@return gnoblin.Subscription
-function workspace:on(name, callback) end
 ---@param name "created"
 ---@param callback fun(fields: { workspace: gnoblin.workspace })
 ---@return gnoblin.Subscription
@@ -754,11 +745,6 @@ function workspace:on(name, callback) end
 ---@param callback fun(fields: { workspace_id: integer, last: gnoblin.workspace })
 ---@return gnoblin.Subscription
 function workspace:on(name, callback) end
---- Make the configured workspace set `name` the live set. Returns an operation that completes once the window manager shows the set's workspaces; it fails with `unknown-set` when no set has that name.
----@param name string
----@return gnoblin.Operation
-function gnoblin.workspace.activate_set(name) end
-
 ---@class gnoblin.workspaceCollection
 ---@field by_id fun(id: integer): gnoblin.workspace|nil
 ---@field all fun(): gnoblin.workspace[]

@@ -66,42 +66,6 @@ fn call_site<T: Transport>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -> String
     }
 }
 
-/// Append one rule to the `window-rules` list, the way `gnoblin.window_rule` does.
-///
-/// Lists replace whole when layers merge, so appending cannot go through
-/// [`merge`]: the existing list is read, the rule is pushed onto it, and the
-/// whole list is validated. The rule is the last entry, so a problem names
-/// `window-rules[N]` for the index the rule was given.
-pub(super) fn append_rule<T: Transport>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>, rule: &Table) -> Result<(), Error> {
-    let site = call_site(lua, shared);
-    let rule =
-        value_from_table(rule).map_err(|reason| Error::runtime(format!("{site}gnoblin.window_rule: {reason}")))?;
-    let mut state = shared.borrow_mut();
-    if !state.configuring {
-        return Err(Error::runtime(format!(
-            "{site}gnoblin.window_rule is only available while the configuration loads"
-        )));
-    }
-    let mut candidate = state.document.clone();
-    let Value::Map(root) = &mut candidate else {
-        return Err(Error::runtime(format!(
-            "{site}gnoblin.window_rule: the document is not a table"
-        )));
-    };
-    match root
-        .entry("window-rules".to_owned())
-        .or_insert_with(|| Value::List(Vec::new()))
-    {
-        Value::List(rules) => rules.push(rule),
-        _ => {
-            return Err(Error::runtime(format!(
-                "{site}gnoblin.window_rule: window-rules is not a list in the document"
-            )));
-        }
-    }
-    accept(&mut state, candidate, &site, "gnoblin.window_rule")
-}
-
 /// Validate a candidate document and make it the document, or refuse it whole.
 fn accept<T: Transport>(state: &mut Shared<T>, candidate: Value, site: &str, call: &str) -> Result<(), Error> {
     match Config::from_value(candidate) {

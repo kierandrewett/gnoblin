@@ -39,16 +39,6 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.window_management.clone().unwrap_or_default();
             apply(config, &section);
-            crate::window_rules::configure(
-                &mut config.wayland,
-                &stored.config.window_rules,
-                &stored.config.workspaces,
-            );
-            crate::workspace_sets::configure(
-                &mut config.wayland,
-                &stored.config.workspace_sets,
-                &stored.config.workspaces,
-            );
             if !stored.config.workspaces.is_empty() {
                 config.wayland.workspaces = u32::try_from(stored.config.workspaces.len()).unwrap_or(u32::MAX);
             }

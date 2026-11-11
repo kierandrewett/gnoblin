@@ -357,24 +357,6 @@ variants = [
     { spelling = "off", doc = "Print nothing; the database still records events." },
 ]
 
-[[enum]]
-name = "WindowRuleType"
-setting = "type"
-doc = "Which kind of surface a window rule selects."
-variants = [
-    { spelling = "window", doc = "An application window." },
-    { spelling = "layer", doc = "A layer-shell surface. Not yet selectable: a rule that names it is refused." },
-]
-
-[[enum]]
-name = "RuleClientType"
-setting = "client-type"
-doc = "Which protocol a window's client speaks."
-variants = [
-    { spelling = "wayland", doc = "A native Wayland client." },
-    { spelling = "x11", doc = "An X11 client running under Xwayland." },
-]
-
 # --- Deprecated spellings ----------------------------------------------------
 # One table, accepted until `removed_in`. A spelling must not also be a current
 # variant: the generator refuses that, because an alias that is already current
@@ -469,48 +451,6 @@ kind = "text"
 required = "a workspace name"
 accepted = "a nonempty name of at most 80 characters"
 doc = "The name shown to the user."
-since = "0.2.0"
-
-[[record]]
-name = "WorkspaceSetEntry"
-doc = "One workspace a set shows, and the output that shows it."
-
-[[record.field]]
-key = "workspace"
-kind = "text"
-nonempty = true
-required = "a workspace id"
-accepted = "a nonempty id of a declared workspace, or a numeric workspace id"
-doc = "The workspace to show: an id declared in workspaces, or a numeric workspace id."
-since = "0.2.0"
-
-[[record.field]]
-key = "output"
-kind = "text"
-nonempty = true
-accepted = "a nonempty output connector name"
-doc = "The output that shows the workspace. Omit it for the primary output."
-since = "0.2.0"
-
-[[record]]
-name = "WorkspaceSet"
-doc = "A named set of workspaces to show together."
-
-[[record.field]]
-key = "name"
-kind = "text"
-nonempty = true
-required = "a workspace set name"
-accepted = "a nonempty set name"
-doc = "The name the set is activated by. Set names are unique."
-since = "0.2.0"
-
-[[record.field]]
-key = "workspaces"
-kind = "record-list"
-record = "WorkspaceSetEntry"
-accepted = "a non-empty list of workspace tables"
-doc = "The workspaces the set shows, and the output each one shows on."
 since = "0.2.0"
 
 [[record]]
@@ -1473,157 +1413,6 @@ accepted = "a nonempty layout or engine id"
 doc = "The layout or engine id."
 since = "0.2.0"
 
-[[record]]
-name = "WindowMatch"
-doc = "The conditions a window rule's window must meet. Every key given must hold."
-
-[[record.field]]
-key = "type"
-kind = "enum"
-enum = "WindowRuleType"
-accepted = "one of window, layer"
-doc = "The kind of surface: an application window or a layer-shell surface."
-since = "0.2.0"
-
-[[record.field]]
-key = "focused"
-kind = "bool"
-accepted = "a boolean"
-doc = "Whether the window has keyboard focus."
-since = "0.2.0"
-
-[[record.field]]
-key = "app-id"
-kind = "text"
-accepted = "a Lua 5.4 pattern for the app id, falling back to the WM class"
-doc = "A case-sensitive Lua 5.4 pattern searched in the GTK app id, or in the WM class when the app id is empty."
-since = "0.2.0"
-
-[[record.field]]
-key = "title"
-kind = "text"
-accepted = "a Lua 5.4 pattern for the window title"
-doc = "A case-sensitive Lua 5.4 pattern searched in the current window title."
-since = "0.2.0"
-
-[[record.field]]
-key = "layer"
-kind = "text"
-accepted = "a Lua 5.4 pattern for the layer namespace"
-doc = "A Lua 5.4 pattern for the layer-shell namespace. Not yet selectable: a rule that names it is refused."
-since = "0.2.0"
-
-[[record.field]]
-key = "workspace-id"
-kind = "text"
-nonempty = true
-accepted = "a nonempty workspace id"
-doc = "The exact, case-sensitive id of the workspace the window is on."
-since = "0.2.0"
-
-[[record.field]]
-key = "workspace-number"
-kind = "int"
-min = 1
-max = 1024
-accepted = "an integer from 1 to 1024"
-doc = "The one-based position of the window's workspace."
-since = "0.2.0"
-
-[[record.field]]
-key = "client-type"
-kind = "enum"
-enum = "RuleClientType"
-accepted = "one of wayland, x11"
-doc = "The protocol the client speaks. X11 means an Xwayland client."
-since = "0.2.0"
-
-[[record]]
-name = "RuleCorners"
-doc = "The corner options a window rule sets."
-
-[[record.field]]
-key = "radius"
-kind = "float"
-min = 0.0
-max = 1.7976931348623157e308
-accepted = "a number of 0 or more"
-doc = "The corner radius in logical pixels. 0 leaves the corners square."
-since = "0.2.0"
-
-[[record]]
-name = "RuleWorkspace"
-doc = "The workspace a window rule places a window on. Give exactly one of id or number."
-
-[[record.field]]
-key = "id"
-kind = "text"
-nonempty = true
-accepted = "a nonempty workspace name declared in workspaces, or a numeric workspace id"
-doc = "The workspace to place the window on: a name declared in workspaces, which resolves to its position, or a numeric workspace id."
-since = "0.2.0"
-
-[[record.field]]
-key = "number"
-kind = "int"
-min = 1
-max = 1024
-accepted = "an integer from 1 to 1024"
-doc = "The one-based workspace position to place the window on."
-since = "0.2.0"
-
-[[record]]
-name = "WindowRule"
-doc = "One window rule: the conditions it selects and the fields it sets."
-hook = "window_rule"
-
-[[record.field]]
-key = "match"
-kind = "record"
-record = "WindowMatch"
-accepted = "a table of match keys"
-doc = "The conditions a window must meet. An omitted or empty match selects every window."
-since = "0.2.0"
-
-[[record.field]]
-key = "workspace"
-kind = "record"
-record = "RuleWorkspace"
-accepted = "a table with exactly one of id or number"
-doc = "The workspace to place a matching window on."
-since = "0.2.0"
-
-[[record.field]]
-key = "maximise"
-kind = "bool"
-accepted = "a boolean"
-doc = "Whether a matching window starts maximised."
-since = "0.2.0"
-
-[[record.field]]
-key = "secure"
-kind = "bool"
-accepted = "a boolean"
-doc = "Whether a matching window's surface is secure: masked in every capture while the rule matches. Default false."
-since = "0.2.0"
-
-[[record.field]]
-key = "opacity"
-kind = "float"
-min = 0.0
-max = 1.0
-accepted = "a number from 0 to 1"
-doc = "The window's opacity while the rule matches: 0 is invisible, 1 is opaque. Default 1."
-since = "0.2.0"
-
-[[record.field]]
-key = "corners"
-kind = "record"
-record = "RuleCorners"
-accepted = "a table with a radius"
-doc = "Corner options for a matching window. radius is the only corner option built so far."
-since = "0.2.0"
-
 # --- Sections ---------------------------------------------------------------
 # A section is a top-level document key. `spread` means the section's own keys
 # are the map (`protocols`, `frame-renderers`) rather than settings.
@@ -2247,19 +2036,6 @@ accepted = "a list of workspace tables"
 doc = "The declared workspaces."
 
 [[section]]
-key = "workspace-sets"
-type = "WorkspaceSets"
-doc = "The named workspace sets, in declaration order."
-hook = "workspace_sets"
-
-[section.spread]
-field = "sets"
-kind = "record-list"
-record = "WorkspaceSet"
-accepted = "a list of workspace set tables"
-doc = "The declared workspace sets."
-
-[[section]]
 key = "touchpad-gestures"
 type = "TouchpadGestures"
 doc = "The touchpad gesture bindings, in declaration order."
@@ -2370,16 +2146,3 @@ record = "Shortcut"
 id = "name"
 accepted = "a table of shortcut tables, keyed by a name of 1 to 64 letters, digits, underscores or dashes"
 doc = "Each shortcut, in name order."
-
-[[section]]
-key = "window-rules"
-type = "WindowRules"
-doc = "Window rules: which windows a rule selects and what it does to them."
-hook = "window_rules"
-
-[section.spread]
-field = "rules"
-kind = "record-list"
-record = "WindowRule"
-accepted = "a list of window rule tables"
-doc = "The rules, in declaration order. A later rule overrides the fields an earlier rule sets."

@@ -80,7 +80,7 @@ use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
     LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, PresentAnswer, SessionSnapshot,
-    WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,
+    WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal,
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
@@ -987,28 +987,6 @@ impl State {
             Rejection::TransientFollowsParent(_) => WindowChangeRefusal::TransientFollowsParent,
             _ => WindowChangeRefusal::Refused,
         }
-    }
-
-    /// Makes the configured workspace set `name` the live set. The window manager's
-    /// answer decides the reply: an unknown name is `UnknownSet`, any other refusal is
-    /// `Refused`, and a set that is already live is accepted without any change.
-    pub(crate) fn activate_workspace_set(&mut self, name: &str) -> Result<(), WorkspaceSetRefusal> {
-        let effects = self.wm.apply(Event::WorkspaceSetActivated { name: name.to_owned() });
-        let rejected = effects.iter().find_map(|effect| match effect {
-            Effect::Rejected { reason } => Some(reason),
-            _ => None,
-        });
-        if let Some(reason) = rejected {
-            return Err(match reason {
-                gnoblin_wm::Rejection::WorkspaceSet(gnoblin_wm::WorkspaceSetError::UnknownSet(_)) => {
-                    WorkspaceSetRefusal::UnknownSet
-                }
-                _ => WorkspaceSetRefusal::Refused,
-            });
-        }
-        self.apply(effects);
-        self.publish();
-        Ok(())
     }
 
     /// The toplevel object of one managed window, when it is a Wayland one.
@@ -2202,14 +2180,6 @@ impl State {
         self.composer.set_reduced_motion(reduced);
     }
 
-    /// Hands the window manager the rules the configuration accepted. The compositor
-    /// validates the list before it gets here, so a refusal by the window manager is not
-    /// expected; if one comes, the rules already in force stay.
-    pub(crate) fn apply_window_rules(&mut self, rules: Vec<gnoblin_wm::Rule>) {
-        let effects = self.wm.apply(Event::RulesChanged { rules });
-        self.apply(effects);
-    }
-
     /// Applies the accepted window management options and titlebar gestures, then republishes
     /// the seat policy the stock shell reads.
     pub(crate) fn apply_window_management(&mut self, options: WmOptions, titlebar: TitlebarActions) {
@@ -2217,14 +2187,6 @@ impl State {
         self.titlebar_actions = titlebar;
         self.apply(effects);
         self.publish_seat_policy();
-    }
-
-    /// Hands the window manager the workspace sets the configuration accepted. The window
-    /// manager checks the list against the workspaces that exist, and a refused list leaves
-    /// the sets already in force, so the caller reports the refusal through the effect.
-    pub(crate) fn apply_workspace_sets(&mut self, sets: Vec<gnoblin_wm::WorkspaceSet>) {
-        let effects = self.wm.apply(Event::WorkspaceSetsChanged { sets });
-        self.apply(effects);
     }
 
     /// Advances the window animations by the real time one loop turn took.

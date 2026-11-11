@@ -81,7 +81,7 @@ use gnoblin_proto::{Envelope, Handshake, HandshakeKind, privilege, read_frame, w
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
-    WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,
+    WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -1233,24 +1233,7 @@ impl Dispatcher {
                 return;
             }
         };
-        // A document whose window rules this session cannot carry out is refused before it is
-        // recorded, so the last accepted document stays in force and the caller sees the field.
         let config = gnoblin_config::Config::from_json_bytes(&document);
-        let rules = match config
-            .as_ref()
-            .map(|config| crate::window_rules::convert(&config.window_rules, &config.workspaces))
-        {
-            Ok(Ok(rules)) => Some(rules),
-            Ok(Err(message)) => {
-                log::warn!(area = "ipc", %message, "the committed window rules were refused; the last accepted document stays in force");
-                self.refuse(client, envelope, wire::code::CONFIG_REJECTED, &message);
-                let answers = self.reload.finish(&ReloadVerdict::Rejected { message });
-                self.deliver_replies(answers);
-                return;
-            }
-            // A document that did not decode keeps the rules already in force.
-            Err(_) => None,
-        };
         // The X11 session the document asks for is worked out before the document is recorded, so
         // settings this process cannot run are refused and the last accepted document stays in force.
         let xwayland = match config.as_ref().map(|config| self.xwayland.desired(config)) {
@@ -1286,11 +1269,8 @@ impl Dispatcher {
                 // init.lua after the session started takes effect on this commit.
                 self.control
                     .set_global_scale(crate::monitors::settings_of(&config).global_scale);
-                if let Some(rules) = rules {
-                    self.control.set_window_rules(rules);
-                }
-                // The window management policy and titlebar gestures follow the accepted document
-                // as the rules do, so a reload applies them without a restart.
+                // The window management policy and titlebar gestures follow the accepted document, so a reload
+                // applies them without a restart.
                 let section = config.window_management.clone().unwrap_or_default();
                 self.control.set_window_management(
                     crate::window_management::wm_options_of(&section),
@@ -1721,9 +1701,6 @@ impl Dispatcher {
             }
             (Some(ty), Some(window), _, _) if ty == "window" && method == "add_effect" => {
                 self.add_effect_call(client, envelope, object, &method, &arguments, window);
-            }
-            (Some(ty), _, _, _) if ty == "workspace" && method == "activate_set" => {
-                self.workspace_activate_set(client, envelope, object, &method, &arguments);
             }
             (Some(ty), _, _, _) if ty == "lock" && method == "lock_session" => {
                 self.lock_call(client, envelope, object, &method, &arguments);
@@ -2332,55 +2309,6 @@ impl Dispatcher {
             }
             _ => return Err(missing("a window verb this server serves")),
         })
-    }
-
-    /// Serves `workspace.activate_set`: the configured set `name` becomes the live set. The
-    /// operation completes `done` once the window manager shows the set's workspaces, and
-    /// fails with `unknown-set` when the configuration defines no set of that name. On success
-    /// every published workspace raises `set_activated`, so a subscriber on any of them sees it.
-    fn workspace_activate_set(
-        &mut self,
-        client: ClientId,
-        envelope: &Envelope,
-        object: gnoblin_types::ObjectId,
-        method: &str,
-        arguments: &gnoblin_model::Fields,
-    ) {
-        let Some(name) = text_argument(arguments, "name") else {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::UNKNOWN_MEMBER,
-                "activate_set takes the set's name as text",
-            );
-            return;
-        };
-        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
-            Ok(operation) => operation,
-            Err(error) => {
-                let code = refusal_code(&error);
-                self.refuse(client, envelope, code, &error.to_string());
-                return;
-            }
-        };
-        self.reply_with_operation(client, envelope, &operation);
-        let answered = self.control.activate_workspace_set(&name);
-        self.sync();
-        let outcome = match answered {
-            Some(Ok(())) => {
-                self.store.raise_set_activated(&name);
-                OperationOutcome::Done
-            }
-            Some(Err(WorkspaceSetRefusal::UnknownSet)) => {
-                OperationOutcome::Failed(ErrorCode::from_static("unknown-set"))
-            }
-            // The window manager refused the set, or the loop did not answer in time: a set
-            // that is not shown is never reported as done.
-            Some(Err(WorkspaceSetRefusal::Refused)) | None => {
-                OperationOutcome::Failed(ErrorCode::from_static("refused"))
-            }
-        };
-        self.finish(object, &operation, Some(outcome));
     }
 
     /// Sends the call's reply: the operation's identity, which its completion will reach.

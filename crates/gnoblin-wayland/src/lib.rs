@@ -216,9 +216,7 @@ pub use observation::{
     ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
     ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
 };
-pub use observation::{
-    PresentAnswer, WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,
-};
+pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal};
 /// Output configuration types a host reports and applies, and the host trait.
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
 /// Output control: the trait a backend implements and the no-op default.

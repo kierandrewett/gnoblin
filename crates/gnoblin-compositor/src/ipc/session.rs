@@ -100,11 +100,6 @@ mod member {
     pub const EFFECTS: &str = "effects";
     /// The name of an `output` object, as the compositor reports it.
     pub const NAME: &str = "name";
-    /// The `workspace` object's set_activated signal, sent once per workspace when the window
-    /// manager makes a configured workspace set the live set.
-    pub const SET_ACTIVATED: &str = "set_activated";
-    /// The set_activated signal's field: the name of the set the window manager made live.
-    pub const SET: &str = "set";
     /// The `lock` object's locked property: whether the lock is holding the desktop.
     pub const LOCKED: &str = "locked";
     /// The `idle` object's idle_ms property: milliseconds since the last input event.
@@ -741,19 +736,6 @@ impl SessionSync {
         let object = self.graph.create(TypeKey::gnoblin("workspace"), properties)?;
         self.workspaces.insert(workspace.id, PublishedWorkspace { object });
         Ok(())
-    }
-
-    /// Raises `set_activated` on every published workspace object, naming the set the window
-    /// manager has made live. Every workspace carries the signal so a subscriber on any of them
-    /// sees the switch; a refused signal is logged and the others still go out.
-    pub fn raise_set_activated(&mut self, set: &str) {
-        let objects: Vec<ObjectId> = self.workspaces.values().map(|published| published.object).collect();
-        for object in objects {
-            let fields = Fields::from([(member::SET.to_owned(), Value::Text(set.to_owned()))]);
-            if let Err(error) = self.graph.signal(object, member::SET_ACTIVATED, fields) {
-                log::error!(area = "ipc", %error, "a workspace object declares no set_activated signal");
-            }
-        }
     }
 
     /// The graph, for a caller that reads state.

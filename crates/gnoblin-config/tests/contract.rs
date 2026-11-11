@@ -66,10 +66,16 @@ fn the_document_accepts_exactly_the_recorded_top_level_keys() {
 /// `prompts` drove the gcr `SystemPrompter` adapter, which is gone: the keyring asks for
 /// its unlock password over its own IPC, configured by `keyring`. Keeping the key would
 /// let a stale configuration load silently and do nothing.
-const RETIRED_KEYS: &[(&str, &str)] = &[(
-    "prompts",
-    "the gcr SystemPrompter adapter was removed; the keyring unlock prompt is configured by `keyring`",
-)];
+const RETIRED_KEYS: &[(&str, &str)] = &[
+    (
+        "prompts",
+        "the gcr SystemPrompter adapter was removed; the keyring unlock prompt is configured by `keyring`",
+    ),
+    (
+        "window-rules",
+        "window rules are a Lua table in the user's shell files (`seat.data.window_rules`), not a configuration key",
+    ),
+];
 
 /// Top-level keys the rewrite added, which the C reference cannot list.
 ///
@@ -116,11 +122,6 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "capture",
         "0.2.0",
         "the capture section: whether captures mask or omit secure layers, read by the screencopy and portal paths",
-    ),
-    (
-        "workspace-sets",
-        "0.2.0",
-        "the workspace-sets section: named groups of workspaces that activate together, read by the workspace manager at start; the C core had no workspace sets",
     ),
 ];
 

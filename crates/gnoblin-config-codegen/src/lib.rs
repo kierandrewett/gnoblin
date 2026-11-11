@@ -356,11 +356,8 @@ pub const HOOKS: &[&str] = &[
     "pad_button",
     "tablet",
     "window_management",
-    "window_rule",
-    "window_rules",
     "workspace",
     "workspaces",
-    "workspace_sets",
     "xwayland",
 ];
 

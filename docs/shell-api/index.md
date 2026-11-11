@@ -60,7 +60,7 @@ print(blur)
 
 `gnoblin.config` is not a settings table. It holds `path()`, `default()` and `restore_default()`, and assigning to it raises an error. Declare settings with `gnoblin.configure`.
 
-At run time, the declaration calls return an `Operation` that succeeds when the compositor commits the change. These are `gnoblin.configure`, `gnoblin.window_rule` and `gnoblin.animation`.
+At run time, the declaration calls return an `Operation` that succeeds when the compositor commits the change. These are `gnoblin.configure` and `gnoblin.animation`.
 
 `gnoblin.version()` returns an immutable record with string fields `gnoblin`, `gnome`, `mutter`, `lua`, `api`, `git_remote`, `git_sha`, and `build_id`. Missing values are returned as `"unknown"`. User information, query strings, and fragments are removed from remote URLs.
 
