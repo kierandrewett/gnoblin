@@ -304,7 +304,7 @@ Other listed actions have direct runtime equivalents: focus history/policy, relo
 
 The exact accepted keys and defaults are documented in the linked config pages:
 
-[window management](/config/configure/window_management), [input](/config/configure/input), [input sources](/config/configure/input_sources), [touchpad gestures](/config/configure/touchpad_gestures), [cursor](/config/configure/cursor), [compositor](/config/configure/compositor), [layer shell](/config/configure/layer_shell), [monitors](/config/configure/monitors), [frame renderers](/config/configure/frame_renderers), [protocols](/config/configure/protocols), [autostart](/config/configure/autostart),
+[window management](/config/configure/window_management), [input](/config/configure/input), [input sources](/config/configure/input_sources), [touchpad gestures](/config/configure/touchpad_gestures), [cursor](/config/configure/cursor), [compositor](/config/configure/compositor), [layer shell](/config/configure/layer_shell), [monitors](/config/configure/monitors), [protocols](/config/configure/protocols), [autostart](/config/configure/autostart),
 
 [portals](/config/configure/portals), [permissions](/config/configure/permissions), [location](/config/configure/location), [authentication](/config/configure/auth), and [Xwayland](/config/configure/xwayland).
 

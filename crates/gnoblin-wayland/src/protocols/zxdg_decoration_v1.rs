@@ -2,15 +2,16 @@
 //!
 //! `zxdg_decoration_manager_v1`.
 //!
-//! The session draws no frames in this slice, so it cannot promise server-side
-//! decorations: a window drawn without a title bar and without telling the client
-//! would be undecorated and unmovable. The answer is therefore always client-side,
+//! The compositor draws no frame around a client's window yet, so it cannot promise
+//! server-side decorations: a window drawn without a title bar and without telling the
+//! client would be undecorated and unmovable. The answer is therefore always client-side,
 //! which is what a GTK or Qt client falls back to when it hears nothing at all —
 //! answering explicitly is better, because a client that asked stops guessing.
 //!
-//! When the window-frame protocol lands, this module answers with the server mode
-//! and the frame module draws it; the handler and its single decision point are
-//! already here, so the change is the `Mode` and nothing else.
+//! Gnoblin's own decorations are the stock `Titlebar` shell node, not a protocol a client
+//! speaks (`design/node-api-refactor.md`, Decision 2). When `Window.decorated` reaches the
+//! schema, this module answers with the server mode; the handler and its single decision
+//! point are already here, so the change is the `Mode` and nothing else.
 
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
 use smithay::wayland::shell::xdg::ToplevelSurface;

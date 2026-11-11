@@ -44,7 +44,6 @@ Counts cover the rows below, not every setting leaf. Leaf-level coverage of all 
 
 | Item                                 | Doc path:line                              | Status  | Evidence / gap                                                                                                              | Owner                        | Effort |
 | ------------------------------------ | ------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------ |
-| `frame-renderers`                    | docs/config/configure/frame_renderers.md   | PARTIAL | Parsed in gnoblin-config only. No runtime consumer found.                                                                   | Unowned                      | M      |
 | `layer-shell.preserve-active-window` | docs/config/configure/layer_shell.md       | MISSING | No consumer outside gnoblin-config.                                                                                         | design/layers.md [INFERENCE] | S      |
 | `touchpad-gestures`                  | docs/config/configure/touchpad_gestures.md | BUILT   | Consumed at crates/gnoblin-input gesture.rs [INFERENCE].                                                                    | n/a                          | n/a    |
 | `location`                           | docs/config/configure/location.md          | BUILT   | crates/gnoblin-service-location lib.rs:163.                                                                                 | n/a                          | n/a    |
@@ -80,7 +79,7 @@ Counts cover the rows below, not every setting leaf. Leaf-level coverage of all 
 3. `gnoblin.config`, `gnoblin.snapshot`, `gnoblin.array` not bound. Unowned.
 4. `gnoblin.configure` snake_case keys not converted (CHANGED). Unowned; needs confirmation.
 5. `gnoblinctl config` subcommands absent. Unowned.
-6. `frame-renderers` has no runtime consumer. Unowned.
+6. (Removed in lane 8B: the `frame-renderers` key and the frame protocol were deleted; a document that sets the key is refused with a migration sentence.)
 7. `layer-shell.preserve-active-window` has no consumer. Owner: layers lane [INFERENCE].
 8. `portals` and `autostart` not wired. Unowned.
 9. `capture_input` on shortcuts absent. Unowned.

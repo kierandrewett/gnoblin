@@ -224,8 +224,6 @@ pub enum Kind {
     RecordMap(&'static str),
     /// A table whose keys are names from an enumerated setting.
     EnumBoolMap(&'static str),
-    /// A table keyed by a name, with a list of strings as each value.
-    TextListMap,
 }
 
 /// The declared default of a setting.

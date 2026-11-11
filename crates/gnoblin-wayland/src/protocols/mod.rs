@@ -48,7 +48,6 @@
 //! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2` | the privileged input-method half of a text conversation |
 //! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
 //! | [`wp_viewporter`] | `wp_viewporter` | creates the global; Smithay validates a viewport on commit |
-//! | [`gnoblin_window_frame_v1`] | `gnoblin_window_frame_manager_v1` | frames a decoration renderer draws, their configures, regions and errors |
 //! | [`gnoblin_view_source_v1`] | `gnoblin_view_source_manager_v1` | the owner-only capture source of a View node; refused for a node that is not a View |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
 //! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its window's opacity when the composer draws it; a factor on a subsurface has no effect because subsurfaces are not drawn |
@@ -83,8 +82,6 @@ pub mod foreign_toplevel_shared;
 pub mod gnoblin_session_host_v1;
 /// `gnoblin_view_source_v1`: the owner-only capture source of a View node.
 pub mod gnoblin_view_source_v1;
-/// `gnoblin_window_frame_v1`: server-side decoration frames drawn by a renderer client.
-pub mod gnoblin_window_frame_v1;
 /// The generated halves of the Gnoblin-owned protocols; see the module for why the
 /// generated code carries the one `unsafe_code` allow in this crate.
 mod wire;

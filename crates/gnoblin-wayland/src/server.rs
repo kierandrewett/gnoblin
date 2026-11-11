@@ -64,7 +64,6 @@ use crate::policy::WmOptions;
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
-use crate::protocols::gnoblin_window_frame_v1::GnoblinWindowFrameV1Frame;
 use crate::protocols::wl_compositor::WlCompositorClientState;
 use crate::state::State;
 
@@ -515,9 +514,6 @@ impl Server {
                             Command::BlurRegion { window, reply } => {
                                 let _ = reply.send(state.window_blur_region(window));
                             }
-                            Command::GnoblinWindowFrameV1Frame { window, reply } => {
-                                let _ = reply.send(state.window_frame(window));
-                            }
                             Command::DrawnNode { window, reply } => {
                                 let _ = reply.send(state.drawn_node(window));
                             }
@@ -660,7 +656,7 @@ impl Server {
     /// Promises a role to a process, before it connects.
     ///
     /// The server's own seam for the composition root, which records the promise and
-    /// only then starts the renderer or the session.
+    /// only then starts the session.
     pub fn promise_role(&mut self, pid: u32, role: ClientRole) {
         self.state.access().promise(pid, role);
     }
@@ -722,9 +718,8 @@ impl Server {
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.
                 state.poll_lock();
-                // A renderer or a hosted session that dies sends no request either, and
+                // A hosted session that dies sends no request either, and
                 // a session request nobody claims fails at its own deadline.
-                state.poll_frames();
                 state.poll_hosted();
                 // The Xwayland session is ticked here: the loop's own timeout is the only
                 // clock its process needs, and a dead or hung instance is noticed within
@@ -943,7 +938,7 @@ impl ControlHandle {
 
     /// Promises a role to a process the compositor is about to start.
     ///
-    /// A frame renderer and a hosted session are ordinary clients of the session
+    /// A view extension and a hosted session are ordinary clients of the session
     /// socket, and their registry answer is decided when the backend accepts them. The
     /// promise has to be recorded before the process connects, which is the order the
     /// composition root uses: promise, then spawn. A process that connects before the
@@ -991,17 +986,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control
             .push(Command::GnoblinSessionHostV1HostedSession { pid, reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// What a window's frame is doing, as the object graph and a test read it.
-    ///
-    /// [`None`] means the window has no frame (no renderer, or an unmapped window);
-    /// the inner [`None`] means the loop did not answer in time.
-    #[must_use]
-    pub fn window_frame(&self, window: WindowId) -> Option<Option<GnoblinWindowFrameV1Frame>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::GnoblinWindowFrameV1Frame { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -1298,11 +1282,6 @@ enum Command {
     /// Every session request waiting for the manager.
     HostRequests {
         reply: std::sync::mpsc::SyncSender<Vec<GnoblinSessionHostV1Request>>,
-    },
-    /// What a window's frame is doing.
-    GnoblinWindowFrameV1Frame {
-        window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<GnoblinWindowFrameV1Frame>>,
     },
     /// The matrix and projected bounds a window's node is drawn with, read from the scene.
     DrawnNode {

@@ -7,8 +7,7 @@
 //! # Failure modes
 //!
 //! A buffer whose size, stride or format does not match its pool is a protocol error for
-//! that client only. Guarded by `tests/window_frame.rs`
-//! (`a_buffer_of_the_wrong_size_is_a_protocol_error`) and `tests/render.rs`
+//! that client only. Guarded by `tests/render.rs`
 //! (`a_stride_padded_buffer_is_read_from_the_right_offsets`).
 
 use smithay::reexports::wayland_server::protocol::wl_buffer;

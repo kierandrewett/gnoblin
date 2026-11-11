@@ -28,13 +28,12 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input,
-    InputSources, KeyringConfig, LayerShell, Layers, Location, Logging, Monitors, Protocols, Shortcuts,
-    VisualAccessibility, WindowManagement, Workspace, Xwayland, parse_appearance, parse_auth, parse_autostart,
-    parse_capture_settings, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input,
-    parse_input_sources, parse_keyring_config, parse_layer_shell, parse_layers, parse_location, parse_logging,
-    parse_monitors, parse_protocols, parse_shortcuts, parse_touchpad_gestures, parse_visual_accessibility,
-    parse_window_management, parse_workspaces, parse_xwayland,
+    Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, Gesture, Input, InputSources,
+    KeyringConfig, LayerShell, Layers, Location, Logging, Monitors, Protocols, Shortcuts, VisualAccessibility,
+    WindowManagement, Workspace, Xwayland, parse_appearance, parse_auth, parse_autostart, parse_capture_settings,
+    parse_compat, parse_compositor, parse_cursor, parse_input, parse_input_sources, parse_keyring_config,
+    parse_layer_shell, parse_layers, parse_location, parse_logging, parse_monitors, parse_protocols, parse_shortcuts,
+    parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -61,8 +60,6 @@ pub struct Config {
     pub compositor: Option<Compositor>,
     /// `cursor`: the cursor theme and size.
     pub cursor: Option<Cursor>,
-    /// `frame-renderers`: the named frame renderer commands.
-    pub frame_renderers: Option<FrameRenderers>,
     /// `accessibility`: the visual accessibility section, a magnifier and a colour filter.
     pub accessibility: Option<VisualAccessibility>,
     /// `input`: pointer, keyboard and tablet settings.
@@ -165,6 +162,25 @@ impl Config {
                     &mut out,
                     "the extension tier was removed: delete the table, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
                 );
+                removed(
+                    entries,
+                    "frame-renderers",
+                    &root,
+                    &mut out,
+                    "the window frame protocol was deleted: Gnoblin draws window decorations itself (the stock Titlebar shell node), so delete the table and stop starting a frame renderer",
+                );
+                // A refused protocol name is reported with its explanation and taken out of the
+                // table, so the unknown-name pass over `protocols` does not report it as a typo too.
+                if let Some(Value::Map(protocols)) = entries.get_mut("protocols") {
+                    removed(
+                        protocols,
+                        "window-frame-renderer",
+                        &root.key("protocols"),
+                        &mut out,
+                        "the window frame protocol was deleted: Gnoblin draws window decorations itself, so there is no protocol to switch off",
+                    );
+                    protocols.remove("window-frame-renderer");
+                }
                 unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
                 config.appearance = section_table(entries, "appearance", &root, &mut out)
                     .map(|table| parse_appearance(table, &root.key("appearance"), &mut out));
@@ -172,8 +188,6 @@ impl Config {
                     .map(|table| parse_compositor(table, &root.key("compositor"), &mut out));
                 config.cursor = section_table(entries, "cursor", &root, &mut out)
                     .map(|table| parse_cursor(table, &root.key("cursor"), &mut out));
-                config.frame_renderers = section_table(entries, "frame-renderers", &root, &mut out)
-                    .map(|table| parse_frame_renderers(table, &root.key("frame-renderers"), &mut out));
                 config.input = section_table(entries, "input", &root, &mut out)
                     .map(|table| parse_input(table, &root.key("input"), &mut out));
                 config.input_sources = section_table(entries, "input-sources", &root, &mut out)
@@ -260,7 +274,6 @@ impl Config {
             compositor: None,
             cursor: None,
             accessibility: None,
-            frame_renderers: None,
             input: None,
             input_sources: None,
             layer_shell: None,

@@ -511,7 +511,7 @@ pub(crate) fn inherit_setting<T: SettingEnum>(
 
 /// The shape a record map's keys must have.
 ///
-/// The ids are device identifiers and renderer names, which the compositor looks
+/// The ids are device identifiers and names, which the compositor looks
 /// up, so an id that cannot be looked up is reported here rather than becoming a
 /// setting that silently never applies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -522,8 +522,6 @@ pub enum IdShape {
     HexPair,
     /// A hex serial, or `default-vvvv:pppp`.
     Serial,
-    /// A frame renderer name: 1 to 64 letters, digits, `_` or `-`, not `native`.
-    Renderer,
     /// A name of 1 to 64 letters, digits, `_` or `-`, such as a shortcut's name.
     Name,
     /// A full layer name, `gnoblin.<local>` or `ext.<provider>.<local>`, by the
@@ -538,14 +536,6 @@ impl IdShape {
             IdShape::Any => true,
             IdShape::HexPair => hex_pair(id),
             IdShape::Serial => hex_pair(id.strip_prefix("default-").unwrap_or(id)) && !id.is_empty(),
-            IdShape::Renderer => {
-                let mut characters = id.chars();
-                characters.next().is_some_and(|first| first.is_ascii_alphanumeric())
-                    && id.len() <= 64
-                    && id != "native"
-                    && characters
-                        .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
-            }
             IdShape::Name => id.len() <= 64 && !id.is_empty() && id.chars().all(name_character),
             IdShape::LayerName => LayerName::parse(id).is_ok(),
         }
@@ -557,7 +547,6 @@ impl IdShape {
             IdShape::Any => "a device id",
             IdShape::HexPair => "a device id of four hex digits, a colon, and four hex digits",
             IdShape::Serial => "a hex serial, or default- followed by four hex digits, a colon, and four hex digits",
-            IdShape::Renderer => "a name of at most 64 letters, digits, underscores or dashes, other than native",
             IdShape::Name => "a name of 1 to 64 letters, digits, underscores or dashes",
             IdShape::LayerName => "a full layer name, such as gnoblin.portals or ext.example.note",
         }
@@ -781,32 +770,6 @@ pub(crate) fn enum_bool_map<T: SettingEnum + Ord>(
         }
     }
     toggles
-}
-
-/// The table whose keys are names and whose values are lists of strings.
-pub(crate) fn text_list_map(
-    map: &mut BTreeMap<String, Value>,
-    path: &Path,
-    out: &mut Parser,
-    id_shape: IdShape,
-) -> BTreeMap<String, Vec<String>> {
-    let mut entries: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let keys: Vec<String> = map.keys().cloned().collect();
-    for key in keys {
-        if !id_shape.accepts(&key) {
-            out.problem(
-                &path.key(&key),
-                Fault::UnsupportedValue {
-                    expected: id_shape.expected().to_owned(),
-                },
-            );
-            continue;
-        }
-        if let Some(argv) = strings(map, &key, path, out) {
-            entries.insert(key, argv);
-        }
-    }
-    entries
 }
 
 /// The list of numbers at `key`, each inside `min..=max` and, when `length` is

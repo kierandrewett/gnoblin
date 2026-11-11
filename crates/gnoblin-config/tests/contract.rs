@@ -75,6 +75,10 @@ const RETIRED_KEYS: &[(&str, &str)] = &[
         "window-rules",
         "window rules are a Lua table in the user's shell files (`seat.data.window_rules`), not a configuration key",
     ),
+    (
+        "frame-renderers",
+        "the window frame protocol was deleted: Gnoblin draws window decorations itself, so a document that sets the table is refused with that explanation",
+    ),
 ];
 
 /// Top-level keys the rewrite added, which the C reference cannot list.
@@ -143,10 +147,16 @@ const REWRITE_ONLY_PROTOCOLS: &[(&str, &str, &str)] = &[
 /// purpose, with the reason. The C tree keeps them until its session is retired,
 /// so they stay in the recorded list; this is the one reviewed place that
 /// explains their absence from Rust.
-const RETIRED_PROTOCOLS: &[(&str, &str)] = &[(
-    "blur-fade",
-    "blur follows the opacity of the layer it is on, so no protocol is needed to fade it",
-)];
+const RETIRED_PROTOCOLS: &[(&str, &str)] = &[
+    (
+        "blur-fade",
+        "blur follows the opacity of the layer it is on, so no protocol is needed to fade it",
+    ),
+    (
+        "window-frame-renderer",
+        "the window frame protocol was deleted: Gnoblin draws window decorations itself, so a document that sets the toggle is refused with that explanation",
+    ),
+];
 
 #[test]
 fn the_protocol_enum_matches_the_recorded_enumeration() {

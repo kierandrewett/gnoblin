@@ -50,7 +50,6 @@ for the result and event fields.
 - [`gnoblin.configure.portals`](/config/configure/portals)
 - [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
-- [`gnoblin.configure.frame_renderers`](/config/configure/frame_renderers)
 - [`gnoblin.configure.appearance`](/config/configure/appearance)
 - [`gnoblin.configure.accessibility`](/config/configure/accessibility)
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
@@ -90,7 +89,6 @@ gnoblin.configure {
     portals = {...}?,
     layer_shell = {...}?,
     protocols = {...}?,
-    frame_renderers = {...}?,
     appearance = {...}?,
     accessibility = {...}?,
     cursor = {...}?,

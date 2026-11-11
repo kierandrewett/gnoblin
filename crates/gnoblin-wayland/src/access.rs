@@ -39,13 +39,10 @@
 //! 4. **A trusted mark outlives the connection it was given to.** The record is kept
 //!    alive by the connection's own client data ([`Registration`]), so it is dropped
 //!    with the connection: a recycled identity cannot inherit a role.
-//! 5. **A single-purpose role reaches past its one global.** A frame renderer and a
-//!    hosted session each exist for exactly one protocol, so [`decide`] admits them to
-//!    that global and to nothing else:
-//!    `a_frame_renderer_sees_only_the_frame_protocol`,
-//!    `a_session_host_sees_only_the_session_host_protocol`. The integration tests that
-//!    prove it over real connections are `a_renderer_is_offered_only_its_own_protocol`
-//!    and `a_session_sees_only_the_session_host_protocol`.
+//! 5. **A single-purpose role reaches past its one global.** A hosted session exists for
+//!    exactly one protocol, so [`decide`] admits it to that global and to nothing else:
+//!    `a_session_host_sees_only_the_session_host_protocol`. The integration test that
+//!    proves it over a real connection is `a_session_sees_only_the_session_host_protocol`.
 //! 6. **The view role reaches a core global.** Core globals (`wl_compositor`, `xdg_wm_base`,
 //!    `ext_session_lock_manager_v1`, `wl_seat`, …) carry no per-global filter, so
 //!    the `view` role is narrowed by interface name at the one place every global is
@@ -83,10 +80,6 @@ pub enum Global {
     /// `ext_image_copy_capture_manager_v1` and the two capture-source managers that name
     /// what it copies. They are one capability, so they are one global here.
     ImageCopyCapture,
-    /// `gnoblin_window_frame_manager_v1`: a frame renderer draws another client's
-    /// decorations and receives that window's metadata. Only the connections the
-    /// compositor started a renderer on see it.
-    GnoblinWindowFrameV1Frame,
     /// `gnoblin_session_host_v1`: the host compositor's channel to one hosted session.
     /// Only the connection the compositor brokered for that session sees it, so a
     /// manager's own request to lock, log out or power off cannot be forged by an
@@ -131,7 +124,6 @@ impl Global {
             | Self::WlrDataControl
             | Self::Screencopy
             | Self::ImageCopyCapture
-            | Self::GnoblinWindowFrameV1Frame
             | Self::GammaControl
             | Self::OutputPower
             | Self::OutputManagement
@@ -158,7 +150,6 @@ impl Global {
             Self::WlrDataControl => "zwlr_data_control_manager_v1",
             Self::Screencopy => "zwlr_screencopy_manager_v1",
             Self::ImageCopyCapture => "ext_image_copy_capture_manager_v1",
-            Self::GnoblinWindowFrameV1Frame => "gnoblin_window_frame_manager_v1",
             Self::SessionHost => "gnoblin_session_host_v1",
             Self::ViewSource => "gnoblin_view_source_manager_v1",
             Self::InputMethod => "zwp_input_method_manager_v2",
@@ -193,7 +184,7 @@ impl Global {
             Self::GammaControl => gnoblin_config::Protocol::WlrGammaControl,
             Self::OutputPower => gnoblin_config::Protocol::WlrOutputPowerManagement,
             Self::OutputManagement => gnoblin_config::Protocol::WlrOutputManagement,
-            Self::GnoblinWindowFrameV1Frame | Self::SessionHost | Self::ViewSource => return true,
+            Self::SessionHost | Self::ViewSource => return true,
             // The schema has no switch for the seat's privileged halves: an input method
             // and a virtual keyboard are always on offer to a connection that earned
             // them, which is the roster's decision and not the document's.
@@ -215,13 +206,8 @@ pub enum ClientRole {
     /// Connected on the privileged socket, which is how the session's own processes
     /// reach the controls an application must not have.
     Privileged,
-    /// A frame renderer the compositor started for this session, marked by the process
-    /// it spawned. It sees `gnoblin_window_frame_manager_v1` and nothing else
-    /// privileged: a renderer draws decorations and must not be able to read a
-    /// clipboard or copy another client's pixels.
-    FrameRenderer,
     /// The extension process the guardian started to read Views for the owner. It is promised
-    /// by pid before spawn, like a frame renderer. Its authority is capture only: it sees the
+    /// by pid before spawn, like a hosted session. Its authority is capture only: it sees the
     /// interfaces in [`VIEW_INTERFACES`] and no other global, core or privileged
     /// (`design/xr-extension.md`, G7). [`decide`] answers for the privileged globals and
     /// [`ClientRole::sees_interface`] for every global by interface name, so a core global such
@@ -270,7 +256,6 @@ impl ClientRole {
             Self::Unprivileged => "unprivileged",
             Self::Trusted => "trusted",
             Self::Privileged => "privileged",
-            Self::FrameRenderer => "frame-renderer",
             Self::View => "view",
             Self::SessionHost => "session-host",
             Self::Sandboxed => "sandboxed",
@@ -292,13 +277,12 @@ pub const fn decide(role: ClientRole, global: Global) -> bool {
         // A trusted service reaches every privileged global except the view-source one,
         // which belongs to the owner's own connection.
         ClientRole::Trusted => !matches!(global, Global::ViewSource),
-        // Narrow on purpose: the process behind these roles is a renderer or a session,
+        // Narrow on purpose: the process behind these roles is an extension or a session,
         // never the session's own management, so one global is the whole of what it may
         // reach.
         // `ImageCopyCapture` is one capability covering three managers; the view role takes
         // the copy manager only, because [`VIEW_INTERFACES`] hides the two source managers.
         ClientRole::View => matches!(global, Global::ViewSource | Global::ImageCopyCapture),
-        ClientRole::FrameRenderer => matches!(global, Global::GnoblinWindowFrameV1Frame),
         ClientRole::SessionHost => matches!(global, Global::SessionHost),
         ClientRole::Unprivileged => !global.is_privileged(),
     }
@@ -346,7 +330,7 @@ pub struct Access {
     connections: Mutex<HashMap<ClientKey, Membership>>,
     /// Roles the compositor has promised to a process, before it connects.
     ///
-    /// A frame renderer and a hosted session are spawned as ordinary clients of the
+    /// A view extension and a hosted session are spawned as ordinary clients of the
     /// session socket, and their registry answer is decided the moment the backend
     /// accepts them, which is before the compositor could look at the connection.
     /// The compositor therefore records the role against the process it started and
@@ -393,7 +377,7 @@ impl Access {
         connections.insert(client.clone(), Membership { role, number });
     }
 
-    /// Promises a role to the process `pid`, which is how a spawned renderer or
+    /// Promises a role to the process `pid`, which is how a spawned extension or
     /// hosted session earns its one global.
     ///
     /// A promise is keyed by process, so it applies to that process's next
@@ -534,7 +518,6 @@ mod tests {
         Global::WlrDataControl,
         Global::Screencopy,
         Global::ImageCopyCapture,
-        Global::GnoblinWindowFrameV1Frame,
         Global::SessionHost,
         Global::ViewSource,
         Global::InputMethod,
@@ -594,7 +577,6 @@ mod tests {
         assert!(!decide(ClientRole::Trusted, Global::ViewSource));
         assert!(!decide(ClientRole::Unprivileged, Global::ViewSource));
         assert!(!decide(ClientRole::Sandboxed, Global::ViewSource));
-        assert!(!decide(ClientRole::FrameRenderer, Global::ViewSource));
         assert!(!decide(ClientRole::SessionHost, Global::ViewSource));
         assert!(Global::ViewSource.is_privileged());
         assert!(Global::ViewSource.is_advertised(&gnoblin_config::Protocols::default()));
@@ -644,27 +626,6 @@ mod tests {
     #[test]
     fn the_default_role_is_the_one_that_grants_nothing() {
         assert_eq!(ClientRole::default(), ClientRole::Unprivileged);
-    }
-
-    #[test]
-    fn a_frame_renderer_sees_only_the_frame_protocol() {
-        // A renderer draws another window's decorations; it must not be able to read a
-        // clipboard or copy another client's pixels just because the compositor started
-        // it.
-        for global in ALL {
-            let allowed = decide(ClientRole::FrameRenderer, *global);
-            assert_eq!(
-                allowed,
-                *global == Global::GnoblinWindowFrameV1Frame,
-                "a frame renderer must {} see {}",
-                if *global == Global::GnoblinWindowFrameV1Frame {
-                    ""
-                } else {
-                    "not"
-                },
-                global.as_str()
-            );
-        }
     }
 
     #[test]
@@ -747,7 +708,6 @@ mod tests {
             ClientRole::Unprivileged,
             ClientRole::Trusted,
             ClientRole::Privileged,
-            ClientRole::FrameRenderer,
             ClientRole::SessionHost,
             ClientRole::Sandboxed,
         ] {

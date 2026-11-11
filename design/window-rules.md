@@ -77,7 +77,7 @@ From config 81-114:
 
 ### 1.4 Frame
 
-From config 135-147 and `docs/guides/window_frames.md`:
+From config 135-147 and `docs/guides/window_frames.md` (deleted with the frame protocol in lane 8B):
 
 - `mode`: `off`, `auto`, `prefer-server`, `replace`.
 - `extents`: four integers 0-256, top right bottom left, default `{32,1,1,1}`.

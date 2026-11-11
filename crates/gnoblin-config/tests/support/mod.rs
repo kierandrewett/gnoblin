@@ -52,10 +52,6 @@ pub fn kitchen_sink() -> Value {
         ),
         ("cursor", table([("size", int(24)), ("theme", text("default"))])),
         (
-            "frame-renderers",
-            table([("cairo", list(vec![text("gnoblin-frame-cairo")]))]),
-        ),
-        (
             "input",
             table([
                 ("mouse", table([("speed", number(0.5)), ("left-handed", flag(true))])),

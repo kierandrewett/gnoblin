@@ -127,7 +127,6 @@ mod tests {
             "wlr-foreign-toplevel-management",
             "xdg-decoration",
             "kde-server-decoration",
-            "window-frame-renderer",
             "wlr-screencopy",
             "ext-image-copy-capture",
             "ext-background-effect-v1",

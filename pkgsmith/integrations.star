@@ -57,7 +57,7 @@ Ananicy-cpp's default rules rank gdm and its children as background work, with n
 Gnoblin session started by gdm inherits that class, and the compositor and shell then freeze or drop frames while other
 programs use the CPU.
 
-This package adds rules that give the gnoblin, quickshell and bingux-frame processes normal scheduling with a small
+This package adds rules that give the gnoblin and quickshell processes normal scheduling with a small
 priority boost. It contains only data files for ananicy-cpp. It has no effect where ananicy-cpp is not installed."""
 
 include("/etc/geoclue/**")

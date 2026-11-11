@@ -58,7 +58,6 @@ cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 | `embed-config.py`                       | Embed the default Lua configuration tree in a C file                       | CMake                         |
 | `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `component-build.cmake`       |
 | `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                          | `cmake/install-session.cmake` |
-| `build-frame-renderers.sh`              | Build the optional window frame renderers                                  | by hand, tests                |
 | `cmake/install-session.cmake`           | Install the session files, units, schemas and man pages into the prefix    | CMake                         |
 | `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                  | CMake (`--layout system`)     |
 | `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                     | `cmake/install-session.cmake` |

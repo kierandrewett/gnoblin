@@ -95,8 +95,6 @@ getrandom = { workspace = true }
 # time. Checking the generated code in would let the XML and the code drift, which is
 # exactly what a wire-compatible port cannot afford.
 wayland-scanner = "0.31.11"
-# The generated `state` bit field of `gnoblin_window_frame_v1` is a `bitflags` type.
-bitflags = "2"
 # The IPC request broker. A hosted session's `lock`, `logout` and `power` requests are
 # `Request` objects the session manager claims and answers, never actions this crate
 # performs (design/rust-compositor.md, "Main data paths").

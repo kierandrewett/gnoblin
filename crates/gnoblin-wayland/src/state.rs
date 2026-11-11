@@ -90,7 +90,6 @@ use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
 use crate::protocols::gnoblin_session_host_v1::GnoblinSessionHostV1Tables;
-use crate::protocols::gnoblin_window_frame_v1::GnoblinWindowFrameV1Tables;
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::protocols::wp_presentation_time::WpPresentationTimeTables;
 use crate::protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
@@ -576,9 +575,6 @@ pub struct State {
     /// of the capture state reads in one place (`protocols::capture_shared`).
     pub(crate) capture: CaptureTables,
 
-    /// The frame renderers' managers and the frames they were offered, which is
-    /// `gnoblin_window_frame_v1` (`protocols::gnoblin_window_frame_v1`).
-    pub(crate) frame_tables: GnoblinWindowFrameV1Tables,
     /// The hosted sessions, their protection covers and their requests, which is
     /// `gnoblin_session_host_v1` (`protocols::gnoblin_session_host_v1`).
     pub(crate) session_host: GnoblinSessionHostV1Tables,
@@ -700,7 +696,6 @@ impl State {
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
         let capture = CaptureTables::new(&display_handle, &access);
-        let frame_tables = GnoblinWindowFrameV1Tables::new(&display_handle, &access);
         let session_host = GnoblinSessionHostV1Tables::new(&display_handle, &access);
         remove_disabled_globals(
             &display_handle,
@@ -860,7 +855,6 @@ impl State {
             lock_tables: ExtSessionLockV1Tables::default(),
             lock_auth,
             capture,
-            frame_tables,
             session_host,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,
@@ -1052,8 +1046,8 @@ impl State {
 
     /// Promises a role to a process, so its next connection is recorded with it.
     ///
-    /// The composition root records the promise and then starts the renderer or the
-    /// hosted session; the accept path in [`State::insert_client`] picks it up.
+    /// The composition root records the promise and then starts the hosted session; the
+    /// accept path in [`State::insert_client`] picks it up.
     pub fn grant_role(&self, pid: u32, role: ClientRole) {
         self.access.promise(pid, role);
     }
@@ -1600,10 +1594,6 @@ impl State {
         if self.visual_accessibility.magnifier_zoom.is_some() {
             self.damage_outputs();
         }
-        // A frame renderer hears the hover before the pointer focus changes: the region
-        // under the pointer is the renderer's, the surface is the window's, and the two
-        // are decided independently.
-        self.frame_pointer(Some(position), None);
         self.composer.set_main_seat_pointer(position.x, position.y);
         self.shell_pointer(self.pointer_target(position));
         let focus = self.surface_under(position);
@@ -1804,12 +1794,10 @@ impl State {
     /// What a window's closing ends, whatever protocol it arrived on: the layout a window
     /// remembered goes with it, so a recycled identity cannot inherit another window's source;
     /// the sessions that captured it end, so nothing serves the pixels of a window that is no
-    /// longer on screen and each client hears `stopped`; and a renderer's frame for it closes,
-    /// so the window is never left with a decoration nothing will update.
+    /// longer on screen and each client hears `stopped`.
     pub(crate) fn release_window(&mut self, window: WindowId) {
         self.forget_layout(window);
         self.capture.window_closed(window);
-        self.close_window_frame(window);
     }
 
     /// A toplevel committed: record its title, application id and buffer.
@@ -1896,10 +1884,6 @@ impl State {
             self.apply_decided(effects);
         }
         self.sync_content(window, surface);
-        // A mapped window is offered a frame, and a window whose geometry or metadata
-        // changed gets a fresh configure. A renderer that never answers changes nothing
-        // for the client: nothing here waits for it.
-        self.refresh_window_frame(window);
         self.publish();
     }
 
@@ -3442,7 +3426,6 @@ impl Host for State {
             }
             InputEvent::PointerLeave => {
                 self.shell_pointer(None);
-                self.frame_pointer(None, None);
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
                 pointer.motion(
@@ -3456,7 +3439,6 @@ impl Host for State {
                 );
             }
             InputEvent::PointerButton { button, pressed } => {
-                self.frame_pointer(Some(self.pointer_position), Some(pressed));
                 // A press or release over a shell node, or over a window while a shell holds the tree, is an
                 // edge the shell reads: its focus and raise policy follows the window's. Without a shell the
                 // fallback focuses the window a press lands on.

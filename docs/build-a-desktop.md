@@ -119,7 +119,7 @@ login session.
 
 ## Continue from here
 
-- [Window rules](/guides/window_rules), [effects](/guides/window_effects) and [frames](/guides/window_frames)
+- [Window rules](/guides/window_rules) and [effects](/guides/window_effects)
 - [Shell integration](shell-integration.md), [window menus](/guides/window_menu) and [snapping](/guides/window_snapping)
 - [Protocol catalog](wayland-protocols.md) and [compositor bridge](bridge/index.md)
 - [Troubleshooting](troubleshooting.md) when a component does not appear

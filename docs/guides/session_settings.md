@@ -79,7 +79,6 @@ and keeps the previous configuration. Unlock before changing that setting.
 | `wlr_output_power_management`     | Display power                      |
 | `ext_background_effect_v1`        | Client-requested background blur   |
 | `xdg_decoration`                  | Client/server titlebar negotiation |
-| `window_frame_renderer`           | External frame renderer service    |
 | `blur_fade`                       | Per-item blur fade metadata        |
 
 Each protocol name accepts `true` or `false` and defaults to `true`. Set a

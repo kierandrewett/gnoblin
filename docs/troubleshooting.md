@@ -158,12 +158,6 @@ The application or panel must draw a translucent background.
 Rule opacity fades text too; it does not replace client background transparency.
 See [blur](/guides/window_effects#blur-and-opacity).
 
-## There are two titlebars, or none
-
-Check your [frame mode](/guides/window_frames#choose-a-mode).
-A renderer name alone does not enable SSD, and an unset protocol preference
-does not prove that the client draws a titlebar.
-
 ## Gnoblin is slow or stutters after login
 
 Check the scheduling policy of the compositor:

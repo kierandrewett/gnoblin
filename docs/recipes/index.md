@@ -16,8 +16,6 @@ After editing the file, apply the changes with `gnoblinctl config reload`.
   corner radius and smoothing.
 - [Turn off layer animations](/recipes/turn-off-layer-animations): disable
   compositor animations for layer surfaces.
-- [Request a Gnoblin titlebar](/recipes/request-a-titlebar): provide a server
-  titlebar when an application requests one.
 - [Combine window rules](/recipes/combine-window-rules): apply defaults and
   override selected values for matching windows.
 - [Split a config into files](/recipes/split-config-into-files): load separate

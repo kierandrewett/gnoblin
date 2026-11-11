@@ -167,6 +167,42 @@ fn the_extensions_section_is_refused_with_the_migration_rather_than_a_typo_hint(
 }
 
 #[test]
+fn the_frame_renderers_section_is_refused_with_the_migration_rather_than_a_typo_hint() {
+    let document = table([(
+        "frame-renderers",
+        table([("cairo", list(vec![text("gnoblin-frame-cairo")]))]),
+    )]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one key is wrong, got {problems:?}");
+    assert_eq!(problems[0].0, "frame-renderers");
+    match &problems[0].1 {
+        Fault::Removed { detail } => {
+            assert!(detail.contains("window frame protocol was deleted"), "{detail}");
+            assert!(detail.contains("Titlebar"), "the replacement is named: {detail}");
+        }
+        other => panic!("expected an explanation, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_window_frame_protocol_toggle_is_refused_with_the_migration_rather_than_a_typo_hint() {
+    let document = table([("protocols", table([("window-frame-renderer", flag(false))]))]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one key is wrong, got {problems:?}");
+    assert_eq!(problems[0].0, "protocols.window-frame-renderer");
+    match &problems[0].1 {
+        Fault::Removed { detail } => {
+            assert!(detail.contains("window frame protocol was deleted"), "{detail}");
+            assert!(
+                detail.contains("decorations itself"),
+                "the replacement is named: {detail}"
+            );
+        }
+        other => panic!("expected an explanation, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_deprecated_spelling_is_accepted_canonicalised_and_reported() {
     let document = table([("window-management", table([("focus-mode", text("sloppy"))]))]);
     let config = Config::from_value(document).expect("a deprecated spelling is accepted");

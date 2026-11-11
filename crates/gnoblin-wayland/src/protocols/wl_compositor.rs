@@ -96,9 +96,6 @@ impl CompositorHandler for State {
         // A lock surface with a buffer is the only surface input may reach while the
         // session is covered, so the lock hears about it before anything else runs.
         self.lock_surface_committed(surface);
-        // A renderer's frame surface is validated against the configure it answers, so
-        // it is applied here, with the commit that carries it.
-        self.frame_surface_committed(surface);
         if is_sync_subsurface(surface) {
             // A synchronous subsurface's commit is applied with its parent's, so
             // attributing it here would report a window change twice.

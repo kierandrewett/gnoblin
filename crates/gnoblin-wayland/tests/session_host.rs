@@ -266,7 +266,6 @@ fn a_session_sees_only_the_session_host_protocol() {
             "zwlr_foreign_toplevel_manager_v1",
             "ext_data_control_manager_v1",
             "zwlr_screencopy_manager_v1",
-            "gnoblin_window_frame_manager_v1",
         ] {
             assert!(!client.has(hidden), "a hosted session must not see {hidden}");
         }

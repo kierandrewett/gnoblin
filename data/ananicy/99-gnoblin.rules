@@ -2,4 +2,3 @@
 # See 99-gnoblin.types.
 { "name": "gnoblin", "type": "Gnoblin_Compositor" }
 { "name": "quickshell", "type": "Gnoblin_Compositor" }
-{ "name": "bingux-frame", "type": "Gnoblin_Compositor" }

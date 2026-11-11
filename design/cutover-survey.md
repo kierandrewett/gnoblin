@@ -676,6 +676,17 @@ Order: 8B and 8C do not need the painter and can land first, in that order (both
 long pole and has no overlap with them. 8D needs 8A, `Seat:grab` and the answer to O3. 8E is optional for step 8's deletions
 and is in scope only if O14 says layer-shell becomes nodes in this step.
 
+**Status, lane 8B: done** (owner decision O1 default selected, owner may revisit). `gnoblin_window_frame_v1` and its XML,
+`Global::GnoblinWindowFrameV1Frame`, `ClientRole::FrameRenderer`, `State::window_frame` and the `frame-renderers` section
+are deleted, with the `bitflags` dependency, the `text-list-map` schema kind and `IdShape::Renderer`. `promise_role`,
+`grant_role` and the `Access` promise table stay because `ClientRole::SessionHost` uses them; `adopt_view` and
+`ClientRole::View` are untouched. The refused-keys check for `frame-renderers` and `protocols.window-frame-renderer` is the
+top-level `removed` call in `gnoblin-config/src/document.rs` (the hook in `hooks.rs` runs after the generated parse, so a
+protocol name it refuses would also be reported as an unknown name). Both keys are in `RETIRED_KEYS` and `RETIRED_PROTOCOLS`
+in `crates/gnoblin-config/tests/contract.rs`. The C tree's frame code (`src/protocols/window-frame/`, its Lua keys, the
+Mutter patch series and `tests/test-window-frames*.py`, `tests/frame-renderer-policy.test.py`) is unchanged and leaves with the Mutter
+tree in phase 6.
+
 ### 16.2 Step 9: views, capture, effects
 
 #### What exists and what does not

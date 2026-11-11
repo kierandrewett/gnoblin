@@ -22,8 +22,8 @@ use std::collections::BTreeMap;
 use crate::appearance::Accent;
 use crate::engine::{Parser, is_inherit};
 use crate::generated::{
-    AccelCurve, Appearance, Compositor, FrameRenderers, Gesture, GesturePoint, PadButton, PadButtonAction, Tablet,
-    TouchpadGestures, WindowManagement, Workspace, Workspaces, Xwayland,
+    AccelCurve, Appearance, Compositor, Gesture, GesturePoint, PadButton, PadButtonAction, Tablet, TouchpadGestures,
+    WindowManagement, Workspace, Workspaces, Xwayland,
 };
 use crate::model::Inherit;
 use crate::path::Path;
@@ -505,34 +505,6 @@ pub(crate) fn pad_button(
         }
         (false, None) => true,
     }
-}
-
-/// `frame-renderers`: an argv whose first entry names the program.
-pub(crate) fn frame_renderers(
-    section: &mut FrameRenderers,
-    _map: &BTreeMap<String, Value>,
-    path: &Path,
-    out: &mut Parser,
-) -> bool {
-    let mut valid = true;
-    let names: Vec<String> = section.renderers.keys().cloned().collect();
-    for name in names {
-        let Some(argv) = section.renderers.get(&name) else {
-            continue;
-        };
-        let present = argv.first().is_some_and(|first| !first.is_empty());
-        if argv.is_empty() || argv.len() > 32 || !present {
-            out.problem(
-                &path.key(&name),
-                Fault::UnsupportedValue {
-                    expected: "an argv of 1 to 32 strings whose first entry names the program".to_owned(),
-                },
-            );
-            section.renderers.remove(&name);
-            valid = false;
-        }
-    }
-    valid
 }
 
 /// Whether `name` has the shape of an output connector id.

@@ -106,7 +106,6 @@ enum Kind {
     RecordList,
     RecordMap,
     EnumBoolMap,
-    TextListMap,
 }
 
 impl Kind {
@@ -124,7 +123,6 @@ impl Kind {
             "record-list" => Kind::RecordList,
             "record-map" => Kind::RecordMap,
             "enum-bool-map" => Kind::EnumBoolMap,
-            "text-list-map" => Kind::TextListMap,
             _ => return None,
         })
     }
@@ -311,7 +309,6 @@ enum IdShape {
     Any,
     HexPair,
     Serial,
-    Renderer,
     Name,
     LayerName,
 }
@@ -322,7 +319,6 @@ impl IdShape {
             "any" => IdShape::Any,
             "hex-pair" => IdShape::HexPair,
             "serial" => IdShape::Serial,
-            "renderer" => IdShape::Renderer,
             "name" => IdShape::Name,
             "layer-name" => IdShape::LayerName,
             _ => return None,
@@ -334,7 +330,6 @@ impl IdShape {
             IdShape::Any => "IdShape::Any",
             IdShape::HexPair => "IdShape::HexPair",
             IdShape::Serial => "IdShape::Serial",
-            IdShape::Renderer => "IdShape::Renderer",
             IdShape::Name => "IdShape::Name",
             IdShape::LayerName => "IdShape::LayerName",
         }
@@ -350,7 +345,6 @@ pub const HOOKS: &[&str] = &[
     "accel_curve",
     "appearance",
     "compositor",
-    "frame_renderers",
     "gesture",
     "gestures",
     "pad_button",
@@ -632,7 +626,6 @@ fn value_type(field: &FieldDecl) -> String {
         Kind::RecordList => format!("Vec<{}>", field.record.clone().unwrap_or_default()),
         Kind::RecordMap => format!("BTreeMap<String, {}>", field.record.clone().unwrap_or_default()),
         Kind::EnumBoolMap => format!("BTreeMap<{}, bool>", field.enum_name.clone().unwrap_or_default()),
-        Kind::TextListMap => "BTreeMap<String, Vec<String>>".to_owned(),
     }
 }
 
@@ -715,7 +708,6 @@ fn read_call(field: &FieldDecl) -> String {
             snake(&field.record.clone().unwrap_or_default())
         ),
         Kind::EnumBoolMap => "enum_bool_map(map, path, out)".to_owned(),
-        Kind::TextListMap => "text_list_map(map, path, out, IdShape::Renderer)".to_owned(),
     }
 }
 
@@ -1013,7 +1005,6 @@ fn kind_literal(field: &FieldDecl) -> String {
         Kind::RecordList => format!("Kind::RecordList(\"{}\")", field.record.clone().unwrap_or_default()),
         Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", field.record.clone().unwrap_or_default()),
         Kind::EnumBoolMap => format!("Kind::EnumBoolMap(\"{}\")", field.enum_name.clone().unwrap_or_default()),
-        Kind::TextListMap => "Kind::TextListMap".to_owned(),
     }
 }
 
@@ -1023,7 +1014,6 @@ fn kind_literal_spread(spread: &SpreadDecl) -> String {
             "Kind::EnumBoolMap(\"{}\")",
             spread.variant_enum.clone().unwrap_or_default()
         ),
-        Kind::TextListMap => "Kind::TextListMap".to_owned(),
         Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", spread.record.clone().unwrap_or_default()),
         Kind::RecordList => format!("Kind::RecordList(\"{}\")", spread.record.clone().unwrap_or_default()),
         _ => "Kind::Bool".to_owned(),
@@ -1068,7 +1058,6 @@ fn render_table(text: &mut String, decl: &TableDecl, is_record: bool) {
     if let Some(spread) = &decl.spread {
         let inner = match spread.kind() {
             Kind::EnumBoolMap => format!("BTreeMap<{}, bool>", spread.variant_enum.clone().unwrap_or_default()),
-            Kind::TextListMap => "BTreeMap<String, Vec<String>>".to_owned(),
             Kind::RecordList => format!("Vec<{}>", spread.record.clone().unwrap_or_default()),
             Kind::RecordMap => format!("BTreeMap<String, {}>", spread.record.clone().unwrap_or_default()),
             _ => "bool".to_owned(),
@@ -1135,10 +1124,6 @@ fn render_table(text: &mut String, decl: &TableDecl, is_record: bool) {
     if let Some(spread) = &decl.spread {
         let call = match spread.kind() {
             Kind::EnumBoolMap => "enum_bool_map(map, path, out)".to_owned(),
-            Kind::TextListMap => format!(
-                "text_list_map(map, path, out, {})",
-                IdShape::parse("renderer").map_or("IdShape::Any", IdShape::rust)
-            ),
             Kind::RecordList => format!(
                 "section_records(value, path, out, \"{}\", parse_{})",
                 esc(&spread.accepted),
@@ -1323,7 +1308,6 @@ fn lua_type(field: &FieldDecl) -> String {
         Kind::Record => field.record.clone().unwrap_or_default(),
         Kind::RecordList | Kind::RecordMap => "table".to_owned(),
         Kind::EnumBoolMap => "table".to_owned(),
-        Kind::TextListMap => "table".to_owned(),
     };
     if field.inherit {
         format!("{base} | \"inherit\"")

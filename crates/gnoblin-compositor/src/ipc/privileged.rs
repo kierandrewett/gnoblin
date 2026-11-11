@@ -21,7 +21,7 @@
 //! members with `denied`.
 //!
 //! The predicate is the only gate for owner members: there are no per-role capability
-//! sets. The Wayland-level client roles (`ClientRole::View`, `ClientRole::FrameRenderer`)
+//! sets. The Wayland-level client roles (`ClientRole::View`, `ClientRole::SessionHost`)
 //! are a separate mechanism and are unaffected.
 
 use std::io;

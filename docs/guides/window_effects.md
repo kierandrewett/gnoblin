@@ -17,7 +17,6 @@ is refused at load with a reason. The list of refused keys is in the
 | Blur behind a window   | GLES renderer only                              | No. Refused as `blur`                  |
 | Shadow                 | GLES renderer only                              | No. Refused as `corners.shadow`        |
 | User fragment shaders  | GLES renderer mechanism only                    | No. Refused as `shader`                |
-| Native window frames   | Frame protocol, any renderer                    | Via `frame-renderers`, not a rule      |
 
 "No config path" means the renderer can draw the effect, but nothing a user writes
 in `init.lua` reaches it. Opacity and corner radius from a window rule reach the

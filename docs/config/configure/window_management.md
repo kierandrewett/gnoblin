@@ -156,15 +156,12 @@ The three titlebar click fields accept these values:
 | `menu`                         | Open the window menu.                   |
 | `none`                         | Do nothing.                             |
 
-These settings control what a click on a titlebar does, including a titlebar
-drawn by Gnoblin's native frame. Applications that draw their own client-side
-titlebars handle those clicks themselves.
+These settings control what a click on a titlebar does. Applications that draw
+their own client-side titlebars handle those clicks themselves.
 
 GTK applications usually draw their own titlebars and read the desktop's window
 manager settings directly. This Lua section does not change those apps' CSD
-behavior. A custom SSD renderer implements its own titlebar click behavior.
-
-See [titlebars](/guides/window_frames).
+behavior.
 
 ## Reading the policy from Lua
 

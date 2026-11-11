@@ -267,10 +267,6 @@ pub use protocols::gnoblin_session_host_v1::{
     GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1OutputHint, GnoblinSessionHostV1Request,
     GnoblinSessionHostV1RequestKind,
 };
-/// Window frame protocol types: frame actions, regions and the frame itself.
-pub use protocols::gnoblin_window_frame_v1::{
-    GnoblinWindowFrameV1Action, GnoblinWindowFrameV1Frame, GnoblinWindowFrameV1Region,
-};
 
 gnoblin_log::logger!(log = "wayland");
 

@@ -14,7 +14,7 @@ Use one of the protocol names below as the `NAME` key:
 - **Shell surfaces:** `wlr_layer_shell`.
 - **Window management:** `ext_foreign_toplevel_list`,
   `wlr_foreign_toplevel_management`, `xdg_decoration`,
-  `kde_server_decoration`, `window_frame_renderer`.
+  `kde_server_decoration`.
 - **Capture and effects:** `wlr_screencopy`, `ext_background_effect_v1`,
   `blur_fade`.
 - **Session controls:** `ext_data_control`, `ext_idle_notify`,
@@ -53,7 +53,6 @@ gnoblin.configure {
         wlr_foreign_toplevel_management = boolean?,
         xdg_decoration = boolean?,
         kde_server_decoration = boolean?,
-        window_frame_renderer = boolean?,
         wlr_screencopy = boolean?,
         ext_background_effect_v1 = boolean?,
         blur_fade = boolean?,
