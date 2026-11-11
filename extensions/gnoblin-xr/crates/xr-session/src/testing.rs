@@ -1,10 +1,11 @@
-//! A scripted [`Runtime`] for the frame loop tests.
+//! A scripted [`Runtime`] for the frame loop and bridge tests.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
+use xr_layers::{Eye, SubmittedLayer, SwapchainId};
 use xr_scene::{Pose, Ray};
 
-use crate::runtime::{FrameTiming, Result, Runtime, RuntimeError, SessionEvent};
+use crate::runtime::{Capabilities, FrameTiming, Result, Runtime, RuntimeError, SessionEvent};
 
 /// One step of the script: an event the runtime reports, or a frame it wants.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -13,7 +14,7 @@ pub enum Step {
     Frame(FrameTiming),
 }
 
-/// A call the frame loop made on the runtime, with its time arguments.
+/// A call the frame loop made on the runtime, with its arguments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Call {
     BeginSession,
@@ -23,17 +24,53 @@ pub enum Call {
     EndFrame(i64),
     LocateHead(i64),
     LocateRay(i64),
+    LocateViews(i64),
+    CreateSwapchain { width: u32, height: u32, format: i64 },
+    AcquireImage(SwapchainId),
+    ReleaseImage(SwapchainId),
+    DestroySwapchain(SwapchainId),
+}
+
+/// How many images each fake swapchain has.
+pub const IMAGES_PER_SWAPCHAIN: u32 = 3;
+
+/// The raw image handle of image `index` of the fake swapchain `id`.
+pub const fn image_handle(id: SwapchainId, index: u32) -> u64 {
+    id.0 * 1000 + index as u64
+}
+
+/// A swapchain the fake created and has not destroyed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FakeSwapchain {
+    pub width: u32,
+    pub height: u32,
+    pub format: i64,
+    /// The index `acquire_image` returns next.
+    pub next: u32,
+    /// The image acquired and not yet released.
+    pub acquired: Option<u32>,
 }
 
 /// Plays a script. `poll_event` returns the `Event` steps at the front of the
 /// script; `wait_frame` consumes the next `Frame` step and fails if the script
 /// holds an event there instead.
+///
+/// The swapchain calls keep real bookkeeping: ids are numbered from 1, each swapchain has
+/// [`IMAGES_PER_SWAPCHAIN`] images, and acquiring twice, releasing an image that is not acquired and using a
+/// destroyed swapchain are errors.
 #[derive(Debug, Default)]
 pub struct FakeRuntime {
     pub script: VecDeque<Step>,
     pub head: Option<Pose>,
     pub ray: Option<Ray>,
+    pub eyes: Option<[Eye; 2]>,
+    pub capabilities: Capabilities,
     pub calls: Vec<Call>,
+    /// The layers of each `end_frame`, with its display time.
+    pub submitted: Vec<(i64, Vec<SubmittedLayer>)>,
+    /// The swapchains that exist now, by id.
+    pub swapchains: BTreeMap<u64, FakeSwapchain>,
+    next_swapchain: u64,
     /// Makes the call that is this many (1-based) calls in fail with
     /// `RuntimeError("injected failure")`. The failing call is still recorded.
     pub fail_on_call: Option<usize>,
@@ -47,6 +84,20 @@ impl FakeRuntime {
         }
     }
 
+    /// A runtime that has a graphics binding: it can create swapchains in the two formats the extension fills, and
+    /// allows `max_layer_count` layers.
+    pub fn with_graphics(script: impl IntoIterator<Item = Step>, max_layer_count: u32) -> Self {
+        Self {
+            capabilities: Capabilities {
+                swapchains: true,
+                max_layer_count,
+                color_scale_bias: true,
+                swapchain_formats: vec![43, 50],
+            },
+            ..Self::new(script)
+        }
+    }
+
     pub fn count(&self, call: Call) -> usize {
         self.calls.iter().filter(|recorded| **recorded == call).count()
     }
@@ -57,6 +108,12 @@ impl FakeRuntime {
             return Err(RuntimeError("injected failure".to_owned()));
         }
         Ok(())
+    }
+
+    fn swapchain(&mut self, id: SwapchainId) -> Result<&mut FakeSwapchain> {
+        self.swapchains
+            .get_mut(&id.0)
+            .ok_or_else(|| RuntimeError(format!("swapchain {} does not exist", id.0)))
     }
 }
 
@@ -91,8 +148,15 @@ impl Runtime for FakeRuntime {
         self.record(Call::BeginFrame)
     }
 
-    fn end_frame(&mut self, display_time: i64) -> Result<()> {
-        self.record(Call::EndFrame(display_time))
+    fn end_frame(&mut self, display_time: i64, layers: &[SubmittedLayer]) -> Result<()> {
+        self.record(Call::EndFrame(display_time))?;
+        if let Some((id, _)) = self.swapchains.iter().find(|(_, chain)| chain.acquired.is_some()) {
+            return Err(RuntimeError(format!(
+                "swapchain {id} still has an acquired image at xrEndFrame"
+            )));
+        }
+        self.submitted.push((display_time, layers.to_vec()));
+        Ok(())
     }
 
     fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>> {
@@ -103,5 +167,71 @@ impl Runtime for FakeRuntime {
     fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
         self.record(Call::LocateRay(display_time))?;
         Ok(self.ray)
+    }
+
+    fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {
+        self.record(Call::LocateViews(display_time))?;
+        Ok(self.eyes)
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        self.capabilities.clone()
+    }
+
+    fn create_swapchain(&mut self, width: u32, height: u32, format: i64) -> Result<SwapchainId> {
+        self.record(Call::CreateSwapchain { width, height, format })?;
+        if !self.capabilities.swapchains {
+            return Err(RuntimeError::no_graphics("xrCreateSwapchain"));
+        }
+        self.next_swapchain += 1;
+        let id = SwapchainId(self.next_swapchain);
+        self.swapchains.insert(
+            id.0,
+            FakeSwapchain {
+                width,
+                height,
+                format,
+                next: 0,
+                acquired: None,
+            },
+        );
+        Ok(id)
+    }
+
+    fn swapchain_images(&mut self, id: SwapchainId) -> Result<Vec<u64>> {
+        self.swapchain(id)?;
+        Ok((0..IMAGES_PER_SWAPCHAIN).map(|index| image_handle(id, index)).collect())
+    }
+
+    fn acquire_image(&mut self, id: SwapchainId) -> Result<u32> {
+        self.record(Call::AcquireImage(id))?;
+        let chain = self.swapchain(id)?;
+        if chain.acquired.is_some() {
+            return Err(RuntimeError(format!(
+                "swapchain {} already has an acquired image",
+                id.0
+            )));
+        }
+        let index = chain.next;
+        chain.next = (index + 1) % IMAGES_PER_SWAPCHAIN;
+        chain.acquired = Some(index);
+        Ok(index)
+    }
+
+    fn release_image(&mut self, id: SwapchainId) -> Result<()> {
+        self.record(Call::ReleaseImage(id))?;
+        let chain = self.swapchain(id)?;
+        if chain.acquired.take().is_none() {
+            return Err(RuntimeError(format!("swapchain {} has no acquired image", id.0)));
+        }
+        Ok(())
+    }
+
+    fn destroy_swapchain(&mut self, id: SwapchainId) -> Result<()> {
+        self.record(Call::DestroySwapchain(id))?;
+        self.swapchains
+            .remove(&id.0)
+            .map(|_| ())
+            .ok_or_else(|| RuntimeError(format!("swapchain {} does not exist", id.0)))
     }
 }

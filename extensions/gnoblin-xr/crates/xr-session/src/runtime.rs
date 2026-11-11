@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use xr_layers::{Eye, SubmittedLayer, SwapchainId};
 use xr_scene::{Pose, Ray};
 
 /// The OpenXR session states, as `XrSessionState` reports them.
@@ -60,11 +61,35 @@ impl fmt::Display for RuntimeError {
 
 impl std::error::Error for RuntimeError {}
 
+impl RuntimeError {
+    /// The error for a call the session cannot make because it has no graphics binding.
+    pub fn no_graphics(call: &str) -> Self {
+        Self(format!(
+            "{call} needs a graphics session: this session is headless, and has no XR_KHR_vulkan_enable2 binding"
+        ))
+    }
+}
+
+/// What the session offers beyond the frame loop. The default offers nothing, as a headless session does.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Capabilities {
+    /// Whether swapchains can be created: the session has a graphics binding.
+    pub swapchains: bool,
+    /// The runtime's `maxLayerCount`.
+    pub max_layer_count: u32,
+    /// Whether `XR_KHR_composition_layer_color_scale_bias` is enabled, so a layer can carry a colour scale.
+    pub color_scale_bias: bool,
+    /// The swapchain formats the runtime lists, as `VkFormat` values, in its order of preference.
+    pub swapchain_formats: Vec<i64>,
+}
+
 pub type Result<T, E = RuntimeError> = std::result::Result<T, E>;
 
 /// The calls the frame loop makes on an OpenXR runtime, in the order the spec requires.
 ///
-/// `end_frame` submits no composition layers yet: the runtime has no swapchains.
+/// The swapchain calls have defaults that fail with [`RuntimeError::no_graphics`], so a headless session needs none
+/// of them. A session with a graphics binding implements all of them, and reports `swapchains` in its
+/// [`Capabilities`].
 pub trait Runtime {
     /// Returns the next pending event, or `None` when there are no more.
     fn poll_event(&mut self) -> Result<Option<SessionEvent>>;
@@ -76,8 +101,8 @@ pub trait Runtime {
     fn wait_frame(&mut self) -> Result<FrameTiming>;
     /// `xrBeginFrame`.
     fn begin_frame(&mut self) -> Result<()>;
-    /// `xrEndFrame` for `display_time`, with no layers.
-    fn end_frame(&mut self, display_time: i64) -> Result<()>;
+    /// `xrEndFrame` for `display_time` with `layers`, in submission order.
+    fn end_frame(&mut self, display_time: i64, layers: &[SubmittedLayer]) -> Result<()>;
     /// The head's pose in the local reference space at `display_time`, if the
     /// runtime tracks it.
     fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>>;
@@ -86,5 +111,87 @@ pub trait Runtime {
     fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
         let _ = display_time;
         Ok(None)
+    }
+    /// The two eye views in the local reference space at `display_time`, left first, if the runtime locates them.
+    fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {
+        let _ = display_time;
+        Ok(None)
+    }
+    /// What the session offers. The default is nothing.
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::default()
+    }
+    /// `xrCreateSwapchain` for a colour image of `width` by `height` in the `VkFormat` `format`.
+    fn create_swapchain(&mut self, width: u32, height: u32, format: i64) -> Result<SwapchainId> {
+        let _ = (width, height, format);
+        Err(RuntimeError::no_graphics("xrCreateSwapchain"))
+    }
+    /// `xrEnumerateSwapchainImages`: the raw `VkImage` handle of each image of the swapchain, by image index.
+    fn swapchain_images(&mut self, id: SwapchainId) -> Result<Vec<u64>> {
+        let _ = id;
+        Err(RuntimeError::no_graphics("xrEnumerateSwapchainImages"))
+    }
+    /// `xrAcquireSwapchainImage` then `xrWaitSwapchainImage`: the index of the image to write.
+    fn acquire_image(&mut self, id: SwapchainId) -> Result<u32> {
+        let _ = id;
+        Err(RuntimeError::no_graphics("xrAcquireSwapchainImage"))
+    }
+    /// `xrReleaseSwapchainImage` for the image `acquire_image` returned.
+    fn release_image(&mut self, id: SwapchainId) -> Result<()> {
+        let _ = id;
+        Err(RuntimeError::no_graphics("xrReleaseSwapchainImage"))
+    }
+    /// `xrDestroySwapchain`.
+    fn destroy_swapchain(&mut self, id: SwapchainId) -> Result<()> {
+        let _ = id;
+        Err(RuntimeError::no_graphics("xrDestroySwapchain"))
+    }
+}
+
+impl<R: Runtime + ?Sized> Runtime for Box<R> {
+    fn poll_event(&mut self) -> Result<Option<SessionEvent>> {
+        (**self).poll_event()
+    }
+    fn begin_session(&mut self) -> Result<()> {
+        (**self).begin_session()
+    }
+    fn end_session(&mut self) -> Result<()> {
+        (**self).end_session()
+    }
+    fn wait_frame(&mut self) -> Result<FrameTiming> {
+        (**self).wait_frame()
+    }
+    fn begin_frame(&mut self) -> Result<()> {
+        (**self).begin_frame()
+    }
+    fn end_frame(&mut self, display_time: i64, layers: &[SubmittedLayer]) -> Result<()> {
+        (**self).end_frame(display_time, layers)
+    }
+    fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>> {
+        (**self).locate_head(display_time)
+    }
+    fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
+        (**self).locate_ray(display_time)
+    }
+    fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {
+        (**self).locate_views(display_time)
+    }
+    fn capabilities(&self) -> Capabilities {
+        (**self).capabilities()
+    }
+    fn create_swapchain(&mut self, width: u32, height: u32, format: i64) -> Result<SwapchainId> {
+        (**self).create_swapchain(width, height, format)
+    }
+    fn swapchain_images(&mut self, id: SwapchainId) -> Result<Vec<u64>> {
+        (**self).swapchain_images(id)
+    }
+    fn acquire_image(&mut self, id: SwapchainId) -> Result<u32> {
+        (**self).acquire_image(id)
+    }
+    fn release_image(&mut self, id: SwapchainId) -> Result<()> {
+        (**self).release_image(id)
+    }
+    fn destroy_swapchain(&mut self, id: SwapchainId) -> Result<()> {
+        (**self).destroy_swapchain(id)
     }
 }

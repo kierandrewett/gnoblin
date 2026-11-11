@@ -8,6 +8,7 @@ resolver = "3"
 members = [
     "crates/gnoblin-xr",
     "crates/xr-capture",
+    "crates/xr-gpu",
     "crates/xr-layers",
     "crates/xr-runtime",
     "crates/xr-scene",
@@ -33,6 +34,7 @@ all = { level = "deny", priority = -1 }
 [workspace.dependencies]
 serde_json = "1.0.154"
 rustix = { version = "1.1.6", features = ["process"] }
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 wayland-scanner = "0.31.11"

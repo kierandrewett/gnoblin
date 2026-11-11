@@ -5,7 +5,7 @@
 //!
 //! - `begin_session` is called once, on `Ready`, and only while the session is
 //!   not already begun.
-//! - Frames run only in `Synchronized`, `Visible` and `Focused`, and only while
+//! - Frames run only in `Ready` (once begun), `Synchronized`, `Visible` and `Focused`, and only while
 //!   the session is begun. Each frame is `wait_frame`, `begin_frame`,
 //!   `locate_head` and `end_frame`, in that order, and the last two always run
 //!   so that `should_render: false` frames still pair up.
@@ -13,10 +13,13 @@
 //! - `Exiting` ends the loop. `LossPending` stops frames, and the loop waits for
 //!   `Exiting`.
 //!
-//! The frame loop submits no composition layers, so `end_frame` carries none.
+//! [`FrameLoop::tick`] submits no composition layers. A caller that has layers splits the frame in two: [`FrameLoop::start`]
+//! runs the frame up to `locate_head`, and [`FrameLoop::finish`] ends it with the layers. A frame the application
+//! is told not to render ends with none.
 
 use std::time::Duration;
 
+use xr_layers::SubmittedLayer;
 use xr_scene::{Pose, Ray};
 
 use crate::runtime::{Result, Runtime, SessionEvent, SessionState};
@@ -35,12 +38,12 @@ pub struct Frame {
     pub head: Option<Pose>,
 }
 
-/// The outcome of one [`FrameLoop::tick`].
+/// The outcome of one [`FrameLoop::tick`] or [`FrameLoop::start`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tick {
     /// The session is not running, so there was no frame.
     Idle,
-    /// A frame ran.
+    /// A frame ran. From [`FrameLoop::start`] it is begun and not ended: the caller must call [`FrameLoop::finish`].
     Frame(Frame),
     /// The runtime asked the application to exit.
     Exit,
@@ -72,8 +75,31 @@ impl<R: Runtime> FrameLoop<R> {
         }
     }
 
-    /// Processes the pending events, then runs one frame if the session is running.
+    /// The runtime, for the calls that are not part of the frame: swapchains and view location.
+    pub fn runtime_mut(&mut self) -> &mut R {
+        &mut self.runtime
+    }
+
+    /// Processes the pending events, then runs one frame with no layers if the session is running.
+    ///
+    /// # Errors
+    ///
+    /// The runtime fails.
     pub fn tick(&mut self) -> Result<Tick> {
+        let started = self.start()?;
+        if let Tick::Frame(frame) = &started {
+            self.finish(frame, &[])?;
+        }
+        Ok(started)
+    }
+
+    /// Processes the pending events, then waits for a frame and begins it if the session is running. A
+    /// [`Tick::Frame`] result must be ended with [`FrameLoop::finish`].
+    ///
+    /// # Errors
+    ///
+    /// The runtime fails.
+    pub fn start(&mut self) -> Result<Tick> {
         while let Some(event) = self.runtime.poll_event()? {
             let SessionEvent::StateChanged(state) = event;
             self.state = state;
@@ -100,12 +126,22 @@ impl<R: Runtime> FrameLoop<R> {
         let timing = self.runtime.wait_frame()?;
         self.runtime.begin_frame()?;
         let head = self.runtime.locate_head(timing.predicted_display_time)?;
-        self.runtime.end_frame(timing.predicted_display_time)?;
         Ok(Tick::Frame(Frame {
             display_time: timing.predicted_display_time,
             should_render: timing.should_render,
             head,
         }))
+    }
+
+    /// Ends a frame [`FrameLoop::start`] began, with `layers`. A frame the application should not render ends with
+    /// no layers whatever `layers` holds.
+    ///
+    /// # Errors
+    ///
+    /// The runtime fails.
+    pub fn finish(&mut self, frame: &Frame, layers: &[SubmittedLayer]) -> Result<()> {
+        let layers = if frame.should_render { layers } else { &[] };
+        self.runtime.end_frame(frame.display_time, layers)
     }
 
     /// Ticks until the runtime asks the application to exit, calling `on_frame`
@@ -120,11 +156,14 @@ impl<R: Runtime> FrameLoop<R> {
         }
     }
 
+    /// Whether a frame may run. The frame loop starts as soon as the session is begun: `Ready` counts, because Monado
+    /// sends `Synchronized` only after the first `xrWaitFrame` (checked on Monado `7336a90`), so waiting for it would
+    /// never run a frame.
     fn running(&self) -> bool {
         self.begun
             && matches!(
                 self.state,
-                SessionState::Synchronized | SessionState::Visible | SessionState::Focused
+                SessionState::Ready | SessionState::Synchronized | SessionState::Visible | SessionState::Focused
             )
     }
 }
@@ -168,16 +207,34 @@ mod tests {
             state(SessionState::Idle),
             state(SessionState::Ready),
             state(SessionState::Ready),
+            timing(10, true),
         ]));
-        assert_eq!(frames.tick(), Ok(Tick::Idle));
-        assert_eq!(frames.runtime.calls, vec![Call::BeginSession]);
+        assert!(matches!(frames.tick(), Ok(Tick::Frame(_))));
+        assert_eq!(frames.runtime.count(Call::BeginSession), 1);
     }
 
     #[test]
-    fn renders_no_frame_before_synchronized() {
+    fn runs_the_first_frame_in_ready_without_waiting_for_synchronized() {
+        // Monado sends `Synchronized` only after the first `xrWaitFrame`, so a begun session in `Ready` must run.
         let mut frames = FrameLoop::new(FakeRuntime::new([state(SessionState::Ready), timing(10, true)]));
+        assert!(matches!(frames.tick(), Ok(Tick::Frame(_))));
+        assert_eq!(
+            frames.runtime.calls,
+            vec![
+                Call::BeginSession,
+                Call::WaitFrame,
+                Call::BeginFrame,
+                Call::LocateHead(10),
+                Call::EndFrame(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn runs_no_frame_before_ready() {
+        let mut frames = FrameLoop::new(FakeRuntime::new([state(SessionState::Idle), timing(10, true)]));
         assert_eq!(frames.tick(), Ok(Tick::Idle));
-        assert_eq!(frames.runtime.calls, vec![Call::BeginSession]);
+        assert!(frames.runtime.calls.is_empty());
     }
 
     #[test]
@@ -230,6 +287,68 @@ mod tests {
         );
     }
 
+    fn quad_layer() -> SubmittedLayer {
+        SubmittedLayer::Quad(xr_layers::QuadLayer {
+            view: 1,
+            swapchain: xr_layers::SwapchainId(1),
+            space: xr_scene::Space::World,
+            pose: head(),
+            size: [1.0, 1.0],
+            eye_visibility: xr_layers::EyeVisibility::Both,
+            rect: xr_layers::ImageRect {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+            },
+            color_scale: None,
+        })
+    }
+
+    #[test]
+    fn finish_ends_the_frame_with_the_layers() {
+        let mut frames = FrameLoop::new(FakeRuntime::new([
+            state(SessionState::Ready),
+            state(SessionState::Synchronized),
+            timing(10, true),
+        ]));
+        let Ok(Tick::Frame(frame)) = frames.start() else {
+            panic!("a frame starts");
+        };
+        assert_eq!(
+            frames.runtime.count(Call::EndFrame(10)),
+            0,
+            "start does not end the frame"
+        );
+        frames.finish(&frame, &[quad_layer()]).expect("finishes");
+        assert_eq!(frames.runtime.submitted, vec![(10, vec![quad_layer()])]);
+    }
+
+    #[test]
+    fn finish_submits_no_layers_for_a_frame_that_should_not_render() {
+        let mut frames = FrameLoop::new(FakeRuntime::new([
+            state(SessionState::Ready),
+            state(SessionState::Synchronized),
+            timing(10, false),
+        ]));
+        let Ok(Tick::Frame(frame)) = frames.start() else {
+            panic!("a frame starts");
+        };
+        frames.finish(&frame, &[quad_layer()]).expect("finishes");
+        assert_eq!(frames.runtime.submitted, vec![(10, Vec::new())]);
+    }
+
+    #[test]
+    fn tick_ends_its_frame_with_no_layers() {
+        let mut frames = FrameLoop::new(FakeRuntime::new([
+            state(SessionState::Ready),
+            state(SessionState::Synchronized),
+            timing(10, true),
+        ]));
+        assert!(matches!(frames.tick(), Ok(Tick::Frame(_))));
+        assert_eq!(frames.runtime.submitted, vec![(10, Vec::new())]);
+    }
+
     #[test]
     fn runs_frames_in_every_visible_state() {
         for visible in [SessionState::Synchronized, SessionState::Visible, SessionState::Focused] {
@@ -266,11 +385,12 @@ mod tests {
             state(SessionState::Stopping),
             state(SessionState::Idle),
             state(SessionState::Ready),
+            timing(10, true),
         ]));
-        assert_eq!(frames.tick(), Ok(Tick::Idle));
+        assert!(matches!(frames.tick(), Ok(Tick::Frame(_))));
         assert_eq!(
-            frames.runtime.calls,
-            vec![Call::BeginSession, Call::EndSession, Call::BeginSession]
+            frames.runtime.calls[..3],
+            [Call::BeginSession, Call::EndSession, Call::BeginSession]
         );
     }
 

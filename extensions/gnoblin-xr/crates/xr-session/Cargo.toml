@@ -10,6 +10,8 @@ publish.workspace = true
 
 [dependencies]
 openxr = { version = "0.22", features = ["loaded"] }
+xr-gpu = { path = "../xr-gpu" }
+xr-layers = { path = "../xr-layers" }
 xr-scene = { path = "../xr-scene" }
 
 # The scripted `FakeRuntime` for the frame loop tests. Other crates that test a loop over

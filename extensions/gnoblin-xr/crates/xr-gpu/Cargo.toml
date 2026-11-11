@@ -1,0 +1,26 @@
+[package]
+name = "xr-gpu"
+description = "The GPU side of gnoblin-xr: a Presenter trait that copies captured pixels into swapchain images, a fake for tests, and the Vulkan implementation behind XR_KHR_vulkan_enable2."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+ash = { workspace = true }
+openxr = { version = "0.22", features = ["loaded"] }
+
+# The recording `FakePresenter`. Crates that test a bridge over `Presenter` enable it as a dev-dependency.
+[features]
+testing = []
+
+# Unsafe is needed only by the Vulkan module (`vulkan`): it loads the Vulkan library, creates the instance and device
+# through OpenXR, and records commands. The crate therefore drops the workspace table, which forbids unsafe, and
+# restates the clippy levels with `unsafe_code = "deny"` (the rule in the root Cargo.toml, [workspace.lints]).
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
