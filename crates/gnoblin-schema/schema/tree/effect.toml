@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `effect` value of a node's `effects` list (design/node-core.md, section 4.4a). The
 # schema has no unions, so one object carries every kind's parameters as flat properties.

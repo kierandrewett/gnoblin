@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `lock` class: the session lock. The compositor enforces the session lock from `state`; the
 # shell's stock lock screen records its own lock screen as `engaged` (design/node-core.md, section 2.4).

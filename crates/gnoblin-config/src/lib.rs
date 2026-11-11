@@ -50,8 +50,8 @@
 //!     names a current spelling, and the hooks the schema lists are the hooks that
 //!     exist.
 //!
-//! Four sections are carried but not interpreted: `extensions`, `keybindings`,
-//! `portals` and `animations`.
+//! Three sections are carried but not interpreted: `keybindings`, `portals` and
+//! `animations`.
 
 /// Accent and colour rules for the `appearance` table.
 pub mod appearance;
@@ -59,8 +59,6 @@ pub mod appearance;
 pub mod document;
 /// The validation engine: reads one setting and reports the diagnostic for a wrong one.
 pub mod engine;
-/// Extensions the host loads, named in `gnoblin.configure`.
-pub mod extensions;
 /// Cross-field rules that the schema cannot declare.
 pub mod hooks;
 /// The `keyring` section: whether Gnoblin runs its built-in keyring.

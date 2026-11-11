@@ -168,7 +168,7 @@ impl Drop for FakeXwayland {
 /// the runtime's connection to it. The session starts with no X11, as a session with no
 /// accepted document does.
 fn start_runtime(path: &Path) -> (Session, RuntimeClient<UnixTransport>) {
-    let (session, mut ends) = Session::start_privileged_configured(&[("runtime", Vec::new())], |config| {
+    let (session, mut ends) = Session::start_privileged_configured(&["runtime"], |config| {
         config.xwayland_path = Some(path.as_os_str().to_owned());
     });
     let (_role, stream) = ends.pop().expect("the runtime's end");

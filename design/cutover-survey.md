@@ -830,6 +830,18 @@ makes an undrawable prompt fail closed. Recommendation: leave slots out of step 
 10A is the largest cut with disjoint files from steps 8 and 11A, and can start now. It deletes the grants frame, which every
 client reads, so it must be one atomic change across `gnoblin-proto`, `gnoblin-client` and the compositor.
 
+**Status, lane 10A (branch `lane10a`, not yet pushed).** O1 to O5 were auto-selected defaults, not answered; the owner may
+revisit them. Done: `extensions.rs`, `ipc/extension.rs`, `config.extensions` (now refused with a migration sentence),
+Lua `require(namespace)`, `gnoblin-config/src/extensions.rs`, the grants frame in `gnoblin-proto`, the client's and
+`gnoblinctl`'s handshake reads, and the tests that covered them. O5: the IPC version is 0.3.0 and, because the build requires
+the IPC version to equal the package version, the workspace version is 0.3.0-alpha.0. A 0.2.x client is refused by the caret
+rule with both versions named. Entanglements left, deliberately: `docs/shell-api/grants.md` (gesture grants, lane 11C) and
+its 13 `design/docs-parity/allow.toml` rows; the `design/rust-compositor.md` D22 and "IPC extensions" sections and
+`design/request-intercept.md`, which still describe the removed tier and need a retraction note; `gnoblin-layers`'
+`LayerProvider::Extension` (`ext.<id>.` names), which is layers work (lane 8), not D22 wiring;
+`gnoblin-schema` still parses non-`gnoblin` namespaces and keeps `tests/fixtures/extensions/example-ext.toml` for its own
+parser tests; `gnoblin_compositor::catalog` is now public but unused in-tree. The XR extension is not D22 and is untouched.
+
 ### 16.4 Step 11: seats
 
 #### What exists

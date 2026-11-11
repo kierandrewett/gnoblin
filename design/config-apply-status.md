@@ -52,7 +52,6 @@ starts. A commit does not change it.
 | `monitors` (`privacy_screen`) | start              | no                | Parsed into `MonitorSettings`, but nothing in the session reads it. See the gap below.                                                                                  |
 | `xwayland`                    | start, then commit | yes               | Applied on each accepted commit: start, restart when no X11 client is connected, or stop. See xwayland.md.                                                              |
 | `renderer`                    | start              | no                |                                                                                                                                                                         |
-| `extensions`                  | start              | no                | A refused extension is logged and left out; the session starts without it.                                                                                              |
 | `keyring` and `prompts`       | services start     | no                | The services role reads the saved last-good file before the runtime commits anything. A commit reaches it only after a restart. See `docs/config/configure/keyring.md`. |
 
 ## Gaps

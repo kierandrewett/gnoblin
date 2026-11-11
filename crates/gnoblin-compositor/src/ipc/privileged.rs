@@ -28,7 +28,7 @@ use std::io;
 use std::os::unix::net::UnixStream;
 
 use gnoblin_client::{Inherited, inherited_stream};
-use gnoblin_proto::{Grant, privilege};
+use gnoblin_proto::privilege;
 
 use crate::log;
 
@@ -38,18 +38,15 @@ use crate::log;
 /// connection; the list only says which names the guardian may use.
 pub const ROLES: [&str; 4] = ["input", "portal", "runtime", "services"];
 
-/// One privileged role this process serves, and the extension grants it advertises.
+/// One privileged role this process serves.
 #[derive(Debug, Clone)]
 pub struct Privileged {
     /// The role the connection is made for, as the table names it.
     pub role: String,
-    /// The extension grants this role's socket advertises after every accept. Empty
-    /// grants nothing; the core socket never carries grants.
-    pub extension_grants: Vec<Grant>,
 }
 
 impl Privileged {
-    /// One entry per role in [`ROLES`], with no extension grants.
+    /// One entry per role in [`ROLES`].
     ///
     /// Each entry gets a stable client identity at startup, which survives the role's
     /// connections coming and going: the identity is what the rest of the compositor
@@ -59,7 +56,6 @@ impl Privileged {
             .iter()
             .map(|role| Privileged {
                 role: (*role).to_owned(),
-                extension_grants: Vec::new(),
             })
             .collect()
     }

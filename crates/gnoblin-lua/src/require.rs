@@ -140,7 +140,7 @@ pub(crate) fn resolve(roots: &ModuleRoots, name: &str) -> Result<Resolved, Strin
         ""
     };
     Err(format!(
-        "unknown module `{name}`: no extension namespace or module has that name{reserved_note}; searched {places}"
+        "unknown module `{name}`: no module has that name{reserved_note}; searched {places}"
     ))
 }
 

@@ -28,7 +28,7 @@ use gnoblin_model::{
     DeclineReason, Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, Provider, RequestCompletion,
     RequestId, Snapshot, Tick,
 };
-use gnoblin_proto::{Envelope, Grant, Handshake, HandshakeKind, Kind, Mismatch, Version};
+use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
 use crate::error::{ClientError, ConnectError, HandshakeError, WireError};
 use crate::transport::Transport;
@@ -90,16 +90,6 @@ pub enum Event {
         /// How it ended.
         completion: RequestCompletion,
     },
-    /// An event a loaded extension sent to a connection it was granted to. The
-    /// member is `Object.Signal`, and the fields are the signal's payload.
-    Extension {
-        /// The extension namespace that sent the event.
-        namespace: String,
-        /// The member, `Object.Signal`.
-        member: String,
-        /// The signal's fields, decoded with the core value codec.
-        fields: Fields,
-    },
 }
 
 // The answer is a secret, so a log or a panic shows its length, never its bytes.
@@ -133,16 +123,6 @@ impl std::fmt::Debug for Event {
                 .field("request", request)
                 .field("completion", completion)
                 .finish(),
-            Event::Extension {
-                namespace,
-                member,
-                fields,
-            } => f
-                .debug_struct("Extension")
-                .field("namespace", namespace)
-                .field("member", member)
-                .field("fields", fields)
-                .finish(),
         }
     }
 }
@@ -152,7 +132,6 @@ impl std::fmt::Debug for Event {
 pub struct Client<T: Transport> {
     transport: T,
     version: Version,
-    grants: Vec<Grant>,
     next_request: u64,
     /// Requests sent whose reply has not yet been taken. A reply for an id not in
     /// this set belongs to nobody (the request was forgotten or never existed), so
@@ -177,12 +156,9 @@ impl<T: Transport> Client<T> {
         match answer.kind {
             HandshakeKind::Accept => {
                 gnoblin_proto::check(answer.version, version).map_err(ConnectError::Refused)?;
-                // The grants frame follows every accept, before any other frame.
-                let grants = transport.receive_grants()?;
                 Ok(Client {
                     transport,
                     version: answer.version,
-                    grants,
                     next_request: 1,
                     pending: BTreeSet::new(),
                     stashed: BTreeMap::new(),
@@ -199,14 +175,6 @@ impl<T: Transport> Client<T> {
                 got: HandshakeKind::Hello,
             })),
         }
-    }
-
-    /// The extension namespaces and versions the compositor granted this connection.
-    ///
-    /// The grants frame arrives right after the accept, so this is known as soon as
-    /// the client connects. It is empty when nothing is granted.
-    pub fn granted_extensions(&self) -> &[Grant] {
-        &self.grants
     }
 
     /// The IPC version the compositor serves, which is also the version this client
@@ -251,26 +219,6 @@ impl<T: Transport> Client<T> {
             reason,
         })?;
         Ok(Operation::new(operation, object))
-    }
-
-    /// Call a method a loaded extension declares, returning the fields it replied with.
-    ///
-    /// `member` is `Object.Method` and `namespace` the extension's namespace. The
-    /// compositor routes the request to the provider and relays the provider's reply
-    /// or refusal on this connection, so a refusal arrives as [`ClientError::Refused`]
-    /// with the provider's code and message. The arguments and the reply use the core
-    /// value codec, so the schema decides what each field means and this layer only
-    /// moves bytes.
-    pub fn call_extension(&mut self, namespace: &str, member: &str, arguments: &Fields) -> Result<Fields, ClientError> {
-        let request = self.next_id();
-        let payload = wire::encode_fields(arguments);
-        let frame = Envelope::request(namespace, member, request, payload);
-        self.send(&frame)?;
-        let payload = self.await_reply(request)?;
-        wire::decode_fields(&payload).map_err(|reason| ClientError::Protocol {
-            member: member.to_owned(),
-            reason,
-        })
     }
 
     /// Read frames until the operation's single completion arrives.
@@ -652,19 +600,7 @@ impl<T: Transport> Client<T> {
     /// Decode a frame into a queued event.
     fn deliver(&mut self, envelope: &Envelope) -> Result<(), ClientError> {
         if envelope.namespace != wire::NAMESPACE {
-            // An extension's event is queued as the event it is. Any other foreign
-            // frame is not ours to read and is dropped, as it always was.
-            if let Some(Kind::Event(event)) = &envelope.kind {
-                let fields = wire::decode_fields(&event.payload).map_err(|reason| ClientError::Protocol {
-                    member: envelope.member.clone(),
-                    reason,
-                })?;
-                self.inbox.push_back(Event::Extension {
-                    namespace: envelope.namespace.clone(),
-                    member: envelope.member.clone(),
-                    fields,
-                });
-            }
+            // A frame in a namespace this client does not speak is not ours to read.
             return Ok(());
         }
         let decoded = wire::decode(envelope).map_err(|reason| ClientError::Protocol {
@@ -759,10 +695,6 @@ mod routing_tests {
         fn receive_handshake(&mut self) -> Result<gnoblin_proto::Handshake, crate::error::HandshakeError> {
             unreachable!("the routing tests never handshake")
         }
-
-        fn receive_grants(&mut self) -> Result<Vec<gnoblin_proto::Grant>, crate::error::HandshakeError> {
-            unreachable!("the routing tests never handshake")
-        }
     }
 
     /// A client over a scripted transport, with no handshake state beyond the defaults.
@@ -773,8 +705,7 @@ mod routing_tests {
         };
         Client {
             transport: script,
-            version: Version::new(0, 2, 0),
-            grants: Vec::new(),
+            version: Version::new(0, 3, 0),
             next_request: 1,
             pending: Default::default(),
             stashed: Default::default(),

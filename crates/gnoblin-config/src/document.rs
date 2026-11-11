@@ -18,12 +18,11 @@
 //! document saved by this version never needs the "an older Gnoblin wrote this"
 //! check the C core performs on load.
 //!
-//! Four sections are *carried*: `extensions`, `keybindings`, `portals` and
-//! `animations`. Their values are callbacks and declarations the
-//! Lua host and the window-management crate own; this layer keeps them in the
-//! document, rewrites nothing inside them, and validates nothing inside them.
-//! Carrying them is not the same as accepting them: a consumer that cannot use a
-//! rule still refuses it, and that refusal happens where the meaning is known.
+//! Three sections are *carried*: `keybindings`, `portals` and `animations`. Their values
+//! are callbacks and declarations the Lua host and the window-management crate own; this
+//! layer keeps them in the document, rewrites nothing inside them, and validates nothing
+//! inside them. Carrying them is not the same as accepting them: a consumer that cannot
+//! use a rule still refuses it, and that refusal happens where the meaning is known.
 
 use std::collections::BTreeMap;
 
@@ -159,6 +158,13 @@ impl Config {
                         "window rules and workspace sets are Lua tables in the shell files: set seat.data.window_rules and seat.data.workspace_sets in ~/.config/gnoblin/shell.lua (see docs/user-shell.md)",
                     );
                 }
+                removed(
+                    entries,
+                    "extensions",
+                    &root,
+                    &mut out,
+                    "the extension tier was removed in IPC 0.3.0: delete the table, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
+                );
                 unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
                 config.appearance = section_table(entries, "appearance", &root, &mut out)
                     .map(|table| parse_appearance(table, &root.key("appearance"), &mut out));

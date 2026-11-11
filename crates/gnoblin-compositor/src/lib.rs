@@ -87,7 +87,6 @@ mod bell;
 mod compat;
 mod cursor;
 mod eis;
-mod extensions;
 mod ipc;
 mod log_store;
 mod monitors;
@@ -120,13 +119,12 @@ pub use cursor::{
     configure_from_store as configure_cursor_from_store,
 };
 pub use eis::EisGate;
-pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_config::{LogConsole, Logging, logging_from_environment};
 pub use gnoblin_proto::LOGOUT_EXIT_CODE;
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot, default_privileged_socket_path};
 pub use gnoblin_xwayland::xsettings::XSettings;
-pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync, guardian_from_environment};
+pub use ipc::{IpcError, Privileged, SessionSync, guardian_from_environment};
 pub use log_store::open_log_file;
 pub use monitors::{
     configure_from_environment as configure_monitors_from_environment,
@@ -202,9 +200,8 @@ pub struct SessionConfig {
     pub eis: EisGate,
     /// A handle a supervisor or a test stops the session with.
     pub stop: Option<StopHandle>,
-    /// The privileged roles this process serves: which roles exist and what each role's
-    /// socket advertises. [`ipc::Privileged::declared`] builds it. The connections arrive
-    /// over [`SessionConfig::guardian`], one handover per privileged child.
+    /// The privileged roles this process serves, which [`ipc::Privileged::declared`] builds. The
+    /// connections arrive over [`SessionConfig::guardian`], one handover per privileged child.
     pub privileged: Vec<ipc::Privileged>,
     /// The guardian's control socket, from which privileged connections arrive as handovers.
     ///
@@ -213,11 +210,6 @@ pub struct SessionConfig {
     /// reads it with [`guardian_from_environment`]. `None` means there is no guardian, so no
     /// privileged connection is ever accepted; a test passes one end of a socket pair it made.
     pub guardian: Option<UnixStream>,
-    /// The extensions this session serves, each with the role that provides it.
-    ///
-    /// A namespace is routed to its provider connection and granted to the privileged
-    /// connections that list it. An extension that fails to load is absent from this list.
-    pub extensions: Vec<ipc::ExtensionRoute>,
     /// The power backend `gnoblin.session.poweroff()`, `reboot()`, `suspend()` and `hibernate()`
     /// reach, or [`None`] for a session that links none: every power verb is then refused
     /// `unavailable`. The binary passes the machine's init-system backend; a test passes a fake.
@@ -411,7 +403,6 @@ impl Compositor {
             control.clone(),
             config.privileged,
             config.guardian,
-            &config.extensions,
             xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory, Arc::clone(&reporter)),
             config.power.take(),
             tree,

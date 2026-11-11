@@ -27,7 +27,7 @@ fn temp_socket() -> PathBuf {
     std::env::temp_dir().join(format!("gnoblin-owner-{}-{nanos}.sock", std::process::id()))
 }
 
-/// Answers the role's hello with an accept and the (empty) grants frame, as the compositor does.
+/// Answers the role's hello with an accept, as the compositor does. Nothing follows it.
 fn accept_handshake(stream: &mut UnixStream) {
     stream.set_read_timeout(Some(WAIT)).expect("the deadline");
     let mut hello = [0u8; HANDSHAKE_LEN];
@@ -38,7 +38,6 @@ fn accept_handshake(stream: &mut UnixStream) {
     stream
         .write_all(&Handshake::accept(Version::new(major, minor, patch)).encode())
         .expect("the accept");
-    gnoblin_proto::write_grants(stream, &[]).expect("the grants frame after the accept");
 }
 
 /// Reads the attach request and answers with the attached reply and a one-node snapshot.

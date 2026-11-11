@@ -426,9 +426,8 @@ fn check_reserved(catalog: &Catalog) -> Result<(), String> {
 /// Refuse a schema whose object types would take a name the Lua tables already have.
 ///
 /// The core objects are keys of the `gnoblin` table, beside the declared host members,
-/// so a type named `timers` would replace the timer API. An extension namespace is
-/// reached through its own module table, which has no declared members, so only
-/// duplicate keys can clash there.
+/// so a type named `timers` would replace the timer API. Any other namespace the catalog
+/// holds has no declared members, so only duplicate keys can clash there.
 fn check_names(catalog: &Catalog, host: &[HostMember]) -> Result<(), String> {
     let host_names: Vec<&str> = host
         .iter()
@@ -916,19 +915,12 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text
 }
 
-/// The names a script reaches objects through: core types on `gnoblin`, and one
-/// `require`d module per extension namespace, each with one collection per type.
+/// The names a script reaches objects through: the core types on `gnoblin`, each with one
+/// collection per type, and `require` for plain modules.
 fn stub_modules(text: &mut String, catalog: &Catalog) {
-    let mut overloads = String::new();
     for namespace in catalog.namespaces() {
-        let is_own = namespace.as_str() == OWN_NAMESPACE;
-        let holder = if is_own {
-            OWN_NAMESPACE.to_owned()
-        } else {
-            format!("{}Module", namespace.as_str())
-        };
         blank_line(text);
-        let _ = writeln!(text, "---@class {holder}");
+        let _ = writeln!(text, "---@class {}", namespace.as_str());
         for object in catalog.objects(&namespace) {
             let _ = writeln!(
                 text,
@@ -938,15 +930,7 @@ fn stub_modules(text: &mut String, catalog: &Catalog) {
                 object.name
             );
         }
-        if !is_own {
-            let _ = writeln!(
-                overloads,
-                "---@overload fun(name: \"{}\"): {holder}",
-                namespace.as_str()
-            );
-        }
     }
-    text.push_str(&overloads);
     text.push_str("---Load a Lua module by dotted name. `a.b` is `a/b.lua` under the configuration directory, then under the shipped modules. A `gnoblin.` name loads from the shipped modules only.\n");
     text.push_str("---@param name string\n");
     text.push_str("---@return any\n");

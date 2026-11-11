@@ -76,38 +76,18 @@ impl Session {
     }
 
     /// Starts a session that was handed one privileged connection per role, and returns
-    /// the ends the roles would hold. Each role's socket grants nothing.
+    /// the ends the roles would hold.
     ///
     /// The pair is the guardian's, exactly as `design/rust-compositor.md`'s process model
     /// describes it: this test makes it because this test is the guardian.
     pub fn start_privileged(roles: &[&str]) -> (Session, Vec<(String, UnixStream)>) {
-        let granted: Vec<(&str, Vec<gnoblin_proto::Grant>)> = roles.iter().map(|role| (*role, Vec::new())).collect();
-        Session::start_privileged_granting(&granted)
-    }
-
-    /// Like [`Session::start_privileged`], but each role's socket advertises its own
-    /// extension grants after every accept.
-    pub fn start_privileged_granting(
-        roles: &[(&str, Vec<gnoblin_proto::Grant>)],
-    ) -> (Session, Vec<(String, UnixStream)>) {
-        Session::start_privileged_extensions(roles, &[])
-    }
-
-    /// Like [`Session::start_privileged_granting`], and also serves `routes` as the
-    /// session's loaded extensions, each provided by the role its route names.
-    pub fn start_privileged_extensions(
-        roles: &[(&str, Vec<gnoblin_proto::Grant>)],
-        routes: &[gnoblin_compositor::ExtensionRoute],
-    ) -> (Session, Vec<(String, UnixStream)>) {
-        let routes = routes.to_vec();
-        Session::start_privileged_configured(roles, move |config| config.extensions = routes)
+        Session::start_privileged_configured(roles, |_| {})
     }
 
     /// Starts a session whose privileged connections are `roles`, and lets `configure` set
-    /// the rest of its [`SessionConfig`] before the compositor runs. `configure` sees the
-    /// privileged connections already in place, so it can load extensions against them.
+    /// the rest of its [`SessionConfig`] before the compositor runs.
     pub fn start_privileged_configured(
-        roles: &[(&str, Vec<gnoblin_proto::Grant>)],
+        roles: &[&str],
         configure: impl FnOnce(&mut SessionConfig),
     ) -> (Session, Vec<(String, UnixStream)>) {
         let directory = private_directory();
@@ -118,14 +98,11 @@ impl Session {
         // compositor starts, as the real guardian does.
         let (guardian, compositor_control) = Session::control_pair();
         let mut privileged = gnoblin_compositor::Privileged::declared();
-        privileged.retain(|entry| roles.iter().any(|(role, _)| *role == entry.role));
+        privileged.retain(|entry| roles.contains(&entry.role.as_str()));
         let mut ends = Vec::new();
-        for (role, grants) in roles {
+        for role in roles {
             let (compositor_end, role_end) = UnixStream::pair().expect("a socket pair");
             gnoblin_proto::privilege::send_handover(&guardian, role, &compositor_end).expect("the handover");
-            if let Some(entry) = privileged.iter_mut().find(|entry| entry.role == *role) {
-                entry.extension_grants = grants.clone();
-            }
             ends.push(((*role).to_owned(), role_end));
         }
         let stop = StopHandle::new();
@@ -390,10 +367,6 @@ impl Wire {
             writer.flush().expect("the hello");
         }
         let answer = wire.read_handshake();
-        if answer.kind == gnoblin_proto::HandshakeKind::Accept {
-            // The grants frame follows every accept; a reader of envelopes reads past it.
-            gnoblin_proto::read_grants(&mut wire.reader).expect("the grants frame after the accept");
-        }
         (wire, answer)
     }
 
@@ -425,7 +398,6 @@ impl Wire {
             gnoblin_proto::HandshakeKind::Accept,
             "the session refused this role"
         );
-        gnoblin_proto::read_grants(&mut wire.reader).expect("the grants frame after the accept");
         wire
     }
 

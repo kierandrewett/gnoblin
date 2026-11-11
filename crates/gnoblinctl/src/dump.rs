@@ -1,9 +1,8 @@
 //! `ipc dump`: decode a recorded or piped frame stream into readable lines.
 //!
 //! Design/rust-compositor.md, "One IPC": "`gnoblinctl ipc dump` decodes live traffic
-//! for debugging", and "IPC extensions": "Logs, the parity recorder and
-//! `gnoblinctl ipc dump` drop the payload of every `sensitive` frame, so none of
-//! them needs the extension schema to keep a secret out."
+//! for debugging". Logs, the parity recorder and `gnoblinctl ipc dump` drop the payload
+//! of every `sensitive` frame, so none of them needs the schema to keep a secret out.
 //!
 //! So this module decodes the envelope and nothing else. It never looks inside a
 //! payload, which is exactly why a sensitive frame cannot leak through it: the only
@@ -18,12 +17,14 @@
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 
-use gnoblin_proto::{
-    Envelope, Grant, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, MAGIC, MAX_FRAME_LEN, read_grants,
-};
+use gnoblin_proto::{Envelope, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, MAGIC, MAX_FRAME_LEN, Version};
 use prost::Message as _;
 
 use crate::cli::DumpSource;
+
+/// The first IPC version whose accept frame is the whole preamble. Servers before it followed
+/// every accept with a grants frame, so a stream recorded from one cannot be walked frame by frame.
+const FIRST_WITHOUT_GRANTS: Version = Version::new(0, 3, 0);
 
 /// Decode every frame in `source` onto `out`.
 pub(crate) fn run(source: &DumpSource, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -52,10 +53,11 @@ fn dump(source: &DumpSource, out: &mut dyn Write) -> Result<(), String> {
             let handshake = read_handshake(&mut stream, prefix)?;
             writeln!(out, "handshake {} {}", kind_text(handshake.kind), handshake.version)
                 .map_err(|error| format!("cannot write the dump: {error}"))?;
-            if handshake.kind == HandshakeKind::Accept {
-                let grants =
-                    read_grants(&mut stream).map_err(|error| format!("the grants frame did not decode: {error}"))?;
-                write_grants_dump(out, &grants)?;
+            if handshake.kind == HandshakeKind::Accept && handshake.version < FIRST_WITHOUT_GRANTS {
+                return Err(format!(
+                    "this stream was recorded at IPC {}, whose accept is followed by a grants frame that IPC {FIRST_WITHOUT_GRANTS} no longer sends; dump it with the gnoblinctl of that release",
+                    handshake.version
+                ));
             }
             continue;
         }
@@ -109,18 +111,6 @@ fn read_handshake(stream: &mut impl Read, prefix: [u8; 4]) -> Result<Handshake, 
     frame[..4].copy_from_slice(&prefix);
     read_exactly(stream, &mut frame[4..])?;
     Handshake::decode(&frame).map_err(|error| format!("the handshake frame did not decode: {error}"))
-}
-
-/// The grants frame after an accept: one line per granted namespace, or `grants none`.
-fn write_grants_dump(out: &mut dyn Write, grants: &[Grant]) -> Result<(), String> {
-    if grants.is_empty() {
-        return writeln!(out, "grants none").map_err(|error| format!("cannot write the dump: {error}"));
-    }
-    for grant in grants {
-        writeln!(out, "grant {} {}", grant.namespace, grant.version)
-            .map_err(|error| format!("cannot write the dump: {error}"))?;
-    }
-    Ok(())
 }
 
 /// One length-prefixed envelope.

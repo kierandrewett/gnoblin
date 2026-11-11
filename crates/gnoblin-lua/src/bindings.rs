@@ -19,12 +19,9 @@
 //! ```
 //!
 //! The compositor's own object types sit directly on `gnoblin`, as `gnoblin.<type>`.
-//! An extension namespace is loaded with `require`, which returns a module table with
-//! one entry per object type: `local ext = require("example.ext")`, then
-//! `ext.probe.lookup{ id = 1 }`. Those tables are built by `extension_bindings`, from the
-//! schema's owned types, so they are not part of the generated surface above. `require`
-//! answers only for an extension namespace the host loaded and the compositor granted;
-//! any other name is an error, and a loaded namespace that was not granted is refused by name.
+//! A module is loaded with `require`: `local rules = require("rules")` reads `rules.lua` under
+//! the configuration directory or the shipped root and returns what the file returns (see
+//! `require.rs`). No other name resolves.
 //!
 //! # Instances
 //!
@@ -54,10 +51,6 @@ use gnoblin_lua_sandbox::{Guard, Limits};
 /// host hold no Lua handle at all, so the VM and the host cannot keep each other
 /// alive through a reference cycle.
 pub(super) const CALLBACKS: &str = "gnoblin.callbacks";
-
-/// The registry table of extension module tables, keyed by namespace name. The global
-/// `require` reads only this table, so a script reaches nothing the catalog did not declare.
-pub(super) const MODULES: &str = "gnoblin.modules";
 
 /// The registry table of instances, keyed by object identity.
 pub(super) const INSTANCES: &str = "gnoblin.instances";
@@ -197,7 +190,6 @@ pub(super) fn install<T: Transport + 'static>(
     limits: Limits,
 ) -> mlua::Result<()> {
     lua.set_named_registry_value(CALLBACKS, lua.create_table()?)?;
-    lua.set_named_registry_value(MODULES, lua.create_table()?)?;
     // Instances and identities are weak, so a table a script no longer holds is collected
     // and the next read of that object makes a fresh one. A script that holds an instance
     // keeps its identity, so `alive` still answers after the object has closed.
@@ -348,8 +340,7 @@ pub(super) fn install<T: Transport + 'static>(
     crate::session_api::install(lua, &gnoblin)?;
 
     // Core object types sit directly on `gnoblin`. The build refuses a core type named
-    // like a declared member, so the two never share a key. Extension namespaces are
-    // not generated here: `extension_bindings` builds them from the loaded schema.
+    // like a declared member, so the two never share a key.
     let mut core: Vec<&'static str> = Vec::new();
     for namespace in NAMESPACES.iter().filter(|namespace| namespace.name == "gnoblin") {
         for spec in namespace.objects {
@@ -390,7 +381,25 @@ pub(super) fn install<T: Transport + 'static>(
     )?;
     gnoblin.set_metatable(Some(meta))?;
     lua.globals().set("gnoblin", gnoblin)?;
+    install_require(lua, &shared)?;
     Ok(())
+}
+
+/// Install the global `require`: a plain module loader over the configuration VM's two fixed
+/// roots. A script reaches nothing but the files under them.
+fn install_require<T: Transport + 'static>(lua: &Lua, shared: &Rc<RefCell<Shared<T>>>) -> mlua::Result<()> {
+    let shared = Rc::clone(shared);
+    lua.globals().set(
+        "require",
+        lua.create_function(move |lua, name: String| {
+            let loader = shared.borrow().modules.clone();
+            let loader = loader.ok_or_else(|| {
+                Error::runtime(format!("unknown module `{name}`: no configuration is being evaluated"))
+            })?;
+            let (value, _) = loader.fetch(lua, &name)?;
+            Ok(value)
+        })?,
+    )
 }
 
 /// Check an installed table against its declared members: each declared member must be

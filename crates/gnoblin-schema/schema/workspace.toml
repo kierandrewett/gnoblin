@@ -1,7 +1,7 @@
 # The `workspace` object: one workspace the window manager arranges. `id` is its identity,
 # stable for its lifetime.
 namespace = "gnoblin"
-version = "0.2.0"
+version = "0.3.0"
 
 [[object]]
 name = "workspace"

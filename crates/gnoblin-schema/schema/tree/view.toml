@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `view` class: draws another node's subtree as a texture. Replaces `capture` (design/node-core.md, section 2.4).
 [[object]]

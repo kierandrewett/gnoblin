@@ -58,7 +58,7 @@ rustix = { workspace = true, features = ["net"] }
 # Wipes a secret answer the request layer forwards or refuses, so it does not outlive the frame.
 zeroize.workspace = true
 # The accepted configuration document and its last-good store: the compositor reads the
-# extensions a session serves from it before the session starts.
+# settings it applies at start from it before the session starts.
 gnoblin-config = { path = "../gnoblin-config" }
 # `[tag]` log lines, the same crate the Wayland engine logs through.
 gnoblin-log = { path = "../gnoblin-log" }

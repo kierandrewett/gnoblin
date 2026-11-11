@@ -148,6 +148,25 @@ fn the_shell_section_is_refused_with_a_sentence_rather_than_a_typo_hint() {
 }
 
 #[test]
+fn the_extensions_section_is_refused_with_the_migration_rather_than_a_typo_hint() {
+    let document = table([(
+        "extensions",
+        table([("example.ext", table([("provider", text("services"))]))]),
+    )]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one key is wrong, got {problems:?}");
+    assert_eq!(problems[0].0, "extensions");
+    match &problems[0].1 {
+        Fault::Removed { detail } => {
+            assert!(detail.contains("extension tier was removed"), "{detail}");
+            assert!(detail.contains("require"), "the replacement is named: {detail}");
+            assert!(detail.contains("owner socket"), "the replacement is named: {detail}");
+        }
+        other => panic!("expected an explanation, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_deprecated_spelling_is_accepted_canonicalised_and_reported() {
     let document = table([("window-management", table([("focus-mode", text("sloppy"))]))]);
     let config = Config::from_value(document).expect("a deprecated spelling is accepted");

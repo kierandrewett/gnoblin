@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use gnoblin_client::{Client, HandshakeError, Loopback, Server, Transport as ClientTransport};
 use gnoblin_config::{SearchPaths, Value};
 use gnoblin_model::{Fields, Graph, ObjectId, OperationId, OperationOutcome, Tick, TypeKey, Value as ModelValue};
-use gnoblin_proto::{CodecError, Envelope, Grant, Handshake, Version};
+use gnoblin_proto::{CodecError, Envelope, Handshake, Version};
 use gnoblin_schema::Catalog;
 
 use gnoblin_lua::{Host, Limits, PUMP_EVENT_BATCH, ReloadOutcome, RunReport};
@@ -153,18 +153,19 @@ assert(type(gnoblin.load) == "function", "the loader is the one way to a file")
 }
 
 #[test]
-fn require_answers_only_declared_extension_namespaces() {
+fn require_answers_only_module_files() {
     let config = Config::new("require");
     config.write(
         "init.lua",
         r#"
+-- The extension tier is gone: a namespace name is not a module and nothing binds one.
 local ok, message = pcall(require, "example.ext")
-assert(not ok, "require loaded a namespace no host configuration declared")
+assert(not ok, "require loaded a namespace no module file stands for")
 assert(string.match(tostring(message), "unknown module `example.ext`") ~= nil, "message was " .. tostring(message))
 assert(not pcall(function() return gnoblin.extensions end), "gnoblin.extensions must not exist")
 assert(not pcall(function() return gnoblin.objects end), "gnoblin.objects must not exist")
 local ok2, message2 = pcall(require, "other.nothing")
-assert(not ok2, "require loaded an undeclared namespace")
+assert(not ok2, "require loaded a name no module file stands for")
 assert(string.match(tostring(message2), "unknown module `other.nothing`") ~= nil, "message was " .. tostring(message2))
 "#,
     );
@@ -1559,7 +1560,7 @@ fn an_unknown_plain_module_names_both_searched_roots() {
 local ok, message = pcall(require, "lib.missing")
 assert(not ok, "require loaded a module that does not exist")
 message = tostring(message)
-assert(string.match(message, "unknown module `lib.missing`: no extension namespace or module has that name") ~= nil, "message was " .. message)
+assert(string.match(message, "unknown module `lib.missing`: no module has that name") ~= nil, "message was " .. message)
 assert(string.match(message, "searched `") ~= nil, "message does not name the searched roots: " .. message)
 "#,
     );
@@ -1996,10 +1997,6 @@ impl ClientTransport for Churn {
 
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {
         Ok(Handshake::accept(VERSION))
-    }
-
-    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError> {
-        Ok(Vec::new())
     }
 }
 

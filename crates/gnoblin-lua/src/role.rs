@@ -43,13 +43,11 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
 };
-use gnoblin_config::{Config, Problem, SearchPaths, Value, extensions::load_extensions, salvage};
+use gnoblin_config::{Config, Problem, SearchPaths, Value, salvage};
 use gnoblin_proto::Version;
-use gnoblin_schema::Schema;
 use gnoblin_types::Tick;
 
 use crate::error::{HostError, ScriptError};
-use crate::extensions::ExtensionRegistry;
 use crate::host::{Host, ReloadOutcome, RunReport};
 use gnoblin_lua_sandbox::Limits;
 
@@ -126,19 +124,16 @@ pub struct RoleRunner {
     pub paths: SearchPaths,
     /// The budgets the sandbox runs under.
     pub limits: Limits,
-    /// The stock schemas. An extension may not reuse their namespaces.
-    pub stock: Vec<Schema>,
 }
 
 impl RoleRunner {
     /// The role as the process finds it: the real environment, the real search path and
-    /// the default sandbox budgets, and the stock schemas the extensions are checked against.
-    pub fn from_environment(stock: Vec<Schema>) -> RoleRunner {
+    /// the default sandbox budgets.
+    pub fn from_environment() -> RoleRunner {
         RoleRunner {
             env: Box::new(|name| std::env::var(name).ok()),
             paths: SearchPaths::from_env(),
             limits: Limits::default(),
-            stock,
         }
     }
 
@@ -177,7 +172,6 @@ impl RoleRunner {
         let loaded = host
             .run_config(&self.paths)
             .map_err(|error| RoleError::Config(error.to_string()))?;
-        bind_configured_extensions(&mut host, &loaded, &self.stock)?;
         let (revision, _) = commit(&mut host, &loaded, &mut reporter)?;
         log::info!(area = "runtime", path = %loaded.path.path().display(),
             revision,
@@ -193,7 +187,7 @@ impl RoleRunner {
         let mut shell = ShellSlot::from_env(&self.env, &installed, |dir| {
             connect_session_shell(&self.env, dir, user_dir.as_deref())
         });
-        serve(&mut host, &stop, &self.paths, &self.stock, &mut reporter, &mut shell)
+        serve(&mut host, &stop, &self.paths, &mut reporter, &mut shell)
     }
 }
 
@@ -351,51 +345,6 @@ pub(crate) fn keyring_conflict(keyring_on: bool, name: &str, argv: &[String]) ->
     })
 }
 
-/// Load the extensions the accepted configuration names, and bind the ones that pass.
-///
-/// A rejected document loads nothing: the commit that follows refuses it, and the last
-/// accepted configuration stays in force. A refused extension is logged with its reason and
-/// the rest still bind, so one broken extension never stops the runtime.
-fn bind_configured_extensions<T: Transport + 'static>(
-    host: &mut Host<T>,
-    report: &RunReport,
-    stock: &[Schema],
-) -> Result<(), RoleError> {
-    if report.config.is_err() {
-        return Ok(());
-    }
-    let (registry, refusals) = configured_extensions(report, stock);
-    for refusal in &refusals {
-        log::warn!(area = "runtime", "{refusal}");
-    }
-    host.bind_extensions(&registry)
-        .map_err(|error| RoleError::Config(error.to_string()))
-}
-
-/// The extensions the accepted configuration names, bound into a registry, and every reason
-/// one was refused.
-///
-/// Shared by the runtime and `check`, so validation refuses an extension exactly when the
-/// runtime would. A rejected document yields an empty registry and no refusals: its own
-/// problems are reported by the commit that follows.
-pub(crate) fn configured_extensions(report: &RunReport, stock: &[Schema]) -> (ExtensionRegistry, Vec<String>) {
-    let mut registry = ExtensionRegistry::new();
-    let mut refusals = Vec::new();
-    if report.config.is_err() {
-        return (registry, refusals);
-    }
-    let base = report.path.path().parent().unwrap_or_else(|| Path::new("."));
-    let loaded = load_extensions(&report.document, base, stock);
-    refusals.extend(loaded.refused.iter().map(ToString::to_string));
-    for extension in loaded.accepted {
-        let namespace = extension.namespace.clone();
-        if let Err(error) = registry.register_extension(extension.schema) {
-            refusals.push(format!("extension {namespace} refused at registration: {error:?}"));
-        }
-    }
-    (registry, refusals)
-}
-
 /// Serve the handlers until the guardian asks the role to stop or the connection ends.
 ///
 /// A reload the compositor asked for is acted on before the next pump, so no handler runs
@@ -404,14 +353,13 @@ fn serve<T: Transport + 'static>(
     host: &mut Host<T>,
     stop: &impl Fn() -> bool,
     paths: &SearchPaths,
-    stock: &[Schema],
     reporter: &mut Reporter,
     shell: &mut ShellSlot,
 ) -> Result<(), RoleError> {
     let start = Instant::now();
     while !stop() {
         if host.take_reload_request() {
-            reload(host, paths, stock, reporter)?;
+            reload(host, paths, reporter)?;
         }
         if let Err(ended) = shell.tick(start.elapsed().as_secs_f64()) {
             log::error!(area = "runtime", "{ended}");
@@ -444,7 +392,6 @@ fn serve<T: Transport + 'static>(
 fn reload<T: Transport + 'static>(
     host: &mut Host<T>,
     paths: &SearchPaths,
-    stock: &[Schema],
     reporter: &mut Reporter,
 ) -> Result<(), RoleError> {
     // A reload that cannot even run, such as the file having been removed, is still a
@@ -457,7 +404,6 @@ fn reload<T: Transport + 'static>(
     };
     match outcome {
         ReloadOutcome::Accepted(loaded) => {
-            bind_configured_extensions(host, &loaded, stock)?;
             let (revision, warnings) = commit(host, &loaded, reporter)?;
             host.announce_reload(loaded.path.path(), revision, &warnings);
             log::info!(area = "runtime", path = %loaded.path.path().display(), revision, "configuration reloaded");

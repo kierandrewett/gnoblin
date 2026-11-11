@@ -20,10 +20,9 @@ use crate::generated::sensitive;
 ///
 /// The generated client sets it on any message with a field the schema marks
 /// `secret` (for example `request.answer`, whose `answer` field carries a password).
-/// The member is the schema's qualified member path, so an extension's frames are
-/// named the same way. Logs, the parity recorder and `gnoblinctl ipc dump` call
-/// [`Envelope::redact`] before they show anything, so none of them needs the
-/// extension's schema to keep the secret out.
+/// The member is the schema's qualified member path. Logs, the parity recorder and
+/// `gnoblinctl ipc dump` call [`Envelope::redact`] before they show anything, so none of
+/// them needs the schema to keep the secret out.
 pub const FLAG_SENSITIVE: u32 = 1 << 0;
 
 /// The error code a peer sends when it does not serve the requested member.

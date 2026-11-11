@@ -268,6 +268,8 @@ knowing which members are secret.
 
 ### IPC extensions
 
+> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone and the IPC version is 0.3.0. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/node-api-refactor.md` D22 (retracted).
+
 Gnoblin has one generic extension mechanism. An extension is a namespace of
 members that a privileged connection provides on the IPC. Extensions are out of
 tree: each ships its own schema file and provider, and the host configuration
@@ -342,7 +344,7 @@ surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
     - `xtask` copies it into the Cargo workspace version, the schema,
       `gnoblin.d.lua`, the WIT package (`gnoblin:ipc@0.2.0`) and the API
       reference, so no crate, file or protocol keeps its own number.
-    - The copy step is not written yet; the workspace version is `0.2.0-alpha.0`
+    - The copy step is not written yet; the workspace version is `0.3.0-alpha.0`
       by hand.
 - **Members:** each schema member records `since`, the full Gnoblin version that
   added it. Clients compare `since` with the compositor's version before they
@@ -2731,6 +2733,8 @@ Failure modes:
 | Stock crate built with a stock-tree check finds per-extension code | Build check fails: stock crates contain no per-extension generated code or enums (single ABI rule).       |
 
 ### D22: general extension system
+
+> **Removed (survey 16.3, lane 10A).** Retracted by `design/node-api-refactor.md` D22 and deleted from the tree: `crates/gnoblin-compositor/src/extensions.rs`, `src/ipc/extension.rs`, the grants frame, `config.extensions` and `require(namespace)`. What follows is history.
 
 **Decided 2026-11-05: an extension is a package that host configuration loads. Its manifest declares the powers it contains and the capabilities it wants. Host configuration grants a subset of those capabilities. Each power runs in one isolation tier. The IPC namespace of D21 becomes one power among several.**
 

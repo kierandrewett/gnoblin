@@ -1,4 +1,4 @@
-namespace gnoblin version 0.2.0
+namespace gnoblin version 0.3.0
 error too-many-inhibitors since 0.2.0
 error idle-unavailable since 0.2.0
 error layer-refused since 0.2.0
@@ -375,7 +375,7 @@ object workspace since 0.2.0 secret false
   signal removed since 0.2.0 secret false
     field workspace_id type uint since 0.2.0 secret false
     field last type object:workspace since 0.2.0 secret false
-namespace tree version 0.2.0
+namespace tree version 0.3.0
 object camera since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -775,7 +775,7 @@ object workspace since 0.2.0 secret false
 // edit: change the schema instead.
 //
 // Namespace: gnoblin
-// Version: 0.2.0
+// Version: 0.3.0
 // Schema: crates/gnoblin-schema/schema (capture.toml, config.toml, effect.toml, eis.toml, idle.toml, layers.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
 
 syntax = "proto3";
@@ -1738,7 +1738,7 @@ enum GnoblinError {
 // edit: change the schema instead.
 //
 // Namespace: tree
-// Version: 0.2.0
+// Version: 0.3.0
 // Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, view.toml, window.toml, workspace.toml)
 
 syntax = "proto3";

@@ -1,5 +1,5 @@
 namespace = "gnoblin"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `effect` object: one window effect, of one of three kinds. The schema has no
 # unions, so one object carries every kind's parameters as flat properties. A

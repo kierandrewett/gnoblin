@@ -15,9 +15,6 @@ rustix.workspace = true
 # by a person; see src/last_good.rs for why the stored document is flattened
 # rather than written as a tagged tree.
 serde_json.workspace = true
-# The extension manifest reads each schema with the schema crate's parser, so an
-# extension's schema is checked by the same code that checks the stock catalog.
-gnoblin-schema = { path = "../gnoblin-schema" }
 # The layer name a `layers` key is checked against is the registry's own grammar,
 # so a config key and a registered name cannot disagree about what a name is.
 gnoblin-layers = { path = "../gnoblin-layers" }

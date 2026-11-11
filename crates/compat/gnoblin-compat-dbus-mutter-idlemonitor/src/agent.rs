@@ -20,7 +20,10 @@ use zbus::Connection;
 use crate::log;
 
 /// The version this adapter's compositor subscription speaks.
-const CLIENT_VERSION: Version = Version::new(0, 2, 0);
+const CLIENT_VERSION: Version = {
+    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+    Version::new(major, minor, patch)
+};
 
 /// The compositor subscription the adapter reads the idle counter from.
 fn connect_link() -> Result<IdleLink<UnixTransport>, String> {

@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `seat` class: an input seat (`wl_seat`, libei). Draws nothing (design/node-core.md, section 2.4).
 [[object]]

@@ -2120,11 +2120,6 @@ accepted = "a table of autostart entry tables, keyed by a name of 1 to 64 letter
 doc = "Each entry, in name order."
 
 [[section]]
-key = "extensions"
-doc = "IPC extensions loaded from host configuration: namespace, schema, provider and grants."
-carried = true
-
-[[section]]
 key = "keybindings"
 doc = "Lua callbacks and Mutter action overrides by binding name."
 carried = true

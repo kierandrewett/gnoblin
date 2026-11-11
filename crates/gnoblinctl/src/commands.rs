@@ -163,12 +163,8 @@ fn watch<T: Transport>(
             // A request is offered to every subscriber and answered by one, which is
             // not a change to the objects this command was asked about. An answer only
             // ever reaches the connection that offered the request, so `gnoblinctl`
-            // never sees one. An extension event goes only to the connections granted
-            // that extension, and `gnoblinctl` is never granted one.
-            Event::RequestOffered { .. }
-            | Event::RequestAnswered { .. }
-            | Event::RequestFinished { .. }
-            | Event::Extension { .. } => {}
+            // never sees one.
+            Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
         }
     }
 }

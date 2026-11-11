@@ -16,7 +16,7 @@
 # with its own properties is the next step, and this encoding is what makes that
 # a schema change rather than a protocol one.
 namespace = "gnoblin"
-version = "0.2.0"
+version = "0.3.0"
 
 [[object]]
 name = "output"

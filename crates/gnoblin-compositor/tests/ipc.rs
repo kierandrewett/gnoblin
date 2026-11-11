@@ -13,6 +13,7 @@
 
 mod support;
 
+use std::io::{ErrorKind, Read as _, Write as _};
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::{UnixListener, UnixStream};
 
@@ -20,7 +21,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ConnectError, Event};
 use gnoblin_compositor::{Error, IpcError};
 use gnoblin_model::{Fields, Filter, ObjectId, Observation, Value};
-use gnoblin_proto::HandshakeKind;
+use gnoblin_proto::{Envelope, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, read_frame, write_frame};
 use gnoblin_types::Version;
 
 use support::{Client as WaylandClient, Command, Session, config, run_refused, wait_for, wait_for_listed_id};
@@ -89,25 +90,84 @@ fn a_reachable_socket_directory_is_refused() {
 fn a_wrong_version_client_is_refused() {
     let session = Session::start();
 
-    // The fixed-layout handshake answers with the compositor's own version, so the
-    // raw refusal is readable before any envelope is decoded.
-    let (_wire, answer) = support::Wire::connect_version(session.socket(), Version::new(0, 3, 0));
-    assert_eq!(answer.kind, HandshakeKind::Refuse);
-    assert_eq!(answer.version, version());
+    // A client from the future, and the 0.2 clients that read a grants frame after every accept:
+    // this build sends none, which is why its version moved to 0.3.0 and why the caret rule
+    // keeps those clients out instead of letting them misread the first reply.
+    for wrong in [Version::new(0, 4, 0), Version::new(0, 2, 0)] {
+        // The fixed-layout handshake answers with the compositor's own version, so the
+        // raw refusal is readable before any envelope is decoded.
+        let (_wire, answer) = support::Wire::connect_version(session.socket(), wrong);
+        assert_eq!(answer.kind, HandshakeKind::Refuse, "{wrong} was served");
+        assert_eq!(answer.version, version());
 
-    // A real client turns that into an error that names both versions.
-    let error = Client::connect(
-        UnixTransport::connect(session.socket()).expect("the session is listening"),
-        Version::new(0, 3, 0),
-    )
-    .expect_err("a 0.3 client is refused by a 0.2 compositor");
-    let ConnectError::Refused(_) = &error else {
-        panic!("expected a version refusal, got {error:?}");
+        // A real client turns that into an error that names both versions.
+        let error = Client::connect(
+            UnixTransport::connect(session.socket()).expect("the session is listening"),
+            wrong,
+        )
+        .expect_err("a client at another leftmost non-zero version is refused");
+        let ConnectError::Refused(_) = &error else {
+            panic!("expected a version refusal, got {error:?}");
+        };
+        let message = error.to_string();
+        assert!(message.contains(&version().to_string()), "{message}");
+        assert!(message.contains(&wrong.to_string()), "{message}");
+    }
+
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_client_sends_its_first_request_straight_after_the_accept() {
+    let session = Session::start();
+    let mut stream = UnixStream::connect(session.socket()).expect("the session is listening");
+    stream
+        .write_all(&Handshake::hello(version()).encode())
+        .expect("the hello");
+
+    // The accept is the whole preamble: exactly `HANDSHAKE_LEN` bytes, then the connection waits
+    // for the client. A frame sent before the client's first request would sit in front of the
+    // reply below and be read as it.
+    let mut accept = [0u8; HANDSHAKE_LEN];
+    stream.read_exact(&mut accept).expect("the accept");
+    let accept = Handshake::decode(&accept).expect("the accept decodes");
+    assert_eq!(accept.kind, HandshakeKind::Accept);
+    assert_eq!(accept.version, version());
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_millis(200)))
+        .expect("a read deadline");
+    let mut stray = [0u8; 1];
+    match stream.read(&mut stray) {
+        Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+        other => panic!("the compositor sent something besides the accept before any request: {other:?}"),
+    }
+    stream.set_read_timeout(None).expect("no read deadline");
+
+    write_frame(&mut stream, &gnoblin_client::wire::subscribe(7, Filter::All)).expect("the first request");
+    let reply = read_frame(&mut stream)
+        .expect("the reply decodes")
+        .expect("the compositor answers");
+    assert_eq!(reply.request_id, 7);
+    assert!(
+        matches!(reply.kind, Some(Kind::Reply(_))),
+        "the first frame was {reply:?}"
+    );
+
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_request_in_a_namespace_nobody_serves_is_refused() {
+    let session = Session::start();
+    let mut wire = session.wire();
+    wire.send(&Envelope::request("example.ext", "Probe.lookup", 3, Vec::new()));
+    let answer = wire.receive().expect("the compositor answers");
+    assert_eq!(answer.request_id, 3);
+    let Some(Kind::Error(error)) = &answer.kind else {
+        panic!("expected a refusal, got {answer:?}");
     };
-    let message = error.to_string();
-    assert!(message.contains(&version().to_string()), "{message}");
-    assert!(message.contains("0.3.0"), "{message}");
-
+    assert_eq!(error.code, "unknown-member");
+    assert!(error.message.contains("example.ext"), "{}", error.message);
     session.stop().expect("the session stops cleanly");
 }
 
@@ -152,8 +212,7 @@ fn a_window_object_outlives_its_surface_only_until_the_surface_ends() {
                 gnoblin_client::Event::Model(_) => {}
                 gnoblin_client::Event::RequestOffered { .. }
                 | gnoblin_client::Event::RequestAnswered { .. }
-                | gnoblin_client::Event::RequestFinished { .. }
-                | gnoblin_client::Event::Extension { .. } => {}
+                | gnoblin_client::Event::RequestFinished { .. } => {}
             }
         }
     });
@@ -480,8 +539,7 @@ fn focus_completes_after_the_diff_it_caused() {
             gnoblin_client::Event::Model(_) => {}
             gnoblin_client::Event::RequestOffered { .. }
             | gnoblin_client::Event::RequestAnswered { .. }
-            | gnoblin_client::Event::RequestFinished { .. }
-            | gnoblin_client::Event::Extension { .. } => {}
+            | gnoblin_client::Event::RequestFinished { .. } => {}
         }
     }
     assert!(

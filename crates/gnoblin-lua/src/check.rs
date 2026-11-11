@@ -2,7 +2,7 @@
 //!
 //! `gnoblinctl config validate init.lua` must give the answer the runtime would give for
 //! the same file. This module runs the same steps the runtime role runs before it commits:
-//! the stock schemas, a host, `run_config`, the configured extensions and the autostart
+//! the stock schemas, a host, `run_config` and the autostart
 //! entries. It stops before the commit, so nothing reaches a compositor.
 //!
 //! # Limitation
@@ -10,7 +10,7 @@
 //! The host runs against an in-process server with an empty object graph. A configuration
 //! that only evaluates against live objects, such as a `gnoblin.*` read of a window that
 //! exists in the session, can validate here and still fail at runtime, or the reverse. The
-//! document's shape, its types, its extensions and its autostart entries are checked the way
+//! document's shape, its types and its autostart entries are checked the way
 //! the runtime checks them.
 
 use gnoblin_client::Server;
@@ -20,7 +20,7 @@ use gnoblin_model::Graph;
 use gnoblin_schema::{Catalog, Schema, SchemaError, parse_schema};
 
 use crate::host::Host;
-use crate::role::{configured_extensions, enabled_autostart, version};
+use crate::role::{enabled_autostart, version};
 
 include!(concat!(env!("OUT_DIR"), "/stock_files.rs"));
 
@@ -55,7 +55,7 @@ pub fn stock_schemas() -> Result<Vec<Schema>, SchemaError> {
 /// is read and refused is not an error: it is a [`Check`] with problems.
 pub fn check(paths: &SearchPaths) -> Result<Check, String> {
     let stock = stock_schemas().map_err(|error| format!("the stock schemas do not load: {error}"))?;
-    let catalog = Catalog::new(stock.clone()).map_err(|error| format!("the stock schemas do not load: {error}"))?;
+    let catalog = Catalog::new(stock).map_err(|error| format!("the stock schemas do not load: {error}"))?;
     let mut server = Server::new(Graph::new(catalog), version());
     let client = server
         .connect(version())
@@ -73,8 +73,6 @@ pub fn check(paths: &SearchPaths) -> Result<Check, String> {
             if let Err(problem) = enabled_autostart(config) {
                 check.problems.push(problem);
             }
-            let (_registry, refusals) = configured_extensions(&report, &stock);
-            check.problems.extend(refusals);
         }
         Err(problems) => check.problems.push(problems.to_string()),
     }

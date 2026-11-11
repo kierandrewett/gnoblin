@@ -77,14 +77,13 @@ use gnoblin_layers::provider::COMPOSITOR_CRATE;
 use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
-use gnoblin_proto::{Envelope, Handshake, HandshakeKind, privilege, read_frame, write_frame};
+use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, privilege, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
     WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
-use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
@@ -131,8 +130,8 @@ pub(crate) enum IpcEvent {
     },
     /// One frame a client sent.
     Request { client: ClientId, envelope: Envelope },
-    /// A privileged connection's stream ended. The connection keeps its identity and its
-    /// grants, because they belong to the role and not to the child that held the stream;
+    /// A privileged connection's stream ended. The connection keeps its identity, because it
+    /// belongs to the role and not to the child that held the stream;
     /// only what that stream carried ends.
     Lost {
         /// Which connection it is.
@@ -243,21 +242,10 @@ impl IpcServer {
         control: ControlHandle,
         privileged: Vec<Privileged>,
         guardian: Option<UnixStream>,
-        routes: &[ExtensionRoute],
         xwayland: crate::xwayland::XwaylandReconciler,
         power: Option<Box<dyn gnoblin_model::PowerBackend>>,
         tree: TreeHostHandle,
     ) -> Result<IpcServer, IpcError> {
-        // Each connection's frame is encoded before anything is spawned, so a bad grant
-        // list fails the whole start instead of leaving threads behind.
-        let no_grants: Arc<[u8]> = gnoblin_proto::encode_grants(&[]).map_err(IpcError::Grants)?.into();
-        let mut frames = Vec::with_capacity(privileged.len());
-        for connection in &privileged {
-            let frame: Arc<[u8]> = gnoblin_proto::encode_grants(&connection.extension_grants)
-                .map_err(IpcError::Grants)?
-                .into();
-            frames.push(frame);
-        }
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
             path: path.clone(),
@@ -269,21 +257,6 @@ impl IpcServer {
         let readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>> = Arc::new(Mutex::new(BTreeMap::new()));
         let clients = Arc::new(AtomicU64::new(1));
         let version = prepared.version();
-        // The privileged connections get their ids before the dispatcher starts, so the
-        // extension router knows each provider and grantee by the id it will serve.
-        let ids: Vec<ClientId> = privileged
-            .iter()
-            .map(|_| ClientId::new(clients.fetch_add(1, Ordering::Relaxed)))
-            .collect();
-        let mut extensions = ExtensionRouter::new(routes);
-        for (connection, client) in privileged.iter().zip(&ids) {
-            extensions.connect(
-                *client,
-                &connection.role,
-                connection.extension_grants.iter().map(|grant| grant.namespace.clone()),
-            );
-        }
-
         // The Wayland server adopts the guardian's `view` handovers, which are not owner connections.
         let wayland = control.clone();
         let dispatcher = Dispatcher {
@@ -297,19 +270,19 @@ impl IpcServer {
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
             start: Instant::now(),
-            extensions,
             tree,
             xwayland,
             power,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
-        // handover per spawn. Each role's identity and grants frame are fixed here, before
-        // the dispatcher serves anything, so every handover of a role is served as the same
-        // connection. A role the guardian never hands over is simply idle.
+        // handover per spawn. Each role's identity is fixed here, before the dispatcher serves
+        // anything, so every handover of a role is served as the same connection. A role the
+        // guardian never hands over is simply idle.
         let mut roles = BTreeMap::new();
-        for ((connection, frame), client) in privileged.into_iter().zip(frames).zip(ids) {
-            roles.insert(connection.role, PrivilegedRole { client, frame });
+        for connection in privileged {
+            let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
+            roles.insert(connection.role, PrivilegedRole { client });
         }
         let (guardian_clone, control_thread) = match guardian {
             Some(guardian) => {
@@ -344,8 +317,7 @@ impl IpcServer {
             {
                 let events = events.clone();
                 let stopping = Arc::clone(&stopping);
-                let grants = Arc::clone(&no_grants);
-                move || accept_loop(listener, events, stopping, readers, clients, version, grants)
+                move || accept_loop(listener, events, stopping, readers, clients, version)
             },
             &path,
         )?;
@@ -398,7 +370,6 @@ fn accept_loop(
     readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>>,
     clients: Arc<AtomicU64>,
     version: Version,
-    extension_grants: Arc<[u8]>,
 ) {
     loop {
         let stream = match listener.accept() {
@@ -417,7 +388,6 @@ fn accept_loop(
         }
         let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
         let served = events.clone();
-        let grants = Arc::clone(&extension_grants);
         // Whether this connection is the session owner's is read from its kernel peer uid
         // before the stream leaves this thread, so nothing the client sends can change it.
         let owner = super::privileged::socket_is_owner(&stream);
@@ -435,7 +405,6 @@ fn accept_loop(
                     served,
                     ConnectionPolicy {
                         owner,
-                        extension_grants: grants,
                         ending: ConnectionEnd::Closed,
                     },
                 )
@@ -453,16 +422,10 @@ fn accept_loop(
 /// `owner` says whether this connection is the session owner's. The handshake does not
 /// carry it: a connection's authority is fixed by how it arrived, never by what it says.
 ///
-/// Every accept is followed by `extension_grants`, the grants frame that tells the client
-/// which extension namespaces it may use.
 /// `ending` says what the stream's end means to the dispatcher: a client is closed, and a
 /// privileged stream is lost.
 fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<IpcEvent>, policy: ConnectionPolicy) {
-    let ConnectionPolicy {
-        owner,
-        extension_grants,
-        ending,
-    } = policy;
+    let ConnectionPolicy { owner, ending } = policy;
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
         Err(error) => {
@@ -489,7 +452,7 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
             return;
         }
     };
-    if write_accept(&writer, &answer, &extension_grants).is_err() {
+    if write_handshake(&writer, &answer).is_err() {
         return;
     }
     // An idle subscriber waits as long as its compositor lives, so the handshake's
@@ -525,8 +488,8 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
 
 /// How a served connection ends, which decides the event the dispatcher hears last.
 ///
-/// A client that goes away is closed. A privileged stream that goes away is lost: its role and
-/// grants belong to the guardian, so the connection keeps its identity and only what the stream
+/// A client that goes away is closed. A privileged stream that goes away is lost: its role
+/// belongs to the guardian, so the connection keeps its identity and only what the stream
 /// carried ends.
 #[derive(Clone, Copy)]
 enum ConnectionEnd {
@@ -544,13 +507,10 @@ impl ConnectionEnd {
     }
 }
 
-/// The policy one served connection runs under: what it may do, the grants frame it is told,
-/// and how its end is reported.
+/// The policy one served connection runs under: what it may do and how its end is reported.
 struct ConnectionPolicy {
     /// Whether the connection is the session owner's.
     owner: bool,
-    /// The extension grants frame sent on every accept.
-    extension_grants: Arc<[u8]>,
     /// What the stream's end means to the dispatcher.
     ending: ConnectionEnd,
 }
@@ -559,8 +519,6 @@ struct ConnectionPolicy {
 struct PrivilegedRole {
     /// The identity every handover of the role is served as.
     client: ClientId,
-    /// The grants frame the role's connection carries on every accept.
-    frame: Arc<[u8]>,
 }
 
 /// One privileged stream the control thread is serving, kept so a later handover of the same
@@ -616,7 +574,6 @@ fn serve_control(
                 return;
             }
         };
-        let frame = Arc::clone(&declared.frame);
         let served = events.clone();
         match std::thread::Builder::new()
             .name(format!("gnoblin-ipc-{}", client.get()))
@@ -628,7 +585,6 @@ fn serve_control(
                     served,
                     ConnectionPolicy {
                         owner: true,
-                        extension_grants: frame,
                         ending: ConnectionEnd::Lost,
                     },
                 )
@@ -686,14 +642,6 @@ fn read_handshake(reader: &mut std::io::BufReader<UnixStream>) -> Option<Handsha
 fn write_handshake(writer: &UnixStream, handshake: &Handshake) -> io::Result<()> {
     let mut writer = writer;
     io::Write::write_all(&mut writer, &handshake.encode())?;
-    io::Write::flush(&mut writer)
-}
-
-/// Writes a granted handshake, then the grants frame that follows every accept.
-fn write_accept(writer: &UnixStream, handshake: &Handshake, extension_grants: &[u8]) -> io::Result<()> {
-    let mut writer = writer;
-    io::Write::write_all(&mut writer, &handshake.encode())?;
-    io::Write::write_all(&mut writer, extension_grants)?;
     io::Write::flush(&mut writer)
 }
 
@@ -777,8 +725,6 @@ struct Dispatcher {
     /// deadline it measures. The compositor is the only party that needs a clock here:
     /// the broker takes its tick as an argument, so the model stays replayable.
     start: Instant,
-    /// The routing state of the loaded extensions: which connection serves and which may call each.
-    extensions: ExtensionRouter,
     /// The shell's tree, served on the `tree` namespace.
     tree: TreeHostHandle,
     /// The X11 session the accepted document asks for, and the loop that runs it.
@@ -806,7 +752,6 @@ impl Dispatcher {
             let Some(event) = event else { continue };
             match event {
                 IpcEvent::Accepted { client, writer, owner } => {
-                    self.extensions.began(client);
                     self.connections.insert(
                         client,
                         Connection {
@@ -871,8 +816,16 @@ impl Dispatcher {
             return;
         }
         if envelope.namespace != wire::NAMESPACE {
-            let deliveries = self.extensions.route(client, envelope);
-            self.deliver(deliveries);
+            // No other namespace is served on this socket. A request is told so; anything else
+            // has no one waiting for it.
+            if matches!(envelope.kind, Some(Kind::Request(_))) {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("no namespace `{}` is served here", envelope.namespace),
+                );
+            }
             return;
         }
         // The gate is before the member is looked at: a member this connection may not
@@ -2509,8 +2462,8 @@ impl Dispatcher {
     /// Ends the live state of a privileged connection whose stream ended.
     ///
     /// What the stream carried ends: its subscriptions, what it was waiting on, and what it offered,
-    /// because the process that offered it is gone. The identity and the grants stay, since they
-    /// belong to the role, and the next child handed the role is served with them. The writer is
+    /// because the process that offered it is gone. The identity stays, since it belongs to the
+    /// role, and the next child handed the role is served with it. The writer is
     /// dropped rather than shut down, because the stream has already ended.
     fn lost(&mut self, client: ClientId) {
         self.tree.detach(client);
@@ -2520,8 +2473,6 @@ impl Dispatcher {
             }
             drop(connection.writer);
         }
-        let ended = self.extensions.ended(client);
-        self.deliver(ended);
         let departed = self.requests.departed(client);
         self.deliver(departed);
         let replies = self.portal.departed(client);
@@ -2531,8 +2482,6 @@ impl Dispatcher {
     /// Ends one connection: its subscriptions, its writer and its reader.
     fn close(&mut self, client: ClientId, shutdown: bool) {
         self.tree.detach(client);
-        let ended = self.extensions.ended(client);
-        self.deliver(ended);
         let Some(connection) = self.connections.remove(&client) else {
             return;
         };

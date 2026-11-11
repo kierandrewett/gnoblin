@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `tree` messages: the owner-socket protocol of the scene tree (design/node-core.md, sections 4.1 and 4.6).
 # Requests are methods (shell to compositor); events and replies are signals (compositor to shell).

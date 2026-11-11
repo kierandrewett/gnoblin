@@ -380,10 +380,9 @@ impl<T: Transport> IpcLoop<T> {
                     // already removed, so this does nothing for it.
                     self.secrets.remove(&request);
                 }
-                Ok(Event::RequestOffered { .. } | Event::Extension { .. }) => {
+                Ok(Event::RequestOffered { .. }) => {
                     // A request this connection could claim is not its business: the portal
-                    // offers, it does not draw. An extension event goes only to the
-                    // connections granted that extension, and the portal is granted none.
+                    // offers, it does not draw.
                 }
                 Err(ClientError::Idle) => {}
                 Err(error) => {

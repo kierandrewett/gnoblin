@@ -24,7 +24,6 @@
 //! code that keeps the promise, and `tests/ipc.rs` drives the same paths through a
 //! real socket.
 
-mod extension;
 mod path;
 mod portal;
 mod privileged;
@@ -38,7 +37,6 @@ mod tree_host;
 
 use std::path::PathBuf;
 
-pub use extension::ExtensionRoute;
 pub use path::SocketPath;
 pub(crate) use path::replace_stale_socket;
 pub use privileged::{Privileged, guardian_from_environment};
@@ -66,8 +64,6 @@ pub enum IpcError {
     Bind { path: PathBuf, source: std::io::Error },
     /// A temporary directory could not be created or a stale socket removed.
     Io { path: PathBuf, source: std::io::Error },
-    /// The extension grants cannot be encoded as a grants frame, so nothing is bound.
-    Grants(gnoblin_proto::GrantsError),
     /// The tree the shell serves could not be built, so nothing is bound.
     Tree(String),
 }
@@ -93,7 +89,6 @@ impl std::fmt::Display for IpcError {
             ),
             IpcError::Bind { path, source } => write!(formatter, "cannot bind {}: {source}", path.display()),
             IpcError::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
-            IpcError::Grants(source) => write!(formatter, "the extension grants are not valid: {source}"),
             IpcError::Tree(reason) => write!(formatter, "the tree could not be built: {reason}"),
         }
     }

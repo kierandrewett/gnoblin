@@ -19,8 +19,9 @@ pub fn link_from_environment() -> Result<IntrospectLink<UnixTransport>, Introspe
     let link = |reason: String| IntrospectError::Link { reason };
     let path = socket_path(|name| std::env::var(name).ok()).map_err(|error| link(error.to_string()))?;
     let transport = UnixTransport::connect(&path).map_err(|error| link(error.to_string()))?;
+    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
     let client: Client<UnixTransport> =
-        Client::connect(transport, Version::new(0, 2, 0)).map_err(|error| link(error.to_string()))?;
+        Client::connect(transport, Version::new(major, minor, patch)).map_err(|error| link(error.to_string()))?;
     IntrospectLink::connect(client)
 }
 

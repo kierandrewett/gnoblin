@@ -167,8 +167,6 @@ fn compositor() -> Result<(), Exit> {
     // own processes and nobody else. Sandboxed clients never get it: they connect through
     // their own listener, which carries no privileged role.
     config.wayland.privileged_socket_path = gnoblin_compositor::default_privileged_socket_path();
-    // A refused extension is logged and left out; the session starts either way.
-    gnoblin_compositor::configure_from_environment(&mut config);
     // The compat adapters are served with the session's default mode until a configuration
     // key selects one. A failure to build them starts the session without them.
     if let Err(error) = gnoblin_compat_host::session::configure(&mut config, gnoblin_compat_host::Mode::default()) {
@@ -220,11 +218,7 @@ fn guardian() -> Result<(), Exit> {
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
-    let catalog = gnoblin_compositor::catalog().map_err(|error| {
-        log::error!("the stock schemas do not load: {error}");
-        Exit(1)
-    })?;
-    match gnoblin_lua::RoleRunner::from_environment(catalog.schemas().to_vec()).run(never_stopped) {
+    match gnoblin_lua::RoleRunner::from_environment().run(never_stopped) {
         Ok(()) => Ok(()),
         Err(error) => {
             log::error!("{error}");

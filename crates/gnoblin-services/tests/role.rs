@@ -52,7 +52,6 @@ impl Peer {
         let answer = Handshake::accept(gnoblin_proto::Version::new(VERSION.0, VERSION.1, VERSION.2));
         peer.stream.write_all(&answer.encode()).expect("the accept");
         peer.stream.flush().expect("the accept");
-        gnoblin_proto::write_grants(&mut peer.stream, &[]).expect("the grants frame after the accept");
         peer
     }
 

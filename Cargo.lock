@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "clap",
  "gnoblin-compat-host",
@@ -927,28 +927,28 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-a11y"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-animation"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-authority"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-backend"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-animation",
  "gnoblin-config",
@@ -967,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-backend-drm"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
  "gnoblin-config",
@@ -981,7 +981,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-capture"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-lock",
  "gnoblin-types",
@@ -991,14 +991,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-cli-style"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "unicode-width 0.2.3",
 ]
 
 [[package]]
 name = "gnoblin-client"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
@@ -1009,7 +1009,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-core"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-config",
@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-a11y-keyboard-monitor"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-a11y",
@@ -1030,11 +1030,11 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-gnome-session-manager"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 
 [[package]]
 name = "gnoblin-compat-dbus-gnome-shell-introspect"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-client",
@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-gnome-shell-screenshot"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-client",
@@ -1065,14 +1065,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-clipboard"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
 ]
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-displayconfig"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-client",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-idlemonitor"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-client",
@@ -1103,25 +1103,25 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-inputcapture"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
 ]
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-inputmapping"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-remotedesktop"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
 ]
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-screencast"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-compat-core",
@@ -1131,11 +1131,11 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-dbus-mutter-servicechannel"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 
 [[package]]
 name = "gnoblin-compat-gtk-dconf-settings"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
  "gnoblin-log",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-host"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-compat-core",
@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-qt-portal-settings"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
  "gnoblin-session",
@@ -1179,7 +1179,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-wayland-gtk-shell1"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
  "gnoblin-config",
@@ -1195,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-wayland-mutter-x11-interop"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
  "gnoblin-log",
@@ -1210,7 +1210,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compat-x11-xsettings"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
  "gnoblin-log",
@@ -1220,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-compositor"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-a11y",
  "gnoblin-backend",
@@ -1258,7 +1258,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-config"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-config-codegen",
  "gnoblin-layers",
@@ -1271,7 +1271,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-config-codegen"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-cursor"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-types",
@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-input"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-types",
@@ -1301,7 +1301,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-input-eis"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-authority",
  "gnoblin-backend",
@@ -1317,14 +1317,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-keyring-handoff"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "zeroize",
 ]
 
 [[package]]
 name = "gnoblin-keyring-store"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "rusqlite",
@@ -1333,21 +1333,21 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-layers"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-lock"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-lock-auth"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "libloading",
  "zeroize",
@@ -1355,7 +1355,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-log"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-lua"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-client",
  "gnoblin-config",
@@ -1385,11 +1385,11 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-lua-pattern"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 
 [[package]]
 name = "gnoblin-lua-sandbox"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-lua-pattern",
  "mlua",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-model"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
  "gnoblin-testkit",
@@ -1407,14 +1407,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-output"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
 ]
 
 [[package]]
 name = "gnoblin-parity"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-compositor",
  "gnoblin-wayland",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-pipewire-export"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-capture",
  "gnoblin-lock",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-portal"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-appchooser",
@@ -1454,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-portal-appchooser"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
@@ -1464,7 +1464,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-portal-consent"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
@@ -1474,7 +1474,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-portal-core"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
  "gnoblin-types",
@@ -1482,7 +1482,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-portal-filechooser"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
@@ -1492,7 +1492,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-portal-ui"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-portal-core",
@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-proto"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
  "gnoblin-types",
@@ -1515,7 +1515,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-render"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-animation",
  "gnoblin-log",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-render-frame"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-render",
@@ -1535,7 +1535,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-render-gles"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "glow",
  "gnoblin-log",
@@ -1549,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-render-software"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-render",
@@ -1560,7 +1560,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-render-vulkan"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "ash",
  "gnoblin-log",
@@ -1576,7 +1576,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-schema"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-types",
  "serde",
@@ -1585,14 +1585,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-secret"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "zeroize",
 ]
 
 [[package]]
 name = "gnoblin-service-core"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-client",
  "gnoblin-log",
@@ -1604,7 +1604,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-keyring"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "aes",
  "cbc",
@@ -1623,7 +1623,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-location"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-channel",
  "futures-lite",
@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-polkit"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-channel",
  "futures-lite",
@@ -1652,7 +1652,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-privacy"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-log",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-screensaver"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-log",
@@ -1674,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-sessionidle"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-log",
@@ -1686,11 +1686,11 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-service-testkit"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 
 [[package]]
 name = "gnoblin-services"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-client",
@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-session"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-proto",
@@ -1726,7 +1726,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-testkit"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-model",
  "gnoblin-schema",
@@ -1735,11 +1735,11 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-types"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 
 [[package]]
 name = "gnoblin-wayland"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "bitflags",
  "getrandom",
@@ -1771,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-xwayland"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
  "gnoblin-config",
@@ -1785,7 +1785,7 @@ dependencies = [
 
 [[package]]
 name = "gnoblinctl"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "pam-gnoblin-keyring"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-keyring-handoff",
  "rustix 1.1.6",
@@ -3986,7 +3986,7 @@ checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
 
 [[package]]
 name = "xdg-desktop-portal-gnoblin"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "async-io",
  "futures-channel",
@@ -4029,7 +4029,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.2.0-alpha.0"
+version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
  "proc-macro2",

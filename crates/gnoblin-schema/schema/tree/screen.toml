@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.2.0"
+version = "0.3.0"
 
 # The `screen` class: an output, derived from `view` (design/node-core.md, section 2.4). Created and destroyed by the compositor.
 [[object]]

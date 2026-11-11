@@ -275,9 +275,6 @@ impl Agents {
                     RequestCompletion::TimedOut => self.answer(request, &RequestOutcome::TimedOut),
                 }
             }
-            // An extension event reaches only the connections a loaded extension grants,
-            // and the services role is not one of them.
-            gnoblin_client::Event::Extension { .. } => {}
         }
     }
 

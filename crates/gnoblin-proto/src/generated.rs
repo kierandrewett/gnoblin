@@ -4,8 +4,7 @@
 //! schema namespace into `OUT_DIR`, compiles them with `proto/envelope.proto` (the
 //! one hand-written file), and generates the Rust modules from the descriptor set.
 //! The modules are named after the Protocol Buffers package: `gnoblin` is the
-//! compositor's own namespace, and `ipc` is the envelope. An extension's types are not
-//! here: its payloads are opaque to the stock crates and are generated outside this tree.
+//! compositor's own namespace, and `ipc` is the envelope.
 //!
 //! The generated code is allowed to be less tidy than the hand-written code: it is
 //! not reviewed as Rust, and a future protobuf release may emit shapes clippy would

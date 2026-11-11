@@ -49,9 +49,8 @@
 //!   the configuration directory.
 //! - `gnoblin.configure`: the neutral [`gnoblin_config::Value`] tree, validated by
 //!   the configuration layer, so a problem arrives with its path.
-//! - the core object types on `gnoblin` (`gnoblin.window`), and `require` for extension
-//!   namespaces (`require("example.ext")`): the generated bindings, one name per schema
-//!   member, with `gnoblin.d.lua` from the same schema.
+//! - the core object types on `gnoblin` (`gnoblin.window`): the generated bindings, one name
+//!   per schema member, with `gnoblin.d.lua` from the same schema.
 //! - [`Host::pump`]: the only thing that runs a handler, on the caller's ticks.
 //! - [`RoleRunner`]: the runtime role as a process — adopt the privileged connection, load and
 //!   commit the configuration, then serve the handlers until the guardian stops it. It is
@@ -63,8 +62,8 @@
 //! says otherwise.
 //!
 //! 1. **A script escapes the sandbox.** No `io`, `os`, `debug`, `package`,
-//!    `dofile`, `loadfile` or `coroutine` exists; `require` answers only for the
-//!    extension namespaces in the generated catalog, and a binary chunk is refused
+//!    `dofile`, `loadfile` or `coroutine` exists; `require` answers only for a module file
+//!    under the two fixed roots, and a binary chunk is refused
 //!    rather than run:
 //!    `a_script_cannot_reach_the_filesystem_or_a_library_the_sandbox_withholds`.
 //! 2. **An infinite loop hangs the host.** The instruction budget, and the
@@ -116,8 +115,6 @@ mod collections;
 mod configure;
 mod derived;
 mod error;
-mod extension_bindings;
-mod extensions;
 mod glob;
 mod host;
 mod lifecycle;
@@ -144,8 +141,6 @@ pub use bindings::{stub, write_stub};
 /// The error a host returns when it cannot start, and the error a script failure is
 /// reported as.
 pub use error::{HostError, ScriptError};
-/// The registry of loaded extension namespaces, and the reasons one is refused.
-pub use extensions::{ExtensionRegistry, RegistryError};
 /// How the runtime role reads its environment, re-exported from the client that reads a
 /// descriptor out of one.
 pub use gnoblin_client::Environment;

@@ -42,7 +42,6 @@ use mlua::prelude::LuaChunkMode;
 use mlua::{Error, Lua, Table};
 
 use crate::error::{HostError, ScriptError};
-use crate::extensions::ExtensionRegistry;
 use crate::lifecycle;
 use crate::loader::{self, Resolution};
 use crate::process::{Listen, Notice};
@@ -74,8 +73,6 @@ pub(super) enum Watching {
         signal: String,
         once: bool,
     },
-    /// An extension signal, matched by namespace and `Object.Signal` member.
-    Extension { namespace: String, member: String },
     /// The single completion of one operation, delivered at the end of the pump.
     Completion { operation: OperationId },
     /// A derived operation runs its mapping function when its source completes.
@@ -149,8 +146,6 @@ pub(super) struct Shared<T: Transport> {
     pub(super) reported: BTreeSet<String>,
     /// Errors reported since the caller last drained them.
     pub(super) reports: Vec<ScriptError>,
-    /// The extension schemas `require` binds from; a signal's declared fields come from here.
-    pub(super) extensions: ExtensionRegistry,
     /// The configuration VM's modules for one evaluation, so a plain `require` runs each
     /// module once. `None` outside an evaluation.
     pub(super) modules: Option<Rc<crate::require::Modules>>,
@@ -238,18 +233,6 @@ impl<T: Transport> Shared<T> {
                         && watched_type == object_type
                         && watched_signal == signal
                 )
-            })
-            .map(|(id, _)| *id)
-            .collect()
-    }
-
-    /// The handlers waiting on one extension signal, in registration order.
-    pub(super) fn extension_handlers(&self, namespace: &str, member: &str) -> Vec<u64> {
-        self.handlers
-            .iter()
-            .filter(|(_, watching)| {
-                matches!(watching, Watching::Extension { namespace: watched, member: watched_member }
-                    if watched == namespace && watched_member == member)
             })
             .map(|(id, _)| *id)
             .collect()
@@ -440,20 +423,7 @@ impl<T: Transport + 'static> Host<T> {
     ///
     /// The subscription happens here, before any script runs, so a property read
     /// is never an empty mirror because of start-up order.
-    pub fn new(client: Client<T>, limits: Limits) -> Result<Host<T>, HostError> {
-        Host::with_extensions(client, limits, &ExtensionRegistry::new())
-    }
-
-    /// Connect the host to a live graph, with the extension namespaces it has loaded.
-    ///
-    /// `require` answers only for a namespace that is loaded here and granted to this
-    /// connection by the compositor. A loaded namespace that was not granted is refused
-    /// by name, and a namespace that is not loaded is an unknown module.
-    pub fn with_extensions(
-        mut client: Client<T>,
-        limits: Limits,
-        extensions: &ExtensionRegistry,
-    ) -> Result<Host<T>, HostError> {
+    pub fn new(mut client: Client<T>, limits: Limits) -> Result<Host<T>, HostError> {
         let snapshot = client.subscribe(Filter::All).map_err(HostError::Subscribe)?;
         let mirror: BTreeMap<ObjectId, ObjectView> = snapshot
             .objects()
@@ -481,7 +451,6 @@ impl<T: Transport + 'static> Host<T> {
             configuring: false,
             reported: BTreeSet::new(),
             reports: Vec::new(),
-            extensions: ExtensionRegistry::new(),
             modules: None,
             reload_requested: false,
             reload_failures: 0,
@@ -490,32 +459,12 @@ impl<T: Transport + 'static> Host<T> {
             reloads: 0,
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
-        let mut host = Host {
+        Ok(Host {
             lua,
             shared,
             guard,
             limits,
-        };
-        host.bind_extensions(extensions)?;
-        Ok(host)
-    }
-
-    /// Bind the extension namespaces this connection was granted, from `extensions`.
-    ///
-    /// A namespace gets a `require` entry only when the host loaded it and the compositor
-    /// granted it to this connection. Calling this again replaces the entries, so a host
-    /// is bound once from the registry the compositor built.
-    pub fn bind_extensions(&mut self, extensions: &ExtensionRegistry) -> Result<(), HostError> {
-        let granted: BTreeSet<String> = self
-            .shared
-            .borrow()
-            .client
-            .granted_extensions()
-            .iter()
-            .map(|grant| grant.namespace.clone())
-            .collect();
-        self.shared.borrow_mut().extensions = extensions.clone();
-        crate::extension_bindings::bind(&self.lua, &self.shared, extensions, &granted).map_err(HostError::Sandbox)
+        })
     }
 
     /// The connection, for a role that has a privileged member to send.
@@ -920,11 +869,6 @@ impl<T: Transport + 'static> Host<T> {
     fn dispatch(&mut self, event: Event, handlers: &mut usize) {
         match event {
             Event::Model(observation) => self.observe(observation, handlers),
-            Event::Extension {
-                namespace,
-                member,
-                fields,
-            } => self.run_extension_signal(&namespace, &member, &fields, handlers),
             // A request's answer goes only to the connection that offered it, so a script
             // never sees one. Its completion arrives on `finished`.
             Event::RequestAnswered { .. } => {}
@@ -1205,30 +1149,6 @@ impl<T: Transport + 'static> Host<T> {
             if once {
                 self.forget_callback(id);
             }
-        }
-    }
-
-    /// Run every handler watching one extension signal, with its fields as a table.
-    fn run_extension_signal(&mut self, namespace: &str, member: &str, fields: &Fields, handlers: &mut usize) {
-        // A signal the schema does not declare, or one of a secret object, is dropped.
-        let declared = {
-            let shared = self.shared.borrow();
-            crate::extension_bindings::signal_fields(&shared.extensions, namespace, member)
-        };
-        let Some(declared) = declared else {
-            return;
-        };
-        match crate::extension_bindings::signal_table(&self.lua, &declared, fields) {
-            Ok(arguments) => {
-                let waiting = self.shared.borrow().extension_handlers(namespace, member);
-                for id in waiting {
-                    // A handler that ran may have unsubscribed another one.
-                    if self.shared.borrow().handlers.contains_key(&id) {
-                        self.run_handler(id, Some(LuaValue::Table(arguments.clone())), handlers);
-                    }
-                }
-            }
-            Err(error) => self.report(ScriptError::from_lua(&error)),
         }
     }
 

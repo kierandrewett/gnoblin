@@ -19,7 +19,7 @@
 # mask through unchanged; the compositor grants what it can serve and refuses a
 # request for a capability it cannot.
 namespace = "gnoblin"
-version = "0.2.0"
+version = "0.3.0"
 
 [[object]]
 name = "eis"

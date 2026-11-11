@@ -36,7 +36,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gnoblin_proto::{CodecError, Envelope, Grant, HANDSHAKE_LEN, Handshake, read_frame, read_grants, write_frame};
+use gnoblin_proto::{CodecError, Envelope, HANDSHAKE_LEN, Handshake, read_frame, write_frame};
 
 use crate::error::HandshakeError;
 use crate::transport::Transport;
@@ -123,16 +123,16 @@ impl UnixTransport {
     }
 
     /// Give back the stream under the transport, for a caller that hands the socket to
-    /// another reader once the handshake and grants are done.
+    /// another reader once the handshake is done.
     ///
     /// # Errors
     ///
-    /// When the reader holds bytes past the grants, which the caller would lose. A
+    /// When the reader holds bytes past the handshake, which the caller would lose. A
     /// session that has only handshaken never has any, because the compositor sends
     /// nothing until the client asks for something.
     pub fn into_stream(self) -> io::Result<UnixStream> {
         if !self.reader.buffer().is_empty() {
-            return Err(io::Error::other("the session socket holds bytes past its grants"));
+            return Err(io::Error::other("the session socket holds bytes past its handshake"));
         }
         Ok(self.reader.into_inner())
     }
@@ -192,10 +192,6 @@ impl Transport for UnixTransport {
             }
         }
         Handshake::decode(&frame).map_err(HandshakeError::Codec)
-    }
-
-    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError> {
-        read_grants(&mut self.reader).map_err(HandshakeError::Codec)
     }
 }
 

@@ -129,4 +129,19 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn this_build_refuses_a_client_built_before_the_grants_frame_went() {
+        // IPC 0.2.x clients read a grants frame after every accept and this build sends none, so
+        // the version moved to 0.3.0 and the caret rule keeps them out with a refusal that names both.
+        let (major, minor, patch) = crate::IPC_VERSION;
+        let server = Version::new(major, minor, patch);
+        assert!(accepts(server, server), "this build serves its own version");
+        for old in ["0.2.0", "0.2.9"] {
+            let mismatch = check(server, version(old)).expect_err("a client that reads a grants frame is refused");
+            let message = mismatch.to_string();
+            assert!(message.contains(&format!("compositor IPC {server}")), "{message}");
+            assert!(message.contains(&format!("client IPC {old}")), "{message}");
+        }
+    }
 }
