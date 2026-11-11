@@ -22,7 +22,7 @@ local function window_setup(props)
     local screen = root:add(Screen({ width = 1000, height = 800 }))
     local win = root:add(Window(props))
     H.load_shell()
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     H.start_shell(host)
     return host, win
 end
@@ -98,7 +98,7 @@ return {
             H.check(win.parent == root, "before the shell the window must wait under root")
 
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             H.check(win.parent ~= root, "the shell must place the window when it starts")
             H.check(win.parent == desk().active, "the window must go into desk().active")
@@ -116,7 +116,7 @@ return {
             local screen = root:add(Screen({ width = 1000, height = 800 }))
             local win = root:add(Window({ app_id = "foot" }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             H.check(win.data.placed == true, "the first shell places the window")
             local win_ids = host.ids("Window")
@@ -157,7 +157,7 @@ return {
             root:add(Lock({}))
             local screen = root:add(Screen({ width = 1000, height = 800 }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
 
             local parent = desk().active:add(Window({ app_id = "editor" }))
@@ -184,7 +184,7 @@ return {
             -- it afterwards is not a first add, so `ready` does not place it again.
             local parent = root:add(Window({ app_id = "editor" }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
 
             local other = desk().space.children[2]
@@ -373,7 +373,7 @@ return {
             local b = root:add(Window({ app_id = "b" }))
             local c = root:add(Window({ app_id = "c" }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             H.frame(host, 1, {})
             local names = { [a] = "a", [b] = "b", [c] = "c" }
@@ -446,11 +446,11 @@ return {
         function()
             local core, host = require("fake_core")()
             H.boot(core, host)
-            root:add(Seat({ edge_tiling = true }))
+            root:add(Seat({}))
             local screen = root:add(Screen({ width = 1000, height = 800 }))
             local win = root:add(Window({ app_id = "foot" }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1], edge_tiling = true })
             H.start_shell(host)
             H.check(win:snap("right"), "the snap must tile")
             H.check(

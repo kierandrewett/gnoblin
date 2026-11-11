@@ -15,7 +15,7 @@ local function shell_with(class, n, extra)
         wins[i] = root:add(Window({ app_id = "w" .. i }))
     end
     H.load_shell()
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     class = _G[class] -- the stock library defines the layouts when it loads
     function Desk:workspace(name)
         local spec = { name = name }

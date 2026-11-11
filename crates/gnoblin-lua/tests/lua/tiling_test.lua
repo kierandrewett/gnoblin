@@ -15,7 +15,7 @@ local function workspace(class, spec)
     local screen = root:add(Screen({ width = 1000, height = 800 }))
     H.load_shell()
     dofile(GNOBLIN_LUA_DIR .. "/shell/tiling.lua")
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     spec = spec or {}
     -- The desk builds its nine workspaces through Desk:workspace; every one is `class`, and desk().active is the first.
     function Desk:workspace(name)

@@ -10,7 +10,7 @@ local function setup()
     local lock = root:add(Lock({}))
     local screen = root:add(Screen({ width = 1000, height = 800 }))
     H.load_shell()
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     H.start_shell(host)
     return host, host.ids("Lock")[1], lock
 end
@@ -30,7 +30,7 @@ local function window_setup(props)
     local screen = root:add(Screen({ width = 1000, height = 800 }))
     local win = root:add(Window(props))
     H.load_shell()
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     H.start_shell(host)
     return host, win
 end
@@ -165,7 +165,7 @@ return {
             local screen = root:add(Screen({ width = 1000, height = 800 }))
             local win = root:add(Window({ app_id = "foot", title = "term" }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             H.check(#win:all(Titlebar) == 1, "a ready window must get exactly one titlebar")
         end,
@@ -224,7 +224,7 @@ return {
             local screen = root:add(Screen({ width = 1000, height = 800 }))
             local win = root:add(Window({ app_id = "foot" }))
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             go(function()
                 win:vanish()
@@ -315,13 +315,13 @@ return {
             local bar = titlebar_ids(host)
             local a = root:add(Window({ app_id = "other" }))
             H.frame(host, 2, {})
-            H.check(win.parent:children()[#win.parent:children()] == a, "a starts above win")
+            H.check(win.parent.children[#win.parent.children] == a, "a starts above win")
             H.frame(
                 host,
                 3,
                 { { type = "press", bubbles = true, target = bar, button = 274, x = 5, y = 5, args = {} } }
             )
-            H.check(win.parent:children()[1] == win, "a titlebar middle click must lower the window to the bottom")
+            H.check(win.parent.children[1] == win, "a titlebar middle click must lower the window to the bottom")
         end,
     },
     {
@@ -339,7 +339,7 @@ return {
                 { { type = "press", bubbles = true, target = bar, button = 273, x = 40, y = 9, args = {} } }
             )
             H.check(
-                win.parent:children()[#win.parent:children()] == a,
+                win.parent.children[#win.parent.children] == a,
                 "right_click = menu is a no-op until the core has a menu"
             )
             host.external(seat_id, "right_click", "lower")
@@ -348,11 +348,11 @@ return {
                 4,
                 { { type = "press", bubbles = true, target = bar, button = 273, x = 40, y = 9, args = {} } }
             )
-            H.check(win.parent:children()[1] == win, "right_click = lower must lower the window")
+            H.check(win.parent.children[1] == win, "right_click = lower must lower the window")
         end,
     },
     {
-        "a titlebar double click toggles maximize, and a slow second click does not",
+        "a titlebar double click toggles maximize",
         function()
             local host, win = window_setup({ app_id = "foot" })
             H.frame(host, 1, {})
@@ -368,6 +368,14 @@ return {
                 { { type = "press", bubbles = true, target = bar, button = 272, x = 5, y = 5, args = {} } }
             )
             H.check(win.maximised == true, "a double click must maximise the window")
+        end,
+    },
+    {
+        "a slow second click is not a double click",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            H.frame(host, 1, {})
+            local bar = titlebar_ids(host)
             H.frame(
                 host,
                 5,
@@ -378,7 +386,7 @@ return {
                 6,
                 { { type = "press", bubbles = true, target = bar, button = 272, x = 5, y = 5, args = {} } }
             )
-            H.check(win.maximised == true, "two presses 4 s apart are not a double click")
+            H.check(win.maximised ~= true, "two presses 1 s apart are not a double click")
         end,
     },
     {
@@ -402,19 +410,18 @@ return {
         end,
     },
     {
-        "an unknown titlebar action on the seat raises",
+        "an unknown titlebar action on the seat is reported",
         function()
             local host, win = window_setup({ app_id = "foot" })
             H.frame(host, 1, {})
             local bar = titlebar_ids(host)
             host.external(host.ids("Seat")[1], "middle_click", "explode")
-            local ok = pcall(
-                H.frame,
+            H.frame(
                 host,
                 2,
                 { { type = "press", bubbles = true, target = bar, button = 274, x = 5, y = 5, args = {} } }
             )
-            H.check(not ok, "an unknown titlebar action must raise, not be ignored")
+            H.check(#host.reports == 1, "an unknown titlebar action must be reported, got " .. #host.reports)
         end,
     },
     {

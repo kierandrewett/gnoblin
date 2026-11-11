@@ -356,6 +356,12 @@ return function()
         return id
     end
     function host.frame(now, events)
+        -- gnoblin.timers.now() reads the frame clock, in seconds, as the Rust binding does.
+        gnoblin = gnoblin or {}
+        gnoblin.timers = gnoblin.timers or {}
+        gnoblin.timers.now = function()
+            return now or 0
+        end
         local pending, born = changes, created
         changes, created = {}, {}
         local list = {}

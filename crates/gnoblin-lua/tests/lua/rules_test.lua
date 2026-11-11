@@ -27,7 +27,7 @@ local function shell(rules, props)
     root:find(Seat).data.window_rules = rules
     H.load_shell()
     local w = root:add(Window(props))
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     H.start_shell(host)
     return core, host, w
 end

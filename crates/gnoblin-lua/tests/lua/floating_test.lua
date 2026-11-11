@@ -20,7 +20,7 @@ local function shell()
     root:add(Lock({}))
     local screen = root:add(Screen({ width = 1000, height = 800 }))
     H.load_shell()
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1] })
     H.start_shell(host)
     return core, host
 end
@@ -133,7 +133,7 @@ return {
                 host.external(id, "height", 300)
             end
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             local ws = desk().active
             H.check(a.parent == ws and b.parent == ws, "both windows must be in the active workspace")
@@ -210,7 +210,7 @@ return {
             host.external(id, "width", 500)
             host.external(id, "height", 400)
             H.load_shell()
-            root:find(Seat).screen = screen
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
             H.start_shell(host)
             local win = desk().active.children[1]
             H.check(win.width == 500 and win.height == 400, ("want 500x400, got %dx%d"):format(win.width, win.height))

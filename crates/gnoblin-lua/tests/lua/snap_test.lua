@@ -12,11 +12,11 @@ local AREA = { x = 0, y = 32, w = 1920, h = 1048 }
 local function shell_window(props, edge_tiling)
     local core, host = require("fake_core")()
     H.boot(core, host)
-    local seat = root:add(Seat({ edge_tiling = edge_tiling }))
+    local seat = root:add(Seat({}))
     local screen = root:add(Screen({ width = 1000, height = 800 }))
     local win = root:add(Window(props))
     H.load_shell()
-    root:find(Seat).screen = screen
+    H.publish_seat(host, { screen = host.ids("Screen")[1], edge_tiling = edge_tiling })
     H.start_shell(host)
     H.frame(host, 1, {})
     return host, win

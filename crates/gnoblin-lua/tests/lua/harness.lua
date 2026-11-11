@@ -52,6 +52,16 @@ function H.start_shell(host)
     host.frame(0, {})
 end
 
+-- Seat state the compositor owns: its readonly props (the screen, edge_tiling, ...). Gnoblin changes them on its
+-- own, so the fake publishes them through `host.external` (delivered in the next frame), as set_focus_options does.
+-- Node values are passed as ids: `host.ids("Screen")[1]`.
+function H.publish_seat(host, props)
+    local seat = host.ids("Seat")[1]
+    for k, v in pairs(props) do
+        host.external(seat, k, v)
+    end
+end
+
 -- One frame at time `now` with the given events. Returns the host's wake time.
 function H.frame(host, now, events)
     return host.frame(now or 0, events or {})
