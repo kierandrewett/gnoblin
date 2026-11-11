@@ -1210,6 +1210,247 @@ fn a_touch_point_on_a_destroyed_window_ends_with_an_up() {
     });
 }
 
+/// Where two overlapping windows can each be touched alone: the surface origin and a point only that window covers,
+/// for the windows `first` and `second` name. The point is kept clear of the other window's edge, where a hit test
+/// could go either way.
+fn touch_spots(session: &Handle, first: &str, second: &str) -> [(Point, Point); 2] {
+    let observation = session.wait_for(|observation| observation.windows().count() == 2);
+    let frame_of = |app_id: &str| {
+        drawn_buffer(
+            observation
+                .windows()
+                .find(|window| window.app_id == app_id)
+                .expect("the window")
+                .geometry,
+        )
+    };
+    let margin =
+        |rect: gnoblin_types::Rect| gnoblin_types::Rect::new(rect.x - 8, rect.y - 8, rect.width + 16, rect.height + 16);
+    let (first, second) = (frame_of(first), frame_of(second));
+    [
+        (Point::new(first.x, first.y), point_only_in(first, &[margin(second)])),
+        (Point::new(second.x, second.y), point_only_in(second, &[margin(first)])),
+    ]
+}
+
+/// The down or motion a client is expected to receive for touch id `id` at `at`, on a surface whose origin is `origin`.
+fn report(id: i32, origin: Point, at: Point) -> (i32, f64, f64) {
+    (id, f64::from(at.x - origin.x), f64::from(at.y - origin.y))
+}
+
+/// Two clients, each with one window that has a touch device, and a point that only its own window covers. The
+/// second window is mapped last, so it is topmost and overlaps the first.
+struct TouchPair {
+    first: Client,
+    first_window: Window,
+    first_at: Point,
+    first_origin: Point,
+    second: Client,
+    /// Held so the window stays mapped; no test acts on it.
+    _second_window: Window,
+    second_at: Point,
+    second_origin: Point,
+}
+
+impl TouchPair {
+    fn map(session: &Handle) -> Self {
+        let mut first = Client::app(session.socket());
+        let first_window = first.map_window("org.gnoblin.TouchFirst");
+        session.focused_window();
+        let mut second = Client::app(session.socket());
+        let second_window = second.map_window("org.gnoblin.TouchSecond");
+        let [(first_origin, first_at), (second_origin, second_at)] =
+            touch_spots(session, "org.gnoblin.TouchFirst", "org.gnoblin.TouchSecond");
+        first.touch_device();
+        second.touch_device();
+        Self {
+            first,
+            first_window,
+            first_at,
+            first_origin,
+            second,
+            _second_window: second_window,
+            second_at,
+            second_origin,
+        }
+    }
+}
+
+/// Two clients touch their own windows at the same time: each gets the down, motion, up and frame of its own point
+/// and nothing of the other's, with the slot as the id, and a frame that closes only its own batch.
+#[test]
+fn two_clients_touching_at_once_each_get_only_their_own_point() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut pair = TouchPair::map(session);
+
+        session.touch(0, pair.first_at, TouchPhase::Down);
+        session.touch(1, pair.second_at, TouchPhase::Down);
+        let first = pair.first.wait_for(|state| state.touch_frames == 1);
+        assert_eq!(
+            first.touch_downs,
+            vec![report(0, pair.first_origin, pair.first_at)],
+            "the first client got its own down and not the second's"
+        );
+        let second = pair.second.wait_for(|state| state.touch_frames == 1);
+        assert_eq!(
+            second.touch_downs,
+            vec![report(1, pair.second_origin, pair.second_at)],
+            "the second client got its own down and not the first's"
+        );
+
+        // The second finger moves: only the second client hears of it.
+        let moved = Point::new(pair.second_at.x + 4, pair.second_at.y + 4);
+        session.touch(1, moved, TouchPhase::Motion);
+        let second = pair.second.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(second.touch_motions, vec![report(1, pair.second_origin, moved)]);
+
+        // The first finger lifts: only the first client hears of it.
+        session.touch(0, pair.first_at, TouchPhase::Up);
+        let first = pair.first.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(first.touch_ups, vec![0]);
+        assert!(
+            first.touch_motions.is_empty(),
+            "the second client's motion did not reach the first"
+        );
+
+        session.touch(1, moved, TouchPhase::Up);
+        let second = pair.second.wait_for(|state| state.touch_frames == 3);
+        assert_eq!(second.touch_ups, vec![1]);
+
+        // Round trips on both settle anything a wrong route would still have sent.
+        pair.first.roundtrip();
+        pair.second.roundtrip();
+        assert_eq!(
+            pair.first.state.touch_frames, 2,
+            "the first client's frames are its own batches only"
+        );
+        assert_eq!(
+            pair.second.state.touch_frames, 3,
+            "the second client's frames are its own batches only"
+        );
+        assert_eq!(pair.first.state.touch_downs.len(), 1);
+        assert_eq!(pair.second.state.touch_downs.len(), 1);
+        assert_eq!(pair.first.state.touch_cancels + pair.second.state.touch_cancels, 0);
+    });
+}
+
+/// A window destroyed under a finger ends that finger alone: its client gets the up and a frame, the other client's
+/// point stays down and ends normally.
+#[test]
+fn destroying_one_clients_window_ends_only_its_point() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut pair = TouchPair::map(session);
+        session.touch(0, pair.first_at, TouchPhase::Down);
+        session.touch(1, pair.second_at, TouchPhase::Down);
+        pair.first.wait_for(|state| state.touch_frames == 1);
+        pair.second.wait_for(|state| state.touch_frames == 1);
+
+        pair.first_window.toplevel.destroy();
+        pair.first_window.xdg_surface.destroy();
+        pair.first_window.surface.destroy();
+        let first = pair.first.wait_for(|state| !state.touch_ups.is_empty());
+        assert_eq!(first.touch_ups, vec![0], "the destroyed window's point lifted");
+        assert_eq!(first.touch_cancels, 0);
+        assert_eq!(first.touch_frames, 2, "the up is closed by a frame");
+
+        // The second client heard nothing of it, and its point goes on.
+        pair.second.roundtrip();
+        assert!(
+            pair.second.state.touch_ups.is_empty(),
+            "the second client's point is still down"
+        );
+        assert_eq!(pair.second.state.touch_cancels, 0);
+        assert_eq!(pair.second.state.touch_frames, 1);
+
+        let moved = Point::new(pair.second_at.x + 4, pair.second_at.y + 4);
+        session.touch(1, moved, TouchPhase::Motion);
+        let second = pair.second.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(second.touch_motions.len(), 1, "the surviving point still moves");
+        session.touch(1, moved, TouchPhase::Up);
+        let second = pair.second.wait_for(|state| state.touch_frames == 3);
+        assert_eq!(second.touch_ups, vec![1], "the surviving point ends with its own up");
+
+        pair.first.roundtrip();
+        assert_eq!(
+            pair.first.state.touch_frames, 2,
+            "the first client heard nothing after its point ended"
+        );
+        assert_eq!(pair.first.state.touch_motions.len(), 0);
+    });
+}
+
+/// A client that disconnects with a finger down on its window takes only its own point with it.
+#[test]
+fn one_client_disconnecting_does_not_disturb_anothers_touch() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut pair = TouchPair::map(session);
+        session.touch(0, pair.first_at, TouchPhase::Down);
+        session.touch(1, pair.second_at, TouchPhase::Down);
+        pair.first.wait_for(|state| state.touch_frames == 1);
+        pair.second.wait_for(|state| state.touch_frames == 1);
+
+        let TouchPair {
+            first,
+            first_window,
+            second_at,
+            second_origin,
+            mut second,
+            ..
+        } = pair;
+        drop(first_window);
+        drop(first);
+        session.wait_for(|observation| observation.windows().count() == 1);
+
+        second.roundtrip();
+        assert!(
+            second.state.touch_ups.is_empty(),
+            "the second client's point is still down"
+        );
+        assert_eq!(second.state.touch_cancels, 0);
+        assert_eq!(second.state.touch_frames, 1);
+
+        let moved = Point::new(second_at.x + 4, second_at.y + 4);
+        session.touch(1, moved, TouchPhase::Motion);
+        let state = second.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(state.touch_motions, vec![report(1, second_origin, moved)]);
+        session.touch(1, moved, TouchPhase::Up);
+        let state = second.wait_for(|state| state.touch_frames == 3);
+        assert_eq!(state.touch_ups, vec![1]);
+
+        // The lift of the vanished client's slot is a no-op: a late up for it reaches nobody.
+        session.touch(0, Point::new(0, 0), TouchPhase::Up);
+        second.roundtrip();
+        assert_eq!(second.state.touch_frames, 3);
+    });
+}
+
+/// The same holds for two windows of one client: a second finger on the second window reports the position on that
+/// window, not on the window the first finger went down on.
+#[test]
+fn two_windows_of_one_client_each_get_the_point_on_them() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _first = client.map_window("org.gnoblin.SameFirst");
+        session.focused_window();
+        let _second = client.map_window("org.gnoblin.SameSecond");
+        let [(first_origin, first_at), (second_origin, second_at)] =
+            touch_spots(session, "org.gnoblin.SameFirst", "org.gnoblin.SameSecond");
+        client.touch_device();
+
+        session.touch(0, first_at, TouchPhase::Down);
+        session.touch(1, second_at, TouchPhase::Down);
+        let state = client.wait_for(|state| state.touch_frames == 2);
+        assert_eq!(
+            state.touch_downs,
+            vec![report(0, first_origin, first_at), report(1, second_origin, second_at)]
+        );
+    });
+}
+
 #[test]
 fn each_touch_point_keeps_its_own_id() {
     let session = Session::start();
