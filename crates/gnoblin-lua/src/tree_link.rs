@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
-    AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload,
+    TransactArgs,
 };
 use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
@@ -240,12 +241,14 @@ fn to_op(op: &LuaOp) -> op::Properties {
             node,
             method,
             args,
+            token,
             text,
         } => op::Properties {
             kind: "call".to_owned(),
             node: *node,
             method: method.clone(),
             args: args.clone(),
+            token: *token,
             text: text.expose().to_owned(),
             ..Default::default()
         },
@@ -339,6 +342,16 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             Ok(LuaIncoming::Changes {
                 serial: payload.serial,
                 changes,
+            })
+        }
+        (Some(Kind::Event(_)), "answer") => {
+            let payload = envelope
+                .payload_as::<AnswerPayload>()
+                .ok_or_else(|| undecodable(member))?;
+            Ok(LuaIncoming::Answer {
+                token: payload.token,
+                result: payload.result,
+                error: payload.error,
             })
         }
         _ => Err(LinkError(format!(

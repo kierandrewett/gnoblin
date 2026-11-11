@@ -156,18 +156,21 @@ fn seat_claim_calls_are_captured_in_op_order_and_others_are_not() {
                 index: None,
             },
             TreeOp::TreeCall {
+                token: 1,
                 node: seat,
                 method: "claim".to_owned(),
                 args: vec![7],
                 text: SecretText::new("Ctrl+Shift+P"),
             },
             TreeOp::TreeCall {
+                token: 2,
                 node: other,
                 method: "claim".to_owned(),
                 args: vec![9],
                 text: SecretText::new("Ctrl+Q"),
             },
             TreeOp::TreeCall {
+                token: 3,
                 node: seat,
                 method: "unclaim".to_owned(),
                 args: vec![7],

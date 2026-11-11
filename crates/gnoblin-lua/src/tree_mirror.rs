@@ -152,6 +152,8 @@ pub enum LuaOp {
         node: NodeId,
         method: String,
         args: Vec<u8>,
+        /// The token the compositor answers this call under.
+        token: u64,
         /// The op's text: a seat claim's chord, or a password. Empty for every other call. Held
         /// as a [`SecretText`], so it never prints; the transaction wipes it after the send.
         text: SecretText,
@@ -760,6 +762,7 @@ impl LuaTxBuilder {
         node: NodeId,
         method: &str,
         args: Vec<u8>,
+        token: u64,
         text: SecretText,
     ) -> Result<(), TxError> {
         self.require(base, node)?;
@@ -767,6 +770,7 @@ impl LuaTxBuilder {
             node,
             method: method.to_owned(),
             args,
+            token,
             text,
         });
         Ok(())

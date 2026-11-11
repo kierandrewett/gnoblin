@@ -423,6 +423,12 @@ type = "string"
 since = "0.2.0"
 default = ""
 
+# The `token` of a `call`: the compositor echoes it in the `answer` that carries the result.
+[[object.property]]
+name = "token"
+type = "uint"
+since = "0.2.0"
+
 # One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the
 # fields the kind does not use are zero or empty.
 [[object]]

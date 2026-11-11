@@ -491,6 +491,7 @@ fn f27_unknown_method_is_unknown_member() {
             node: window,
             method: "explode".into(),
             args: Vec::new(),
+            token: 1,
             text: SecretText::default(),
         }],
     );
@@ -609,6 +610,7 @@ fn call_is_validated_and_recorded_in_applied() {
             node: window,
             method: "focus".into(),
             args: vec![1, 2],
+            token: 2,
             text: SecretText::default(),
         }]),
     )
@@ -783,6 +785,7 @@ fn debug_of_a_call_carrier_never_shows_its_text() {
         node: NodeId::new(0x100),
         method: "claim".to_owned(),
         args: vec![7],
+        token: 3,
         text: SecretText::new(SECRET),
     };
     let transaction = TreeTransaction::new(vec![call()]);
@@ -797,6 +800,7 @@ fn debug_of_a_call_carrier_never_shows_its_text() {
                 node: NodeId::new(0x100),
                 method: "claim".to_owned(),
                 args: vec![7],
+                token: 3,
                 text: SecretText::new(SECRET),
             }
         ),
@@ -806,6 +810,7 @@ fn debug_of_a_call_carrier_never_shows_its_text() {
                 node: NodeId::new(0x100),
                 method: "claim".to_owned(),
                 args: vec![7],
+                token: 3,
                 text: SecretText::new(SECRET),
             }
         ),

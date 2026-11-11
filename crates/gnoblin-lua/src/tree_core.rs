@@ -95,6 +95,8 @@ pub struct TreeCore {
     tick: LuaTxBuilder,
     classes: Vec<ClassSpec>,
     counter: u64,
+    /// The last call token handed out; the compositor echoes it back in `answer`.
+    tokens: u64,
     reports: Vec<String>,
 }
 
@@ -123,6 +125,7 @@ impl TreeCore {
             tick: LuaTxBuilder::new(),
             classes,
             counter: 0,
+            tokens: 0,
             reports: Vec::new(),
         })))
     }
@@ -274,13 +277,16 @@ impl TreeCore {
             .map_err(|e| e.to_string())
     }
 
-    fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: SecretText) -> Result<(), String> {
+    fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: SecretText) -> Result<u64, String> {
         let class = self.class_of(node)?;
         if !self.has_method(&class, method) {
             return Err(format!("{class} has no method {method}"));
         }
+        self.tokens += 1;
+        let token = self.tokens;
         self.tick
-            .call(&self.mirror, node, method, args, text)
+            .call(&self.mirror, node, method, args, token, text)
+            .map(|()| token)
             .map_err(|e| e.to_string())
     }
 }
@@ -592,7 +598,7 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
         lua.create_function(
             move |_, (node, method, args, text): (i64, String, Option<mlua::LuaString>, Option<String>)| {
                 let args = args.map_or_else(Vec::new, |bytes| bytes.as_bytes().to_vec());
-                shared
+                let token = shared
                     .borrow_mut()
                     .call(
                         node_arg(node)?,
@@ -600,7 +606,8 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
                         args,
                         SecretText::new(text.unwrap_or_default()),
                     )
-                    .map_err(lua_err)
+                    .map_err(lua_err)?;
+                i64::try_from(token).map_err(lua_err)
             },
         )?,
     )?;

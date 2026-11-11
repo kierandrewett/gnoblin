@@ -487,6 +487,7 @@ fn tree_op(mut op: op::Properties) -> Result<TreeOp, Code> {
                 method: std::mem::take(&mut op.method),
                 args: call_args(&op.args)?,
                 text,
+                token: op.token,
             }
         }
         _ => return Err(Code::BadValue),
@@ -703,6 +704,7 @@ mod tests {
                     method: "claim".to_owned(),
                     args: vec![7],
                     text: SecretText::new(PASSWORD),
+                    token: 1,
                 },
             ]),
             || true,

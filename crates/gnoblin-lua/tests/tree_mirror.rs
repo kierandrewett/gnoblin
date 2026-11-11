@@ -228,7 +228,14 @@ fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
     assert!(tx.node(&mirror, 4).is_none());
     assert_eq!(tx.node(&mirror, 1).expect("root").children, vec![3]);
     assert_eq!(
-        tx.call(&mirror, 4, "measure", Vec::new(), gnoblin_secret::SecretText::default()),
+        tx.call(
+            &mirror,
+            4,
+            "measure",
+            Vec::new(),
+            1,
+            gnoblin_secret::SecretText::default()
+        ),
         Err(TxError::UnknownNode(4))
     );
 }
@@ -394,6 +401,7 @@ fn debug_of_a_lua_call_never_shows_its_text() {
         node: 5,
         method: "claim".to_owned(),
         args: vec![7],
+        token: 1,
         text: gnoblin_secret::SecretText::new(SECRET),
     };
     let transaction = gnoblin_lua::tree_mirror::LuaTransaction {

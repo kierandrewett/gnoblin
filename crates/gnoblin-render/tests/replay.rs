@@ -512,6 +512,7 @@ fn parse_op(keyword: &str, line: &mut Line<'_>) -> Result<TreeOp, ParseError> {
                 node,
                 method,
                 args,
+                token: 0,
                 text: SecretText::default(),
             })
         }
@@ -874,6 +875,7 @@ impl Generator {
                 node,
                 method: "focus".into(),
                 args: Vec::new(),
+                token: 0,
                 text: SecretText::default(),
             },
         }

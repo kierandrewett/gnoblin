@@ -564,6 +564,7 @@ object op since 0.2.0 secret false
   property dx type double since 0.2.0 secret false
   property dy type double since 0.2.0 secret false
   property text type string since 0.2.0 secret true
+  property token type uint since 0.2.0 secret false
 object change since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -2188,6 +2189,8 @@ message Op {
     double dy = 29;
     // since 0.2.0; secret: every frame carrying this field is flagged sensitive
     string text = 30;
+    // since 0.2.0
+    uint64 token = 31;
   }
 }
 

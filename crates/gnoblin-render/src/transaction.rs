@@ -296,6 +296,8 @@ pub enum TreeOp {
         args: Vec<i64>,
         /// The text argument, such as a claim's chord; empty for every other call.
         text: SecretText,
+        /// The token the compositor answers the call under, echoed back in `answer`.
+        token: u64,
     },
     /// Create a node of a class, with a caller-chosen id. It starts unparented.
     New {
@@ -413,6 +415,8 @@ pub struct TreeCall {
     pub args: Vec<i64>,
     /// The text argument; empty for a call that takes none. Secret: a password is one.
     pub text: SecretText,
+    /// The token the answer carries back.
+    pub token: u64,
 }
 
 /// A pointer input a window's client receives through a seat.
@@ -505,7 +509,19 @@ fn apply_op(
             method,
             args,
             text,
-        } => call_method(work, classes, node, method, args, text, applied),
+            token,
+        } => call_method(
+            work,
+            classes,
+            TreeCall {
+                node,
+                method,
+                args,
+                text,
+                token,
+            },
+            applied,
+        ),
         TreeOp::Set {
             node,
             key,
@@ -579,28 +595,15 @@ fn destroy_node(work: &mut Scene, actor: Actor, node: NodeId, applied: &mut Tree
     Ok(())
 }
 
-fn call_method(
-    work: &Scene,
-    classes: &dyn ClassInfo,
-    node: NodeId,
-    method: String,
-    args: Vec<i64>,
-    text: SecretText,
-    applied: &mut TreeApplied,
-) -> Result<(), Code> {
-    if !work.contains(node) {
+fn call_method(work: &Scene, classes: &dyn ClassInfo, call: TreeCall, applied: &mut TreeApplied) -> Result<(), Code> {
+    if !work.contains(call.node) {
         return Err(Code::UnknownNode);
     }
-    let class = work.class(node).unwrap_or("");
-    if !classes.has_method(class, &method) {
+    let class = work.class(call.node).unwrap_or("");
+    if !classes.has_method(class, &call.method) {
         return Err(Code::UnknownMember);
     }
-    applied.calls.push(TreeCall {
-        node,
-        method,
-        args,
-        text,
-    });
+    applied.calls.push(call);
     Ok(())
 }
 
