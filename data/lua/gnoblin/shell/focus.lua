@@ -15,11 +15,14 @@ local DEFAULTS = {
 local FOCUS_MODES = { click = true, ["hover"] = true, ["hover-strict"] = true }
 local NEW_WINDOW_POLICIES = { allow = true, prevent = true }
 
-local function boolean(key, v)
-    if type(v) ~= "boolean" then
-        error(("%s must be a boolean, got %s"):format(key, tostring(v)), 3)
+-- A check for a boolean option: the key is captured so the message names it.
+local function boolean(key)
+    return function(v)
+        if type(v) ~= "boolean" then
+            error(("%s must be a boolean, got %s"):format(key, tostring(v)), 3)
+        end
+        return v
     end
-    return v
 end
 
 local CHECKS = {
@@ -35,9 +38,9 @@ local CHECKS = {
         end
         return v
     end,
-    raise_on_click = boolean,
-    auto_raise = boolean,
-    focus_change_on_pointer_rest = boolean,
+    raise_on_click = boolean("raise_on_click"),
+    auto_raise = boolean("auto_raise"),
+    focus_change_on_pointer_rest = boolean("focus_change_on_pointer_rest"),
     auto_raise_delay = function(v)
         if type(v) ~= "number" or v < 0 then
             error(("auto_raise_delay must be a non-negative number of milliseconds, got %s"):format(tostring(v)), 3)
@@ -82,6 +85,21 @@ end
 -- The auto-raise delay in seconds, for the frame clock.
 function M.auto_raise_seconds(opts)
     return opts.auto_raise_delay / 1000
+end
+
+-- How long the pointer must rest over a window before focus_change_on_pointer_rest takes it, in seconds.
+function M.rest_seconds()
+    return 0.2
+end
+
+-- Whether a pointer rest focuses the window: a hover mode with focus_change_on_pointer_rest on.
+function M.rest_focus(opts)
+    return opts.focus_change_on_pointer_rest and opts.focus_mode ~= "click"
+end
+
+-- Whether the pointer leaving the focused window clears focus (hover-strict only).
+function M.leave_clears(opts)
+    return opts.focus_mode == "hover-strict"
 end
 
 return M

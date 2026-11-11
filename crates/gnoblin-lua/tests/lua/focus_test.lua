@@ -118,4 +118,29 @@ return {
             H.check(f.auto_raise_seconds(f.settings({ auto_raise_delay = 1500 })) == 1.5, "1500 ms is 1.5 s")
         end,
     },
+
+    {
+        "a pointer rest focuses only in the hover modes, and only when focus_change_on_pointer_rest is on",
+        function()
+            local f = focus()
+            H.check(f.rest_seconds() == 0.2, "the rest is 0.2 s")
+            local on = { focus_change_on_pointer_rest = true }
+            local hover = { focus_mode = "hover", focus_change_on_pointer_rest = true }
+            local strict = { focus_mode = "hover-strict", focus_change_on_pointer_rest = true }
+            H.check(not f.rest_focus(f.settings(on)), "click mode never focuses on rest")
+            H.check(f.rest_focus(f.settings(hover)), "hover focuses on rest")
+            H.check(f.rest_focus(f.settings(strict)), "hover-strict focuses on rest")
+            H.check(not f.rest_focus(f.settings({ focus_mode = "hover" })), "off by default")
+        end,
+    },
+
+    {
+        "only hover-strict clears focus when the pointer leaves the focused window",
+        function()
+            local f = focus()
+            H.check(f.leave_clears(f.settings({ focus_mode = "hover-strict" })), "hover-strict clears on leave")
+            H.check(not f.leave_clears(f.settings({ focus_mode = "hover" })), "hover keeps focus on leave")
+            H.check(not f.leave_clears(f.settings({})), "click keeps focus on leave")
+        end,
+    },
 }

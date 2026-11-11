@@ -14,6 +14,30 @@ local function seat_shell()
     return core, host
 end
 
+-- A started shell with one Screen, one Seat and one Window built from `props`. Returns the host and the window.
+local function window_setup(props)
+    local core, host = require("fake_core")()
+    H.boot(core, host)
+    root:add(Seat({}))
+    local screen = root:add(Screen({ width = 1000, height = 800 }))
+    local win = root:add(Window(props))
+    H.load_shell()
+    root:find(Seat).screen = screen
+    H.start_shell(host)
+    return host, win
+end
+
+-- The focused node of the seat, or nil.
+local function seat_focus()
+    return root:find(Seat).focus
+end
+
+-- Sets the seat's focus options. The compositor does not publish focus_options yet (no schema property), so the
+-- shell's raw read sees the field directly. Writing through the node would be refused as an unknown property.
+local function set_focus_options(opts)
+    rawset(root:find(Seat), "focus_options", opts)
+end
+
 return {
     {
         "the stock shell loads through require in a bare VM and reads no global the host does not define",
@@ -207,6 +231,120 @@ return {
             H.check(uid == id, "unclaim id " .. uid)
             host.frame(2, { chord_event("press") })
             H.check(#hits == 1, "fn ran after unbind: " .. #hits)
+        end,
+    },
+
+    {
+        "click mode: pointer motion does not move focus",
+        function()
+            local host = window_setup({})
+            local win = host.ids("Window")[1]
+            root:find(Seat).focus = nil
+            host.frame(0, { { type = "enter", target = win, bubbles = true } })
+            host.frame(0.1, { { type = "motion", target = win, bubbles = true } })
+            H.check(seat_focus() == nil, "click mode must not focus on motion")
+        end,
+    },
+    {
+        "hover: entering a window focuses it and leaving keeps focus",
+        function()
+            local host, w = window_setup({})
+            local id = host.ids("Window")[1]
+            set_focus_options({ focus_mode = "hover" })
+            host.frame(0, { { type = "enter", target = id, bubbles = true } })
+            H.check(root:find(Seat).focus == w, "enter must focus under hover")
+            host.frame(0.1, { { type = "leave", target = id, bubbles = true } })
+            H.check(root:find(Seat).focus == w, "hover leave keeps focus")
+        end,
+    },
+    {
+        "hover-strict: leaving the focused window clears focus",
+        function()
+            local host, w = window_setup({})
+            local id = host.ids("Window")[1]
+            set_focus_options({ focus_mode = "hover-strict" })
+            host.frame(0, { { type = "enter", target = id, bubbles = true } })
+            host.frame(0.1, { { type = "leave", target = id, bubbles = true } })
+            H.check(root:find(Seat).focus == nil, "hover-strict leave must clear focus")
+        end,
+    },
+    {
+        "a pointer rest focuses the window; a leave before the rest cancels it",
+        function()
+            local host, w = window_setup({})
+            local id = host.ids("Window")[1]
+            root:find(Seat).focus = nil
+            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            host.frame(0, { { type = "enter", target = id, bubbles = true } })
+            host.frame(0.05, { { type = "leave", target = id, bubbles = true } })
+            host.frame(0.4, {})
+            H.check(root:find(Seat).focus == nil, "a leave must cancel the rest")
+        end,
+    },
+    {
+        "a motion restarts the rest timer",
+        function()
+            local host, w = window_setup({})
+            local id = host.ids("Window")[1]
+            root:find(Seat).focus = nil
+            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            host.frame(0, { { type = "enter", target = id, bubbles = true } })
+            host.frame(0.1, { { type = "motion", target = id, bubbles = true } })
+            host.frame(0.25, {})
+            H.check(root:find(Seat).focus == nil, "rest restarted by motion must not fire at 0.25")
+            host.frame(0.35, {})
+            H.check(root:find(Seat).focus == w, "rest must fire 0.2 s after the last motion")
+        end,
+    },
+    {
+        "a rest does not focus while a button is held",
+        function()
+            local host, w = window_setup({})
+            local id = host.ids("Window")[1]
+            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            host.frame(0, { { type = "press", target = id, bubbles = true } })
+            host.frame(0.05, { { type = "enter", target = id, bubbles = true } })
+            host.frame(0.4, {})
+            H.check(root:find(Seat).focus == w, "the press focused the window")
+        end,
+    },
+    {
+        "a press on a buried window raises it",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            H.check(a ~= nil, "a window exists")
+            host.frame(0, { { type = "press", target = a, bubbles = true } })
+            H.check(w.parent.children[#w.parent.children] == w, "press must raise to the top")
+        end,
+    },
+    {
+        "raise_on_click off: a press focuses but does not raise",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            set_focus_options({ raise_on_click = false })
+            host.frame(0, { { type = "press", target = a, bubbles = true } })
+            H.check(root:find(Seat).focus == w, "press must focus")
+        end,
+    },
+    {
+        "a window closed while focused drops focus",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            host.frame(0, { { type = "press", target = a, bubbles = true } })
+            host.frame(0.1, { { type = "closed", target = a, args = {} } })
+            H.check(root:find(Seat).focus == nil, "closed window must not keep focus")
+        end,
+    },
+    {
+        "an activation focuses and raises a window on the active workspace",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            host.frame(0, { { type = "activate", target = a, args = {} } })
+            H.check(root:find(Seat).focus == w, "activate must focus")
         end,
     },
 }

@@ -46,7 +46,7 @@ local SCHEMA = {
             fullscreen = { type = "boolean", default = false },
             maximised = { type = "boolean", default = false },
         },
-        signals = { "closed", "request" },
+        signals = { "closed", "request", "activate" },
         methods = { "close" },
     },
     { name = "Canvas", base = "Node", methods = { "measure" } },

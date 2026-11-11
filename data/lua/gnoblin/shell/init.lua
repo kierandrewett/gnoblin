@@ -206,32 +206,94 @@ function Window:apply_rules()
         end
     end
 end
+-- The window whose button is held, so focus and rest wait for the release.
+local pressed
+-- Per window: a counter a leave or new rest bumps, so a stale rest timer does nothing.
+local rest_gen = setmetatable({}, { __mode = "k" })
+-- Per window: the auto-raise token. A leave clears it, so a stale auto-raise does nothing.
+local auto_token = setmetatable({}, { __mode = "k" })
+
+-- After the pointer rests over `w` for the rest time, focus it, unless the window was left or pressed meanwhile.
+local function rest_focus_later(w, opts)
+    local gen = (rest_gen[w] or 0) + 1
+    rest_gen[w] = gen
+    go(function()
+        await(Focus.rest_seconds())
+        if rest_gen[w] == gen and pressed ~= w then
+            seat.focus = w
+        end
+    end)
+end
+
 function Window:on_enter() -- focus follows the pointer under the hover modes; auto-raise after a rest
     local opts = focus_settings()
-    if Focus.hover_focus(opts, self, true) then
+    self:apply_rules()
+    if pressed then
+        return
+    end
+    if Focus.rest_focus(opts) then
+        rest_focus_later(self, opts)
+    elseif Focus.hover_focus(opts, self, true) then
         seat.focus = self
     end
-    self:apply_rules()
     if opts.auto_raise then
+        local token = {}
+        auto_token[self] = token
         go(function()
             await(Focus.auto_raise_seconds(opts))
-            if seat.focus == self then
+            if auto_token[self] == token and seat.focus == self then
                 self:raise()
             end
         end)
     end
 end
+function Window:on_motion()
+    if pressed then
+        return
+    end
+    local opts = focus_settings()
+    if Focus.rest_focus(opts) then
+        rest_focus_later(self, opts)
+    elseif Focus.hover_focus(opts, self, false) then
+        seat.focus = self
+    end
+end
+function Window:on_leave()
+    rest_gen[self] = (rest_gen[self] or 0) + 1
+    auto_token[self] = nil
+    if pressed ~= self and seat.focus == self and Focus.leave_clears(focus_settings()) then
+        seat.focus = nil
+    end
+end
 function Window:on_press(e)
     seat.focus = self
+    pressed = self
     if focus_settings().raise_on_click then
         self:raise()
     end
     e:stop()
 end
+function Window:on_release()
+    pressed = nil
+end
+function Window:on_activate() -- an activation request raises and focuses a window on the active workspace
+    if self:closest(Workspace) == desk().active then
+        seat.focus = self
+        self:raise()
+    end
+end
 function Window:on_move(e)
     drag(e.seat, self)
 end
 function Window:on_closed()
+    if pressed == self then
+        pressed = nil
+    end
+    if seat.focus == self then
+        seat.focus = nil
+    end
+    rest_gen[self] = (rest_gen[self] or 0) + 1
+    auto_token[self] = nil
     self:vanish()
 end
 function Window:vanish()
