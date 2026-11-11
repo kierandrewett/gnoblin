@@ -410,4 +410,48 @@ return {
             H.check(win.fullscreen == true, "the fullscreen window must stay fullscreen")
         end,
     },
+    {
+        "a maximised window refits when a bar reserves space at the top (failure mode 9, maximised)",
+        function()
+            local host, win = window_setup({})
+            win:maximise()
+            H.check(win.x == 0 and win.y == 0 and win.width == 1000 and win.height == 800, "maximised fills the screen")
+            desk():add(Bar({ edge = "top", height = 32 }))
+            H.frame(host, 1, {})
+            H.check(desk().space.y == 32, "the space must move below the bar, got " .. tostring(desk().space.y))
+            H.check(win.x == 0 and win.y == 32, ("the window must move below the bar, got %d,%d"):format(win.x, win.y))
+            H.check(
+                win.width == 1000 and win.height == 768,
+                ("the window must refit, got %dx%d"):format(win.width, win.height)
+            )
+        end,
+    },
+    {
+        "a snapped window refits when a bar reserves space at the top (failure mode 9, snapped)",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({ edge_tiling = true }))
+            local screen = root:add(Screen({ width = 1000, height = 800 }))
+            local win = root:add(Window({ app_id = "foot" }))
+            H.load_shell()
+            root:find(Seat).screen = screen
+            H.start_shell(host)
+            H.check(win:snap("right"), "the snap must tile")
+            H.check(
+                win.x == 500 and win.y == 0 and win.width == 500 and win.height == 800,
+                "the right half must be tiled"
+            )
+            desk():add(Bar({ edge = "top", height = 32 }))
+            H.frame(host, 1, {})
+            H.check(
+                win.x == 500 and win.y == 32,
+                ("the snapped window must move below the bar, got %d,%d"):format(win.x, win.y)
+            )
+            H.check(
+                win.width == 500 and win.height == 768,
+                ("the snapped window must refit, got %dx%d"):format(win.width, win.height)
+            )
+        end,
+    },
 }

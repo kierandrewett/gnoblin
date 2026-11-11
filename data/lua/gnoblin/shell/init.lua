@@ -93,6 +93,13 @@ function Desk:arrange()
     for _, ws in ipairs(s.children) do
         ws.width, ws.height = s.width, s.height
     end
+    for _, w in ipairs(self:all(Window)) do -- the work area may have moved under a maximised or snapped window
+        w:refit(self:work_area())
+    end
+end
+-- The rectangle the Desk's windows fill: the space under the bars.
+function Desk:work_area()
+    return { x = 0, y = self.space.y, w = self.width, h = self.space.height }
 end
 function Desk:show(ws)
     local from = self.active
@@ -346,8 +353,7 @@ end
 
 -- The area a snapped or maximised window fills: the Desk's work area, inside the bars.
 function work_area()
-    local d = desk()
-    return { x = 0, y = d.space.y, w = d.width, h = d.space.height }
+    return desk():work_area()
 end
 -- A window's floating rectangle, kept while it is snapped or maximised so that leaving either state restores it.
 local function keep_floating(w)
@@ -405,6 +411,15 @@ function Window:unmaximise()
     self.maximised = false
     restore_floating(self)
     return true
+end
+-- Re-fits a maximised or snapped window to a work area that has changed (a bar was added, removed or resized).
+function Window:refit(a)
+    if self.maximised then
+        self.x, self.y, self.width, self.height = a.x, a.y, a.w, a.h
+    elseif self.data.snapped then
+        local rect = Snap.tile_rect(self.data.snapped, a)
+        self.x, self.y, self.width, self.height = rect.x, rect.y, rect.w, rect.h
+    end
 end
 -- The client asks for a state change; the shell decides and the window's properties echo the answer.
 function Window:on_request(e)
