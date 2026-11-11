@@ -2,6 +2,7 @@
 -- Plain Lua 5.5 over the native core. The host runs it once and calls the function it returns.
 local core = ...
 local CLASS, ID, VALS, BOUND, HANDLERS = {}, {}, {}, {}, {} -- private keys: no name can collide
+local PAINT = {} -- the key of the binding that paints a Canvas's `draw` into its `content`
 local nodes, classes, timers = {}, {}, {} -- id -> node, name -> class
 local now, seq, current, queue = 0, 0, nil, {}
 local Class, Instance, Signal = {}, {}, {} -- the three metatables
@@ -168,6 +169,109 @@ function report(message)
     core.report(tostring(message))
 end
 
+-- The paint list. A Canvas's `draw` is a Lua array of drawing ops; `paint_encode` turns it into the bytes of the
+-- `content` property, which the compositor decodes (crates/gnoblin-paint/src/list.rs describes the format and
+-- the ops are documented in docs/shell-api/canvas.md). Colours are "#rgb", "#rgba", "#rrggbb" or "#rrggbbaa".
+local function paint_colour(value, default)
+    if value == nil then
+        return default
+    end
+    local hex = type(value) == "string" and value:match("^#(%x+)$")
+    if hex and (#hex == 3 or #hex == 4) then
+        hex = (hex:gsub(".", "%0%0"))
+    end
+    if hex and #hex == 6 then
+        hex = hex .. "ff"
+    end
+    if not hex or #hex ~= 8 then
+        error(("a colour is #rgb, #rgba, #rrggbb or #rrggbbaa, not %s"):format(tostring(value)), 0)
+    end
+    return tonumber(hex, 16)
+end
+local function paint_box(op, key)
+    local box = op[key]
+    if type(box) ~= "table" or #box ~= 4 then
+        error(("%s takes {x, y, width, height}"):format(key), 0)
+    end
+    return box[1], box[2], box[3], box[4]
+end
+local function paint_number(value, default)
+    if value == nil then
+        return default
+    end
+    if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+        error(("expected a finite number, not %s"):format(tostring(value)), 0)
+    end
+    return value
+end
+local function paint_op(op)
+    local pack = string.pack
+    if op.rect then
+        local x, y, w, h = paint_box(op, "rect")
+        return pack("<Bfffff", 1, x, y, w, h, paint_number(op.radius, 0))
+            .. pack("<I4I4f", paint_colour(op.fill, 0), paint_colour(op.stroke, 0), paint_number(op.stroke_width, 0))
+    elseif op.line then
+        local l = op.line
+        if type(l) ~= "table" or #l ~= 4 then
+            error("line takes {x1, y1, x2, y2}", 0)
+        end
+        return pack(
+            "<BfffffI4",
+            2,
+            l[1],
+            l[2],
+            l[3],
+            l[4],
+            paint_number(op.width, 1),
+            paint_colour(op.color, 0xffffffff)
+        )
+    elseif op.text then
+        return pack(
+            "<BfffI4s2s4",
+            3,
+            paint_number(op.x, 0),
+            paint_number(op.y, 0),
+            paint_number(op.size, 14),
+            paint_colour(op.color, 0xffffffff),
+            op.font or "sans",
+            tostring(op.text)
+        )
+    elseif op.icon then
+        return pack(
+            "<BfffI4s2",
+            4,
+            paint_number(op.x, 0),
+            paint_number(op.y, 0),
+            paint_number(op.size, 16),
+            paint_colour(op.color, 0xffffffff),
+            tostring(op.icon)
+        )
+    elseif op.clip ~= nil then
+        if op.clip == false then
+            return pack("<B", 6)
+        end
+        local x, y, w, h = paint_box(op, "clip")
+        return pack("<Bfffff", 5, x, y, w, h, paint_number(op.radius, 0))
+    elseif op.opacity ~= nil then
+        if op.opacity == false then
+            return pack("<B", 8)
+        end
+        return pack("<Bf", 7, paint_number(op.opacity, 1))
+    end
+    error("an op is a rect, line, text, icon, clip or opacity", 0)
+end
+local function paint_encode(list)
+    local parts = {}
+    for i, op in ipairs(list) do
+        local ok, bytes = pcall(paint_op, op)
+        if not ok then
+            error(("draw op %d: %s"):format(i, tostring(bytes)), 0)
+        end
+        parts[i] = bytes
+    end
+    return "GNPL" .. string.pack("<BI4", 1, #parts) .. table.concat(parts)
+end
+
 -- Nodes. Values of native properties live in the native tree; Lua properties live in VALS.
 local readied = {} -- node id -> true once its `ready` has been emitted
 local ready -- emits `ready` once per node; defined with the snapshot code below
@@ -308,6 +412,20 @@ function make(cls, id, spec) -- spec is nil for a node Gnoblin made
                 n:arrange()
             end, m.name .. ":arrange")
         end
+        if m.props.draw and m.props.content then -- a Canvas paints what its `draw` says, when that changes
+            local sent
+            rawget(n, BOUND)[PAINT] = bind(function()
+                local list = n.draw
+                if type(list) ~= "table" then
+                    return
+                end
+                local bytes = paint_encode(list)
+                if bytes ~= sent then
+                    sent = bytes
+                    n.content = bytes
+                end
+            end, m.name .. ":draw")
+        end
     end
     return n
 end
@@ -427,9 +545,25 @@ for _, s in ipairs(core.classes()) do
     if s.name == "Seat" then
         install_claims(c)
     end
+    if s.name == "Canvas" then
+        -- `canvas:measure(text, size, font)` asks the compositor how much room `text` takes. It answers later, so the
+        -- call returns a signal that fires with "<width> <height>" in whole pixels, and an error if there is one.
+        rawset(c, "measure", function(n, text, size, font)
+            local token = core.call(
+                rawget(n, ID),
+                "measure",
+                string.pack("<d", size or 14),
+                (font or "sans") .. "\n" .. tostring(text)
+            )
+            return setmetatable({ node = n, name = tostring(token) }, Signal)
+        end)
+    end
     settle(m)
 end
 local Node = classes.Node
+if classes.Canvas then -- the paint list: an array of ops, or a function returning one
+    meta(classes.Canvas).props.draw = { type = "any" }
+end
 meta(Node).props.tags = { type = "table", default = {} }
 meta(Node).props.data = { type = "table", default = {} }
 -- `on_ready` and `on_destroyed` are handlers, so they must be signals: without this the class

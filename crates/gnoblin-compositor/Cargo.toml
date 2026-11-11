@@ -22,6 +22,8 @@ gnoblin-lua = { path = "../gnoblin-lua" }
 # a parent compositor, and the DRM refusal until the DRM backend lands.
 gnoblin-backend = { path = "../gnoblin-backend" }
 gnoblin-render = { path = "../gnoblin-render" }
+# The Canvas painter: system fonts for text measurement and for drawing `Canvas` nodes.
+gnoblin-paint.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The colour transform rows each named colour filter draws with.
 gnoblin-a11y = { path = "../gnoblin-a11y" }

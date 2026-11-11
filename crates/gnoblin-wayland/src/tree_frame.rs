@@ -17,6 +17,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
+use gnoblin_paint::SharedPainter;
 use gnoblin_render::transaction::{
     ClassInfo, Code, Motion, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
     TreeTransaction, validate_and_apply,
@@ -86,6 +87,38 @@ pub struct TreeAnswer {
     pub result: String,
     /// The error: empty on success.
     pub error: String,
+}
+
+/// The answer to a `Canvas`'s `measure(text, size, font)`.
+///
+/// The call's one argument is the size as the little-endian bits of an `f64`; its text is the font, a newline, and
+/// the string to measure. The result is `"<width> <height>"` in whole pixels, the extent the painter lays the string
+/// out in. A malformed call, or one the measurer refuses (a size or text out of range, or no fonts to measure with),
+/// is answered with an error and an empty result.
+fn measure_answer(painter: &SharedPainter, call: &TreeCall) -> TreeAnswer {
+    let refused = |error: &str| TreeAnswer {
+        token: call.token,
+        result: String::new(),
+        error: error.to_owned(),
+    };
+    let size = match call.args.as_slice() {
+        [bits] => f64::from_bits(u64::from_le_bytes(bits.to_le_bytes())),
+        _ => return refused("bad-value"),
+    };
+    if !size.is_finite() {
+        return refused("bad-value");
+    }
+    let Some((font, text)) = call.text.expose().split_once('\n') else {
+        return refused("bad-value");
+    };
+    match painter.get().measure_checked(text, size as f32, font) {
+        Ok(extent) => TreeAnswer {
+            token: call.token,
+            result: format!("{} {}", extent.width, extent.height),
+            error: String::new(),
+        },
+        Err(error) => refused(error),
+    }
 }
 
 /// A request a client made of its window, which the shell decides on instead of the window
@@ -365,6 +398,9 @@ pub struct TreeHooks {
     pub attached: Arc<dyn Fn() -> bool + Send + Sync>,
     /// Receives each batch a frame publishes, in publication order, on the frame's thread.
     pub publish: Arc<dyn Fn(TreeBatch) + Send + Sync>,
+    /// The painter that answers a `Canvas`'s `measure` and that the composer paints canvases with, so both use the
+    /// same fonts.
+    pub painter: SharedPainter,
 }
 
 impl std::fmt::Debug for TreeHooks {
@@ -380,6 +416,7 @@ impl Default for TreeHooks {
             classes: Arc::new(NoClasses),
             attached: Arc::new(|| true),
             publish: Arc::new(|_| {}),
+            painter: SharedPainter::embedded(),
         }
     }
 }
@@ -441,8 +478,10 @@ pub struct TreeFrame {
     /// order, for the compositor to play or end. A pending track is not held in the batch: the
     /// compositor decides how it lands, so reduced motion is applied where the tracks are.
     motion: Vec<Motion>,
-    /// Answers to authentications, published with the next batch.
+    /// Answers to authentications and `measure` calls, published with the next batch.
     answers: Vec<TreeAnswer>,
+    /// Measures the text of a `Canvas`'s `measure` call.
+    painter: SharedPainter,
     /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
     /// took them. A destroyed seat takes its claims with it.
     destroyed: Vec<NodeId>,
@@ -476,6 +515,7 @@ impl TreeFrame {
             window_calls: Vec::new(),
             motion: Vec::new(),
             answers: Vec::new(),
+            painter: hooks.painter,
             destroyed: Vec::new(),
             revisions: TreeRevisions::new(),
         }
@@ -690,6 +730,13 @@ impl TreeFrame {
                     let (auths, calls): (Vec<TreeCall>, Vec<TreeCall>) = rest
                         .into_iter()
                         .partition(|call| scene.class(call.node) == Some("lock") && call.method == "authenticate");
+                    // A `measure` is answered on the spot: it reads no scene state, only the fonts.
+                    let (measures, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
+                        .into_iter()
+                        .partition(|call| scene.class(call.node) == Some("canvas") && call.method == "measure");
+                    for call in &measures {
+                        self.answers.push(measure_answer(&self.painter, call));
+                    }
                     self.authentications.extend(auths);
                     self.claims.extend(claims);
                     for change in &done.changes {

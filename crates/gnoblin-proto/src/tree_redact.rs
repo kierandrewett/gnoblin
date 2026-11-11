@@ -33,6 +33,7 @@ impl fmt::Debug for tree::op::Properties {
             .field("args", &format_args!("<{} bytes>", self.args.len()))
             .field("value_texts", &self.value_texts)
             .field("value_effects", &self.value_effects)
+            .field("value_bytes", &format_args!("<{} bytes>", self.value_bytes.len()))
             .field("seat", &self.seat)
             .field("input_kind", &self.input_kind)
             .field("x", &self.x)

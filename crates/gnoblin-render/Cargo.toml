@@ -18,6 +18,8 @@ gnoblin-types.workspace = true
 # used to share it now lives in `gnoblin-cursor`.
 gnoblin-animation = { path = "../gnoblin-animation" }
 gnoblin-log = { path = "../gnoblin-log" }
+# A `Canvas`'s `content` is checked against the paint list's decoder when it is written (`bad-paint`).
+gnoblin-paint.workspace = true
 
 [lints]
 workspace = true

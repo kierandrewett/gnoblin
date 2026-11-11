@@ -54,7 +54,7 @@ local SCHEMA = {
         signals = { "closed", "request", "activate" },
         methods = { "close" },
     },
-    { name = "Canvas", base = "Node", methods = { "measure" } },
+    { name = "Canvas", base = "Node", props = { content = { type = "bytes" } }, methods = { "measure" } },
     {
         name = "View",
         base = "Node",
@@ -123,10 +123,12 @@ local SCHEMA = {
 }
 
 local auth_n = 0 -- token counter for slow methods: each call names a token the host answers under
+local measure_n = 0 -- the compositor answers a measure under the token its call got back
 -- Method bodies. Each receives the mirror record of the node it is called on.
 local METHODS = {
-    measure = function(_, text, size)
-        return #tostring(text) * (size or 14) * 0.5
+    measure = function()
+        measure_n = measure_n + 1
+        return measure_n
     end,
     claim = function() end,
     unclaim = function() end,

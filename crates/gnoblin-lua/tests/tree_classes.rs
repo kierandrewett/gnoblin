@@ -71,7 +71,8 @@ fn expected_kind(ty: &Type) -> Option<TreeValueKind> {
         Type::List(inner) if **inner == Type::Double => TreeValueKind::ListDouble,
         Type::List(inner) if **inner == Type::Text => TreeValueKind::ListText,
         Type::List(inner) if matches!(&**inner, Type::ObjectRef(name) if name == "effect") => TreeValueKind::ListEffect,
-        Type::Bytes | Type::List(_) => return None,
+        Type::Bytes => TreeValueKind::Bytes,
+        Type::List(_) => return None,
     })
 }
 

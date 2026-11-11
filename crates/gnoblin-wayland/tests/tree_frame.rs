@@ -19,7 +19,7 @@ struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "seat" | "lock" | "window")
+        matches!(class, "node" | "seat" | "lock" | "window" | "canvas")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -40,6 +40,7 @@ impl ClassInfo for Table {
         (matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim"))
             || (class == "lock" && method == "authenticate")
             || (class == "window" && method == "close")
+            || (class == "canvas" && method == "measure")
     }
 }
 
@@ -849,4 +850,106 @@ fn a_close_call_on_a_window_is_kept_for_the_compositor() {
     assert_eq!(calls.len(), 1, "the close call is kept");
     assert_eq!((calls[0].node, calls[0].method.as_str()), (window, "close"));
     assert!(frame.take_window_calls().is_empty(), "taking drains the calls");
+}
+
+/// A `measure` call of `text` in `font` at `size`, as the shell sends it: the size's bits as the one argument, and
+/// the font, a newline and the text as the call's text.
+fn measure_call(node: NodeId, token: u64, size: f64, font_and_text: &str) -> TreeOp {
+    TreeOp::TreeCall {
+        token,
+        node,
+        method: "measure".to_owned(),
+        args: vec![i64::from_le_bytes(size.to_bits().to_le_bytes())],
+        text: SecretText::new(font_and_text),
+    }
+}
+
+/// Makes a canvas, applies `calls` on it in one transaction, and returns the answers the next batch carries.
+fn measure_answers(calls: Vec<TreeOp>) -> (Vec<gnoblin_wayland::TreeAnswer>, Vec<TreeBatch>) {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    let canvas = NodeId::new(0x400);
+    let mut ops = vec![
+        TreeOp::New {
+            class: "canvas".to_owned(),
+            id: canvas,
+        },
+        TreeOp::Insert {
+            node: canvas,
+            parent: ROOT,
+            index: None,
+        },
+    ];
+    ops.extend(calls);
+    submit(&frame, 0, TreeTransaction::new(ops), &replies);
+    frame.drain(&mut scene, clock(Duration::ZERO));
+    assert!(replies.lock().unwrap()[0].1.is_ok(), "the calls are valid");
+    let batches = take_batches();
+    let answers = batches.iter().flat_map(|batch| batch.answers.clone()).collect();
+    (answers, batches)
+}
+
+#[test]
+fn a_canvas_measure_is_answered_in_the_same_batch_with_the_painters_extent() {
+    let canvas = NodeId::new(0x400);
+    let (answers, batches) = measure_answers(vec![
+        measure_call(canvas, 9, 14.0, "sans\nHello"),
+        measure_call(canvas, 10, 20.0, "sans\nTwo\nlines"),
+    ]);
+    let painter = gnoblin_paint::SharedPainter::embedded();
+    let expect = |text: &str, size: f32| {
+        let extent = painter.get().measure(text, size, "sans");
+        format!("{} {}", extent.width, extent.height)
+    };
+    assert_eq!(answers.len(), 2);
+    assert_eq!(
+        (answers[0].token, answers[0].result.as_str()),
+        (9, expect("Hello", 14.0).as_str())
+    );
+    assert_eq!(
+        (answers[1].token, answers[1].result.as_str()),
+        (10, expect("Two\nlines", 20.0).as_str())
+    );
+    assert!(answers.iter().all(|answer| answer.error.is_empty()));
+    assert!(
+        batches.iter().all(|batch| batch.calls.is_empty()),
+        "a measure is answered by the compositor, so it is not handed to the shell's batch"
+    );
+}
+
+#[test]
+fn a_measure_that_is_malformed_or_out_of_range_is_answered_with_an_error() {
+    let canvas = NodeId::new(0x400);
+    let no_arguments = TreeOp::TreeCall {
+        token: 4,
+        node: canvas,
+        method: "measure".to_owned(),
+        args: Vec::new(),
+        text: SecretText::new("sans\nx"),
+    };
+    let (answers, _) = measure_answers(vec![
+        measure_call(canvas, 1, f64::NAN, "sans\nx"),
+        measure_call(canvas, 2, 0.0, "sans\nx"),
+        measure_call(canvas, 3, 14.0, "no newline"),
+        no_arguments,
+        measure_call(canvas, 5, 5000.0, "sans\nx"),
+        measure_call(canvas, 6, 14.0, &format!("sans\n{}", "a".repeat(20_000))),
+    ]);
+    let errors: Vec<(u64, &str)> = answers
+        .iter()
+        .map(|answer| (answer.token, answer.error.as_str()))
+        .collect();
+    assert_eq!(
+        errors,
+        vec![
+            (1, "bad-value"),
+            (2, "bad-value"),
+            (3, "bad-value"),
+            (4, "bad-value"),
+            (5, "bad-value"),
+            (6, "too-large")
+        ]
+    );
+    assert!(answers.iter().all(|answer| answer.result.is_empty()));
 }

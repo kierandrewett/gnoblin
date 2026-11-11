@@ -10,7 +10,7 @@ mod support;
 use std::time::{Duration, Instant};
 
 use gnoblin_proto::tree::tree::{
-    AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
 use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind};
@@ -373,6 +373,141 @@ fn a_shader_effect_refuses_the_whole_effects_set_bad_value() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// Create one node of class `canvas` under `parent`.
+fn create_canvas(id: u64, parent: u64) -> Vec<op::Properties> {
+    let mut ops = create(id, parent);
+    ops[0].class = "canvas".to_owned();
+    ops
+}
+
+/// The bytes of a paint list of one filled rectangle.
+fn paint_list() -> Vec<u8> {
+    use gnoblin_paint::{PaintList, PaintOp, Rgba8};
+    gnoblin_paint::encode(&PaintList {
+        ops: vec![PaintOp::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 8.0,
+            height: 8.0,
+            radius: 0.0,
+            fill: Rgba8::new(10, 20, 30, 255),
+            stroke: Rgba8::TRANSPARENT,
+            stroke_width: 0.0,
+        }],
+    })
+}
+
+fn set_content(node: u64, bytes: Vec<u8>) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: "content".to_owned(),
+        value_kind: "bytes".to_owned(),
+        value_bytes: bytes,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_canvas_paint_list_is_published_as_bytes_and_read_back_in_the_next_snapshot() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create_canvas(1000, attached.root);
+    ops.push(set_content(1000, paint_list()));
+    transact(&mut wire, 2, 0, 1, ops);
+    let changes: ChangesPayload = event(&mut wire, "changes");
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(reply.applied, "a paint list that decodes is accepted: {reply:?}");
+    let content = changes
+        .changes
+        .iter()
+        .find(|change| change.kind == "set" && change.key == "content")
+        .expect("the content set is published");
+    assert_eq!(content.value_kind, "bytes");
+    assert_eq!(content.value_bytes, paint_list());
+
+    // A shell that attaches afterwards reads the content in its snapshot.
+    drop(wire);
+    let (_wire, _attached, nodes) = attach_once_released(&session, 3);
+    let canvas = nodes
+        .iter()
+        .find(|node| node.id == 1000)
+        .expect("the canvas is in the snapshot");
+    let prop = canvas
+        .props
+        .iter()
+        .find(|prop| prop.key == "content")
+        .expect("the content is a property");
+    assert_eq!(
+        (prop.value_kind.as_str(), prop.value_bytes.as_slice()),
+        ("bytes", paint_list().as_slice())
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn f42_canvas_content_that_does_not_decode_is_refused_bad_paint() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create_canvas(1000, attached.root);
+    ops.push(set_content(1000, b"definitely not a paint list".to_vec()));
+    transact(&mut wire, 2, 0, 1, ops);
+    let reply: ReplyPayload = reply(&mut wire, "transact");
+    assert!(!reply.applied);
+    assert_eq!(reply.code, "bad-paint");
+    assert_eq!(reply.failed_op, 2, "the third op is the bad one");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_canvas_measure_is_answered_with_the_size_of_the_text() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create_canvas(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "call".to_owned(),
+        node: 1000,
+        method: "measure".to_owned(),
+        args: 16.0_f64.to_bits().to_le_bytes().to_vec(),
+        text: "sans\nHello".to_owned(),
+        token: 77,
+        ..Default::default()
+    });
+    transact(&mut wire, 2, 0, 1, ops);
+    let mut answer = None;
+    let mut applied = None;
+    for _ in 0..4 {
+        let envelope = wire.receive().expect("a frame");
+        match (envelope.kind.as_ref(), envelope.member.as_str()) {
+            (Some(Kind::Event(_)), "answer") => answer = envelope.payload_as::<AnswerPayload>(),
+            (Some(Kind::Reply(_)), "transact") => {
+                applied = envelope.payload_as::<ReplyPayload>();
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(applied.expect("the transaction is answered").applied);
+    let answer = answer.expect("the measure is answered");
+    assert_eq!(answer.token, 77);
+    assert_eq!(answer.error, "");
+    let result = String::from_utf8(answer.result).expect("the result is text");
+    let (width, height) = result.split_once(' ').expect("`<width> <height>`");
+    let (width, height): (u32, u32) = (width.parse().expect("a width"), height.parse().expect("a height"));
+    assert_eq!(height, 24, "a 16 pixel line box is 24 pixels tall");
+    assert!(
+        width > 20 && width < 80,
+        "five letters at 16 pixels are some tens of pixels wide: {width}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
 #[test]
 fn a_set_of_a_kind_the_wire_does_not_carry_is_refused_bad_value() {
     let session = Session::start();
@@ -384,7 +519,7 @@ fn a_set_of_a_kind_the_wire_does_not_carry_is_refused_bad_value() {
         kind: "set".to_owned(),
         node: 1000,
         key: "visible".to_owned(),
-        value_kind: "bytes".to_owned(),
+        value_kind: "matrix".to_owned(),
         ..Default::default()
     });
     transact(&mut wire, 2, 0, 1, ops);

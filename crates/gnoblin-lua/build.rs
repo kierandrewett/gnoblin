@@ -169,7 +169,7 @@ const TREE_NAMESPACE: &str = "tree";
 /// Built from the full catalog, owner-only `tree` namespace included, so the classes reach the
 /// shell and never the public stub. A class's own members are the properties, signals and
 /// methods its base does not already declare identically. A property of a type no wire carries
-/// (bytes, a list that is not of doubles) is left out.
+/// (a list that is not of doubles, texts or effects) is left out.
 fn rust_tree_classes(catalog: &Catalog) -> Result<String, String> {
     let tree = Namespace::parse(TREE_NAMESPACE).map_err(|reason| format!("namespace `{TREE_NAMESPACE}`: {reason}"))?;
     // The protocol message object shares the namespace's name, and a record is a value on the
@@ -295,7 +295,8 @@ fn tree_kind(ty: &Type) -> Option<&'static str> {
         Type::List(inner) if **inner == Type::Double => "ListDouble",
         Type::List(inner) if **inner == Type::Text => "ListText",
         Type::List(inner) if matches!(&**inner, Type::ObjectRef(name) if name == "effect") => "ListEffect",
-        Type::Bytes | Type::List(_) => return None,
+        Type::Bytes => "Bytes",
+        Type::List(_) => return None,
     })
 }
 

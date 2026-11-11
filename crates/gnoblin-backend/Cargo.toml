@@ -39,6 +39,8 @@ gnoblin-output = { path = "../gnoblin-output" }
 # damage. This crate is the one place the engine's crates may meet, so the scene sits
 # on this side of the contract and `gnoblin-wayland` never names it.
 gnoblin-render = { path = "../gnoblin-render" }
+# The Canvas painter: the composer draws `Canvas` nodes with it.
+gnoblin-paint.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 gnoblin-animation = { path = "../gnoblin-animation" }
 # The renderer and capture choices the renderer selection reads (`RendererChoice`,

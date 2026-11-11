@@ -850,7 +850,7 @@ impl State {
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             shell_hover: None,
             touch_points: HashMap::new(),
-            composer: Composer::new(),
+            composer: Composer::with_painter(tree.painter.clone()),
             tree: TreeFrame::with_hooks(tree),
             modal: None,
             modal_events: Vec::new(),

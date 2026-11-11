@@ -67,6 +67,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
 use gnoblin_animation::{Easing, PropertyValue, SampledCurve, VisualProperty, VisualTransform};
+use gnoblin_paint::{SharedPainter, decode};
 use gnoblin_render::scene_ids::NodeIdAllocator;
 use gnoblin_render::transaction::{Animation, Motion, TreeChange, TreeValue, land_at_once, visual_property};
 use gnoblin_render::{
@@ -109,6 +110,19 @@ const VIEW_FOV: f64 = 60.0;
 /// subtree, or `None` when it has no source or the source cannot be drawn.
 #[derive(Debug)]
 struct ViewPicture {
+    size: Size,
+    image: Option<Arc<Image>>,
+}
+
+/// A Canvas node's rendered picture: what it was painted from, and the image, or `None` when its content paints
+/// nothing (empty, or too large to draw).
+///
+/// The picture is kept until the node's `content` is written again or its size changes. `revision` is the scene's
+/// count of byte writes to the node, so a rewrite of equal bytes repaints too: comparing bytes every frame would cost
+/// more than the rare repeated write.
+#[derive(Debug)]
+struct CanvasPicture {
+    revision: u64,
     size: Size,
     image: Option<Arc<Image>>,
 }
@@ -294,6 +308,12 @@ pub struct Composer {
     /// The pictures of the View nodes, each rendered from its source subtree and kept until
     /// that subtree, its camera or the view itself changes.
     views: BTreeMap<NodeId, ViewPicture>,
+    /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
+    /// changes.
+    canvases: BTreeMap<NodeId, CanvasPicture>,
+    /// Paints the canvases. The tree answers `measure` from the same painter, so a measured string is drawn in the
+    /// extent it was measured at.
+    painter: SharedPainter,
 }
 
 impl Default for Composer {
@@ -303,9 +323,15 @@ impl Default for Composer {
 }
 
 impl Composer {
-    /// An empty scene with an opaque black background.
+    /// An empty scene with an opaque black background, painting canvases with the embedded font alone.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_painter(SharedPainter::embedded())
+    }
+
+    /// An empty scene that paints `Canvas` nodes with `painter`.
+    #[must_use]
+    pub fn with_painter(painter: SharedPainter) -> Self {
         let mut node_ids = NodeIdAllocator::new();
         let mut scene = Scene::new();
         // The shell's root takes the allocator's first id, so it is the same for the session.
@@ -341,6 +367,8 @@ impl Composer {
             screens: BTreeMap::new(),
             placing: false,
             views: BTreeMap::new(),
+            canvases: BTreeMap::new(),
+            painter,
         }
     }
 
@@ -471,8 +499,71 @@ impl Composer {
     /// output after the first stale.
     pub fn begin_frame(&mut self) {
         let dirty = self.scene.take_dirty();
+        self.render_canvases();
         self.render_views(&dirty);
         self.damage = Some(self.scene.take_damage());
+    }
+
+    /// Paints each Canvas node whose picture is stale: it has none yet, its `content` was written since, or its size
+    /// changed. The scene already damaged the node's rectangle when the content or the size changed, so a repaint
+    /// adds no damage of its own.
+    fn render_canvases(&mut self) {
+        let canvases = self.canvas_nodes();
+        self.canvases.retain(|canvas, _| canvases.contains(canvas));
+        for canvas in canvases {
+            let (Some(bounds), Some(revision)) = (self.scene.bounds(canvas), self.scene.content_revision(canvas))
+            else {
+                continue;
+            };
+            let size = Size::new(bounds.width, bounds.height);
+            if self
+                .canvases
+                .get(&canvas)
+                .is_some_and(|picture| picture.revision == revision && picture.size == size)
+            {
+                continue;
+            }
+            let image = self.paint_canvas(canvas, size);
+            self.canvases.insert(canvas, CanvasPicture { revision, size, image });
+        }
+    }
+
+    /// The image of a canvas's `content` at `size`, or `None` when it has no content or draws nothing.
+    fn paint_canvas(&self, canvas: NodeId, size: Size) -> Option<Arc<Image>> {
+        let bytes = self.scene.bytes(canvas, "content").filter(|bytes| !bytes.is_empty())?;
+        let list = match decode(bytes) {
+            Ok(list) => list,
+            Err(error) => {
+                // The tree refuses such a value when it is written, so this is a bug if it happens.
+                log::warn!(area = "render", %canvas, %error, "a canvas holds content that does not decode");
+                return None;
+            }
+        };
+        let rendered = self.painter.get().paint(&list, size.width, size.height)?;
+        for name in &rendered.missing_icons {
+            log::debug!(area = "render", %canvas, icon = %name, "a canvas names an icon that is not built in");
+        }
+        let picture = rendered.picture;
+        Image::new(
+            Size::new(picture.width, picture.height),
+            picture.width as usize * 4,
+            picture.data,
+        )
+        .map(Arc::new)
+    }
+
+    /// Every Canvas node in the scene.
+    fn canvas_nodes(&self) -> BTreeSet<NodeId> {
+        self.scene
+            .node_ids()
+            .filter(|node| self.scene.class(*node) == Some("canvas"))
+            .collect()
+    }
+
+    /// The picture a Canvas node was last painted as, or `None` when it has none to draw.
+    #[must_use]
+    pub fn canvas_picture(&self, canvas: NodeId) -> Option<Arc<Image>> {
+        self.canvases.get(&canvas)?.image.clone()
     }
 
     /// Re-renders the View nodes whose picture is stale and damages the pixels each one
@@ -525,14 +616,36 @@ impl Composer {
     /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A
     /// buffer that cannot be read (a DMA-BUF, say) leaves its window out, so it draws nothing.
     fn window_pictures(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, Image> {
-        self.windows
+        let mut pictures: BTreeMap<NodeId, Image> = self
+            .windows
             .values()
             .filter_map(|entry| {
                 let node = entry.node.filter(|node| nodes.contains(node))?;
                 let image = shm::readback(entry.buffer.as_ref()?).ok()?;
                 Some((node, image))
             })
-            .collect()
+            .collect();
+        // A View of a subtree that holds canvases draws them too. The view renderer blends straight alpha and a
+        // canvas picture is premultiplied, as every snapshot is.
+        for (node, picture) in &self.canvases {
+            if !nodes.contains(node) {
+                continue;
+            }
+            let Some(image) = picture.image.as_ref() else {
+                continue;
+            };
+            let straight = image
+                .data()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .flat_map(|pixel| straight_alpha(*pixel))
+                .collect();
+            if let Some(straight) = Image::new(image.size(), image.stride(), straight) {
+                pictures.insert(*node, straight);
+            }
+        }
+        pictures
     }
 
     /// The camera a View draws through. Without a camera node the view is orthographic, with
@@ -1982,12 +2095,32 @@ impl Composer {
             return false;
         }
         let mut spatial = false;
+        // A canvas draws in the scene's paint order against the windows: above its parent and what is under that,
+        // below what the tree puts after it. Windows keep the stacking order; canvases wait their turn.
+        let ranks = if self.canvases.is_empty() {
+            BTreeMap::new()
+        } else {
+            self.paint_ranks()
+        };
+        let mut canvases: Vec<(u32, NodeId)> = self
+            .canvases
+            .iter()
+            .filter(|(node, picture)| picture.image.is_some() && self.scene.drawn(**node))
+            .filter_map(|(node, _)| Some((*ranks.get(node)?, *node)))
+            .collect();
+        canvases.sort_unstable();
+        let mut waiting = canvases.into_iter().peekable();
         for window in &self.order {
             let Some(entry) = self.windows.get(window) else {
                 continue;
             };
-            if entry.node.is_none() {
+            let Some(window_node) = entry.node else {
                 continue;
+            };
+            if let Some(rank) = ranks.get(&window_node) {
+                while let Some((_, canvas)) = waiting.next_if(|(canvas_rank, _)| canvas_rank < rank) {
+                    self.push_canvas(canvas, rect, frame, &mut spatial);
+                }
             }
             let (source, content) = if let Some(closing) = &entry.closing {
                 (SurfaceSource::Snapshot(Arc::clone(&closing.image)), closing.content)
@@ -2050,6 +2183,9 @@ impl Composer {
                 secure: entry.secure,
             }));
         }
+        for (_, canvas) in waiting {
+            self.push_canvas(canvas, rect, frame, &mut spatial);
+        }
         // A View draws its source's picture at its own rectangle, above the windows it is
         // painted over and below the visual bell.
         for view in self.view_nodes() {
@@ -2096,6 +2232,77 @@ impl Composer {
             }
         }
         !frame.is_empty()
+    }
+
+    /// The position of every node in the scene's paint order, bottom first: a depth-first walk that visits a node
+    /// before its children and a sibling after the one below it.
+    fn paint_ranks(&self) -> BTreeMap<NodeId, u32> {
+        let mut ranks = BTreeMap::new();
+        let mut pending: Vec<NodeId> = self.scene.root_ids().iter().rev().copied().collect();
+        while let Some(node) = pending.pop() {
+            let rank = u32::try_from(ranks.len()).unwrap_or(u32::MAX);
+            ranks.insert(node, rank);
+            pending.extend(self.scene.children(node).unwrap_or(&[]).iter().rev());
+        }
+        ranks
+    }
+
+    /// Adds the layer of a Canvas node's picture, where the scene places the node now and at the opacity and
+    /// corner radius it composes to.
+    fn push_canvas(&self, canvas: NodeId, output: Rect, frame: &mut OutputFrame, spatial: &mut bool) {
+        let Some(image) = self.canvases.get(&canvas).and_then(|picture| picture.image.as_ref()) else {
+            return;
+        };
+        let (Some(placed), Some(transform), Some(opacity)) = (
+            self.scene.content_bounds(canvas),
+            self.scene.transform(canvas),
+            self.scene.composed_opacity(canvas),
+        ) else {
+            return;
+        };
+        let dst = Rect::new(
+            placed.x.round() as i32 - output.x,
+            placed.y.round() as i32 - output.y,
+            placed.width.round() as u32,
+            placed.height.round() as u32,
+        );
+        let model = self.model(canvas, output);
+        let on_output = match model {
+            Some(_) => self
+                .scene
+                .absolute_bounds(canvas)
+                .is_some_and(|bounds| bounds.intersection(output).is_some()),
+            None => dst.intersection(Rect::new(0, 0, output.width, output.height)).is_some(),
+        };
+        if !on_output {
+            return;
+        }
+        if model.is_some() && !*spatial {
+            frame.push_damage(Rect::new(0, 0, output.width, output.height));
+            *spatial = true;
+        }
+        if transform.base.rotation_degrees.z != 0.0 {
+            log::debug!(area = "render", %canvas, "a rotated canvas is not drawn by the software renderer");
+            return;
+        }
+        let size = image.size();
+        frame.push_layer(Layer::Surface(Surface {
+            source: SurfaceSource::Snapshot(Arc::clone(image)),
+            src: RectF {
+                x: 0.0,
+                y: 0.0,
+                width: f64::from(size.width),
+                height: f64::from(size.height),
+            },
+            dst,
+            transform: Transform::Normal,
+            opacity,
+            tint: Color::new(1.0, 1.0, 1.0, 1.0),
+            corner_radius: transform.corner_radius,
+            effects: self.scene.effects(canvas).cloned().unwrap_or_else(Effects::new),
+            model,
+            secure: false,
+        }));
     }
 
     /// How a node is placed on `output`: `None` for a flat rectangle drawn in paint order, which
@@ -2343,6 +2550,16 @@ impl Composer {
 }
 
 /// A global rectangle in an output's own coordinates.
+/// A premultiplied pixel as straight alpha.
+fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
+    let alpha = u32::from(pixel[3]);
+    if alpha == 0 || alpha == 255 {
+        return pixel;
+    }
+    let lift = |channel: u8| ((u32::from(channel) * 255 + alpha / 2) / alpha).min(255) as u8;
+    [lift(pixel[0]), lift(pixel[1]), lift(pixel[2]), pixel[3]]
+}
+
 fn local(rect: Rect, output: Rect) -> Rect {
     rect.translate(-output.x, -output.y)
 }
@@ -4794,5 +5011,282 @@ mod tests {
                 .any(|change| matches!(change, TreeChange::Destroyed { node: gone, .. } if *gone == node)),
             "the screen's destruction is announced: {changes:?}"
         );
+    }
+
+    /// A paint list of one opaque rectangle that fills `width` by `height` from the origin.
+    fn fill_list(width: f32, height: f32, red: u8) -> Vec<u8> {
+        use gnoblin_paint::{PaintList, PaintOp, Rgba8};
+        gnoblin_paint::encode(&PaintList {
+            ops: vec![PaintOp::Rect {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height,
+                radius: 0.0,
+                fill: Rgba8::new(red, 0, 0, 255),
+                stroke: Rgba8::TRANSPARENT,
+                stroke_width: 0.0,
+            }],
+        })
+    }
+
+    /// Adds a Canvas node at `rect` under `parent` or the root, holding `content`.
+    fn add_canvas(
+        composer: &mut Composer,
+        canvas: NodeId,
+        parent: Option<NodeId>,
+        rect: Rect,
+        content: Option<Vec<u8>>,
+    ) {
+        composer.with_scene(|scene| {
+            let mut spec = NodeSpec::new(rect);
+            spec.parent = parent;
+            scene.insert(canvas, spec).expect("a canvas node");
+            scene
+                .set_class(canvas, Some("canvas".to_owned()))
+                .expect("the canvas's class");
+            if let Some(content) = content {
+                scene
+                    .set_value(canvas, "content", TreeValue::Bytes(content))
+                    .expect("the canvas's content");
+            }
+        });
+    }
+
+    /// The snapshot layers the next frame for `output` carries: where each lands, how opaque, and its picture.
+    fn canvas_layers(composer: &mut Composer, output: OutputId) -> Vec<(Rect, f32, Arc<Image>)> {
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Surface(surface) => match &surface.source {
+                    SurfaceSource::Snapshot(image) => Some((surface.dst, surface.opacity, Arc::clone(image))),
+                    SurfaceSource::Buffer(_) => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_canvas_draws_its_painted_content_where_it_sits() {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(1);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(5, 6, 20, 10),
+            Some(fill_list(20.0, 10.0, 200)),
+        );
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(layers.len(), 1);
+        let (dst, opacity, image) = &layers[0];
+        assert_eq!(*dst, Rect::new(5, 6, 20, 10));
+        assert_eq!(*opacity, 1.0);
+        assert_eq!(image.size(), Size::new(20, 10));
+        assert_eq!(image.pixel(Point::new(3, 3)), Some([200, 0, 0, 255]));
+    }
+
+    #[test]
+    fn a_canvas_without_content_or_not_drawn_has_no_layer() {
+        let (mut composer, output) = screen();
+        add_canvas(&mut composer, NodeId::new(1), None, Rect::new(0, 0, 10, 10), None);
+        add_canvas(
+            &mut composer,
+            NodeId::new(2),
+            None,
+            Rect::new(0, 0, 10, 10),
+            Some(fill_list(10.0, 10.0, 9)),
+        );
+        composer.with_scene(|scene| scene.set_visible(NodeId::new(2), false).expect("the canvas hides"));
+        assert!(canvas_layers(&mut composer, output).is_empty());
+        composer.with_scene(|scene| scene.set_visible(NodeId::new(2), true).expect("the canvas shows"));
+        assert_eq!(canvas_layers(&mut composer, output).len(), 1);
+    }
+
+    #[test]
+    fn a_canvas_is_painted_again_only_when_its_content_or_size_changes() {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(1);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 8, 8),
+            Some(fill_list(8.0, 8.0, 10)),
+        );
+        composer.begin_frame();
+        let first = composer.canvas_picture(canvas).expect("painted");
+        composer.end_frame();
+        let _ = damage_of(&mut composer, output);
+        assert!(
+            Arc::ptr_eq(&first, &composer.canvas_picture(canvas).expect("painted")),
+            "an unchanged canvas keeps its picture"
+        );
+        composer.with_scene(|scene| {
+            scene
+                .set_value(canvas, "content", TreeValue::Bytes(fill_list(8.0, 8.0, 20)))
+                .expect("new content");
+        });
+        composer.begin_frame();
+        let second = composer.canvas_picture(canvas).expect("painted again");
+        composer.end_frame();
+        assert!(!Arc::ptr_eq(&first, &second), "new content paints a new picture");
+        assert_eq!(second.pixel(Point::new(1, 1)), Some([20, 0, 0, 255]));
+        composer.with_scene(|scene| {
+            scene
+                .set_bounds(canvas, Rect::new(0, 0, 12, 9))
+                .expect("the canvas resizes")
+        });
+        composer.begin_frame();
+        let third = composer.canvas_picture(canvas).expect("painted again");
+        composer.end_frame();
+        assert_eq!(third.size(), Size::new(12, 9), "a resize paints at the new size");
+    }
+
+    #[test]
+    fn writing_a_canvas_content_damages_the_canvas_and_nothing_else() {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(1);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(30, 40, 20, 10),
+            Some(fill_list(20.0, 10.0, 1)),
+        );
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "a new canvas damages its pixels"
+        );
+        assert!(
+            damage_of(&mut composer, output).is_none(),
+            "an unchanged canvas draws nothing new"
+        );
+        composer.with_scene(|scene| {
+            scene
+                .set_value(canvas, "content", TreeValue::Bytes(fill_list(20.0, 10.0, 2)))
+                .expect("new content");
+        });
+        let damage = damage_of(&mut composer, output).expect("a repaint is damage");
+        assert_eq!(damage, vec![Rect::new(30, 40, 20, 10)]);
+    }
+
+    #[test]
+    fn canvases_draw_in_tree_order_children_over_their_parent() {
+        let (mut composer, output) = screen();
+        let (parent, child, sibling) = (NodeId::new(1), NodeId::new(2), NodeId::new(3));
+        add_canvas(
+            &mut composer,
+            parent,
+            None,
+            Rect::new(0, 0, 10, 10),
+            Some(fill_list(10.0, 10.0, 1)),
+        );
+        add_canvas(
+            &mut composer,
+            sibling,
+            None,
+            Rect::new(0, 0, 30, 30),
+            Some(fill_list(30.0, 30.0, 3)),
+        );
+        add_canvas(
+            &mut composer,
+            child,
+            Some(parent),
+            Rect::new(2, 2, 4, 4),
+            Some(fill_list(4.0, 4.0, 2)),
+        );
+        let drawn: Vec<(Rect, u8)> = canvas_layers(&mut composer, output)
+            .iter()
+            .map(|(dst, _, image)| (*dst, image.pixel(Point::new(0, 0)).expect("a pixel")[0]))
+            .collect();
+        assert_eq!(
+            drawn,
+            vec![
+                (Rect::new(0, 0, 10, 10), 1),
+                (Rect::new(2, 2, 4, 4), 2),
+                (Rect::new(0, 0, 30, 30), 3)
+            ],
+            "a parent, then its child placed in the parent's space, then the next sibling"
+        );
+    }
+
+    #[test]
+    fn a_canvas_composes_the_opacity_of_its_parents() {
+        let (mut composer, output) = screen();
+        let (parent, child) = (NodeId::new(1), NodeId::new(2));
+        add_canvas(&mut composer, parent, None, Rect::new(0, 0, 10, 10), None);
+        add_canvas(
+            &mut composer,
+            child,
+            Some(parent),
+            Rect::new(0, 0, 10, 10),
+            Some(fill_list(10.0, 10.0, 5)),
+        );
+        composer.with_scene(|scene| {
+            scene
+                .set_property(parent, VisualProperty::Opacity, PropertyValue::Number(0.5))
+                .expect("the parent fades");
+            scene
+                .set_property(child, VisualProperty::Opacity, PropertyValue::Number(0.5))
+                .expect("the child fades");
+        });
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(layers.len(), 1);
+        assert!(
+            (layers[0].1 - 0.25).abs() < 1e-6,
+            "opacity multiplies down the tree: {}",
+            layers[0].1
+        );
+    }
+
+    #[test]
+    fn a_view_of_a_canvas_draws_the_canvas_pixels() {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(2);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        add_view(&mut composer, NodeId::new(1), None, Some(canvas));
+        let _ = view_layers(&mut composer, output);
+        let pictures = composer.view_pictures();
+        assert_eq!(pictures.len(), 1);
+        assert_eq!(pictures[0].1.pixel(Point::new(5, 5)), Some([77, 0, 0, 255]));
+    }
+
+    #[test]
+    fn a_canvas_with_content_that_does_not_decode_draws_nothing() {
+        let (mut composer, output) = screen();
+        add_canvas(
+            &mut composer,
+            NodeId::new(1),
+            None,
+            Rect::new(0, 0, 10, 10),
+            Some(b"junk".to_vec()),
+        );
+        assert!(canvas_layers(&mut composer, output).is_empty());
+    }
+
+    #[test]
+    fn a_canvas_too_large_to_paint_draws_nothing() {
+        let (mut composer, output) = screen();
+        add_canvas(
+            &mut composer,
+            NodeId::new(1),
+            None,
+            Rect::new(0, 0, 9000, 9000),
+            Some(fill_list(10.0, 10.0, 1)),
+        );
+        assert!(canvas_layers(&mut composer, output).is_empty());
     }
 }

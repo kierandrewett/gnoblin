@@ -134,7 +134,7 @@ pub enum Code {
     ShellAlreadyAttached,
     /// The connection is an observer, and the op is one only the tree's holder may send.
     NotHolder,
-    /// Declared for another slice: a paint value is malformed.
+    /// A `Canvas`'s `content` does not decode as a paint list.
     BadPaint,
     /// A scene refusal with no table code of its own.
     BadValue,
@@ -701,6 +701,7 @@ fn set_value(
         return set_seat_focus(work, node, value, applied);
     }
     check_value(work, classes, value, &info.kind)?;
+    check_paint(work, node, key, value)?;
     applied.changes.push(TreeChange::Set {
         node,
         key: key.to_owned(),
@@ -843,6 +844,18 @@ fn check_value(work: &Scene, classes: &dyn ClassInfo, value: &TreeValue, kind: &
         },
         _ => Err(Code::WrongType),
     }
+}
+
+/// A `Canvas`'s `content` must decode as a paint list. A value that does not is refused `bad-paint` (F42), the
+/// transaction with it, so the canvas keeps the content it had.
+fn check_paint(work: &Scene, node: NodeId, key: &str, value: &TreeValue) -> Result<(), Code> {
+    if let TreeValue::Bytes(bytes) = value
+        && key == "content"
+        && work.class(node) == Some("canvas")
+    {
+        gnoblin_paint::decode(bytes).map_err(|_| Code::BadPaint)?;
+    }
+    Ok(())
 }
 
 fn finite(number: f64) -> Result<(), Code> {

@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use gnoblin_paint::SharedPainter;
 use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
@@ -59,6 +60,8 @@ pub struct TreeHostHandle {
     session: Arc<Mutex<TreeSession>>,
     /// The serial of the last batch the frame published, read when a refusal answers.
     serial: Arc<AtomicU64>,
+    /// Measures text for `Canvas.measure` and paints canvases: the system fonts, found on first use.
+    painter: SharedPainter,
 }
 
 impl std::fmt::Debug for TreeHostHandle {
@@ -82,6 +85,7 @@ impl TreeHostHandle {
             events,
             session: Arc::new(Mutex::new(TreeSession::default())),
             serial: Arc::new(AtomicU64::new(0)),
+            painter: SharedPainter::system(),
         })
     }
 
@@ -97,6 +101,7 @@ impl TreeHostHandle {
             queue: self.queue.clone(),
             classes: Arc::clone(&self.classes) as Arc<dyn ClassInfo + Send + Sync>,
             attached: Arc::new(move || lock(&attached_session).has_attachments()),
+            painter: self.painter.clone(),
             publish: Arc::new(move |batch: TreeBatch| {
                 serial.store(batch.serial, Ordering::Release);
                 let (holder, observers) = {
@@ -473,9 +478,10 @@ fn set_properties(node: NodeId, key: &str, value: &TreeValue) -> change::Propert
             "list_effect".clone_into(&mut properties.value_kind);
             properties.value_effects = value.iter().map(effect_properties).collect();
         }
-        // No wire field carries bytes, and `set_value` refuses them as `bad-value`,
-        // so a shell can never write one; the kind names it for a direct caller.
-        TreeValue::Bytes(_) => "bytes".clone_into(&mut properties.value_kind),
+        TreeValue::Bytes(value) => {
+            "bytes".clone_into(&mut properties.value_kind);
+            properties.value_bytes.clone_from(value);
+        }
     }
     properties
 }
@@ -581,7 +587,7 @@ fn tree_op(mut op: op::Properties) -> Result<TreeOp, Code> {
 }
 
 /// The value a `set` writes. The kinds the wire carries are bool, int, uint, double, text,
-/// node (`0` is nil), a list of doubles, a list of texts and a list of effects; any other
+/// node (`0` is nil), a list of doubles, a list of texts, a list of effects and bytes; any other
 /// kind is `bad-value`. A list of effects refuses the whole set when one entry is not a
 /// pass the renderer can draw, so a partial chain is never written.
 fn set_value(op: &op::Properties) -> Result<TreeValue, Code> {
@@ -596,6 +602,7 @@ fn set_value(op: &op::Properties) -> Result<TreeValue, Code> {
         )),
         "list_double" => Ok(TreeValue::ListDouble(op.value_list.clone())),
         "list_text" => Ok(TreeValue::ListText(op.value_texts.clone())),
+        "bytes" => Ok(TreeValue::Bytes(op.value_bytes.clone())),
         "list_effect" => op
             .value_effects
             .iter()

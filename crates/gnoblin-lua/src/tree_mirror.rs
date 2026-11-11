@@ -55,6 +55,7 @@ pub enum LuaValue {
     List(Vec<f64>),
     Texts(Vec<String>),
     Effects(Vec<effect::Properties>),
+    Bytes(Vec<u8>),
 }
 
 impl LuaValue {
@@ -70,6 +71,7 @@ impl LuaValue {
             Self::List(_) => "list",
             Self::Texts(_) => "texts",
             Self::Effects(_) => "effects",
+            Self::Bytes(_) => "bytes",
         }
     }
 
@@ -84,6 +86,7 @@ impl LuaValue {
             Self::List(v) => format!("list {v:?}"),
             Self::Texts(v) => format!("texts {v:?}"),
             Self::Effects(v) => format!("effects {v:?}"),
+            Self::Bytes(v) => format!("bytes <{} bytes>", v.len()),
         }
     }
 }

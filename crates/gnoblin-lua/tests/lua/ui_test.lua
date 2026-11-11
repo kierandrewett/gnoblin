@@ -538,4 +538,147 @@ return {
             H.check(shown, "the toast must be written fully opaque")
         end,
     },
+    {
+        "a Text takes the width the compositor answers a measure with",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local t = root:add(Text({ text = "Hello", size = 10 }))
+            H.check(t.width == 25, "before the answer the width is the estimate, got " .. tostring(t.width))
+            local call = host.calls[#host.calls]
+            H.check(call and call.method == "measure", "a new Text must ask the compositor to measure it")
+            H.check(call.text == "sans\nHello", "the call carries the font and the text, got " .. tostring(call.text))
+            H.check(call.args[1] == string.pack("<d", 10), "the call carries the size as a double")
+            H.frame(
+                host,
+                1,
+                { { type = tostring(call.result), target = host.ids("Canvas")[1], args = { "31 15", "" } } }
+            )
+            H.check(t.width == 31, "the answered width must replace the estimate, got " .. tostring(t.width))
+        end,
+    },
+    {
+        "changing the text falls back to the estimate and asks again",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local t = root:add(Text({ text = "Hello", size = 10 }))
+            local id = host.ids("Canvas")[1]
+            local first = host.calls[#host.calls]
+            H.frame(host, 1, { { type = tostring(first.result), target = id, args = { "31 15", "" } } })
+            H.check(t.width == 31, "the first answer must land")
+            t.text = "Hello, world"
+            H.check(t.width == 60, "while the new answer is out the width is the estimate, got " .. tostring(t.width))
+            local second = host.calls[#host.calls]
+            H.check(second ~= first and second.method == "measure", "new text must ask again")
+            -- The old question's answer arrives late: it must not be taken for the new text.
+            H.frame(host, 2, { { type = tostring(first.result), target = id, args = { "99 15", "" } } })
+            H.check(t.width == 60, "a stale answer must be ignored, got " .. tostring(t.width))
+            H.frame(host, 3, { { type = tostring(second.result), target = id, args = { "74 15", "" } } })
+            H.check(t.width == 74, "the new answer must land, got " .. tostring(t.width))
+        end,
+    },
+    {
+        "a refused measure keeps the estimate and is reported",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local t = root:add(Text({ text = "Hi", size = 10 }))
+            local call = host.calls[#host.calls]
+            H.frame(
+                host,
+                1,
+                { { type = tostring(call.result), target = host.ids("Canvas")[1], args = { "", "unavailable" } } }
+            )
+            H.check(t.width == 10, "a refusal keeps the estimate, got " .. tostring(t.width))
+            local reported = false
+            for _, r in ipairs(host.reports) do
+                reported = reported or r:find("unavailable", 1, true) ~= nil
+            end
+            H.check(reported, "the refusal must be reported")
+            local calls = #host.calls
+            H.frame(host, 2, {})
+            H.check(#host.calls == calls, "a refusal must not be asked again for the same text")
+        end,
+    },
+    {
+        "a Box paints its fill into its content",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local b = root:add(Box({ width = 10, height = 5, fill = "#ff0000", radius = 2 }))
+            local expected = "GNPL"
+                .. string.pack("<BI4", 1, 1)
+                .. string.pack("<Bfffff", 1, 0, 0, 10, 5, 2)
+                .. string.pack("<I4I4f", 0xff0000ff, 0, 0)
+            H.check(core.get(host.ids("Canvas")[1], "content") == expected, "the content is the encoded rect")
+            b.fill = "#00ff0080"
+            H.frame(host, 1, {})
+            local changed = "GNPL"
+                .. string.pack("<BI4", 1, 1)
+                .. string.pack("<Bfffff", 1, 0, 0, 10, 5, 2)
+                .. string.pack("<I4I4f", 0x00ff0080, 0, 0)
+            H.check(core.get(host.ids("Canvas")[1], "content") == changed, "a new fill must be painted again")
+        end,
+    },
+    {
+        "a Text and an Icon paint themselves with their colours",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            root:add(Text({ text = "ab", size = 13, color = "#c6d0f5", font = "mono" }))
+            root:add(Icon({ icon = "window-close-symbolic", size = 16, color = "#fff" }))
+            local ids = host.ids("Canvas")
+            local text = "GNPL"
+                .. string.pack("<BI4", 1, 1)
+                .. string.pack("<BfffI4s2s4", 3, 0, 0, 13, 0xc6d0f5ff, "mono", "ab")
+            local icon = "GNPL"
+                .. string.pack("<BI4", 1, 1)
+                .. string.pack("<BfffI4s2", 4, 0, 0, 16, 0xffffffff, "window-close-symbolic")
+            H.check(core.get(ids[1], "content") == text, "the text op must carry the font, size and colour")
+            H.check(core.get(ids[2], "content") == icon, "the icon op must carry the name, size and colour")
+        end,
+    },
+    {
+        "an op the encoder cannot write is reported and leaves the content alone",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local c = root:add(Canvas({ draw = { { rect = { 0, 0, 4, 4 }, fill = "red" } } }))
+            H.check(core.get(host.ids("Canvas")[1], "content") == nil, "nothing is written for a bad op")
+            local reported = false
+            for _, r in ipairs(host.reports) do
+                reported = reported or r:find("draw op 1", 1, true) ~= nil
+            end
+            H.check(reported, "the bad op must be named in a report, got " .. table.concat(host.reports, "; "))
+            c.draw = {
+                { rect = { 0, 0, 4, 4 }, fill = "#000" },
+                { clip = { 0, 0, 2, 2 } },
+                { clip = false },
+                { opacity = 0.5 },
+                { opacity = false },
+            }
+            H.frame(host, 1, {})
+            H.check(core.get(host.ids("Canvas")[1], "content") ~= nil, "a good list is written once it is fixed")
+        end,
+    },
+    {
+        "a Text squeezed shorter than its line is centred in its node",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            root:add(Text({ text = "ab", size = 13, color = "#fff", height = 13 }))
+            local expected = "GNPL"
+                .. string.pack("<BI4", 1, 1)
+                .. string.pack("<BfffI4s2s4", 3, 0, -3, 13, 0xffffffff, "sans", "ab")
+            H.check(core.get(host.ids("Canvas")[1], "content") == expected, "the line box is centred: y is -3")
+        end,
+    },
 }

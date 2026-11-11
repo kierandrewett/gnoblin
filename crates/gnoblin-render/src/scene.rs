@@ -173,6 +173,9 @@ pub struct Node {
     /// Property values the tree has accepted, by schema name. Read by the tree and its snapshot;
     /// the scene draws nothing from them.
     values: BTreeMap<String, TreeValue>,
+    /// How many byte values (a `Canvas`'s `content`) the tree has written to this node. A renderer that keeps a
+    /// picture made from the bytes compares it to know the picture is stale.
+    content_revision: u64,
 }
 
 impl Node {
@@ -574,6 +577,7 @@ impl Scene {
             parented_by: spec.parent.map(|_| actor),
             class: None,
             values: BTreeMap::new(),
+            content_revision: 0,
         };
         self.nodes.insert(id, node);
         self.siblings_mut(spec.parent).insert(index, id);
@@ -918,11 +922,38 @@ impl Scene {
             .flat_map(|node| node.values.iter().map(|(key, value)| (key.as_str(), value)))
     }
 
-    /// Store the value the tree accepted for `key` on a node. It damages no pixels by itself.
+    /// Store the value the tree accepted for `key` on a node. It damages no pixels by itself, except a byte value:
+    /// bytes are what a `Canvas` paints, so writing them bumps the node's [`Scene::content_revision`], damages the
+    /// node's bounds and marks the node dirty for anything drawn from it.
     pub fn set_value(&mut self, id: NodeId, key: &str, value: TreeValue) -> Result<(), SceneError> {
         let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        let bytes = matches!(value, TreeValue::Bytes(_));
         node.values.insert(key.to_owned(), value);
+        if bytes {
+            node.content_revision += 1;
+            if let Some(sample) = self.sample(id) {
+                self.push_sample(sample);
+            }
+            self.dirty.insert(id);
+            self.dirty.extend(self.ancestors(id));
+        }
         Ok(())
+    }
+
+    /// How many byte values the tree has written to a node, or `None` for an unknown node. It changes whenever a
+    /// `Canvas`'s `content` is written, even to the same bytes.
+    #[must_use]
+    pub fn content_revision(&self, id: NodeId) -> Option<u64> {
+        self.nodes.get(&id).map(|node| node.content_revision)
+    }
+
+    /// The bytes the tree last accepted for `key` on a node, or `None` when it holds none.
+    #[must_use]
+    pub fn bytes(&self, id: NodeId, key: &str) -> Option<&[u8]> {
+        match self.value(id, key)? {
+            TreeValue::Bytes(bytes) => Some(bytes.as_slice()),
+            _ => None,
+        }
     }
 
     /// The text the scene stores for `key` on a node, or `None` when it stores none.
@@ -1980,6 +2011,7 @@ mod tests {
                 parented_by: None,
                 class: None,
                 values: BTreeMap::new(),
+                content_revision: 0,
             },
         );
         scene.roots.push(space);
@@ -1999,6 +2031,7 @@ mod tests {
                 parented_by: Some(Actor::Compositor),
                 class: None,
                 values: BTreeMap::new(),
+                content_revision: 0,
             },
         );
         scene.dirty.clear();

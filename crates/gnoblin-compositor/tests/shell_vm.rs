@@ -985,3 +985,210 @@ fn the_xr_room_is_torn_down_when_the_seat_goes_and_the_windows_stay_on_their_wor
         role.diagnostics()
     );
 }
+
+// ---- Canvas painting: the stock titlebar (data/lua/gnoblin/shell/decorations.lua) ----------------------------------
+
+/// A canvas of the compositor's tree as the shell painted it: its size and the paint list it holds.
+struct PaintedCanvas {
+    width: u32,
+    height: u32,
+    list: gnoblin_paint::PaintList,
+}
+
+impl PaintedCanvas {
+    /// The canvas rasterised with the embedded font, premultiplied, so the pixels do not depend on this machine's fonts.
+    fn picture(&self) -> gnoblin_paint::Picture {
+        use std::sync::Arc;
+        gnoblin_paint::CanvasPainter::new(Arc::new(gnoblin_paint::FontSet::embedded()))
+            .paint(&self.list, self.width, self.height)
+            .expect("a canvas of a sane size")
+            .picture
+    }
+
+    /// How many pixels of the picture are not transparent, and the most opaque alpha among them.
+    fn ink(&self) -> (usize, u8) {
+        let picture = self.picture();
+        let alphas: Vec<u8> = picture.data.as_chunks::<4>().0.iter().map(|pixel| pixel[3]).collect();
+        (
+            alphas.iter().filter(|alpha| **alpha != 0).count(),
+            alphas.iter().copied().max().unwrap_or(0),
+        )
+    }
+}
+
+/// Every canvas in the compositor's own tree that holds a paint list and has a size, read through a fresh observer.
+fn painted_canvases(session: &Session) -> Vec<PaintedCanvas> {
+    let (_wire, _, nodes) = observe(session);
+    nodes
+        .iter()
+        .filter(|node| node.class == "canvas")
+        .filter_map(|node| {
+            let prop = |key: &str| node.props.iter().find(|prop| prop.key == key);
+            let content = prop("content")?;
+            let width = prop("width").map_or(0.0, |prop| prop.value_double) as u32;
+            let height = prop("height").map_or(0.0, |prop| prop.value_double) as u32;
+            let list = gnoblin_paint::decode(&content.value_bytes).expect("the compositor holds only paint lists");
+            (width > 0 && height > 0).then_some(PaintedCanvas { width, height, list })
+        })
+        .collect()
+}
+
+/// The fills the stock titlebar uses: activated and not.
+const TITLEBAR_FILLS: [[u8; 3]; 2] = [[0x41, 0x45, 0x59], [0x23, 0x26, 0x34]];
+
+fn is_titlebar_fill(canvas: &PaintedCanvas) -> bool {
+    canvas.list.ops.iter().any(|op| {
+        matches!(op, gnoblin_paint::PaintOp::Rect { fill, width, .. }
+            if *width > 0.0 && fill.a == 255 && TITLEBAR_FILLS.contains(&[fill.r, fill.g, fill.b]))
+    })
+}
+
+fn has_text(canvas: &PaintedCanvas, wanted: &str) -> bool {
+    canvas
+        .list
+        .ops
+        .iter()
+        .any(|op| matches!(op, gnoblin_paint::PaintOp::Text { text, .. } if text == wanted))
+}
+
+fn has_icon(canvas: &PaintedCanvas, wanted: &str) -> bool {
+    canvas
+        .list
+        .ops
+        .iter()
+        .any(|op| matches!(op, gnoblin_paint::PaintOp::Icon { name, .. } if name == wanted))
+}
+
+/// A mapped window gets the stock titlebar, and the compositor holds what paints it: a bar filled with the
+/// titlebar colour, the window's title as text and a close icon, each a paint list the compositor accepted (a
+/// list that did not decode would have been refused `bad-paint`, and the shell would have reported it).
+/// Each list is drawn with the painter and its pixels read: the fill, the title's strokes and the icon's strokes.
+#[test]
+fn a_mapped_window_gets_a_titlebar_that_paints_its_fill_title_and_close_icon() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    wait_for_sized_workspace(&mut role);
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.titled", "A Title");
+
+    tick_until(
+        &mut role,
+        "the titlebar's bar, title and close icon were never all painted",
+        |_| {
+            let canvases = painted_canvases(&session);
+            canvases.iter().any(is_titlebar_fill)
+                && canvases.iter().any(|canvas| has_text(canvas, "A Title"))
+                && canvases.iter().any(|canvas| has_icon(canvas, "window-close-symbolic"))
+        },
+    );
+
+    let canvases = painted_canvases(&session);
+    let bar = canvases
+        .iter()
+        .find(|canvas| is_titlebar_fill(canvas))
+        .expect("the bar");
+    let title = canvases
+        .iter()
+        .find(|canvas| has_text(canvas, "A Title"))
+        .expect("the title");
+    let close = canvases
+        .iter()
+        .find(|canvas| has_icon(canvas, "window-close-symbolic"))
+        .expect("the close icon");
+
+    // The bar: the fill, opaque, at its corner and its far end.
+    let picture = bar.picture();
+    let fill = picture.pixel(1, 1).expect("inside the bar");
+    assert_eq!(fill[3], 255, "the bar is opaque");
+    assert!(
+        TITLEBAR_FILLS.contains(&[fill[0], fill[1], fill[2]]),
+        "the fill is a titlebar colour: {fill:?}"
+    );
+    assert_eq!(
+        picture.pixel(bar.width - 2, bar.height - 2),
+        Some(fill),
+        "the fill runs the bar's length"
+    );
+    assert_eq!(bar.height, 28, "the stock titlebar is 28 pixels tall");
+
+    // The title: strokes in the title colour, on a transparent canvas (the bar's fill is the bar's).
+    let (ink, strongest) = title.ink();
+    assert!(ink >= 20, "the title paints strokes, got {ink} pixels");
+    assert!(
+        strongest >= 128,
+        "the title has pixels that are mostly covered, got {strongest}"
+    );
+    let colours: Vec<[u8; 4]> = title
+        .picture()
+        .data
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .copied()
+        .filter(|pixel| pixel[3] == 255)
+        .collect();
+    assert!(
+        colours.iter().all(|pixel| pixel[..3] == [0xc6, 0xd0, 0xf5]),
+        "a fully covered pixel of the title is the title colour #c6d0f5"
+    );
+
+    // The close icon: a 16 pixel square of strokes.
+    assert_eq!((close.width, close.height), (16, 16));
+    let (ink, _) = close.ink();
+    assert!(ink >= 10, "the close icon paints strokes, got {ink} pixels");
+    assert_eq!(
+        close.picture().pixel(0, 0),
+        Some([0, 0, 0, 0]),
+        "the icon's corner is clear"
+    );
+
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        role.diagnostics()
+    );
+}
+
+/// A `Text` the shell makes asks the compositor for its width and takes the answer: the width stops being the
+/// `size / 2` per character estimate and becomes what the painter lays the string out in.
+#[test]
+fn a_text_node_takes_the_width_the_compositor_measures() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    role.run(
+        "measured text",
+        "probe = root:add(Text({ text = 'Measured text', size = 20 })) return tostring(probe.width)",
+    )
+    .expect("the text is made");
+    tick_until(&mut role, "the compositor never answered the measure", |role| {
+        role.run("measured?", "return tostring(probe.measured.key ~= nil)")
+            .expect("the probe runs")
+            .expect("the probe returns text")
+            == "true"
+    });
+    let width = role
+        .run("width", "return tostring(probe.width)")
+        .expect("the probe runs")
+        .expect("the probe returns text")
+        .parse::<f64>()
+        .expect("a width") as u32;
+    let guess = 13 * 20 / 2; // thirteen characters at half the size each
+    assert!(width > 0, "the answered width is positive");
+    assert_ne!(
+        width, guess,
+        "the answer is the painter's layout, not the estimate ({guess})"
+    );
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        role.diagnostics()
+    );
+}

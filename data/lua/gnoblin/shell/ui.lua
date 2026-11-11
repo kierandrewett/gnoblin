@@ -37,21 +37,53 @@ function Box:arrange() -- "row" or "column": a small flexbox; "none": children s
     end
 end
 
--- Text width is an estimate: the compositor has no measure request, so the shell cannot ask for the real
--- glyph advance. A sans glyph averages about half the font size, so width is size * 0.5 per character.
+-- Text width is what the compositor measures. `Canvas:measure` asks it for the width the painter will draw the text
+-- at, and the answer arrives a frame later, so until it does the width is an estimate: a sans glyph averages about
+-- half the font size. The answer is kept with the text, size and font it was for, so a change of any of them
+-- falls back to the estimate and asks again.
+local asked = setmetatable({}, { __mode = "k" }) -- node -> the key its outstanding question was about
+local function estimate(t)
+    return (utf8.len(t.text or "") or #(t.text or "")) * t.size // 2
+end
+local function measured_width(t)
+    local key = ("%s\1%s\1%s"):format(t.font, t.size, t.text)
+    local known = t.measured
+    if known.key == key then
+        return known.width
+    end
+    if asked[t] ~= key then
+        asked[t] = key
+        local answer = t:measure(t.text, t.size, t.font)
+        go(function()
+            local result, err = await(answer)
+            if asked[t] ~= key then
+                return -- the text changed meanwhile and a newer question is out
+            end
+            local width = tostring(result):match("^(%d+) %d+$")
+            -- An error keeps the estimate for this text: asking again would get the same refusal.
+            t.measured = { key = key, width = width and tonumber(width) or estimate(t) }
+            if err ~= "" then
+                report(("Text %q: measure failed: %s"):format(t.text, err))
+            end
+        end)
+    end
+    return estimate(t)
+end
 Box:extend("Text")({
     text = "",
     size = 14,
     color = "#cdd6f4",
     font = "sans",
-    width = function(t)
-        return (utf8.len(t.text or "") or #(t.text or "")) * t.size // 2
-    end,
+    measured = {},
+    width = measured_width,
     height = function(t)
         return t.size * 3 // 2
     end,
+    -- The line box is centred in the node, so a row that squeezes the node shorter than a line (a titlebar) trims
+    -- both ends of the box evenly and not just the bottom.
     draw = function(t)
-        return { { text = t.text, size = t.size, color = t.color, font = t.font } }
+        local y = (t.height - t.size * 3 // 2) // 2
+        return { { text = t.text, y = y, size = t.size, color = t.color, font = t.font } }
     end,
 })
 
@@ -59,6 +91,7 @@ Box:extend("Icon")({
     press = signal,
     icon = "",
     size = 16,
+    color = "#cdd6f4",
     width = function(i)
         return i.size
     end,
@@ -66,7 +99,7 @@ Box:extend("Icon")({
         return i.size
     end,
     draw = function(i)
-        return { { icon = i.icon, size = i.size } }
+        return { { icon = i.icon, size = i.size, color = i.color } }
     end,
 })
 

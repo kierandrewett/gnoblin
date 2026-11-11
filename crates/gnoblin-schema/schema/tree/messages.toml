@@ -295,7 +295,7 @@ name = "key"
 type = "string"
 since = "0.2.0"
 
-# `bool`, `int`, `uint`, `double`, `text`, `node`, or `list_double`.
+# `bool`, `int`, `uint`, `double`, `text`, `node`, `list_double`, `list_text`, `list_effect` or `bytes`.
 [[object.property]]
 name = "value_kind"
 type = "string"
@@ -439,6 +439,12 @@ name = "token"
 type = "uint"
 since = "0.2.0"
 
+# The `bytes` value of a `bytes` set (`Canvas.content`). Appended after `token`.
+[[object.property]]
+name = "value_bytes"
+type = "bytes"
+since = "0.2.0"
+
 # One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the
 # fields the kind does not use are zero or empty.
 [[object]]
@@ -532,6 +538,12 @@ since = "0.2.0"
 [[object.property]]
 name = "value_effects"
 type = "list<object:effect>"
+since = "0.2.0"
+
+# The `bytes` value of a `bytes` set (`Canvas.content`). Appended after `value_effects`.
+[[object.property]]
+name = "value_bytes"
+type = "bytes"
 since = "0.2.0"
 
 # One node of a snapshot: the shape of the tree, not the node's properties. A record, so a

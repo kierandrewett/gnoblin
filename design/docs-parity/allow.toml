@@ -1273,3 +1273,15 @@ name = "gnoblin.input.pad-help-requested"
 doc = "docs/shell-api/tablet-pad-help.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
+
+[[allow]]
+name = ":add"
+doc = "docs/shell-api/canvas.md"
+reason = "a node-tree method of the shell VM (data/lua/gnoblin/node.lua), not a gnoblin.* object member; the gate matches the mention"
+owner-slice = "docs wrong"
+
+[[allow]]
+name = ":measure"
+doc = "docs/shell-api/canvas.md"
+reason = "Canvas:measure is a tree-class method of the shell VM (schema/tree/canvas.toml), not a gnoblin.* object member; the gate matches the mention"
+owner-slice = "docs wrong"

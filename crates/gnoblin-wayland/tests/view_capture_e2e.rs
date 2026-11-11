@@ -67,17 +67,18 @@ struct Classes;
 
 impl ClassInfo for Classes {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window" | "view")
+        matches!(class, "node" | "window" | "view" | "canvas")
     }
 
     fn is_a(&self, class: &str, ancestor: &str) -> bool {
-        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view"))
+        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view" | "canvas"))
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
         let kind = match (class, key) {
             (_, "x" | "y" | "width" | "height") => ValueType::Double,
             (_, "visible") => ValueType::Bool,
+            ("canvas", "content") => ValueType::Bytes,
             ("view", "source" | "camera") => ValueType::Node("node".to_owned()),
             _ => return None,
         };
@@ -692,5 +693,166 @@ fn the_session_lock_stops_the_capture_of_a_view() {
         let ready = viewer.client.state.frame_ready;
         assert!(!viewer.capture(), "a stopped session delivers no frame");
         assert_eq!(viewer.client.state.frame_ready, ready, "no frame survived the lock");
+    });
+}
+
+/// The paint list a titlebar-like canvas sends: a filled bar, a line of text and a close icon.
+fn bar_paint_list() -> Vec<u8> {
+    use gnoblin_paint::{PaintList, PaintOp, Rgba8};
+    gnoblin_paint::encode(&PaintList {
+        ops: vec![
+            PaintOp::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: SIDE as f32,
+                height: SIDE as f32,
+                radius: 0.0,
+                fill: Rgba8::new(0x20, 0x40, 0xC0, 0xFF),
+                stroke: Rgba8::TRANSPARENT,
+                stroke_width: 0.0,
+            },
+            PaintOp::Text {
+                x: 4.0,
+                y: 2.0,
+                size: 16.0,
+                colour: Rgba8::new(0xFF, 0xFF, 0xFF, 0xFF),
+                font: "sans".to_owned(),
+                text: "Hi".to_owned(),
+            },
+            PaintOp::Icon {
+                x: 40.0,
+                y: 4.0,
+                size: 16.0,
+                colour: Rgba8::new(0xFF, 0xFF, 0xFF, 0xFF),
+                name: "window-close-symbolic".to_owned(),
+            },
+        ],
+    })
+}
+
+/// The owner's scene: a shell parent node holding one canvas that paints [`bar_paint_list`], and a View of the parent.
+fn arrange_canvas(owner: &Owner) {
+    // The scene's root, read through the queue; there is no window in this scene.
+    let (root, _) = owner.read(|scene| scene.root().expect("the scene has a root"));
+    owner.transact(|| {
+        let set = |node, key: &str, value| TreeOp::Set {
+            node,
+            key: key.to_owned(),
+            value,
+            timing: None,
+        };
+        let new = |class: &str, id| TreeOp::New {
+            class: class.to_owned(),
+            id,
+        };
+        let insert = |node, parent| TreeOp::Insert {
+            node,
+            parent,
+            index: None,
+        };
+        vec![
+            new("node", PARENT),
+            insert(PARENT, root),
+            new("canvas", PLACE),
+            insert(PLACE, PARENT),
+            set(PLACE, "width", TreeValue::Double(f64::from(SIDE))),
+            set(PLACE, "height", TreeValue::Double(f64::from(SIDE))),
+            set(PLACE, "content", TreeValue::Bytes(bar_paint_list())),
+            new("view", VIEW),
+            insert(VIEW, root),
+            set(VIEW, "width", TreeValue::Double(f64::from(SIDE))),
+            set(VIEW, "height", TreeValue::Double(f64::from(SIDE))),
+            set(VIEW, "source", TreeValue::Node(Some(PARENT))),
+        ]
+    });
+    owner.frames(3);
+}
+
+impl Viewer {
+    /// Captures frames until pixel `(x, y)` of the target is `word`, ignoring alpha.
+    fn capture_until_pixel(&mut self, x: u32, y: u32, word: u32) {
+        let deadline = Instant::now() + TIMEOUT;
+        let mut last = String::from("no frame was delivered");
+        while Instant::now() < deadline {
+            if self.capture() {
+                let seen = self.target.word(x, y);
+                if seen & 0x00FF_FFFF == word & 0x00FF_FFFF {
+                    return;
+                }
+                last = format!("pixel ({x}, {y}) is {seen:#010x}, not {word:#010x}");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the capture never showed {word:#010x} at ({x}, {y}): {last}");
+    }
+
+    /// How many pixels of the box `[x, x + width) x [y, y + height)` of the target differ from `colour`, ignoring alpha.
+    fn differing(&self, x: u32, y: u32, width: u32, height: u32, colour: u32) -> usize {
+        (y..y + height)
+            .flat_map(|row| (x..x + width).map(move |column| (column, row)))
+            .filter(|(column, row)| self.target.word(*column, *row) & 0x00FF_FFFF != colour & 0x00FF_FFFF)
+            .count()
+    }
+}
+
+/// A canvas the shell paints reaches the pixels of a View: the bar's fill where nothing is drawn over it, the text
+/// where the text is, and the icon where the icon is.
+#[test]
+fn a_canvas_inside_a_view_is_captured_with_its_painted_pixels() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let mut viewer = Viewer::open(handle);
+        // The bottom right of the bar has nothing drawn over the fill.
+        viewer.capture_until_pixel(SIDE - 2, SIDE - 2, SOURCE);
+        assert_eq!(
+            viewer.differing(0, 24, SIDE, SIDE - 24, SOURCE),
+            0,
+            "below the text and the icon is fill"
+        );
+        let text = viewer.differing(2, 0, 30, 24, SOURCE);
+        assert!(text >= 20, "the text paints pixels over the fill: {text} differ");
+        let icon = viewer.differing(40, 4, 16, 16, SOURCE);
+        assert!(icon >= 10, "the close icon paints pixels over the fill: {icon} differ");
+        assert_eq!(
+            viewer.differing(34, 0, 4, 24, SOURCE),
+            0,
+            "the gap between the text and the icon is fill"
+        );
+    });
+}
+
+/// Repainting a canvas is delivered again: new content, new pixels.
+#[test]
+fn a_canvas_whose_content_is_written_again_is_captured_again() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until_pixel(SIDE - 2, SIDE - 2, SOURCE);
+        let repainted = {
+            use gnoblin_paint::{PaintList, PaintOp, Rgba8};
+            gnoblin_paint::encode(&PaintList {
+                ops: vec![PaintOp::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: SIDE as f32,
+                    height: SIDE as f32,
+                    radius: 0.0,
+                    fill: Rgba8::new(0xC0, 0x40, 0x20, 0xFF),
+                    stroke: Rgba8::TRANSPARENT,
+                    stroke_width: 0.0,
+                }],
+            })
+        };
+        owner.transact(|| {
+            vec![TreeOp::Set {
+                node: PLACE,
+                key: "content".to_owned(),
+                value: TreeValue::Bytes(repainted.clone()),
+                timing: None,
+            }]
+        });
+        viewer.capture_until(REPAINTED);
     });
 }

@@ -7,13 +7,21 @@ name = "canvas"
 since = "0.2.0"
 base = "node"
 
-# Encoded paint list. Refused `bad-paint` if it does not decode.
+# Encoded paint list (crates/gnoblin-paint/src/list.rs): rectangles, lines, text, icons, clips and opacity groups.
+# Refused `bad-paint` if it does not decode; the canvas then keeps the content it had. The compositor paints it into
+# a picture the size of the node when `content` or the size changes, and draws that picture where the node sits.
 [[object.property]]
 name = "content"
 type = "bytes"
 since = "0.2.0"
 
 # Measure text at a size. Answered through `tree.answer`.
+#
+# The call's one argument is the size in pixels as the little-endian bits of an `f64`; its text is the font name, a
+# newline, and the string to measure. The answer's result is `<width> <height>` in whole pixels: the extent the
+# painter lays that string out in, so a canvas of that size holds it exactly. An answer with an error and no result is
+# `bad-value` (a size that is not a finite number in (0, 1024], or no newline in the text), `too-large` (a string over
+# 16 KiB or a font name over 128 bytes) or `unavailable` (no fonts).
 [[object.method]]
 name = "measure"
 since = "0.2.0"

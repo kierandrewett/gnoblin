@@ -47,6 +47,7 @@ pub enum TreeValueKind {
     ListDouble,
     ListText,
     ListEffect,
+    Bytes,
 }
 
 impl TreeValueKind {
@@ -63,6 +64,7 @@ impl TreeValueKind {
             Self::ListDouble => "list_double",
             Self::ListText => "list_text",
             Self::ListEffect => "list_effect",
+            Self::Bytes => "bytes",
         }
     }
 }
@@ -485,6 +487,10 @@ fn from_lua(kind: TreeValueKind, value: Value) -> mlua::Result<LuaValue> {
             ),
             _ => return Err(wrong()),
         },
+        TreeValueKind::Bytes => match value {
+            Value::String(s) => LuaValue::Bytes(s.as_bytes().to_vec()),
+            _ => return Err(wrong()),
+        },
         TreeValueKind::ListEffect => match value {
             Value::Table(table) => LuaValue::Effects(
                 table
@@ -531,6 +537,7 @@ fn to_lua(lua: &Lua, value: &LuaValue) -> mlua::Result<Value> {
             }
             Value::Table(table)
         }
+        LuaValue::Bytes(bytes) => Value::String(lua.create_string(bytes)?),
     })
 }
 

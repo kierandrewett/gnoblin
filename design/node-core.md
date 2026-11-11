@@ -159,8 +159,24 @@ is rasterised when it changes, not every frame (unverified: plan risk table, sec
 | --------- | ------- | ------- | ----- | ------------------------------------------------------------- |
 | `content` | `bytes` | `[]`    |       | encoded paint list; refused `bad-paint` if it does not decode |
 
-Method: `measure(text, size)`. It runs on the compositor and answers through `tree.answer` like any call. No font
-measurement API exists in the tree today (unverified).
+Method: `measure(text, size, font)`. It runs on the compositor and answers through `tree.answer` like any call: the
+call's argument is the size as the bits of an `f64`, its text is the font, a newline and the string, and the result is
+`<width> <height>` in whole pixels, the extent the painter lays the same string out in. The size is a finite number in
+`(0, 1024]`; a refusal is an error string (`bad-value`, `too-large`, `unavailable`) with an empty result.
+
+**Painting (implemented).** `content` is the binary paint list of `crates/gnoblin-paint/src/list.rs`: rectangles, lines,
+text, icons, clips and opacity groups. A write that does not decode is refused `bad-paint` (F42). The compositor
+rasterises a list on the CPU when the node's `content` or size changes (the composer keys the picture by the scene's
+per-node content revision and the size), keeps the picture as a premultiplied snapshot, and draws it where the node sits
+in the scene's paint order, with the node's composed opacity, corner radius and effects. A `View` whose source holds
+canvases draws them too. `docs/shell-api/canvas.md` documents the ops a shell writes.
+
+**Owner decision O2 (`design/cutover-survey.md` 16.6), default selected, owner may revisit.** Canvas text and icons are
+painted by a small dedicated rasteriser, not the egui painter: `gnoblin-paint` uses `tiny-skia` (BSD-3-Clause, already in
+the graph through the cursor crate's SVG renderer) for every fill and `skrifa` (MIT or Apache-2.0, already in the graph
+through egui's text stack) for font files, advances and glyph outlines. System fonts are found by family in the standard
+directories, with one embedded Droid Sans subset (Apache-2.0) as the fallback and as the face the golden tests draw with.
+There is no shaping, kerning or bidirectional text. The egui painter stays for the portal dialogs until they move.
 
 **View** (base `Node`). Draws another node's subtree as a texture. Replaces `capture.toml`.
 

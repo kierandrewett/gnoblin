@@ -232,6 +232,10 @@ fn to_op(op: &LuaOp) -> op::Properties {
                     "list_effect".clone_into(&mut wire.value_kind);
                     wire.value_effects = v.clone();
                 }
+                LuaValue::Bytes(v) => {
+                    "bytes".clone_into(&mut wire.value_kind);
+                    wire.value_bytes = v.clone();
+                }
             }
             wire
         }
@@ -426,6 +430,7 @@ fn to_value(change: &change::Properties) -> Result<LuaValue, LinkError> {
         "list_double" => Ok(LuaValue::List(change.value_list.clone())),
         "list_text" => Ok(LuaValue::Texts(change.value_texts.clone())),
         "list_effect" => Ok(LuaValue::Effects(change.value_effects.clone())),
+        "bytes" => Ok(LuaValue::Bytes(change.value_bytes.clone())),
         other => Err(LinkError(format!("a tree value of kind {other} has no Lua form"))),
     }
 }

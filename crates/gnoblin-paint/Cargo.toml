@@ -1,0 +1,23 @@
+[package]
+name = "gnoblin-paint"
+description = "The Canvas paint list: its encoding, a deterministic CPU rasteriser with text and icons, and text measurement."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The rasteriser: anti-aliased fills and strokes of paths, clip masks and layer compositing, on the CPU. Pure
+# Rust, BSD-3-Clause, already in the graph through the cursor crate's SVG renderer. `simd` is off so a pixel does
+# not depend on the CPU features the build targets: the painter's output is a test oracle.
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std"] }
+# Font files: the character map, advances, metrics and glyph outlines. Pure Rust, MIT or Apache-2.0, already in the
+# graph through egui's text stack.
+skrifa = { version = "0.44.0", default-features = false, features = ["std"] }
+# The pixel size a measurement answers with.
+gnoblin-types.workspace = true
+gnoblin-log = { path = "../gnoblin-log" }
+
+[lints]
+workspace = true

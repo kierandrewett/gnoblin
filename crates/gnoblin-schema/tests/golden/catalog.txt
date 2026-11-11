@@ -544,6 +544,7 @@ object op since 0.2.0 secret false
   property dy type double since 0.2.0 secret false
   property text type string since 0.2.0 secret true
   property token type uint since 0.2.0 secret false
+  property value_bytes type bytes since 0.2.0 secret false
 object change since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -562,6 +563,7 @@ object change since 0.2.0 secret false
   property removed type list<uint> since 0.2.0 secret false
   property value_texts type list<string> since 0.2.0 secret false
   property value_effects type list<object:effect> since 0.2.0 secret false
+  property value_bytes type bytes since 0.2.0 secret false
 object snapshot_node since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type uint since 0.2.0 secret false
@@ -2131,6 +2133,8 @@ message Op {
     string text = 30;
     // since 0.2.0
     uint64 token = 31;
+    // since 0.2.0
+    bytes value_bytes = 32;
   }
 }
 
@@ -2172,6 +2176,8 @@ message Change {
     repeated string value_texts = 16;
     // since 0.2.0; list of record `effect`: the properties of one value
     repeated Effect.Properties value_effects = 17;
+    // since 0.2.0
+    bytes value_bytes = 18;
   }
 }
 

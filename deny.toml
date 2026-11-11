@@ -64,6 +64,9 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.9
+# `cargo deny` reads crates, not data files. The one third-party asset a crate embeds is the font subset in
+# `crates/gnoblin-paint/fonts/` (Droid Sans, Apache-2.0, on the list above); its notice lives beside it in that
+# directory's README, since the repository keeps no separate third-party notices file.
 # The allow-list is a policy for dependencies Gnoblin will have, not just the
 # ones it has today, so an allowance no current dependency matches is expected
 # and is not a warning.

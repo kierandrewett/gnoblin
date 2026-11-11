@@ -965,6 +965,7 @@ dependencies = [
  "gnoblin-config",
  "gnoblin-log",
  "gnoblin-output",
+ "gnoblin-paint",
  "gnoblin-render",
  "gnoblin-render-frame",
  "gnoblin-render-gles",
@@ -1245,6 +1246,7 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-model",
+ "gnoblin-paint",
  "gnoblin-portal",
  "gnoblin-portal-core",
  "gnoblin-portal-ui",
@@ -1423,6 +1425,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-paint"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "skrifa",
+ "tiny-skia",
+]
+
+[[package]]
 name = "gnoblin-parity"
 version = "0.3.0-alpha.0"
 dependencies = [
@@ -1529,6 +1541,7 @@ version = "0.3.0-alpha.0"
 dependencies = [
  "gnoblin-animation",
  "gnoblin-log",
+ "gnoblin-paint",
  "gnoblin-secret",
  "gnoblin-types",
 ]
@@ -1765,6 +1778,7 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-output",
+ "gnoblin-paint",
  "gnoblin-pipewire-export",
  "gnoblin-render",
  "gnoblin-render-frame",

@@ -62,6 +62,7 @@ members = [
     "crates/gnoblin-lua-pattern",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
+    "crates/gnoblin-paint",
     "crates/gnoblin-pipewire-export",
     "crates/gnoblin-parity",
     "crates/gnoblin-proto",
@@ -266,6 +267,8 @@ gnoblin-types = { path = "crates/gnoblin-types" }
 gnoblin-secret = { path = "crates/gnoblin-secret" }
 # The layer registry: named layers, their scopes and their lifecycle (design/layers.md).
 gnoblin-layers = { path = "crates/gnoblin-layers" }
+# The Canvas paint list: its encoding, the deterministic CPU rasteriser with text and icons, and text measurement.
+gnoblin-paint = { path = "crates/gnoblin-paint" }
 # The Lua 5.4 pattern matcher and the load-time pattern checker (window rules and the sandbox).
 gnoblin-lua-pattern = { path = "crates/gnoblin-lua-pattern" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
