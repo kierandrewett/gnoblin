@@ -167,6 +167,8 @@ pub struct Node {
     visible: bool,
     clip: bool,
     input: bool,
+    /// A rectangle beyond `bounds` the node also takes hits over, in its local plane.
+    hit_extent: Option<Rect>,
     owner: Actor,
     parented_by: Option<Actor>,
     class: Option<String>,
@@ -573,6 +575,7 @@ impl Scene {
             visible: spec.visible,
             clip: spec.clip,
             input: spec.input,
+            hit_extent: None,
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
             class: None,
@@ -888,6 +891,18 @@ impl Scene {
     pub fn set_input(&mut self, id: NodeId, input: bool) -> Result<(), SceneError> {
         let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
         node.input = input;
+        Ok(())
+    }
+
+    /// Let a node take hits over a rectangle larger than its own, in its local plane, or take them over its bounds
+    /// alone again with `None`. A window whose client has a subsurface beyond the window's own surface is drawn
+    /// by its bounds and hit over the whole surface tree. The extent changes no pixels, so it causes no damage.
+    pub fn set_hit_extent(&mut self, id: NodeId, extent: Option<Rect>) -> Result<(), SceneError> {
+        if let Some(extent) = extent {
+            check_rect_bounds(extent)?;
+        }
+        let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
+        node.hit_extent = extent;
         Ok(())
     }
 
@@ -1588,7 +1603,9 @@ impl Scene {
             return;
         };
         // An input-unset or refused node passes the hit through to what lies under it.
-        if !node.input || !contains_point(node.bounds, local) || !accept(id) {
+        let hittable =
+            contains_point(node.bounds, local) || node.hit_extent.is_some_and(|extent| contains_point(extent, local));
+        if !node.input || !hittable || !accept(id) {
             return;
         }
         let nearer = match best {
@@ -2024,6 +2041,7 @@ mod tests {
                 visible: true,
                 clip: false,
                 input: true,
+                hit_extent: None,
                 owner: Actor::Compositor,
                 parented_by: None,
                 class: None,
@@ -2044,6 +2062,7 @@ mod tests {
                 visible: true,
                 clip: false,
                 input: true,
+                hit_extent: None,
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
                 class: None,

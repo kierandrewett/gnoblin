@@ -389,17 +389,37 @@ fn a_frame_drawn_by_the_nested_compositor_appears_in_the_hosts_screenshot() {
     session.run(|host| {
         let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
         let mut probe = Probe::drawing(RED);
-        let output = only_output(&nested);
         draw(&mut nested, &mut probe);
 
         let observation = host.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
         let window = observation.only().expect("one mapped window").clone();
+        // The host suggests no size, so the session picks the whole output; the test needs a part of the host's output
+        // the window does not cover, so the window is made smaller and the session follows.
+        host.control
+            .move_window(window.id, Rect::new(window.geometry.x, window.geometry.y, 640, 480));
+        let deadline = Instant::now() + TIMEOUT;
+        while only_output(&nested).logical_size() != Size::new(640, 480) {
+            assert!(
+                Instant::now() < deadline,
+                "the session never followed the host's resize"
+            );
+            nested.roundtrip().expect("the host answers a round trip");
+            let _ = nested.dispatch(&mut probe);
+        }
+        let output = only_output(&nested);
+        draw(&mut nested, &mut probe);
+        let window = host
+            .wait_for(|observation| observation.only().is_some_and(|window| window.geometry.width == 640))
+            .only()
+            .expect("the window")
+            .clone();
         let host_output = window_owner(host);
         let elsewhere = outside(&window, HEADLESS_SCREEN);
 
         // The session's red is inside its window, and the host's own black is where the
         // session is not — which is what makes "at the right place" an assertion rather
         // than "somewhere on the screen".
+        host.wait_for_colour(host_output, elsewhere, BLACK_PIXEL);
         host.wait_for_colour(host_output, centre(&window), RED_PIXEL);
         let screenshot = host.control.screenshot(host_output).expect("a screenshot");
         assert_eq!(

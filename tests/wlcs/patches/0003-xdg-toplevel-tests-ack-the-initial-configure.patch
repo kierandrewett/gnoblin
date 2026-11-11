@@ -1,0 +1,98 @@
+wlcs v1.8.1: xdg_toplevel tests act on a toplevel before the compositor's initial configure.
+
+Same defect as 0001 and 0002, in tests/xdg_toplevel_stable.cpp, plus one test that asserts more than xdg-shell says:
+
+- surface_can_be_moved_interactively, pointer_leaves_surface_during_interactive_move, surface_can_be_resized_interactively,
+  pointer_leaves_surface_during_interactive_resize and touch_can_not_steal_pointer_based_move attach a buffer to a
+  toplevel that never acknowledged its initial configure, which is xdg_surface.unconfigured_buffer, so a compositor that
+  enforces the rule (Smithay does) closed the connection before the test asked for a move. They now do the initial
+  commit and acknowledge the configure first, as ConfigurationWindow in the same file does.
+- wm_capabilities_are_sent waits for xdg_toplevel.wm_capabilities without ever committing. xdg-shell says the compositor
+  sends it once, before the first xdg_surface.configure, and that configure is the answer to the client's initial commit;
+  Mir sends the event at creation, which the protocol does not require. The test now commits first.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the tests upstream.
+
+diff --git a/tests/xdg_toplevel_stable.cpp b/tests/xdg_toplevel_stable.cpp
+index 0d9ee25..7c07bae 100644
+--- a/tests/xdg_toplevel_stable.cpp
++++ b/tests/xdg_toplevel_stable.cpp
+@@ -111,6 +111,28 @@ public:
+     int surface_configure_count{0};
+     wlcs::XdgToplevelStable::State state{0, 0, nullptr};
+ };
++
++// Commits the surface without a buffer and acknowledges the compositor's answer, the initial configure. Only then
++// may a buffer be attached (xdg_surface.unconfigured_buffer).
++void ack_initial_configure(wlcs::Client& client, wlcs::Surface& surface, wlcs::XdgSurfaceStable& xdg_shell_surface)
++{
++    bool configured = false;
++    ON_CALL(xdg_shell_surface, configure)
++        .WillByDefault(
++            [&configured, raw = static_cast<xdg_surface*>(xdg_shell_surface)](uint32_t serial)
++            {
++                xdg_surface_ack_configure(raw, serial);
++                configured = true;
++            });
++    wl_surface_commit(surface);
++    client.dispatch_until([&configured]() { return configured; });
++    ON_CALL(xdg_shell_surface, configure)
++        .WillByDefault(
++            [raw = static_cast<xdg_surface*>(xdg_shell_surface)](uint32_t serial)
++            {
++                xdg_surface_ack_configure(raw, serial);
++            });
++}
+ }
+ 
+ using XdgToplevelStableTest = wlcs::InProcessServer;
+@@ -122,6 +144,9 @@ TEST_F(XdgToplevelStableTest, wm_capabilities_are_sent)
+     wlcs::Surface surface{client};
+     wlcs::XdgSurfaceStable xdg_shell_surface{client, surface};
+     wlcs::XdgToplevelStable toplevel{xdg_shell_surface};
++    // The initial commit is what the compositor answers with the toplevel's first configure, and the capabilities
++    // come before that configure: a client that never commits has not asked for either.
++    wl_surface_commit(surface);
+     EXPECT_CALL(toplevel, wm_capabilities).Times(1);
+     client.roundtrip();
+ }
+@@ -204,6 +229,7 @@ TEST_F(XdgToplevelStableTest, surface_can_be_moved_interactively)
+     wlcs::Surface surface{client};
+     wlcs::XdgSurfaceStable xdg_shell_surface{client, surface};
+     wlcs::XdgToplevelStable toplevel{xdg_shell_surface};
++    ack_initial_configure(client, surface, xdg_shell_surface);
+     surface.attach_buffer(window_width, window_height);
+     wl_surface_commit(surface);
+     client.roundtrip();
+@@ -257,6 +283,7 @@ TEST_F(XdgToplevelStableTest, touch_can_not_steal_pointer_based_move)
+     wlcs::Surface surface{client};
+     wlcs::XdgSurfaceStable xdg_shell_surface{client, surface};
+     wlcs::XdgToplevelStable toplevel{xdg_shell_surface};
++    ack_initial_configure(client, surface, xdg_shell_surface);
+     surface.attach_visible_buffer(window_width, window_height);
+     the_server().move_surface_to(surface, window_x, window_y);
+ 
+@@ -305,6 +332,7 @@ TEST_F(XdgToplevelStableTest, pointer_leaves_surface_during_interactive_move)
+     wlcs::Surface surface{client};
+     wlcs::XdgSurfaceStable xdg_shell_surface{client, surface};
+     wlcs::XdgToplevelStable toplevel{xdg_shell_surface};
++    ack_initial_configure(client, surface, xdg_shell_surface);
+     surface.attach_buffer(window_width, window_height);
+     wl_surface_commit(surface);
+     client.roundtrip();
+@@ -347,6 +375,7 @@ TEST_F(XdgToplevelStableTest, surface_can_be_resized_interactively)
+     wlcs::Surface surface{client};
+     wlcs::XdgSurfaceStable xdg_shell_surface{client, surface};
+     wlcs::XdgToplevelStable toplevel{xdg_shell_surface};
++    ack_initial_configure(client, surface, xdg_shell_surface);
+     surface.attach_buffer(window_width, window_height);
+     wl_surface_commit(surface);
+     client.roundtrip();
+@@ -399,6 +428,7 @@ TEST_F(XdgToplevelStableTest, pointer_leaves_surface_during_interactive_resize)
+     wlcs::Surface surface{client};
+     wlcs::XdgSurfaceStable xdg_shell_surface{client, surface};
+     wlcs::XdgToplevelStable toplevel{xdg_shell_surface};
++    ack_initial_configure(client, surface, xdg_shell_surface);
+     surface.attach_buffer(window_width, window_height);
+     wl_surface_commit(surface);
+     client.roundtrip();

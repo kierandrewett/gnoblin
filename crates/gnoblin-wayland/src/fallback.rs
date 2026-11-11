@@ -485,6 +485,44 @@ impl Fallback {
         Ok(vec![Self::configured(window)])
     }
 
+    /// Sets a floating window's rectangle exactly, with no work-area constraint: what an interactive move or resize
+    /// ends each pointer step on, where the user, not the policy, decides where the window is.
+    ///
+    /// # Errors
+    /// [`FallbackRefusal::Gone`] for a window that is not open, [`FallbackRefusal::NotFloating`] for a maximised or fullscreen one.
+    pub(crate) fn set_rect(&mut self, id: WindowId, wanted: Rect) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
+        let window = self.windows.get_mut(&id).ok_or(FallbackRefusal::Gone)?;
+        if window.state.maximised || window.state.fullscreen {
+            return Err(FallbackRefusal::NotFloating);
+        }
+        let wanted = wanted.at_least_one();
+        if wanted == window.geometry {
+            return Ok(Vec::new());
+        }
+        window.geometry = wanted;
+        window.restore = wanted;
+        Ok(vec![Self::configured(window)])
+    }
+
+    /// Takes the size the client drew a floating window at as the window's size, and keeps its position.
+    ///
+    /// A new window's initial configure suggests no size, so its client picks one; the record only learns it here, at
+    /// the client's commit. A later maximise or fullscreen then returns to the size the client chose. Nothing is sent:
+    /// the client already has this size. A maximised or fullscreen window keeps the size the policy gave it.
+    /// Returns whether the record changed.
+    pub(crate) fn adopt_size(&mut self, id: WindowId, size: Size) -> bool {
+        let Some(window) = self.windows.get_mut(&id) else {
+            return false;
+        };
+        let size = size.at_least_one();
+        if window.state.maximised || window.state.fullscreen || window.geometry.size() == size {
+            return false;
+        }
+        window.geometry = Rect::new(window.geometry.x, window.geometry.y, size.width, size.height);
+        window.restore = window.geometry;
+        true
+    }
+
     /// Moves a window, and its transients, to another output. A transient follows its parent and does not move on
     /// its own; a fullscreen window stays where it is.
     ///

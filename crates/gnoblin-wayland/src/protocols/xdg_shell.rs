@@ -33,7 +33,9 @@ use smithay::wayland::shell::xdg::{
 };
 
 use crate::State;
+use crate::interactive::{DragKind, Edges};
 use crate::observation::{MenuAnchor, MenuSource};
+use crate::state::xdg_geometry;
 use crate::tree_frame::TreeRequest;
 use crate::window_request::WindowRequest;
 
@@ -50,7 +52,8 @@ impl XdgShellHandler for State {
     /// an input event, which is the protocol's rule against a client opening menus on its
     /// own. A serial the session never issued, or one that has aged out, is ignored with
     /// a debug log, and nothing is shown. The point is surface-local, so it is shifted by
-    /// the window's own origin to give the output position the menu is anchored at.
+    /// the window's own origin, less where its geometry starts in the surface, to give the output position the menu
+    /// is anchored at.
     fn show_window_menu(
         &mut self,
         surface: ToplevelSurface,
@@ -77,7 +80,10 @@ impl XdgShellHandler for State {
             log::debug!(area = "xdg", ?window, "a window menu for a closed window was ignored");
             return;
         };
-        let anchor = MenuAnchor::point(origin.x + location.x, origin.y + location.y);
+        // The point is on the surface, and the window's origin is its geometry's, so the surface starts that far
+        // up and left of it.
+        let offset = xdg_geometry(surface.wl_surface()).map_or(Point::from((0, 0)), |geometry| geometry.loc);
+        let anchor = MenuAnchor::point(origin.x - offset.x + location.x, origin.y - offset.y + location.y);
         self.request_window_menu(window, anchor, MenuSource::Client);
     }
 
@@ -130,18 +136,26 @@ impl XdgShellHandler for State {
         self.toplevel_request(&surface, WindowRequest::Minimise(true));
     }
 
-    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        self.request_to_shell(surface.wl_surface(), TreeRequest::Move);
+    fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        // With a shell the drag is the shell's; without one the compositor runs it.
+        if !self.request_to_shell(surface.wl_surface(), TreeRequest::Move) {
+            self.begin_interactive(&surface, &seat, serial, DragKind::Move);
+        }
     }
 
     fn resize_request(
         &mut self,
         surface: ToplevelSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
-        _edges: xdg_toplevel::ResizeEdge,
+        seat: wl_seat::WlSeat,
+        serial: Serial,
+        edges: xdg_toplevel::ResizeEdge,
     ) {
-        self.request_to_shell(surface.wl_surface(), TreeRequest::Resize);
+        if self.request_to_shell(surface.wl_surface(), TreeRequest::Resize) {
+            return;
+        }
+        if let Some(edges) = Edges::of(edges) {
+            self.begin_interactive(&surface, &seat, serial, DragKind::Resize(edges));
+        }
     }
 
     fn ack_configure(&mut self, surface: WlSurface, configure: Configure) {

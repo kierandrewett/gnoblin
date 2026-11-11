@@ -89,6 +89,11 @@ impl CompositorHandler for State {
             .compositor_state
     }
 
+    fn destroyed(&mut self, surface: &WlSurface) {
+        // A touch point on a surface cannot outlive it, whether it was a toplevel or a subsurface.
+        self.end_touches_on(surface);
+    }
+
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.popups.commit(surface);

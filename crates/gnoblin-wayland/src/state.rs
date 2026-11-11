@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use smithay::backend::input::{Axis, AxisSource, ButtonState, InputTime, TouchSlot};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
-use smithay::desktop::utils::under_from_surface_tree;
+use smithay::desktop::utils::{bbox_from_surface_tree, under_from_surface_tree};
 use smithay::desktop::{PopupManager, WindowSurfaceType};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorImageStatus, MotionEvent, RelativeMotionEvent};
@@ -518,12 +518,20 @@ pub struct State {
     /// The last pointer position the backend reported, in global logical
     /// coordinates.
     pub(crate) pointer_position: SmithayPoint<f64, Logical>,
+    /// Where the surface the pointer is over has its origin, as the pointer last learned it, so a surface that moves
+    /// under a pointer that has not is noticed.
+    pointer_origin: Option<SmithayPoint<f64, Logical>>,
+    /// Whether a device has put the pointer anywhere yet. Until it has, the pointer is at the layout's corner by
+    /// default and no surface is under it in any sense a client should hear of.
+    pointer_placed: bool,
     /// The shell node the pointer ray is over, when the shell's tree picks one. Its edges are
     /// sent to the shell; no client holds the pointer while it is set.
     shell_hover: Option<NodeId>,
     /// The touch points the seat holds, by device slot: the window each went down on and
     /// where it is now.
     touch_points: HashMap<u32, TouchPoint>,
+    /// The window an interactive move or resize is dragging, while the gesture lasts (`crate::interactive`).
+    pub(crate) dragged: Option<WindowId>,
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
     pub(crate) composer: Composer,
@@ -826,8 +834,11 @@ impl State {
             adopted: HashMap::new(),
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
+            pointer_origin: None,
+            pointer_placed: false,
             shell_hover: None,
             touch_points: HashMap::new(),
+            dragged: None,
             composer: Composer::with_painter(tree.painter.clone()),
             tree: TreeFrame::with_hooks(tree),
             modal: None,
@@ -1407,6 +1418,35 @@ impl State {
                 FallbackEffect::Focus(focused) => self.move_focus(focused),
             }
         }
+        self.refresh_pointer_focus();
+    }
+
+    /// Gives the pointer the surface it is over now, when that is not the surface it holds.
+    ///
+    /// The pointer stays where it is while a window moves, resizes, maps or closes under it, and a client can only
+    /// learn of that from the compositor: `enter` and `leave` when the surface under it changes, and a `motion` when
+    /// the same surface has moved, so that its coordinates stay true. A pointer a button holds keeps its focus until the
+    /// button is released, as a pointer grab does.
+    pub(crate) fn refresh_pointer_focus(&mut self) {
+        // A gesture's grab holds the pointer's lock while it moves the window, and the pointer is not the client's then.
+        if !self.pointer_placed || self.dragged.is_some() || self.pointer.is_grabbed() {
+            return;
+        }
+        let under = self.surface_under(self.pointer_position);
+        let held = self.pointer.current_focus();
+        let same = match (&under, &held) {
+            (None, None) => true,
+            (Some((surface, origin)), Some(focus)) => {
+                surface == focus
+                    && self.pointer_origin.is_some_and(|held_origin| {
+                        (origin.x - held_origin.x).abs() < 0.5 && (origin.y - held_origin.y).abs() < 0.5
+                    })
+            }
+            _ => false,
+        };
+        if !same {
+            self.move_pointer(self.pointer_position, InputTime::now());
+        }
     }
 
     /// Applies the decisions of the no-shell fallback. While a shell holds the tree it decides placement,
@@ -1463,15 +1503,20 @@ impl State {
     /// record places is untiled and has no work area to fit, so its client is sent no bounds.
     fn configure(&mut self, window: WindowId, geometry: Rect, state: WindowState) {
         let state = self.effective_state(window, state);
-        let Some(surface) = self.windows.get(&window).map(|entry| &entry.surface) else {
+        let Some(entry) = self.windows.get(&window) else {
             // The window closed between the decision and this action.
             return;
         };
+        let surface = &entry.surface;
         match surface {
             Managed::Wayland(surface) => {
+                // A floating window that has had no configure yet is suggested no size (0 by 0): the client picks its
+                // own, and the record adopts it at the commit that maps the window. A window that is maximised or
+                // fullscreen, even before that, is sent the size the policy decided.
+                let sized = state.maximised || state.fullscreen || surface.is_initial_configure_sent();
                 surface.with_pending_state(|pending| {
                     pending.bounds = None;
-                    pending.size = Some(SmithaySize::from((geometry.width as i32, geometry.height as i32)));
+                    pending.size = sized.then(|| SmithaySize::from((geometry.width as i32, geometry.height as i32)));
                     set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
                     set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
                     for tiled in [
@@ -1483,8 +1528,10 @@ impl State {
                         set_flag(&mut pending.states, tiled, false);
                     }
                 });
+                // Only a changed state is sent: a move changes none of what a client is told, and a client does not
+                // need the same configure again.
                 if surface.is_initial_configure_sent() {
-                    surface.send_configure();
+                    surface.send_pending_configure();
                 }
             }
             Managed::X11(surface) => {
@@ -1652,6 +1699,8 @@ impl State {
         self.composer.set_main_seat_pointer(position.x, position.y);
         self.shell_pointer(self.pointer_target(position));
         let focus = self.surface_under(position);
+        self.pointer_origin = focus.as_ref().map(|(_, origin)| *origin);
+        self.pointer_placed = true;
         let pointer = self.pointer.clone();
         let serial = SERIAL_COUNTER.next_serial();
         self.remember_input_serial(u32::from(serial));
@@ -1833,11 +1882,8 @@ impl State {
                 // A constraint the window's client held cannot outlive the surface it
                 // was created for.
                 self.constraint_tables.held.retain(|held| held.surface != wl_surface);
-                // A touch point on the window cannot outlive it: the clients holding touches are
-                // told the gesture ended, as the protocol's cancel does.
-                if self.touch_points.values().any(|point| point.surface == wl_surface) {
-                    self.cancel_touches();
-                }
+                // A touch point on the window cannot outlive it: its client is told the point lifted.
+                self.end_touches_on(&wl_surface);
                 log::debug!(area = "window", %window, surface = ?wl_surface.id(), "closed");
             }
             // The window fades out from the picture its buffer holds now, before the
@@ -1941,8 +1987,53 @@ impl State {
             });
             self.apply_decided(effects);
         }
+        // Before the content, so a window's node is created already where its geometry puts it.
+        self.follow_window_geometry(window, surface);
         self.sync_content(window, surface);
         self.publish();
+        // The commit may have moved a subsurface, resized the surface or mapped it under a pointer that has not moved.
+        self.refresh_pointer_focus();
+    }
+
+    /// Places and sizes a toplevel by the window geometry its client committed.
+    ///
+    /// The window geometry is the part of the surface the user sees as the window, without the shadow or border a client
+    /// draws around it. The record's rectangle is that geometry, so the surface is drawn at the rectangle's origin less the
+    /// geometry's offset into the surface: a window placed at a point has its geometry there, and a point inside it
+    /// is the same point of the geometry whatever the shadow's width. A client that set no geometry has the whole
+    /// surface as its window.
+    ///
+    /// While a floating window has no shell and is not being resized, the record also takes its size: the initial configure
+    /// suggested none, so the client chose.
+    fn follow_window_geometry(&mut self, window: WindowId, surface: &WlSurface) {
+        let geometry = xdg_geometry(surface);
+        let origin = geometry.map_or((0, 0), |geometry| (geometry.loc.x, geometry.loc.y));
+        self.composer.set_window_surface_offset(window, origin.0, origin.1);
+        // A subsurface can reach past the surface it hangs from, and the pointer and touch reach it there too.
+        let tree = bbox_from_surface_tree(surface, (0, 0));
+        let extent = (tree.size.w > 0 && tree.size.h > 0)
+            .then(|| Rect::new(tree.loc.x, tree.loc.y, tree.size.w as u32, tree.size.h as u32));
+        self.composer.set_window_hit_extent(window, extent);
+        if self.composer.shell_places() || self.dragged == Some(window) || !has_buffer(surface) {
+            return;
+        }
+        let size = geometry
+            .map(|geometry| (geometry.size.w, geometry.size.h))
+            .or_else(|| {
+                committed_content(surface).map(|(_, content)| (content.size.width as i32, content.size.height as i32))
+            })
+            .and_then(|(width, height)| Some((u32::try_from(width).ok()?, u32::try_from(height).ok()?)))
+            .filter(|&(width, height)| width > 0 && height > 0);
+        let Some((width, height)) = size else {
+            return;
+        };
+        if self
+            .fallback
+            .adopt_size(window, gnoblin_types::Size::new(width, height))
+            && let Some(managed) = self.fallback.window(window)
+        {
+            self.composer.place_window(window, managed.geometry);
+        }
     }
 
     /// Records what a window's client last committed into the scene.
@@ -2824,6 +2915,38 @@ impl State {
         }
     }
 
+    /// Ends the touch points that went down on `surface`, as lifts, because the surface is going away.
+    ///
+    /// A point a surface held ends for that surface's client alone, and the points of every other client go on. This
+    /// is a lift, not the protocol's cancel: a cancel ends every point of the seat for every client, which a surface
+    /// closing is no reason for.
+    pub(crate) fn end_touches_on(&mut self, surface: &WlSurface) {
+        let slots: Vec<u32> = self
+            .touch_points
+            .iter()
+            .filter(|(_, point)| &point.surface == surface)
+            .map(|(slot, _)| *slot)
+            .collect();
+        if slots.is_empty() {
+            return;
+        }
+        let touch = self.touch.clone();
+        let time = InputTime::now();
+        for slot in slots {
+            self.touch_points.remove(&slot);
+            let serial = SERIAL_COUNTER.next_serial();
+            touch.up(
+                self,
+                &UpEvent {
+                    slot: TouchSlot::from(Some(slot)),
+                    serial,
+                    time,
+                },
+            );
+        }
+        touch.frame(self);
+    }
+
     /// Ends every touch point the seat holds. The protocol's cancel names no slot and goes
     /// to every client holding a touch, so every point ends for every client at once.
     ///
@@ -3074,6 +3197,18 @@ fn contains(rect: &Rect, point: SmithayPoint<f64, Logical>) -> bool {
     let right = f64::from(rect.x + i32::try_from(rect.width).unwrap_or(i32::MAX));
     let bottom = f64::from(rect.y + i32::try_from(rect.height).unwrap_or(i32::MAX));
     point.x >= f64::from(rect.x) && point.x < right && point.y >= f64::from(rect.y) && point.y < bottom
+}
+
+/// The window geometry a surface's client committed with `xdg_surface.set_window_geometry`, in surface coordinates,
+/// or `None` while it set none and the whole surface is the window.
+pub(crate) fn xdg_geometry(surface: &WlSurface) -> Option<Rectangle<i32, Logical>> {
+    with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<smithay::wayland::shell::xdg::SurfaceCachedState>()
+            .current()
+            .geometry
+    })
 }
 
 /// Whether a surface has a committed buffer, which is what makes a toplevel
@@ -3431,6 +3566,7 @@ impl Host for State {
                 // A button serial is the one an application names in
                 // `xdg_activation_token.set_serial`, so it has to be remembered.
                 self.remember_input_serial(u32::from(serial));
+                let dragging = self.dragged.is_some();
                 pointer.button(
                     self,
                     &ButtonEvent {
@@ -3444,6 +3580,11 @@ impl Host for State {
                         },
                     },
                 );
+                // A move or resize ends with the last button released. The window moved under a pointer that no client
+                // held, so the pointer is given the surface it is over now.
+                if dragging && self.dragged.is_none() {
+                    self.move_pointer(self.pointer_position, time);
+                }
                 // A press or release is a group of its own, and a client that bound `wl_pointer` at version 5 or
                 // later applies nothing of it before the frame that closes the group.
                 pointer.frame(self);

@@ -187,6 +187,7 @@ mod clock;
 mod dispatch;
 mod fallback;
 mod frame;
+mod interactive;
 mod keyboard;
 mod liveness;
 mod lock_auth;

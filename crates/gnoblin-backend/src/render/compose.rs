@@ -211,6 +211,11 @@ struct WindowNode {
     node: Option<NodeId>,
     /// The window's frame rectangle in global logical coordinates.
     geometry: Rect,
+    /// Where the window geometry the client set (`xdg_surface.set_window_geometry`) starts inside its surface, in
+    /// surface-local pixels; zero when it set none. `geometry` is where that window geometry sits, so the surface
+    /// itself is drawn at `geometry` less this offset: a client that draws a shadow around its window has the
+    /// window placed, and hit, by the part inside the shadow.
+    surface_offset: (i32, i32),
     /// Its visual transform, kept across node recreation.
     transform: VisualTransform,
     /// The client's `wp_alpha_modifier_v1` factor for its surface, one when it set none.
@@ -248,6 +253,9 @@ struct WindowNode {
     published_geometry: Option<[f64; 4]>,
     /// The window state last published to the node: focused, fullscreen, maximised, minimised.
     published_state: Option<[bool; 4]>,
+    /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
+    /// tree's, when a subsurface reaches past the root surface.
+    hit_extent: Option<Rect>,
 }
 
 /// The window management policy the main seat publishes for the stock shell to read.
@@ -863,6 +871,7 @@ impl Composer {
                 // changes for the rest of its life.
                 node: None,
                 geometry,
+                surface_offset: (0, 0),
                 transform: VisualTransform::IDENTITY,
                 visible: true,
                 secure: false,
@@ -879,10 +888,23 @@ impl Composer {
                 published_state: None,
                 applied_size: None,
                 published_geometry: None,
+                hit_extent: None,
             },
         );
         self.order.push(window);
         self.sync(window, false);
+    }
+
+    /// Sets the rectangle a window takes hits over beyond its own surface, in surface-local pixels, or clears it.
+    /// It changes what the pointer and touch reach and draws nothing.
+    pub fn set_window_hit_extent(&mut self, window: WindowId, extent: Option<Rect>) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.hit_extent = extent;
+        if let Some(node) = entry.node {
+            let _ = self.scene.set_hit_extent(node, extent);
+        }
     }
 
     /// Stops drawing a window, damaging what it held.
@@ -918,8 +940,8 @@ impl Composer {
             return;
         };
         let values = [
-            f64::from(entry.geometry.x),
-            f64::from(entry.geometry.y),
+            f64::from(entry.geometry.x - entry.surface_offset.0),
+            f64::from(entry.geometry.y - entry.surface_offset.1),
             f64::from(content.size.width),
             f64::from(content.size.height),
         ];
@@ -1229,6 +1251,19 @@ impl Composer {
             return;
         }
         entry.geometry = geometry;
+        self.sync(window, false);
+    }
+
+    /// Sets where a window's geometry starts inside its surface, as the client's `xdg_surface.set_window_geometry`
+    /// says: the surface is drawn that far up and left of the frame, so the frame's origin is the geometry's.
+    pub fn set_window_surface_offset(&mut self, window: WindowId, x: i32, y: i32) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if entry.surface_offset == (x, y) {
+            return;
+        }
+        entry.surface_offset = (x, y);
         self.sync(window, false);
     }
 
@@ -2512,8 +2547,8 @@ impl Composer {
         let mut transform = entry.transform;
         let (shell_x, shell_y) = entry.shell_offset;
         transform.base.offset = Vec3::new(
-            f64::from(entry.geometry.x) + shell_x,
-            f64::from(entry.geometry.y) + shell_y,
+            f64::from(entry.geometry.x - entry.surface_offset.0) + shell_x,
+            f64::from(entry.geometry.y - entry.surface_offset.1) + shell_y,
             transform.base.offset.z,
         );
         let scale = f64::from(entry.shell_scale);
@@ -2707,6 +2742,9 @@ impl Composer {
                         if let Some(entry) = self.windows.get_mut(&window) {
                             entry.node = Some(id);
                             entry.applied_size = Some(content.size);
+                            if let Some(extent) = entry.hit_extent {
+                                let _ = self.scene.set_hit_extent(id, Some(extent));
+                            }
                         }
                         self.publish_geometry(window);
                         if fades_in {
