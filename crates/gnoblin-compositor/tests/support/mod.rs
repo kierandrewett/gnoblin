@@ -343,7 +343,7 @@ impl Command {
 }
 
 /// How long [`Wire::receive`] waits for a frame the session has yet to write.
-const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// One raw IPC connection, for the frames a client library would not send.
 pub struct Wire {

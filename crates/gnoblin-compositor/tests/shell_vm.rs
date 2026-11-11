@@ -1,6 +1,6 @@
 //! The stock shell VM against a real compositor session (design/node-api-refactor.md, section 7.2).
 //!
-//! The shell connects through the runtime role's own path: [`connect_owner_socket`] reads the
+//! The shell connects through the runtime role's own path: [`connect_owner_socket_with_limits`] reads the
 //! session's IPC socket from the environment and boots a [`ShellVm`] over the stock Lua
 //! library. The tree is the compositor's: the nodes come from the session, not from a fake.
 
@@ -9,19 +9,50 @@ mod support;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket, connect_session_shell};
+use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket_with_limits, connect_session_shell_with_limits};
+use gnoblin_lua::shell_vm::ShellLimits;
 use support::{Client, Locker, Session};
+
+/// How long a test waits for the session or the VM to reach a state before it fails. A passing run never waits this
+/// long; it is the margin a busy machine gets, so a failure is a state that never came and not a slow turn.
+const PATIENCE: Duration = Duration::from_secs(60);
 
 /// The stock Lua library the shell VM loads (`node.lua` and the modules beside it).
 fn stock_library() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/lua/gnoblin")
 }
 
+/// The budgets the tests run the VM under: the shipped ones, with the wall-clock handler deadline widened.
+///
+/// The instruction and memory budgets are what stop a runaway script, and they count the same on every machine.
+/// The deadline is elapsed time, so a test machine that is busy (a full workspace build and test run share its
+/// cores) can pass 100 ms inside one handler or 500 ms loading the shell without the script being slow. A test
+/// that fails on that is measuring the machine, so the deadline here is a minute.
+fn patient_limits() -> ShellLimits {
+    const DEADLINE_TICKS: u64 = 60_000;
+    let shipped = ShellLimits::default();
+    ShellLimits {
+        entry: gnoblin_lua::Limits {
+            handler_ticks: DEADLINE_TICKS,
+            ..shipped.entry
+        },
+        frame: gnoblin_lua::Limits {
+            handler_ticks: DEADLINE_TICKS,
+            ..shipped.frame
+        },
+        load: gnoblin_lua::Limits {
+            handler_ticks: DEADLINE_TICKS,
+            ..shipped.load
+        },
+    }
+}
+
 /// Connects the shell VM to `session` as the runtime role does, with the socket in the environment.
 fn connect(session: &Session) -> ShellRole {
     let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-    connect_owner_socket(&env, &stock_library()).expect("the shell VM attaches to the tree")
+    connect_owner_socket_with_limits(&env, &stock_library(), patient_limits())
+        .expect("the shell VM attaches to the tree")
 }
 
 /// Counts of the mirror's `seat` and `screen` nodes, read from inside the VM.
@@ -39,7 +70,7 @@ fn mirror_counts(role: &mut ShellRole) -> (usize, usize) {
 
 /// Ticks the VM until `done` holds, or fails after ten seconds with `what`.
 fn tick_until(role: &mut ShellRole, what: &str, mut done: impl FnMut(&mut ShellRole) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + PATIENCE;
     let mut now = 0.0;
     loop {
         role.tick(now).expect("a frame runs");
@@ -185,7 +216,7 @@ fn the_composer_publishes_the_shell_chosen_spot_and_not_its_own_layout() {
     // taken in a frame of the compositor's own, so the rounds after the first have seen its frames go by.
     let mut spots: Vec<(f64, f64)> = Vec::new();
     for round in 0..4 {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + PATIENCE;
         loop {
             role.tick(0.5 + f64::from(round) * 0.016).expect("a frame runs");
             let mut expected: Vec<(f64, f64)> = window_placements(&mut role).iter().map(|(x, y, _)| (*x, *y)).collect();
@@ -415,7 +446,8 @@ fn user_config(files: &[(&str, &str)]) -> tempfile::TempDir {
 fn connect_session(session: &Session, config: &Path) -> ShellRole {
     let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-    connect_session_shell(&env, &stock_library(), Some(config)).expect("the runtime's shell entry starts the shell")
+    connect_session_shell_with_limits(&env, &stock_library(), Some(config), patient_limits())
+        .expect("the runtime's shell entry starts the shell")
 }
 
 /// `prop` of the window whose app id is `app_id`, as text, read inside the VM; `none` when there is no such window.
@@ -627,7 +659,7 @@ fn a_tiling_workspace_configures_three_real_clients_to_their_tiles_with_tiled_ed
         (&upper, (half, rows)),
         (&lower, (half, rows)),
     ];
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + PATIENCE;
     let mut now = 0.0;
     loop {
         role.tick(now).expect("a frame runs");
@@ -674,9 +706,9 @@ fn a_tiling_workspace_configures_three_real_clients_to_their_tiles_with_tiled_ed
 fn reconnect(session: &Session) -> ShellRole {
     let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + PATIENCE;
     loop {
-        match connect_owner_socket(&env, &stock_library()) {
+        match connect_owner_socket_with_limits(&env, &stock_library(), patient_limits()) {
             Ok(role) => return role,
             Err(error) => {
                 assert!(Instant::now() < deadline, "the tree was never released: {error:?}");
@@ -832,7 +864,7 @@ fn xr_probe(role: &mut ShellRole) -> String {
 
 /// Ticks the VM until the xr probe reads `want`, or fails after ten seconds with what it last read.
 fn tick_until_xr(role: &mut ShellRole, what: &str, want: &str) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + PATIENCE;
     let mut now = 0.0;
     loop {
         role.tick(now).expect("a frame runs");
@@ -857,7 +889,7 @@ fn tick_until_destroyed(role: &mut ShellRole, watcher: &mut support::Wire, gone:
     use gnoblin_proto::Kind;
     use gnoblin_proto::tree::tree::ChangesPayload;
 
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + PATIENCE;
     let mut now = 0.0;
     let mut heard: Vec<u64> = Vec::new();
     watcher.set_read_timeout(Duration::from_millis(5));
@@ -909,7 +941,7 @@ fn xr_room_with_one_window() -> (
     tick_until_xr(&mut role, "the room never got a View for the window", "room 1 1");
     // The watcher attaches after the View exists in the shell's view, but the compositor may not have it yet: attach
     // again until its snapshot holds the View.
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + PATIENCE;
     let (watcher, ids) = loop {
         role.tick(1.0).expect("a frame runs");
         let (watcher, _, nodes) = observe(&session);

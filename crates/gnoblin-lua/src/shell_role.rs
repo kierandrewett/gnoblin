@@ -18,7 +18,7 @@ use gnoblin_client::unix::{UnixTransport, socket_path};
 
 use crate::module_dir::{default_prefix, installed_module_dir};
 use crate::role::version;
-use crate::shell_vm::{ShellVm, ShellVmError};
+use crate::shell_vm::{ShellLimits, ShellVm, ShellVmError};
 use crate::tree_core::{ClassSpec, tree_classes};
 use crate::tree_link::SocketTreeLink;
 
@@ -155,19 +155,41 @@ impl ShellSlot {
     }
 }
 
-/// Boot a shell VM over the owner socket `stream`, with the tree's `classes`.
-pub fn connect_shell(dir: &Path, stream: UnixStream, classes: Vec<ClassSpec>) -> Result<ShellRole, ShellVmError> {
+/// Boot a shell VM over the owner socket `stream`, with the tree's `classes` and the budgets `limits`.
+pub fn connect_shell(
+    dir: &Path,
+    stream: UnixStream,
+    classes: Vec<ClassSpec>,
+    limits: ShellLimits,
+) -> Result<ShellRole, ShellVmError> {
     let link = SocketTreeLink::new(stream).map_err(|error| ShellVmError::Link(error.to_string()))?;
-    Ok(ShellRole::new(ShellVm::new(Box::new(link), dir, classes)?))
+    Ok(ShellRole::new(ShellVm::with_limits(
+        Box::new(link),
+        dir,
+        classes,
+        limits,
+    )?))
 }
 
-/// Connect to the owner socket `env` names, and boot the shell VM over `dir` on it.
+/// Connect to the owner socket `env` names, and boot the shell VM over `dir` on it, under the default budgets.
 ///
 /// The path is the one every client reads ([`socket_path`]: `GNOBLIN_IPC_SOCKET`, else the
 /// runtime directory's default socket). The handshake is the role's own: the version this
 /// build serves, sent as a client. The compositor grants the owner connection by the peer's
 /// credentials, so the session owner's second connection is the one that can attach the tree.
 pub fn connect_owner_socket(env: &dyn Fn(&str) -> Option<String>, dir: &Path) -> Result<ShellRole, ShellVmError> {
+    connect_owner_socket_with_limits(env, dir, ShellLimits::default())
+}
+
+/// Connects like [`connect_owner_socket`], under the budgets `limits`.
+///
+/// The instruction and memory budgets bound a script the same on every machine; the handler deadline is wall
+/// clock, so a caller that runs the VM on a loaded machine (a test) widens it and leaves the rest.
+pub fn connect_owner_socket_with_limits(
+    env: &dyn Fn(&str) -> Option<String>,
+    dir: &Path,
+    limits: ShellLimits,
+) -> Result<ShellRole, ShellVmError> {
     let path = socket_path(env).map_err(ShellVmError::Link)?;
     let transport = UnixTransport::connect(&path)
         .map_err(|error| ShellVmError::Link(format!("cannot connect to {}: {error}", path.display())))?;
@@ -176,7 +198,7 @@ pub fn connect_owner_socket(env: &dyn Fn(&str) -> Option<String>, dir: &Path) ->
         .into_inner()
         .into_stream()
         .map_err(|error| ShellVmError::Link(error.to_string()))?;
-    connect_shell(dir, stream, tree_classes())
+    connect_shell(dir, stream, tree_classes(), limits)
 }
 
 /// What the runtime role runs: [`connect_owner_socket`], then the stock shell and the user's shell files.
@@ -188,7 +210,17 @@ pub fn connect_session_shell(
     dir: &Path,
     user: Option<&Path>,
 ) -> Result<ShellRole, ShellVmError> {
-    let mut role = connect_owner_socket(env, dir)?;
+    connect_session_shell_with_limits(env, dir, user, ShellLimits::default())
+}
+
+/// Connects like [`connect_session_shell`], under the budgets `limits`.
+pub fn connect_session_shell_with_limits(
+    env: &dyn Fn(&str) -> Option<String>,
+    dir: &Path,
+    user: Option<&Path>,
+    limits: ShellLimits,
+) -> Result<ShellRole, ShellVmError> {
+    let mut role = connect_owner_socket_with_limits(env, dir, limits)?;
     role.load_shell(dir, user)?;
     Ok(role)
 }
