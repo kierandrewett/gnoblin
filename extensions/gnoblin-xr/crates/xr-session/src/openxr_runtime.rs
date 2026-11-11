@@ -671,6 +671,7 @@ mod tests {
         let mut presenter = VulkanPresenter::new(device).expect("presenter");
         let capabilities = runtime.capabilities();
         assert!(capabilities.swapchains, "a Vulkan session creates swapchains");
+        eprintln!("capabilities: {capabilities:?}");
         let format = choose_format(&capabilities.swapchain_formats).expect("a supported swapchain format");
 
         // A 64x48 picture: a gradient with an alpha that is not 255, so a wrong channel order shows.

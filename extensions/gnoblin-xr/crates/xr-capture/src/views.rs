@@ -16,6 +16,31 @@ pub const RETRY_AFTER: Duration = Duration::from_secs(1);
 /// A failure: the View node it concerns, or `None` when the connection itself failed.
 pub type Fault = (Option<u64>, CaptureError);
 
+/// What the bridge needs from a set of captures: advance them, keep them in step with the planned Views, and read
+/// the latest frame of one. [`ViewCaptures`] is the Wayland implementation, and tests use a scripted one.
+pub trait FrameSource {
+    /// Advances every capture without waiting. Returns what failed.
+    fn pump(&mut self) -> Vec<Fault>;
+    /// Opens a capture for each node in `wanted` that lacks one and drops the rest. Returns what failed to open.
+    fn sync(&mut self, wanted: &BTreeSet<u64>) -> Vec<Fault>;
+    /// The most recent frame of the View `node`, if one has been read.
+    fn latest(&self, node: u64) -> Option<&Frame>;
+}
+
+impl FrameSource for ViewCaptures {
+    fn pump(&mut self) -> Vec<Fault> {
+        Self::pump(self)
+    }
+
+    fn sync(&mut self, wanted: &BTreeSet<u64>) -> Vec<Fault> {
+        Self::sync(self, wanted)
+    }
+
+    fn latest(&self, node: u64) -> Option<&Frame> {
+        Self::latest(self, node)
+    }
+}
+
 /// The live captures. With no client (no socket in the environment, or the connection failed)
 /// it holds nothing and every call is a no-op.
 pub struct ViewCaptures {

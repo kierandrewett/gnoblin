@@ -692,7 +692,12 @@ Testable on an Agent37 instance with Monado's simulated headset.
 - Connection: the extension is a guardian-started process with the single-purpose `view` role (G7). The guardian
   promises the role by pid before the spawn. The extension takes a connected socket through `WAYLAND_SOCKET`, or
   connects to `GNOBLIN_VIEW_DISPLAY` for development. It sees the view-source and image-copy-capture globals only.
-- Status: view capture reads each View's frame into `wl_shm` (`extensions/gnoblin-xr/crates/xr-capture`) and the bridge drives it. The frames are not copied into an OpenXR swapchain yet, so test 3 below is open.
+- Status: view capture reads each View's frame into `wl_shm` (`extensions/gnoblin-xr/crates/xr-capture`) and the bridge
+  drives it. The bridge copies each changed frame into an OpenXR swapchain (`xr-gpu`, over `XR_KHR_vulkan_enable2`) and
+  ends each frame with the quad layers `xr-layers` builds, in plan order. Test 3 below ran on Agent37 against Monado's
+  null compositor on lavapipe, with two differences from its text: `xrEndFrame` accepted the quad at the planned pose, and
+  the dump of the swapchain image equals the converted capture (not "the output frame": the null compositor shows
+  nothing, and the test's capture is a scripted picture, not a Gnoblin frame). See "Verified on Agent37" below.
 - Extension: session, view, layers, gpu, input. No engine: the environment is a solid colour.
 - Monado: simulated driver and the null compositor (exists in Monado's documentation; how to select it is
   unverified).
@@ -768,16 +773,54 @@ You can set either per output. This picks the default.
 
 ## What I could not verify
 
-- The Monado null compositor's selection at run time, and whether the simulated driver reports stable poses.
+- Whether the simulated driver reports stable poses.
 - Monado and WiVRn support for mip levels in swapchains, and WiVRn's `maxLayerCount`.
 - WiVRn session states when the headset disconnects.
-- DMA-BUF import of a compositor-filled buffer into the runtime's Vulkan device without a CPU copy, and its cost.
+- DMA-BUF import of a compositor-filled buffer into the runtime's Vulkan device without a CPU copy, and its cost. The
+  copy built so far is `wl_shm` bytes, staging buffer, image.
 - Bevy rendering into an external Vulkan image on a device shared with OpenXR.
-- Whether Agent37 instances have a GPU. Without one, phase 1 uses the software renderer and SHM.
 - That no Gnoblin code applies a layout reply's camera to the scene. I found only `Camera::Orthographic` in
   `crates/gnoblin-compositor/src/layout.rs:427`. Panels ignore the layout camera either way.
 - Whether repository gates (`xtask`, hooks) scan `extensions/`.
 - SteamVR overlay and xrdesktop details, from memory.
+
+Verified on Agent37, 2026-11-11 (the `XrGpu` lane). The box is a Debian 12 instance, 4 vCPU and 8 GB, with no GPU and no
+headset. The earlier lane note that it is root-less is wrong: `a37 exec --root` runs as root, and `apt-get` works.
+
+- **A Vulkan driver is available.** `apt-get install mesa-vulkan-drivers vulkan-tools libvulkan-dev glslang-tools`
+  gives lavapipe (`/usr/share/vulkan/icd.d/lvp_icd.x86_64.json`; `vulkaninfo` lists llvmpipe, LLVM 15.0.6, Mesa 22.3.6,
+  Vulkan 1.3.230). It takes seconds and needs no prebuilt download.
+- **Monado builds there in about 5 minutes.** Bookworm has no `monado` package (only `libopenxr-dev` and
+  `libopenxr-loader1` 1.0.20). A `git clone --depth 1 https://gitlab.freedesktop.org/monado/monado.git` at `7336a90`,
+  with `cmake -G Ninja -DXRT_FEATURE_SERVICE=ON -DXRT_BUILD_DRIVER_SIMULATED=ON -DXRT_FEATURE_OPENXR=ON
+-DXRT_FEATURE_SLAM=OFF -DXRT_FEATURE_DEBUG_GUI=OFF -DXRT_FEATURE_WINDOW_PEEK=OFF -DXRT_FEATURE_STEAMVR_PLUGIN=OFF
+-DXRT_HAVE_OPENCV=OFF -DBUILD_TESTING=OFF` and the apt packages `ninja-build cmake pkg-config libeigen3-dev
+libudev-dev libusb-1.0-0-dev libx11-dev libxcb1-dev libwayland-dev libxrandr-dev libxcb-randr0-dev libopenxr-dev
+libhidapi-dev libsystemd-dev libcjson-dev libbsd-dev libglvnd-dev libgl-dev libegl-dev libgles-dev wayland-protocols
+libdrm-dev libgbm-dev libsdl2-dev libv4l-dev libjpeg-dev libopencv-dev`, built 599 targets with `ninja -j3`. It writes
+  `build/openxr_monado-dev.json` and `build/src/xrt/targets/service/monado-service`.
+- **The simulated headset and the null compositor run on lavapipe.** `SIMULATED_ENABLE=1 XRT_COMPOSITOR_NULL=1
+VK_ICD_FILENAMES=<lvp> monado-service`, with `XDG_RUNTIME_DIR` the same for the service and the client. The log
+  says `Selected simulated because it was certain it could create a head`, `Using builder simulated`, `Null compositor
+starting`, and picks llvmpipe. The service reports opaque-fd image import and export, and no external semaphore or
+  fence handles, with timeline semaphores on.
+- **A session with a graphics binding and swapchains works.** `XR_KHR_vulkan_enable2` creates the `VkInstance` and
+  `VkDevice`, the session is created on them, and the swapchain formats the runtime lists are
+  `[91, 97, 43, 50, 37, 44, 4, 100, 126, 124, 125, 129, 130]`: `R8G8B8A8_SRGB` (43) and `B8G8R8A8_SRGB` (50) are in it.
+  `maxLayerCount` is 128, and `XR_KHR_composition_layer_color_scale_bias` is offered. The lane's test uploads a 64x48
+  picture through the Vulkan presenter, reads the swapchain image back and finds the converted bytes, and
+  `xrEndFrame` accepts a world quad, opaque and with a colour scale.
+- **Monado sends `Synchronized` only after the first `xrWaitFrame`.** After `xrBeginSession` the events are `Idle`,
+  `Ready`, and nothing more until the application waits for a frame. A loop that waited for `Synchronized` before its
+  first `xrWaitFrame` never ran a frame, and the frame loop now starts in `Ready`.
+- **The headless session's frame loop fails on this Monado.** `monado_headless_runs_one_empty_frame` fails at
+  `xrBeginFrame` with `XR_ERROR_CALL_ORDER_INVALID` ("without xrWaitFrame") after a successful `xrWaitFrame`. It fails the
+  same way on the commit before this lane's changes, so it is not caused by them. The default binary now asks for a
+  Vulkan session first and falls back to headless only when that fails.
+
+Not verified: that the picture is visible (the null compositor draws nothing, so only acceptance by `xrEndFrame`
+and the image contents are checked), WiVRn and any real headset, the projection layer against a runtime, and a
+runtime whose `XR_KHR_composition_layer_color_scale_bias` is off in a run (that path is a unit test only).
 
 Checked during this revision:
 

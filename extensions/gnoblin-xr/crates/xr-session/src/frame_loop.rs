@@ -75,6 +75,11 @@ impl<R: Runtime> FrameLoop<R> {
         }
     }
 
+    /// The runtime, read only.
+    pub fn runtime(&self) -> &R {
+        &self.runtime
+    }
+
     /// The runtime, for the calls that are not part of the frame: swapchains and view location.
     pub fn runtime_mut(&mut self) -> &mut R {
         &mut self.runtime

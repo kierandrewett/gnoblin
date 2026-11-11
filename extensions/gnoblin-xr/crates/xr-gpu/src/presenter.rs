@@ -26,12 +26,6 @@ pub trait Presenter {
     fn upload(&mut self, target: Target, pixels: &Pixels<'_>) -> Result<(), GpuError>;
 }
 
-impl<P: Presenter + ?Sized> Presenter for Box<P> {
-    fn upload(&mut self, target: Target, pixels: &Pixels<'_>) -> Result<(), GpuError> {
-        (**self).upload(target, pixels)
-    }
-}
-
 /// What a [`FakePresenter`] recorded for one upload.
 #[cfg(any(test, feature = "testing"))]
 #[derive(Debug, Clone, PartialEq, Eq)]

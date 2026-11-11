@@ -163,6 +163,8 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-proto",
  "xr-capture",
+ "xr-gpu",
+ "xr-layers",
  "xr-scene",
  "xr-session",
  "xr-tree",

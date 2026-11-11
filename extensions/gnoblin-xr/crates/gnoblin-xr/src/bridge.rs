@@ -1,22 +1,25 @@
-//! The bridge: keeps the owner tree model current and plans every frame from it.
+//! The bridge: keeps the owner tree model current, plans every frame from it, and shows the Views in the headset.
 //!
-//! Each pass reads what the owner has sent, then runs one tick of the frame
-//! loop. A frame plans the `room` subtree against the head pose the runtime
-//! located. The plan is handed to the caller and not submitted: the frame loop
-//! ends every frame with no layers.
+//! Each pass reads what the owner has sent, then runs one tick of the frame loop. A frame plans the `room` subtree
+//! against the head pose the runtime located, keeps one capture and one swapchain per planned View, copies each picture
+//! that changed into its swapchain, and ends the frame with the layers `xr-layers` builds from the plan and the
+//! swapchains, in plan order. A frame the runtime says not to render ends with no layers.
 
 use std::collections::BTreeSet;
 use std::fmt;
 use std::thread;
 use std::time::Duration;
 
-use xr_capture::views::ViewCaptures;
+use xr_capture::views::FrameSource;
+use xr_gpu::Presenter;
+use xr_layers::{Limits, Notice, compose};
 use xr_scene::{IDENTITY, Layer, Options, Plan, Pose, plan};
 use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
 use xr_tree::{TreeClient, TreeError};
 
 use crate::pointer::Pointer;
+use crate::surfaces::{Fault, Surfaces};
 
 /// How long the bridge sleeps when the session is not running a frame.
 const IDLE_INTERVAL: Duration = Duration::from_millis(10);
@@ -62,20 +65,56 @@ pub enum Outcome {
     OwnerClosed,
 }
 
-/// Runs until the session exits or the owner goes away, calling `on_plan` with
-/// the plan of every frame.
+/// What one frame did, for the caller to log.
+pub struct FrameReport<'a> {
+    /// The plan of the frame.
+    pub plan: &'a Plan,
+    /// Views the layer step dropped or degraded: over the budget, with no swapchain yet, and so on.
+    pub notices: &'a [Notice],
+    /// Views that could not be shown because a swapchain or a copy failed.
+    pub faults: &'a [Fault],
+}
+
+/// Runs until the session exits or the owner goes away, calling `on_frame` with the report of every frame.
+///
+/// The swapchains are destroyed before it returns.
 ///
 /// # Errors
 ///
 /// The owner socket fails, or the runtime fails.
-pub fn run<R: Runtime>(
+pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
     tree: &mut TreeClient,
     frames: &mut FrameLoop<R>,
     opts: &Options,
-    captures: &mut ViewCaptures,
-    mut on_plan: impl FnMut(&Plan),
+    captures: &mut S,
+    presenter: &mut P,
+    on_frame: impl FnMut(&FrameReport<'_>),
+) -> Result<Outcome, BridgeError> {
+    let mut surfaces = Surfaces::new();
+    let outcome = run_loop(tree, frames, opts, captures, presenter, &mut surfaces, on_frame);
+    // Best effort: the session is ending, and a failure here has nothing left to protect.
+    for fault in surfaces.clear(frames.runtime_mut()) {
+        eprintln!("gnoblin-xr: {fault}");
+    }
+    outcome
+}
+
+fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
+    tree: &mut TreeClient,
+    frames: &mut FrameLoop<R>,
+    opts: &Options,
+    captures: &mut S,
+    presenter: &mut P,
+    surfaces: &mut Surfaces,
+    mut on_frame: impl FnMut(&FrameReport<'_>),
 ) -> Result<Outcome, BridgeError> {
     let mut pointer = Pointer::default();
+    let capabilities = frames.runtime().capabilities();
+    let limits = Limits {
+        max_layer_count: capabilities.max_layer_count,
+        reserved: 0,
+        color_scale_bias: capabilities.color_scale_bias,
+    };
     loop {
         match tree.poll() {
             Ok(_) => {}
@@ -85,7 +124,7 @@ pub fn run<R: Runtime>(
         for (node, error) in captures.pump() {
             eprintln!("gnoblin-xr: view capture {node:?} failed: {error}");
         }
-        match frames.tick()? {
+        match frames.start()? {
             Tick::Idle => thread::sleep(IDLE_INTERVAL),
             Tick::Frame(frame) => {
                 let head = frame.head.unwrap_or(Pose {
@@ -95,10 +134,36 @@ pub fn run<R: Runtime>(
                 let planned = plan(tree.model(), &head, opts);
                 let ray = frames.locate_ray(frame.display_time)?;
                 pointer.update(tree, &planned.layers, ray)?;
-                for (node, error) in captures.sync(&view_nodes(&planned.layers)) {
+                let wanted = view_nodes(&planned.layers);
+                for (node, error) in captures.sync(&wanted) {
                     eprintln!("gnoblin-xr: capture of view {node:?} failed: {error}");
                 }
-                on_plan(&planned);
+
+                let mut layers = Vec::new();
+                let mut notices = Vec::new();
+                let mut faults = Vec::new();
+                if frame.should_render {
+                    faults = surfaces.sync(frames.runtime_mut(), presenter, &capabilities, &wanted, captures);
+                    let eyes = if planned.layers.iter().any(|layer| matches!(layer, Layer::Projection(_))) {
+                        frames.runtime_mut().locate_views(frame.display_time)?
+                    } else {
+                        None
+                    };
+                    let submission = compose(
+                        &planned.layers,
+                        &|view| surfaces.swapchain(view),
+                        eyes.as_ref(),
+                        &limits,
+                    );
+                    layers = submission.layers;
+                    notices = submission.notices;
+                }
+                frames.finish(&frame, &layers)?;
+                on_frame(&FrameReport {
+                    plan: &planned,
+                    notices: &notices,
+                    faults: &faults,
+                });
             }
             Tick::Exit => return Ok(Outcome::SessionExited),
         }
@@ -123,9 +188,16 @@ mod tests {
     use gnoblin_proto::tree::snapshot_node;
     use gnoblin_proto::tree::tree::{AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
     use gnoblin_proto::{Envelope, read_frame, write_frame};
+    use std::collections::{BTreeMap, VecDeque};
+
+    use xr_capture::ShmFormat;
+    use xr_capture::views::Fault as CaptureFault;
+    use xr_capture::wayland::Frame as Picture;
+    use xr_gpu::{FakePresenter, SwapchainFormat};
+    use xr_layers::{EyeVisibility, ImageRect, NoticeKind, SubmittedLayer, SwapchainId};
     use xr_scene::{Layer, Placement, Ray, Space};
     use xr_session::runtime::{FrameTiming, SessionEvent, SessionState};
-    use xr_session::testing::{FakeRuntime, Step};
+    use xr_session::testing::{Call, FakeRuntime, Step, image_handle};
 
     use super::*;
 
@@ -275,6 +347,44 @@ mod tests {
         client
     }
 
+    /// As [`serve`], but holds the socket open until `close` fires or drops, then hangs up.
+    fn serve_until(nodes: Vec<snapshot_node::Properties>, close: std::sync::mpsc::Receiver<()>) -> UnixStream {
+        let (client, mut server) = UnixStream::pair().expect("socket pair");
+        std::thread::spawn(move || {
+            let attach = read_frame(&mut server).expect("read attach").expect("attach frame");
+            assert_eq!(attach.request_id, ATTACH_REQUEST_ID);
+            let events = [
+                Envelope::reply_message(
+                    "tree",
+                    "attach",
+                    ATTACH_REQUEST_ID,
+                    &AttachedPayload {
+                        epoch: 1,
+                        root: 1,
+                        serial: 1,
+                    },
+                ),
+                Envelope::event_message(
+                    "tree",
+                    "snapshot",
+                    &SnapshotPayload {
+                        serial: 1,
+                        chunk: 0,
+                        last: true,
+                        nodes,
+                    },
+                ),
+            ];
+            for event in &events {
+                if write_frame(&mut server, event).is_err() {
+                    return;
+                }
+            }
+            let _ = close.recv();
+        });
+        client
+    }
+
     /// A quad at `z = -1` facing the viewer, drawing the window `3` at 1920x1080.
     fn front_quad() -> Vec<Layer> {
         vec![Layer::Quad(Placement {
@@ -391,43 +501,437 @@ mod tests {
         })
     }
 
+    /// Plays pictures for the Views. Each `pump` applies the next step: a View's new picture, or `None` to take it
+    /// away. The bridge pumps once per pass, and a pass runs at most one frame, so step `n` is what frame `n` sees.
+    #[derive(Default)]
+    struct ScriptedFrames {
+        steps: VecDeque<Vec<(u64, Option<Picture>)>>,
+        current: BTreeMap<u64, Picture>,
+        wanted: Vec<BTreeSet<u64>>,
+    }
+
+    impl ScriptedFrames {
+        fn new(steps: Vec<Vec<(u64, Option<Picture>)>>) -> Self {
+            Self {
+                steps: steps.into(),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl FrameSource for ScriptedFrames {
+        fn pump(&mut self) -> Vec<CaptureFault> {
+            for (view, picture) in self.steps.pop_front().unwrap_or_default() {
+                match picture {
+                    Some(picture) => self.current.insert(view, picture),
+                    None => self.current.remove(&view),
+                };
+            }
+            Vec::new()
+        }
+
+        fn sync(&mut self, wanted: &BTreeSet<u64>) -> Vec<CaptureFault> {
+            self.wanted.push(wanted.clone());
+            Vec::new()
+        }
+
+        fn latest(&self, node: u64) -> Option<&Picture> {
+            self.current.get(&node)
+        }
+    }
+
+    fn picture(width: u32, height: u32, serial: u64, fill: u8) -> Picture {
+        Picture {
+            width,
+            height,
+            stride: width * 4,
+            format: ShmFormat::Argb8888,
+            bytes: vec![fill; (width * height * 4) as usize],
+            serial,
+        }
+    }
+
+    /// A `room` of one metre per thousand units, holding a View per `(id, x, z)` of 1920x1080 units. View `id`
+    /// shows the window `id + 1`.
+    fn room_of(views: &[(u64, f64, f64)]) -> Vec<snapshot_node::Properties> {
+        let mut nodes = vec![snapshot_node(
+            1,
+            0,
+            0,
+            "node",
+            vec![text(1, "name", "room"), double(1, "metres", 0.001)],
+        )];
+        for (index, &(id, x, z)) in views.iter().enumerate() {
+            nodes.push(snapshot_node(
+                id,
+                1,
+                index as i64,
+                "view",
+                vec![
+                    double(id, "width", 1920.0),
+                    double(id, "height", 1080.0),
+                    node_ref(id, "source", id + 1),
+                    double(id, "x", x),
+                    double(id, "z", z),
+                ],
+            ));
+        }
+        nodes
+    }
+
+    /// The summary of what a run reported for each frame.
+    #[derive(Default)]
+    struct Reports {
+        plans: Vec<Plan>,
+        notices: Vec<Vec<Notice>>,
+        faults: Vec<Vec<Fault>>,
+    }
+
+    impl Reports {
+        fn push(&mut self, report: &FrameReport<'_>) {
+            self.plans.push(report.plan.clone());
+            self.notices.push(report.notices.to_vec());
+            self.faults.push(report.faults.to_vec());
+        }
+    }
+
+    /// Runs the bridge over `nodes` with a graphics runtime that ends after `frames` frames.
+    fn run_frames(
+        nodes: Vec<snapshot_node::Properties>,
+        runtime: FakeRuntime,
+        steps: Vec<Vec<(u64, Option<Picture>)>>,
+    ) -> (FrameLoop<FakeRuntime>, FakePresenter, ScriptedFrames, Reports) {
+        let mut tree = TreeClient::from_stream(serve(nodes, false)).expect("attach");
+        let mut frames = FrameLoop::new(runtime);
+        let mut presenter = FakePresenter::default();
+        let mut captures = ScriptedFrames::new(steps);
+        let mut reports = Reports::default();
+        let outcome = run(
+            &mut tree,
+            &mut frames,
+            &Options::default(),
+            &mut captures,
+            &mut presenter,
+            |report| reports.push(report),
+        )
+        .expect("bridge runs");
+        assert_eq!(outcome, Outcome::SessionExited);
+        (frames, presenter, captures, reports)
+    }
+
+    fn script(frames: u32) -> Vec<Step> {
+        let mut steps = vec![state(SessionState::Ready)];
+        steps.extend((1..=frames).map(|n| timing(i64::from(n))));
+        steps.push(state(SessionState::Exiting));
+        steps
+    }
+
+    fn quads(layers: &[SubmittedLayer]) -> Vec<&xr_layers::QuadLayer> {
+        layers
+            .iter()
+            .map(|layer| match layer {
+                SubmittedLayer::Quad(quad) => quad,
+                SubmittedLayer::Projection(_) => panic!("a quad layer, got {layer:?}"),
+            })
+            .collect()
+    }
+
     #[test]
-    fn each_frame_plans_the_room_from_the_owner_model() {
-        let mut tree = TreeClient::from_stream(serve(room_with_one_view(), false)).expect("attach");
-        let script = [
+    fn a_planned_view_is_submitted_as_a_quad_at_the_planned_pose_with_its_picture() {
+        let runtime = FakeRuntime::with_graphics(script(1), 16);
+        let steps = vec![vec![(2, Some(picture(8, 4, 1, 7)))]];
+        let (frames, presenter, _, reports) = run_frames(room_of(&[(2, 500.0, -1000.0)]), runtime, steps);
+
+        let [(time, layers)] = frames.runtime().submitted.as_slice() else {
+            panic!("one frame was ended: {:?}", frames.runtime().submitted);
+        };
+        assert_eq!(*time, 1);
+        let [quad] = quads(layers)[..] else {
+            panic!("one quad: {layers:?}");
+        };
+        assert_eq!(quad.view, 2);
+        assert_eq!(quad.swapchain, SwapchainId(1));
+        assert_eq!(quad.space, Space::World);
+        assert_eq!(quad.pose.position, [0.5, 0.0, -1.0], "the planned position, in metres");
+        assert_eq!(quad.pose.orientation, IDENTITY);
+        assert_eq!(quad.size, [1.92, 1.08], "the planned size, in metres");
+        assert_eq!(quad.eye_visibility, EyeVisibility::Both);
+        assert_eq!(
+            quad.rect,
+            ImageRect {
+                x: 0,
+                y: 0,
+                width: 8,
+                height: 4
+            },
+            "the whole picture"
+        );
+        assert_eq!(presenter.uploads.len(), 1);
+        assert_eq!(presenter.uploads[0].target.image, image_handle(SwapchainId(1), 0));
+        assert_eq!(presenter.uploads[0].target.format, SwapchainFormat::Rgba8Srgb);
+        assert!(reports.notices[0].is_empty() && reports.faults[0].is_empty());
+    }
+
+    #[test]
+    fn layers_are_submitted_in_plan_order_each_with_its_own_swapchain() {
+        let runtime = FakeRuntime::with_graphics(script(1), 16);
+        let views = [(2, -500.0, -1000.0), (4, 500.0, -1000.0)];
+        let steps = vec![vec![(2, Some(picture(8, 4, 1, 1))), (4, Some(picture(4, 4, 1, 2)))]];
+        let (frames, presenter, _, _) = run_frames(room_of(&views), runtime, steps);
+
+        let (_, layers) = &frames.runtime().submitted[0];
+        let submitted = quads(layers);
+        assert_eq!(submitted.iter().map(|quad| quad.view).collect::<Vec<_>>(), vec![2, 4]);
+        assert_ne!(submitted[0].swapchain, submitted[1].swapchain);
+        assert_eq!(submitted[0].pose.position[0], -0.5);
+        assert_eq!(submitted[1].pose.position[0], 0.5);
+        assert_eq!(presenter.uploads.len(), 2);
+    }
+
+    #[test]
+    fn a_still_picture_is_uploaded_once_and_a_new_serial_again() {
+        let runtime = FakeRuntime::with_graphics(script(3), 16);
+        let steps = vec![
+            vec![(2, Some(picture(8, 4, 1, 1)))],
+            vec![(2, Some(picture(8, 4, 1, 1)))],
+            vec![(2, Some(picture(8, 4, 2, 9)))],
+        ];
+        let (frames, presenter, _, _) = run_frames(room_of(&[(2, 0.0, -1000.0)]), runtime, steps);
+
+        let creates = frames
+            .runtime()
+            .calls
+            .iter()
+            .filter(|call| matches!(call, Call::CreateSwapchain { .. }))
+            .count();
+        assert_eq!(creates, 1, "one swapchain for the View across frames");
+        assert_eq!(
+            presenter.uploads.len(),
+            2,
+            "uploaded for serial 1 and serial 2, not for the repeat"
+        );
+        assert_eq!(presenter.uploads[1].bytes[0], 9);
+        assert_eq!(frames.runtime().submitted.len(), 3);
+        assert!(
+            frames.runtime().submitted.iter().all(|(_, layers)| layers.len() == 1),
+            "the View is submitted every frame"
+        );
+    }
+
+    #[test]
+    fn a_new_picture_size_recreates_the_swapchain() {
+        let runtime = FakeRuntime::with_graphics(script(2), 16);
+        let steps = vec![
+            vec![(2, Some(picture(8, 4, 1, 1)))],
+            vec![(2, Some(picture(16, 8, 2, 1)))],
+        ];
+        let (frames, presenter, _, _) = run_frames(room_of(&[(2, 0.0, -1000.0)]), runtime, steps);
+
+        let calls = &frames.runtime().calls;
+        let creates: Vec<_> = calls
+            .iter()
+            .filter_map(|call| match call {
+                Call::CreateSwapchain { width, height, .. } => Some((*width, *height)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(creates, vec![(8, 4), (16, 8)]);
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| matches!(call, Call::DestroySwapchain(_)))
+                .count(),
+            2
+        );
+        assert_eq!(presenter.uploads.len(), 2);
+        let (_, layers) = &frames.runtime().submitted[1];
+        let quad = quads(layers)[0];
+        assert_eq!(
+            quad.swapchain,
+            SwapchainId(2),
+            "the second frame shows the new swapchain"
+        );
+        assert_eq!((quad.rect.width, quad.rect.height), (16, 8));
+        assert!(
+            frames.runtime().swapchains.is_empty(),
+            "the swapchains are destroyed when the bridge ends"
+        );
+    }
+
+    #[test]
+    fn a_view_with_no_picture_yet_is_not_submitted_and_is_reported() {
+        let runtime = FakeRuntime::with_graphics(script(1), 16);
+        let (frames, presenter, _, reports) = run_frames(room_of(&[(2, 0.0, -1000.0)]), runtime, vec![]);
+
+        assert_eq!(frames.runtime().submitted, vec![(1, Vec::new())]);
+        assert!(presenter.uploads.is_empty());
+        assert_eq!(
+            reports.notices[0],
+            vec![Notice {
+                view: 2,
+                kind: NoticeKind::NoSwapchain
+            }]
+        );
+    }
+
+    #[test]
+    fn a_session_without_graphics_submits_nothing_and_says_why() {
+        let runtime = FakeRuntime::new(script(2));
+        let steps = vec![vec![(2, Some(picture(8, 4, 1, 1)))]];
+        let (frames, presenter, _, reports) = run_frames(room_of(&[(2, 0.0, -1000.0)]), runtime, steps);
+
+        assert!(
+            frames.runtime().submitted.iter().all(|(_, layers)| layers.is_empty()),
+            "no layer without a swapchain"
+        );
+        assert!(presenter.uploads.is_empty());
+        assert!(
+            !frames
+                .runtime()
+                .calls
+                .iter()
+                .any(|call| matches!(call, Call::CreateSwapchain { .. })),
+            "no swapchain was asked for"
+        );
+        let [fault] = reports.faults[0].as_slice() else {
+            panic!("one fault: {:?}", reports.faults[0]);
+        };
+        assert!(fault.to_string().contains("XR_KHR_vulkan_enable2"), "{fault}");
+    }
+
+    #[test]
+    fn a_frame_the_runtime_says_not_to_render_has_no_layers_and_no_uploads() {
+        let script = vec![
             state(SessionState::Ready),
-            state(SessionState::Focused),
-            timing(1),
+            Step::Frame(FrameTiming {
+                predicted_display_time: 1,
+                should_render: false,
+            }),
             state(SessionState::Exiting),
         ];
-        let mut frames = FrameLoop::new(FakeRuntime::new(script));
-        let mut plans = Vec::new();
-        let mut captures = ViewCaptures::new(None);
+        let runtime = FakeRuntime::with_graphics(script, 16);
+        let steps = vec![vec![(2, Some(picture(8, 4, 1, 1)))]];
+        let (frames, presenter, _, _) = run_frames(room_of(&[(2, 0.0, -1000.0)]), runtime, steps);
 
-        let outcome = run(&mut tree, &mut frames, &Options::default(), &mut captures, |plan| {
-            plans.push(plan.clone())
-        })
-        .expect("bridge runs");
+        assert_eq!(frames.runtime().submitted, vec![(1, Vec::new())]);
+        assert!(presenter.uploads.is_empty());
+    }
 
-        assert_eq!(outcome, Outcome::SessionExited);
-        assert_eq!(plans.len(), 1, "one plan for the one frame");
-        assert_eq!(plans[0].layers.len(), 1, "the room's view becomes one layer");
-        assert!(plans[0].skipped.is_empty());
+    #[test]
+    fn views_beyond_the_layer_budget_are_dropped_and_reported() {
+        let runtime = FakeRuntime::with_graphics(script(1), 1);
+        let views = [(2, -500.0, -1000.0), (4, 500.0, -1000.0)];
+        let steps = vec![vec![(2, Some(picture(8, 4, 1, 1))), (4, Some(picture(8, 4, 1, 2)))]];
+        let (frames, _, _, reports) = run_frames(room_of(&views), runtime, steps);
+
+        let (_, layers) = &frames.runtime().submitted[0];
+        assert_eq!(quads(layers).iter().map(|quad| quad.view).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(
+            reports.notices[0],
+            vec![Notice {
+                view: 4,
+                kind: NoticeKind::LayerBudget
+            }]
+        );
+    }
+
+    #[test]
+    fn opacity_becomes_a_colour_scale_on_the_layer() {
+        let runtime = FakeRuntime::with_graphics(script(1), 16);
+        let mut nodes = room_of(&[(2, 0.0, -1000.0)]);
+        nodes[1].props.push(double(2, "opacity", 0.5));
+        let steps = vec![vec![(2, Some(picture(8, 4, 1, 1)))]];
+        let (frames, _, _, _) = run_frames(nodes, runtime, steps);
+
+        let (_, layers) = &frames.runtime().submitted[0];
+        assert_eq!(quads(layers)[0].color_scale, Some([0.5; 4]));
+    }
+
+    #[test]
+    fn the_captures_follow_the_planned_views() {
+        let runtime = FakeRuntime::with_graphics(script(1), 16);
+        let views = [(2, -500.0, -1000.0), (4, 500.0, -1000.0)];
+        let (_, _, captures, _) = run_frames(room_of(&views), runtime, vec![]);
+        assert_eq!(captures.wanted, vec![BTreeSet::from([2, 4])]);
+    }
+
+    #[test]
+    fn each_frame_plans_the_room_from_the_owner_model() {
+        let runtime = FakeRuntime::new(script(1));
+        let (_, _, _, reports) = run_frames(room_with_one_view(), runtime, vec![]);
+
+        assert_eq!(reports.plans.len(), 1, "one plan for the one frame");
+        assert_eq!(reports.plans[0].layers.len(), 1, "the room's view becomes one layer");
+        assert!(reports.plans[0].skipped.is_empty());
     }
 
     #[test]
     fn owner_closing_its_socket_ends_the_bridge() {
         let mut tree = TreeClient::from_stream(serve(room_with_one_view(), true)).expect("attach");
         let mut frames = FrameLoop::new(FakeRuntime::new(Vec::new()));
-        let mut plans = Vec::new();
-        let mut captures = ViewCaptures::new(None);
+        let mut reports = Reports::default();
+        let mut presenter = FakePresenter::default();
+        let mut captures = ScriptedFrames::default();
 
-        let outcome = run(&mut tree, &mut frames, &Options::default(), &mut captures, |plan| {
-            plans.push(plan.clone())
-        })
+        let outcome = run(
+            &mut tree,
+            &mut frames,
+            &Options::default(),
+            &mut captures,
+            &mut presenter,
+            |report| reports.push(report),
+        )
         .expect("bridge runs");
 
         assert_eq!(outcome, Outcome::OwnerClosed);
-        assert!(plans.is_empty(), "no session frame ran");
+        assert!(reports.plans.is_empty(), "no session frame ran");
+    }
+
+    /// Runs the bridge end to end against Monado with a Vulkan driver (lavapipe on Agent37): a fake owner with one View,
+    /// a scripted picture, the real Vulkan session and presenter. The owner hangs up after a few frames. Every frame
+    /// must end without a fault, and the View must be submitted.
+    ///
+    /// Run with `GNOBLIN_XR_MONADO=1 cargo test -- --ignored`, with `XR_RUNTIME_JSON` pointing at Monado's manifest and
+    /// a running `monado-service`.
+    #[test]
+    #[ignore = "needs Monado and a Vulkan driver; set GNOBLIN_XR_MONADO=1 and run with --ignored"]
+    fn monado_bridge_submits_a_view_end_to_end() {
+        use xr_gpu::VulkanPresenter;
+        use xr_session::openxr_runtime::OpenxrRuntime;
+
+        if std::env::var_os("GNOBLIN_XR_MONADO").as_deref() != Some("1".as_ref()) {
+            return;
+        }
+        let (hang_up, hung_up) = std::sync::mpsc::channel::<()>();
+        let mut tree = TreeClient::from_stream(serve_until(room_of(&[(2, 500.0, -1000.0)]), hung_up)).expect("attach");
+        let (runtime, device) = OpenxrRuntime::connect_vulkan("gnoblin-xr-test").expect("connect");
+        let mut presenter = VulkanPresenter::new(device).expect("presenter");
+        let mut frames = FrameLoop::new(runtime);
+        let mut captures = ScriptedFrames::new(vec![vec![(2, Some(picture(64, 48, 1, 0x40)))]]);
+
+        let mut reports = Reports::default();
+        let outcome = run(
+            &mut tree,
+            &mut frames,
+            &Options::default(),
+            &mut captures,
+            &mut presenter,
+            |report| {
+                reports.push(report);
+                if reports.plans.len() == 5 {
+                    let _ = hang_up.send(());
+                }
+            },
+        )
+        .expect("bridge runs");
+
+        assert_eq!(outcome, Outcome::OwnerClosed);
+        assert!(reports.faults.iter().all(Vec::is_empty), "faults: {:?}", reports.faults);
+        assert!(
+            reports.notices.iter().all(Vec::is_empty),
+            "notices: {:?}",
+            reports.notices
+        );
+        assert_eq!(reports.plans.len(), 5);
     }
 }

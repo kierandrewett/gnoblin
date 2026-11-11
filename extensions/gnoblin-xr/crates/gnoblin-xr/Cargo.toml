@@ -12,11 +12,14 @@ publish.workspace = true
 gnoblin-client = { path = "../../../../crates/gnoblin-client" }
 xr-scene = { path = "../xr-scene" }
 xr-capture = { path = "../xr-capture" }
+xr-gpu = { path = "../xr-gpu" }
+xr-layers = { path = "../xr-layers" }
 xr-session = { path = "../xr-session" }
 xr-tree = { path = "../xr-tree" }
 
 [dev-dependencies]
 gnoblin-proto = { path = "../../../../crates/gnoblin-proto" }
+xr-gpu = { path = "../xr-gpu", features = ["testing"] }
 xr-session = { path = "../xr-session", features = ["testing"] }
 
 [lints]

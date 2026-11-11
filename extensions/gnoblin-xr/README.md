@@ -2,8 +2,8 @@
 
 `gnoblin-xr` is the XR extension for Gnoblin. It is an out-of-process program on the owner socket. It attaches to the tree,
 reads the `View` nodes under the node named `room`, and plans them into OpenXR layers on every frame. It is purely
-translational: it does not decide what is drawn or where it sits. It does not yet submit those layers, so the session
-runs with empty layer lists. The design is in design/xr-extension.md (D34) and design/node-api-refactor.md, section 9.
+translational: it does not decide what is drawn or where it sits. It copies each View's picture into a swapchain and submits
+the layers. The design is in design/xr-extension.md (D34) and design/node-api-refactor.md, section 9.
 
 ## What exists
 
@@ -23,17 +23,36 @@ runs with empty layer lists. The design is in design/xr-extension.md (D34) and d
   submit, with the skipped Views and their reasons. `pick` tests a ray against the quads in reverse submission order and
   returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
   `crates/xr-scene/README.md`.
+- **`xr-layers`** (library, no OpenXR types): `compose` turns the planned layers and the ready swapchain of each View into
+  the layers to submit: a quad per flat View, a projection per stereo View, in plan order. Opacity below 1 becomes a
+  colour scale when `XR_KHR_composition_layer_color_scale_bias` is enabled. Layers beyond `maxLayerCount` are dropped,
+  head-locked ones first, and reported `layer-budget`. See `crates/xr-layers/README.md`.
+- **`xr-gpu`** (library): the `Presenter` trait copies one captured picture into one acquired swapchain image. `format`
+  chooses the swapchain format (`R8G8B8A8_SRGB` or `B8G8R8A8_SRGB`, the runtime's first choice) and converts `wl_shm`
+  Argb8888 or Xrgb8888 into it. `VulkanPresenter` does the copy through `ash` on a device made by
+  `XR_KHR_vulkan_enable2`; `FakePresenter` (feature `testing`) records uploads. See `crates/xr-gpu/README.md`.
+- **`xr-session`**: `OpenxrRuntime::connect_vulkan` opens a session on that Vulkan device, with swapchains and layer
+  submission. `OpenxrRuntime::connect` is still the headless session. A runtime without `XR_KHR_vulkan_enable2` is
+  refused with a message that names the extension.
+- **`gnoblin-xr`** `surfaces.rs`: one swapchain per planned View. It is made when the View first has a picture, remade when
+  the picture's size changes, filled only when the capture's `serial` changes, and destroyed when the View leaves the plan
+  or the bridge ends. A swapchain is submitted only after a picture is in it.
 - **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `xr`: the bridge reuses a seat of that name from the owner snapshot and creates one on first use. A miss sends `leave` for the window last hovered.
 - **`gnoblin-xr`** (binary): connects to the owner socket (`$GNOBLIN_IPC_SOCKET`, else `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`),
-  attaches to the `tree` namespace, opens the headless OpenXR session and runs `bridge::run`. The bridge polls the owner
-  socket and runs one frame-loop tick per pass. Each frame plans the `room` subtree against the located head pose and
-  logs the layer and skipped counts when they change. It exits when the runtime asks the session to exit or the owner
+  attaches to the `tree` namespace, opens a Vulkan OpenXR session and runs `bridge::run`. When the runtime cannot give a
+  Vulkan session it prints why and runs a headless session, which plans and drives the pointer and shows nothing. The
+  bridge polls the owner socket and runs one frame per pass. Each frame plans the `room` subtree against the located head
+  pose, pumps the captures, copies changed pictures into swapchains, and ends the frame with the composed layers. It logs
+  the layer and skipped counts, the dropped or degraded Views and the failures when they change. It exits when the runtime asks the session to exit or the owner
   closes the socket. `--help` and `--version` print and exit without connecting.
 
 ## What does not exist
 
-- No swapchains and no layer submission: the frame loop passes empty layer lists to `end_frame`, and the plan is only logged.
-- No rendering, no GPU code, no environment. Buttons and scroll are not wired: the runtime has no button source yet.
+- No projection picture: a View under a stereo camera is submitted as a projection layer whose eyes read the left and
+  right halves of the View's one picture. That is the extension's convention, and the owner does not yet draw stereo
+  pictures.
+- No DMA-BUF path: pictures are `wl_shm` bytes, copied through a staging buffer.
+- No environment, no layers of the extension's own. Buttons and scroll are not wired: the runtime has no button source yet.
 - The `[powers.process]` entry that starts this program is not written.
 
 ## Build and test
@@ -46,3 +65,23 @@ CARGO_TARGET_DIR=/home/kieran/.cache/gnoblin-target-xr cargo test --workspace
 ```
 
 The toolchain comes from the repository root's `rust-toolchain.toml`.
+
+### Against Monado
+
+The unit tests use a fake runtime, a fake presenter and a fake owner, and run anywhere. Two ignored tests use a real
+runtime: `monado_vulkan_session_holds_the_uploaded_pixels_and_accepts_a_quad` (`xr-session`) and
+`monado_bridge_submits_a_view_end_to_end` (`gnoblin-xr`). They need a running `monado-service` with a Vulkan driver, for
+example lavapipe:
+
+```sh
+# the service, with the simulated headset and the null compositor (XDG_RUNTIME_DIR must match the client's)
+SIMULATED_ENABLE=1 XRT_COMPOSITOR_NULL=1 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json monado-service &
+# the tests
+GNOBLIN_XR_MONADO=1 XR_RUNTIME_JSON=<monado build>/openxr_monado-dev.json \
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json cargo test -- --ignored --test-threads=1
+```
+
+`monado_headless_runs_one_empty_frame` fails on Monado `7336a90` with `XR_ERROR_CALL_ORDER_INVALID` at `xrBeginFrame`, and
+failed the same way before the Vulkan session was added. The null compositor draws nothing, so these tests check what the
+runtime accepts and what the swapchain image holds, not what a headset shows. See the "Verified on Agent37" part of
+`design/xr-extension.md`.
