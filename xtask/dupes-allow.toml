@@ -369,12 +369,6 @@ kind = "same-name"
 reason = "each state machine's record of what it observed is its own"
 
 [[allow]]
-left = "gnoblin-authority::GestureKind"
-right = "gnoblin-input::GestureKind"
-kind = "same-name"
-reason = "authority names the input that created a trusted context (a pointer button, a key press, a touch); the input router names a recognised multi-touch gesture (swipe, pinch)"
-
-[[allow]]
 left = "gnoblin-lock::State"
 right = "gnoblin-wayland::State"
 kind = "same-name"
@@ -384,7 +378,7 @@ reason = "the locker's state is where the session lock controller is (unlocked, 
 left = "gnoblin-authority::Limits"
 right = "gnoblin-lua-sandbox::Limits"
 kind = "same-name"
-reason = "authority's limits are how many live tokens, gestures and grants the machine keeps; the Lua host's are the instruction, memory and time budget one entry into a script runs under"
+reason = "authority's limits are how many live tokens and waiting consent prompts the machine keeps; the Lua host's are the instruction, memory and time budget one entry into a script runs under"
 
 [[allow]]
 left = "gnoblin-authority::Pending"
@@ -415,12 +409,6 @@ left = "gnoblin-a11y::Key"
 right = "gnoblin-input::Key"
 kind = "same-name"
 reason = "an a11y key is one key event as the compositor saw it; an input key is the key half of a parsed chord, which may be a pointer button or the bare word Super"
-
-[[allow]]
-left = "gnoblin-authority::GestureKind"
-right = "gnoblin-input::GestureKind"
-kind = "same-name"
-reason = "authority names the input that created a trusted context (pointer, key, touch); the input router names a recognised multi-touch gesture (swipe, pinch)"
 
 [[allow]]
 left = "gnoblin-compat-core::Kind"
@@ -661,12 +649,6 @@ left = "gnoblin-compat-wayland-gtk-shell1::Admission"
 right = "gnoblin-compat-wayland-mutter-x11-interop::Admission"
 kind = "same-name"
 reason = "each adapter's admission holds its own declaration and gate; the name is the frame's"
-
-[[allow]]
-left = "gnoblin-authority::Gesture"
-right = "gnoblin-compat-wayland-gtk-shell1::Gesture"
-kind = "same-name"
-reason = "an authority gesture is a trusted input context for a token; gtk_surface1's is a titlebar click the configuration maps to an action"
 
 # The redirects' own vocabulary, and one settings writer's.
 

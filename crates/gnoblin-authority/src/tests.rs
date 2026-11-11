@@ -6,21 +6,18 @@
 use gnoblin_types::{ClientId, Tick};
 
 use crate::{
-    Answer, AppId, Authority, Claimant, Consent, ContextRequest, Decision, Denial, Effect, Event, Gesture, GestureId,
-    LaunchOrigin, Limits, PortalCapability, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
+    Answer, AppId, Authority, Claimant, Consent, Decision, Denial, Effect, Event, LaunchOrigin, Limits,
+    PortalCapability, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
 };
 
 const LEADER: SessionLeader = SessionLeader::new(100);
 const OTHER_LEADER: SessionLeader = SessionLeader::new(200);
 const CLIENT: ClientId = ClientId::new(1);
-const OTHER_CLIENT: ClientId = ClientId::new(2);
 const SHELL: ClientId = ClientId::new(9);
 const SURFACE: SurfaceId = SurfaceId::new(1);
-const OTHER_SURFACE: SurfaceId = SurfaceId::new(2);
 const TOKEN: TokenId = TokenId::new(0x5eed);
 const REQUESTER: RequesterId = RequesterId::new(7);
 const REQUEST: RequestId = RequestId::new(1);
-const GESTURE: GestureId = GestureId::new(3);
 const NOW: Tick = Tick::new(1_000);
 const LIFETIME: u64 = 100;
 
@@ -65,27 +62,6 @@ fn activation(reason: Denial) -> Effect {
         client: CLIENT,
         surface: SURFACE,
         reason,
-    }
-}
-
-fn gesture(lifetime: u64) -> Event {
-    Event::GestureBegan {
-        gesture: Gesture {
-            id: GESTURE,
-            client: CLIENT,
-            surface: SURFACE,
-            kind: crate::GestureKind::Pointer { button: 1 },
-        },
-        lifetime,
-    }
-}
-
-fn move_request(client: ClientId, surface: SurfaceId) -> Event {
-    Event::ContextRequest {
-        gesture: GESTURE,
-        client,
-        surface,
-        request: ContextRequest::Move,
     }
 }
 
@@ -153,25 +129,6 @@ fn a_token_is_accepted_once() {
             }
         ),
         vec![activation(Denial::ReusedToken)]
-    );
-}
-
-#[test]
-fn a_context_does_not_outlive_its_gesture() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, gesture(LIFETIME));
-    assert_eq!(
-        authority.apply(NOW, Event::GestureEnded { gesture: GESTURE }),
-        vec![Effect::EndContext { gesture: GESTURE }]
-    );
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::StaleContext,
-        }]
     );
 }
 
@@ -315,169 +272,6 @@ fn a_covered_session_refuses_activation() {
         vec![Effect::Activate {
             client: CLIENT,
             surface: SURFACE,
-        }]
-    );
-}
-
-#[test]
-fn a_trusted_gesture_authorises_focus() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, gesture(LIFETIME));
-    // Focus needs no token when a gesture the user just made authorises it,
-    // which is the other half of the plan's "a valid token or a trusted
-    // context" rule.
-    assert_eq!(
-        authority.apply(
-            NOW,
-            Event::ContextRequest {
-                gesture: GESTURE,
-                client: CLIENT,
-                surface: SURFACE,
-                request: ContextRequest::Focus,
-            }
-        ),
-        vec![Effect::Authorise {
-            gesture: GESTURE,
-            client: CLIENT,
-            surface: SURFACE,
-            request: ContextRequest::Focus,
-        }]
-    );
-}
-
-#[test]
-fn a_context_is_single_use() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, gesture(LIFETIME));
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::Authorise {
-            gesture: GESTURE,
-            client: CLIENT,
-            surface: SURFACE,
-            request: ContextRequest::Move,
-        }]
-    );
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::ConsumedContext,
-        }]
-    );
-}
-
-#[test]
-fn an_expired_context_is_refused() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, gesture(10));
-    assert_eq!(
-        authority.apply(NOW.saturating_add(10), move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::ExpiredContext,
-        }]
-    );
-}
-
-#[test]
-fn a_context_is_bound_to_its_target() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, gesture(LIFETIME));
-    assert_eq!(
-        authority.apply(NOW, move_request(OTHER_CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: OTHER_CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::WrongTarget,
-        }]
-    );
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, OTHER_SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::WrongTarget,
-        }]
-    );
-    // A wrong target does not consume the context the gesture really owns.
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::Authorise {
-            gesture: GESTURE,
-            client: CLIENT,
-            surface: SURFACE,
-            request: ContextRequest::Move,
-        }]
-    );
-}
-
-#[test]
-fn locking_ends_live_contexts() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, gesture(LIFETIME));
-    assert_eq!(
-        authority.apply(NOW, Event::LockChanged { active: true }),
-        vec![
-            Effect::Capture { allowed: false },
-            Effect::EndContext { gesture: GESTURE },
-        ]
-    );
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::SessionLocked,
-        }]
-    );
-    // Unlocking restores nothing: the context is gone for good.
-    authority.apply(NOW, Event::LockChanged { active: false });
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::StaleContext,
-        }]
-    );
-}
-
-#[test]
-fn a_gesture_during_lock_authorises_nothing() {
-    let mut authority = Authority::new();
-    authority.apply(NOW, Event::LockChanged { active: true });
-    assert_eq!(authority.apply(NOW, gesture(LIFETIME)), Vec::new());
-    authority.apply(NOW, Event::LockChanged { active: false });
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::StaleContext,
-        }]
-    );
-}
-
-#[test]
-fn a_context_request_without_a_gesture_is_refused() {
-    let mut authority = Authority::new();
-    assert_eq!(
-        authority.apply(NOW, move_request(CLIENT, SURFACE)),
-        vec![Effect::RefuseContext {
-            gesture: GESTURE,
-            client: CLIENT,
-            request: ContextRequest::Move,
-            reason: Denial::StaleContext,
         }]
     );
 }

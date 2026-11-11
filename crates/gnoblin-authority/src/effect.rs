@@ -3,8 +3,8 @@
 use gnoblin_types::{ClientId, Tick};
 
 use crate::denial::{Decision, Denial};
-use crate::event::{ContextRequest, GestureKind, PortalCapability};
-use crate::ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
+use crate::event::PortalCapability;
+use crate::ids::{AppId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// One instruction, in the order it must happen.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,46 +40,6 @@ pub enum Effect {
         client: ClientId,
         /// The surface it asked for, so an error can name it.
         surface: SurfaceId,
-        /// Why.
-        reason: Denial,
-    },
-    /// A trusted input context now exists for this gesture.
-    Context {
-        /// The gesture that created it.
-        gesture: GestureId,
-        /// The connection it belongs to.
-        client: ClientId,
-        /// The surface it belongs to.
-        surface: SurfaceId,
-        /// The kind of gesture, for the runtime's `FocusContext`.
-        kind: GestureKind,
-        /// When it stops being usable.
-        expires_at: Tick,
-    },
-    /// The gesture is over, so its context is gone.
-    EndContext {
-        /// The context to drop.
-        gesture: GestureId,
-    },
-    /// A context request was authorised.
-    Authorise {
-        /// The gesture that authorises it.
-        gesture: GestureId,
-        /// The client it belongs to.
-        client: ClientId,
-        /// The surface the request named.
-        surface: SurfaceId,
-        /// What was authorised.
-        request: ContextRequest,
-    },
-    /// A context request was refused.
-    RefuseContext {
-        /// The gesture that was claimed.
-        gesture: GestureId,
-        /// The client that asked.
-        client: ClientId,
-        /// What it asked for.
-        request: ContextRequest,
         /// Why.
         reason: Denial,
     },

@@ -237,8 +237,8 @@ The rewrite has one IPC:
   property diffs and signals with revisions, not whole snapshots.
 - Shells, `gnoblinctl`, the portal, the services role and the script runtime all
   speak the same IPC. The runtime and services connect over an inherited file
-  descriptor that carries extra capabilities: trusted input contexts, input
-  policy decisions, request handling and configuration commits.
+  descriptor that carries extra capabilities: input policy decisions, request
+  handling and configuration commits.
 - Generated from the schema: the Rust client crate, the Lua bindings,
   `gnoblin.d.lua`, `gnoblinctl` subcommands and completion, the API reference in
   `docs/shell-api/`, the WIT package, and a compatibility report that fails CI
@@ -441,7 +441,7 @@ start and recover without any script.
 | Compositor crashes   | No `unwrap` or `expect` in compositor crates (Clippy `unwrap_used` and `expect_used` denied). A protocol error disconnects the client, never the compositor. |
 | Script faults        | Lua runs in another process with instruction and memory limits. On a missed deadline the runtime restarts; the compositor keeps its accepted state.          |
 | Lock                 | Fail closed: opaque cover; input goes only to lock surfaces; no capture or clipboard. A locker crash keeps the cover.                                        |
-| Focus stealing       | Activation needs a valid token or a trusted context. A process ID or app ID alone never grants focus.                                                        |
+| Focus stealing       | Activation needs a valid token. A process ID or app ID alone never grants focus.                                                                             |
 | Privileged protocols | Per client: sandboxes see no privileged global, the main socket sees the unprivileged set, and the privileged socket (below) sees all of it.                 |
 | Untrusted input      | The wire codec, configuration parser and protocol handlers are fuzzed (`cargo fuzz`) before they ship.                                                       |
 | Secrets              | Prompt answers never enter logs, events for other clients, crash reports or the parity recorder.                                                             |
@@ -1079,11 +1079,12 @@ failure-mode list that must be complete before isolated tests or code.
 ### Authority: `gnoblin-authority`
 
 - **Owns:** launch attribution (session leader and activation token, not app
-  ID), activation tokens, trusted input contexts, scoped grants.
+  ID), activation tokens, scoped grants. The gesture-context machine (trusted
+  input contexts for pointer, key and touch gestures) was deleted (survey 10B).
 - **Replaces:** `FocusContext`, `MenuContext`, `WindowDrag`, `SnapContext`,
   `TextTarget` rules in `src/config/lua/gnoblin-lua-contexts.c` and
   `src/control/gnoblin-control-focus.c`.
-- **Failure modes first:** a token is reused; a context outlives its gesture; a
+- **Failure modes first:** a token is reused; a token outlives its expiry; a
   child process inherits authority it should not; a client claims another's app
   ID to get focus.
 - **Extension grants (D22):** the pure grant check and its never-grantable list
@@ -2817,7 +2818,7 @@ Every power is a named capability. None is granted by default. A capability the 
 Never grantable. Refused in the manifest and in host configuration:
 
 - `lock.*`: the lock state, the cover, the input and capture embargo, and any session-lock bypass or unlock.
-- `authority.*`: activation tokens, launch attribution, session leadership and trusted input contexts. A package cannot make a launch or a focus trusted.
+- `authority.*`: activation tokens, launch attribution and session leadership. A package cannot make a launch or a focus trusted.
 - `secret.read`: any frame marked `sensitive` (D21), and any PAM, logind or auth payload.
 - `session.privileged`: PAM, logind and seat privileges. These stay with the host's manager (D21).
 

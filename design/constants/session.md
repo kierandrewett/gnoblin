@@ -29,7 +29,7 @@ Counts are grep hits in `crates/<crate>/src`. "Test" means test-only items exclu
 Notes on counts:
 
 - gnoblin-log excluded: `filter.rs:390,402,422` and `retention.rs:70` (tests); `lib.rs:135,173,215` (macro templates, not items).
-- gnoblin-authority: all 13 hits are in `tests.rs`. The only production numbers are the `Limits` defaults in `authority.rs:30-32` (tokens 256, contexts 128, requests 64), which are struct field values, not `const` items. They are covered in section 2.6.
+- gnoblin-authority: all 13 hits are in `tests.rs`. The only production numbers are the `Limits` defaults in `authority.rs:24-25` (tokens 256, requests 64), which are struct field values, not `const` items. They are covered in section 2.6. The `contexts 128` limit went with the gesture machine (survey 10B).
 - gnoblin-session: the 8 `tests.rs` hits (`tests.rs:16-23`) are excluded; `model.rs:13-19` ChildIds are included.
 - Items inside `fn` bodies or nested `mod` blocks that are not `pub` were searched by hand in the crates listed above. [INFERENCE] There may be a few local `const` values inside functions that the grep did not match; none found in the files read.
 
@@ -134,9 +134,9 @@ Note on the backoff row: the guardian restart ladder is the only place a user mi
 
 ### 2.6 Authority (gnoblin-authority)
 
-| Constant (location)                    | Value                                 | Q1  | Q2  | Q3                                           | Verdict | Risk | Effort |
-| -------------------------------------- | ------------------------------------- | --- | --- | -------------------------------------------- | ------- | ---- | ------ |
-| `Limits` defaults (authority.rs:30-32) | tokens 256, contexts 128, requests 64 | N   | No  | Internal per-session caps; no user need seen | KEEP    | low  | S      |
+| Constant (location)                    | Value                   | Q1  | Q2  | Q3                                           | Verdict | Risk | Effort |
+| -------------------------------------- | ----------------------- | --- | --- | -------------------------------------------- | ------- | ---- | ------ |
+| `Limits` defaults (authority.rs:24-25) | tokens 256, requests 64 | N   | No  | Internal per-session caps; no user need seen | KEEP    | low  | S      |
 
 All other authority values are in `tests.rs` and excluded.
 

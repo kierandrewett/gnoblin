@@ -8,11 +8,11 @@
 //! of copies, so a tick the compositor took and a client it saw are the same
 //! values here.
 //!
-//! [`SurfaceId`], [`SessionLeader`], [`AppId`], [`TokenId`], [`GestureId`],
-//! [`RequesterId`] and [`RequestId`] stay local because nothing outside this
-//! crate has the same meaning for them: a portal request is not an object-graph
-//! request, a peer's process group leader is not a graph token, and an
-//! activation token is 128 random bits rather than a counter.
+//! [`SurfaceId`], [`SessionLeader`], [`AppId`], [`TokenId`], [`RequesterId`]
+//! and [`RequestId`] stay local because nothing outside this crate has the same
+//! meaning for them: a portal request is not an object-graph request, a peer's
+//! process group leader is not a graph token, and an activation token is 128
+//! random bits rather than a counter.
 
 /// A Wayland surface, as the compositor names it.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -96,28 +96,6 @@ impl TokenId {
     /// The raw value, for logs and test assertions.
     #[must_use]
     pub const fn get(self) -> u128 {
-        self.0
-    }
-}
-
-/// One input gesture, and the handle for the trusted context it creates.
-///
-/// The compositor allocates it while it dispatches the gesture, which is why a
-/// context can never outlive the gesture that produced it: both are keyed by the
-/// same value.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct GestureId(u64);
-
-impl GestureId {
-    /// Wraps the compositor's gesture serial.
-    #[must_use]
-    pub const fn new(raw: u64) -> Self {
-        Self(raw)
-    }
-
-    /// The raw serial, for logs and test assertions.
-    #[must_use]
-    pub const fn get(self) -> u64 {
         self.0
     }
 }

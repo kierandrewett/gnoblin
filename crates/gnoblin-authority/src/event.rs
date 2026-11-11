@@ -2,7 +2,7 @@
 
 use gnoblin_types::ClientId;
 
-use crate::ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
+use crate::ids::{AppId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// Everything that can grant, refuse or expire authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,30 +24,6 @@ pub enum Event {
     Activate {
         /// Who is asking, and what it offers as authority.
         claim: Claimant,
-    },
-    /// A trusted gesture began, so an input context may exist for it.
-    GestureBegan {
-        /// The gesture the compositor observed.
-        gesture: Gesture,
-        /// How long the context stays usable after the gesture.
-        lifetime: u64,
-    },
-    /// The gesture is over: a pointer was released, a key was released, a touch
-    /// sequence was cancelled or the compositor lost it.
-    GestureEnded {
-        /// The gesture that ended.
-        gesture: GestureId,
-    },
-    /// A client uses a trusted input context to do something privileged.
-    ContextRequest {
-        /// The gesture it claims.
-        gesture: GestureId,
-        /// The connection making the request.
-        client: ClientId,
-        /// The surface the request names.
-        surface: SurfaceId,
-        /// What it wants to do.
-        request: ContextRequest,
     },
     /// A client claims the `portal.ui` slot: it draws consent and picker UI.
     PortalUiClaimed {
@@ -107,19 +83,6 @@ pub struct LaunchOrigin {
     pub app_id: Option<AppId>,
 }
 
-/// One input gesture the compositor observed while dispatching an event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Gesture {
-    /// The compositor's serial for it.
-    pub id: GestureId,
-    /// The connection that handled it.
-    pub client: ClientId,
-    /// The surface it happened on.
-    pub surface: SurfaceId,
-    /// What kind of gesture it is, for readers of the context.
-    pub kind: GestureKind,
-}
-
 /// A client asking for focus, with everything it offers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Claimant {
@@ -133,56 +96,6 @@ pub struct Claimant {
     pub app_id: Option<AppId>,
     /// The token it presents, if any.
     pub token: Option<TokenId>,
-}
-
-/// A privileged action only a trusted input context may authorise.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ContextRequest {
-    /// Begin an interactive move of the gesture's surface.
-    Move,
-    /// Begin an interactive resize of the gesture's surface.
-    Resize,
-    /// Offer snap targets for the gesture's surface.
-    SnapTarget,
-    /// Set the text input target of the focused client.
-    TextInput,
-    /// Focus the gesture's surface. The plan's safety table allows activation
-    /// from a token *or* from a trusted context; this is the second half, so a
-    /// shell can raise a window the user just acted on without any token.
-    Focus,
-}
-
-impl ContextRequest {
-    /// A stable lower-case name for logs, events and tests.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Move => "move",
-            Self::Resize => "resize",
-            Self::SnapTarget => "snap-target",
-            Self::TextInput => "text-input",
-            Self::Focus => "focus",
-        }
-    }
-}
-
-/// What kind of input produced a context.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GestureKind {
-    /// A pointer button press.
-    Pointer {
-        /// The evdev button number.
-        button: u32,
-    },
-    /// A key press with its modifiers.
-    Key {
-        /// The xkb keycode.
-        key: u32,
-        /// The active modifier mask when it was pressed.
-        modifiers: u32,
-    },
-    /// A touch sequence.
-    Touch,
 }
 
 /// What a portal caller may be granted.

@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use gnoblin_types::{ClientId, Tick};
 
 use crate::{
-    Answer, AppId, Authority, Claimant, ContextRequest, Decision, Denial, Effect, Event, Gesture, GestureId,
-    GestureKind, LaunchOrigin, PortalCapability, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
+    Answer, AppId, Authority, Claimant, Decision, Denial, Effect, Event, LaunchOrigin, PortalCapability, RequestId,
+    RequesterId, SessionLeader, SurfaceId, TokenId,
 };
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
@@ -51,10 +51,6 @@ impl Rng {
         TokenId::new(u128::from(1 + self.below(3)))
     }
 
-    fn gesture(&mut self) -> GestureId {
-        GestureId::new(1 + self.below(3))
-    }
-
     fn requester(&mut self) -> RequesterId {
         RequesterId::new(1 + self.below(2))
     }
@@ -70,19 +66,10 @@ impl Rng {
             _ => PortalCapability::Secret,
         }
     }
-
-    fn request_kind(&mut self) -> ContextRequest {
-        match self.below(4) {
-            0 => ContextRequest::Move,
-            1 => ContextRequest::Resize,
-            2 => ContextRequest::SnapTarget,
-            _ => ContextRequest::TextInput,
-        }
-    }
 }
 
 fn generate(rng: &mut Rng) -> Event {
-    match rng.below(12) {
+    match rng.below(9) {
         0 => Event::Launch {
             origin: LaunchOrigin {
                 leader: rng.leader(),
@@ -100,36 +87,20 @@ fn generate(rng: &mut Rng) -> Event {
                 token: if rng.below(4) == 0 { None } else { Some(rng.token()) },
             },
         },
-        3 => Event::GestureBegan {
-            gesture: Gesture {
-                id: rng.gesture(),
-                client: rng.client(),
-                surface: rng.surface(),
-                kind: GestureKind::Pointer { button: 1 },
-            },
-            lifetime: rng.below(6),
-        },
-        4 => Event::GestureEnded { gesture: rng.gesture() },
-        5 | 6 => Event::ContextRequest {
-            gesture: rng.gesture(),
-            client: rng.client(),
-            surface: rng.surface(),
-            request: rng.request_kind(),
-        },
-        7 => {
+        3 => {
             if rng.below(3) == 0 {
                 Event::PortalUiClaimed { client: rng.client() }
             } else {
                 Event::PortalUiReleased { client: rng.client() }
             }
         }
-        8 | 9 => Event::ConsentRequested {
+        4 | 5 => Event::ConsentRequested {
             request: rng.request(),
             requester: rng.requester(),
             capability: rng.capability(),
             lifetime: rng.below(6),
         },
-        10 => Event::ConsentAnswered {
+        6 => Event::ConsentAnswered {
             request: rng.request(),
             from: rng.client(),
             answer: if rng.below(2) == 0 { Answer::Allow } else { Answer::Deny },
@@ -186,12 +157,6 @@ fn invariants_hold_over_random_sequences() {
                                 token.get()
                             );
                         }
-                    }
-                    Effect::Authorise { .. } => {
-                        assert!(
-                            !authority.locked(),
-                            "seed {seed} step {step}: authorised a context while covered"
-                        );
                     }
                     Effect::Prompt { provider, .. } => {
                         assert_eq!(

@@ -6,20 +6,14 @@ use gnoblin_types::{ClientId, Tick};
 
 use crate::denial::{Decision, Denial};
 use crate::effect::Effect;
-use crate::event::{Answer, Claimant, ContextRequest, Event, Gesture, LaunchOrigin, PortalCapability};
-use crate::ids::{GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
+use crate::event::{Answer, Claimant, Event, LaunchOrigin, PortalCapability};
+use crate::ids::{RequestId, RequesterId, SessionLeader, TokenId};
 
 /// How many of each value the machine keeps before it refuses new ones.
-///
-/// The defaults are the C core's own limits, so a runtime that behaved under
-/// `gnoblin-control-focus.c` behaves the same here: `MAX_FOCUS_CONTEXTS` 128 and
-/// `MAX_MENU_CONTEXTS` 256.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Limits {
     /// Live activation tokens.
     pub tokens: usize,
-    /// Live trusted input contexts.
-    pub contexts: usize,
     /// Consent prompts waiting for an answer.
     pub requests: usize,
 }
@@ -28,7 +22,6 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             tokens: 256,
-            contexts: 128,
             requests: 64,
         }
     }
@@ -54,15 +47,6 @@ struct Launch {
     expires_at: Tick,
 }
 
-/// A gesture's capability.
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct InputContext {
-    client: ClientId,
-    surface: SurfaceId,
-    expires_at: Tick,
-    consumed: bool,
-}
-
 /// A caller's permission for one capability.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Grant {
@@ -79,7 +63,7 @@ struct Pending {
     expires_at: Tick,
 }
 
-/// Launch attribution, activation tokens, trusted input contexts and grants.
+/// Launch attribution, activation tokens and grants.
 ///
 /// Pure and deterministic: every method takes the current [`Tick`] from the
 /// caller and owns no clock, no process table and no socket, so a sequence of
@@ -91,7 +75,6 @@ pub struct Authority {
     /// Tokens already redeemed, so a second redemption is `ReusedToken` rather
     /// than `UnknownToken`, which is what a dictionary attack looks like.
     spent: Vec<TokenId>,
-    gestures: BTreeMap<GestureId, InputContext>,
     portal_ui: Option<ClientId>,
     grants: BTreeMap<(RequesterId, PortalCapability), Grant>,
     pending: BTreeMap<RequestId, Pending>,
@@ -105,7 +88,7 @@ impl Default for Authority {
 }
 
 impl Authority {
-    /// An authority with no launch, no context and no grant.
+    /// An authority with no launch and no grant.
     #[must_use]
     pub fn new() -> Self {
         Self::with_limits(Limits::default())
@@ -118,7 +101,6 @@ impl Authority {
             limits,
             launches: Vec::new(),
             spent: Vec::new(),
-            gestures: BTreeMap::new(),
             portal_ui: None,
             grants: BTreeMap::new(),
             pending: BTreeMap::new(),
@@ -187,14 +169,6 @@ impl Authority {
                 lifetime,
             } => self.launch(now, origin, token, lifetime),
             Event::Activate { claim } => self.activate(now, claim),
-            Event::GestureBegan { gesture, lifetime } => self.gesture_began(now, gesture, lifetime),
-            Event::GestureEnded { gesture } => self.gesture_ended(gesture),
-            Event::ContextRequest {
-                gesture,
-                client,
-                surface,
-                request,
-            } => self.context_request(now, gesture, client, surface, request),
             Event::PortalUiClaimed { client } => self.portal_ui_claimed(client),
             Event::PortalUiReleased { client } => self.portal_ui_released(client),
             Event::ConsentRequested {
@@ -294,95 +268,6 @@ impl Authority {
         if self.spent.len() > self.limits.tokens {
             self.spent.remove(0);
         }
-    }
-
-    /// Record a trusted input context for a gesture that is live now.
-    fn gesture_began(&mut self, now: Tick, gesture: Gesture, lifetime: u64) -> Vec<Effect> {
-        if self.locked || self.gestures.contains_key(&gesture.id) {
-            // A covered session begins no gesture, and a serial that is already
-            // live cannot be refreshed into a longer life.
-            return Vec::new();
-        }
-        if self.gestures.len() >= self.limits.contexts {
-            self.gestures.retain(|_, context| now < context.expires_at);
-            if self.gestures.len() >= self.limits.contexts {
-                return Vec::new();
-            }
-        }
-        let expires_at = now.saturating_add(lifetime);
-        self.gestures.insert(
-            gesture.id,
-            InputContext {
-                client: gesture.client,
-                surface: gesture.surface,
-                expires_at,
-                consumed: false,
-            },
-        );
-        vec![Effect::Context {
-            gesture: gesture.id,
-            client: gesture.client,
-            surface: gesture.surface,
-            kind: gesture.kind,
-            expires_at,
-        }]
-    }
-
-    /// The gesture is over, so its context is over.
-    fn gesture_ended(&mut self, gesture: GestureId) -> Vec<Effect> {
-        if self.gestures.remove(&gesture).is_some() {
-            vec![Effect::EndContext { gesture }]
-        } else {
-            Vec::new()
-        }
-    }
-
-    /// Authorise one privileged request under a live context.
-    ///
-    /// A context is single use, expires and belongs to the client and surface of
-    /// its gesture, so a queued operation, a stale handle or a relayed call all
-    /// fail.
-    fn context_request(
-        &mut self,
-        now: Tick,
-        gesture: GestureId,
-        client: ClientId,
-        surface: SurfaceId,
-        request: ContextRequest,
-    ) -> Vec<Effect> {
-        let refuse = |reason: Denial| {
-            vec![Effect::RefuseContext {
-                gesture,
-                client,
-                request,
-                reason,
-            }]
-        };
-        if self.locked {
-            return refuse(Denial::SessionLocked);
-        }
-        let Some(mut context) = self.gestures.remove(&gesture) else {
-            return refuse(Denial::StaleContext);
-        };
-        if now >= context.expires_at {
-            return refuse(Denial::ExpiredContext);
-        }
-        if context.client != client || context.surface != surface {
-            self.gestures.insert(gesture, context);
-            return refuse(Denial::WrongTarget);
-        }
-        if context.consumed {
-            self.gestures.insert(gesture, context);
-            return refuse(Denial::ConsumedContext);
-        }
-        context.consumed = true;
-        self.gestures.insert(gesture, context);
-        vec![Effect::Authorise {
-            gesture,
-            client,
-            surface,
-            request,
-        }]
     }
 
     fn portal_ui_claimed(&mut self, client: ClientId) -> Vec<Effect> {
@@ -547,17 +432,7 @@ impl Authority {
             return Vec::new();
         }
         self.locked = active;
-        let mut effects = vec![Effect::Capture { allowed: !active }];
-        if active {
-            // Every context authorises a gesture that began on the desktop, so
-            // a lock ends all of them: nothing queued can be redeemed later.
-            let gestures: Vec<GestureId> = self.gestures.keys().copied().collect();
-            self.gestures.clear();
-            for gesture in gestures {
-                effects.push(Effect::EndContext { gesture });
-            }
-        }
-        effects
+        vec![Effect::Capture { allowed: !active }]
     }
 
     /// Withdraw every waiting prompt for one grant, which a new request replaces.

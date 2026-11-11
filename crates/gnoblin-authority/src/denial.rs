@@ -2,13 +2,13 @@
 
 /// Why authority was withheld.
 ///
-/// One enum for activation, input contexts and grants: a caller logs the reason
+/// One enum for activation and grants: a caller logs the reason
 /// with the decision, and a test asserts the exact one, so "refused" never hides
 /// which rule fired.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Denial {
-    /// No token and no trusted context accompanied the request. An app id, a
-    /// bare process id or a session leader alone lands here.
+    /// No token accompanied the request. An app id, a bare process id or a
+    /// session leader alone lands here.
     NoAuthority,
     /// The token was never issued in this session.
     UnknownToken,
@@ -21,17 +21,8 @@ pub enum Denial {
     ForeignLaunch,
     /// The compositor presented a token value it already holds.
     DuplicateToken,
-    /// The session is covered; nothing may take focus and no gesture may
-    /// authorise anything.
+    /// The session is covered; nothing may take focus and nothing may be granted.
     SessionLocked,
-    /// The gesture that created the context is over.
-    StaleContext,
-    /// The context expired before it was used.
-    ExpiredContext,
-    /// The context was already used. Every context is single-use.
-    ConsumedContext,
-    /// The context belongs to another client or another surface.
-    WrongTarget,
     /// The table for that kind of value is full.
     AtCapacity,
     /// No client claims `portal.ui`, so consent cannot be asked (D14).
@@ -62,10 +53,6 @@ impl Denial {
             Self::ForeignLaunch => "foreign-launch",
             Self::DuplicateToken => "duplicate-token",
             Self::SessionLocked => "session-locked",
-            Self::StaleContext => "stale-context",
-            Self::ExpiredContext => "expired-context",
-            Self::ConsumedContext => "consumed-context",
-            Self::WrongTarget => "wrong-target",
             Self::AtCapacity => "at-capacity",
             Self::NoPortalUi => "no-portal-ui",
             Self::NotProvider => "not-provider",
