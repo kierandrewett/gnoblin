@@ -769,6 +769,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "xr-layers"
+version = "0.1.0"
+dependencies = [
+ "xr-scene",
+]
+
+[[package]]
 name = "xr-runtime"
 version = "0.1.0"
 dependencies = [

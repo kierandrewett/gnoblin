@@ -1,0 +1,15 @@
+[package]
+name = "xr-layers"
+description = "Pure translation from planned Gnoblin layers and ready swapchains to OpenXR composition layers, within a layer budget."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+xr-scene = { path = "../xr-scene" }
+
+[lints]
+workspace = true
