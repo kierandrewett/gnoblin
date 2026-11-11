@@ -1,7 +1,13 @@
-//! Pure core of view pixel capture for gnoblin-xr: the SHM buffer layout for a panel, and the
-//! one-capture-per-panel frame cycle. The Wayland plumbing (the `gnoblin_view_source_manager_v1`
-//! and `ext_image_copy_capture` objects, the `wl_shm` pool) drives these types and holds no state of
-//! its own. Nothing here touches a file descriptor or a socket.
+//! View pixel capture for gnoblin-xr.
+//!
+//! The pure core (this file and [`set`]) decides which Views are captured and how big their buffers
+//! are, and holds no state of its own. [`wayland`] and [`views`] are the plumbing that drives it:
+//! an `ext_image_copy_capture` session per View, delivered into a memfd-backed `wl_shm` buffer.
+
+pub mod protocols;
+pub mod set;
+pub mod views;
+pub mod wayland;
 
 use std::collections::BTreeSet;
 use std::fmt;
