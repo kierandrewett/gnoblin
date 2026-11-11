@@ -61,6 +61,37 @@ impl Handle {
     }
 }
 
+impl Handle {
+    /// Sets the role the next connections this process opens are accepted with.
+    ///
+    /// A promise is keyed by process and the test binary is one process, so the role cannot
+    /// differ between two clients opened at once; it can differ between two clients opened one
+    /// after the other, because the role is read once, when the compositor accepts the
+    /// connection. `ClientRole::Unprivileged` is the role of a connection nothing was promised
+    /// to. The call returns once the loop has recorded the promise: a command that answers is
+    /// drained after the one before it, so it is a barrier.
+    pub fn grant(&self, role: ClientRole) {
+        let pid = std::process::id();
+        self.control.grant_role(pid, role);
+        let _ = self.control.hosted_session(pid);
+    }
+
+    /// Connects a client that holds `role` and has bound nothing, then returns the process to
+    /// the unprivileged role for the connections that follow.
+    ///
+    /// The connection is accepted before its first round trip returns, so the role is back to
+    /// unprivileged only after the compositor has recorded this connection with `role`.
+    pub fn connect_bare<S>(&self, role: ClientRole, state: S) -> Bare<S>
+    where
+        S: Dispatch<wl_registry::WlRegistry, GlobalListContents> + 'static,
+    {
+        self.grant(role);
+        let client = Bare::connect(self.socket(), state);
+        self.grant(ClientRole::Unprivileged);
+        client
+    }
+}
+
 /// A headless backend that reports no gamma or power control.
 ///
 /// Its outputs are the headless ones; only the controls are missing, which is the case
@@ -375,6 +406,123 @@ where
                         "the error the server posted"
                     );
                     return;
+                }
+                Err(other) => panic!("expected a protocol error, got {other:?}"),
+            }
+            assert!(Instant::now() < deadline, "the server never posted an error");
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+}
+
+/// One real Wayland client that has bound nothing: not even `wl_compositor`, which a
+/// connection that may not see it could not bind. What a test binds is what it asks for.
+pub struct Bare<S>
+where
+    S: Dispatch<wl_registry::WlRegistry, GlobalListContents> + 'static,
+{
+    /// The client's connection, which closes when it is dropped.
+    pub connection: Connection,
+    pub globals: GlobalList,
+    pub queue: EventQueue<S>,
+    pub qh: QueueHandle<S>,
+    pub state: S,
+}
+
+impl<S> Bare<S>
+where
+    S: Dispatch<wl_registry::WlRegistry, GlobalListContents> + 'static,
+{
+    /// Connects to a socket and reads the registry.
+    pub fn connect(socket: &Path, state: S) -> Self {
+        let stream = UnixStream::connect(socket).expect("the session is listening");
+        stream
+            .set_read_timeout(Some(TIMEOUT))
+            .expect("a read timeout on the client socket");
+        let connection = Connection::from_socket(stream).expect("a client connection");
+        let (globals, queue) = registry_queue_init::<S>(&connection).expect("the global list");
+        let qh = queue.handle();
+        Self {
+            connection,
+            globals,
+            queue,
+            qh,
+            state,
+        }
+    }
+
+    /// Processes every event the server has sent.
+    pub fn roundtrip(&mut self) {
+        self.queue.roundtrip(&mut self.state).expect("a round trip");
+    }
+
+    /// Processes whatever has arrived, then waits for the predicate to hold.
+    pub fn wait_until(&mut self, what: &str, predicate: impl Fn(&S) -> bool) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.roundtrip();
+            if predicate(&self.state) {
+                return;
+            }
+            assert!(Instant::now() < deadline, "the client never saw {what}");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// The interfaces the session advertised to this connection, sorted.
+    pub fn interfaces(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        self.globals.contents().with_list(|list| {
+            for global in list {
+                names.push(global.interface.clone());
+            }
+        });
+        names.sort();
+        names
+    }
+
+    /// Whether the session advertised a global to this connection.
+    pub fn has(&self, interface: &str) -> bool {
+        self.interfaces().iter().any(|name| name == interface)
+    }
+
+    /// The registry name and version this connection was told for `interface`, which another
+    /// connection can then send as a guess.
+    pub fn global_name(&self, interface: &str) -> Option<(u32, u32)> {
+        let mut found = None;
+        self.globals.contents().with_list(|list| {
+            found = list
+                .iter()
+                .find(|global| global.interface == interface)
+                .map(|global| (global.name, global.version));
+        });
+        found
+    }
+
+    /// Binds a global by the name another connection saw, without asking this connection's
+    /// own registry: a client that guesses. `GlobalList::bind` would refuse a global it was
+    /// never told about; the raw request is what an attacker sends.
+    pub fn bind_by_name<I>(&self, name: u32, version: u32)
+    where
+        I: wayland_client::Proxy + 'static,
+        S: Dispatch<I, ()>,
+    {
+        let _ = self.globals.registry().bind::<I, (), S>(name, version, &self.qh, ());
+    }
+
+    /// Round trips until the server ends the connection with a protocol error, and answers
+    /// which one as `(interface, code)`.
+    pub fn protocol_error(&mut self) -> (String, u32) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            match self.queue.roundtrip(&mut self.state) {
+                Ok(_) => {}
+                Err(DispatchError::Backend(_)) => {
+                    let error = self
+                        .connection
+                        .protocol_error()
+                        .expect("a backend failure that names no protocol error");
+                    return (error.object_interface, error.code);
                 }
                 Err(other) => panic!("expected a protocol error, got {other:?}"),
             }

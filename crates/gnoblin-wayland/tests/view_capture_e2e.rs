@@ -7,11 +7,11 @@
 //! buffer. The tests assert the pixels that arrive, that a recoloured window is delivered
 //! again, and that the session lock stops the stream.
 //!
-//! The role is promised to the test process, and the promise reaches every connection the
-//! process makes on the session socket, so the window's client and the lock's client are
-//! `view`-role connections too. Neither global they use (`xdg_wm_base`,
-//! `ext_session_lock_manager_v1`) is gated by a role, so the role does not change what they
-//! do.
+//! The window's client and the lock's client are ordinary connections. The `view`-role client
+//! is the only one that holds the role, which the test harness grants per connection: it
+//! binds `wl_shm`, the view source manager and the copy manager and nothing else, because
+//! those are the only globals the role is shown. A capture that passes here passes with the
+//! restricted role, not with a role that merely sits beside the globals it uses.
 
 mod owned;
 
@@ -29,7 +29,7 @@ use gnoblin_types::{NodeId, Rect};
 use gnoblin_wayland::{ClientRole, TreeHooks, TreeQueue};
 use owned::protocols::gnoblin_view_source_v1::ext_image_capture_source_v1::ExtImageCaptureSourceV1;
 use owned::protocols::gnoblin_view_source_v1::gnoblin_view_source_manager_v1::GnoblinViewSourceManagerV1;
-use owned::{Connected, Session, TIMEOUT};
+use owned::{Bare, Connected, Handle, Session, TIMEOUT};
 use wayland_client::globals::GlobalListContents;
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle, WEnum};
@@ -328,15 +328,22 @@ struct Pixels {
 
 impl Pixels {
     /// A buffer of `width` by `height` pixels in `format`, every pixel `colour`.
-    fn solid(client: &Connected<App>, width: u32, height: u32, format: wl_shm::Format, colour: u32) -> Self {
+    fn solid(
+        shm: &wl_shm::WlShm,
+        qh: &QueueHandle<App>,
+        width: u32,
+        height: u32,
+        format: wl_shm::Format,
+        colour: u32,
+    ) -> Self {
         let stride = width * 4;
         let length = (stride * height) as usize;
         let mut file = tempfile::tempfile().expect("a shared memory file");
         file.set_len(length as u64).expect("a file that big");
         let bytes: Vec<u8> = (0..width * height).flat_map(|_| colour.to_ne_bytes()).collect();
         file.write_all(&bytes).expect("the pixels");
-        let pool = client.shm.create_pool(file.as_fd(), length as i32, &client.qh, ());
-        let buffer = pool.create_buffer(0, width as i32, height as i32, stride as i32, format, &client.qh, ());
+        let pool = shm.create_pool(file.as_fd(), length as i32, qh, ());
+        let buffer = pool.create_buffer(0, width as i32, height as i32, stride as i32, format, qh, ());
         Self {
             file,
             buffer,
@@ -402,7 +409,7 @@ impl Window {
 
     /// Commits a new buffer of `colour`.
     fn paint(&mut self, client: &mut Connected<App>, colour: u32) {
-        let pixels = Pixels::solid(client, SIDE, SIDE, wl_shm::Format::Argb8888, colour);
+        let pixels = Pixels::solid(&client.shm, &client.qh, SIDE, SIDE, wl_shm::Format::Argb8888, colour);
         self.surface.attach(Some(&pixels.buffer), 0, 0);
         self.surface.damage(0, 0, SIDE as i32, SIDE as i32);
         self.surface.commit();
@@ -454,24 +461,38 @@ fn arrange(owner: &Owner) {
 
 /// The `view`-role client and its capture session of the View.
 struct Viewer {
-    client: Connected<App>,
+    client: Bare<App>,
     session: ext_image_copy_capture_session_v1::ExtImageCopyCaptureSessionV1,
     /// The buffer the compositor writes frames into, in the format the session offered.
     target: Pixels,
     /// Kept so the source outlives the session that was made from it.
     #[allow(dead_code)]
     source: ExtImageCaptureSourceV1,
+    /// Kept so the pool behind the target outlives it.
+    _shm: wl_shm::WlShm,
 }
 
 impl Viewer {
-    /// Connects, names the View, opens a session on it and allocates the buffer for the size
-    /// and format the session advertises.
-    fn open(socket: &std::path::Path) -> Self {
-        let mut client = Connected::connect(socket, App::default());
-        assert!(
-            client.has("gnoblin_view_source_manager_v1"),
-            "the view role is offered the view source manager"
+    /// Connects with the `view` role, binds the capture globals, names the View, opens a
+    /// session on it and allocates the buffer for the size and format the session advertises.
+    ///
+    /// The client binds `wl_shm`, the view source manager and the copy manager, which are all
+    /// its registry holds: it has no compositor to make a surface with.
+    fn open(handle: &Handle) -> Self {
+        let mut client = handle.connect_bare(ClientRole::View, App::default());
+        assert_eq!(
+            client.interfaces(),
+            [
+                "ext_image_copy_capture_manager_v1",
+                "gnoblin_view_source_manager_v1",
+                "wl_shm"
+            ],
+            "the view role's registry is the capture globals and nothing else"
         );
+        let shm: wl_shm::WlShm = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the view role binds wl_shm");
         let sources: GnoblinViewSourceManagerV1 = client
             .globals
             .bind(&client.qh, 1..=1, ())
@@ -502,12 +523,13 @@ impl Viewer {
                     client.state.session_formats
                 )
             });
-        let target = Pixels::solid(&client, SIDE, SIDE, format, 0);
+        let target = Pixels::solid(&shm, &client.qh, SIDE, SIDE, format, 0);
         Self {
             client,
             session,
             target,
             source,
+            _shm: shm,
         }
     }
 
@@ -578,7 +600,14 @@ fn lock(socket: &std::path::Path) -> Locker {
     let _lock_surface = lock.get_lock_surface(&surface, &output, &client.qh, ());
     client.wait_until("the lock surface's configure", |state| state.lock_size.is_some());
     let (width, height) = client.state.lock_size.expect("a configured lock surface");
-    let cover = Pixels::solid(&client, width, height, wl_shm::Format::Argb8888, 0xFF00_0000);
+    let cover = Pixels::solid(
+        &client.shm,
+        &client.qh,
+        width,
+        height,
+        wl_shm::Format::Argb8888,
+        0xFF00_0000,
+    );
     surface.attach(Some(&cover.buffer), 0, 0);
     surface.damage(0, 0, width as i32, height as i32);
     surface.commit();
@@ -595,7 +624,7 @@ fn start() -> (Session, Owner) {
     let owner = Owner {
         queue: hooks.queue.clone(),
     };
-    (Session::start_with_tree(Some(ClientRole::View), hooks), owner)
+    (Session::start_with_tree(None, hooks), owner)
 }
 
 #[test]
@@ -606,7 +635,7 @@ fn a_view_role_client_reads_the_pixels_of_a_view() {
         let _window = Window::map(&mut app, SOURCE);
         arrange(&owner);
 
-        let mut viewer = Viewer::open(handle.socket());
+        let mut viewer = Viewer::open(handle);
         viewer.capture_until(SOURCE);
         let last = SIDE - 1;
         for (x, y) in [(0, 0), (SIDE / 2, SIDE / 2), (last, 0), (0, last), (last, last)] {
@@ -628,7 +657,7 @@ fn a_repainted_window_is_delivered_again() {
         let mut window = Window::map(&mut app, SOURCE);
         arrange(&owner);
 
-        let mut viewer = Viewer::open(handle.socket());
+        let mut viewer = Viewer::open(handle);
         viewer.capture_until(SOURCE);
 
         // The client commits a buffer of another colour. The View redraws from it, the
@@ -646,7 +675,7 @@ fn the_session_lock_stops_the_capture_of_a_view() {
         let _window = Window::map(&mut app, SOURCE);
         arrange(&owner);
 
-        let mut viewer = Viewer::open(handle.socket());
+        let mut viewer = Viewer::open(handle);
         viewer.capture_until(SOURCE);
         assert_eq!(
             viewer.client.state.session_stopped, 0,

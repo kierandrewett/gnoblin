@@ -46,6 +46,13 @@
 //!    `a_session_host_sees_only_the_session_host_protocol`. The integration tests that
 //!    prove it over real connections are `a_renderer_is_offered_only_its_own_protocol`
 //!    and `a_session_sees_only_the_session_host_protocol`.
+//! 6. **The view role reaches a core global.** Core globals (`wl_compositor`, `xdg_wm_base`,
+//!    `ext_session_lock_manager_v1`, `wl_seat`, …) carry no per-global filter, so
+//!    the `view` role is narrowed by interface name at the one place every global is
+//!    dispatched, `GlobalDispatch::can_view` on the state (`src/dispatch.rs`): a global whose
+//!    interface is not in [`VIEW_INTERFACES`] is not advertised to it and a guessed bind is
+//!    refused by the backend. `a_view_role_client_sees_only_the_capture_globals` and
+//!    `a_view_role_client_cannot_bind_a_hidden_global_by_name` in `tests/view_source.rs`.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -214,9 +221,11 @@ pub enum ClientRole {
     /// clipboard or copy another client's pixels.
     FrameRenderer,
     /// The extension process the guardian started to read Views for the owner. It is promised
-    /// by pid before spawn, like a frame renderer. It earns the view-source and image-copy-capture
-    /// managers and nothing else privileged. Core globals such as `wl_shm` and `wl_compositor`
-    /// are not role-gated and are visible to it as to any client.
+    /// by pid before spawn, like a frame renderer. Its authority is capture only: it sees the
+    /// interfaces in [`VIEW_INTERFACES`] and no other global, core or privileged
+    /// (`design/xr-extension.md`, G7). [`decide`] answers for the privileged globals and
+    /// [`ClientRole::sees_interface`] for every global by interface name, so a core global such
+    /// as `wl_compositor`, `xdg_wm_base` or `ext_session_lock_manager_v1` is hidden from it too.
     View,
     /// The connection the compositor brokered for one hosted session
     /// (design/rust-compositor.md, D4). It sees `gnoblin_session_host_v1` and nothing
@@ -226,7 +235,34 @@ pub enum ClientRole {
     Sandboxed,
 }
 
+/// The registry interfaces the `view` role may see, and so the only globals it can bind.
+///
+/// `wl_shm` is what a capture client allocates its destination buffers from, and
+/// `gnoblin_view_source_manager_v1` names the View it reads. `ext_image_copy_capture_manager_v1`
+/// copies a source into that buffer. The two other capture-source managers
+/// (`ext_output_image_capture_source_manager_v1` and
+/// `ext_foreign_toplevel_image_capture_source_manager_v1`) are *not* here: they name an output or
+/// another client's window as a source, which a View reader has no business reading. Everything
+/// else — the compositor, the seat, the outputs, `xdg_wm_base`, the session lock, the layer
+/// shell, the data device, input emulation — is hidden, so a global added later is invisible to
+/// this role until someone adds its name here on purpose.
+pub const VIEW_INTERFACES: [&str; 3] = [
+    "wl_shm",
+    "ext_image_copy_capture_manager_v1",
+    "gnoblin_view_source_manager_v1",
+];
+
 impl ClientRole {
+    /// Whether a connection of this role may see the registry global whose interface is
+    /// `interface`, before the per-global rules ([`decide`], a protocol's own filter) run.
+    ///
+    /// Only the `view` role is narrowed by name: every other role sees the core globals, and
+    /// the privileged ones are [`decide`]'s to answer.
+    #[must_use]
+    pub fn sees_interface(self, interface: &str) -> bool {
+        self != Self::View || VIEW_INTERFACES.contains(&interface)
+    }
+
     /// The name a log line and a test use.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -259,6 +295,8 @@ pub const fn decide(role: ClientRole, global: Global) -> bool {
         // Narrow on purpose: the process behind these roles is a renderer or a session,
         // never the session's own management, so one global is the whole of what it may
         // reach.
+        // `ImageCopyCapture` is one capability covering three managers; the view role takes
+        // the copy manager only, because [`VIEW_INTERFACES`] hides the two source managers.
         ClientRole::View => matches!(global, Global::ViewSource | Global::ImageCopyCapture),
         ClientRole::FrameRenderer => matches!(global, Global::GnoblinWindowFrameV1Frame),
         ClientRole::SessionHost => matches!(global, Global::SessionHost),
@@ -409,6 +447,13 @@ impl Access {
         decide(self.role(client), global)
     }
 
+    /// Whether a connection's role may see the registry global whose interface is
+    /// `interface`, which is how the single-purpose roles are kept off the core globals.
+    #[must_use]
+    pub fn allows_interface(&self, client: &ClientKey, interface: &str) -> bool {
+        self.role(client).sees_interface(interface)
+    }
+
     /// The roster, or an empty one if a panic poisoned it.
     ///
     /// A poisoned roster is a bug in this crate, not a reason to refuse every client
@@ -452,6 +497,19 @@ impl Registration {
     pub fn attach(&self, client: &ClientKey) {
         *self.client.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client.clone());
     }
+
+    /// Whether the connection this registration belongs to may see the registry global whose
+    /// interface is `interface`: [`ClientRole::sees_interface`] for its recorded role.
+    ///
+    /// Answered from the roster alone, so it is safe inside a global filter. A registration
+    /// not yet attached belongs to a connection with no recorded role, which is unprivileged.
+    #[must_use]
+    pub fn allows_interface(&self, interface: &str) -> bool {
+        let guard = self.client.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard
+            .as_ref()
+            .is_none_or(|client| self.access.role(client).sees_interface(interface))
+    }
 }
 
 impl Drop for Registration {
@@ -465,7 +523,7 @@ impl Drop for Registration {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientRole, Global, decide};
+    use super::{ClientRole, Global, VIEW_INTERFACES, decide};
 
     /// Every global this crate serves, so a new one cannot skip the decision tests.
     const ALL: &[Global] = &[
@@ -637,6 +695,65 @@ mod tests {
                 if wanted { "" } else { "not" },
                 global.as_str()
             );
+        }
+    }
+
+    #[test]
+    fn the_view_role_sees_exactly_the_capture_interfaces() {
+        // Stated twice on purpose: a global added to this list is a decision someone made,
+        // and this assertion is where it is noticed.
+        assert_eq!(
+            VIEW_INTERFACES,
+            [
+                "wl_shm",
+                "ext_image_copy_capture_manager_v1",
+                "gnoblin_view_source_manager_v1"
+            ]
+        );
+        for interface in VIEW_INTERFACES {
+            assert!(ClientRole::View.sees_interface(interface), "{interface}");
+        }
+    }
+
+    #[test]
+    fn the_view_role_is_hidden_from_core_and_other_privileged_interfaces() {
+        for interface in [
+            "wl_compositor",
+            "wl_subcompositor",
+            "wl_seat",
+            "wl_output",
+            "xdg_wm_base",
+            "ext_session_lock_manager_v1",
+            "zwlr_layer_shell_v1",
+            "wl_data_device_manager",
+            "zwp_virtual_keyboard_manager_v1",
+            "zwp_input_method_manager_v2",
+            "ext_output_image_capture_source_manager_v1",
+            "ext_foreign_toplevel_image_capture_source_manager_v1",
+            "zwlr_screencopy_manager_v1",
+            "gnoblin_session_host_v1",
+            "a_global_nobody_has_named_yet",
+        ] {
+            assert!(
+                !ClientRole::View.sees_interface(interface),
+                "the view role must not see {interface}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_other_role_is_narrowed_by_interface_name() {
+        for role in [
+            ClientRole::Unprivileged,
+            ClientRole::Trusted,
+            ClientRole::Privileged,
+            ClientRole::FrameRenderer,
+            ClientRole::SessionHost,
+            ClientRole::Sandboxed,
+        ] {
+            for interface in ["wl_compositor", "xdg_wm_base", "ext_session_lock_manager_v1", "wl_seat"] {
+                assert!(role.sees_interface(interface), "{} must see {interface}", role.as_str());
+            }
         }
     }
 

@@ -182,6 +182,7 @@
 
 mod access;
 mod clock;
+mod dispatch;
 mod effects;
 mod frame;
 mod keyboard;
@@ -270,7 +271,6 @@ pub use protocols::gnoblin_window_frame_v1::{
 
 gnoblin_log::logger!(log = "wayland");
 
-// The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
-// `Dispatch2` implementation below, which is why no protocol module carries its own
-// delegate macro.
-smithay::delegate_dispatch2!(State);
+// The dispatch glue lives in `dispatch.rs`: the same `Dispatch` and `GlobalDispatch` impls
+// `smithay::delegate_dispatch2!(State)` would write, with the `view` role's registry gate in
+// `GlobalDispatch::can_view`. No protocol module carries its own delegate macro.

@@ -401,11 +401,16 @@ Code today:
   (`crates/gnoblin-wayland/src/access.rs`, `ClientRole::FrameRenderer`). The extension then takes an already
   connected socket: the compositor passes the connected fd as `WAYLAND_SOCKET`. For development it may instead
   connect to a display named by `GNOBLIN_VIEW_DISPLAY`.
-- **Role:** `ClientRole::View` (`view`). It sees `gnoblin_view_source_manager_v1` and
-  `ext_image_copy_capture_manager_v1`, which are the two globals a capture needs. It does not see the other
-  privileged globals (layer shell, data control, output management, window frames, session host, screencopy). Core
-  globals such as `wl_shm`, `wl_compositor` and `wl_seat` are not role-gated and are visible to it as to any client.
-  The role is not the owner's privileged connection, so the privileged socket is not handed out.
+- **Role:** `ClientRole::View` (`view`). Its registry is exactly three globals, listed in `VIEW_INTERFACES`
+  (`crates/gnoblin-wayland/src/access.rs`): `wl_shm` (the destination buffers), `ext_image_copy_capture_manager_v1`
+  (copies a source) and `gnoblin_view_source_manager_v1` (names the View). It sees nothing else: not
+  `wl_compositor`, `wl_seat`, `wl_output`, `xdg_wm_base`, `ext_session_lock_manager_v1`, the layer shell, the data
+  device, input emulation (virtual keyboard, input method), `ext_output_image_capture_source_manager_v1` or
+  `ext_foreign_toplevel_image_capture_source_manager_v1` (the last two would name an output or a window, not a View),
+  or any privileged global. The registry hides them, and a client that guesses a name is refused by the backend with
+  a protocol error. The narrowing is one allow-list at the state's `GlobalDispatch::can_view` (`dispatch.rs`), so a
+  global added later is hidden from the role until its name is added to `VIEW_INTERFACES` on purpose. The role is
+  not the owner's privileged connection, so the privileged socket is not handed out.
 - **Grants used:** `capture` (panels), `input.inject` (view pointer), and a grant to create a virtual output, needed
   only for the VR output and the head-locked output. Names follow D22 (`design/rust-compositor.md:2791-2810`).
 - **Code today:** the role and its decision are in `crates/gnoblin-wayland/src/access.rs`; the view-source global is
