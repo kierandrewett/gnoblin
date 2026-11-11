@@ -34,6 +34,20 @@ passing = [
     "AllSurfaceTypes/TouchTest.touch_on_surface_seen/subsurface_at_x0_y0",
     "AllSurfaceTypes/TouchTest.touch_on_surface_seen/subsurface_at_x7_y12",
     "AllSurfaceTypes/TouchTest.touch_on_surface_seen/xdg_surface_stable",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/5",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/6",
+    "Anchor/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/7",
+    "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "AnchorRect/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/5",
     "BadBufferTest.client_lies_about_buffer_size",
     "ClientSurfaceEventsTest.frame_timestamp_increases",
     "ClientSurfaceEventsTest.frame_timestamp_never_decreases",
@@ -54,6 +68,27 @@ passing = [
     "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
     "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
     "ClippedLargerRegion/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "ConstraintAdjustmentFlip/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "ConstraintAdjustmentFlip/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "ConstraintAdjustmentFlip/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "ConstraintAdjustmentFlip/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "ConstraintAdjustmentFlip/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "ConstraintAdjustmentNone/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "ConstraintAdjustmentNone/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "ConstraintAdjustmentNone/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "ConstraintAdjustmentNone/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "ConstraintAdjustmentNone/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "ConstraintAdjustmentResize/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "ConstraintAdjustmentResize/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "ConstraintAdjustmentResize/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "ConstraintAdjustmentResize/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "ConstraintAdjustmentResize/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "Default/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
     "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/16",
     "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/17",
     "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/28",
@@ -110,6 +145,15 @@ passing = [
     "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/5",
     "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/6",
     "FullSurface/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/1",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/5",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/6",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/7",
+    "Gravity/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/8",
     "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/0",
     "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/1",
     "MultiRectCorners/RegionSurfaceInputCombinations.input_inside_region_seen/10",
@@ -312,6 +356,15 @@ passing = [
     "WpViewporterTest.when_buffer_is_scaled_source_is_in_scaled_coordinates",
     "WpViewporterTest.when_source_but_no_destination_set_window_has_src_size",
     "XdgOutputV1Test.xdg_output_properties_set",
+    "XdgPopupStable/XdgPopupTest.does_not_get_popup_done_event_before_button_press/0",
+    "XdgPopupStable/XdgPopupTest.grabbed_popup_gets_done_event_when_new_toplevel_created/0",
+    "XdgPopupStable/XdgPopupTest.grabbed_popup_gets_keyboard_focus/0",
+    "XdgPopupStable/XdgPopupTest.grabbed_popups_get_done_events_in_correct_order/0",
+    "XdgPopupStable/XdgPopupTest.non_grabbed_popup_does_not_get_keyboard_focus/0",
+    "XdgPopupStable/XdgPopupTest.pointer_focus_goes_to_popup/0",
+    "XdgPopupStable/XdgPopupTest.popup_configure_is_valid/0",
+    "XdgPopupStable/XdgPopupTest.popup_gives_up_pointer_focus_when_gone/0",
+    "XdgPopupTest.popup_can_be_repositioned",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.by_default_subsurface_is_sync/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_can_be_set_to_sync/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_moves_after_both_sync_parent_and_grandparent_commit/0",
@@ -360,19 +413,14 @@ reason = "fall-through to the parent after a subsurface region, geometry-offset 
 issue = "gnoblin-f3cp"
 
 [[known_failure]]
-pattern = "*XdgPopupPositionerTest.*"
-reason = "popup tests fail; cause not triaged"
+pattern = "XdgPopupTest.zero_size_anchor_rect_stable"
+reason = "the pinned Smithay raises invalid_input for a zero-size xdg_positioner anchor rectangle; xdg-shell allows it (only a negative size is an error) and there is no patch series for Smithay"
 issue = "gnoblin-6hac"
 
 [[known_failure]]
-pattern = "XdgPopupStable/*"
-reason = "popup tests fail; cause not triaged; pointer hit-testing of popups is also missing"
-issue = "gnoblin-6hac"
-
-[[known_failure]]
-pattern = "XdgPopupTest.*"
-reason = "popup tests fail; cause not triaged"
-issue = "gnoblin-6hac"
+pattern = "XdgPopupTest.when_parent_surface_is_moved_*"
+reason = "the client moves its parent with xdg_toplevel.move, which the compositor does not carry out without a shell yet; the popup half (a reactive popup follows, another stays) is covered by crates/gnoblin-wayland/tests/real_client.rs"
+issue = "gnoblin-jpbf"
 
 [[known_failure]]
 pattern = "AllSurfaceTypes/TouchTest.*"

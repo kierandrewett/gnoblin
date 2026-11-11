@@ -539,8 +539,7 @@ impl State {
         if !self.keyboard_tables.per_window {
             return;
         }
-        let leaving = self.keyboard.current_focus();
-        if let Some(window) = leaving.as_ref().and_then(|surface| self.window_of(surface)) {
+        if let Some(window) = self.keyboard_focus_window() {
             self.keyboard_tables
                 .remembered
                 .insert(window, self.keyboard_tables.active);

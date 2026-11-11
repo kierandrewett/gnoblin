@@ -209,12 +209,18 @@ struct App {
     pointer_buttons: u32,
     /// The surface point of the last pointer enter or motion, cleared when the pointer leaves.
     pointer_at: Option<(f64, f64)>,
+    /// The surface the pointer is over, cleared when it leaves.
+    pointer_surface: Option<wl_surface::WlSurface>,
     /// How many pings the server sent.
     pings: u32,
     /// How many popup configures arrived.
     popup_configures: u32,
     /// Whether the server dismissed a popup.
     popup_done: bool,
+    /// The popups the server dismissed, in the order it said so.
+    popups_done: Vec<xdg_popup::XdgPopup>,
+    /// The position and size of the last popup configure, relative to the parent's window geometry.
+    popup_placed: Option<(i32, i32, i32, i32)>,
     /// How many key edges the keyboard delivered.
     keys: u32,
     /// Whether the client holds its pings back instead of answering them.
@@ -236,6 +242,44 @@ struct Client {
     shm: wl_shm::WlShm,
     wm_base: xdg_wm_base::XdgWmBase,
     seat: wl_seat::WlSeat,
+}
+
+/// What a popup asks its positioner for.
+struct Place {
+    /// The anchor rectangle in the parent's window geometry: x, y, width, height.
+    anchor_rect: (i32, i32, i32, i32),
+    /// The popup's size.
+    size: (i32, i32),
+    anchor: xdg_positioner::Anchor,
+    gravity: xdg_positioner::Gravity,
+    /// How the compositor may move the popup to keep it on the output.
+    constraint_adjustment: xdg_positioner::ConstraintAdjustment,
+    /// Whether the popup follows its parent when it moves.
+    reactive: bool,
+    /// Whether the popup takes an explicit grab.
+    grab: bool,
+}
+
+impl Place {
+    /// A popup of `size` whose top left corner is at (`x`, `y`) in its parent's window geometry.
+    fn at(x: i32, y: i32, size: (i32, i32)) -> Self {
+        Self {
+            anchor_rect: (x, y, 1, 1),
+            size,
+            anchor: xdg_positioner::Anchor::TopLeft,
+            gravity: xdg_positioner::Gravity::BottomRight,
+            constraint_adjustment: xdg_positioner::ConstraintAdjustment::None,
+            reactive: false,
+            grab: false,
+        }
+    }
+}
+
+/// The objects of one popup.
+struct Popup {
+    surface: wl_surface::WlSurface,
+    xdg_surface: xdg_surface::XdgSurface,
+    popup: xdg_popup::XdgPopup,
 }
 
 /// The objects of one toplevel.
@@ -295,16 +339,50 @@ impl Client {
 
     /// Attaches a shared-memory buffer and commits, which maps the window.
     fn attach_buffer(&mut self, window: &Window, width: i32, height: i32) {
+        self.attach_to(&window.surface, width, height);
+    }
+
+    /// Attaches a shared-memory buffer to any surface and commits.
+    fn attach_to(&mut self, surface: &wl_surface::WlSurface, width: i32, height: i32) {
         let stride = width * 4;
         let length = stride * height;
         let file = tempfile::tempfile().expect("a shared memory file");
         file.set_len(length as u64).expect("a buffer that big");
         let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
         let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ());
-        window.surface.attach(Some(&buffer), 0, 0);
-        window.surface.damage(0, 0, width, height);
-        window.surface.commit();
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage(0, 0, width, height);
+        surface.commit();
         self.roundtrip();
+    }
+
+    /// Creates a popup of `parent`, takes the initial configure and maps it with a buffer of the size it asked for.
+    fn map_popup(&mut self, parent: &xdg_surface::XdgSurface, place: &Place) -> Popup {
+        let surface = self.compositor.create_surface(&self.qh, ());
+        let xdg_surface = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
+        let positioner = self.wm_base.create_positioner(&self.qh, ());
+        positioner.set_size(place.size.0, place.size.1);
+        let (x, y, width, height) = place.anchor_rect;
+        positioner.set_anchor_rect(x, y, width, height);
+        positioner.set_anchor(place.anchor);
+        positioner.set_gravity(place.gravity);
+        positioner.set_constraint_adjustment(place.constraint_adjustment);
+        if place.reactive {
+            positioner.set_reactive();
+        }
+        let popup = xdg_surface.get_popup(Some(parent), &positioner, &self.qh, ());
+        positioner.destroy();
+        if place.grab {
+            popup.grab(&self.seat, self.state.last_serial);
+        }
+        surface.commit();
+        self.roundtrip();
+        self.attach_to(&surface, place.size.0, place.size.1);
+        Popup {
+            surface,
+            xdg_surface,
+            popup,
+        }
     }
 
     /// Creates a toplevel and maps it with a buffer.
@@ -711,8 +789,7 @@ fn a_popup_grab_on_a_tracked_parent_keeps_the_popup() {
         positioner.set_size(120, 60);
         positioner.set_anchor_rect(0, 0, 10, 10);
         // A popup of a managed window, grabbing before it maps: Smithay hands the
-        // grab to the handler on the commit, and this slice has no pointer-grab
-        // machinery, so the popup stays up rather than being half-dismissed.
+        // grab to the handler on the commit, and the grab holds with nothing to end it.
         let popup = xdg_surface.get_popup(Some(&window.xdg_surface), &positioner, &client.qh, ());
         popup.grab(&client.seat, client.state.last_serial);
         surface.commit();
@@ -976,14 +1053,19 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
     ) {
         match event {
             wl_pointer::Event::Enter {
-                surface_x, surface_y, ..
+                surface,
+                surface_x,
+                surface_y,
+                ..
             } => {
                 state.pointer_enters += 1;
                 state.pointer_at = Some((surface_x, surface_y));
+                state.pointer_surface = Some(surface);
             }
             wl_pointer::Event::Leave { .. } => {
                 state.pointer_leaves += 1;
                 state.pointer_at = None;
+                state.pointer_surface = None;
             }
             wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
             wl_pointer::Event::Motion {
@@ -1071,15 +1153,21 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
 impl Dispatch<xdg_popup::XdgPopup, ()> for App {
     fn event(
         state: &mut Self,
-        _: &xdg_popup::XdgPopup,
+        popup: &xdg_popup::XdgPopup,
         event: <xdg_popup::XdgPopup as Proxy>::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
         match event {
-            xdg_popup::Event::Configure { .. } => state.popup_configures += 1,
-            xdg_popup::Event::PopupDone => state.popup_done = true,
+            xdg_popup::Event::Configure { x, y, width, height } => {
+                state.popup_configures += 1;
+                state.popup_placed = Some((x, y, width, height));
+            }
+            xdg_popup::Event::PopupDone => {
+                state.popup_done = true;
+                state.popups_done.push(popup.clone());
+            }
             _ => {}
         }
     }
@@ -1405,5 +1493,193 @@ fn raise_on_click_off_focuses_the_window_without_raising_it() {
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         let after = session.windows().stacking().to_vec();
         assert_eq!(after, before, "a press without raise_on_click changed the stacking");
+    });
+}
+
+/// Where the popup tests put their window: a popup hung off its bottom right corner is wholly outside it.
+const MENU_WINDOW: Rect = Rect::new(100, 100, 300, 200);
+
+#[test]
+fn a_popup_that_hangs_past_its_window_takes_the_pointer_there() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = place_window(session, &mut client, "org.gnoblin.Menu", "Menu", MENU_WINDOW);
+        let mut place = Place::at(0, 0, (60, 40));
+        place.anchor_rect = (0, 0, 300, 200);
+        place.anchor = xdg_positioner::Anchor::BottomRight;
+        let popup = client.map_popup(&window.xdg_surface, &place);
+        assert_eq!(
+            client.state.popup_placed,
+            Some((300, 200, 60, 40)),
+            "the popup is placed at the corner of its parent"
+        );
+
+        point_at(session, &mut client, Point::new(150, 150));
+        assert_eq!(
+            client.state.pointer_surface.as_ref(),
+            Some(&window.surface),
+            "over the window the pointer is on the window"
+        );
+        // The popup spans (400, 300) to (460, 340): wholly outside the window, where only the popup can be.
+        let at = point_at(session, &mut client, Point::new(410, 310));
+        assert_pointer_at(at, (10.0, 10.0), "over the popup");
+        assert_eq!(
+            client.state.pointer_surface.as_ref(),
+            Some(&popup.surface),
+            "the popup, not the window, holds the pointer past the window's edge"
+        );
+        // Past the popup's own edge there is nothing.
+        point_at(session, &mut client, Point::new(470, 350));
+        assert!(
+            client.state.pointer_surface.is_none(),
+            "beside the popup the pointer is on no surface"
+        );
+    });
+}
+
+#[test]
+fn a_popup_gives_up_the_pointer_when_it_is_destroyed() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = place_window(session, &mut client, "org.gnoblin.Menu", "Menu", MENU_WINDOW);
+        // The popup covers part of the window, so what is under it once it is gone is the window.
+        let popup = client.map_popup(&window.xdg_surface, &Place::at(10, 10, (60, 40)));
+        let at = point_at(session, &mut client, Point::new(115, 115));
+        assert_pointer_at(at, (5.0, 5.0), "over the popup");
+        assert_eq!(client.state.pointer_surface.as_ref(), Some(&popup.surface));
+
+        let leaves = client.state.pointer_leaves;
+        popup.popup.destroy();
+        client.roundtrip();
+        assert_eq!(
+            client.state.pointer_leaves,
+            leaves + 1,
+            "the client hears the pointer leave the popup while the surface is still there to name"
+        );
+        assert_eq!(
+            client.state.pointer_surface.as_ref(),
+            Some(&window.surface),
+            "the pointer is on the window beneath without moving"
+        );
+    });
+}
+
+#[test]
+fn a_grabbed_popup_takes_the_keyboard_and_a_new_window_ends_the_grab() {
+    let session = Session::start_allowing_focus(Headless::new());
+    session.run(|session| {
+        let mut menu = Client::connect(session.socket());
+        let window = place_window(session, &mut menu, "org.gnoblin.Menu", "Menu", MENU_WINDOW);
+        let mut place = Place::at(10, 10, (60, 40));
+        place.grab = true;
+        let popup = menu.map_popup(&window.xdg_surface, &place);
+        menu.roundtrip();
+        assert_eq!(
+            menu.state.keyboard_surface.as_ref(),
+            Some(&popup.surface),
+            "a grabbed popup holds the keyboard"
+        );
+        assert!(
+            !menu.state.popup_done,
+            "the grab holds while nothing else takes the keyboard"
+        );
+
+        let mut other = Client::connect(session.socket());
+        let _window = other.map_window("org.gnoblin.Other", "Other");
+        menu.wait_until(
+            "the popup to be dismissed by the window that took the keyboard",
+            |menu| menu.state.popup_done,
+        );
+        assert_eq!(menu.state.popups_done, std::slice::from_ref(&popup.popup));
+    });
+}
+
+#[test]
+fn grabbed_popups_are_dismissed_child_first_by_a_press_on_another_client() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut other = Client::connect(session.socket());
+        let _other_window = place_window(
+            session,
+            &mut other,
+            "org.gnoblin.Other",
+            "Other",
+            Rect::new(600, 100, 300, 200),
+        );
+        let mut menu = Client::connect(session.socket());
+        let window = place_window(session, &mut menu, "org.gnoblin.Menu", "Menu", MENU_WINDOW);
+        let mut place = Place::at(20, 20, (60, 40));
+        place.grab = true;
+        let first = menu.map_popup(&window.xdg_surface, &place);
+        let second = menu.map_popup(&first.xdg_surface, &place);
+        menu.roundtrip();
+        assert!(menu.state.popups_done.is_empty(), "both popups are up");
+
+        other.click(session, Point::new(700, 150));
+        menu.roundtrip();
+        assert_eq!(
+            menu.state.popups_done,
+            [second.popup.clone(), first.popup.clone()],
+            "the child is dismissed before its parent"
+        );
+    });
+}
+
+#[test]
+fn a_reactive_popup_follows_a_window_that_moves_and_another_stays_put() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = place_window(session, &mut client, "org.gnoblin.Menu", "Menu", MENU_WINDOW);
+        // Up and to the left of the window, sliding back onto the output when it would leave it.
+        let mut place = Place::at(0, 0, (60, 40));
+        place.anchor = xdg_positioner::Anchor::TopLeft;
+        place.gravity = xdg_positioner::Gravity::TopLeft;
+        place.constraint_adjustment =
+            xdg_positioner::ConstraintAdjustment::SlideX | xdg_positioner::ConstraintAdjustment::SlideY;
+        place.reactive = true;
+        let _reactive = client.map_popup(&window.xdg_surface, &place);
+        assert_eq!(client.state.popup_placed, Some((-60, -40, 60, 40)));
+        let configures = client.state.popup_configures;
+
+        session
+            .control
+            .move_window(window_id(session, "Menu"), Rect::new(10, 10, 300, 200));
+        client.wait_until("the reactive popup to be configured again", |client| {
+            client.state.popup_configures > configures
+        });
+        assert_eq!(
+            client.state.popup_placed,
+            Some((-10, -10, 60, 40)),
+            "the popup slid to stay on the output, which is ten pixels from the window's corner"
+        );
+    });
+}
+
+#[test]
+fn a_popup_that_is_not_reactive_is_not_configured_when_its_window_moves() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = place_window(session, &mut client, "org.gnoblin.Menu", "Menu", MENU_WINDOW);
+        let mut place = Place::at(0, 0, (60, 40));
+        place.gravity = xdg_positioner::Gravity::TopLeft;
+        place.constraint_adjustment =
+            xdg_positioner::ConstraintAdjustment::SlideX | xdg_positioner::ConstraintAdjustment::SlideY;
+        let _popup = client.map_popup(&window.xdg_surface, &place);
+        let configures = client.state.popup_configures;
+
+        session
+            .control
+            .move_window(window_id(session, "Menu"), Rect::new(10, 10, 300, 200));
+        // The loop has applied the move once it answers, and the client has heard everything it sent after a trip.
+        settle(session);
+        client.roundtrip();
+        assert_eq!(
+            client.state.popup_configures, configures,
+            "the popup was left where it was put"
+        );
     });
 }

@@ -44,10 +44,11 @@
 //!
 //! # What is deliberately not here
 //!
-//! Interactive move and resize, popup grabs, drawing the lock surface itself and the
+//! Interactive move and resize, drawing the lock surface itself and the
 //! effects passes belong to later slices, and so does the capture and selection surface
 //! the lock embargo guards. Nothing here is a stub that silently pretends to work: a
-//! popup grab is refused and explained, a decoration request is answered with
+//! popup is placed, hit by the pointer, grabbed and dismissed but not drawn (the scene
+//! holds one buffer per window), a decoration request is answered with
 //! client-side decorations, and a frame is presented as
 //! [`gnoblin_backend::Present::Nothing`] because a headless output scans out nothing —
 //! the pixels are still composed and readable.
@@ -147,10 +148,12 @@
 //! 4. **An `xdg_popup` grab arrives without a parent.** A parentless popup has
 //!    nothing that can ever dismiss it, so Smithay refuses the commit as a protocol
 //!    error on that client and the session keeps serving everyone else; a grab on a
-//!    tracked popup is handed to [`protocols::xdg_shell`], which logs it rather than
-//!    half-implementing a pointer grab:
-//!    `a_popup_grab_without_a_parent_does_not_stop_the_session` and
-//!    `a_popup_grab_on_a_tracked_parent_keeps_the_popup`.
+//!    tracked popup takes the keyboard and the pointer follows its client, and ends
+//!    when another client is pressed on or another window takes the keyboard:
+//!    `a_popup_grab_without_a_parent_does_not_stop_the_session`,
+//!    `a_popup_grab_on_a_tracked_parent_keeps_the_popup`,
+//!    `a_grabbed_popup_takes_the_keyboard_and_a_new_window_ends_the_grab` and
+//!    `grabbed_popups_are_dismissed_child_first_by_a_press_on_another_client`.
 //! 5. **A protocol error from a client takes the whole compositor down.** A client
 //!    that asks for a second role on one surface gets the error on its own
 //!    connection, and another client still maps, is focused and is cleaned up:
@@ -192,6 +195,7 @@ mod observation;
 mod output_config;
 mod output_control;
 mod policy;
+mod popup;
 mod process;
 mod protocols;
 mod selection_bridge;

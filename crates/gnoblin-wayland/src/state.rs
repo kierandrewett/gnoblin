@@ -258,6 +258,8 @@ pub struct State {
     pub(crate) extra_seats: std::collections::BTreeMap<gnoblin_types::NodeId, Seat<State>>,
     /// The popup tree for `xdg_popup` surfaces, so they are stacked over their parents.
     pub(crate) popups: PopupManager,
+    /// The popup grabs the seats hold, so a window that takes the keyboard from a grabbed popup can end the grab.
+    pub(crate) popup_grabs: Vec<crate::popup::HeldGrab>,
     /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
     #[allow(dead_code)]
     pub(crate) output_manager_state: OutputManagerState,
@@ -515,7 +517,7 @@ pub struct State {
     pub(crate) protection_generation: Option<u64>,
     /// The last pointer position the backend reported, in global logical
     /// coordinates.
-    pointer_position: SmithayPoint<f64, Logical>,
+    pub(crate) pointer_position: SmithayPoint<f64, Logical>,
     /// The shell node the pointer ray is over, when the shell's tree picks one. Its edges are
     /// sent to the shell; no client holds the pointer while it is set.
     shell_hover: Option<NodeId>,
@@ -737,6 +739,7 @@ impl State {
             seat_state,
             extra_seats: std::collections::BTreeMap::new(),
             popups: PopupManager::default(),
+            popup_grabs: Vec::new(),
             output_manager_state,
             viewporter_state,
             decoration_state,
@@ -1390,6 +1393,7 @@ impl State {
                 } => {
                     self.composer.place_window(window, geometry);
                     self.configure(window, geometry, state);
+                    self.reposition_reactive_popups(window);
                 }
                 FallbackEffect::Visible { window, visible } => {
                     self.composer.set_window_visible(window, visible);
@@ -1598,6 +1602,9 @@ impl State {
     /// `leave` before `enter`, the seat's `wl_keyboard` moves, and the window arriving gets
     /// the layout it remembers.
     pub(crate) fn set_keyboard_focus(&mut self, target: Option<WlSurface>) {
+        // A popup grab belongs to the window it hangs from: a window that takes the keyboard from it ends the grab,
+        // and the popups are told before the new window hears it has focus.
+        self.dismiss_popup_grabs_for_focus(target.as_ref());
         let focused = target.as_ref().and_then(|surface| self.window_of(surface));
         // A surface, even one that is no window, replaces the shell's node as the seat focus.
         if target.is_some() {
@@ -2179,11 +2186,7 @@ impl State {
         let Some(state) = self.window_flags(window) else {
             return;
         };
-        let focused = self
-            .keyboard
-            .current_focus()
-            .and_then(|surface| self.window_of(&surface))
-            == Some(window);
+        let focused = self.keyboard_focus_window() == Some(window);
         self.composer
             .set_window_state(window, [focused, state.fullscreen, state.maximised, state.minimised]);
     }
@@ -2858,14 +2861,19 @@ impl State {
         // The scene holds each window where it is drawn, transforms included, so a rotated window is hit where it
         // appears.
         self.composer.window_at(PointF::new(position.x, position.y), &|window| {
-            self.fallback.window(window).is_some()
-                && self.window_shown(window)
-                && !self.window_is_covered(window)
-                && self
-                    .windows
-                    .get(&window)
-                    .is_some_and(|entry| entry.surface.wl_surface().is_some())
+            self.window_is_pickable(window)
         })
+    }
+
+    /// Whether a window may take the pointer: managed, shown, uncovered and holding a surface.
+    pub(crate) fn window_is_pickable(&self, window: WindowId) -> bool {
+        self.fallback.window(window).is_some()
+            && self.window_shown(window)
+            && !self.window_is_covered(window)
+            && self
+                .windows
+                .get(&window)
+                .is_some_and(|entry| entry.surface.wl_surface().is_some())
     }
 
     /// The node the shell is told the pointer is over while it holds the tree: a node of its own that the ray
@@ -2905,7 +2913,13 @@ impl State {
         if self.shell_pick(position).is_some() {
             return None;
         }
-        let (window, local) = self.window_pick(position)?;
+        let picked = self.window_pick(position);
+        // A popup is above its window and above the windows beneath that one, and it reaches past its window's
+        // edge, so it is asked before the window is.
+        if let Some(popup) = self.popup_under(position, picked.as_ref().map(|(window, _)| *window)) {
+            return Some(popup);
+        }
+        let (window, local) = picked?;
         let root = self.windows.get(&window)?.surface.wl_surface()?;
         // The scene picks the window by its bounds. The surface the pointer is over is the topmost one of the window's
         // tree, subsurfaces included, whose input region holds the point: a point the root's input region leaves out
@@ -3245,10 +3259,7 @@ impl Host for State {
         }
         // A window's node is created on the frame after it maps, so the focus is published
         // again here once the node it names exists.
-        let focused = self
-            .keyboard
-            .current_focus()
-            .and_then(|surface| self.window_of(&surface));
+        let focused = self.keyboard_focus_window();
         self.composer.set_main_seat_focus(focused);
         // The tree's transactions apply to the scene the composer draws from, before the
         // damage is taken, so a transaction applied here draws in this frame.

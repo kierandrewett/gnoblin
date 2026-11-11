@@ -19,10 +19,7 @@
 //!
 //! A popup is tracked by Smithay's popup manager so a parentless popup is remembered
 //! until it has a parent, and a popup's initial configure is sent on its own first
-//! commit. Interactive grabs are not part of this slice: the pointer focus machinery
-//! a grab needs arrives with the input slice, so a grab request for a popup with no
-//! parent is answered with `xdg_popup.popup_done` and a grab for a valid popup is
-//! logged and otherwise ignored rather than half-implemented.
+//! commit. Grabs, the popup under the pointer and dismissal are in `popup.rs`.
 
 use smithay::desktop::{PopupKind, find_popup_root_surface, get_popup_toplevel_coords};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -109,16 +106,8 @@ impl XdgShellHandler for State {
         surface.send_repositioned(token);
     }
 
-    fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        if self.popup_root_window(&surface).is_none() && self.popup_root_layer(&surface).is_none() {
-            // Nothing will ever send this popup `popup_done`, because it has no
-            // parent to be dismissed with, so it is dismissed here. Without this the
-            // popup stays on screen for the life of the session.
-            surface.send_popup_done();
-            log::debug!(area = "xdg", "a parentless popup grab was dismissed");
-        } else {
-            log::trace!(area = "xdg", "popup grabs arrive with the input slice");
-        }
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        self.grab_popup(surface, &seat, serial);
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
@@ -178,6 +167,7 @@ impl XdgShellHandler for State {
 
     fn popup_destroyed(&mut self, surface: PopupSurface) {
         log::trace!(area = "xdg", surface = ?surface.wl_surface().id(), "popup destroyed");
+        self.popup_gone(&surface);
     }
 }
 
@@ -187,28 +177,15 @@ impl State {
         let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface) else {
             return;
         };
+        // A popup is not drawn, so its commit damages nothing by itself; the outputs are repainted so the frame
+        // that answers its frame callback is one that happens.
+        self.damage_outputs();
         if popup.is_initial_configure_sent() {
             return;
         }
         if let Err(error) = popup.send_configure() {
             log::warn!(area = "xdg", ?error, "a popup configure could not be sent");
         }
-    }
-
-    /// The window a popup belongs to, if its parent chain reaches a managed one.
-    fn popup_root_window(&self, surface: &PopupSurface) -> Option<gnoblin_types::WindowId> {
-        let root = find_popup_root_surface(&PopupKind::Xdg(surface.clone())).ok()?;
-        self.window_of(&root)
-    }
-
-    /// The layer surface a popup belongs to, if its parent chain reaches one.
-    ///
-    /// A bar's menu is a popup whose root is a layer surface, which is not a managed
-    /// window: it has a rectangle of its own and that is the area the menu is held
-    /// inside.
-    fn popup_root_layer(&self, surface: &PopupSurface) -> Option<gnoblin_types::Rect> {
-        let root = find_popup_root_surface(&PopupKind::Xdg(surface.clone())).ok()?;
-        self.layer_rect(&root)
     }
 
     /// Hands a toplevel's request to whoever decides it: the shell, or the window manager when none is attached.
@@ -225,7 +202,7 @@ impl State {
     /// bottom of the screen flips up instead of hanging off the edge. A popup whose
     /// root is a layer surface is clamped to that surface's own rectangle instead: a
     /// bar's menu belongs over the bar, not over the whole monitor.
-    fn unconstrain_popup(&mut self, popup: &PopupSurface) {
+    pub(crate) fn unconstrain_popup(&mut self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             log::trace!(area = "xdg", "a popup has no root surface yet");
             return;

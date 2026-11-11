@@ -81,10 +81,7 @@ impl State {
 
     /// Whether a window holds the seat's keyboard focus, which is the shell's to give while it holds the tree.
     pub(crate) fn is_focused_window(&self, window: WindowId) -> bool {
-        self.keyboard
-            .current_focus()
-            .and_then(|surface| self.window_of(&surface))
-            == Some(window)
+        self.keyboard_focus_window() == Some(window)
     }
 
     /// A window's state, as it stands now: the shell's node values while a shell holds the tree, the record's

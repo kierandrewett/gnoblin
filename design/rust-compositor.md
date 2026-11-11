@@ -844,7 +844,7 @@ renderer with screenshot readback, xdg-shell toplevels and tracked popups,
 floating placement out of `gnoblin-wm`, click-to-focus, keyboard and pointer,
 `wl_shm`, damage and the per-iteration frame loop.
 
-Open: the nested backend, GLES, dmabuf, presentation time, popup grabs,
+Open: the nested backend, GLES, dmabuf, presentation time,
 interactive move and resize, EIS input, and the `gnoblin-compositor` root that
 wires the roles together.
 
@@ -3284,10 +3284,17 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
   list keep it. The crate guarantees only that an error message does not echo
   it.
 
-- **Popup grabs at the pinned Smithay.** A grab on a tracked popup is logged
-  rather than implemented, and interactive move, resize and grabs are later
-  slices (`crates/gnoblin-wayland/src/lib.rs`). The plan assumes a grab exists
+- **Popups are not drawn** (`gnoblin-1whg`). A popup is placed, hit by the pointer, grabbed and
+  dismissed (`crates/gnoblin-wayland/src/popup.rs`), and its frame callbacks are
+  answered, but the scene holds one buffer per window, so a popup's pixels, like a
+  subsurface's, never reach an output. The plan assumes surface trees are composed
   by the phase 2 gate.
+
+- **Smithay refuses a zero-size positioner anchor rectangle.** xdg-shell allows it
+  (only a negative size is `invalid_input`); the pinned Smithay raises the error
+  for anything below 1. `XdgPopupTest.zero_size_anchor_rect_stable` fails on it.
+  There is no patch series for Smithay, so the entry stays in
+  `tests/wlcs/expected.toml` until the pin moves.
 
 - **No cursor pixels.** `gnoblin-backend`'s frame has a cursor slot and the
   software renderer draws it, but nothing loads a theme image, so a session
