@@ -1660,11 +1660,11 @@ impl Dispatcher {
         self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
     }
 
-    /// `cast.grant`: the user approved a screen cast of one output.
+    /// `cast.grant`: the user approved a screen cast of one source, an output or a View.
     fn cast_grant(&mut self, client: ClientId, envelope: &Envelope) {
         match wire::read_cast_grant(envelope.payload().unwrap_or(&[])) {
-            Ok((session, output)) => {
-                let outcome = self.consent.cast_grant(client, &session, output);
+            Ok((session, source)) => {
+                let outcome = self.consent.cast_grant(client, &session, source);
                 self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
             }
             Err(reason) => self.refuse(

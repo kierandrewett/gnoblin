@@ -14,13 +14,6 @@ error unknown-effect-kind since 0.2.0
 error not-floating since 0.2.0
 error transient-follows-parent since 0.2.0
 error refused since 0.2.0
-object capture since 0.2.0 secret false
-  method open since 0.2.0 secret false function false
-    param session type uint since 0.2.0 secret false
-    param owner type string since 0.2.0 secret false
-    param remote_session type string since 0.2.0 secret false
-  method close since 0.2.0 secret false function false
-    param session type uint since 0.2.0 secret false
 object config since 0.2.0 secret false
   signal reload_failed since 0.2.0 secret false
     field path type string since 0.2.0 secret false
@@ -786,32 +779,11 @@ object workspace since 0.2.0 secret false
 //
 // Namespace: gnoblin
 // Version: 0.2.0
-// Schema: crates/gnoblin-schema/schema (capture.toml, config.toml, effect.toml, eis.toml, idle.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
+// Schema: crates/gnoblin-schema/schema (config.toml, effect.toml, eis.toml, idle.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
 
 syntax = "proto3";
 
 package gnoblin;
-
-// Object `capture`, since 0.2.0.
-message Capture {
-  message Properties {}
-
-  // Method `open`, since 0.2.0.
-  message OpenArgs {
-    // since 0.2.0
-    uint64 session = 1;
-    // since 0.2.0
-    string owner = 2;
-    // since 0.2.0
-    string remote_session = 3;
-  }
-
-  // Method `close`, since 0.2.0.
-  message CloseArgs {
-    // since 0.2.0
-    uint64 session = 1;
-  }
-}
 
 // Object `config`, since 0.2.0.
 message Config {

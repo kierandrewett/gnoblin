@@ -16,23 +16,34 @@
 //! full-screen screenshots are served.
 //!
 //! The screen cast frames are the compositor's: [`crate::backends::CaptureBackend::open_stream`]
-//! tells it the user approved a cast of the chosen output (`cast.grant`) and starts the PipeWire
+//! tells it the user approved a cast of the chosen source (`cast.grant`) and starts the PipeWire
 //! stream (`cast.start`), and the node it answers is the one the app reads. The compositor
 //! refuses a start for a session it was not told the user approved, so a portal that skipped the
 //! question has no node to return. A compositor with no PipeWire daemon refuses, and the stream
 //! list is never fabricated.
 //!
+//! # Sources: monitors and Views
+//!
+//! `SelectSources` `types` is the portal's: [`SOURCE_MONITOR`] shares an output (the one the `output` option names,
+//! or the first), and [`SOURCE_VIRTUAL`] shares a **View**, a scene node that draws a subtree of the desktop (the
+//! shell's or an extension's own picture). The portal API cannot name a node, so the View is named by this
+//! backend's own [`OPTION_VIEW`] option, a `t` holding the node id; the frontend forwards unknown options. A
+//! virtual source with no `view` is refused at `SelectSources`, before the user is asked. The consent dialog,
+//! the privacy indicator, the audit log and the lock rule are the ones a monitor share has: the user is asked, a
+//! stream is a visible session while it runs, and a lock ends it. Secure windows inside the View are masked in
+//! the stream as in every other capture. [`SOURCE_WINDOW`] is advertised but not served.
+//!
 //! # The narrower option set
 //!
-//! A sandboxed caller may not share another app's window and may not receive cursor
-//! metadata, because both hand a sandboxed app something about the desktop it did not
+//! A sandboxed caller may not share another app's window or a View, and may not receive cursor
+//! metadata, because each hands a sandboxed app something about the desktop it did not
 //! ask the user for. [`narrow`] is the whole rule, and it runs before the selection is
 //! recorded, so the session says what was allowed rather than what was asked.
 
 use std::collections::BTreeMap;
 
 use gnoblin_capture::Target;
-use gnoblin_types::OutputId;
+use gnoblin_types::{NodeId, OutputId};
 use zbus::OwnedVariant;
 use zbus::message::Header;
 use zbus::{Connection, ObjectPath, fdo};
@@ -47,8 +58,14 @@ use crate::log;
 pub const SOURCE_MONITOR: u32 = 1;
 /// `types` bit: one application window.
 pub const SOURCE_WINDOW: u32 = 2;
-/// `types` bit: a new virtual monitor.
+/// `types` bit: a virtual monitor. In this backend it is a View, a scene node the shell or an extension draws and
+/// names: the stream is what the View draws, at the View's size. The View is named by the [`OPTION_VIEW`] option of
+/// `SelectSources`.
 pub const SOURCE_VIRTUAL: u32 = 4;
+/// The `SelectSources` option that names the View a [`SOURCE_VIRTUAL`] source is: a `t` (or `u`) holding the View's
+/// node id. It is this backend's own key, because the portal API has no way to name a node, and the frontend passes
+/// unknown options through; an app that does not know a View's node id has no View to name.
+pub const OPTION_VIEW: &str = "view";
 /// `cursor_mode` bit: the cursor is not in the frames.
 pub const CURSOR_HIDDEN: u32 = 1;
 /// `cursor_mode` bit: the cursor is drawn into the frames.
@@ -321,6 +338,17 @@ impl ScreenCast {
                 .ok_or_else(|| refused(crate::consent::Refusal::UnknownSession { path: path.clone() }))?
                 .clone();
             let selection = narrow(session.owner.narrowed(), &options);
+            // A virtual source is a View, and a View is named by the caller: the portal's `SelectSources` has no
+            // other way to say which one. A selection that asks for one and names none is refused here, before the
+            // user is asked about a share that could not be made.
+            if recorded_uint(&selection, "types").is_some_and(|types| types & SOURCE_VIRTUAL != 0)
+                && !selection.contains_key(OPTION_VIEW)
+            {
+                return Err(fdo::Error::InvalidArgs(format!(
+                    "a VIRTUAL source is a View, and the selection names none: add the `{OPTION_VIEW}` option (a \
+                     uint64 node id)"
+                )));
+            }
             shared
                 .guard
                 .configure(&caller, &path, selection.clone())
@@ -369,14 +397,12 @@ impl ScreenCast {
                     StreamRequest {
                         session: path.clone(),
                         // The picker is the provider's, and this backend's prompt answers
-                        // allow/deny, so the target is the output the selection named or
-                        // the first one. A window selection would need the picker's answer
-                        // to carry an identity, which the request layer's answer does not:
+                        // allow/deny, so the target is what the selection named: a View when it
+                        // asked for a virtual source and gave the View's node id, else the output
+                        // it named or the first one. A window selection would need the picker's
+                        // answer to carry an identity, which the request layer's answer does not:
                         // stated here rather than guessed at from a monitor number.
-                        target: Target::Output(OutputId::new(
-                            recorded_uint(&session.options, "output")
-                                .map_or(gnoblin_client::wire::OUTPUT_FIRST, u64::from),
-                        )),
+                        target: cast_target(&session.options),
                         cursor_mode: recorded_uint(&session.options, "cursor_mode").unwrap_or(CURSOR_EMBEDDED),
                         multiple: recorded_flag(&session.options, "multiple"),
                     }
@@ -416,10 +442,9 @@ impl ScreenCast {
     /// The source types this build can offer.
     #[zbus(property)]
     fn available_source_types(&self) -> u32 {
-        // A virtual monitor needs a compositor call the schema has no member for, so it is
-        // not advertised: a frontend that offers it would create an expectation this
-        // backend cannot meet.
-        SOURCE_MONITOR | SOURCE_WINDOW
+        // A virtual monitor is a View: the compositor can stream one when the caller names it
+        // (`OPTION_VIEW`), so it is advertised and a selection that names none is refused.
+        SOURCE_MONITOR | SOURCE_WINDOW | SOURCE_VIRTUAL
     }
 
     /// The cursor modes this build can offer.
@@ -447,7 +472,7 @@ pub fn narrow(narrowed: bool, options: &Options) -> BTreeMap<String, gnoblin_mod
     let allowed_types = if narrowed {
         SOURCE_MONITOR
     } else {
-        SOURCE_MONITOR | SOURCE_WINDOW
+        SOURCE_MONITOR | SOURCE_WINDOW | SOURCE_VIRTUAL
     };
     let cursor_allowed = if narrowed {
         CURSOR_HIDDEN | CURSOR_EMBEDDED
@@ -472,6 +497,12 @@ pub fn narrow(narrowed: bool, options: &Options) -> BTreeMap<String, gnoblin_mod
     if let Some(output) = uint(options, "output") {
         selection.insert("output".to_owned(), gnoblin_model::Value::Uint(u64::from(output)));
     }
+    // The View a virtual source is. It is recorded only when the caller may have a virtual source at all.
+    if requested_types & allowed_types & SOURCE_VIRTUAL != 0
+        && let Some(view) = wide_uint(options, OPTION_VIEW)
+    {
+        selection.insert(OPTION_VIEW.to_owned(), gnoblin_model::Value::Uint(view));
+    }
     // A persist mode needs a permission store, and this backend keeps none: the answer is
     // always "do not persist", which is what the results report rather than what was
     // asked for.
@@ -494,11 +525,32 @@ pub(crate) fn flag(options: &Options, name: &str) -> bool {
 
 /// One unsigned option, narrowed to the width the interface uses.
 pub(crate) fn uint(options: &Options, name: &str) -> Option<u32> {
+    wide_uint(options, name).and_then(|raw| u32::try_from(raw).ok())
+}
+
+/// One unsigned option at its full width: a View's node id carries an epoch in its high half, so it does not fit the
+/// `u` the interface's own options use.
+pub(crate) fn wide_uint(options: &Options, name: &str) -> Option<u64> {
     let value = options.get(name)?;
-    if let Ok(raw) = u64::try_from(value) {
-        return u32::try_from(raw).ok();
+    if let Ok(raw) = u32::try_from(value) {
+        return Some(u64::from(raw));
     }
-    i64::try_from(value).ok().and_then(|raw| u32::try_from(raw).ok())
+    if let Ok(raw) = u64::try_from(value) {
+        return Some(raw);
+    }
+    i64::try_from(value).ok().and_then(|raw| u64::try_from(raw).ok())
+}
+
+/// What a recorded selection casts: the View it named when it asked for a virtual source, else the output it named,
+/// else the first one.
+pub(crate) fn cast_target(selection: &BTreeMap<String, gnoblin_model::Value>) -> Target {
+    let virtual_source = recorded_uint(selection, "types").is_some_and(|types| types & SOURCE_VIRTUAL != 0);
+    if virtual_source && let Some(gnoblin_model::Value::Uint(view)) = selection.get(OPTION_VIEW) {
+        return Target::View(NodeId::new(*view));
+    }
+    Target::Output(OutputId::new(
+        recorded_uint(selection, "output").map_or(gnoblin_client::wire::OUTPUT_FIRST, u64::from),
+    ))
 }
 
 /// One unsigned value from a recorded selection, narrowed to the width the interface uses.
@@ -555,4 +607,92 @@ pub fn streams(streams: &[(u32, BTreeMap<String, OwnedVariant>)]) -> OwnedVarian
         }
     }
     OwnedVariant::try_from(Variant::Array(array)).expect("an array of streams is a value")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn options(pairs: &[(&str, zbus::Variant<'_>)]) -> Options {
+        pairs
+            .iter()
+            .map(|(name, value)| {
+                (
+                    (*name).to_owned(),
+                    OwnedVariant::try_from(value.clone()).expect("a plain value"),
+                )
+            })
+            .collect()
+    }
+
+    /// A View's node id carries an epoch in its high half, so it is a `t` and survives whole.
+    const VIEW: u64 = (1 << 32) | 0x102;
+
+    #[test]
+    fn a_virtual_source_with_a_view_is_recorded_and_casts_that_view() {
+        let selection = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_VIRTUAL)),
+                (OPTION_VIEW, zbus::Variant::from(VIEW)),
+            ]),
+        );
+        assert_eq!(recorded_uint(&selection, "types"), Some(SOURCE_VIRTUAL));
+        assert_eq!(selection.get(OPTION_VIEW), Some(&gnoblin_model::Value::Uint(VIEW)));
+        assert_eq!(cast_target(&selection), Target::View(NodeId::new(VIEW)));
+    }
+
+    #[test]
+    fn a_monitor_source_casts_the_output_it_names_or_the_first_and_ignores_a_view() {
+        let first = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_MONITOR)),
+                (OPTION_VIEW, zbus::Variant::from(VIEW)),
+            ]),
+        );
+        assert!(!first.contains_key(OPTION_VIEW), "a monitor share records no View");
+        assert_eq!(
+            cast_target(&first),
+            Target::Output(OutputId::new(gnoblin_client::wire::OUTPUT_FIRST))
+        );
+        let named = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_MONITOR)),
+                ("output", zbus::Variant::from(2_u32)),
+            ]),
+        );
+        assert_eq!(cast_target(&named), Target::Output(OutputId::new(2)));
+    }
+
+    #[test]
+    fn a_sandboxed_caller_is_never_given_a_view() {
+        let selection = narrow(
+            true,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_VIRTUAL)),
+                (OPTION_VIEW, zbus::Variant::from(VIEW)),
+            ]),
+        );
+        assert_eq!(
+            recorded_uint(&selection, "types"),
+            Some(0),
+            "the session says what was allowed: no virtual source"
+        );
+        assert!(!selection.contains_key(OPTION_VIEW));
+        assert!(matches!(cast_target(&selection), Target::Output(_)));
+    }
+
+    #[test]
+    fn a_view_id_given_as_a_u32_is_read_whole() {
+        let selection = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_VIRTUAL)),
+                (OPTION_VIEW, zbus::Variant::from(0x102_u32)),
+            ]),
+        );
+        assert_eq!(cast_target(&selection), Target::View(NodeId::new(0x102)));
+    }
 }

@@ -152,6 +152,8 @@ pub struct Extras {
     pub clock: Option<std::sync::Arc<dyn gnoblin_wayland::Clock>>,
     /// What checks the lock's password; PAM when `None`.
     pub lock_check: Option<gnoblin_wayland::LockCheck>,
+    /// The PipeWire daemon screen casts go to; the environment's when `None`.
+    pub pipewire_socket: Option<std::path::PathBuf>,
 }
 
 /// A session that has been created but is not running yet.
@@ -275,6 +277,7 @@ impl Session {
             clock: extras
                 .clock
                 .unwrap_or_else(|| std::sync::Arc::new(gnoblin_wayland::SystemClock)),
+            pipewire_socket: extras.pipewire_socket,
             ..Config::default()
         };
         let headless = Headless::new();

@@ -10,17 +10,27 @@
 //!   opened the session; any other caller is refused.
 //! - **The stream ends with its authority.** When the owner disconnects, the session is stopped
 //!   (by the lock embargo or a target going away), or it is closed, the next
-//!   [`PipewireExport::pump`] drops the stream and its node.
+//!   [`PipewireExport::pump`] drops the stream and its node. The lock is applied to every stream on
+//!   every pump ([`Table::enforce`]), so a stream nobody reads is cut too.
 //!
 //! Frames are pulled from the same [`Table`] rules the capture protocols use, so a stream is
 //! paced and refused by the same code, and a refused frame carries no pixels.
+//!
+//! A stream of a [`Target::View`] is the View at the size it is drawn at: when the View's size changes
+//! the format is offered again at the new size, the table's session takes the new shape, and the consumer
+//! is renegotiated. An output's or a window's stream keeps the shape it started with.
+//!
+//! The `testing` feature (and this crate's own tests) compile `testing.rs`: a private daemon, a second
+//! client that watches it, and a consumer that reads a node's frames.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::io::Cursor;
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Once;
 use std::time::{Duration, Instant};
 
@@ -187,6 +197,8 @@ struct PipewireExportStream {
     format: Format,
     /// The node the daemon gave the stream.
     node: u32,
+    /// The buffer layout the stream answers a format negotiation with. It is replaced when the format changes.
+    buffers: Rc<RefCell<Vec<u8>>>,
     /// Answers the daemon's format negotiation with the buffers. Declared before the stream so it drops first.
     _listener: StreamListener<()>,
     /// The stream. Dropping it destroys the node.
@@ -196,13 +208,57 @@ struct PipewireExportStream {
 }
 
 impl PipewireExportStream {
+    /// Offers the format again when the stream serves a View whose size changed.
+    ///
+    /// A View is sized by its owner, and what the stream carries is the View at the size it is drawn, so a View that
+    /// grew is not cropped to the size it had when the stream started. The session takes the new shape, the next
+    /// negotiation answers with buffers of the new size, and the consumer hears the format change. An output is not
+    /// followed, and neither is a window: their size is the user's, and a stream that renegotiated on every drag
+    /// would cost its consumer more than the crop does.
+    fn follow_view_size(&mut self, table: &mut Table, source: &dyn PlaneSource) {
+        let Some(target) = table.get(self.session).map(|entry| entry.target()) else {
+            return;
+        };
+        if !matches!(target, Target::View(_)) {
+            return;
+        }
+        let Some(size) = source.bounds(target).map(|bounds| bounds.size()) else {
+            return;
+        };
+        if size == self.format.size() {
+            return;
+        }
+        let Some(format) = Format::new(size, size.width.saturating_mul(4), self.format.pixel()) else {
+            return;
+        };
+        let (Ok(format_bytes), Ok(buffer_bytes)) = (format_pod(format), buffer_pod(format)) else {
+            return;
+        };
+        let Some(pod) = Pod::from_bytes(&format_bytes) else {
+            return;
+        };
+        *self.buffers.borrow_mut() = buffer_bytes;
+        if self.stream.update_params(&mut [pod]).is_err() {
+            // The daemon did not take the new format: the stream keeps the old one and tries again on the next frame.
+            return;
+        }
+        table.reformat(self.session, format);
+        self.format = format;
+    }
+
     /// Produces one frame if the table allows one and the stream has a free buffer.
     fn frame(&mut self, table: &mut Table, tick: Tick, capture: Capture, source: &mut dyn PlaneSource) {
+        // The lock ends a stream whether or not anyone is reading it: a stream nobody reads is never asked for a frame,
+        // and a frame is where the lock would otherwise be applied.
+        if !table.enforce(self.session, capture) {
+            return;
+        }
         let now = Instant::now();
         if now < self.next_frame {
             return;
         }
         self.next_frame = now + FRAME_INTERVAL;
+        self.follow_view_size(table, source);
         // A DRIVER stream is its own graph driver, so nothing else schedules it: tick it even while
         // Paused, because a Paused stream never reaches Streaming on its own.
         let _ = self.stream.trigger_process();
@@ -344,14 +400,16 @@ impl PipewireExport {
         ];
         // The daemon fixes the format, then waits for the buffers this stream answers with; without
         // them the link never leaves Paused.
-        let answer = buffer_pod.clone();
+        let buffers = Rc::new(RefCell::new(buffer_pod.clone()));
+        let answer = Rc::clone(&buffers);
         let listener = stream
             .add_local_listener_with_user_data(())
             .param_changed(move |output, _, id, param| {
                 if id != ParamType::Format.as_raw() || param.is_none() {
                     return;
                 }
-                if let Some(buffers) = Pod::from_bytes(&answer) {
+                let bytes = answer.borrow();
+                if let Some(buffers) = Pod::from_bytes(&bytes) {
                     let _ = output.update_params(&mut [buffers]);
                 }
             })
@@ -373,6 +431,7 @@ impl PipewireExport {
                 session,
                 format,
                 node,
+                buffers,
                 _listener: listener,
                 stream,
                 next_frame: Instant::now(),
@@ -511,6 +570,9 @@ fn serialise(value: &Value, what: &str) -> Result<Vec<u8>, ExportError> {
         .map(|(cursor, _)| cursor.into_inner())
         .map_err(|error| ExportError::Pipewire(format!("serialise the {what} params: {error}")))
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 
 #[cfg(test)]
 mod tests;

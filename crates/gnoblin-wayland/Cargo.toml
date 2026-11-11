@@ -101,6 +101,8 @@ gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export" }
 
 [dev-dependencies]
+# The private PipeWire daemon and the consumer of a stream that the View cast tests read frames with.
+gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export", features = ["testing"] }
 # The lock's tests read the events a failed password check logs.
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # The real client the integration tests run against the server. A `wayland-client`

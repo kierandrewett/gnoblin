@@ -51,6 +51,16 @@ it by name after consent.
 
 PickColor is refused. The compositor does not expose colour sampling.
 
+ScreenCast shares an output (`types` 1) or a View (`types` 4, "virtual monitor"):
+
+- The portal API cannot name a scene node, so a View is named by the `view` option of `SelectSources`, a `t` holding
+  its node id. The shell that made the View knows it.
+- The user is asked as for any share, the privacy indicator is on while it runs, and a lock ends it.
+- Only a caller the frontend says is not sandboxed may share a View.
+- Window shares (`types` 2) are advertised but not served.
+
+See [Views](../../shell-api/views.md#casting-a-view).
+
 Common backend IDs include `gtk`, `gnome`, `kde`, and `gnoblin`. Use IDs
 provided by the backends installed on your system.
 

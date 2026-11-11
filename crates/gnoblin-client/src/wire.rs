@@ -122,7 +122,7 @@ pub mod member {
     /// Portal client to compositor: a remote desktop session ended, so its EIS connection
     /// ends. Privileged.
     pub const REMOTE_END: &str = "remote.end";
-    /// Portal client to compositor: the user approved a screen cast of one output.
+    /// Portal client to compositor: the user approved a screen cast of one source, an output or a View.
     /// Privileged.
     pub const CAST_GRANT: &str = "cast.grant";
     /// Portal client to compositor: start the PipeWire stream of an approved screen cast.
@@ -187,12 +187,27 @@ pub mod code {
     pub const SESSION_UNKNOWN: &str = "session-unknown";
     /// A consent that approves no device.
     pub const NO_DEVICES: &str = "no-devices";
+    /// The View a screen cast names is not in the scene, or has no size to cast.
+    pub const CAPTURE_NO_VIEW: &str = "no-view";
 }
 
 /// The output `cast.grant` names when the user chose none: the first output the compositor has
 /// when the stream starts. The portal does not know the compositor's output identities, so it
 /// says "the first one" instead of guessing a number.
 pub const OUTPUT_FIRST: u64 = u64::MAX;
+
+/// What the user approved a screen cast of, as `cast.grant` names it.
+///
+/// An output is named by its number, or by [`OUTPUT_FIRST`] for the first one the compositor has. A View is named
+/// by its node id, which the shell or an extension that made the View knows and a sandboxed app does not: the
+/// portal can only name a View the caller named itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CastSource {
+    /// An output, by its number or [`OUTPUT_FIRST`].
+    Output(u64),
+    /// A View node, by its node id: the stream carries what the View draws, at the size it is drawn.
+    View(u64),
+}
 
 /// One decoded frame from the compositor.
 #[derive(Clone, PartialEq)]
@@ -472,14 +487,28 @@ pub fn remote_end(request_id: u64, session: &str) -> Envelope {
     session_request(member::REMOTE_END, request_id, session)
 }
 
-/// The user approved a screen cast of one output. Privileged: the portal role makes this
+/// The user approved a screen cast of one source. Privileged: the portal role makes this
 /// call after its consent dialog was answered yes.
-pub fn cast_grant(request_id: u64, session: &str, output: u64) -> Envelope {
+pub fn cast_grant(request_id: u64, session: &str, source: CastSource) -> Envelope {
     let mut writer = Writer::new();
     writer.text(session);
-    writer.u64(output);
+    match source {
+        CastSource::Output(output) => {
+            writer.u8(CAST_SOURCE_OUTPUT);
+            writer.u64(output);
+        }
+        CastSource::View(view) => {
+            writer.u8(CAST_SOURCE_VIEW);
+            writer.u64(view);
+        }
+    }
     Envelope::request(NAMESPACE, member::CAST_GRANT, request_id, writer.finish())
 }
+
+/// The tag of an output in a `cast.grant` payload.
+const CAST_SOURCE_OUTPUT: u8 = 0;
+/// The tag of a View in a `cast.grant` payload.
+const CAST_SOURCE_VIEW: u8 = 1;
 
 /// Start the PipeWire stream of an approved screen cast. Privileged.
 pub fn cast_start(request_id: u64, session: &str) -> Envelope {
@@ -872,13 +901,17 @@ pub fn read_remote_grant(payload: &[u8]) -> Result<(String, u32), WireError> {
     Ok((session, devices))
 }
 
-/// Decode a `cast.grant` request: the session and the output the user approved.
-pub fn read_cast_grant(payload: &[u8]) -> Result<(String, u64), WireError> {
+/// Decode a `cast.grant` request: the session and the source the user approved.
+pub fn read_cast_grant(payload: &[u8]) -> Result<(String, CastSource), WireError> {
     let mut reader = FrameReader::new(payload);
     let session = reader.text()?;
-    let output = reader.u64()?;
+    let source = match reader.u8()? {
+        CAST_SOURCE_OUTPUT => CastSource::Output(reader.u64()?),
+        CAST_SOURCE_VIEW => CastSource::View(reader.u64()?),
+        tag => return Err(WireError::Tag(tag)),
+    };
     reader.done()?;
-    Ok((session, output))
+    Ok((session, source))
 }
 
 /// Decode the reply to `remote.connect`: the path of the session's one-shot EIS socket.
@@ -1832,5 +1865,29 @@ mod tests {
             .find(|method| method.name == "answer")
             .expect("answer is declared");
         assert!(answered.is_sensitive(), "an answer field is secret");
+    }
+
+    /// A `cast.grant` names an output or a View, and a tag this build does not know is refused rather than guessed
+    /// at: a View's node id is never read as an output number.
+    #[test]
+    fn a_cast_grant_carries_an_output_or_a_view_and_refuses_any_other_tag() {
+        let view = (1 << 32) | 0x102;
+        for source in [
+            CastSource::Output(3),
+            CastSource::Output(OUTPUT_FIRST),
+            CastSource::View(view),
+        ] {
+            let envelope = cast_grant(7, "/session/1", source);
+            let payload = envelope.payload().expect("a request carries its payload");
+            assert_eq!(
+                read_cast_grant(payload).expect("the payload decodes"),
+                ("/session/1".to_owned(), source)
+            );
+        }
+        let mut writer = Writer::new();
+        writer.text("/session/1");
+        writer.u8(9);
+        writer.u64(1);
+        assert_eq!(read_cast_grant(&writer.finish()), Err(WireError::Tag(9)));
     }
 }

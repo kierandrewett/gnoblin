@@ -7,7 +7,8 @@ A `View` draws another node's subtree as a picture.
 - `width` and `height` are the picture's size.
 
 The compositor draws the picture where the View sits. A `view`-role client reads the same picture over
-`gnoblin_view_source_v1`, and `capture` writes it to a file.
+`gnoblin_view_source_v1`, `capture` writes it to a file, and the portal's ScreenCast can stream it over PipeWire
+(see [Casting a View](#casting-a-view)).
 
 ```lua
 local preview = View({ width = 320, height = 200, source = window, fps = 10 })
@@ -32,6 +33,51 @@ size is never kept. Lowering `fps` to `0` draws any change that was waiting on t
 
 The slots are measured on the session's clock, which the loop advances once per turn. A redraw happens on the first
 turn at or after the end of the slot.
+
+## Casting a View
+
+A View is a screen cast source, beside the outputs. The stream carries the View's capture picture, the same one
+`capture` writes and `gnoblin_view_source_v1` reads, so a secure node is masked in it (see
+[Secure nodes](#secure-nodes)). A View has no cursor, so `cursor_mode` has no effect on it.
+
+- **Size.** The stream is the size the View is drawn at. When the shell resizes the View, the stream is negotiated
+  again at the new size, and a consumer receives whole pictures of it.
+- **Rate.** A new picture arrives no faster than `fps` allows, because the stream carries the picture the View drew
+  last. While the View is idle the stream repeats its picture, at up to 30 frames a second, so a consumer that attaches
+  late has one at once.
+- **Format.** `BGRA` in memory (the stream's `argb8888`), one memfd plane per buffer. There is no DMA-BUF.
+
+### Asking for one
+
+The portal API cannot name a node, so Gnoblin uses its own key. An app calls `ScreenCast.SelectSources` with `types`
+set to the virtual source bit (4) and a `view` option, a `t` holding the View's node id. The shell that made the View
+knows the id. The frontend forwards options it does not know.
+
+```text
+SelectSources(session, { "types": <u 4>, "view": <t 4294967554> })
+Start(session, parent_window, {})       -> the user is asked, then the node is answered
+```
+
+- Only a caller the frontend says is not sandboxed may share a View. A sandboxed or unidentified caller's `types` is
+  narrowed to monitors, and it is given the first output, the same narrowing a window share gets.
+- A virtual source with no `view` is refused at `SelectSources` (`InvalidArgs`), before the user is asked.
+- The user is asked as for any share. A refusal is the response code `1`, and no stream is made.
+- A View that is not in the scene when the stream starts is refused after the user's yes: `NotSupported`, and the
+  compositor's reason is `no-view`.
+
+The portal sends the compositor `cast.grant {session, source}` with the View as the source, then `cast.start`. The
+compositor starts no stream for a session it was not told the user approved (`no-consent`).
+
+### Privacy, lock and lifetime
+
+- A stream is a session in the capture table, so the count the privacy indicator reads is one higher from the moment
+  `cast.start` answers until the stream ends.
+- Starting and ending a stream, and every refusal, leave an audit record in the log (`area = "capture"`).
+- Nothing is started while the session is locked (`locked`). A stream that is running when the lock goes up ends at
+  once, whether or not anything reads it, and does not come back when the lock is released: the portal makes a new
+  session and the user is asked again. An output stream may keep showing the lock scene; a View stream may not.
+- Destroying the View ends its stream, and the node leaves PipeWire. Closing the portal session, or the portal's
+  connection going away, ends it too.
 
 ## `capture(path)`
 

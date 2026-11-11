@@ -34,6 +34,7 @@ use gnoblin_input_eis::Caps;
 use gnoblin_proto::CodecError;
 use support::ei::{EiClient, focused_client, frame, wait_for_key};
 use support::pipewire::Daemon;
+use support::tree::Shell;
 use support::{PointerEvent, Session, Wire, wait_for};
 use xdg_desktop_portal_gnoblin::serve::{ServeOptions, serve};
 use xdg_desktop_portal_gnoblin::{BUS_NAME, IpcHost};
@@ -272,9 +273,23 @@ impl Caller {
 
     /// `CreateSession`, answering the new session's path.
     async fn create_session(&self, interface: &'static str) -> String {
+        self.create_session_as(interface, None).await
+    }
+
+    /// `CreateSession` as a caller the frontend says is a host app, not sandboxed: the wide option set, which is the
+    /// only one that may share a View.
+    async fn create_host_session(&self, interface: &'static str) -> String {
+        self.create_session_as(interface, Some(false)).await
+    }
+
+    /// `CreateSession`, with the `sandboxed` option the frontend sets when it knows.
+    async fn create_session_as(&self, interface: &'static str, sandboxed: Option<bool>) -> String {
         let session = self.path("session");
         let handle = self.path("request");
-        let options: HashMap<&str, Variant<'_>> = HashMap::new();
+        let mut options: HashMap<&str, Variant<'_>> = HashMap::new();
+        if let Some(sandboxed) = sandboxed {
+            options.insert("sandboxed", Variant::from(sandboxed));
+        }
         let handle = ObjectPath::try_from(handle.as_str()).expect("a request path");
         let session_path = ObjectPath::try_from(session.as_str()).expect("a session path");
         let message = if interface == INPUT_CAPTURE {
@@ -319,6 +334,29 @@ impl Caller {
             .unwrap_or_else(|error| panic!("{member} answers: {error}"));
         let (response, _): (u32, Results) = message.body().deserialize().expect("a response and results");
         assert_eq!(response, RESPONSE_OK, "{member} is recorded");
+    }
+
+    /// `SelectSources` for a virtual source: the portal's `types` bit for a virtual monitor, and `view`, this
+    /// backend's own option, naming the View when one is given. The answer is the call's own, so a refusal can be
+    /// matched.
+    async fn select_virtual(&self, session: &str, view: Option<u64>) -> zbus::Result<(u32, Results)> {
+        let handle = self.path("request");
+        let mut options: HashMap<&str, Variant<'_>> = HashMap::new();
+        options.insert("types", Variant::from(4_u32));
+        if let Some(view) = view {
+            options.insert("view", Variant::from(view));
+        }
+        let handle = ObjectPath::try_from(handle.as_str()).expect("a request path");
+        let session = ObjectPath::try_from(session).expect("a session path");
+        let message = self
+            .call(
+                SCREEN_CAST,
+                PATH,
+                "SelectSources",
+                &(handle, session, self.app_id.as_str(), options),
+            )
+            .await?;
+        Ok(message.body().deserialize().expect("a response and results"))
     }
 
     /// `Start`: the response code and results, or the error the backend answered with.
@@ -787,4 +825,86 @@ fn a_denied_input_capture_answers_cancelled() {
     })
     .expect("a refusal is a response, not an error");
     assert_eq!(response, RESPONSE_CANCELLED);
+}
+
+/// A virtual source is a View: the app names the View's node id in the `view` option of `SelectSources`, the user is
+/// asked as for any share, and the stream the portal answers is the compositor's stream of that View. It goes
+/// through the real portal, the real IPC and a real PipeWire daemon.
+#[test]
+fn an_approved_virtual_source_streams_the_view_the_app_named_and_closing_removes_it() {
+    let daemon = Daemon::start();
+    let mut rig = Rig::start(Some(&daemon));
+    let shell = Shell::with_view(&rig.session);
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    let (response, _) =
+        zbus::block_on(caller.select_virtual(&session, Some(shell.view))).expect("SelectSources answers");
+    assert_eq!(response, RESPONSE_OK, "the selection is recorded");
+
+    let (response, results) = with_dialogs(&mut rig.input, &[Answer::Allow], || {
+        zbus::block_on(caller.start(SCREEN_CAST, &session))
+    })
+    .expect("Start answers");
+    assert_eq!(response, RESPONSE_OK, "the user allowed the share");
+    let nodes = stream_nodes(&results);
+    assert_eq!(nodes.len(), 1, "one stream is answered: {results:?}");
+    daemon.wait_until_present(nodes[0]);
+
+    zbus::block_on(caller.close(&session)).expect("the session closes");
+    daemon.wait_until_gone(nodes[0]);
+}
+
+#[test]
+fn a_denied_virtual_source_answers_cancelled_and_makes_no_node() {
+    let daemon = Daemon::start();
+    let mut rig = Rig::start(Some(&daemon));
+    let shell = Shell::with_view(&rig.session);
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    zbus::block_on(caller.select_virtual(&session, Some(shell.view))).expect("SelectSources answers");
+
+    let (response, results) = with_dialogs(&mut rig.input, &[Answer::Deny], || {
+        zbus::block_on(caller.start(SCREEN_CAST, &session))
+    })
+    .expect("a refusal is a response, not an error");
+    assert_eq!(response, RESPONSE_CANCELLED, "the user cancelled");
+    assert!(stream_nodes(&results).is_empty());
+    assert!(!daemon.holds_stream(), "no node exists for a refused share");
+}
+
+/// A virtual source that names no View could not be streamed, so it is refused at `SelectSources`, before the user
+/// is asked about it.
+#[test]
+fn a_virtual_source_that_names_no_view_is_refused_before_the_user_is_asked() {
+    let daemon = Daemon::start();
+    let rig = Rig::start(Some(&daemon));
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    let refused = zbus::block_on(caller.select_virtual(&session, None)).expect_err("a View is needed");
+    assert!(
+        is_error(&refused, "InvalidArgs"),
+        "the refusal names the bad argument: {refused}"
+    );
+    assert!(!daemon.holds_stream());
+}
+
+/// A View that is not in the scene is refused when the share starts, after the user said yes, and no node is made.
+#[test]
+fn a_virtual_source_naming_a_view_that_is_not_there_makes_no_node() {
+    let daemon = Daemon::start();
+    let mut rig = Rig::start(Some(&daemon));
+    let shell = Shell::with_view(&rig.session);
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    zbus::block_on(caller.select_virtual(&session, Some(shell.view + 1))).expect("SelectSources answers");
+
+    let started = with_dialogs(&mut rig.input, &[Answer::Allow], || {
+        zbus::block_on(caller.start(SCREEN_CAST, &session))
+    });
+    let error = started.expect_err("the compositor has no such View");
+    assert!(
+        is_error(&error, "NotSupported"),
+        "the refusal is the compositor's: {error}"
+    );
+    assert!(!daemon.holds_stream(), "no node was made");
 }

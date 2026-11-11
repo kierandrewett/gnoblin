@@ -222,6 +222,39 @@ impl Table {
         count
     }
 
+    /// Gives a session a new buffer shape, for a target whose own size changed under it.
+    ///
+    /// The next frame repaints the whole of the new shape, because the damage the session held was measured on the
+    /// old one. Answers whether the session is there.
+    pub fn reformat(&mut self, session: SessionId, format: Format) -> bool {
+        let Some(entry) = self.sessions.get_mut(&session) else {
+            return false;
+        };
+        entry.format = format;
+        entry.damage = vec![entry.full()];
+        true
+    }
+
+    /// Applies the lock's answer to one session now, without waiting for a frame, and answers whether it may go on.
+    ///
+    /// A frame applies the lock when it is copied, but a stream nobody reads is never asked for one, and a stream the
+    /// lock covers must end whether or not anyone is reading it. A session the lock refuses is stopped
+    /// ([`Stop::Embargoed`]) exactly as a refused frame stops it. A session that is not there, or has stopped,
+    /// may not go on.
+    pub fn enforce(&mut self, session: SessionId, capture: Capture) -> bool {
+        let Some(entry) = self.sessions.get_mut(&session) else {
+            return false;
+        };
+        if !entry.live() {
+            return false;
+        }
+        if Self::embargo(entry.stream, entry.target, capture).is_err() {
+            entry.end(Stop::Embargoed);
+            return false;
+        }
+        true
+    }
+
     /// Notes that part of a target changed.
     ///
     /// Damage is clipped to the target's negotiated buffer, so a notification about
@@ -895,5 +928,74 @@ mod tests {
             panic!("the View frame copies");
         };
         assert_eq!(view_report.damage, vec![Rect::new(0, 0, 4, 4)]);
+    }
+
+    /// A session whose target changed size is given the new shape: the next frame is copied at the new size and
+    /// reports the whole of it as damage, and a session that is not there is not made.
+    #[test]
+    fn a_reformatted_session_copies_the_new_size_and_reports_all_of_it() {
+        let mut table = Table::new();
+        let view = Target::View(NodeId::new(4));
+        let session = table.open(ClientId::new(9), view, CaptureStream::Requested, format());
+        let mut source = Fake::new(Some(Rect::from_size(SIZE)));
+        let frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+        table.capture(frame, Tick::new(1), Capture::Desktop, &mut source);
+
+        let grown = Size::new(SIZE.width * 2, SIZE.height * 2);
+        let wider = Format::new(grown, grown.width * 4, PixelFormat::Argb8888).expect("a valid format");
+        assert!(table.reformat(session, wider));
+        assert_eq!(table.get(session).map(|entry| entry.format()), Some(wider));
+        let mut source = Fake::new(Some(Rect::from_size(grown)));
+        let frame = table.request(session, BufferId::new(2), Tick::new(2)).expect("a claim");
+        let CaptureOutcome::Copied(report) = table.capture(frame, Tick::new(2), Capture::Desktop, &mut source) else {
+            panic!("the frame copies at the new size");
+        };
+        assert_eq!(report.region, Rect::from_size(grown));
+        assert_eq!(report.damage, vec![Rect::from_size(grown)]);
+        assert!(
+            !table.reformat(SessionId::new(99), wider),
+            "a session the table does not hold is not made by a reformat"
+        );
+    }
+
+    /// The lock ends a session whether or not a frame is ever asked for: a View's granted stream is refused by the
+    /// lock scene and an output's is not, and an unconsented session is refused by it too.
+    #[test]
+    fn the_lock_is_applied_to_a_session_that_is_never_asked_for_a_frame() {
+        let mut table = Table::new();
+        let view = table.open(
+            ClientId::new(9),
+            Target::View(NodeId::new(4)),
+            CaptureStream::Granted,
+            format(),
+        );
+        let granted_output = open(&mut table, CaptureStream::Granted);
+        let requested_output = open(&mut table, CaptureStream::Requested);
+
+        for session in [view, granted_output, requested_output] {
+            assert!(
+                table.enforce(session, Capture::Desktop),
+                "an unlocked desktop ends nothing"
+            );
+        }
+        assert!(
+            !table.enforce(view, Capture::LockScene),
+            "the lock scene is no View's to show"
+        );
+        assert_eq!(table.get(view).and_then(|entry| entry.stopped()), Some(Stop::Embargoed));
+        assert!(
+            table.enforce(granted_output, Capture::LockScene),
+            "a granted output goes on and shows the lock scene"
+        );
+        assert!(!table.enforce(requested_output, Capture::LockScene));
+        assert!(
+            !table.enforce(granted_output, Capture::Refused),
+            "a refused capture ends every session"
+        );
+        assert!(
+            !table.enforce(view, Capture::Desktop),
+            "a stopped session does not resume when the lock is released"
+        );
+        assert!(!table.enforce(SessionId::new(99), Capture::Desktop));
     }
 }

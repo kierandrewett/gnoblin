@@ -137,7 +137,7 @@ fn the_default_mode_refuses_every_capture_call() {
 
 #[test]
 fn a_started_session_opens_and_closes_the_compositors_capture() {
-    // The real path: a session is created, started (one `capture.open`), a monitor stream
+    // The real path: a session is created, started (one `CaptureBridge::open`), a monitor stream
     // is recorded, the stream refuses with the missing PipeWire producer, and stopping
     // the session closes the compositor's session exactly once.
     let bus = Bus::start();

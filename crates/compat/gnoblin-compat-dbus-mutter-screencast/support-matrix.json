@@ -8,7 +8,7 @@
           "kind": "method",
           "name": "CreateSession",
           "support": "partial",
-          "note": "the session is wire state plus the compositor's `capture.open`; `remote-desktop-session-id` is passed through and `disable-animations` is accepted but has no IPC switch"
+          "note": "the session is wire state plus the host's capture bridge (`CaptureBridge::open`); `remote-desktop-session-id` is passed through and `disable-animations` is accepted but has no IPC switch"
         },
         {
           "kind": "property",
@@ -49,7 +49,7 @@
           "kind": "method",
           "name": "Start",
           "support": "partial",
-          "note": "the compositor's capture session is opened through `capture.open`; a stream still produces no frames until the PipeWire producer exists"
+          "note": "the compositor's capture session is opened through the host's capture bridge (`CaptureBridge::open`); a stream still produces no frames until the PipeWire producer exists"
         },
         {
           "kind": "method",

@@ -41,7 +41,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use futures_channel::{mpsc, oneshot};
-use gnoblin_client::wire::{CastStream, PortalRequest, VerifiedCaller};
+use gnoblin_client::wire::{CastSource, CastStream, PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, Event, PortalOutcome, PortalTicket, Transport};
 use gnoblin_model::{Fields, Filter};
 use gnoblin_types::{RequestId, Version};
@@ -122,12 +122,12 @@ pub enum ConsentCall {
         /// The portal's session handle.
         session: String,
     },
-    /// The user approved a screen cast of one output.
+    /// The user approved a screen cast of one source, an output or a View.
     CastGrant {
         /// The portal's session handle.
         session: String,
-        /// The output the user approved.
-        output: u64,
+        /// What the user approved.
+        source: CastSource,
     },
     /// Start the stream of an approved screen cast.
     CastStart {
@@ -362,8 +362,8 @@ impl<T: Transport> IpcLoop<T> {
             ConsentCall::RemoteRefuse { session } => client.remote_refuse(&session).map(|()| ConsentAnswer::Done),
             ConsentCall::RemoteConnect { session } => client.remote_connect(&session).map(ConsentAnswer::Socket),
             ConsentCall::RemoteEnd { session } => client.remote_end(&session).map(|()| ConsentAnswer::Done),
-            ConsentCall::CastGrant { session, output } => {
-                client.cast_grant(&session, output).map(|()| ConsentAnswer::Done)
+            ConsentCall::CastGrant { session, source } => {
+                client.cast_grant(&session, source).map(|()| ConsentAnswer::Done)
             }
             ConsentCall::CastStart { session } => client.cast_start(&session).map(ConsentAnswer::Stream),
             ConsentCall::CastEnd { session } => client.cast_end(&session).map(|()| ConsentAnswer::Done),

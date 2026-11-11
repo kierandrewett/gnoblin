@@ -691,7 +691,6 @@ mod tests {
         assert_eq!(
             objects,
             vec![
-                "capture",
                 "config",
                 "effect",
                 "eis",

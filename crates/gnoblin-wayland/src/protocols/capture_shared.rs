@@ -57,8 +57,14 @@
 //!    ends when the window closes: `a_window_source_follows_its_window_and_ends_with_it`.
 //! 5. **A sandboxed client binds a capture global.** A connection from a marked process
 //!    sees neither protocol: `a_sandboxed_client_cannot_bind_the_capture_globals`.
+//! 6. **A View stream shows a secure node, or outlives its lock, View or consent.** A PipeWire stream of a View
+//!    reads the picture a View capture reads (`view_pictures`, secure nodes already masked), is cut by the lock
+//!    whether or not anything reads it, ends when the View is destroyed, and is only started for a session the user
+//!    approved: `a_cast_of_a_view_masks_a_secure_window`, `the_session_lock_ends_a_cast_of_a_view_and_refuses_a_new_one`,
+//!    `a_cast_of_a_view_ends_cleanly_when_the_view_is_destroyed` (`tests/view_capture_e2e.rs`) and
+//!    `a_view_start_with_no_recorded_consent_is_refused_and_makes_no_node` (`gnoblin-compositor/tests/cast.rs`).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
@@ -329,7 +335,36 @@ impl CaptureTables {
 
     /// Forgets a window's toplevel handle and ends its capture sessions.
     pub(crate) fn window_closed(&mut self, window: WindowId) {
-        let target = Target::Window(window);
+        let ended = self.target_closed(Target::Window(window));
+        if ended > 0 {
+            log::debug!(area = "capture", %window, ended, "the window's sessions ended");
+        }
+    }
+
+    /// Ends the capture sessions of every View that is no longer in the scene, and answers whether any ended.
+    ///
+    /// A session of a View that was removed can never produce a frame, and an app that holds its stream should hear
+    /// that the stream is over now rather than when it next asks for a frame. The privacy indicator counts sessions,
+    /// so a stream that outlived its View would keep it lit for nothing.
+    fn views_closed(&mut self) -> bool {
+        let gone: BTreeSet<NodeId> = self
+            .table
+            .sessions()
+            .filter_map(|session| match session.target() {
+                Target::View(view) if !self.views.contains_key(&view) => Some(view),
+                _ => None,
+            })
+            .collect();
+        let mut ended = 0;
+        for view in gone {
+            ended += self.target_closed(Target::View(view));
+            log::debug!(area = "capture", view = ?view, "the View's sessions ended");
+        }
+        ended > 0
+    }
+
+    /// Removes `target`'s capture sources and ends its sessions, answering how many ended.
+    fn target_closed(&mut self, target: Target) -> usize {
         let ended = self.table.close_target(target);
         self.sources.retain(|_, source| *source != target);
         // The sessions that captured it are dropped too, which is what sends their
@@ -343,9 +378,7 @@ impl CaptureTables {
         for session in orphaned {
             self.stop(session, Stop::TargetGone);
         }
-        if ended > 0 {
-            log::debug!(area = "capture", %window, ended, "the window's sessions ended");
-        }
+        ended
     }
 
     /// Ends `session` for `reason` and tells its client, by dropping the object that
@@ -491,8 +524,8 @@ impl PixelSource for Pixels<'_> {
     }
 }
 
-/// The pixels a PipeWire stream reads: the last frame of each output, cropped to the target
-/// the stream serves, written into one plane of a stream buffer.
+/// The pixels a PipeWire stream reads, written into one plane of a stream buffer: the last frame of an output
+/// cropped to the target the stream serves, or the picture a View drew last.
 struct PlanePixels<'a> {
     /// Where every target is.
     targets: Targets,
@@ -506,6 +539,14 @@ impl PlaneSource for PlanePixels<'_> {
     }
 
     fn copy_into(&mut self, target: Target, region: Rect, format: Format, plane: &mut [u8]) -> Copied {
+        if let Target::View(view) = target {
+            // The View's capture picture: the one a View capture reads, with every secure node already masked.
+            // It has no output frame, no origin inside one and no cursor.
+            let Some(picture) = self.targets.view_picture(view) else {
+                return Copied::Nothing;
+            };
+            return write_region(picture, region, format, plane);
+        }
         let Some(output) = self.targets.output(target) else {
             return Copied::Nothing;
         };
@@ -535,7 +576,7 @@ pub struct CastStream {
 pub enum CastRefusal {
     /// The session lock covers the desktop, so no new stream may be opened.
     Locked,
-    /// The target is not one the session has now: no such output, or it has no size.
+    /// The target is not one the session has now: no such output or View, or it has no size.
     NoTarget,
     /// The stream could not be made: there is no PipeWire daemon, or it refused the stream.
     Unavailable(String),
@@ -555,14 +596,23 @@ impl State {
     /// belongs to it alone. The session ends with it, with the target, and with the lock.
     /// A session that is already locked is refused, because a user who consented to a cast
     /// did not consent to one of a locked desktop.
+    ///
+    /// The target is an output, or a View: a View's stream carries the picture the View's capture reads, at the size
+    /// the View is drawn at. Starting a stream is an audited act, and it is a session in the table like any other, so
+    /// the privacy indicator is lit from the moment this answers.
     pub(crate) fn start_cast(&mut self, client: ClientId, target: Target) -> Result<CastStream, CastRefusal> {
         if self.lock_capture(CaptureStream::Granted) != Capture::Desktop || !self.capture_allowed() {
+            log::info!(area = "capture", %target, "a screen cast was refused: the session is locked");
             return Err(CastRefusal::Locked);
         }
+        // A View the shell made since the loop last looked is a target now, as it is for a view-source session.
+        self.capture.views = self.composer.views().into_iter().collect();
         let Some(bounds) = self.capture_bounds(target) else {
+            log::info!(area = "capture", %target, "a screen cast was refused: no such target");
             return Err(CastRefusal::NoTarget);
         };
         let Some(format) = Format::new(bounds.size(), bounds.width.saturating_mul(4), PixelFormat::Argb8888) else {
+            log::info!(area = "capture", %target, "a screen cast was refused: the target has no size");
             return Err(CastRefusal::NoTarget);
         };
         let origin = match target {
@@ -574,12 +624,16 @@ impl State {
         let owner = self.capture.portal_owner(client);
         let session = self.capture.table.open(owner, target, CaptureStream::Granted, format);
         match self.capture.pipewire.start(&self.capture.table, session, owner) {
-            Ok(node) => Ok(CastStream {
-                session,
-                node,
-                origin,
-                size: bounds.size(),
-            }),
+            Ok(node) => {
+                log::info!(area = "capture", %target, node, "a screen cast started");
+                self.publish();
+                Ok(CastStream {
+                    session,
+                    node,
+                    origin,
+                    size: bounds.size(),
+                })
+            }
             Err(error) => {
                 self.capture.table.close(session);
                 log::warn!(area = "capture", %error, %target, "a screen cast stream could not be started");
@@ -590,13 +644,22 @@ impl State {
 
     /// Ends one cast session. Its PipeWire stream is dropped on the loop's next pump.
     pub(crate) fn stop_cast(&mut self, session: SessionId) {
-        self.capture.table.close(session);
+        if self.capture.table.close(session).is_some() {
+            log::info!(area = "capture", session = session.get(), "a screen cast ended");
+            self.publish();
+        }
     }
 
     /// Ends every cast session `client` started.
     pub(crate) fn stop_casts_of(&mut self, client: ClientId) {
-        if let Some(owner) = self.capture.portal_owners.get(&client).copied() {
-            self.capture.table.close_owner(owner);
+        if let Some(owner) = self.capture.portal_owners.get(&client).copied()
+            && self.capture.table.close_owner(owner) > 0
+        {
+            log::info!(
+                area = "capture",
+                "the screen casts of a connection that went away ended"
+            );
+            self.publish();
         }
     }
 
@@ -613,7 +676,8 @@ impl State {
         self.capture.tick = self.capture.tick.saturating_add(1);
         self.capture.views = self.composer.views().into_iter().collect();
         self.publish_view_pictures();
-        if !self.capture_allowed() && self.capture.stop_all() {
+        let views_gone = self.capture.views_closed();
+        if (!self.capture_allowed() && self.capture.stop_all()) || views_gone {
             self.publish();
         }
         if self.capture.pipewire.is_live() {

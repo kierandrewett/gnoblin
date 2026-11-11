@@ -167,20 +167,6 @@ function gnoblin.workspaces.by_id(id) end
 ---@return table
 function gnoblin.find(kind, filter) end
 
----@class gnoblin.capture
-local capture = {}
----@param session integer
----@param owner string
----@param remote_session string
----@return gnoblin.Operation
-function capture:open(session, owner, remote_session) end
----@param session integer
----@return gnoblin.Operation
-function capture:close(session) end
----@class gnoblin.captureCollection
----@field by_id fun(id: integer): gnoblin.capture|nil
----@field all fun(): gnoblin.capture[]
-
 ---@class gnoblin.config
 local config = {}
 ---@param name "reload_failed"
@@ -740,7 +726,6 @@ function workspace:on(name, callback) end
 ---@field all fun(): gnoblin.workspace[]
 
 ---@class gnoblin
----@field capture gnoblin.captureCollection
 ---@field config gnoblin.configCollection
 ---@field effect gnoblin.effectCollection
 ---@field eis gnoblin.eisCollection

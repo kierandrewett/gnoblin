@@ -5,283 +5,20 @@
 //! Every test grants or refuses through [`Table::open`], the same call the portal consent flow
 //! makes, never by reaching into the table.
 
-use std::cell::RefCell;
-use std::fs::File;
-use std::os::fd::OwnedFd;
-use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::rc::Rc;
-use std::sync::Once;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gnoblin_capture::{Copied, Format, PixelFormat, SessionId, Stop, Table, Target};
 use gnoblin_lock::{Capture, CaptureStream};
-use gnoblin_types::{ClientId, OutputId, Rect, Size, Tick};
-use pipewire::context::ContextRc;
-use pipewire::core::CoreRc;
-use pipewire::link::Link;
-use pipewire::loop_::Timeout;
-use pipewire::main_loop::MainLoopRc;
-use pipewire::properties::properties;
-use pipewire::registry::{Listener, RegistryRc};
-use pipewire::spa::pod::Pod;
-use pipewire::spa::utils::Direction;
-use pipewire::stream::{StreamFlags, StreamRc};
-use pipewire::types::ObjectType;
+use gnoblin_types::{ClientId, NodeId, OutputId, Rect, Size, Tick};
 
+use super::testing::{Consumer, Daemon, Observer};
 use super::{ExportError, PipewireExport, PlaneSource};
 
 const SIZE: Size = Size::new(64, 48);
-/// How long a registry change may take to reach the observer before a test gives up.
-const DEADLINE: Duration = Duration::from_secs(20);
-/// How long the observer listens before it trusts that no node is coming.
-const SETTLE: Duration = Duration::from_millis(400);
-/// The pixel the headless window paints, as the BGRx bytes of one stream pixel.
+/// The colour the headless window paints, as red, green and blue.
+const WINDOW_COLOUR: [u8; 3] = [0xc0, 0x80, 0x40];
+/// The same colour as the BGRx bytes of one stream pixel.
 const WINDOW_PIXEL: [u8; 4] = [0x40, 0x80, 0xc0, 0x00];
-
-static NEXT_DAEMON: AtomicUsize = AtomicUsize::new(0);
-static INIT: Once = Once::new();
-
-/// A private `pipewire` daemon. Dropping it kills the daemon and removes its runtime directory.
-struct Daemon {
-    child: Child,
-    runtime_dir: PathBuf,
-    log: PathBuf,
-}
-
-impl Daemon {
-    fn start() -> Self {
-        let index = NEXT_DAEMON.fetch_add(1, Ordering::Relaxed);
-        let runtime_dir = std::env::temp_dir().join(format!("gnoblin-pipewire-export-{}-{index}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&runtime_dir);
-        std::fs::create_dir_all(&runtime_dir).expect("create the daemon runtime directory");
-        let log = runtime_dir.join("daemon.log");
-        let log_file = File::create(&log).expect("create the daemon log");
-        let log_err = log_file.try_clone().expect("clone the daemon log handle");
-        let binary = std::env::var_os("GNOBLIN_PIPEWIRE_BIN").unwrap_or_else(|| "pipewire".into());
-        let child = Command::new(&binary)
-            .env("XDG_RUNTIME_DIR", &runtime_dir)
-            .env("PIPEWIRE_RUNTIME_DIR", &runtime_dir)
-            .stdin(Stdio::null())
-            .stdout(log_file)
-            .stderr(log_err)
-            .spawn()
-            .unwrap_or_else(|error| panic!("start {binary:?}: {error}"));
-        let mut daemon = Self {
-            child,
-            runtime_dir,
-            log,
-        };
-        daemon.wait_for_socket();
-        daemon
-    }
-
-    fn socket(&self) -> PathBuf {
-        self.runtime_dir.join("pipewire-0")
-    }
-
-    fn wait_for_socket(&mut self) {
-        let started = Instant::now();
-        while !self.socket().exists() {
-            if let Some(status) = self.child.try_wait().expect("poll the daemon") {
-                panic!("pipewire exited early ({status}): {}", self.log_tail());
-            }
-            assert!(
-                started.elapsed() < DEADLINE,
-                "pipewire socket never appeared at {}: {}",
-                self.socket().display(),
-                self.log_tail()
-            );
-            thread::sleep(Duration::from_millis(20));
-        }
-    }
-
-    fn log_tail(&self) -> String {
-        std::fs::read_to_string(&self.log).unwrap_or_default()
-    }
-}
-
-impl Drop for Daemon {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.runtime_dir);
-    }
-}
-
-/// One node the daemon holds, as the registry announced it.
-#[derive(Debug)]
-struct ObservedNode {
-    id: u32,
-    name: String,
-    class: String,
-    description: String,
-}
-
-/// One port the daemon holds: the node it belongs to and whether it is an output.
-#[derive(Debug)]
-struct SeenPort {
-    id: u32,
-    node: u32,
-    output: bool,
-}
-
-/// A second client of the daemon. It records every node the daemon holds and forgets a node
-/// when the daemon removes it.
-struct Observer {
-    mainloop: MainLoopRc,
-    core: CoreRc,
-    _registry: RegistryRc,
-    _listener: Listener,
-    /// Every node currently in the registry.
-    nodes: Rc<RefCell<Vec<ObservedNode>>>,
-    /// Every port currently in the registry.
-    ports: Rc<RefCell<Vec<SeenPort>>>,
-}
-
-impl Observer {
-    fn connect(socket: &Path) -> Self {
-        INIT.call_once(pipewire::init);
-        let mainloop = MainLoopRc::new(None).expect("create the observer main loop");
-        let core = connect_client(&mainloop, socket);
-        let registry = core.get_registry_rc().expect("get the observer registry");
-        let nodes = Rc::new(RefCell::new(Vec::<ObservedNode>::new()));
-        let ports = Rc::new(RefCell::new(Vec::<SeenPort>::new()));
-        let listener = registry
-            .add_listener_local()
-            .global({
-                let nodes = Rc::clone(&nodes);
-                let ports = Rc::clone(&ports);
-                move |global| {
-                    let props = global.props;
-                    let prop = |key: &str| props.and_then(|dict| dict.get(key)).unwrap_or_default().to_owned();
-                    if global.type_ == ObjectType::Port {
-                        ports.borrow_mut().push(SeenPort {
-                            id: global.id,
-                            node: prop("node.id").parse().unwrap_or_default(),
-                            output: prop("port.direction") == "out",
-                        });
-                        return;
-                    }
-                    if global.type_ != ObjectType::Node {
-                        return;
-                    }
-                    nodes.borrow_mut().push(ObservedNode {
-                        id: global.id,
-                        name: prop("node.name"),
-                        class: prop("media.class"),
-                        description: prop("node.description"),
-                    });
-                }
-            })
-            .global_remove({
-                let nodes = Rc::clone(&nodes);
-                let ports = Rc::clone(&ports);
-                move |id| {
-                    nodes.borrow_mut().retain(|seen| seen.id != id);
-                    ports.borrow_mut().retain(|port| port.id != id);
-                }
-            })
-            .register();
-        Self {
-            mainloop,
-            core,
-            _registry: registry,
-            _listener: listener,
-            nodes,
-            ports,
-        }
-    }
-
-    /// The daemon's id of the node named `name`, if the registry holds one.
-    fn node(&self, name: &str) -> Option<u32> {
-        self.nodes
-            .borrow()
-            .iter()
-            .find(|seen| seen.name == name)
-            .map(|seen| seen.id)
-    }
-
-    /// The daemon's id of the port on `node` that is an output (`output`) or an input.
-    fn port(&self, node: u32, output: bool) -> Option<u32> {
-        self.ports
-            .borrow()
-            .iter()
-            .find(|port| port.node == node && port.output == output)
-            .map(|port| port.id)
-    }
-
-    /// Links the output of node `from` to the input of node `to`. The private daemon runs no
-    /// session manager to make the link a user session would make, so the test makes it.
-    fn link(&self, from: u32, to: u32) -> Link {
-        let linked = drive(&self.mainloop, || {
-            self.port(from, true).is_some() && self.port(to, false).is_some()
-        });
-        assert!(
-            linked,
-            "the ports of nodes {from} and {to} never reached the observer; it saw {}",
-            self.describe()
-        );
-        let output = self.port(from, true).expect("the producer has an output port");
-        let input = self.port(to, false).expect("the consumer has an input port");
-        self.core
-            .create_object::<Link>(
-                "link-factory",
-                &properties! {
-                    "link.output.port" => output.to_string(),
-                    "link.input.port" => input.to_string()
-                },
-            )
-            .expect("link the producer to the consumer")
-    }
-
-    /// Listens for `SETTLE`, so a node that was going to appear has had time to.
-    fn settle(&self) {
-        let started = Instant::now();
-        while started.elapsed() < SETTLE {
-            self.mainloop
-                .loop_()
-                .iterate(Timeout::Finite(Duration::from_millis(10)));
-        }
-    }
-
-    /// Waits until the registry holds node `id`, or panics listing every node the observer saw.
-    fn wait_for(&self, id: u32) {
-        let seen = drive(&self.mainloop, || self.nodes.borrow().iter().any(|seen| seen.id == id));
-        assert!(
-            seen,
-            "node {id} never reached the observer within {DEADLINE:?}; it saw {}",
-            self.describe()
-        );
-    }
-
-    /// Every node the observer holds, one per line, for a failing test's message.
-    fn describe(&self) -> String {
-        let nodes = self.nodes.borrow();
-        if nodes.is_empty() {
-            return "no nodes at all".to_owned();
-        }
-        let lines: Vec<String> = nodes
-            .iter()
-            .map(|seen| {
-                format!(
-                    "id {} node.name {:?} media.class {:?} node.description {:?}",
-                    seen.id, seen.name, seen.class, seen.description
-                )
-            })
-            .collect();
-        format!("{} nodes:\n  {}", lines.len(), lines.join("\n  "))
-    }
-
-    /// Waits until the registry holds no node named `name`.
-    fn wait_gone(&self, name: &str) -> bool {
-        drive(&self.mainloop, || self.node(name).is_none())
-    }
-}
 
 /// A source with nothing to copy. The lifecycle tests never reach a frame.
 struct Nothing;
@@ -331,26 +68,6 @@ fn intruder() -> ClientId {
 /// The `node.name` the export gives the stream of `session`.
 fn stream_name(session: SessionId) -> String {
     format!("gnoblin-capture-{}", session.get())
-}
-
-fn connect_client(mainloop: &MainLoopRc, socket: &Path) -> CoreRc {
-    let context = ContextRc::new(mainloop, None).expect("create the client context");
-    let stream = UnixStream::connect(socket).expect("connect to the daemon socket");
-    context
-        .connect_fd_rc(OwnedFd::from(stream), None)
-        .expect("connect the client to the daemon")
-}
-
-/// Iterates `mainloop` until `done` holds or the deadline passes. Returns whether `done` held.
-fn drive(mainloop: &MainLoopRc, mut done: impl FnMut() -> bool) -> bool {
-    let started = Instant::now();
-    while !done() {
-        if started.elapsed() >= DEADLINE {
-            return false;
-        }
-        mainloop.loop_().iterate(Timeout::Finite(Duration::from_millis(10)));
-    }
-    true
 }
 
 #[test]
@@ -525,97 +242,171 @@ fn revoked_grant_tears_the_stream_down() {
     );
 }
 
+/// Drives `export` once per turn of a wait, on a tick of its own.
+fn pump_of<'a>(
+    export: &'a mut PipewireExport,
+    table: &'a mut Table,
+    source: &'a mut dyn PlaneSource,
+) -> impl FnMut() + 'a {
+    let mut tick = 0;
+    move || {
+        tick += 1;
+        export.pump(table, Tick::new(tick), Capture::Desktop, source);
+    }
+}
+
 /// A consumer of the export's node receives frames of the window colour, not empty or stale buffers.
 #[test]
 fn consumer_receives_frames_of_the_window_colour() {
     let daemon = Daemon::start();
-    let observer = Observer::connect(&daemon.socket());
     let mut table = Table::new();
     let session = table.open(owner(), output(), CaptureStream::Granted, format());
     let mut export = PipewireExport::with_socket(daemon.socket());
     let node = export
         .start(&table, session, owner())
         .expect("a granted session starts");
-    observer.wait_for(node);
+    let consumer = Consumer::connect(&daemon.socket(), node);
 
-    let received = Arc::new(Mutex::new(Vec::new()));
-    let consumer = StreamRc::new(
-        observer.core.clone(),
-        "gnoblin-capture-test-consumer",
-        properties! {
-            "media.type" => "Video",
-            "media.category" => "Capture"
-        },
-    )
-    .expect("create the consumer stream");
-    let states = Arc::new(Mutex::new(Vec::new()));
-    let _states_listener = consumer
-        .add_local_listener_with_user_data(Arc::clone(&states))
-        .state_changed(|_, states, old, new| {
-            states
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(format!("{old:?}->{new:?}"));
-        })
-        .register()
-        .expect("register the consumer state callback");
-    // The callbacks run on PipeWire's data thread, so the frame and state logs are shared through a
-    // Mutex. Never hold a guard across a call that pumps the loop: the callback would block on it.
-    let _listener = consumer
-        .add_local_listener_with_user_data(Arc::clone(&received))
-        .process(|stream, received| {
-            let Some(mut buffer) = stream.dequeue_buffer() else {
-                return;
-            };
-            let Some(data) = buffer.datas_mut().first_mut() else {
-                return;
-            };
-            let size = data.chunk().size() as usize;
-            let matches = data.data().is_some_and(|bytes| {
-                let Some(plane) = bytes.get(..size) else {
-                    return false;
-                };
-                !plane.is_empty() && plane.as_chunks::<4>().0.iter().all(|pixel| *pixel == WINDOW_PIXEL)
-            });
-            received.lock().unwrap_or_else(PoisonError::into_inner).push(matches);
-        })
-        .register()
-        .expect("register the consumer callbacks");
-    let format_bytes = super::format_pod(format()).expect("the format pod serialises");
-    let mut params = [Pod::from_bytes(&format_bytes).expect("the format pod is valid")];
-    consumer
-        .connect(
-            Direction::Input,
-            Some(node),
-            StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
-            &mut params,
-        )
-        .expect("connect the consumer to the export's node");
-    // The private daemon runs no session manager, so nothing links the streams. The test links them.
-    let consumer_node = super::wait_for_node(&observer.mainloop, &consumer).expect("the consumer gets a node");
-    let _link = observer.link(node, consumer_node);
-
-    let mut tick = 0;
-    let delivered = drive(&observer.mainloop, || {
-        tick += 1;
-        export.pump(&mut table, Tick::new(tick), Capture::Desktop, &mut SolidSource);
-        received
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter(|matches| **matches)
-            .count()
-            >= 3
-    });
-    let frames = received.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let producer: Vec<_> = export.exports.values().map(|export| export.stream.state()).collect();
+    let frame = consumer.wait_for_frame_pumping(
+        "of the window colour",
+        pump_of(&mut export, &mut table, &mut SolidSource),
+        |frame| frame.is_solid(WINDOW_COLOUR),
+    );
+    assert_eq!((frame.width, frame.height), (SIZE.width, SIZE.height));
     assert!(
-        delivered,
-        "three frames of the window colour arrive within the deadline, got {frames:?}; consumer states {:?}; producer {producer:?}",
-        states.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        consumer.frames().iter().all(|frame| frame.is_solid(WINDOW_COLOUR)),
+        "every frame is the window colour"
+    );
+}
+
+/// A source whose target is drawn at a size the test changes, painting every pixel one colour.
+struct Resizable {
+    size: Size,
+    colour: [u8; 4],
+}
+
+impl PlaneSource for Resizable {
+    fn bounds(&self, _target: Target) -> Option<Rect> {
+        Some(Rect::from_size(self.size))
+    }
+
+    fn copy_into(&mut self, _target: Target, _region: Rect, _format: Format, plane: &mut [u8]) -> Copied {
+        for pixel in plane.as_chunks_mut::<4>().0 {
+            *pixel = self.colour;
+        }
+        Copied::Copied
+    }
+}
+
+/// A stream of a View is the View at the size it is drawn at: when the View grows and shrinks, the consumer is
+/// renegotiated to the new size and receives whole pictures of it, not a crop of the size the stream started at.
+#[test]
+fn a_view_stream_follows_the_size_the_view_is_drawn_at() {
+    let daemon = Daemon::start();
+    let mut table = Table::new();
+    let view = Target::View(NodeId::new(5));
+    let session = table.open(owner(), view, CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export
+        .start(&table, session, owner())
+        .expect("a granted session starts");
+    let consumer = Consumer::connect(&daemon.socket(), node);
+    let mut source = Resizable {
+        size: SIZE,
+        colour: WINDOW_PIXEL,
+    };
+
+    consumer.wait_for_frame_pumping(
+        "of the View at its first size",
+        pump_of(&mut export, &mut table, &mut source),
+        |frame| frame.is_solid(WINDOW_COLOUR) && (frame.width, frame.height) == (SIZE.width, SIZE.height),
+    );
+    for grown in [Size::new(96, 80), Size::new(40, 24)] {
+        source.size = grown;
+        let frame = consumer.wait_for_frame_pumping(
+            "of the View at its new size",
+            pump_of(&mut export, &mut table, &mut source),
+            |frame| frame.is_solid(WINDOW_COLOUR) && (frame.width, frame.height) == (grown.width, grown.height),
+        );
+        assert!(frame.is_whole(), "the picture is exactly the View's size");
+        assert_eq!(
+            table.get(session).map(|entry| entry.format().size()),
+            Some(grown),
+            "the session's shape followed the View"
+        );
+    }
+}
+
+/// The size of an output is the output's, not the stream's to follow: a stream of one keeps the shape it was
+/// negotiated in, and the picture is cut or padded to it.
+#[test]
+fn an_output_stream_keeps_the_size_it_started_with() {
+    let daemon = Daemon::start();
+    let mut table = Table::new();
+    let session = table.open(owner(), output(), CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export
+        .start(&table, session, owner())
+        .expect("a granted session starts");
+    let consumer = Consumer::connect(&daemon.socket(), node);
+    let mut source = Resizable {
+        size: Size::new(96, 80),
+        colour: WINDOW_PIXEL,
+    };
+    consumer.wait_for_frame_pumping(
+        "of the output at the size the stream started with",
+        pump_of(&mut export, &mut table, &mut source),
+        |frame| frame.is_solid(WINDOW_COLOUR) && (frame.width, frame.height) == (SIZE.width, SIZE.height),
+    );
+    consumer.listen_pumping(
+        Duration::from_millis(500),
+        pump_of(&mut export, &mut table, &mut source),
     );
     assert!(
-        frames.iter().all(|matches| *matches),
-        "every frame is the window colour, got {frames:?}"
+        consumer
+            .frames()
+            .iter()
+            .all(|frame| (frame.width, frame.height) == (SIZE.width, SIZE.height)),
+        "no frame of another size arrived"
+    );
+}
+
+/// The lock ends the stream of a View whether or not anyone reads it: the node leaves the daemon without a frame
+/// ever being asked for, and a stream of an output the lock scene may show goes on.
+#[test]
+fn the_lock_ends_a_view_stream_nobody_reads_and_leaves_an_output_stream_alone() {
+    let daemon = Daemon::start();
+    let observer = Observer::connect(&daemon.socket());
+    let mut table = Table::new();
+    let view = table.open(owner(), Target::View(NodeId::new(5)), CaptureStream::Granted, format());
+    let screen = table.open(owner(), output(), CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let view_node = export.start(&table, view, owner()).expect("a View stream starts");
+    let screen_node = export.start(&table, screen, owner()).expect("an output stream starts");
+    observer.wait_for(view_node);
+    observer.wait_for(screen_node);
+
+    // Several turns while the lock scene is up: a stream the lock refuses is stopped on the first.
+    for tick in 1..=5 {
+        export.pump(&mut table, Tick::new(tick), Capture::LockScene, &mut Nothing);
+    }
+    assert!(
+        observer.wait_gone(&stream_name(view)),
+        "the lock removed the View's node although nobody read it"
+    );
+    assert_eq!(
+        table.get(view).and_then(|entry| entry.stopped()),
+        Some(Stop::Embargoed),
+        "the View's session is stopped for the lock"
+    );
+    assert_eq!(
+        observer.node(&stream_name(screen)),
+        Some(screen_node),
+        "an output the lock scene may show keeps its stream"
+    );
+    assert_eq!(
+        export.start(&table, view, owner()),
+        Err(ExportError::Stopped),
+        "a View stream does not come back when the lock is released"
     );
 }

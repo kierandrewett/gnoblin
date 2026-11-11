@@ -535,16 +535,16 @@ impl<T: Transport> Client<T> {
         self.await_reply(correlation).map(drop)
     }
 
-    /// Tell the compositor the user approved screen cast `session` of `output`. Privileged.
-    pub fn cast_grant(&mut self, session: &str, output: u64) -> Result<(), ClientError> {
+    /// Tell the compositor the user approved screen cast `session` of `source`, an output or a View. Privileged.
+    pub fn cast_grant(&mut self, session: &str, source: wire::CastSource) -> Result<(), ClientError> {
         let correlation = self.next_id();
-        self.send(&wire::cast_grant(correlation, session, output))?;
+        self.send(&wire::cast_grant(correlation, session, source))?;
         self.await_reply(correlation).map(drop)
     }
 
     /// Start the PipeWire stream of approved screen cast `session`. The compositor refuses
     /// a session the user did not approve ([`crate::code::NO_CONSENT`]) and one it cannot
-    /// stream (locked, no such output, no PipeWire). Privileged.
+    /// stream (locked, no such output or View, no PipeWire). Privileged.
     pub fn cast_start(&mut self, session: &str) -> Result<wire::CastStream, ClientError> {
         let correlation = self.next_id();
         self.send(&wire::cast_start(correlation, session))?;

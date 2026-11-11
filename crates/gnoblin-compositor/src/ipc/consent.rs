@@ -10,8 +10,8 @@
 //! | Remote desktop, no | `remote.refuse {session}` | records the refusal; the session never gets a socket |
 //! | Remote desktop, connect | `remote.connect {session}` | opens a one-shot EIS socket for the approved session and answers its path; any other session is refused |
 //! | Remote desktop, end | `remote.end {session}` | ends the session's EIS connection after releasing what it held |
-//! | Screen cast, yes | `cast.grant {session, output}` | records the approval of that one output |
-//! | Screen cast, start | `cast.start {session}` | starts the PipeWire stream of the approved output and answers its node; a session with no approval is refused |
+//! | Screen cast, yes | `cast.grant {session, source}` | records the approval of that one source: an output, or a View named by its node id |
+//! | Screen cast, start | `cast.start {session}` | starts the PipeWire stream of the approved output or View (the View's picture at the View's size) and answers its node; a session with no approval is refused, and so is one whose output or View is not there (`no-output`, `no-view`) |
 //! | Screen cast, end | `cast.end {session}` | ends the stream |
 //!
 //! Every member is the owner's ([`super::server`]'s one owner predicate): the portal is
@@ -43,9 +43,9 @@
 use std::collections::BTreeMap;
 
 use gnoblin_capture::{SessionId, Target};
-use gnoblin_client::wire::{self, CastStream as WireCast};
+use gnoblin_client::wire::{self, CastSource, CastStream as WireCast};
 use gnoblin_input_eis::{Caps, Region};
-use gnoblin_types::{ClientId, OutputId};
+use gnoblin_types::{ClientId, NodeId, OutputId};
 use gnoblin_wayland::{CastRefusal, ControlHandle, SessionSnapshot};
 
 use crate::eis::{EisGate, SessionError};
@@ -128,8 +128,8 @@ struct Remote {
 struct Cast {
     /// The connection that recorded its answer.
     holder: ClientId,
-    /// The output the user approved, or [`None`] for the first one the compositor has.
-    output: Option<OutputId>,
+    /// What the user approved: an output (or the first one the compositor has), or a View.
+    source: CastSource,
     /// The stream, once it was started.
     started: Option<(SessionId, WireCast)>,
 }
@@ -220,9 +220,10 @@ impl Consent {
         }
     }
 
-    /// `cast.grant`: the user approved a cast of `output` for `session`. An `output` of
-    /// [`wire::OUTPUT_FIRST`] names none, and the cast takes the first output when it starts.
-    pub(crate) fn cast_grant(&mut self, holder: ClientId, session: &str, output: u64) -> Result<(), Refusal> {
+    /// `cast.grant`: the user approved a cast of `source` for `session`. An output of
+    /// [`wire::OUTPUT_FIRST`] names none, and the cast takes the first output when it starts. A View is named by its
+    /// node id, and is only checked when the stream starts: a View that is not there then is refused `no-view`.
+    pub(crate) fn cast_grant(&mut self, holder: ClientId, session: &str, source: CastSource) -> Result<(), Refusal> {
         if self.cast.contains_key(session) {
             return Err(Refusal::taken(session));
         }
@@ -230,18 +231,29 @@ impl Consent {
             session.to_owned(),
             Cast {
                 holder,
-                output: (output != wire::OUTPUT_FIRST).then(|| OutputId::new(output)),
+                source,
                 started: None,
             },
         );
         Ok(())
     }
 
+    /// What an approval of `source` captures now: the output it names, or the first one `snapshot` lists when it
+    /// names none, or the View it names. [`None`] when it names no output and the session has none.
+    fn target_of(source: CastSource, snapshot: &SessionSnapshot) -> Option<Target> {
+        match source {
+            CastSource::Output(output) if output != wire::OUTPUT_FIRST => Some(Target::Output(OutputId::new(output))),
+            CastSource::Output(_) => snapshot.outputs().first().copied().map(Target::Output),
+            CastSource::View(view) => Some(Target::View(NodeId::new(view))),
+        }
+    }
+
     /// `cast.start`: the PipeWire stream of an approved session.
     ///
     /// Starting twice answers the same node, so a portal that retries a start it did not
     /// hear the answer to does not make a second stream. An approval that named no output
-    /// means the first one `snapshot` lists now.
+    /// means the first one `snapshot` lists now. An approval of a View streams that View, and is refused when it
+    /// is not in the scene.
     pub(crate) fn cast_start(
         &mut self,
         holder: ClientId,
@@ -261,22 +273,28 @@ impl Consent {
         if let Some((_, started)) = &cast.started {
             return Ok(*started);
         }
-        let Some(output) = cast.output.or_else(|| snapshot.outputs().first().copied()) else {
+        let Some(target) = Self::target_of(cast.source, snapshot) else {
             return Err(Refusal::new(
                 wire::code::CAPTURE_NO_OUTPUT,
                 "there is no output to cast",
             ));
         };
-        let stream = match control.start_cast(holder, Target::Output(output)) {
+        let stream = match control.start_cast(holder, target) {
             Some(Ok(stream)) => stream,
             Some(Err(CastRefusal::Locked)) => {
                 return Err(Refusal::new(wire::code::CAPTURE_LOCKED, "the session is locked"));
             }
             Some(Err(CastRefusal::NoTarget)) => {
-                return Err(Refusal::new(
-                    wire::code::CAPTURE_NO_OUTPUT,
-                    format!("the approved output {} is not there", output.get()),
-                ));
+                return Err(match target {
+                    Target::View(view) => Refusal::new(
+                        wire::code::CAPTURE_NO_VIEW,
+                        format!("the approved View {} is not in the scene", view.get()),
+                    ),
+                    Target::Output(_) | Target::Window(_) => Refusal::new(
+                        wire::code::CAPTURE_NO_OUTPUT,
+                        format!("the approved target {target} is not there"),
+                    ),
+                });
             }
             Some(Err(CastRefusal::Unavailable(reason))) => {
                 return Err(Refusal::new(wire::code::CAPTURE_UNAVAILABLE, reason));
@@ -406,10 +424,33 @@ mod tests {
     fn a_cast_grant_that_names_no_output_means_the_first_one() {
         let mut consent = Consent::new(EisGate::default());
         consent
-            .cast_grant(ClientId::new(1), "/session/1", wire::OUTPUT_FIRST)
+            .cast_grant(ClientId::new(1), "/session/1", CastSource::Output(wire::OUTPUT_FIRST))
             .expect("recorded");
-        consent.cast_grant(ClientId::new(1), "/session/2", 7).expect("recorded");
-        assert_eq!(consent.cast["/session/1"].output, None);
-        assert_eq!(consent.cast["/session/2"].output, Some(OutputId::new(7)));
+        consent
+            .cast_grant(ClientId::new(1), "/session/2", CastSource::Output(7))
+            .expect("recorded");
+        assert_eq!(
+            consent.cast["/session/1"].source,
+            CastSource::Output(wire::OUTPUT_FIRST)
+        );
+        assert_eq!(consent.cast["/session/2"].source, CastSource::Output(7));
+        assert_eq!(
+            Consent::target_of(CastSource::Output(7), &SessionSnapshot::default()),
+            Some(Target::Output(OutputId::new(7)))
+        );
+        assert_eq!(
+            Consent::target_of(CastSource::Output(wire::OUTPUT_FIRST), &SessionSnapshot::default()),
+            None,
+            "a session with no output has no first one"
+        );
+    }
+
+    #[test]
+    fn a_cast_grant_that_names_a_view_is_a_view_target_and_never_an_output() {
+        let view = (1 << 32) | 0x102;
+        assert_eq!(
+            Consent::target_of(CastSource::View(view), &SessionSnapshot::default()),
+            Some(Target::View(NodeId::new(view)))
+        );
     }
 }

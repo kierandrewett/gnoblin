@@ -22,5 +22,10 @@ gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # Only this crate links PipeWire.
 pipewire = { version = "0.10", features = ["v0_3_34"] }
 
+[features]
+# The private-daemon and consumer helpers (`testing.rs`), for the integration tests of the crates whose streams
+# a test must read. Nothing in a shipped build turns it on.
+testing = []
+
 [lints]
 workspace = true

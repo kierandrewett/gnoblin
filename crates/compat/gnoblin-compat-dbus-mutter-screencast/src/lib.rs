@@ -31,13 +31,11 @@
 //!
 //! # The missing compositor half
 //!
-//! The schema slice declares the `capture` object (`capture.open`, `capture.close`) so
-//! the bridge is an ordinary IPC call rather than a private channel. No compositor
-//! handler creates that object yet: `gnoblin-compositor`'s IPC server serves only
-//! `window.focus` today. Until the capture lane adds the handler, a real services role
-//! reports `capture.open` as refused to a caller that reaches `Session.Start` in
-//! `unmediated` mode; the adapter itself is complete and is proved against a fake IPC
-//! host, which is what [`CaptureBridge`] is.
+//! The compositor's schema declares no capture object: the old `capture.open`/`capture.close` slice was removed when a
+//! View replaced it (design/node-core.md), and nothing in the compositor serves it. A screen cast is the portal's
+//! consent flow (`cast.grant`, `cast.start`). Until a host implements [`CaptureBridge`] over a call of its own, a real
+//! services role refuses a caller that reaches `Session.Start` in `unmediated` mode; the adapter itself is complete
+//! and is proved against a fake IPC host, which is what [`CaptureBridge`] is.
 //!
 //! # Failure modes first
 //!

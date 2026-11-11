@@ -5,10 +5,11 @@
 //! transport need not be. This trait is the one place the two halves meet, following
 //! the same seam `gnoblin-compat-dbus-mutter-displayconfig` uses for its write path.
 //!
-//! A host implements it over its privileged connection by calling the schema's
-//! `capture.open` and `capture.close` members with these arguments:
+//! A host implements it over its privileged connection. The compositor's schema has no `capture` object any more
+//! (a View replaced it, and a screen cast is the portal's `cast.grant`/`cast.start` consent flow), so the host chooses
+//! the call. It passes these arguments to open and close a session:
 //!
-//! | call | `capture.open` | `capture.close` |
+//! | call | open | close |
 //! | --- | --- | --- |
 //! | session | the identity the host allocated | the identity it opened with |
 //! | owner | the D-Bus unique name of the caller | not needed |
@@ -54,7 +55,7 @@ impl fmt::Display for CaptureHandle {
 /// Why the compositor did not open or close a session.
 ///
 /// The sentence is the host's, because only it knows whether the IPC refused the call,
-/// the connection ended, or the schema named no `capture` object. The adapter never
+/// the connection ended, or the compositor serves no such call. The adapter never
 /// invents a cause.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct BridgeError {

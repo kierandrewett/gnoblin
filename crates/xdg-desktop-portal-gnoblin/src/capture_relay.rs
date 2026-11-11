@@ -12,14 +12,14 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use gnoblin_capture::Target;
-use gnoblin_client::wire::CastStream;
+use gnoblin_client::wire::{CastSource, CastStream};
 use gnoblin_model::Value;
 
 use crate::backends::{
     CaptureBackend, ScreenshotError, ScreenshotOptions, Stream, StreamId, StreamRequest, Unavailable,
 };
 use crate::host::{ConsentAnswer, ConsentCall, IpcHost};
-use crate::iface::capture::SOURCE_MONITOR;
+use crate::iface::capture::{SOURCE_MONITOR, SOURCE_VIRTUAL};
 use crate::log;
 use crate::picture;
 
@@ -28,9 +28,9 @@ pub trait ScreenSource: Send + Sync {
     /// One PNG of the whole output, or the reason the compositor did not give one.
     fn screen_png(&self) -> Result<Vec<u8>, ScreenshotError>;
 
-    /// Tell the compositor the user approved a cast of `output` for `session` and start its
+    /// Tell the compositor the user approved a cast of `source` for `session` and start its
     /// PipeWire stream. The compositor refuses the start when it holds no such approval.
-    fn open_cast(&self, session: &str, output: u64) -> Result<CastStream, Unavailable>;
+    fn open_cast(&self, session: &str, source: CastSource) -> Result<CastStream, Unavailable>;
 
     /// The session ended: its stream ends with it.
     fn close_cast(&self, session: &str);
@@ -41,10 +41,10 @@ impl ScreenSource for IpcHost {
         self.capture_screen()
     }
 
-    fn open_cast(&self, session: &str, output: u64) -> Result<CastStream, Unavailable> {
+    fn open_cast(&self, session: &str, source: CastSource) -> Result<CastStream, Unavailable> {
         self.consent(ConsentCall::CastGrant {
             session: session.to_owned(),
-            output,
+            source,
         })?;
         let started = self.consent(ConsentCall::CastStart {
             session: session.to_owned(),
@@ -135,19 +135,23 @@ impl<S: ScreenSource> CaptureBackend for CaptureRelay<S> {
     }
 
     fn open_stream(&self, request: &StreamRequest) -> Result<Stream, Unavailable> {
-        let Target::Output(output) = request.target else {
-            return Err(Unavailable::refused(
-                "only an output can be shared in this build; a window or a View is not served",
-            ));
+        let (source, source_type) = match request.target {
+            Target::Output(output) => (CastSource::Output(output.get()), SOURCE_MONITOR),
+            Target::View(view) => (CastSource::View(view.get()), SOURCE_VIRTUAL),
+            Target::Window(_) => {
+                return Err(Unavailable::refused(
+                    "only an output or a View can be shared in this build; a window is not served",
+                ));
+            }
         };
-        let cast = self.source.open_cast(&request.session, output.get())?;
+        let cast = self.source.open_cast(&request.session, source)?;
         let id = StreamId::new(self.next_stream.fetch_add(1, Ordering::Relaxed).saturating_add(1));
         self.streams
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(id, request.session.clone());
         let mut properties = BTreeMap::new();
-        properties.insert("source_type".to_owned(), Value::Uint(u64::from(SOURCE_MONITOR)));
+        properties.insert("source_type".to_owned(), Value::Uint(u64::from(source_type)));
         Ok(Stream {
             id,
             node: cast.node,
@@ -189,7 +193,7 @@ mod tests {
             Ok(self.0.clone())
         }
 
-        fn open_cast(&self, _session: &str, _output: u64) -> Result<CastStream, Unavailable> {
+        fn open_cast(&self, _session: &str, _source: CastSource) -> Result<CastStream, Unavailable> {
             Err(Unavailable::missing("cast.start"))
         }
 
@@ -204,7 +208,7 @@ mod tests {
             panic!("an interactive request must be refused before the compositor is asked");
         }
 
-        fn open_cast(&self, _session: &str, _output: u64) -> Result<CastStream, Unavailable> {
+        fn open_cast(&self, _session: &str, _source: CastSource) -> Result<CastStream, Unavailable> {
             panic!("a screenshot never opens a cast");
         }
 
@@ -304,5 +308,80 @@ mod tests {
             screenshot_into(|| Ok(Vec::new()), &dir),
             Err(ScreenshotError::Write(_))
         ));
+    }
+
+    /// A compositor that records what it was told the user approved, and answers a stream.
+    #[derive(Default)]
+    struct Recording {
+        sources: Mutex<Vec<CastSource>>,
+    }
+
+    impl ScreenSource for Recording {
+        fn screen_png(&self) -> Result<Vec<u8>, ScreenshotError> {
+            panic!("a cast never takes a screenshot");
+        }
+
+        fn open_cast(&self, _session: &str, source: CastSource) -> Result<CastStream, Unavailable> {
+            self.sources.lock().unwrap().push(source);
+            Ok(CastStream {
+                node: 42,
+                x: 0,
+                y: 0,
+                width: 64,
+                height: 48,
+            })
+        }
+
+        fn close_cast(&self, _session: &str) {}
+    }
+
+    fn request(target: Target) -> StreamRequest {
+        StreamRequest {
+            session: "/session/1".to_owned(),
+            target,
+            cursor_mode: 2,
+            multiple: false,
+        }
+    }
+
+    #[test]
+    fn a_view_target_is_approved_to_the_compositor_as_a_view_and_streams_as_a_virtual_source() {
+        let relay = CaptureRelay::new(Recording::default(), None);
+        let view = (1 << 32) | 0x102;
+        let stream = relay
+            .open_stream(&request(Target::View(gnoblin_types::NodeId::new(view))))
+            .expect("a View is served");
+        assert_eq!(stream.node, 42);
+        assert_eq!(
+            relay.source.sources.lock().unwrap().as_slice(),
+            [CastSource::View(view)],
+            "the full node id reaches the compositor, epoch included"
+        );
+        assert_eq!(
+            stream.properties.get("source_type"),
+            Some(&Value::Uint(u64::from(SOURCE_VIRTUAL)))
+        );
+
+        let output = relay
+            .open_stream(&request(Target::Output(gnoblin_types::OutputId::new(3))))
+            .expect("an output is served");
+        assert_eq!(
+            output.properties.get("source_type"),
+            Some(&Value::Uint(u64::from(SOURCE_MONITOR)))
+        );
+        assert_eq!(
+            relay.source.sources.lock().unwrap().last(),
+            Some(&CastSource::Output(3))
+        );
+    }
+
+    #[test]
+    fn a_window_target_is_refused_before_the_compositor_is_asked() {
+        let relay = CaptureRelay::new(Recording::default(), None);
+        let refused = relay
+            .open_stream(&request(Target::Window(gnoblin_types::WindowId::new(1))))
+            .expect_err("a window is not served");
+        assert!(refused.reason.contains("window"), "{refused}");
+        assert!(relay.source.sources.lock().unwrap().is_empty());
     }
 }

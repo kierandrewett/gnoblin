@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gnoblin_pipewire_export::testing::{Consumer, Daemon};
 use gnoblin_render::Scene;
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_secret::SecretText;
@@ -1711,4 +1712,318 @@ fn a_check_that_cannot_run_keeps_the_session_locked_and_answers_without_the_pass
             assert_eq!(lock_state(&owner, node).as_deref(), Some("locked"));
         });
     }
+}
+
+// A View as a PipeWire cast source. The portal's half is the IPC (`cast.grant`, `cast.start`); what the compositor
+// does at `cast.start` is `ControlHandle::start_cast`, called here as the IPC server calls it. Each test runs a
+// private PipeWire daemon and reads the stream with a consumer linked to its node, so what is asserted is the pixels
+// an app would receive.
+
+/// The IPC connection that holds the user's consent, as the compositor names it.
+const PORTAL: gnoblin_types::ClientId = gnoblin_types::ClientId::new(1);
+
+/// A colour word as `[red, green, blue]`.
+fn rgb(word: u32) -> [u8; 3] {
+    [(word >> 16) as u8, (word >> 8) as u8, word as u8]
+}
+
+/// A session whose casts go to `daemon`, with the extras a test hands the loop.
+fn start_casting(
+    daemon: &Daemon,
+    observer: Option<Arc<dyn Observer>>,
+    clock: Option<Arc<dyn Clock>>,
+) -> (Session, Owner) {
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras {
+        observer,
+        clock,
+        pipewire_socket: Some(daemon.socket()),
+        ..Extras::default()
+    };
+    (Session::start_with_extras(None, hooks, extras), owner)
+}
+
+/// Starts the cast of `view` as the portal does after the user said yes, and answers the stream.
+#[track_caller]
+fn cast(handle: &Handle, view: NodeId) -> gnoblin_wayland::CastStream {
+    handle
+        .control
+        .start_cast(PORTAL, gnoblin_capture::Target::View(view))
+        .expect("the loop answers a stream start")
+        .expect("a View in the scene is cast")
+}
+
+/// The name the compositor gives the PipeWire node of `stream`.
+fn node_name(stream: &gnoblin_wayland::CastStream) -> String {
+    format!("gnoblin-capture-{}", stream.session.get())
+}
+
+/// A stream of a View is the View's picture at the View's size: a consumer linked to its node receives a frame whose
+/// every pixel is the colour of the window the View draws, and the privacy indicator is on for as long as the stream
+/// runs.
+#[test]
+fn a_cast_of_a_view_delivers_the_views_pixels_and_keeps_the_indicator_on_while_it_runs() {
+    let daemon = Daemon::start();
+    let recorder = Arc::new(Recorder::default());
+    let (session, owner) = start_casting(&daemon, Some(recorder.clone()), None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+
+        let stream = cast(handle, VIEW);
+        assert_eq!(
+            (stream.size.width, stream.size.height),
+            (SIDE, SIDE),
+            "the stream is the View's size"
+        );
+        assert_eq!(
+            recorder
+                .seen
+                .lock()
+                .expect("the recorder lock")
+                .last()
+                .map(|seen| seen.0),
+            Some(1),
+            "the indicator's count of capture sessions is up when the start is answered"
+        );
+
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let frame = consumer.wait_for_frame("of the View's colour", |frame| frame.is_solid(rgb(SOURCE)));
+        assert_eq!(
+            (frame.width, frame.height),
+            (SIDE, SIDE),
+            "the consumer negotiated the View's size"
+        );
+
+        handle.control.stop_cast(stream.session);
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the stream's node leaves the daemon when the cast ends"
+        );
+        wait_for_count(&recorder, 0);
+    });
+}
+
+/// Waits until the last publish counted `count` capture sessions.
+#[track_caller]
+fn wait_for_count(recorder: &Recorder, count: usize) {
+    let deadline = Instant::now() + TIMEOUT;
+    while Instant::now() < deadline {
+        if recorder
+            .seen
+            .lock()
+            .expect("the recorder lock")
+            .last()
+            .map(|seen| seen.0)
+            == Some(count)
+        {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("the indicator never showed {count} capture sessions");
+}
+
+/// A View that changes is sent again: the window is repainted, the View draws it, and the next frame the consumer
+/// receives is the new colour.
+#[test]
+fn a_cast_of_a_view_sends_a_new_frame_when_the_view_changes() {
+    let daemon = Daemon::start();
+    let (session, owner) = start_casting(&daemon, None, None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the first colour", |frame| frame.is_solid(rgb(SOURCE)));
+
+        window.paint(&mut app, REPAINTED);
+        consumer.wait_for_frame("of the repainted colour", |frame| frame.is_solid(rgb(REPAINTED)));
+    });
+}
+
+/// The stream shows a secure window as the mask and never as its pixels, from the frame after the mark and for as
+/// long as it stands, and shows the window again once the mark is cleared.
+#[test]
+fn a_cast_of_a_view_masks_a_secure_window() {
+    let daemon = Daemon::start();
+    let (session, owner) = start_casting(&daemon, None, None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
+        let (window, ..) = owner.window();
+
+        mark_secure(&owner, window, true);
+        consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
+        // From the first masked frame on, no frame the stream sends holds a pixel of the window.
+        consumer.forget();
+        consumer.listen(Duration::from_millis(600));
+        let frames = consumer.frames();
+        assert!(!frames.is_empty(), "the stream keeps delivering frames while masked");
+        assert!(
+            frames.iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
+            "no frame holds a pixel of the secure window"
+        );
+
+        mark_secure(&owner, window, false);
+        consumer.wait_for_frame("of the window's colour again", |frame| frame.is_solid(rgb(SOURCE)));
+    });
+}
+
+/// The lock ends the stream: its node leaves the daemon, and a cast started while the desktop is locked is refused,
+/// because a user who consented to a cast did not consent to one of a locked desktop.
+#[test]
+fn the_session_lock_ends_a_cast_of_a_view_and_refuses_a_new_one() {
+    let daemon = Daemon::start();
+    let (session, owner) = start_casting(&daemon, None, None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
+
+        let _locker = lock(handle.socket());
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the lock ends the stream: its node is gone"
+        );
+        consumer.forget();
+        consumer.listen(Duration::from_millis(300));
+        assert!(
+            consumer.frames().iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
+            "no frame of the desktop arrives after the lock"
+        );
+        let refused = handle
+            .control
+            .start_cast(PORTAL, gnoblin_capture::Target::View(VIEW))
+            .expect("the loop answers");
+        assert_eq!(refused, Err(gnoblin_wayland::CastRefusal::Locked));
+    });
+}
+
+/// A View that is destroyed ends its stream: the node leaves the daemon, the indicator goes off, and the View is no
+/// longer a target.
+#[test]
+fn a_cast_of_a_view_ends_cleanly_when_the_view_is_destroyed() {
+    let daemon = Daemon::start();
+    let recorder = Arc::new(Recorder::default());
+    let (session, owner) = start_casting(&daemon, Some(recorder.clone()), None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
+        wait_for_count(&recorder, 1);
+
+        owner.transact(|| vec![TreeOp::Destroy { node: VIEW }]);
+        owner.frames(3);
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the node leaves the daemon with the View"
+        );
+        wait_for_count(&recorder, 0);
+        let again = handle
+            .control
+            .start_cast(PORTAL, gnoblin_capture::Target::View(VIEW))
+            .expect("the loop answers");
+        assert_eq!(again, Err(gnoblin_wayland::CastRefusal::NoTarget));
+    });
+}
+
+/// A View that is not in the scene is not a target: the start is refused by name and makes no node.
+#[test]
+fn a_cast_of_a_view_that_is_not_there_is_refused() {
+    let daemon = Daemon::start();
+    let (session, _owner) = start_casting(&daemon, None, None);
+    session.run(move |handle| {
+        let refused = handle
+            .control
+            .start_cast(PORTAL, gnoblin_capture::Target::View(VIEW))
+            .expect("the loop answers");
+        assert_eq!(refused, Err(gnoblin_wayland::CastRefusal::NoTarget));
+        let observer = gnoblin_pipewire_export::testing::Observer::connect(&daemon.socket());
+        observer.settle();
+        assert_eq!(observer.node("gnoblin-capture-1"), None, "no node was made");
+    });
+}
+
+/// The stream is the View at the size it is drawn at: when the owner shrinks the View, the consumer is renegotiated
+/// and receives whole pictures of the new size.
+#[test]
+fn a_cast_of_a_view_follows_the_size_of_the_view() {
+    let daemon = Daemon::start();
+    let (session, owner) = start_casting(&daemon, None, None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the View's first size", |frame| {
+            frame.is_solid(rgb(SOURCE)) && (frame.width, frame.height) == (SIDE, SIDE)
+        });
+
+        owner.transact(|| {
+            vec![TreeOp::Set {
+                node: VIEW,
+                key: "height".to_owned(),
+                value: TreeValue::Double(f64::from(SIDE / 2)),
+                timing: None,
+            }]
+        });
+        owner.frames(3);
+        consumer.wait_for_frame("of the View's new size", |frame| {
+            frame.is_solid(rgb(SOURCE)) && (frame.width, frame.height) == (SIDE, SIDE / 2)
+        });
+    });
+}
+
+/// A View's `fps` bounds how often its picture changes, and so how often the stream carries something new: the
+/// window is repainted, the session's clock has not moved, and the stream still carries the old picture; when the
+/// slot ends it carries the new one.
+#[test]
+fn a_cast_of_a_view_carries_a_new_picture_no_more_often_than_the_views_fps() {
+    let daemon = Daemon::start();
+    let clock = Arc::new(ManualClock::new());
+    let (session, owner) = start_casting(&daemon, None, Some(clock.clone()));
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        owner.transact(|| {
+            vec![TreeOp::Set {
+                node: VIEW,
+                key: "fps".to_owned(),
+                value: TreeValue::Uint(2),
+                timing: None,
+            }]
+        });
+        let stream = cast(handle, VIEW);
+        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the first colour", |frame| frame.is_solid(rgb(SOURCE)));
+
+        window.paint(&mut app, REPAINTED);
+        owner.frames(3);
+        consumer.forget();
+        consumer.listen(Duration::from_millis(600));
+        assert!(
+            consumer.frames().iter().all(|frame| frame.is_solid(rgb(SOURCE))),
+            "no time has passed on the session's clock, so the stream keeps the View's picture"
+        );
+
+        clock.advance(Duration::from_millis(500));
+        owner.frames(3);
+        consumer.wait_for_frame("of the repainted colour", |frame| frame.is_solid(rgb(REPAINTED)));
+    });
 }
