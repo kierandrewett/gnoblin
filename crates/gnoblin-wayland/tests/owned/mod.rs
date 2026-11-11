@@ -25,7 +25,7 @@ use gnoblin_backend::headless::{Headless, HeadlessHandle};
 use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::OutputId;
-use gnoblin_wayland::{ClientRole, Config, ControlHandle, LoopError, Server};
+use gnoblin_wayland::{ClientRole, Config, ControlHandle, LoopError, Server, TreeHooks};
 use gnoblin_wm::{NewWindowFocus, WmOptions};
 use smithay::reexports::calloop::LoopHandle;
 use wayland_client::DispatchError;
@@ -136,7 +136,23 @@ impl Session {
             true,
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
+            TreeHooks::default(),
         )
+    }
+
+    /// A session that carries the tree: the owner's transactions go in-process through
+    /// `tree.queue` and the frame loop applies them. Motion is off, so a window's pixels
+    /// are its buffer's from the first frame rather than a fade towards them.
+    pub fn start_with_tree(role: Option<ClientRole>, tree: TreeHooks) -> Self {
+        let session = Self::boot(
+            role,
+            true,
+            gnoblin_wayland::MonitorSettings::default(),
+            WmOptions::default(),
+            tree,
+        );
+        session.handle.control.set_reduced_motion(true);
+        session
     }
 
     /// A session where a new window takes focus, as `focus_new_windows = allow` configures it.
@@ -146,12 +162,18 @@ impl Session {
             new_window_focus: NewWindowFocus::Allow,
             ..WmOptions::default()
         };
-        Self::boot(role, true, gnoblin_wayland::MonitorSettings::default(), wm)
+        Self::boot(
+            role,
+            true,
+            gnoblin_wayland::MonitorSettings::default(),
+            wm,
+            TreeHooks::default(),
+        )
     }
 
     /// A session whose `monitors` table sets `monitors`, as the composition root reads it.
     pub fn start_with_monitors(role: Option<ClientRole>, monitors: gnoblin_wayland::MonitorSettings) -> Self {
-        Self::boot(role, true, monitors, WmOptions::default())
+        Self::boot(role, true, monitors, WmOptions::default(), TreeHooks::default())
     }
 
     /// A session whose backend reports no gamma or power control, so neither protocol
@@ -162,6 +184,7 @@ impl Session {
             false,
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
+            TreeHooks::default(),
         )
     }
 
@@ -173,6 +196,7 @@ impl Session {
             true,
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
+            TreeHooks::default(),
         );
         session.server.install_layouts(Rc::new(master::MasterLayouts));
         session
@@ -184,6 +208,7 @@ impl Session {
         controls: bool,
         monitors: gnoblin_wayland::MonitorSettings,
         wm: WmOptions,
+        tree: TreeHooks,
     ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
@@ -191,6 +216,7 @@ impl Session {
             socket_path: Some(socket.clone()),
             monitors,
             wm,
+            tree,
             ..Config::default()
         };
         let headless = Headless::new();
