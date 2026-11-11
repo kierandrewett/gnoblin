@@ -259,6 +259,8 @@ pub struct MainSeatPolicy {
     pub double_click: &'static str,
     pub middle_click: &'static str,
     pub right_click: &'static str,
+    /// The declared workspaces, one `id:name` item each. Empty when the configuration declares none.
+    pub workspaces: Vec<String>,
 }
 
 /// The session's scene and the windows it draws.
@@ -1742,6 +1744,7 @@ impl Composer {
             ("double_click", TreeValue::Text(policy.double_click.to_owned())),
             ("middle_click", TreeValue::Text(policy.middle_click.to_owned())),
             ("right_click", TreeValue::Text(policy.right_click.to_owned())),
+            ("workspaces", TreeValue::ListText(policy.workspaces.clone())),
         ] {
             if self.scene.value(seat, key) != Some(&value) {
                 let _ = self.scene.set_value(seat, key, value.clone());
@@ -4267,10 +4270,18 @@ mod tests {
             double_click: "toggle-maximize",
             middle_click: "lower",
             right_click: "menu",
+            workspaces: vec!["1:Workspace 1".to_owned(), "2:Workspace 2".to_owned()],
         };
         composer.publish_main_seat_policy(&policy);
         composer.with_scene(|scene| {
             assert_eq!(scene.value(seat, "edge_tiling"), Some(&TreeValue::Bool(true)));
+            assert_eq!(
+                scene.value(seat, "workspaces"),
+                Some(&TreeValue::ListText(vec![
+                    "1:Workspace 1".to_owned(),
+                    "2:Workspace 2".to_owned()
+                ]))
+            );
             assert_eq!(scene.text(seat, "drag_constraint"), Some("minimum_strip"));
             assert_eq!(scene.text(seat, "focus_mode"), Some("hover"));
             assert_eq!(scene.text(seat, "focus_new_windows"), Some("prevent"));

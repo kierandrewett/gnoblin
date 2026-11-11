@@ -422,6 +422,8 @@ pub struct State {
     /// the configuration, because a protocol handler must not re-read a document on
     /// the session's own turn.
     pub(crate) titlebar_actions: TitlebarActions,
+    /// The declared workspaces, one `id:name` item each, published on the main seat for the shell.
+    pub(crate) workspace_names: Vec<String>,
     /// How many times a client rang the bell. The count is published so a reader can
     /// see that it happened; the visual bell is `gnoblin-a11y`'s and the audible one
     /// is the shell's.
@@ -788,6 +790,7 @@ impl State {
             foreign_toplevels: ForeignToplevels::default(),
             activation: XdgActivationV1::default(),
             titlebar_actions,
+            workspace_names: Vec::new(),
             bells: 0,
             visual_bell,
             visual_accessibility,
@@ -2170,6 +2173,7 @@ impl State {
             double_click: Self::titlebar_action_name(titlebar.double_click),
             middle_click: Self::titlebar_action_name(titlebar.middle_click),
             right_click: Self::titlebar_action_name(titlebar.right_click),
+            workspaces: self.workspace_names.clone(),
         };
         self.composer.publish_main_seat_policy(&policy);
     }

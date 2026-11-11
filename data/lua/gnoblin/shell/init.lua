@@ -67,10 +67,26 @@ Node:extend("Desk")({
 function Desk:workspace(name)
     return Floating({ name = name })
 end -- override to choose a layout
+-- The workspaces a Desk starts with: the configuration's declared list (`seat.workspaces`, one "id:name" item each)
+-- as { id, title } pairs, or the nine workspaces "1" to "9" when none is declared. A workspace is named by its id.
+local function declared_workspace_list()
+    local out = {}
+    for _, item in ipairs(seat and seat.workspaces or {}) do
+        local id, title = item:match("^([^:]*):(.*)$")
+        out[#out + 1] = { id = id or item, title = title or item }
+    end
+    if #out == 0 then
+        for i = 1, 9 do
+            out[i] = { id = tostring(i), title = tostring(i) }
+        end
+    end
+    return out
+end
 function Desk:build()
     self.space = Node({ clip = true })
-    for i = 1, 9 do
-        self.space:add(self:workspace(tostring(i)))
+    for _, w in ipairs(declared_workspace_list()) do
+        local ws = self.space:add(self:workspace(w.id))
+        ws.data.title = w.title
     end
     for i, ws in ipairs(self.space.children) do
         ws.visible, ws.active = i == 1, i == 1

@@ -181,6 +181,8 @@ pub struct Config {
     pub seat_name: String,
     /// How many workspaces to declare. The first one is active.
     pub workspaces: u32,
+    /// The declared workspaces, one `id:name` item each, published on the main seat for the shell to build from.
+    pub workspace_names: Vec<String>,
     /// The window management options from the configuration document.
     pub wm: WmOptions,
     /// How long a client may leave a ping unanswered before its windows are marked
@@ -257,6 +259,7 @@ impl Default for Config {
             privileged_socket_path: None,
             seat_name: "seat0".to_owned(),
             workspaces: 1,
+            workspace_names: Vec::new(),
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
             clock: Arc::new(SystemClock),
@@ -377,6 +380,7 @@ impl Server {
 
         let window_process_override = config.window_process_override;
         let window_rules = config.window_rules;
+        let workspace_names = config.workspace_names;
         let workspace_sets = config.workspace_sets;
         let global_scale = config.monitors.global_scale;
         apply_global_scale(backend.as_mut(), None, global_scale);
@@ -441,6 +445,8 @@ impl Server {
         if let Some(shortcuts) = &config.shortcuts {
             state.apply_shortcuts(shortcuts);
         }
+        state.workspace_names = workspace_names;
+        state.publish_seat_policy();
         match crate::touchpad::TouchpadGestures::from_config(&config.touchpad_gestures) {
             Ok(gestures) => state.touchpad_gestures = gestures,
             Err(error) => log::error!(area = "touchpad", "touchpad gestures refused, none will run: {error}"),

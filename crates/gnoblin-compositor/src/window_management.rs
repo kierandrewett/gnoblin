@@ -18,6 +18,20 @@ use crate::SessionConfig;
 
 use crate::log;
 
+/// The declared workspaces as the `id:name` items the main seat publishes. A workspace with no id takes its
+/// position, from 1; one with no name is named by its id.
+fn workspace_names(declared: &[gnoblin_config::Workspace]) -> Vec<String> {
+    declared
+        .iter()
+        .enumerate()
+        .map(|(index, workspace)| {
+            let id = workspace.id.clone().unwrap_or_else(|| (index + 1).to_string());
+            let name = workspace.name.as_deref().unwrap_or(&id);
+            format!("{id}:{name}")
+        })
+        .collect()
+}
+
 /// Sets the window-management fields of `config.wayland` from the last accepted
 /// configuration in `store`, read from `source`.
 pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &Path) {
@@ -38,6 +52,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             if !stored.config.workspaces.is_empty() {
                 config.wayland.workspaces = u32::try_from(stored.config.workspaces.len()).unwrap_or(u32::MAX);
             }
+            config.wayland.workspace_names = workspace_names(&stored.config.workspaces);
             log::debug!(
                 area = "window-management",
                 "loaded from the last accepted configuration"
@@ -301,5 +316,36 @@ mod tests {
 
         assert_eq!(wm_options_of(&section), startup.wayland.wm);
         assert_eq!(wm_options_of(&WindowManagement::default()), WmOptions::default());
+    }
+}
+
+#[cfg(test)]
+mod workspace_name_tests {
+    use gnoblin_config::Workspace;
+
+    use super::workspace_names;
+
+    fn declared(id: Option<&str>, name: Option<&str>) -> Workspace {
+        Workspace {
+            id: id.map(str::to_owned),
+            name: name.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn each_declared_workspace_is_an_id_and_name_item_in_declaration_order() {
+        let list = [declared(Some("code"), Some("Code")), declared(Some("web"), None)];
+        assert_eq!(workspace_names(&list), ["code:Code", "web:web"]);
+    }
+
+    #[test]
+    fn a_workspace_with_no_id_takes_its_position() {
+        let list = [declared(Some("a"), Some("A")), declared(None, Some("Second"))];
+        assert_eq!(workspace_names(&list), ["a:A", "2:Second"]);
+    }
+
+    #[test]
+    fn no_declared_workspaces_is_an_empty_list() {
+        assert!(workspace_names(&[]).is_empty());
     }
 }

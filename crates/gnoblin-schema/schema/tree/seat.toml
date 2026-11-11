@@ -138,6 +138,14 @@ since = "0.2.0"
 default = "menu"
 readonly = true
 
+# The workspaces the configuration declares, one `id:name` item each, in declaration order. An empty list means
+# none are declared and the shell chooses its own. Read-only: the configuration sets it.
+[[object.property]]
+name = "workspaces"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

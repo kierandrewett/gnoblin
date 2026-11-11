@@ -94,6 +94,7 @@ local SCHEMA = {
             double_click = { type = "string", default = "toggle-maximize", readonly = true },
             middle_click = { type = "string", default = "lower", readonly = true },
             right_click = { type = "string", default = "menu", readonly = true },
+            workspaces = { type = "table", default = {}, readonly = true },
         },
         signals = { "chord" },
         -- `grab` is not in seat.toml; init.lua drag() calls it. Kept so the stock drag path runs. Gap reported.

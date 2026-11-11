@@ -774,4 +774,30 @@ return {
             H.check(#d.space.children == 1, "the refused workspace must stay")
         end,
     },
+    {
+        "a Desk builds the workspaces the seat declares, named by id, and nine when none are declared",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            root:add(Screen({ width = 800, height = 600 }))
+            H.load_shell()
+            H.publish_seat(host, { screen = host.ids("Screen")[1], workspaces = { "code:Code", "web:Web" } })
+            H.start_shell(host)
+            local d = desk()
+            H.check(#d.space.children == 2, "two workspaces, got " .. #d.space.children)
+            H.check(d.space.children[1].name == "code" and d.space.children[2].name == "web", "named by id")
+            H.check(d.space.children[1].data.title == "Code", "the title is the declared name")
+            H.check(d.active == d.space.children[1], "the first is active")
+        end,
+    },
+    {
+        "a Desk with no declared workspaces builds nine, named 1 to 9",
+        function()
+            local host = window_setup({})
+            local d = desk()
+            H.check(#d.space.children == 9, "nine workspaces, got " .. #d.space.children)
+            H.check(d.space.children[9].name == "9", "named by position")
+        end,
+    },
 }
