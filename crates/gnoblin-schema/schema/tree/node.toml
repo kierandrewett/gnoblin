@@ -131,14 +131,28 @@ since = "0.2.0"
 default = []
 
 # The node's effects in paint order, first to last. Each element is an `effect` object
-# (`effect.toml`). The compositor applies blur and shadow effects; a shader effect is
-# refused. Setting the list replaces it. The compositor does not echo effects into a
-# snapshot yet, so a client keeps its own copy of what it set.
+# (`effect.toml`). This is the only way to give a node a blur or a shadow. The compositor
+# draws blur and shadow; any other kind, a shader included, refuses the whole list
+# `bad-value`. Setting the list replaces it, and it is echoed in a snapshot. An effect the
+# compositor cannot draw stays in the list and is named in `skipped`.
 [[object.property]]
 name = "effects"
 type = "list<object:effect>"
 since = "0.2.0"
 default = []
+
+# The effects in `effects` that are not drawn, one text each as `<kind>: <reason>`, in list
+# order; empty when every effect is drawn. Today the only reason is `unsupported-effect-on-3d`:
+# a blur or a shadow on a node whose placement carries depth (a rotation about x or y, a
+# `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
+# pass for backdrop and shadow passes. The compositor writes it when the node's placement
+# or `effects` changes; a client can read it and cannot set it.
+[[object.property]]
+name = "skipped"
+type = "list<string>"
+since = "0.2.0"
+default = []
+readonly = true
 
 # The node is gone: its subtree was destroyed with it. A client drops its view of the
 # object on this signal.

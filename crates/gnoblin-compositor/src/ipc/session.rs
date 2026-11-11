@@ -41,9 +41,7 @@ use std::fmt;
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
 use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
-use gnoblin_wayland::{
-    EffectSpec, LockState, ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot, lock_state_name,
-};
+use gnoblin_wayland::{LockState, ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot, lock_state_name};
 
 use crate::log;
 
@@ -96,8 +94,6 @@ mod member {
     pub const MODAL: &str = "modal";
     /// The `window` object's unresponsive property.
     pub const UNRESPONSIVE: &str = "unresponsive";
-    /// The `window` object's effects property: its `effect` objects, first to last.
-    pub const EFFECTS: &str = "effects";
     /// The name of an `output` object, as the compositor reports it.
     pub const NAME: &str = "name";
     /// The `lock` object's locked property: whether the lock is holding the desktop.
@@ -161,17 +157,6 @@ struct PublishedWindow {
     unresponsive: bool,
     /// Geometry last published for this window, in the compositor's logical coordinates.
     geometry: Rect,
-    /// Effect objects of this window, each with the parameters last published for it.
-    effects: Vec<PublishedEffect>,
-}
-
-/// What the graph last published for one effect of a window.
-#[derive(Clone, Debug, PartialEq)]
-struct PublishedEffect {
-    /// The `effect` object.
-    object: ObjectId,
-    /// The parameters the object was last brought to.
-    spec: EffectSpec,
 }
 
 /// The live object graph of one compositor process.
@@ -473,11 +458,6 @@ impl SessionSync {
             .collect();
         for window in lost {
             if let Some(published) = self.windows.remove(&window) {
-                for effect in &published.effects {
-                    if let Err(error) = self.graph.close(effect.object) {
-                        failures.push(PublishFailure::new("effect", window.get(), error));
-                    }
-                }
                 // The object's own end is the one event. The schema also declares a
                 // `closed` signal, and it is deliberately not raised as well: a
                 // subscriber would learn the same thing twice.
@@ -496,7 +476,6 @@ impl SessionSync {
         let Some(previous) = self.windows.get(&window.id).cloned() else {
             let properties = window_properties(window.id, window);
             let object = self.graph.create(TypeKey::gnoblin("window"), properties)?;
-            let effects = self.publish_effects(object, Vec::new(), &window.effects)?;
             self.windows.insert(
                 window.id,
                 PublishedWindow {
@@ -510,7 +489,6 @@ impl SessionSync {
                     modal: window.modal,
                     unresponsive: window.unresponsive,
                     geometry: window.geometry,
-                    effects,
                 },
             );
             return Ok(());
@@ -547,7 +525,6 @@ impl SessionSync {
         if previous.geometry != window.geometry {
             self.set_geometry(object, window.geometry)?;
         }
-        let effects = self.publish_effects(object, previous.effects, &window.effects)?;
         self.windows.insert(
             window.id,
             PublishedWindow {
@@ -561,63 +538,9 @@ impl SessionSync {
                 modal: window.modal,
                 unresponsive: window.unresponsive,
                 geometry: window.geometry,
-                effects,
             },
         );
         Ok(())
-    }
-
-    /// Brings one window's `effect` objects in line with its effect stack.
-    ///
-    /// An effect keeps its object while its kind stays the same, so a subscriber sees
-    /// changed properties rather than a close and a create. A kind change, an added
-    /// effect or a removed one is a new or ended object. The window's `effects` list is
-    /// written only when its sequence of objects changed.
-    fn publish_effects(
-        &mut self,
-        window: ObjectId,
-        previous: Vec<PublishedEffect>,
-        next: &[EffectSpec],
-    ) -> Result<Vec<PublishedEffect>, ModelError> {
-        let before: Vec<ObjectId> = previous.iter().map(|effect| effect.object).collect();
-        let mut kept = previous.into_iter();
-        let mut published = Vec::with_capacity(next.len());
-        for spec in next {
-            match kept.next() {
-                Some(old) if old.spec.kind == spec.kind => {
-                    // Only the parameters that moved are written; an unchanged one needs no revision.
-                    let old_fields = effect_fields(&old.spec);
-                    for (name, value) in effect_fields(spec) {
-                        if old_fields.get(&name) != Some(&value) {
-                            self.graph.set(old.object, &name, value)?;
-                        }
-                    }
-                    published.push(PublishedEffect {
-                        object: old.object,
-                        spec: spec.clone(),
-                    });
-                }
-                replaced => {
-                    if let Some(old) = replaced {
-                        self.graph.close(old.object)?;
-                    }
-                    let object = self.graph.create(TypeKey::gnoblin("effect"), effect_fields(spec))?;
-                    published.push(PublishedEffect {
-                        object,
-                        spec: spec.clone(),
-                    });
-                }
-            }
-        }
-        for old in kept {
-            self.graph.close(old.object)?;
-        }
-        let after: Vec<ObjectId> = published.iter().map(|effect| effect.object).collect();
-        if after != before {
-            let list = after.into_iter().map(Value::Object).collect();
-            self.graph.set(window, member::EFFECTS, Value::List(list))?;
-        }
-        Ok(published)
     }
 
     /// Creates, changes and closes `output` objects to match the snapshot.
@@ -818,34 +741,6 @@ impl SessionSync {
     }
 }
 
-/// The schema properties of one `effect` object, keyed by their schema names.
-///
-/// Every parameter is written, not only the ones the kind uses: the schema defaults
-/// apply to the rest, and a parameter that is ignored for this kind is harmless.
-fn effect_fields(spec: &EffectSpec) -> Fields {
-    Fields::from([
-        ("kind".to_owned(), Value::Text(spec.kind.clone())),
-        ("enabled".to_owned(), Value::Bool(spec.enabled)),
-        ("active".to_owned(), Value::Bool(spec.active)),
-        ("reason".to_owned(), Value::Text(spec.reason.clone())),
-        ("downscale".to_owned(), Value::Uint(u64::from(spec.downscale))),
-        ("passes".to_owned(), Value::Uint(u64::from(spec.passes))),
-        ("algorithm".to_owned(), Value::Text(spec.algorithm.clone())),
-        ("noise".to_owned(), Value::Double(spec.noise)),
-        ("brightness".to_owned(), Value::Double(spec.brightness)),
-        ("contrast".to_owned(), Value::Double(spec.contrast)),
-        ("saturation".to_owned(), Value::Double(spec.saturation)),
-        ("tint".to_owned(), Value::Text(spec.tint.clone())),
-        ("offset_x".to_owned(), Value::Double(spec.offset_x)),
-        ("offset_y".to_owned(), Value::Double(spec.offset_y)),
-        ("blur_radius".to_owned(), Value::Double(spec.blur_radius)),
-        ("spread".to_owned(), Value::Double(spec.spread)),
-        ("colour".to_owned(), Value::Text(spec.colour.clone())),
-        ("source".to_owned(), Value::Text(spec.source.clone())),
-        ("entry".to_owned(), Value::Text(spec.entry.clone())),
-    ])
-}
-
 /// The pid as the schema publishes it: 0 when the compositor cannot name the process.
 ///
 /// The model has no null, and a pid of 0 is never a real client, so the Lua runtime
@@ -885,9 +780,6 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
             Value::Text(observed.tag.clone().unwrap_or_default()),
         ),
         (member::MODAL.to_owned(), Value::Bool(observed.modal)),
-        // The schema requires `effects` on every window, so a window with no effects is
-        // created with an empty list rather than without the property.
-        (member::EFFECTS.to_owned(), Value::List(Vec::new())),
         (member::UNRESPONSIVE.to_owned(), Value::Bool(observed.unresponsive)),
     ])
 }
@@ -924,7 +816,6 @@ mod tests {
             modal: false,
             unresponsive: false,
             transient_for: None,
-            effects: Vec::new(),
         }
     }
 
@@ -1023,23 +914,6 @@ mod tests {
             .collect();
         changed.sort();
         assert_eq!(changed, vec!["primary".to_owned(), "x".to_owned()]);
-    }
-
-    #[test]
-    fn a_new_window_publishes_an_empty_effects_list() {
-        // The schema requires `effects` on every window, so a window with no effects
-        // must still be created: without the property the graph refuses the object and
-        // the window never appears in a listing.
-        let mut store = store();
-        let subscription = store.subscribe(Filter::All);
-        let state = snapshot(
-            vec![window(1, "Editor", true, Rect::new(0, 0, 200, 150))],
-            Some(WindowId::new(1)),
-        );
-        store.apply(&state).expect("applied");
-        let observations = drained(&mut store, &subscription);
-        let view = opened(&observations, "gnoblin.window");
-        assert_eq!(view.property("effects"), Some(&Value::List(Vec::new())));
     }
 
     #[test]

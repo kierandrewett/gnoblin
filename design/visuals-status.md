@@ -65,7 +65,7 @@ stack), and the shaped-windows amendment in `design/rust-compositor.md`.
   fades with the layer (`lib.rs:771,1097`). Test `tests.rs:1139`
   `a_blurred_node_fades_monotonically_with_group_opacity` (read). Confinement test
   `tests.rs:1127` `a_blur_reaches_nothing_outside_its_node` (read).
-- **User shaders, GLES.** `UserShader` at `lib.rs:149`, `set_user_shader` at
+- **User shaders, GLES (removed, lane 9A).** `UserShader` at `lib.rs:149`, `set_user_shader` at
   `lib.rs:346`, `Pass::Shader` draw at `lib.rs:1200`. Tests `tests.rs:470`
   `a_user_shader_shades_its_layer`, `:503` `a_user_shader_reads_its_uniforms`, `:546`
   `a_user_shader_refuses_a_mistyped_uniform`, `:590`

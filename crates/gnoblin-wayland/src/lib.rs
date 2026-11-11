@@ -182,7 +182,6 @@
 mod access;
 mod clock;
 mod dispatch;
-mod effects;
 mod fallback;
 mod frame;
 mod keyboard;
@@ -207,7 +206,6 @@ mod xwayland;
 
 /// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.
 pub use clock::{Clock, ManualClock, SystemClock};
-pub use effects::effect_pass;
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use gnoblin_lock::State as LockState;
@@ -216,7 +214,7 @@ pub use modal::{Modal, ModalEvent};
 pub use observation::lock_state_name;
 /// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
-    ActivationDenial, EffectSpec, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
+    ActivationDenial, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
     ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
 };
 pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal};

@@ -8,9 +8,9 @@ use gnoblin_render::transaction::{
     ClassInfo, Code, MAX_EFFECTS, MAX_LIST, MAX_TEXT_BYTES, PropertyInfo, TreeOp, TreeRefusal, TreeTransaction,
     TreeValue, ValueType, validate_and_apply,
 };
-use gnoblin_render::{BlurParams, Pass};
+use gnoblin_render::{BlurParams, Effects, Pass, Shadow};
 use gnoblin_render::{NodeSpec, Scene};
-use gnoblin_types::{NodeId, Rect};
+use gnoblin_types::{Color, NodeId, Rect, Vec3};
 
 /// One property of each kind. `Panel` derives from `Window`, so a `Window` reference accepts it.
 struct Kinds;
@@ -335,6 +335,77 @@ fn effects_over_the_cap_are_too_large() {
             set(win, "effects", TreeValue::Effects(vec![blur; MAX_EFFECTS + 1])),
         ),
         Code::TooLarge,
+    );
+}
+
+#[test]
+fn an_accepted_effects_list_is_the_nodes_effect_chain() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    let blur = Pass::Blur(BlurParams {
+        radius: 4.0,
+        passes: 2,
+        ..BlurParams::default()
+    });
+    let shadow = Pass::Shadow(Shadow {
+        offset: Vec3::new(0.0, 4.0, 0.0),
+        blur: 12.0,
+        spread: 0.0,
+        opacity: 1.0,
+        color: Color::BLACK,
+    });
+    assert!(
+        scene.effects(win).is_some_and(Effects::is_empty),
+        "a new node has no effect"
+    );
+    assert!(
+        apply(
+            &mut scene,
+            set(win, "effects", TreeValue::Effects(vec![blur.clone(), shadow.clone()]))
+        )
+        .is_none()
+    );
+    let chain = scene.effects(win).expect("the node exists");
+    assert_eq!(chain.passes(), [blur, shadow], "the chain is the list, in order");
+    assert_eq!(scene.effect_nodes().collect::<Vec<_>>(), vec![win]);
+    assert!(
+        scene.value(win, "effects").is_some(),
+        "the snapshot still reads the list the shell set"
+    );
+
+    assert!(apply(&mut scene, set(win, "effects", TreeValue::Effects(Vec::new()))).is_none());
+    assert!(
+        scene.effects(win).is_some_and(Effects::is_empty),
+        "setting the empty list clears the chain"
+    );
+    assert_eq!(scene.effect_nodes().count(), 0);
+}
+
+#[test]
+fn a_refused_effects_list_leaves_the_chain_alone() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    let blur = Pass::Blur(BlurParams {
+        radius: 4.0,
+        passes: 2,
+        ..BlurParams::default()
+    });
+    assert!(apply(&mut scene, set(win, "effects", TreeValue::Effects(vec![blur.clone()]))).is_none());
+    let too_blurry = Pass::Blur(BlurParams {
+        passes: 9,
+        ..BlurParams::default()
+    });
+    assert_refused(
+        apply(
+            &mut scene,
+            set(win, "effects", TreeValue::Effects(vec![blur.clone(), too_blurry])),
+        ),
+        Code::OutOfRange,
+    );
+    assert_eq!(
+        scene.effects(win).expect("the node exists").passes(),
+        [blur],
+        "the chain the shell had is still the chain"
     );
 }
 

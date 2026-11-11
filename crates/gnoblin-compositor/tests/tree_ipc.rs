@@ -314,7 +314,6 @@ fn a_tags_and_an_effects_set_travel_the_wire_and_come_back_in_the_change_batch()
         value_kind: "list_effect".to_owned(),
         value_effects: vec![effect::Properties {
             kind: "blur".to_owned(),
-            enabled: true,
             downscale: 2,
             passes: 3,
             blur_radius: 12.0,
@@ -362,14 +361,13 @@ fn a_shader_effect_refuses_the_whole_effects_set_bad_value() {
         value_kind: "list_effect".to_owned(),
         value_effects: vec![effect::Properties {
             kind: "shader".to_owned(),
-            enabled: true,
             ..Default::default()
         }],
         ..Default::default()
     });
     transact(&mut wire, 2, 0, 1, ops);
     let reply: ReplyPayload = reply(&mut wire, "transact");
-    assert!(!reply.applied, "a shader pass is not drawable yet");
+    assert!(!reply.applied, "the compositor runs no shader effects");
     assert_eq!(reply.code, "bad-value");
     session.stop().expect("the session stops cleanly");
 }

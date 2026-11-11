@@ -629,9 +629,6 @@ impl Server {
                             Command::ExportedWindow { handle, reply } => {
                                 let _ = reply.send(state.exported_window(&handle));
                             }
-                            Command::AddEffect { window, spec, reply } => {
-                                let _ = reply.send(state.add_effect(window, *spec));
-                            }
                             Command::CastStart { client, target, reply } => {
                                 let _ = reply.send(state.start_cast(client, target));
                             }
@@ -963,18 +960,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::ExportedWindow {
             handle: handle.to_owned(),
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Appends an effect to a window's stack. `None` when the loop did not answer in time;
-    /// otherwise `Err` carries the refusal (`unknown-effect-kind:` or `too-many-passes:`).
-    pub fn add_effect(&self, window: WindowId, spec: crate::observation::EffectSpec) -> Option<Result<(), String>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::AddEffect {
-            window,
-            spec: Box::new(spec),
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1314,12 +1299,6 @@ enum Command {
     ExportedWindow {
         handle: String,
         reply: std::sync::mpsc::SyncSender<Option<WindowId>>,
-    },
-    /// Adds an effect to a window's stack; see `ControlHandle::add_effect`.
-    AddEffect {
-        window: WindowId,
-        spec: Box<crate::observation::EffectSpec>,
-        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Promise a role to a process the compositor is about to start.
     GrantRole { pid: u32, role: ClientRole },

@@ -78,8 +78,8 @@ use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, privilege, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
-    ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
-    WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
+    ControlHandle, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput, WindowChange,
+    WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
 use super::consent::Consent;
@@ -1803,9 +1803,6 @@ impl Dispatcher {
             {
                 self.window_visual_call(client, envelope, object, &method, &arguments, window);
             }
-            (Some(ty), Some(window), _, _) if ty == "window" && method == "add_effect" => {
-                self.add_effect_call(client, envelope, object, &method, &arguments, window);
-            }
             (Some(ty), _, _, _) if ty == "lock" && method == "lock_session" => {
                 self.lock_call(client, envelope, object, &method, &arguments);
             }
@@ -2377,33 +2374,6 @@ impl Dispatcher {
         let _ = self.store.graph_mut().complete(operation.id(), outcome);
     }
 
-    /// Serves `window.add_effect`: the effect is appended to the window's stack. The
-    /// operation completes done when the window accepts it, and fails with
-    /// `unknown-effect-kind` or `too-many-passes` when it refuses.
-    fn add_effect_call(
-        &mut self,
-        client: ClientId,
-        envelope: &Envelope,
-        object: gnoblin_types::ObjectId,
-        method: &str,
-        arguments: &gnoblin_model::Fields,
-        window: gnoblin_types::WindowId,
-    ) {
-        let spec = effect_spec_from(arguments);
-        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
-            Ok(operation) => operation,
-            Err(error) => {
-                let code = refusal_code(&error);
-                self.refuse(client, envelope, code, &error.to_string());
-                return;
-            }
-        };
-        self.reply_with_operation(client, envelope, &operation);
-        let answered = self.control.add_effect(window, spec);
-        self.sync();
-        self.finish_effect(object, &operation, answered);
-    }
-
     /// Serves `window.request_menu`: the graph issues the operation, the loop publishes
     /// the menu request with the extension as its source, and the operation completes
     /// once that is done. A window that is gone when the loop answers completes
@@ -2435,33 +2405,6 @@ impl Dispatcher {
         };
         if let Some(outcome) = outcome {
             let _ = self.store.graph_mut().complete(operation.id(), outcome);
-        }
-    }
-
-    /// Completes an `add_effect` operation from the window's answer. A refusal's reason
-    /// begins with its error code, which becomes the operation's failure code.
-    fn finish_effect(
-        &mut self,
-        object: gnoblin_types::ObjectId,
-        operation: &gnoblin_model::Operation,
-        answered: Option<Result<(), String>>,
-    ) {
-        match answered {
-            Some(Ok(())) => self.finish(object, operation, Some(OperationOutcome::Done)),
-            Some(Err(reason)) => {
-                let code = if reason.starts_with("unknown-effect-kind") {
-                    ErrorCode::from_static("unknown-effect-kind")
-                } else if reason.starts_with("too-many-passes") {
-                    ErrorCode::from_static("too-many-passes")
-                } else {
-                    ErrorCode::from_static("refused")
-                };
-                let _ = self
-                    .store
-                    .graph_mut()
-                    .complete(operation.id(), OperationOutcome::Failed(code));
-            }
-            None => {}
         }
     }
 
@@ -2644,55 +2587,6 @@ fn text_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<String
         Some(gnoblin_model::Value::Text(text)) => Some(text.clone()),
         _ => None,
     }
-}
-
-/// Builds the effect a `window.add_effect` call asks for. A parameter the call leaves out
-/// keeps its `EffectSpec` default, so a call with no `kind` gives the empty kind, which
-/// the window refuses as `unknown-effect-kind`.
-fn effect_spec_from(arguments: &gnoblin_model::Fields) -> EffectSpec {
-    let mut spec = EffectSpec {
-        kind: text_argument(arguments, "kind").unwrap_or_default(),
-        ..EffectSpec::default()
-    };
-    if let Some(value) = bool_argument(arguments, "enabled") {
-        spec.enabled = value;
-    }
-    if let Some(value) = uint_argument(arguments, "downscale").and_then(|value| u32::try_from(value).ok()) {
-        spec.downscale = value;
-    }
-    if let Some(value) = uint_argument(arguments, "passes").and_then(|value| u32::try_from(value).ok()) {
-        spec.passes = value;
-    }
-    if let Some(value) = text_argument(arguments, "algorithm") {
-        spec.algorithm = value;
-    }
-    if let Some(value) = text_argument(arguments, "tint") {
-        spec.tint = value;
-    }
-    if let Some(value) = text_argument(arguments, "colour") {
-        spec.colour = value;
-    }
-    if let Some(value) = text_argument(arguments, "source") {
-        spec.source = value;
-    }
-    if let Some(value) = text_argument(arguments, "entry") {
-        spec.entry = value;
-    }
-    for (name, slot) in [
-        ("noise", &mut spec.noise),
-        ("brightness", &mut spec.brightness),
-        ("contrast", &mut spec.contrast),
-        ("saturation", &mut spec.saturation),
-        ("offset_x", &mut spec.offset_x),
-        ("offset_y", &mut spec.offset_y),
-        ("blur_radius", &mut spec.blur_radius),
-        ("spread", &mut spec.spread),
-    ] {
-        if let Some(value) = double_argument(arguments, name) {
-            *slot = value;
-        }
-    }
-    spec
 }
 
 /// Reads a `window.request_menu` anchor from its arguments. A missing or out-of-range

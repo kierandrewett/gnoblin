@@ -1,28 +1,60 @@
 # window_effects
 
-> **Status:** not available: `gnoblin.window_rule` was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only, so the rule fields here do not work. The page describes the target, not current behaviour.
+> **Status:** partly available. A shell gives a node a blur or a shadow through the node's `effects` list. Window rules are not a way to do it: `gnoblin.window_rule` was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only.
 
 This page says which window effects work today and which do not. The source of
-truth is the loader, not this page: a window rule that names an unsupported key
-is refused at load with a reason. The list of refused keys is in the
-[window rule reference](/config/window_rule).
+truth is the code, not this page.
 
 ## What works now
 
-| Effect                 | Where it works                                  | Set from config?                       |
+| Effect                 | Where it works                                  | Set from                               |
 | ---------------------- | ----------------------------------------------- | -------------------------------------- |
 | Opacity, scale, offset | Animated tweens and open/close fades            | `opacity` rule: yes. Scale, offset: no |
 | Rounded corners        | Software, GLES and Vulkan renderers (see below) | `corners = {radius = n}` rule: yes     |
 | Tint                   | Software, GLES and Vulkan renderers             | No window rule key                     |
-| Blur behind a window   | GLES renderer only                              | No. Refused as `blur`                  |
-| Shadow                 | GLES renderer only                              | No. Refused as `corners.shadow`        |
-| User fragment shaders  | GLES renderer mechanism only                    | No. Refused as `shader`                |
+| Blur behind a node     | GLES renderer only                              | The node's `effects` list              |
+| Shadow                 | GLES renderer only                              | The node's `effects` list              |
 
-"No config path" means the renderer can draw the effect, but nothing a user writes
-in `init.lua` reaches it. Opacity and corner radius from a window rule reach the
-window's compositor node. Rounded corners are drawn by the software renderer
-(clipped to the radius) and by GLES and Vulkan. The full per-renderer status, with
-test names, is in `design/visuals-status.md`.
+## The node `effects` list
+
+Every node has an `effects` list, in paint order, first to last. A shell sets it
+like any other property:
+
+```lua
+node.effects = {
+    { kind = "shadow", offset_y = 4, blur_radius = 16 },
+    { kind = "blur", passes = 3, tint = "#10203040" },
+}
+```
+
+It is the only effects path. The `window.add_effect` call and the window's
+`effect` objects are gone, and so is the `effect.toml` schema file.
+
+- The kinds are `blur` and `shadow`. Any other kind, `shader` included, is
+  refused `bad-value`, and the whole list is refused with it.
+- A value outside its range (a tint that is not `#rrggbb` or `#rrggbbaa`, zero
+  blur passes, a shadow radius over 100) refuses the whole list. The old stack's
+  separate `too-many-passes` and `unknown-effect-kind` errors are gone with it.
+- An effect is switched off by setting the list without it. There is no
+  `enabled` flag.
+- The list holds at most 16 effects. Setting it replaces it, and a snapshot
+  carries what was set.
+- The renderer has one blur kernel. `algorithm` is accepted and ignored.
+
+### Effects that are not drawn: `skipped`
+
+A node has a read-only `skipped` list. It names each effect in `effects` the
+renderer will not draw, as `<kind>: <reason>`, and it is empty when all are drawn.
+
+- The only reason today is `unsupported-effect-on-3d`.
+- It applies to a blur or a shadow on a node whose placement carries depth: a
+  rotation about x or y, a `z`, or a perspective `Camera` above it. The renderers
+  have no depth pass for a backdrop or a shadow.
+- The compositor keeps the list current as the node moves, so a node that is
+  flat again gets the empty list back.
+- A shell cannot write it.
+- It reports placement only. The software and Vulkan renderers draw no blur or
+  shadow at all, and they do not say so here.
 
 ## Window rules that do not apply
 
@@ -31,7 +63,9 @@ have no effect today:
 
 - `blur`, `blur-ignore-shadows`
 - `corners` keys other than `radius`, such as `corners.shadow` and `smoothing`
-- `shader`, `shader-uniforms`
+- `shader`, `shader-uniforms`: there are no user shaders. The `shader` effect
+  kind and the shader guide were removed; use a `blur` effect's `tint` or draw a
+  `Canvas`.
 - `animation`
 - `frame`
 - `match.layer`
@@ -42,13 +76,5 @@ The reason for each key is in the [refused table](/config/window_rule).
 ## Background blur from applications {#blur-and-opacity}
 
 Applications and shells can ask for blur behind a region they draw, through the
-`ext_background_effect` protocol. That path is separate from window rules and is
+`ext_background_effect` protocol. That path is separate from the `effects` list and is
 described in [background effects](/background-effects).
-
-## Planned
-
-The design in `design/rust-compositor.md` in the source tree
-(D24 and D26) plans an ordered per-window effect stack, where blur follows the
-window's opacity and shadow, border and blur follow a window's alpha silhouette.
-Blur, shadow, border and shader are not configurable yet. Shaped windows are not
-implemented.

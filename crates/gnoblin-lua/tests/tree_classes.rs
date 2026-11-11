@@ -141,6 +141,7 @@ fn documented_node() -> Vec<PropSpec> {
         spec("secure", K::Bool, false, Some(LuaValue::Bool(false))),
         spec("tags", K::ListText, false, Some(LuaValue::Texts(Vec::new()))),
         spec("effects", K::ListEffect, false, Some(LuaValue::Effects(Vec::new()))),
+        spec("skipped", K::ListText, true, Some(LuaValue::Texts(Vec::new()))),
         spec("children", K::Nodes, true, None),
     ])
 }

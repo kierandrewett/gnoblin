@@ -801,6 +801,7 @@ mod tests {
             ("secure", Some(DefaultValue::Bool(false))),
             ("tags", Some(DefaultValue::List(Vec::new()))),
             ("effects", Some(DefaultValue::List(Vec::new()))),
+            ("skipped", Some(DefaultValue::List(Vec::new()))),
         ];
         assert_eq!(node.properties.len(), defaults.len());
         for (key, default) in defaults {
@@ -808,7 +809,7 @@ mod tests {
             assert_eq!(property.default, default, "{key}");
         }
 
-        let readonly = ["id", "parent"];
+        let readonly = ["id", "parent", "skipped"];
         let animated = ["x", "y", "z", "rotation", "scale", "width", "height", "opacity"];
         for property in &node.properties {
             assert_eq!(
@@ -879,6 +880,14 @@ mod tests {
             Some(PropertyInfo {
                 kind: ValueType::Effects,
                 readonly: false,
+                animated: false
+            })
+        );
+        assert_eq!(
+            classes.property("node", "skipped"),
+            Some(PropertyInfo {
+                kind: ValueType::ListText,
+                readonly: true,
                 animated: false
             })
         );

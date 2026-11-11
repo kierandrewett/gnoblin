@@ -692,7 +692,6 @@ mod tests {
             objects,
             vec![
                 "config",
-                "effect",
                 "eis",
                 "idle",
                 "lock",

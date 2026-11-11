@@ -17,16 +17,15 @@ use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
-use gnoblin_proto::tree::{change, effect, op, snapshot_node};
-use gnoblin_render::Pass;
+use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_render::transaction::{
     ClassInfo, Code, PointerInput, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
 use gnoblin_secret::SecretText;
-use gnoblin_types::{ClientId, Color, NodeId};
+use gnoblin_types::{ClientId, NodeId};
 use gnoblin_wayland::{
-    ChordEvent, ChordState, EffectSpec, FrameTreeEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks, TreeInput,
-    TreeQueue, keysym_name,
+    ChordEvent, ChordState, FrameTreeEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
+    keysym_name,
 };
 
 use super::server::IpcEvent;
@@ -34,6 +33,7 @@ use super::tree::{
     AttachMode, TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, observer_ops, snapshot_of,
     tree_listing,
 };
+use super::tree_effects::{pass_from_wire, wire_from_pass};
 
 /// The namespace the tree answers on.
 pub const NAMESPACE: &str = "tree";
@@ -498,7 +498,7 @@ fn set_properties(node: NodeId, key: &str, value: &TreeValue) -> change::Propert
         }
         TreeValue::Effects(value) => {
             "list_effect".clone_into(&mut properties.value_kind);
-            properties.value_effects = value.iter().map(effect_properties).collect();
+            properties.value_effects = value.iter().map(wire_from_pass).collect();
         }
         TreeValue::Bytes(value) => {
             "bytes".clone_into(&mut properties.value_kind);
@@ -628,79 +628,11 @@ fn set_value(op: &op::Properties) -> Result<TreeValue, Code> {
         "list_effect" => op
             .value_effects
             .iter()
-            .map(|entry| gnoblin_wayland::effect_pass(&effect_spec(entry)).map_err(|_| Code::BadValue))
+            .map(|entry| pass_from_wire(entry).map_err(|_| Code::BadValue))
             .collect::<Result<Vec<_>, _>>()
             .map(TreeValue::Effects),
         _ => Err(Code::BadValue),
     }
-}
-
-/// The observation spec one wire effect entry describes. Only the fields a blur or shadow
-/// reads are carried; the rest of the spec keeps its defaults, because a pass ignores them.
-fn effect_spec(entry: &effect::Properties) -> EffectSpec {
-    EffectSpec {
-        kind: entry.kind.clone(),
-        enabled: entry.enabled,
-        active: true,
-        reason: String::new(),
-        downscale: u32::try_from(entry.downscale).unwrap_or(u32::MAX),
-        passes: u32::try_from(entry.passes).unwrap_or(u32::MAX),
-        algorithm: entry.algorithm.clone(),
-        noise: entry.noise,
-        brightness: entry.brightness,
-        contrast: entry.contrast,
-        saturation: entry.saturation,
-        tint: entry.tint.clone(),
-        offset_x: entry.offset_x,
-        offset_y: entry.offset_y,
-        blur_radius: entry.blur_radius,
-        spread: entry.spread,
-        colour: entry.colour.clone(),
-        source: entry.source.clone(),
-        entry: entry.entry.clone(),
-    }
-}
-
-/// The wire entry a render pass echoes as. A blur's colour is the tint and a shadow's is
-/// its colour; each channel is quantised to eight bits, the form the compositor accepts.
-fn effect_properties(pass: &Pass) -> effect::Properties {
-    match pass {
-        Pass::Blur(blur) => effect::Properties {
-            kind: "blur".to_owned(),
-            enabled: true,
-            downscale: u64::from(blur.downscale.recip().round().clamp(1.0, f32::MAX) as u32),
-            passes: u64::from(blur.passes),
-            blur_radius: f64::from(blur.radius),
-            brightness: f64::from(blur.brightness),
-            contrast: f64::from(blur.contrast),
-            saturation: f64::from(blur.saturation),
-            noise: f64::from(blur.noise),
-            tint: hex_colour(blur.tint),
-            ..effect::Properties::default()
-        },
-        Pass::Shadow(shadow) => effect::Properties {
-            kind: "shadow".to_owned(),
-            enabled: true,
-            offset_x: shadow.offset.x,
-            offset_y: shadow.offset.y,
-            blur_radius: f64::from(shadow.blur),
-            spread: f64::from(shadow.spread),
-            colour: hex_colour(shadow.color),
-            ..effect::Properties::default()
-        },
-    }
-}
-
-/// `#rrggbbaa` for a colour, each channel rounded to eight bits.
-fn hex_colour(colour: Color) -> String {
-    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-    format!(
-        "#{:02x}{:02x}{:02x}{:02x}",
-        channel(colour.r),
-        channel(colour.g),
-        channel(colour.b),
-        channel(colour.a),
-    )
 }
 
 /// The pointer input an `input` op carries. An unknown `input_kind`, or a button or state that

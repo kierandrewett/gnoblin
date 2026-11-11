@@ -3,7 +3,6 @@
 > **Rust status:** The pages below describe a broader legacy event contract than Rust implements.
 > Rust delivers only these object-model signals:
 >
-> - `gnoblin.effect.closed`
 > - `gnoblin.output.closed`
 > - `gnoblin.request.offered`
 > - `gnoblin.request.finished`

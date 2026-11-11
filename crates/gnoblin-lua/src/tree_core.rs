@@ -340,13 +340,6 @@ fn expect_text(value: Value, name: &str) -> mlua::Result<String> {
     }
 }
 
-fn expect_bool(value: Value, name: &str) -> mlua::Result<bool> {
-    match value {
-        Value::Boolean(b) => Ok(b),
-        _ => Err(lua_err(format!("effect {name} must be a boolean"))),
-    }
-}
-
 fn expect_double(value: Value, name: &str) -> mlua::Result<f64> {
     match value {
         Value::Number(f) => Ok(f),
@@ -361,12 +354,12 @@ fn expect_uint(value: Value, name: &str) -> mlua::Result<u64> {
         .ok_or_else(|| lua_err(format!("effect {name} must be a non-negative integer")))
 }
 
-/// One `effect` from a Lua table. Fields left out take the defaults `EffectSpec` uses; an
-/// unknown field is refused, and so is a kind other than `blur` or `shadow`.
+/// One `effect` from a Lua table. Fields left out take the record's documented defaults; an
+/// unknown field (`enabled`, `source` and `entry` are gone) is refused, and so is a kind other
+/// than `blur` or `shadow`, `shader` included.
 fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
     let mut props = effect::Properties {
         kind: String::new(),
-        enabled: true,
         downscale: 2,
         passes: 3,
         algorithm: "kawase".to_owned(),
@@ -380,8 +373,6 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
         blur_radius: 12.0,
         spread: 0.0,
         colour: "#00000080".to_owned(),
-        source: String::new(),
-        entry: String::new(),
     };
     for pair in table.pairs::<Value, Value>() {
         let (key, value) = pair?;
@@ -391,7 +382,6 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
         let name = key.to_str()?.to_string();
         match name.as_str() {
             "kind" => props.kind = expect_text(value, &name)?,
-            "enabled" => props.enabled = expect_bool(value, &name)?,
             "downscale" => props.downscale = expect_uint(value, &name)?,
             "passes" => props.passes = expect_uint(value, &name)?,
             "algorithm" => props.algorithm = expect_text(value, &name)?,
@@ -405,8 +395,6 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
             "blur_radius" => props.blur_radius = expect_double(value, &name)?,
             "spread" => props.spread = expect_double(value, &name)?,
             "colour" => props.colour = expect_text(value, &name)?,
-            "source" => props.source = expect_text(value, &name)?,
-            "entry" => props.entry = expect_text(value, &name)?,
             other => return Err(lua_err(format!("an effect has no field {other}"))),
         }
     }
@@ -423,7 +411,6 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
 fn effect_to_lua(lua: &Lua, props: &effect::Properties) -> mlua::Result<Table> {
     let table = lua.create_table()?;
     table.raw_set("kind", props.kind.as_str())?;
-    table.raw_set("enabled", props.enabled)?;
     table.raw_set("downscale", props.downscale)?;
     table.raw_set("passes", props.passes)?;
     table.raw_set("algorithm", props.algorithm.as_str())?;
@@ -437,8 +424,6 @@ fn effect_to_lua(lua: &Lua, props: &effect::Properties) -> mlua::Result<Table> {
     table.raw_set("blur_radius", props.blur_radius)?;
     table.raw_set("spread", props.spread)?;
     table.raw_set("colour", props.colour.as_str())?;
-    table.raw_set("source", props.source.as_str())?;
-    table.raw_set("entry", props.entry.as_str())?;
     Ok(table)
 }
 

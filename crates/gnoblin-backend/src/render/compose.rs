@@ -98,6 +98,10 @@ const SHELL_SCALE_MAX: f32 = 10.0;
 /// The largest magnitude, in logical pixels, of each component the shell may offset a window by.
 const SHELL_OFFSET_LIMIT: f64 = 100_000.0;
 
+/// Why a blur or shadow on a node placed in 3D is not drawn: the text after the kind in an entry of the node's
+/// read-only `skipped` list, and the code the GLES renderer logs when it meets such a layer.
+const SKIPPED_ON_3D: &str = "unsupported-effect-on-3d";
+
 /// The orthographic camera's distance from the image plane, in logical pixels.
 const VIEW_ORTHO_DEPTH: f64 = 100.0;
 /// The near and far eye depths a View draws between when its camera sets neither.
@@ -222,8 +226,6 @@ struct WindowNode {
     shell_scale: f32,
     /// The shell's offset in logical pixels, zero when it set none. It rides on the placement.
     shell_offset: (f64, f64),
-    /// Its effect chain, kept for the same reason and pushed to the node.
-    effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
     visible: bool,
     /// Whether the window's surface is secure, so a capture masks it. The shell sets it by writing `secure` on the
@@ -296,6 +298,8 @@ pub struct Composer {
     /// The tree changes made since the frame last took them: a window's node created or
     /// destroyed, published in the next batch.
     tree_changes: Vec<TreeChange>,
+    /// The `skipped` list last published for each node that had one, so only a change is sent.
+    skipped_published: BTreeMap<NodeId, Vec<String>>,
     /// Window nodes created since the last take, announced to the shell as ready.
     tree_ready: Vec<NodeId>,
     /// Lock nodes whose session lock went `pending` since the last take, announced to the shell
@@ -379,6 +383,7 @@ impl Composer {
             cursor: None,
             flash: None,
             tree_changes: Vec::new(),
+            skipped_published: BTreeMap::new(),
             tree_ready: Vec::new(),
             lock_requested: Vec::new(),
             main_seat: None,
@@ -859,7 +864,6 @@ impl Composer {
                 node: None,
                 geometry,
                 transform: VisualTransform::IDENTITY,
-                effects: Effects::new(),
                 visible: true,
                 secure: false,
                 content: None,
@@ -1461,23 +1465,6 @@ impl Composer {
             return;
         }
         entry.transform.corner_radius = radius;
-        self.sync(window, true);
-    }
-
-    /// Replaces a window's effect chain.
-    ///
-    /// The chain is the scene's own [`Effects`], already validated pass by pass, so the
-    /// values a GPU shader reads are the values the script that set them was checked
-    /// against. The old and new chain damage nothing on their own: the chain only draws
-    /// inside or around the window, which [`Composer::sync`] re-damages.
-    pub fn set_window_effects(&mut self, window: WindowId, effects: Effects) {
-        let Some(entry) = self.windows.get_mut(&window) else {
-            return;
-        };
-        if entry.effects == effects {
-            return;
-        }
-        entry.effects = effects;
         self.sync(window, true);
     }
 
@@ -2308,7 +2295,7 @@ impl Composer {
                 opacity: pose.transform.opacity,
                 tint: pose.transform.tint,
                 corner_radius: pose.transform.corner_radius,
-                effects: entry.effects.clone(),
+                effects: self.scene.effects(window_node).cloned().unwrap_or_default(),
                 model,
                 secure: entry.secure,
             }));
@@ -2345,7 +2332,7 @@ impl Composer {
                 opacity: 1.0,
                 tint: Color::new(1.0, 1.0, 1.0, 1.0),
                 corner_radius: 0.0,
-                effects: Effects::new(),
+                effects: self.scene.effects(view).cloned().unwrap_or_default(),
                 model: None,
                 // A capture of the output replaces the picture of a View that holds a secure node, so the output
                 // reveals nothing a View's own capture hides.
@@ -2440,14 +2427,81 @@ impl Composer {
     /// How a node is placed on `output`: `None` for a flat rectangle drawn in paint order, which
     /// is every node in a planar scene under the orthographic projection.
     fn model(&self, node: NodeId, output: Rect) -> Option<Model> {
-        let world = self.scene.world_matrix(node)?;
-        if world.is_planar() && matches!(self.scene.projection_for(node)?, Projection::Orthographic) {
-            return None;
-        }
+        let world = self.spatial_world(node)?;
         Some(Model {
             matrix: Mat4::translation(-f64::from(output.x), -f64::from(output.y), 0.0).mul(&world),
             opaque: false,
         })
+    }
+
+    /// The node's world matrix when it is placed in 3D, `None` for a flat rectangle: a planar
+    /// world matrix under the orthographic projection is drawn by the flat path.
+    fn spatial_world(&self, node: NodeId) -> Option<Mat4> {
+        let world = self.scene.world_matrix(node)?;
+        if world.is_planar() && matches!(self.scene.projection_for(node)?, Projection::Orthographic) {
+            return None;
+        }
+        Some(world)
+    }
+
+    /// The effects of `node` the renderer will not draw, one `<kind>: <reason>` text each, in list
+    /// order. A blur or a shadow on a node placed in 3D is skipped: the renderers have no depth
+    /// pass for a backdrop or a shadow, so they draw the layer without them.
+    fn skipped_effects(&self, node: NodeId) -> Vec<String> {
+        let Some(effects) = self.scene.effects(node) else {
+            return Vec::new();
+        };
+        if effects.is_empty() || self.spatial_world(node).is_none() {
+            return Vec::new();
+        }
+        effects
+            .passes()
+            .iter()
+            .map(|pass| format!("{}: {SKIPPED_ON_3D}", pass.name()))
+            .collect()
+    }
+
+    /// Publishes each node's read-only `skipped` list when it changes. A node whose effects the
+    /// renderer cannot draw gets the list; a node that stops needing it gets the empty list back.
+    /// Only a change is published, so a steady scene sends nothing. Called once per frame, after
+    /// the tree's writes and the placement have settled.
+    pub fn publish_skipped_effects(&mut self) {
+        let mut now = BTreeMap::new();
+        for node in self.scene.effect_nodes() {
+            let skipped = self.skipped_effects(node);
+            if !skipped.is_empty() {
+                now.insert(node, skipped);
+            }
+        }
+        let cleared: Vec<NodeId> = self
+            .skipped_published
+            .keys()
+            .filter(|node| !now.contains_key(node))
+            .copied()
+            .collect();
+        for node in cleared {
+            self.skipped_published.remove(&node);
+            self.write_skipped(node, Vec::new());
+        }
+        for (node, skipped) in now {
+            if self.skipped_published.get(&node) != Some(&skipped) {
+                self.skipped_published.insert(node, skipped.clone());
+                self.write_skipped(node, skipped);
+            }
+        }
+    }
+
+    /// Stores a node's `skipped` list and queues it for the next change batch. A node that is
+    /// gone has nothing to write: its destruction is already queued.
+    fn write_skipped(&mut self, node: NodeId, skipped: Vec<String>) {
+        let value = TreeValue::ListText(skipped);
+        if self.scene.set_value(node, "skipped", value.clone()).is_ok() {
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: "skipped".to_owned(),
+                value,
+            });
+        }
     }
 
     /// The transform a window's node should reach: its base transform placed at its geometry.
@@ -2572,7 +2626,6 @@ impl Composer {
         let content = if entry.visible { entry.content } else { None };
         let node = entry.node;
         let transform = self.placed_target(entry);
-        let effects = entry.effects.clone();
         let Some(content) = content else {
             if let Some(node) = node {
                 self.cancel_tracks(window);
@@ -2600,9 +2653,6 @@ impl Composer {
                 if force && let Some(current) = self.scene.transform(node).copied() {
                     let _ = self.scene.set_transform(node, current);
                 }
-                if self.scene.effects(node) != Some(&effects) {
-                    let _ = self.scene.set_effects(node, effects.clone());
-                }
                 self.publish_geometry(window);
                 self.retarget(window, animate);
             }
@@ -2623,7 +2673,7 @@ impl Composer {
                     parent: None,
                     bounds,
                     transform: spec_transform,
-                    effects,
+                    effects: Effects::new(),
                     kind: NodeKind::Visual,
                     visible: true,
                     clip: false,
@@ -5759,5 +5809,91 @@ mod tests {
             Some(fill_list(10.0, 10.0, 1)),
         );
         assert!(canvas_layers(&mut composer, output).is_empty());
+    }
+
+    /// The `skipped` texts the composer queued for `node`, last first, or `None` when it queued none.
+    fn queued_skipped(composer: &mut Composer, node: NodeId) -> Option<Vec<String>> {
+        composer
+            .take_tree_changes()
+            .into_iter()
+            .rev()
+            .find_map(|change| match change {
+                TreeChange::Set {
+                    node: changed,
+                    key,
+                    value: TreeValue::ListText(texts),
+                } if changed == node && key == "skipped" => Some(texts),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn an_effect_on_a_node_placed_in_3d_is_reported_skipped_and_cleared_when_it_is_flat() {
+        use gnoblin_render::{BlurParams, Pass, Shadow};
+        let (mut composer, _output) = screen();
+        let node = NodeId::new(0x4000);
+        let mut chain = Effects::new();
+        chain
+            .push(Pass::Blur(BlurParams {
+                radius: 4.0,
+                passes: 2,
+                ..BlurParams::default()
+            }))
+            .expect("a blur");
+        chain
+            .push(Pass::Shadow(Shadow {
+                offset: Vec3::new(0.0, 4.0, 0.0),
+                blur: 12.0,
+                spread: 0.0,
+                opacity: 1.0,
+                color: Color::BLACK,
+            }))
+            .expect("a shadow");
+        composer.with_scene(|scene| {
+            scene
+                .insert(node, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+                .expect("the node");
+            scene.set_effects(node, chain).expect("the effects");
+        });
+        composer.take_tree_changes();
+
+        composer.publish_skipped_effects();
+        assert_eq!(queued_skipped(&mut composer, node), None, "a flat node skips nothing");
+
+        composer.with_scene(|scene| {
+            scene
+                .set_property(node, VisualProperty::RotationX, PropertyValue::Number(30.0))
+                .expect("a tilt");
+        });
+        composer.publish_skipped_effects();
+        let want = vec![
+            "blur: unsupported-effect-on-3d".to_owned(),
+            "shadow: unsupported-effect-on-3d".to_owned(),
+        ];
+        assert_eq!(queued_skipped(&mut composer, node), Some(want.clone()));
+        assert_eq!(
+            composer.with_scene(|scene| scene.value(node, "skipped").cloned()),
+            Some(TreeValue::ListText(want)),
+            "the node itself carries the list a snapshot reads"
+        );
+
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            None,
+            "an unchanged list is not republished"
+        );
+
+        composer.with_scene(|scene| {
+            scene
+                .set_property(node, VisualProperty::RotationX, PropertyValue::Number(0.0))
+                .expect("flat again");
+        });
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            Some(Vec::new()),
+            "a node that is flat again gets the empty list back"
+        );
     }
 }

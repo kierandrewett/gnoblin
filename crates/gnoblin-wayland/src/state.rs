@@ -186,9 +186,6 @@ pub(crate) struct WindowEntry {
     pub(crate) icon_buffer_count: usize,
     /// The toplevel tag the client set (`xdg-toplevel-tag-v1`), if any.
     pub(crate) tag: Option<String>,
-    /// The effect stack the client set through `window.add_effect`, in paint order. The
-    /// server owns it: the observed window and the renderer both read it from here.
-    pub(crate) effects: Vec<crate::observation::EffectSpec>,
 }
 
 impl WindowEntry {
@@ -205,7 +202,6 @@ impl WindowEntry {
             icon_name: None,
             icon_buffer_count: 0,
             tag: None,
-            effects: Vec::new(),
         }
     }
 }
@@ -1708,7 +1704,6 @@ impl State {
                 icon_name: None,
                 icon_buffer_count: 0,
                 tag: None,
-                effects: Vec::new(),
             },
         );
         // The window is placed now and takes focus when it first maps; the activation is decided from
@@ -1918,63 +1913,6 @@ impl State {
                 }
             })
             .collect()
-    }
-
-    /// Appends an effect to a window's stack, in paint order, and publishes the window.
-    ///
-    /// A blur costs `passes` passes of the renderer's budget; a shadow or shader costs
-    /// one. The request is refused, and the stack is unchanged, when the kind is unknown
-    /// or the total would exceed `MAX_PASSES`. A shader with an empty `source` is kept
-    /// but inactive, since it has nothing to run.
-    ///
-    /// # Errors
-    /// `unknown-effect-kind:`, `too-many-passes:` or `unknown window`; each message
-    /// begins with the error code the caller reports.
-    pub(crate) fn add_effect(
-        &mut self,
-        window: WindowId,
-        mut spec: crate::observation::EffectSpec,
-    ) -> Result<(), String> {
-        let cost = match spec.kind.as_str() {
-            "blur" => spec.passes as usize,
-            "shadow" | "shader" => 1,
-            other => return Err(format!("unknown-effect-kind: `{other}` is not blur, shadow or shader")),
-        };
-        let entry = self
-            .windows
-            .get_mut(&window)
-            .ok_or_else(|| "unknown window".to_owned())?;
-        let used: usize = entry
-            .effects
-            .iter()
-            .map(|effect| match effect.kind.as_str() {
-                "blur" => effect.passes as usize,
-                _ => 1,
-            })
-            .sum();
-        let budget = gnoblin_render::MAX_PASSES;
-        if used + cost > budget {
-            return Err(format!(
-                "too-many-passes: {used} of {budget} passes are in use and this effect needs {cost}"
-            ));
-        }
-        match crate::effects::inactive_reason(&spec) {
-            Some(reason) => {
-                spec.active = false;
-                spec.reason = reason;
-            }
-            None => {
-                spec.active = true;
-                spec.reason.clear();
-            }
-        }
-        entry.effects.push(spec);
-        // The scene draws the chain of active, enabled effects; push it on every change so
-        // the renderer never lags the stack the client can read back.
-        self.composer
-            .set_window_effects(window, crate::effects::chain(&entry.effects));
-        self.publish();
-        Ok(())
     }
 
     /// What is known about the process behind a window's client. `None` when no such
@@ -2577,7 +2515,6 @@ impl State {
                     icon_name: entry.and_then(|entry| entry.icon_name.clone()),
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),
-                    effects: entry.map_or_else(Vec::new, |entry| entry.effects.clone()),
                     modal: window.kind == WindowKind::Modal,
                     unresponsive: matches!(
                         entry.map(|entry| &entry.surface),
@@ -3245,6 +3182,8 @@ impl Host for State {
         self.deliver_seat_inputs();
         // Placement follows the shell's hold as the drain left it.
         self.composer.follow_placement();
+        // A node whose effects the renderer cannot draw says so in its read-only `skipped` list.
+        self.composer.publish_skipped_effects();
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame();

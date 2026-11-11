@@ -129,6 +129,12 @@ reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
 owner-slice = "S6"
 
 [[allow]]
+name = ":remove"
+doc = "docs/shell-api/workspaces.md"
+reason = "workspaces.md lists this as not available; the gate matches the mention, not a claim"
+owner-slice = "docs wrong"
+
+[[allow]]
 name = ":rename"
 doc = "docs/shell-api/workspaces.md"
 reason = "workspaces.md lists this as not available; the gate matches the mention, not a claim"

@@ -64,7 +64,7 @@ use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
 
-use crate::effect::{EffectError, Pass};
+use crate::effect::{EffectError, Effects, Pass};
 use crate::scene::{NodeSpec, Scene, SceneError};
 use crate::scene_ids::Actor;
 
@@ -954,6 +954,7 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
         ),
         ("source", TreeValue::Node(target)) => work.set_source(node, *target),
         ("camera", TreeValue::Node(target)) => work.set_camera(node, *target),
+        ("effects", TreeValue::Effects(passes)) => effect_chain(passes).and_then(|chain| work.set_effects(node, chain)),
         (key, TreeValue::Double(number)) => match visual_property(key) {
             Some(property) => work.set_property(node, property, PropertyValue::Number(*number as f32)),
             None => Ok(()),
@@ -964,6 +965,17 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
     result.map_err(|error| scene_code(&error))?;
     work.set_value(node, key, value.clone())
         .map_err(|error| scene_code(&error))
+}
+
+/// The scene's effect chain for the passes of an `effects` list. The list was checked against
+/// [`MAX_EFFECTS`] and each pass was validated, so a refusal here is a bug in that check, not
+/// a client's value.
+fn effect_chain(passes: &[Pass]) -> Result<Effects, SceneError> {
+    let mut chain = Effects::new();
+    for pass in passes {
+        chain.push(pass.clone())?;
+    }
+    Ok(chain)
 }
 
 /// Whether the scene stores `key`. A `set` to any other key is accepted and listed as changed.

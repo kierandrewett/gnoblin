@@ -48,6 +48,18 @@ fn schema() -> Vec<ClassSpec> {
                 prop("title", TreeValueKind::Text, false, None),
                 prop("serial", TreeValueKind::Int, true, None),
                 prop("visible", TreeValueKind::Bool, false, Some(LuaValue::Bool(true))),
+                prop(
+                    "effects",
+                    TreeValueKind::ListEffect,
+                    false,
+                    Some(LuaValue::Effects(Vec::new())),
+                ),
+                prop(
+                    "skipped",
+                    TreeValueKind::ListText,
+                    true,
+                    Some(LuaValue::Texts(Vec::new())),
+                ),
             ],
             signals: vec!["changed".to_owned()],
             ..ClassSpec::default()
@@ -366,6 +378,31 @@ fn classes_lists_the_schema_parent_first() {
         assert(cs[2].props.w.type == "uint")
         "#,
     );
+}
+
+#[test]
+fn a_node_effects_list_takes_blur_and_shadow_only_and_skipped_is_read_only() {
+    let (lua, _) = setup();
+    check(
+        &lua,
+        r#"
+        core.set(2, "effects", { { kind = "blur", passes = 2 }, { kind = "shadow", offset_y = 4 } })
+        local list = core.get(2, "effects")
+        assert(#list == 2 and list[1].kind == "blur" and list[1].passes == 2)
+        assert(list[2].kind == "shadow" and list[2].offset_y == 4)
+        assert(list[1].enabled == nil and list[1].source == nil, "the record has no enabled, source or entry")
+        assert(#core.get(2, "skipped") == 0, "nothing is skipped until the compositor says so")
+        "#,
+    );
+    assert!(refused(&lua, r#"core.set(2, "effects", { { kind = "shader" } })"#).contains("blur or shadow"));
+    assert!(
+        refused(
+            &lua,
+            r#"core.set(2, "effects", { { kind = "blur", enabled = false } })"#
+        )
+        .contains("no field enabled")
+    );
+    refused(&lua, r#"core.set(2, "skipped", { "blur: unsupported-effect-on-3d" })"#);
 }
 
 #[test]

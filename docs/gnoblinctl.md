@@ -159,7 +159,7 @@ methods that exist are:
 - `window`: `focus`, `present`, `kill`, `close`, `set_minimized`,
   `set_maximized`, `set_fullscreen`, `move`, `resize`, `set_opacity`,
   `set_scale`, `set_offset`, `reset_visuals`, `set_workspace`, `set_output`,
-  `add_effect`, `request_menu`
+  `request_menu`
 - `session`: `logout`, `poweroff`, `reboot`, `suspend`, `hibernate`
 
 `workspace` declares no methods, so it has no `call` verb. The `session` signals

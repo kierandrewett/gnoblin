@@ -484,7 +484,6 @@ fn list_text_and_list_effect_changes_decode_to_their_lua_values() {
     let (mut link, mut server) = pair();
     let blur = gnoblin_proto::tree::effect::Properties {
         kind: "blur".to_owned(),
-        enabled: true,
         blur_radius: 4.0,
         ..Default::default()
     };

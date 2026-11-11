@@ -29,7 +29,7 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
   back to the default cursor. Builds with Hyprcursor support also read
   Hyprcursor themes, with animated frames that preserve hotspots and timing.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
-  shadows, custom shaders and layer animations](docs/guides/window_effects.md) with
+  shadows and layer animations](docs/guides/window_effects.md) with
   window rules.
 - **Live configuration.** Edit [one Lua file](docs/config.md) for window rules, shortcuts,
   autostart, protocol gates and animation behavior. Reload applies the settings

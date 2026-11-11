@@ -784,6 +784,14 @@ impl Scene {
         self.nodes.get(&id).map(Node::effects)
     }
 
+    /// The nodes that carry at least one effect pass, in ascending id order.
+    pub fn effect_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.nodes
+            .iter()
+            .filter(|(_, node)| !node.effects().is_empty())
+            .map(|(id, _)| *id)
+    }
+
     /// A node's local rectangle, without effect padding.
     #[must_use]
     pub fn bounds(&self, id: NodeId) -> Option<Rect> {

@@ -5,25 +5,20 @@ version = "0.2.0"
 # schema has no unions, so one object carries every kind's parameters as flat properties.
 # A parameter the kind does not use is ignored and documented as such.
 #
-# This is the same parameter set as the window's `effect` object (`effect.toml`), without
-# its read-only `active` and `reason` status: a list value is what the client sets, and
-# the compositor reports the status on the window, not on the list.
+# This is the node list's only effect path: the legacy `window.add_effect` call and the
+# window's `effect` object are gone. What the compositor could not draw is reported on the
+# node, in its read-only `skipped` list, not on each element. An effect is switched off by
+# setting the list without it, so an element carries no `enabled` flag.
 [[object]]
 name = "effect"
 since = "0.2.0"
 record = true
 
-# The kind of effect: `blur` or `shadow`. `shader` is refused on a node list: the
-# compositor does not run shader effects from the tree yet.
+# The kind of effect: `blur` or `shadow`. Any other kind, `shader` included, is refused
+# `bad-value` and the whole list is refused with it: the compositor runs no user shaders.
 [[object.property]]
 name = "kind"
 type = "string"
-since = "0.2.0"
-
-# Whether the effect is applied. A disabled effect stays in the list and draws nothing.
-[[object.property]]
-name = "enabled"
-type = "bool"
 since = "0.2.0"
 
 # Blur only. The backdrop is sampled at `1 / downscale` of full resolution before
@@ -40,7 +35,8 @@ type = "uint"
 since = "0.2.0"
 
 # Blur only. The blur kernel: `gaussian`, `kawase` or `box`. Default `kawase`. Ignored by
-# shadow.
+# shadow. The renderer has one blur kernel today and reads no value from this property;
+# it is accepted so a list written for a renderer with a choice still validates.
 [[object.property]]
 name = "algorithm"
 type = "string"
@@ -113,17 +109,5 @@ since = "0.2.0"
 # by blur.
 [[object.property]]
 name = "colour"
-type = "string"
-since = "0.2.0"
-
-# Shader only, reserved. The name of the shader module. Ignored by blur and shadow.
-[[object.property]]
-name = "source"
-type = "string"
-since = "0.2.0"
-
-# Shader only, reserved. The entry point in `source`. Ignored by blur and shadow.
-[[object.property]]
-name = "entry"
 type = "string"
 since = "0.2.0"

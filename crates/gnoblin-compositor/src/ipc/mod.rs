@@ -34,6 +34,7 @@ mod server;
 mod session;
 mod settings;
 mod tree;
+mod tree_effects;
 mod tree_host;
 
 use std::path::PathBuf;
