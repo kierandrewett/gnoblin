@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_pipewire_export::testing::{Consumer, Daemon};
+use gnoblin_pipewire_export::testing::{Daemon, FrameConsumer};
 use gnoblin_render::Scene;
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_secret::SecretText;
@@ -1789,7 +1789,7 @@ fn a_cast_of_a_view_delivers_the_views_pixels_and_keeps_the_indicator_on_while_i
             "the indicator's count of capture sessions is up when the start is answered"
         );
 
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         let frame = consumer.wait_for_frame("of the View's colour", |frame| frame.is_solid(rgb(SOURCE)));
         assert_eq!(
             (frame.width, frame.height),
@@ -1837,7 +1837,7 @@ fn a_cast_of_a_view_sends_a_new_frame_when_the_view_changes() {
         let mut window = Window::map(&mut app, SOURCE);
         arrange(&owner);
         let stream = cast(handle, VIEW);
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the first colour", |frame| frame.is_solid(rgb(SOURCE)));
 
         window.paint(&mut app, REPAINTED);
@@ -1856,7 +1856,7 @@ fn a_cast_of_a_view_masks_a_secure_window() {
         let _window = Window::map(&mut app, SOURCE);
         arrange(&owner);
         let stream = cast(handle, VIEW);
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
         let (window, ..) = owner.window();
 
@@ -1888,7 +1888,7 @@ fn the_session_lock_ends_a_cast_of_a_view_and_refuses_a_new_one() {
         let _window = Window::map(&mut app, SOURCE);
         arrange(&owner);
         let stream = cast(handle, VIEW);
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
 
         let _locker = lock(handle.socket());
@@ -1922,7 +1922,7 @@ fn a_cast_of_a_view_ends_cleanly_when_the_view_is_destroyed() {
         let _window = Window::map(&mut app, SOURCE);
         arrange(&owner);
         let stream = cast(handle, VIEW);
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
         wait_for_count(&recorder, 1);
 
@@ -1969,7 +1969,7 @@ fn a_cast_of_a_view_follows_the_size_of_the_view() {
         let _window = Window::map(&mut app, SOURCE);
         arrange(&owner);
         let stream = cast(handle, VIEW);
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the View's first size", |frame| {
             frame.is_solid(rgb(SOURCE)) && (frame.width, frame.height) == (SIDE, SIDE)
         });
@@ -2010,7 +2010,7 @@ fn a_cast_of_a_view_carries_a_new_picture_no_more_often_than_the_views_fps() {
             }]
         });
         let stream = cast(handle, VIEW);
-        let consumer = Consumer::connect(&daemon.socket(), stream.node);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the first colour", |frame| frame.is_solid(rgb(SOURCE)));
 
         window.paint(&mut app, REPAINTED);

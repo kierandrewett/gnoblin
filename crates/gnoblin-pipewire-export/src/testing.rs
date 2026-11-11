@@ -2,7 +2,7 @@
 //! client that watches what the daemon holds, and a consumer that reads the frames of one node.
 //!
 //! The recipe is `design/pipewire-capture-spike.md`. A private daemon runs no session manager, so
-//! nothing links a producer to a consumer: [`Consumer::connect`] makes the link a user session would.
+//! nothing links a producer to a consumer: [`FrameConsumer::connect`] makes the link a user session would.
 //!
 //! It is compiled for this crate's own tests and, behind the `testing` feature, for the integration
 //! tests of the crates whose streams a test must read (`gnoblin-wayland`). Nothing else turns it on.
@@ -312,7 +312,7 @@ pub fn drive(mainloop: &MainLoopRc, mut done: impl FnMut() -> bool) -> bool {
 /// One frame a consumer received: the picture as the stream's own `BGRA` or `BGRx` bytes, at the size the consumer
 /// had negotiated when it arrived.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Frame {
+pub struct Picture {
     /// The width of the picture, in pixels.
     pub width: u32,
     /// The height of the picture, in pixels.
@@ -321,7 +321,7 @@ pub struct Frame {
     pub bytes: Vec<u8>,
 }
 
-impl Frame {
+impl Picture {
     /// Whether the bytes are exactly one picture of the size the consumer negotiated.
     pub fn is_whole(&self) -> bool {
         self.width > 0 && self.height > 0 && self.bytes.len() == self.width as usize * self.height as usize * 4
@@ -362,7 +362,7 @@ struct Received {
     /// The size the producer last negotiated, if it has negotiated one.
     size: Option<(u32, u32)>,
     /// The frames that carried bytes, oldest first.
-    frames: Vec<Frame>,
+    frames: Vec<Picture>,
     /// How many buffers arrived with no bytes: a frame the producer refused.
     empty: usize,
     /// Every state the consumer's stream went through.
@@ -373,7 +373,7 @@ struct Received {
 ///
 /// It accepts any size and either `BGRA` or `BGRx`, so a producer that renegotiates a new size is followed
 /// rather than refused.
-pub struct Consumer {
+pub struct FrameConsumer {
     // Fields drop in declaration order: the link and the stream go before the client they belong to.
     _link: Link,
     _stream_listener: StreamListener<Arc<Mutex<Received>>>,
@@ -383,7 +383,7 @@ pub struct Consumer {
     pub observer: Observer,
 }
 
-impl Consumer {
+impl FrameConsumer {
     /// Connects a consumer to `node` on the daemon at `socket` and links the two.
     pub fn connect(socket: &Path, node: u32) -> Self {
         let observer = Observer::connect(socket);
@@ -435,7 +435,7 @@ impl Consumer {
                     return;
                 };
                 let (width, height) = guard.size.unwrap_or_default();
-                guard.frames.push(Frame { width, height, bytes });
+                guard.frames.push(Picture { width, height, bytes });
             })
             .register()
             .expect("register the consumer callbacks");
@@ -467,12 +467,12 @@ impl Consumer {
         received.empty = 0;
     }
 
-    /// The frames received since the last [`Consumer::forget`] that carried bytes, oldest first.
-    pub fn frames(&self) -> Vec<Frame> {
+    /// The frames received since the last [`FrameConsumer::forget`] that carried bytes, oldest first.
+    pub fn frames(&self) -> Vec<Picture> {
         lock(&self.received).frames.clone()
     }
 
-    /// How many buffers arrived empty since the last [`Consumer::forget`]: frames the producer refused.
+    /// How many buffers arrived empty since the last [`FrameConsumer::forget`]: frames the producer refused.
     pub fn empty_frames(&self) -> usize {
         lock(&self.received).empty
     }
@@ -485,14 +485,19 @@ impl Consumer {
     /// Waits for a frame `accept` takes, and answers it. Panics, saying what `what` was and what did arrive, when
     /// none does within [`DEADLINE`].
     #[track_caller]
-    pub fn wait_for_frame(&self, what: &str, accept: impl Fn(&Frame) -> bool) -> Frame {
+    pub fn wait_for_frame(&self, what: &str, accept: impl Fn(&Picture) -> bool) -> Picture {
         self.wait_for_frame_pumping(what, || {}, accept)
     }
 
-    /// [`Consumer::wait_for_frame`] for a producer that runs on this thread: `pump` runs once per turn of the wait,
+    /// [`FrameConsumer::wait_for_frame`] for a producer that runs on this thread: `pump` runs once per turn of the wait,
     /// which is what lets the producer make its frames.
     #[track_caller]
-    pub fn wait_for_frame_pumping(&self, what: &str, mut pump: impl FnMut(), accept: impl Fn(&Frame) -> bool) -> Frame {
+    pub fn wait_for_frame_pumping(
+        &self,
+        what: &str,
+        mut pump: impl FnMut(),
+        accept: impl Fn(&Picture) -> bool,
+    ) -> Picture {
         let mut found = None;
         drive(&self.observer.mainloop, || {
             pump();
@@ -539,7 +544,7 @@ impl Consumer {
         self.listen_pumping(how_long, || {});
     }
 
-    /// [`Consumer::listen`] for a producer that runs on this thread: `pump` runs once per turn.
+    /// [`FrameConsumer::listen`] for a producer that runs on this thread: `pump` runs once per turn.
     pub fn listen_pumping(&self, how_long: Duration, mut pump: impl FnMut()) {
         let started = Instant::now();
         while started.elapsed() < how_long {

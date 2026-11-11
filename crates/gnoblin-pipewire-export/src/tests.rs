@@ -11,7 +11,7 @@ use gnoblin_capture::{Copied, Format, PixelFormat, SessionId, Stop, Table, Targe
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_types::{ClientId, NodeId, OutputId, Rect, Size, Tick};
 
-use super::testing::{Consumer, Daemon, Observer};
+use super::testing::{Daemon, FrameConsumer, Observer};
 use super::{ExportError, PipewireExport, PlaneSource};
 
 const SIZE: Size = Size::new(64, 48);
@@ -265,7 +265,7 @@ fn consumer_receives_frames_of_the_window_colour() {
     let node = export
         .start(&table, session, owner())
         .expect("a granted session starts");
-    let consumer = Consumer::connect(&daemon.socket(), node);
+    let consumer = FrameConsumer::connect(&daemon.socket(), node);
 
     let frame = consumer.wait_for_frame_pumping(
         "of the window colour",
@@ -310,7 +310,7 @@ fn a_view_stream_follows_the_size_the_view_is_drawn_at() {
     let node = export
         .start(&table, session, owner())
         .expect("a granted session starts");
-    let consumer = Consumer::connect(&daemon.socket(), node);
+    let consumer = FrameConsumer::connect(&daemon.socket(), node);
     let mut source = Resizable {
         size: SIZE,
         colour: WINDOW_PIXEL,
@@ -348,7 +348,7 @@ fn an_output_stream_keeps_the_size_it_started_with() {
     let node = export
         .start(&table, session, owner())
         .expect("a granted session starts");
-    let consumer = Consumer::connect(&daemon.socket(), node);
+    let consumer = FrameConsumer::connect(&daemon.socket(), node);
     let mut source = Resizable {
         size: Size::new(96, 80),
         colour: WINDOW_PIXEL,
