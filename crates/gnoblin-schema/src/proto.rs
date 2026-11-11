@@ -516,9 +516,8 @@ since = "1.0.0"
         assert!(text.contains("enum GnoblinError {"), "{text}");
         assert!(text.contains("GNOBLIN_TOO_MANY_INHIBITORS = 1;"), "{text}");
         assert!(text.contains("GNOBLIN_IDLE_UNAVAILABLE = 2;"), "{text}");
-        assert!(text.contains("GNOBLIN_LAYER_REFUSED = 3;"), "{text}");
-        assert!(text.contains("GNOBLIN_NOT_LOCKED = 4;"), "{text}");
-        assert!(text.contains("GNOBLIN_UNKNOWN_MEMBER = 5;"), "{text}");
+        assert!(text.contains("GNOBLIN_NOT_LOCKED = 3;"), "{text}");
+        assert!(text.contains("GNOBLIN_UNKNOWN_MEMBER = 4;"), "{text}");
     }
 
     /// Finding a namespace by name, so a test names the one it means.

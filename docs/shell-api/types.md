@@ -12,7 +12,6 @@ Runtime APIs return records including `Window`, `Workspace`, `Output`, `LayerSur
 
 - [Windows](/shell-api/windows)
 - [Workspaces](/shell-api/workspaces)
-- [Layer surfaces](/shell-api/layer-surfaces)
 - [Input](/shell-api/input)
 - [Launch feedback](/shell-api/launch-feedback)
 - [Privacy](/shell-api/privacy)

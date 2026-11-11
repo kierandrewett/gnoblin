@@ -15,7 +15,6 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Outputs](/shell-api/outputs): display outputs, modes, and renderer state.
 - [Idle watches](/shell-api/idle): run code when the session has had no input for a set time.
 - [Overrides](/shell-api/overrides): layer a setting or a window effect over the configuration, and take it back.
-- [Layer surfaces](/shell-api/layer-surfaces): shell surface snapshots and policy.
 - [Input](/shell-api/input): devices, sources, and orientation lock.
 - [Input handlers](/shell-api/input-handlers): handle local pointer, keyboard, and gesture events.
 - [Keyboard grabs](/shell-api/input-grab): take every key for a shell, with composed text and a lease that expires.

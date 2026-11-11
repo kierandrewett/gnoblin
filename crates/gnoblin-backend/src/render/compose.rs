@@ -215,7 +215,7 @@ struct WindowNode {
     /// Whether the window is on screen at all (mapped, on the active workspace).
     visible: bool,
     /// Whether the window's surface is secure, so a capture masks it. The shell sets it by writing `secure` on the
-    /// window's node; the layer registry records the same flag for the window's surface record.
+    /// window's node.
     secure: bool,
     /// The client's content, when it has committed one.
     content: Option<Content>,

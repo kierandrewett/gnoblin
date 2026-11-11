@@ -112,11 +112,6 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "the keyring section: whether the built-in keyring runs, read by the services role and the portal relay at start",
     ),
     (
-        "layers",
-        "0.2.0",
-        "the layers section: per-layer overrides keyed by full layer name, read by the layer registry at start",
-    ),
-    (
         "capture",
         "0.2.0",
         "the capture section: whether captures mask or omit secure layers, read by the screencopy and portal paths",

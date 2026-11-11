@@ -434,22 +434,16 @@ fn a_root_that_is_not_a_table_names_the_document() {
 }
 
 #[test]
-fn a_layer_override_is_keyed_by_its_full_layer_name() {
-    let config = Config::from_value(table([(
-        "layers",
-        table([("gnoblin.portals", table([("secure", flag(true))]))]),
-    )]))
-    .expect("a full layer name is accepted");
-    let layers = config.layers.as_ref().expect("the layers section");
-    assert_eq!(layers.layers["gnoblin.portals"].secure, Some(true));
-}
-
-#[test]
-fn a_layer_name_that_is_not_a_full_layer_name_is_refused_at_its_key() {
-    let found = problems(table([(
-        "layers",
-        table([("bad name", table([("secure", flag(true))]))]),
-    )]));
-    assert_eq!(found[0].0, "layers.bad name");
-    assert!(matches!(found[0].1, Fault::UnsupportedValue { .. }));
+fn the_layers_section_is_refused_with_the_migration_rather_than_a_typo_hint() {
+    let document = table([("layers", table([("gnoblin.portals", table([("secure", flag(true))]))]))]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one key is wrong, got {problems:?}");
+    assert_eq!(problems[0].0, "layers");
+    match &problems[0].1 {
+        Fault::Removed { detail } => {
+            assert!(detail.contains("layer registry was deleted"), "{detail}");
+            assert!(detail.contains("wlr-layer-shell"), "the replacement is named: {detail}");
+        }
+        other => panic!("expected an explanation, got {other:?}"),
+    }
 }

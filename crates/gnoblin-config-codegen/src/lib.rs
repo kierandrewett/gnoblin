@@ -310,7 +310,6 @@ enum IdShape {
     HexPair,
     Serial,
     Name,
-    LayerName,
 }
 
 impl IdShape {
@@ -320,7 +319,6 @@ impl IdShape {
             "hex-pair" => IdShape::HexPair,
             "serial" => IdShape::Serial,
             "name" => IdShape::Name,
-            "layer-name" => IdShape::LayerName,
             _ => return None,
         })
     }
@@ -331,7 +329,6 @@ impl IdShape {
             IdShape::HexPair => "IdShape::HexPair",
             IdShape::Serial => "IdShape::Serial",
             IdShape::Name => "IdShape::Name",
-            IdShape::LayerName => "IdShape::LayerName",
         }
     }
 }
@@ -1419,7 +1416,7 @@ field = "layers"
 kind = "record-map"
 record = "{record}"
 id = "{id}"
-accepted = "a table keyed by full layer name"
+accepted = "a table keyed by a layer name"
 doc = "Each layer's overrides."
 "#
         )
@@ -1427,18 +1424,18 @@ doc = "Each layer's overrides."
 
     #[test]
     fn section_record_map_parses_each_entry_by_its_id_shape() {
-        let Ok(artifacts) = generate(&layers_schema("Layer", "layer-name")) else {
+        let Ok(artifacts) = generate(&layers_schema("Layer", "name")) else {
             panic!("a valid record-map section must generate");
         };
         assert!(artifacts.rust.contains("pub layers: BTreeMap<String, Layer>,"));
         assert!(artifacts.rust.contains(
-            "section_record_map(map, path, out, \"a table keyed by full layer name\", IdShape::LayerName, parse_layer)"
+            "section_record_map(map, path, out, \"a table keyed by a layer name\", IdShape::Name, parse_layer)"
         ));
     }
 
     #[test]
     fn section_record_map_rejects_a_record_the_schema_does_not_declare() {
-        let Err(errors) = generate(&layers_schema("Missing", "layer-name")) else {
+        let Err(errors) = generate(&layers_schema("Missing", "name")) else {
             panic!("an undeclared record must be refused");
         };
         assert!(

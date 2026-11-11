@@ -1,37 +1,27 @@
-//! The input policy of a modal layer, `gnoblin.portals` in the layer model. A modal
-//! is an overlay drawn above one output's layers that takes the user's input instead
-//! of the clients underneath it.
+//! A modal overlay: an overlay drawn above one output's layers that takes the user's input
+//! instead of the clients underneath it.
 //!
-//! While a modal set to [`InputPolicy::ModalToOutput`] stands, no key or pointer button
-//! reaches a client on its output. Each one is kept as a [`ModalEvent`] for the
-//! compositor to take, and the compositor decides what it means. While the session is
-//! locked the lock cover owns the output, so a stored modal is neither drawn nor routed
-//! until the session unlocks. Screen captures leave the overlay out, so a capture shows
-//! what the modal covers.
+//! While a modal stands, no key or pointer button reaches a client on its output. Each one
+//! is kept as a [`ModalEvent`] for the compositor to take, and the compositor decides what
+//! it means. While the session is locked the lock cover owns the output, so a stored modal
+//! is neither drawn nor routed until the session unlocks. Screen captures leave the overlay
+//! out, so a capture shows what the modal covers.
 
-use gnoblin_layers::InputPolicy;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_types::{KeyState, OutputId};
 
 /// A modal overlay on one output.
 #[derive(Clone, Debug)]
 pub struct Modal {
-    input: InputPolicy,
     output: OutputId,
     overlay: Overlay,
 }
 
 impl Modal {
-    /// A modal drawn on `output` with the input policy `input`.
+    /// A modal drawn on `output`.
     #[must_use]
-    pub fn new(input: InputPolicy, output: OutputId, overlay: Overlay) -> Self {
-        Self { input, output, overlay }
-    }
-
-    /// The input policy the modal's layer declared.
-    #[must_use]
-    pub fn input(&self) -> InputPolicy {
-        self.input
+    pub fn new(output: OutputId, overlay: Overlay) -> Self {
+        Self { output, overlay }
     }
 
     /// The output the modal is drawn on.

@@ -73,8 +73,6 @@ use std::time::{Duration, Instant};
 use gnoblin_capture::still::{self, Refusal};
 use gnoblin_client::wire;
 
-use gnoblin_layers::provider::COMPOSITOR_CRATE;
-use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, privilege, read_frame, write_frame};
@@ -1674,9 +1672,6 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
-            (Some(ty), _, _, _) if ty == "layers" => {
-                self.layers_call(client, envelope, object, &method, &arguments);
-            }
             (None, _, _, _) => self.refuse(
                 client,
                 envelope,
@@ -1923,73 +1918,6 @@ impl Dispatcher {
         };
         self.sync();
         self.finish(object, &operation, Some(outcome));
-    }
-
-    /// Serves `layers.register`: a trusted built-in registers a window-scope layer above a
-    /// window. The provider is the compositor's own, derived here from the connection, so no
-    /// name from the wire can choose it. A connection that is not the session owner's is
-    /// refused `denied` before the graph sees the call.
-    fn layers_call(
-        &mut self,
-        client: ClientId,
-        envelope: &Envelope,
-        object: gnoblin_types::ObjectId,
-        method: &str,
-        arguments: &gnoblin_model::Fields,
-    ) {
-        if !self.is_owner(client) {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::DENIED,
-                &format!(
-                    "`{}` needs the session owner's connection, which this connection is not",
-                    envelope.member
-                ),
-            );
-            return;
-        }
-        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
-            Ok(operation) => operation,
-            Err(error) => {
-                let code = refusal_code(&error);
-                self.refuse(client, envelope, code, &error.to_string());
-                return;
-            }
-        };
-        self.reply_with_operation(client, envelope, &operation);
-        let outcome = self.register_layer_outcome(arguments);
-        self.sync();
-        self.finish(object, &operation, Some(outcome));
-    }
-
-    /// Registers the layer `layers.register` asked for and names the result as an outcome.
-    /// A missing argument, a name the provider may not use, and a refused registration all
-    /// complete `layer-refused`; the reason is logged here, since the code names no rule.
-    fn register_layer_outcome(&mut self, arguments: &gnoblin_model::Fields) -> OperationOutcome {
-        let (Some(local), Some(target)) = (text_argument(arguments, "name"), uint_argument(arguments, "target")) else {
-            return OperationOutcome::Failed(LAYER_REFUSED);
-        };
-        let provider = LayerProvider::Gnoblin(COMPOSITOR_CRATE);
-        let local = match provider.resolve_local(&local) {
-            Ok(local) => local,
-            Err(error) => {
-                log::warn!(area = "layers", ?error, "a built-in layer name was refused");
-                return OperationOutcome::Failed(LAYER_REFUSED);
-            }
-        };
-        let spec = LayerSpec::new(local, LayerScope::Window(Some(WindowId::new(target))), Band::Windows);
-        match self.control.register_layer(&provider, spec) {
-            Some(Ok(_)) => OperationOutcome::Done,
-            Some(Err(reason)) => {
-                log::warn!(area = "layers", %reason, "the compositor refused a layer");
-                OperationOutcome::Failed(LAYER_REFUSED)
-            }
-            None => {
-                log::warn!(area = "layers", "the compositor did not answer a layer registration");
-                OperationOutcome::Failed(LAYER_REFUSED)
-            }
-        }
     }
 
     /// Serves `window.kill`: the window's client process is sent SIGKILL, whatever its
@@ -2737,9 +2665,6 @@ const TOO_MANY_INHIBITORS: ErrorCode = ErrorCode::from_static("too-many-inhibito
 
 /// The code an idle hold call completes with when the compositor is not serving the idle state.
 const IDLE_UNAVAILABLE: ErrorCode = ErrorCode::from_static("idle-unavailable");
-
-/// The code a `layers.register` call completes with when the registry or the stack refused the layer.
-const LAYER_REFUSED: ErrorCode = ErrorCode::from_static("layer-refused");
 
 /// A locked map, with a poisoned lock read as its contents rather than a panic.
 fn lock<T>(map: &Arc<Mutex<T>>) -> MutexGuard<'_, T> {

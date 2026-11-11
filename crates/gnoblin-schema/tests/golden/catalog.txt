@@ -1,7 +1,6 @@
 namespace gnoblin version 0.2.0
 error too-many-inhibitors since 0.2.0
 error idle-unavailable since 0.2.0
-error layer-refused since 0.2.0
 error not-locked since 0.2.0
 error unknown-member since 0.2.0
 error denied since 0.2.0
@@ -71,10 +70,6 @@ object idle since 0.2.0 secret false
     param holder type string since 0.2.0 secret false
   method uninhibit since 0.2.0 secret false function false
     param holder type string since 0.2.0 secret false
-object layers since 0.2.0 secret false
-  method register since 0.2.0 secret false function false
-    param name type string since 0.2.0 secret false
-    param target type uint since 0.2.0 secret false
 object lock since 0.2.0 secret false
   property locked type bool since 0.2.0 secret false
   method lock_session since 0.2.0 secret false function false
@@ -778,7 +773,7 @@ object workspace since 0.2.0 secret false
 //
 // Namespace: gnoblin
 // Version: 0.2.0
-// Schema: crates/gnoblin-schema/schema (capture.toml, config.toml, effect.toml, eis.toml, idle.toml, layers.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
+// Schema: crates/gnoblin-schema/schema (capture.toml, config.toml, effect.toml, eis.toml, idle.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
 
 syntax = "proto3";
 
@@ -930,19 +925,6 @@ message Idle {
   message UninhibitArgs {
     // since 0.2.0
     string holder = 1;
-  }
-}
-
-// Object `layers`, since 0.2.0.
-message Layers {
-  message Properties {}
-
-  // Method `register`, since 0.2.0.
-  message RegisterArgs {
-    // since 0.2.0
-    string name = 1;
-    // since 0.2.0
-    uint64 target = 2;
   }
 }
 
@@ -1707,33 +1689,31 @@ enum GnoblinError {
   // since 0.2.0
   GNOBLIN_IDLE_UNAVAILABLE = 2;
   // since 0.2.0
-  GNOBLIN_LAYER_REFUSED = 3;
+  GNOBLIN_NOT_LOCKED = 3;
   // since 0.2.0
-  GNOBLIN_NOT_LOCKED = 4;
+  GNOBLIN_UNKNOWN_MEMBER = 4;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_MEMBER = 5;
+  GNOBLIN_DENIED = 5;
   // since 0.2.0
-  GNOBLIN_DENIED = 6;
+  GNOBLIN_UNSUPPORTED = 6;
   // since 0.2.0
-  GNOBLIN_UNSUPPORTED = 7;
+  GNOBLIN_BUSY = 7;
   // since 0.2.0
-  GNOBLIN_BUSY = 8;
+  GNOBLIN_UNAVAILABLE = 8;
   // since 0.2.0
-  GNOBLIN_UNAVAILABLE = 9;
+  GNOBLIN_TIMED_OUT = 9;
   // since 0.2.0
-  GNOBLIN_TIMED_OUT = 10;
+  GNOBLIN_INTERNAL = 10;
   // since 0.2.0
-  GNOBLIN_INTERNAL = 11;
+  GNOBLIN_TOO_MANY_PASSES = 11;
   // since 0.2.0
-  GNOBLIN_TOO_MANY_PASSES = 12;
+  GNOBLIN_UNKNOWN_EFFECT_KIND = 12;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_EFFECT_KIND = 13;
+  GNOBLIN_NOT_FLOATING = 13;
   // since 0.2.0
-  GNOBLIN_NOT_FLOATING = 14;
+  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 14;
   // since 0.2.0
-  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 15;
-  // since 0.2.0
-  GNOBLIN_REFUSED = 16;
+  GNOBLIN_REFUSED = 15;
 }
 -- tree.proto
 // Generated from the object schema by gnoblin-proto's build script. Do not

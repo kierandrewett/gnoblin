@@ -15,9 +15,6 @@ rustix.workspace = true
 # by a person; see src/last_good.rs for why the stored document is flattened
 # rather than written as a tagged tree.
 serde_json.workspace = true
-# The layer name a `layers` key is checked against is the registry's own grammar,
-# so a config key and a registered name cannot disagree about what a name is.
-gnoblin-layers = { path = "../gnoblin-layers" }
 # A window rule's app-id, title and layer are Lua 5.4 patterns; the pattern
 # grammar is the shared crate's, so the loader and the matcher cannot disagree.
 gnoblin-lua-pattern.workspace = true

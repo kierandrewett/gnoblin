@@ -7,6 +7,14 @@
 # ids, serials, timestamps and pids in the recording are deliberately unlike the
 # expectation's: the normaliser must remove them, so the only reported differences
 # are the layer and the record name that moved with it.
+#
+# Lane 8C (design/cutover-survey.md 16.1) deleted the layer registry, so no target
+# serves `layers.list` or the `gnoblin.surface_layer_shell:*` records any more. This
+# scenario is kept as a refused expectation: the recording is a fixed file, the
+# expectation can never pass, and the runner tests (`crates/gnoblin-parity/tests/
+# scenarios.rs`) still use it to prove that a difference is named in words and that
+# volatile values are normalised away. Layer-shell reserved zones are still checked by the
+# wayland `layer_shell.rs` tests; layer surfaces as tree nodes are lane 8E.
 name = "layer-surface-stacking"
 description = "An overlay layer surface stacks above a top layer surface, both reported topmost first."
 target = { recorded = "../fixtures/layer-surface-stacking/candidate.json" }

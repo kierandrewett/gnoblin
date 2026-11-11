@@ -38,7 +38,6 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-client",
     "gnoblin-config",
     "gnoblin-cursor",
-    "gnoblin-layers",
     "gnoblin-lock",
     "gnoblin-lua-pattern",
     "gnoblin-model",

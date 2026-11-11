@@ -1242,7 +1242,6 @@ dependencies = [
  "gnoblin-cursor",
  "gnoblin-input",
  "gnoblin-input-eis",
- "gnoblin-layers",
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-model",
@@ -1274,7 +1273,6 @@ name = "gnoblin-config"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-config-codegen",
- "gnoblin-layers",
  "gnoblin-lua-pattern",
  "gnoblin-testkit",
  "rustix 1.1.6",
@@ -1341,13 +1339,6 @@ dependencies = [
  "gnoblin-log",
  "rusqlite",
  "zeroize",
-]
-
-[[package]]
-name = "gnoblin-layers"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-types",
 ]
 
 [[package]]
@@ -1771,7 +1762,6 @@ dependencies = [
  "gnoblin-config",
  "gnoblin-cursor",
  "gnoblin-input",
- "gnoblin-layers",
  "gnoblin-lock",
  "gnoblin-lock-auth",
  "gnoblin-log",

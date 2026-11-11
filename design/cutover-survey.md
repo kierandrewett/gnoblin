@@ -687,6 +687,18 @@ in `crates/gnoblin-config/tests/contract.rs`. The C tree's frame code (`src/prot
 Mutter patch series and `tests/test-window-frames*.py`, `tests/frame-renderer-policy.test.py`) is unchanged and leaves with the Mutter
 tree in phase 6.
 
+**Status, lane 8C: done.** `crates/gnoblin-layers`, the `layers.register` IPC verb and `schema/layers.toml`, the layer records in
+`State`, the `layers` section, `LayerOverride` and `IdShape::LayerName` are deleted, and `InputPolicy` is gone from
+`Modal::new` and `Modal::input` (the `Modal` itself stays for lane 8D). The `layers` key is refused with a migration sentence
+(`document.rs`), as `frame-renderers` is. `layer_shell.rs` is unchanged and green, since reserved zones never used the
+registry. The parity scenario `layer-surface-stacking` is kept as a refused expectation (its header says so): the runner tests use
+its recording to prove difference naming and normalisation. Also deleted: `docs/shell-api/layer-surfaces.md` with its links
+and six allow rows, and the `gnoblin.layers` stub in `docs/public/gnoblin.d.lua`. Still entangled: the Lua `gnoblin.layers`
+claims in `docs/shell-api/find.md`, `session-runtime.md` and `docs/events/lifecycle.md` (their allow rows stay: `gnoblin.layers`,
+`gnoblin.layers.list`, `gnoblin.layer.*`), the C-era `layer.list` bridge docs, and the `design/constants/*.md` audits that
+name the crate; none is a code consumer. Layer surfaces as tree nodes are lane 8E. Deleting the registry also removed the
+`RegisterLayer` command, which had hidden `clippy::large_enum_variant` on `Command::AddEffect`; the effect spec is now boxed.
+
 ### 16.2 Step 9: views, capture, effects
 
 #### What exists and what does not

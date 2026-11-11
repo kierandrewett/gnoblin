@@ -2,6 +2,8 @@
 
 > **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
+> **The layer registry and the window frame protocol are deleted** (lanes 8B and 8C, `design/cutover-survey.md` 16.1). `crates/gnoblin-layers`, the `layers.register` IPC verb, `schema/layers.toml`, the layer records in `State`, the `layers` configuration section and `gnoblin_window_frame_v1` no longer exist; the file and line citations below describe the code as it was. Layer-shell reserved zones never used the registry and are unchanged.
+
 Status of `design/layers.md`, checked against the code on `rust-compositor` at `6ce209796`. Every claim cites `file:line` or a test name. Lines are from that commit and drift as code moves. `[INFERENCE]` marks a claim that was not run or not read in full.
 
 ## Answer: do window frames use layers?

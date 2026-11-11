@@ -19,7 +19,6 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
-use gnoblin_layers::InputPolicy;
 use gnoblin_lock::State as LockState;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
@@ -1019,7 +1018,7 @@ fn prompt(output: OutputId) -> Modal {
     let size = Size { width: 2, height: 2 };
     let image = Image::new(size, 8, vec![255; 16]).expect("a 2x2 image");
     let overlay = Overlay::new(Rect::from_size(size), &image).expect("a non-empty overlay");
-    Modal::new(InputPolicy::ModalToOutput, output, overlay)
+    Modal::new(output, overlay)
 }
 
 /// Maps a window of opaque grey, so a black or white corner can only be the cover or the modal.

@@ -241,9 +241,6 @@ impl SessionSync {
         ]);
         let idle = graph.create(TypeKey::gnoblin("idle"), idle_properties)?;
         let settings = graph.create(TypeKey::gnoblin("settings"), super::settings::defaults())?;
-        // The `layers` object carries no properties either: its one verb registers a layer
-        // under the caller's own provider, which the compositor derives from the connection.
-        graph.create(TypeKey::gnoblin("layers"), Fields::new())?;
         Ok(SessionSync {
             graph,
             session,

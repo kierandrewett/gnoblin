@@ -64,9 +64,6 @@ use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
-use gnoblin_layers::{
-    Band, InputPolicy, LayerHandle, LayerProvider, LayerRegistry, LayerScope, LayerSpec, RegisterError,
-};
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
@@ -109,21 +106,6 @@ pub(crate) const IMPLICIT_WORKSPACE: WorkspaceId = WorkspaceId::new(1);
 
 /// The Linux evdev code of the left button, which a touch stands for when the shell is told of it.
 const BTN_LEFT: u32 = 0x110;
-
-/// Why the layer records refused a layer.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LayerRecordError {
-    /// The layer registry refused the spec. Its own rule applies.
-    Registry(RegisterError),
-    /// The window the layer sits above is not open.
-    UnknownTarget(WindowId),
-    /// Only a layer scoped to one window can sit above that window.
-    NotWindowScope,
-    /// Only the [`Band::Windows`] band holds window layers.
-    NotWindowBand(Band),
-    /// The output is not connected, so an output-scope surface has nowhere to go.
-    UnknownOutput(OutputId),
-}
 
 /// How many window menu requests the session keeps for a reader to catch up on. A reader
 /// that polls slower than requests arrive loses the oldest, so the bound is generous: a
@@ -519,9 +501,6 @@ pub struct State {
     /// The window that holds focus: the keyboard's, or, while a layer surface or the lock holds the
     /// keyboard, the one it returns to.
     pub(crate) focus: Option<WindowId>,
-    /// The layer records layer tooling reads: one per layer-shell surface, and the layers a built-in
-    /// registers above a window.
-    layer_records: LayerRegistry,
     /// The protocol objects of the managed windows, keyed by policy identity.
     pub(crate) windows: BTreeMap<WindowId, WindowEntry>,
     /// The outputs, in connection order.
@@ -837,7 +816,6 @@ impl State {
             fallback: Fallback::default(),
             options,
             focus: None,
-            layer_records: LayerRegistry::new(),
             windows: BTreeMap::new(),
             outputs: Vec::new(),
             next_window: 1,
@@ -1261,7 +1239,6 @@ impl State {
             self.output_controls_removed(entry.backend);
             log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
             let effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
-            self.layer_records.end_output(entry.backend);
             self.apply_decided(effects);
         }
     }
@@ -1402,10 +1379,9 @@ impl State {
         self.apply(effects);
     }
 
-    /// Forgets a closed window: its layer records end and the record drops it. Focus moves on when it held it, as
+    /// Forgets a closed window: the record drops it. Focus moves on when it held it, as
     /// the record decides without a shell, and is cleared while one holds the tree: the shell moves its own focus.
     pub(crate) fn window_closed(&mut self, window: WindowId) {
-        self.layer_records.end_target(window);
         let effects = self.with_seat(|fallback, seat| fallback.close(window, seat));
         if self.composer.shell_places() {
             if self.focus == Some(window) {
@@ -2001,58 +1977,6 @@ impl State {
         Ok(())
     }
 
-    /// Adds a layer above a window to the layer records, under `provider`. The error is the records' refusal, in
-    /// its debug form.
-    pub(crate) fn register_layer(&mut self, provider: &LayerProvider, spec: LayerSpec) -> Result<LayerHandle, String> {
-        let refused = |error: LayerRecordError| format!("{error:?}");
-        let LayerScope::Window(Some(target)) = spec.scope else {
-            return Err(refused(LayerRecordError::NotWindowScope));
-        };
-        if spec.band != Band::Windows {
-            return Err(refused(LayerRecordError::NotWindowBand(spec.band)));
-        }
-        if self.fallback.window(target).is_none() {
-            return Err(refused(LayerRecordError::UnknownTarget(target)));
-        }
-        self.layer_records
-            .register(provider, spec)
-            .map_err(|error| refused(LayerRecordError::Registry(error)))
-    }
-
-    /// Records a surface its protocol owns, such as a layer-shell surface. The record does not stack or draw: it
-    /// says the surface exists, where it is and which band it sits in.
-    ///
-    /// # Errors
-    /// A window or output the record does not hold, or the layer registry's own refusal.
-    pub(crate) fn register_surface(
-        &mut self,
-        provider: &LayerProvider,
-        spec: LayerSpec,
-    ) -> Result<LayerHandle, LayerRecordError> {
-        match spec.scope {
-            LayerScope::Window(Some(target)) if self.fallback.window(target).is_none() => {
-                return Err(LayerRecordError::UnknownTarget(target));
-            }
-            LayerScope::Output(output) if self.fallback.output(output).is_none() => {
-                return Err(LayerRecordError::UnknownOutput(output));
-            }
-            LayerScope::Output(_) | LayerScope::Window(_) => {}
-        }
-        self.layer_records
-            .register(provider, spec)
-            .map_err(LayerRecordError::Registry)
-    }
-
-    /// Ends a surface record its protocol registered, such as when a layer-shell surface is destroyed.
-    pub(crate) fn end_surface(&mut self, handle: LayerHandle, reason: gnoblin_layers::EndReason) {
-        self.layer_records.end(handle, reason);
-    }
-
-    /// Whether a surface record is still live: an output's disconnect ends the records scoped to it.
-    pub(crate) fn surface_record_live(&self, handle: LayerHandle) -> bool {
-        self.layer_records.get(handle).is_some()
-    }
-
     /// What is known about the process behind a window's client. `None` when no such
     /// window exists.
     pub(crate) fn window_process(&self, window: WindowId) -> Option<crate::WindowProcess> {
@@ -2460,22 +2384,11 @@ impl State {
 
     /// Sets or clears the modal and damages the outputs it covers, so the change is drawn.
     ///
-    /// Only a `ModalToOutput` layer takes input here. `Passive` and `Grab` layers have
-    /// no engine path yet, so a modal that declares either is refused and the current
-    /// modal stands, rather than being honoured under a policy it does not hold.
-    ///
     /// A modal cannot be set while the session is locked: the lock cover owns every
     /// output and every key, so a modal would be drawn over the cover or take the
     /// locker's keys. Clearing is always allowed. A modal stored before the lock is kept
     /// but is not drawn or routed while locked (see [`Self::active_modal`]).
     pub(crate) fn set_modal(&mut self, modal: Option<Modal>) {
-        if let Some(modal) = modal
-            .as_ref()
-            .filter(|modal| modal.input() != InputPolicy::ModalToOutput)
-        {
-            log::warn!(area = "modal", policy = ?modal.input(), "refused a modal whose input policy the engine does not honour");
-            return;
-        }
         if modal.is_some() && self.lock.state() != LockState::Unlocked {
             log::warn!(area = "modal", "refused a modal set while the session is locked");
             return;

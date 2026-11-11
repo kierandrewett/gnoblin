@@ -31,7 +31,6 @@
 use std::collections::BTreeSet;
 
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
-use gnoblin_layers::InputPolicy;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_portal_ui::ui::DialogScheme;
 use gnoblin_proto::Envelope;
@@ -561,7 +560,7 @@ impl PortalService {
         let image = Image::new(Size::new(width, height), frame.width() * 4, frame.bytes().to_vec())?;
         let overlay = Overlay::new(placement, &image)?.with_secure(true);
         self.shown = Some(output);
-        Some(Some(Modal::new(InputPolicy::ModalToOutput, output, overlay)))
+        Some(Some(Modal::new(output, overlay)))
     }
 
     /// Clears the modal once it was shown, and only then.

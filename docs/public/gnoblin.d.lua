@@ -255,16 +255,6 @@ function idle:uninhibit(holder) end
 ---@field by_id fun(id: integer): gnoblin.idle|nil
 ---@field all fun(): gnoblin.idle[]
 
----@class gnoblin.layers
-local layers = {}
----@param name string
----@param target integer
----@return gnoblin.Operation
-function layers:register(name, target) end
----@class gnoblin.layersCollection
----@field by_id fun(id: integer): gnoblin.layers|nil
----@field all fun(): gnoblin.layers[]
-
 ---@class gnoblin.lock
 ---@field locked boolean
 local lock = {}
@@ -755,7 +745,6 @@ function workspace:on(name, callback) end
 ---@field effect gnoblin.effectCollection
 ---@field eis gnoblin.eisCollection
 ---@field idle gnoblin.idleCollection
----@field layers gnoblin.layersCollection
 ---@field lock gnoblin.lockCollection
 ---@field operation gnoblin.operationCollection
 ---@field output gnoblin.outputCollection

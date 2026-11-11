@@ -10,7 +10,6 @@ mod owned;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 
-use gnoblin_layers::InputPolicy;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{KeyState, OutputId, Rect, Size};
@@ -223,7 +222,7 @@ fn modal() -> Modal {
     let size = Size { width: 2, height: 2 };
     let image = Image::new(size, 8, vec![255; 16]).expect("a 2x2 image");
     let overlay = Overlay::new(Rect::from_size(size), &image).expect("a non-empty overlay");
-    Modal::new(InputPolicy::ModalToOutput, default_output(), overlay)
+    Modal::new(default_output(), overlay)
 }
 
 #[test]

@@ -163,7 +163,6 @@ export const NAV: NavSection[] = [
                     { label: "Find objects", slug: "shell-api/find" },
                     { label: "Workspaces", slug: "shell-api/workspaces" },
                     { label: "Outputs", slug: "shell-api/outputs" },
-                    { label: "Layer surfaces", slug: "shell-api/layer-surfaces" },
                     { label: "Canvas painting", slug: "shell-api/canvas" },
                     { label: "Input", slug: "shell-api/input" },
                     { label: "Input handlers", slug: "shell-api/input-handlers" },

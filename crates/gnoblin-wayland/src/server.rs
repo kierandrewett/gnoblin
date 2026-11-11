@@ -50,7 +50,6 @@ use gnoblin_render_frame::image::Image;
 
 use crate::output_config::OutputConfigHost;
 use gnoblin_config::Protocols;
-use gnoblin_layers::{LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_output::LayoutError;
 use gnoblin_types::{OutputId, Rect, WindowId};
 
@@ -568,9 +567,6 @@ impl Server {
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
                             }
-                            Command::RegisterLayer { provider, spec, reply } => {
-                                let _ = reply.send(state.register_layer(&provider, spec));
-                            }
                             Command::WindowProcess { window, reply } => {
                                 let process = state.window_process(window);
                                 let process = match (process, window_process_override) {
@@ -583,7 +579,7 @@ impl Server {
                                 let _ = reply.send(state.exported_window(&handle));
                             }
                             Command::AddEffect { window, spec, reply } => {
-                                let _ = reply.send(state.add_effect(window, spec));
+                                let _ = reply.send(state.add_effect(window, *spec));
                             }
                             Command::Advance(milliseconds) => state.tick_clock(milliseconds),
                             Command::SelectSource(index) => {
@@ -895,18 +891,6 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
-    /// Registers a layer above a window under `provider`. `None` when the loop did not answer
-    /// in time; otherwise `Err` carries the registry's or the stack's refusal.
-    pub fn register_layer(&self, provider: &LayerProvider, spec: LayerSpec) -> Option<Result<LayerHandle, String>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::RegisterLayer {
-            provider: provider.clone(),
-            spec,
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
     /// The process behind a window's client. `None` when the loop did not answer in time;
     /// otherwise `None` when no such window exists, and the window's process otherwise.
     pub fn window_process(&self, window: WindowId) -> Option<Option<crate::WindowProcess>> {
@@ -932,7 +916,11 @@ impl ControlHandle {
     /// otherwise `Err` carries the refusal (`unknown-effect-kind:` or `too-many-passes:`).
     pub fn add_effect(&self, window: WindowId, spec: crate::observation::EffectSpec) -> Option<Result<(), String>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::AddEffect { window, spec, reply });
+        self.control.push(Command::AddEffect {
+            window,
+            spec: Box::new(spec),
+            reply,
+        });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -1238,12 +1226,6 @@ enum Command {
         held: bool,
         reply: std::sync::mpsc::SyncSender<Result<bool, String>>,
     },
-    /// Registers a layer above a window; see `ControlHandle::register_layer`.
-    RegisterLayer {
-        provider: LayerProvider,
-        spec: LayerSpec,
-        reply: std::sync::mpsc::SyncSender<Result<LayerHandle, String>>,
-    },
     /// The process behind a window's client; see `ControlHandle::window_process`.
     WindowProcess {
         window: WindowId,
@@ -1257,7 +1239,7 @@ enum Command {
     /// Adds an effect to a window's stack; see `ControlHandle::add_effect`.
     AddEffect {
         window: WindowId,
-        spec: crate::observation::EffectSpec,
+        spec: Box<crate::observation::EffectSpec>,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Promise a role to a process the compositor is about to start.
