@@ -22,7 +22,7 @@ is refused at load with a reason. The list of refused keys is in the
 in `init.lua` reaches it. Opacity and corner radius from a window rule reach the
 window's compositor node. Rounded corners are drawn by the software renderer
 (clipped to the radius) and by GLES and Vulkan. The full per-renderer status, with
-test names, is in [`design/visuals-status.md`](../../design/visuals-status.md).
+test names, is in `design/visuals-status.md`.
 
 ## Window rules that do not apply
 
@@ -47,7 +47,7 @@ described in [background effects](/background-effects).
 
 ## Planned
 
-The design in [`design/rust-compositor.md`](../../design/rust-compositor.md)
+The design in `design/rust-compositor.md` in the source tree
 (D24 and D26) plans an ordered per-window effect stack, where blur follows the
 window's opacity and shadow, border and blur follow a window's alpha silhouette.
 Blur, shadow, border and shader are not configurable yet. Shaped windows are not

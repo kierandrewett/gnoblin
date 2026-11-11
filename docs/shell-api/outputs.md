@@ -29,20 +29,19 @@ Every read of one output returns the same object, so you can keep it and read it
 
 ## Output records
 
-| Field             | Type            | Meaning                                                                                    |
-| ----------------- | --------------- | ------------------------------------------------------------------------------------------ |
-| `name`            | String          | Connector name, such as `"DP-1"`. The identity `by_id` takes.                              |
-| `make`            | String          | Manufacturer, as EDID reports it. Empty when the output has none.                          |
-| `model`           | String          | Model name. Empty when the output has none.                                                |
-| `modes`           | List of strings | Every supported mode, each as `<width>x<height>@<refresh>`.                                |
-| `mode`            | String          | The mode in use. It is one of `modes`.                                                     |
-| `scale`           | Number          | Logical scale, such as 1 or 1.5.                                                           |
-| `transform`       | Integer         | Rotation and flip in Mutter's numbering, listed below.                                     |
-| `primary`         | Boolean         | Whether this output carries the primary logical monitor.                                   |
-| `enabled`         | Boolean         | Whether the output drives a logical monitor. A disabled output is still an object.         |
-| `x`, `y`          | Integer         | Logical position of the logical monitor's top-left corner.                                 |
-| `width`, `height` | Integer         | Logical size of the logical monitor, which is the mode size divided by the scale.          |
-| `layout`          | String          | The layout a workspace on this output runs when it has no override. `floating` when unset. |
+| Field             | Type            | Meaning                                                                            |
+| ----------------- | --------------- | ---------------------------------------------------------------------------------- |
+| `name`            | String          | Connector name, such as `"DP-1"`. The identity `by_id` takes.                      |
+| `make`            | String          | Manufacturer, as EDID reports it. Empty when the output has none.                  |
+| `model`           | String          | Model name. Empty when the output has none.                                        |
+| `modes`           | List of strings | Every supported mode, each as `<width>x<height>@<refresh>`.                        |
+| `mode`            | String          | The mode in use. It is one of `modes`.                                             |
+| `scale`           | Number          | Logical scale, such as 1 or 1.5.                                                   |
+| `transform`       | Integer         | Rotation and flip in Mutter's numbering, listed below.                             |
+| `primary`         | Boolean         | Whether this output carries the primary logical monitor.                           |
+| `enabled`         | Boolean         | Whether the output drives a logical monitor. A disabled output is still an object. |
+| `x`, `y`          | Integer         | Logical position of the logical monitor's top-left corner.                         |
+| `width`, `height` | Integer         | Logical size of the logical monitor, which is the mode size divided by the scale.  |
 
 `transform` uses Mutter's numbering, and the compositor does not translate it, so a `DisplayConfig` caller sends the same numbers back:
 

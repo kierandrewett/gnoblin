@@ -1,6 +1,6 @@
 # Session and runtime health
 
-> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.layers`, `gnoblin.runtime.reload_config`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.runtime.reload_config`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
 
 `gnoblin.session.status()` returns a record with these fields:
 
@@ -203,6 +203,5 @@ and receive `gnoblin.session.activity-changed`; see the
 [compositor bridge](/bridge/session-and-windows#session-activity).
 
 Native sessions provide immediate reads through `gnoblin.windows`,
-`gnoblin.workspaces`, `gnoblin.outputs`, `gnoblin.layers`,
-`gnoblin.input.devices()`, and `gnoblin.capabilities`. See
+`gnoblin.workspaces` and `gnoblin.outputs`. See
 [Lua events](/events/) for event names and callback behavior.

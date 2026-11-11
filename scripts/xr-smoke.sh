@@ -121,6 +121,7 @@ stop_all() {
     for name in xr-smoke-client gnoblin-xr monado-service gnoblin; do
         pkill -9 -x "$name" 2>/dev/null
     done
+    pkill -f "dbus-daemon --session --nofork --nopidfile --address=unix:path=$RUN/bus" 2>/dev/null
     return 0
 }
 stop_all
@@ -140,6 +141,17 @@ export XDG_CONFIG_HOME="$LOG_DIR/home/config"
 export HOME="$LOG_DIR/home"
 export XR_RUNTIME_JSON="$MONADO_DIR/build/openxr_monado-dev.json"
 export VK_ICD_FILENAMES="$ICD"
+
+# ---- A session bus: the guardian starts the portal backend, which needs one before it reports ready ------------------
+
+# A private bus at the path the portal derives from XDG_RUNTIME_DIR. Without it the portal restarts five times, the
+# guardian never reports the session ready and never starts the extension.
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$RUN/bus"
+setsid dbus-daemon --session --nofork --nopidfile --address="$DBUS_SESSION_BUS_ADDRESS" >"$LOG_DIR/dbus.log" 2>&1 &
+wait_for 10 test -S "$RUN/bus" || {
+    echo "xr-smoke: the session bus did not start (see $LOG_DIR/dbus.log)" >&2
+    exit 2
+}
 
 # ---- Monado: the simulated headset, the null compositor, lavapipe ------------------------------------------------
 

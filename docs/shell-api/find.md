@@ -1,6 +1,6 @@
 # Find objects
 
-> **Status:** not available yet: `gnoblin.focus.history`, `gnoblin.layers.list`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.focus.history`. The sections that use it describe the target, not current behaviour.
 
 `gnoblin.find(kind, filter?)` returns the live objects of one kind that match a filter. One call works for every
 kind that has a list, so you do not need a separate filter for each one.
@@ -57,5 +57,5 @@ An error inside the predicate is an error of the `find` call.
 
 `gnoblin.find` raises a Lua error for a kind that has no list. The error names the kinds that work.
 
-`gnoblin.windows.list()` and `gnoblin.layers.list()` take no arguments. `gnoblin.focus.history(filter?)` keeps its
+`gnoblin.windows.list()` takes no arguments. `gnoblin.focus.history(filter?)` keeps its
 filter, because its result has an order and a limit. The socket and `gnoblinctl` methods keep their own filters.

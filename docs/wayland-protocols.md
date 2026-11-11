@@ -52,11 +52,8 @@ Standard requests, events, and enums are documented in the
 [wayland-protocols source](https://gitlab.freedesktop.org/wayland/wayland-protocols).
 
 A layer-shell client sets its anchors, keyboard interactivity, and exclusive
-zone. Gnoblin places the surface and applies matching `type = "layer"`
-[window rules](/guides/window_rules).
-
-A panel that animates its whole surface can disable the layer animation for its
-namespace.
+zone. Gnoblin places the surface and reserves its zone. Window rules do not
+match layer surfaces.
 
 ![Quickshell panel above Firefox in a Gnoblin session](images/gnoblin-quickshell-firefox.png)
 

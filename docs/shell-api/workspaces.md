@@ -13,7 +13,7 @@ These methods return immediately:
 | `gnoblin.workspaces.list()`    | None                 | All current `Workspace` objects |
 | `gnoblin.workspaces.by_id(id)` | Integer workspace ID | Matching workspace or `nil`     |
 
-`gnoblin.find("Workspace", filter?)` filters the same objects by their fields. The fields are `id` and `layout`. See
+`gnoblin.find("Workspace", filter?)` filters the same objects by their fields. The field is `id`. See
 [find](/shell-api/find).
 
 ```lua

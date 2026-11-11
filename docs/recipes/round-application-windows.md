@@ -18,5 +18,5 @@ gnoblin.window_rule {
 | `mode`      | `"auto"`, `"force"`, or `"off"`     | `"auto"` | Preserve existing client corners, force a mask, or disable masking. |
 
 The example uses `"auto"` to preserve existing client corners. See
-[window effects](/guides/window_effects#rounded-window-corners) for state
+[window effects](/guides/window_effects#window-rules-that-do-not-apply) for state
 exceptions and how to force a mask deliberately.

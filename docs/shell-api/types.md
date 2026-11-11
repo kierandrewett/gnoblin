@@ -8,7 +8,7 @@ The Lua runtime exposes records after native startup completes; exact availabili
 
 ## Shared records
 
-Runtime APIs return records including `Window`, `Workspace`, `Output`, `LayerSurface`, `InputDevice`, `InputSource`, `Launch`, `Capability`, `PrivacyState`, and `SessionStatus`. Each domain page lists the fields and methods for its records:
+Runtime APIs return records including `Window`, `Workspace`, `Output`, `InputDevice`, `InputSource`, `Launch`, `PrivacyState`, and `SessionStatus`. Each domain page lists the fields and methods for its records:
 
 - [Windows](/shell-api/windows)
 - [Workspaces](/shell-api/workspaces)
@@ -44,7 +44,7 @@ read, but they cannot start an operation.
 - These objects end with the runtime: `Shortcut`, `IdleWatch`, `Launch`, `Override`, `Grab`, `Process`, `Tween` and
   `AnimationPreview`.
 - A pending `Request` runs its `"closed"` listeners the same way.
-- Windows, workspaces, outputs, layer surfaces and input sources belong to the compositor and carry on.
+- Windows, workspaces, outputs and input sources belong to the compositor and carry on.
 
 Events carry `name`; Gnoblin events commonly also carry `sequence` and monotonic `time`. Their event-specific records are described in the [event reference](/events/).
 

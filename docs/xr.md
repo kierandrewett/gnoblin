@@ -177,7 +177,10 @@ and fakes nothing. The parts are:
 - the real compositor on its headless backend, and the stock Lua shell;
 - two solid-colour Wayland clients (`xr-smoke-client`);
 - `gnoblin-xr`, started by the guardian with `GNOBLIN_XR=1`;
-- Monado with the simulated driver, the null compositor and lavapipe.
+- Monado with the simulated driver, the null compositor and lavapipe;
+- a private D-Bus session bus (`dbus-daemon`), because the guardian starts the portal backend when its binary is beside
+  `gnoblin`, and the guardian reports the session ready, and so starts the extension, only after the portal has
+  connected to a bus.
 
 It prints `PASS` or `FAIL` for each assertion and exits non-zero if any failed.
 

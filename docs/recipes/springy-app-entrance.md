@@ -40,4 +40,4 @@ profiles. Change `app_id` to target another application.
 
 Keyframe positions (`at`) run from `0` to `1`; `scale = 1` is the original
 size. See the [animation guide](/guides/animations#properties-and-keyframes)
-and [window-rule animation fields](/config/window_rule#animation-fields).
+and [window-rule animation fields](/config/window_rule#refused-keys).

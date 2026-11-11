@@ -34,9 +34,9 @@ configuration.
 | `target:inspect_animation(name, event?)`            | Name; optional event       | `Operation<AnimationInspection>`   |
 | `target:preview_animation(name, event?, autoplay?)` | Name; optional event; flag | `Operation<AnimationPreview>`      |
 
-`target` is a `Window` or a `LayerSurface`. Find one with `gnoblin.windows.focused()`,
-`gnoblin.find("Window", filter)` or `gnoblin.find("LayerSurface", filter)`. The calls take no
-window ID, layer ID or target type: the object you call is the target.
+`target` is a `Window`. Find one with `gnoblin.windows.focused()` or
+`gnoblin.find("Window", filter)`. The calls take no
+window ID or target type: the object you call is the target.
 
 `gnoblinctl lua` supports the same preview record methods. The CLI waits for each
 operation and returns the updated read-only preview, or the stop result.

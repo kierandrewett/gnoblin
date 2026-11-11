@@ -317,20 +317,20 @@ owner-slice = "S6"
 [[allow]]
 name = "gnoblin.capabilities"
 doc = "docs/shell-api/session-runtime.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
+reason = "documented, not implemented; the capability model and the gnoblinctl capabilities verb are deleted"
+owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.capability.changed"
 doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
+reason = "documented, not implemented; the capability model and the gnoblinctl capabilities verb are deleted"
+owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.capability.changed"
 doc = "docs/events/session.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
+reason = "documented, not implemented; the capability model and the gnoblinctl capabilities verb are deleted"
+owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.configure.keyring"
@@ -599,31 +599,19 @@ owner-slice = "S5"
 [[allow]]
 name = "gnoblin.layer.changed"
 doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
+reason = "documented, not implemented; the layer registry is deleted, so the page describes removed records until layer surfaces are tree nodes"
+owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.layer.created"
 doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
+reason = "documented, not implemented; the layer registry is deleted, so the page describes removed records until layer surfaces are tree nodes"
+owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.layer.removed"
 doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.layers"
-doc = "docs/shell-api/session-runtime.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.layers.list"
-doc = "docs/shell-api/find.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
+reason = "documented, not implemented; the layer registry is deleted, so the page describes removed records until layer surfaces are tree nodes"
 owner-slice = "docs wrong"
 
 [[allow]]

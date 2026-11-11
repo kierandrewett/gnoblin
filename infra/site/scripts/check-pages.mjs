@@ -183,9 +183,10 @@ for (const [vpName, viewport] of [
                 if (!target) fail(`heading link ${page.url()} has no element with id "${hash}"`);
             }
 
-            // Empty state and suggestions.
+            // Empty state and suggestions. The query must not start with a letter that some page has as a word of its
+            // own: Pagefind matches such a word (`z` in the XR page's `x, y, z` answered `zzzqqq`), so it holds digits.
             await page.keyboard.press("Control+k");
-            await box.fill("zzzqqq");
+            await box.fill("k8q2v7x1");
             await page.getByText("No results for").waitFor({ timeout: 10000 });
             for (const text of SUGGESTIONS) {
                 await box.fill(text);

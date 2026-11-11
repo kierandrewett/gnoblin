@@ -13,9 +13,7 @@ Defaults apply before your config loads. Included files merge maps, replace
 lists, and later values win. Shell clients keep their own presentation
 settings; Gnoblin config controls compositor and session behavior.
 
-Sizes use logical pixels. Window rules distinguish application windows
-(`type = "window"`) from layer surfaces such as bars and docks
-(`type = "layer"`).
+Sizes use logical pixels.
 
 ## Settings
 

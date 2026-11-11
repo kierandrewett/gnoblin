@@ -33,5 +33,5 @@ Runtime Lua can temporarily override this setting with
 `gnoblin.settings.override("monitors.privacy_screen", value)`. Revoking that
 override restores this configured value. If the config omits
 `privacy_screen`, revoking it follows the system preference. See the
-[output API](/shell-api/outputs#privacy-screens) for the state and change
+[output API](/shell-api/outputs#not-in-the-schema-yet) for the state and change
 events, and [overrides](/shell-api/overrides) for how they end.

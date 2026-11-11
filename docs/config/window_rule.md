@@ -51,8 +51,8 @@ earlier value. A field that no matching rule sets falls back to its default.
 The stock shell draws blur and shadow only, so these fields from earlier versions are refused. A rule that names one is
 an unknown field.
 
-- `corners` {#corners}
-- `blur`, `blur-ignore-shadows`, `shader`, `shader-uniforms` and `animation` {#animation-fields}
-- `frame` {#frame-fields}
+- `corners`
+- `blur`, `blur-ignore-shadows`, `shader`, `shader-uniforms` and `animation`
+- `frame`
 - `match.type`, `match.layer`, `match.client_type` and `match.workspace_number`: use `match.app_id` or
   `match.workspace_id` instead.

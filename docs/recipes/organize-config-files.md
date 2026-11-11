@@ -32,9 +32,9 @@ gnoblin.configure {
 ```
 
 Loaded files share the same Gnoblin API; they do not need `require` or a return
-statement. Keep includes before your personal overrides. Calls such as
-`gnoblin.window_rule` append rules, while supplying a complete `window_rules`
-list replaces the previous list. Arrays such as `xkb_options` also replace the
+statement. Keep includes before your personal overrides. Window rules are not a
+configuration call: assigning `seat.data.window_rules` in a [shell file](/user-shell)
+replaces the previous list. Arrays such as `xkb_options` also replace the
 active array, so list all values you intend to keep.
 
 Use `gnoblinctl config path` to find the active entry point and

@@ -97,7 +97,6 @@ several languages.
 | Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
 | Apply per-app styling                | `seat.data.window_rules` in a [shell file](/user-shell)    |
 | React to a window or workspace event | Lua callback registered with `gnoblin.on`                  |
-| Supply an application titlebar       | Frame rule and optional renderer service                   |
 
 The desktop portal backend decides what each app may do. Disabling a Wayland
 protocol does not change what a portal backend allows for screen sharing or

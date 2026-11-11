@@ -66,15 +66,14 @@ while an override is active.
 `window:set_effect(name, value)` layers one effect over one window. The effects are those that
 [window rules](/config/window_rule#rule-fields) support:
 
-| Effect                | Value                                                                 |
-| --------------------- | --------------------------------------------------------------------- |
-| `opacity`             | A number from 0 to 1.                                                 |
-| `blur`                | A number from 0 to 100; 0 turns the blur off.                         |
-| `blur_ignore_shadows` | `true` or `false`.                                                    |
-| `shader`              | A GLSL file path, or `""` to clear the shader.                        |
-| `shader_uniforms`     | A table of at most 64 numbers.                                        |
-| `corners`             | The [corner fields](/config/window_rule#corners), including `shadow`. |
-| `frame`               | The [frame fields](/config/window_rule#frame-fields).                 |
+| Effect                | Value                                                                     |
+| --------------------- | ------------------------------------------------------------------------- |
+| `opacity`             | A number from 0 to 1.                                                     |
+| `blur`                | A number from 0 to 100; 0 turns the blur off.                             |
+| `blur_ignore_shadows` | `true` or `false`.                                                        |
+| `shader`              | A GLSL file path, or `""` to clear the shader.                            |
+| `shader_uniforms`     | A table of at most 64 numbers.                                            |
+| `corners`             | The [corner fields](/config/window_rule#rule-fields), including `shadow`. |
 
 The value goes over every rule that matches the window, as one more rule after them. It changes only what it sets: a
 `corners` table with only `radius` leaves the other corner fields as the rules give them. A name that is not in the

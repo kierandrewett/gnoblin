@@ -98,7 +98,7 @@ $ gnoblinctl output get 6 nosuch
 
 ```text
 error: invalid value 'nosuch' for '[PROPERTY]'
-  [possible values: name, make, model, modes, mode, scale, transform, primary, enabled, x, y, width, height, layout]
+  [possible values: name, make, model, modes, mode, scale, transform, primary, enabled, x, y, width, height]
 ```
 
 ## Session commands
@@ -131,7 +131,8 @@ gnoblinctl status --json
 ## Objects
 
 Each object the compositor exposes has a command named after its type, such as
-`output`, `window` or `workspace`. Every object type takes the same verbs:
+`output`, `window` or `workspace`. Every object type takes these verbs, except
+that a type with no methods has no `call`:
 
 - `gnoblinctl OBJECT list` lists the live objects of that type.
 - `gnoblinctl OBJECT get ID [PROPERTY]` prints one object, or one property of it.
@@ -156,12 +157,14 @@ methods that exist are:
 
 - `output`: `apply`
 - `window`: `focus`, `present`, `kill`, `close`, `set_minimized`,
-  `set_maximized`, `set_fullscreen`, `move`, `resize`, `set_workspace`,
-  `set_output`, `add_effect`, `request_menu`
-- `layers`: `register`
+  `set_maximized`, `set_fullscreen`, `move`, `resize`, `set_opacity`,
+  `set_scale`, `set_offset`, `reset_visuals`, `set_workspace`, `set_output`,
+  `add_effect`, `request_menu`
+- `session`: `logout`, `poweroff`, `reboot`, `suspend`, `hibernate`
 
-`session` declares no methods. Its signals are `ready`, `bell` and
-`reload_requested`. The `window` signal `menu_requested` is declared in the same way.
+`workspace` declares no methods, so it has no `call` verb. The `session` signals
+are `ready`, `bell`, `reload_requested` and `lock_state_changed`. The `window`
+signal `menu_requested` is declared in the same way.
 
 Calling a method takes its parameters by name. Leaving one out is refused with an
 error that names the ones the method needs:

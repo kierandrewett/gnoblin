@@ -89,7 +89,7 @@ The `log.sqlite3` file under `$XDG_STATE_HOME/gnoblin/store` is not read or writ
 
 Every crate logs through `gnoblin-log`, and never through `tracing` directly. A crate defines its component once, at module or crate root:
 
-```rust
+```text
 gnoblin_log::logger!(log = "wayland");
 
 log::info!("surface {id} mapped", id = 3);
