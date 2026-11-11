@@ -151,4 +151,23 @@ return {
             H.check(win.maximised == false, "a maximise request must be refused while fullscreen")
         end,
     },
+
+    {
+        "leaving fullscreen returns the floating rectangle, and a maximised window stays maximised through fullscreen",
+        function()
+            local _, win = shell_window({ app_id = "foot" }, true)
+            local floating = rect(win)
+            win.fullscreen = true
+            win.fullscreen = false
+            H.check(same(rect(win), floating), "leaving fullscreen must return the floating rectangle")
+            H.check(win:maximise(), "maximise must be taken")
+            local maximised = rect(win)
+            win.fullscreen = true
+            H.check(win.maximised == true, "fullscreen must not clear maximise")
+            win.fullscreen = false
+            H.check(same(rect(win), maximised), "leaving fullscreen must keep the maximised rectangle")
+            win:unmaximise()
+            H.check(same(rect(win), floating), "unmaximise must return the floating rectangle")
+        end,
+    },
 }

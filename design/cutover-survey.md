@@ -231,9 +231,21 @@ Groups from section 12 mapped to the lanes in section 9:
 
 Old tests in `crates/gnoblin-wm/tests/failure_modes.rs`, mapped to the stock shell (`crates/gnoblin-lua/tests/lua/snap_test.lua`). Later steps append their rows here.
 
-| Old test                                                           | Stock test (file:case)                                                                                        |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `snapping_and_unsnapping_restore_the_floating_rectangle`           | `snap_test.lua`: snapping tiles a window to an edge and unsnapping restores its floating rectangle            |
-| `snapping_a_maximised_window_floats_it_and_unsnapping_restores_it` | `snap_test.lua`: snapping a maximised window floats it first, and unsnapping restores the floating rectangle  |
-| `snapping_is_refused_when_edge_tiling_is_off`                      | `snap_test.lua`: snapping is refused when edge tiling is off and leaves the window where it was               |
-| `maximising_a_fullscreen_window_is_refused`                        | `snap_test.lua`: a client maximise request fills the work area, and is refused while the window is fullscreen |
+| Old test                                                                | Stock test (file:case)                                                                                                     |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `snapping_and_unsnapping_restore_the_floating_rectangle`                | `snap_test.lua`: snapping tiles a window to an edge and unsnapping restores its floating rectangle                         |
+| `snapping_a_maximised_window_floats_it_and_unsnapping_restores_it`      | `snap_test.lua`: snapping a maximised window floats it first, and unsnapping restores the floating rectangle               |
+| `snapping_is_refused_when_edge_tiling_is_off`                           | `snap_test.lua`: snapping is refused when edge tiling is off and leaves the window where it was                            |
+| `maximising_a_fullscreen_window_is_refused`                             | `snap_test.lua`: a client maximise request fills the work area, and is refused while the window is fullscreen              |
+| `a_drag_is_constrained_to_the_work_area`                                | `drag_test.lua`: under work_area a dragged window is pulled back inside the work area                                      |
+| `a_drag_may_leave_a_visible_strip_when_configured`                      | `drag_test.lua`: under minimum_strip a window may leave the area but 75 pixels of it stay inside                           |
+| `dragging_a_maximised_window_floats_it_and_fullscreen_refuses_the_drag` | `drag_test.lua`: a fullscreen window refuses a drag, and a maximised window floats first                                   |
+| `fullscreen_returns_to_the_maximised_or_floating_rectangle`             | `snap_test.lua`: leaving fullscreen returns the floating rectangle, and a maximised window stays maximised                 |
+| `reserved_space_reapplies_to_maximised_windows`                         | `shell_test.lua`: a maximised window refits when a bar reserves space at the top (failure mode 9, maximised)               |
+| `reserved_space_reapplies_to_snapped_windows`                           | `shell_test.lua`: a snapped window refits when a bar reserves space at the top (failure mode 9, snapped)                   |
+| `a_dialog_opens_above_its_parent_on_the_parents_workspace`              | `floating_test.lua`: a dialog is centred over its parent and is a child of it, so the compositor stacks it above           |
+| `workspace_rules_do_not_move_a_dialog_away_from_its_parent`             | `floating_test.lua`: a window rule that names another workspace does not take a dialog away from its parent                |
+| `switching_workspace_keeps_the_fullscreen_window_intact`                | `shell_test.lua`: a workspace switch keeps a fullscreen window fullscreen and on its workspace when that workspace returns |
+| `raising_keeps_the_fullscreen_layer_on_top`                             | `shell_test.lua`: raising a window keeps a fullscreen sibling above it, and a fullscreen window stays on top when raised   |
+
+Drops: none in this group. The old `OutputReserved` event (gnoblin-wm `event.rs`) has no stock schema counterpart: a bar is the reserved space, and `Desk:arrange` refits maximised and snapped windows when a bar changes the work area.
