@@ -3,6 +3,7 @@
 local Focus = require("gnoblin.shell.focus")
 local Snap = require("gnoblin.shell.snap")
 local Rules = require("gnoblin.shell.rules")
+local Drag = require("gnoblin.shell.drag")
 require("gnoblin.shell.ui")
 require("gnoblin.shell.floating")
 require("gnoblin.shell.strip")
@@ -240,12 +241,22 @@ end -- a method: replace it to animate
 -- Pointer distance from a screen edge that tiles a dropped window (no documented value: a small fixed zone).
 local EDGE_MARGIN = 4
 function drag(s, w) -- follow the pointer until release, then tile it if dropped on an edge
+    local plan = Drag.start(w)
+    if plan == "refuse" then
+        return
+    elseif plan == "float" then
+        w:unmaximise()
+    end
+    local mode = Drag.mode(s.drag_constraint)
     local dx, dy = w.x - s.x, w.y - s.y
+    local function place()
+        return Drag.constrain({ x = s.x + dx, y = s.y + dy, w = w.width, h = w.height }, work_area(), mode)
+    end
     w.x = function()
-        return s.x + dx
+        return place().x
     end
     w.y = function()
-        return s.y + dy
+        return place().y
     end
     s:grab(w)
     await(w.release)

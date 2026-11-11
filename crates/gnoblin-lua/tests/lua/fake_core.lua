@@ -65,6 +65,7 @@ local SCHEMA = {
             focus = { type = "node" },
             screen = { type = "node" },
             edge_tiling = { type = "boolean", default = false },
+            drag_constraint = { type = "string", default = "work_area" },
         },
         signals = { "chord" },
         methods = { "claim", "unclaim", "grab" },
