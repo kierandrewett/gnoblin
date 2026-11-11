@@ -198,7 +198,7 @@ function Window:apply_rules()
     if fx.secure ~= nil then
         self.secure = fx.secure
     end
-    if fx.workspace then
+    if fx.workspace and not self.parent_window then -- a dialog follows its parent, whatever a rule says
         for _, ws in ipairs(self:closest(Desk).space.children) do
             if ws.name == tostring(fx.workspace.id) and self:closest(Workspace) ~= ws then
                 ws:add(self)

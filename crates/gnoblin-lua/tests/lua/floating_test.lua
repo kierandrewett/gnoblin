@@ -234,4 +234,57 @@ return {
             H.check(first == second, "the two runs must produce the same mirror")
         end,
     },
+
+    {
+        "a dialog is centred over its parent and is a child of it, so the compositor stacks it above",
+        function()
+            shell()
+            local parent = desk().active:add(Window({ app_id = "main" }))
+            local dialog = Window({ app_id = "main", parent_window = parent })
+            dialog.width, dialog.height = 300, 200
+            root:add(dialog)
+            H.check(dialog.parent == parent, "the dialog must become the parent's child")
+            H.check(
+                dialog.x == 250 and dialog.y == 200,
+                ("want 250,200 inside the 800x600 parent, got %d,%d"):format(dialog.x, dialog.y)
+            )
+        end,
+    },
+
+    {
+        "a window rule that names another workspace does not take a dialog away from its parent",
+        function()
+            shell()
+            local saved = window_rules
+            local compiled = dofile(GNOBLIN_LUA_DIR .. "/shell/rules.lua").compile({
+                { match = { app_id = "dialog" }, workspace = { id = 2 } },
+            })
+            window_rules = function()
+                return compiled
+            end
+            local parent = desk().active:add(Window({ app_id = "main" }))
+            local dialog = Window({ app_id = "dialog", parent_window = parent })
+            root:add(dialog)
+            window_rules = saved
+            H.check(dialog.parent == parent, "the dialog must stay under its parent")
+            H.check(parent.parent == desk().active, "the parent must stay on the active workspace")
+        end,
+    },
+
+    {
+        "the same rule still moves a window that is not a dialog",
+        function()
+            shell()
+            local saved = window_rules
+            local compiled = dofile(GNOBLIN_LUA_DIR .. "/shell/rules.lua").compile({
+                { match = { app_id = "dialog" }, workspace = { id = 2 } },
+            })
+            window_rules = function()
+                return compiled
+            end
+            local plain = root:add(Window({ app_id = "dialog" }))
+            window_rules = saved
+            H.check(plain.parent == desk().space.children[2], "a plain window must follow the rule to workspace 2")
+        end,
+    },
 }
