@@ -163,7 +163,7 @@ impl Config {
                     "extensions",
                     &root,
                     &mut out,
-                    "the extension tier was removed in IPC 0.3.0: delete the table, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
+                    "the extension tier was removed: delete the table, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
                 );
                 unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
                 config.appearance = section_table(entries, "appearance", &root, &mut out)

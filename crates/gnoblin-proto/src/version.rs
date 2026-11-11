@@ -117,31 +117,16 @@ mod tests {
 
     #[test]
     fn the_refusal_names_both_versions() {
-        let mismatch = check(version("0.3.0"), version("0.2.4")).expect_err("refused");
+        let mismatch = check(version("0.9.0"), version("0.2.4")).expect_err("refused");
         let message = mismatch.to_string();
-        assert!(message.contains("compositor IPC 0.3.0"), "{message}");
+        assert!(message.contains("compositor IPC 0.9.0"), "{message}");
         assert!(message.contains("client IPC 0.2.4"), "{message}");
         assert_eq!(
             mismatch,
             Mismatch {
-                server: version("0.3.0"),
+                server: version("0.9.0"),
                 client: version("0.2.4"),
             }
         );
-    }
-
-    #[test]
-    fn this_build_refuses_a_client_built_before_the_grants_frame_went() {
-        // IPC 0.2.x clients read a grants frame after every accept and this build sends none, so
-        // the version moved to 0.3.0 and the caret rule keeps them out with a refusal that names both.
-        let (major, minor, patch) = crate::IPC_VERSION;
-        let server = Version::new(major, minor, patch);
-        assert!(accepts(server, server), "this build serves its own version");
-        for old in ["0.2.0", "0.2.9"] {
-            let mismatch = check(server, version(old)).expect_err("a client that reads a grants frame is refused");
-            let message = mismatch.to_string();
-            assert!(message.contains(&format!("compositor IPC {server}")), "{message}");
-            assert!(message.contains(&format!("client IPC {old}")), "{message}");
-        }
     }
 }

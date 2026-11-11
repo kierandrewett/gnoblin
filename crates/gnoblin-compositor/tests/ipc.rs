@@ -90,10 +90,9 @@ fn a_reachable_socket_directory_is_refused() {
 fn a_wrong_version_client_is_refused() {
     let session = Session::start();
 
-    // A client from the future, and the 0.2 clients that read a grants frame after every accept:
-    // this build sends none, which is why its version moved to 0.3.0 and why the caret rule
-    // keeps those clients out instead of letting them misread the first reply.
-    for wrong in [Version::new(0, 4, 0), Version::new(0, 2, 0)] {
+    // A client from the future and one from the past: neither leftmost non-zero component
+    // matches this build's version, so the caret rule keeps both out.
+    for wrong in [Version::new(0, 9, 0), Version::new(0, 1, 0)] {
         // The fixed-layout handshake answers with the compositor's own version, so the
         // raw refusal is readable before any envelope is decoded.
         let (_wire, answer) = support::Wire::connect_version(session.socket(), wrong);

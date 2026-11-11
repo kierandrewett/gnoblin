@@ -7,7 +7,7 @@
 # they are schema members, the way `request.finished` is, and a script's `gnoblin.on`
 # can name them with the same checks as any other signal.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "config"

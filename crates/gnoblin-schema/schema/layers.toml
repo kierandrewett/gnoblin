@@ -8,7 +8,7 @@
 # Lua does not reach this object yet. Extensions need per-extension Lua environments
 # first (design/layers.md, phase 10), so only built-in providers may call it.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "layers"

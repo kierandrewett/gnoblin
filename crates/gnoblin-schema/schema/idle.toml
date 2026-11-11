@@ -13,7 +13,7 @@
 # reporting zero idle time, which is the difference between "the user is active"
 # and "nothing told me".
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "idle"

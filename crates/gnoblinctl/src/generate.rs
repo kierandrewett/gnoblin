@@ -250,23 +250,23 @@ mod tests {
 
     #[test]
     fn the_checked_in_schema_renders_for_the_built_version() {
-        let rendered = render(&catalog(), "0.3.0-alpha.0").expect("the schema and the version agree");
-        assert!(rendered.contains("pub const IPC_VERSION: (u32, u32, u32) = (0, 3, 0);"));
+        let rendered = render(&catalog(), "0.2.0-alpha.0").expect("the schema and the version agree");
+        assert!(rendered.contains("pub const IPC_VERSION: (u32, u32, u32) = (0, 2, 0);"));
         assert!(rendered.contains("command: \"window\","));
     }
 
     #[test]
     fn a_pre_release_suffix_is_the_release_triple() {
-        assert_eq!(package_triple("0.3.0-alpha.0").unwrap(), Version::new(0, 3, 0));
+        assert_eq!(package_triple("0.2.0-alpha.0").unwrap(), Version::new(0, 2, 0));
         assert_eq!(package_triple("1.4.2").unwrap(), Version::new(1, 4, 2));
         assert!(package_triple("0.2").is_err());
     }
 
     #[test]
     fn a_version_the_schema_does_not_serve_is_refused() {
-        let problems = render(&catalog(), "0.3.0").expect_err("the schema is 0.2.0");
+        let problems = render(&catalog(), "0.9.0").expect_err("the schema is 0.2.0");
         assert!(
-            problems[0].contains("is IPC 0.2.0 but this crate is built as 0.3.0"),
+            problems[0].contains("is IPC 0.2.0 but this crate is built as 0.9.0"),
             "{problems:?}"
         );
     }

@@ -2,7 +2,7 @@
 
 `gnoblinctl` is the command-line client for a running Gnoblin session.
 
-It speaks IPC 0.3.0. A compositor at another IPC version is refused with
+It speaks IPC 0.2.0. A compositor at another IPC version is refused with
 exit 4, and the error names both versions. The list of commands is in the
 [command index](cli/index.md). This page covers how the client connects, what
 its exit codes mean, how to read logs, and how to script its output.
@@ -16,7 +16,7 @@ gnoblinctl --version
 ```
 
 ```text
-gnoblinctl 0.3.0-alpha.0
+gnoblinctl 0.2.0-alpha.0
 ```
 
 `gnoblinctl version` asks the running compositor for the Gnoblin version and the
@@ -27,8 +27,8 @@ gnoblinctl version
 ```
 
 ```text
-gnoblin 0.3.0
-ipc 0.3.0
+gnoblin 0.2.0
+ipc 0.2.0
 ```
 
 ## Connection problems

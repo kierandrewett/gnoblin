@@ -268,7 +268,7 @@ knowing which members are secret.
 
 ### IPC extensions
 
-> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone and the IPC version is 0.3.0. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/node-api-refactor.md` D22 (retracted).
+> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone. The IPC version stays 0.2.0, since 0.2.0 is unreleased. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/node-api-refactor.md` D22 (retracted).
 
 Gnoblin has one generic extension mechanism. An extension is a namespace of
 members that a privileged connection provides on the IPC. Extensions are out of
@@ -344,7 +344,7 @@ surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
     - `xtask` copies it into the Cargo workspace version, the schema,
       `gnoblin.d.lua`, the WIT package (`gnoblin:ipc@0.2.0`) and the API
       reference, so no crate, file or protocol keeps its own number.
-    - The copy step is not written yet; the workspace version is `0.3.0-alpha.0`
+    - The copy step is not written yet; the workspace version is `0.2.0-alpha.0`
       by hand.
 - **Members:** each schema member records `since`, the full Gnoblin version that
   added it. Clients compare `since` with the compositor's version before they

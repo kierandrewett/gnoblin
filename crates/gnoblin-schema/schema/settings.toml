@@ -18,7 +18,7 @@
 # `crates/xdg-desktop-portal-gnoblin/src/settings.rs` is the one place the two
 # vocabularies meet.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "settings"

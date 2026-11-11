@@ -36,7 +36,7 @@
 //!
 //! # async fn run_it() -> Result<(), Box<dyn std::error::Error>> {
 //! let path = socket_path(|name| std::env::var(name).ok())?;
-//! let client = gnoblin_client::Client::connect(UnixTransport::connect(&path)?, Version::new(0, 3, 0))?;
+//! let client = gnoblin_client::Client::connect(UnixTransport::connect(&path)?, Version::new(0, 2, 0))?;
 //! let mut link = ScreenshotLink::connect(client)?;
 //! let connection = Connection::session().await?;
 //! let service = ScreenshotService::new()?;

@@ -54,7 +54,7 @@ Every installed file is listed in `share/gnoblin/install-manifest` as `<sha256> 
 
 ## Version
 
-- `Cargo.toml` `[workspace.package] version`: `0.3.0-alpha.0`.
+- `Cargo.toml` `[workspace.package] version`: `0.2.0-alpha.0`.
 - `data/gnoblin-version.json`: `0.1.13` (format 1). Read by `scripts/gnoblin-version.py`, `scripts/build-identity.py` and `.github/workflows/packages.yml`.
 - The comment at `Cargo.toml:97` says the version comes from `versions/gnoblin-version.json`. That path does not exist; the file is `data/gnoblin-version.json`. The comment is wrong.
 - Not bumped. The release decision is Kieran's.

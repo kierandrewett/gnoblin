@@ -209,14 +209,14 @@ mod tests {
         let accepted = Handshake::respond(&hello, version("0.2.9")).expect("accepted");
         assert_eq!(accepted, Handshake::accept(version("0.2.9")));
 
-        let mismatch = Handshake::respond(&hello, version("0.3.0")).expect_err("refused");
+        let mismatch = Handshake::respond(&hello, version("0.9.0")).expect_err("refused");
         let message = mismatch.to_string();
-        assert!(message.contains("compositor IPC 0.3.0"), "{message}");
+        assert!(message.contains("compositor IPC 0.9.0"), "{message}");
         assert!(message.contains("client IPC 0.2.4"), "{message}");
         // A refusal frame still carries the compositor's version, so a client can
         // explain the mismatch even when it only sees the frame.
         let refusal = Handshake::decode(&Handshake::refuse(mismatch.server).encode()).expect("decode");
         assert_eq!(refusal.kind, HandshakeKind::Refuse);
-        assert_eq!(refusal.version, version("0.3.0"));
+        assert_eq!(refusal.version, version("0.9.0"));
     }
 }

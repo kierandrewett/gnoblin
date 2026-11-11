@@ -15,7 +15,7 @@
 # The reply's bounds (a grant no wider than the request) are checked by
 # `gnoblin-portal-core::model`, which owns the typed payloads; this file only names the wire.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "portal_ui"

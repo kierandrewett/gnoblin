@@ -432,7 +432,7 @@ fn a_version_mismatch_exits_4() {
         let mut transport = UnixTransport::from_stream(stream).expect("a transport");
         transport.receive_handshake().expect("the client says hello");
         transport
-            .send_handshake(&Handshake::refuse(Version::new(0, 4, 0)))
+            .send_handshake(&Handshake::refuse(Version::new(0, 9, 0)))
             .expect("the refusal is sent");
     });
     let (code, out, err) = run(&["window", "list"], SocketConnection::at(&path));
@@ -440,8 +440,8 @@ fn a_version_mismatch_exits_4() {
     let _ = std::fs::remove_file(&path);
     assert_eq!(code, 4, "a version disagreement is its own exit code");
     assert!(out.is_empty(), "{out}");
-    assert!(err.contains("0.4.0"), "the compositor's version is named: {err}");
-    assert!(err.contains("0.3.0"), "this build's version is named: {err}");
+    assert!(err.contains("0.9.0"), "the compositor's version is named: {err}");
+    assert!(err.contains("0.2.0"), "this build's version is named: {err}");
 }
 
 #[test]
@@ -562,20 +562,6 @@ fn a_truncated_recording_is_reported() {
     assert_eq!(code, 1);
     assert!(out.is_empty(), "{out}");
     assert!(err.contains("ended inside a frame"), "{err}");
-}
-
-#[test]
-fn a_recording_from_a_server_that_sent_a_grants_frame_is_refused() {
-    // IPC 0.2.0 followed every accept with a grants frame. Walking on would read its length prefix
-    // as an envelope, so the dump stops at the accept and says which release can read the stream.
-    let path = scratch("old-accept.bin");
-    std::fs::write(&path, Handshake::accept(VERSION).encode()).expect("a recording");
-    let (code, out, err) = run(&["ipc", "dump", &path.display().to_string()], nowhere());
-    let _ = std::fs::remove_file(&path);
-    assert_eq!(code, 1, "{out}{err}");
-    assert!(out.contains("handshake accept 0.2.0"), "{out}");
-    assert!(err.contains("grants frame"), "{err}");
-    assert!(err.contains("IPC 0.2.0"), "{err}");
 }
 
 #[test]
@@ -729,7 +715,7 @@ fn the_wire_version_is_the_schema_version() {
     let declared = catalog.version(&namespace).expect("the core namespace is declared");
     assert_eq!(
         declared,
-        gnoblin_schema::Version::new(0, 3, 0),
+        gnoblin_schema::Version::new(0, 2, 0),
         "the generated tree speaks the schema's version"
     );
 }

@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.3.0"
+version = "0.2.0"
 
 # The `node` class: every node of the scene tree, visual or not (design/node-core.md,
 # section 2.4). Every other tree class derives from it with `base = "node"`, so a

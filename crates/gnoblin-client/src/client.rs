@@ -705,7 +705,7 @@ mod routing_tests {
         };
         Client {
             transport: script,
-            version: Version::new(0, 3, 0),
+            version: Version::new(0, 2, 0),
             next_request: 1,
             pending: Default::default(),
             stashed: Default::default(),

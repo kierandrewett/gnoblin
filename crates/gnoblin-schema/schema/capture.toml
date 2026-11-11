@@ -20,7 +20,7 @@
 # adapter does not read it: a caller that asks ScreenCast for a stream learns the
 # outcome from the stream's error, not from a mirrored copy of compositor state.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "capture"

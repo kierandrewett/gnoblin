@@ -17,14 +17,10 @@
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 
-use gnoblin_proto::{Envelope, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, MAGIC, MAX_FRAME_LEN, Version};
+use gnoblin_proto::{Envelope, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, MAGIC, MAX_FRAME_LEN};
 use prost::Message as _;
 
 use crate::cli::DumpSource;
-
-/// The first IPC version whose accept frame is the whole preamble. Servers before it followed
-/// every accept with a grants frame, so a stream recorded from one cannot be walked frame by frame.
-const FIRST_WITHOUT_GRANTS: Version = Version::new(0, 3, 0);
 
 /// Decode every frame in `source` onto `out`.
 pub(crate) fn run(source: &DumpSource, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -53,12 +49,6 @@ fn dump(source: &DumpSource, out: &mut dyn Write) -> Result<(), String> {
             let handshake = read_handshake(&mut stream, prefix)?;
             writeln!(out, "handshake {} {}", kind_text(handshake.kind), handshake.version)
                 .map_err(|error| format!("cannot write the dump: {error}"))?;
-            if handshake.kind == HandshakeKind::Accept && handshake.version < FIRST_WITHOUT_GRANTS {
-                return Err(format!(
-                    "this stream was recorded at IPC {}, whose accept is followed by a grants frame that IPC {FIRST_WITHOUT_GRANTS} no longer sends; dump it with the gnoblinctl of that release",
-                    handshake.version
-                ));
-            }
             continue;
         }
         let envelope = read_envelope(&mut stream, prefix, frames)?;

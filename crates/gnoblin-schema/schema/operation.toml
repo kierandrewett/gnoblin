@@ -4,7 +4,7 @@
 # completion, and a script can watch them all here, not only the handle it holds. The
 # signal is raised once per operation, after the handlers that waited on it have run.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "operation"

@@ -1,5 +1,5 @@
 namespace = "tree"
-version = "0.3.0"
+version = "0.2.0"
 
 # The `workspace` class: a named set of windows on one screen (design/node-core.md, section 2.4). Created by the compositor.
 [[object]]

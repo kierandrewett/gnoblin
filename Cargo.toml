@@ -98,7 +98,7 @@ exclude = ["extensions"]
 # so candidate builds are `0.2.0-alpha.N` (design/rust-compositor.md,
 # "Versioning"). xtask copies the released version from
 # versions/gnoblin-version.json at release time; do not edit this by hand.
-version = "0.3.0-alpha.0"
+version = "0.2.0-alpha.0"
 edition = "2024"
 rust-version = "1.97.0"
 license = "GPL-2.0-or-later"

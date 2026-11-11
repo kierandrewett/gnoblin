@@ -14,7 +14,7 @@
 # by one owner, finished once) is the broker's, and what a client may learn about it
 # is these two signals.
 namespace = "gnoblin"
-version = "0.3.0"
+version = "0.2.0"
 
 [[object]]
 name = "request"
