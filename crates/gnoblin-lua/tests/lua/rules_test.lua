@@ -115,4 +115,114 @@ return {
             H.check(a ~= r.key(c, win({ app_id = "foo", focused = true })), "gaining focus changes the key")
         end,
     },
+
+    {
+        "a rule that stops matching clears secure (the old one-way set kept it)",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            root:add(Lock({}))
+            root:add(Screen({ width = 800, height = 600 }))
+            local w = root:add(Window({ app_id = "bank" }))
+            root:find(Seat).data.window_rules = { { match = { app_id = "^bank$" }, secure = true } }
+            H.load_shell()
+            H.start_shell(host)
+            H.check(w.secure == true, "the rule sets secure")
+            host.external(host.ids("Window")[1], "app_id", "notes")
+            H.frame(host, 1)
+            H.check(w.secure == false, "secure must clear once no rule matches")
+        end,
+    },
+
+    {
+        "a title change re-evaluates the rules: secure follows the new title",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            root:add(Lock({}))
+            root:add(Screen({ width = 800, height = 600 }))
+            local w = root:add(Window({ title = "Inbox" }))
+            root:find(Seat).data.window_rules = { { match = { title = "^Secret" }, secure = true } }
+            H.load_shell()
+            H.start_shell(host)
+            H.check(w.secure == false, "no rule matches the first title")
+            host.external(host.ids("Window")[1], "title", "Secret plans")
+            H.frame(host, 1)
+            H.check(w.secure == true, "the new title must match the rule")
+        end,
+    },
+
+    {
+        "re-applying unchanged rules writes nothing to the core",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            root:add(Lock({}))
+            root:add(Screen({ width = 800, height = 600 }))
+            root:add(Window({ app_id = "foo" }))
+            root:find(Seat).data.window_rules = { { match = { app_id = "foo" }, fullscreen = true } }
+            H.load_shell()
+            H.start_shell(host)
+            local writes = 0
+            local set = core.set
+            core.set = function(...)
+                writes = writes + 1
+                return set(...)
+            end
+            H.frame(host, 1)
+            H.frame(host, 2)
+            H.check(writes == 0, ("%d core writes on frames with no change"):format(writes))
+        end,
+    },
+
+    {
+        "rules merge in list order: a later rule overrides a field, an earlier field another rule does not set stays",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            root:add(Lock({}))
+            root:add(Screen({ width = 800, height = 600 }))
+            local w = root:add(Window({ app_id = "foo" }))
+            root:find(Seat).data.window_rules = {
+                { match = { app_id = "foo" }, secure = true },
+                { match = { app_id = "foo" }, fullscreen = true },
+                { match = { app_id = "foo" }, fullscreen = false },
+            }
+            H.load_shell()
+            H.start_shell(host)
+            H.check(w.secure == true and w.fullscreen == false, "secure kept, the last fullscreen wins")
+        end,
+    },
+
+    {
+        "a rule's opacity must be a number in [0, 1]",
+        function()
+            local r = rules()
+            H.check(pcall(r.compile, { { match = { app_id = "x" }, opacity = 0.5 } }), "0.5 is valid")
+            H.check(not pcall(r.compile, { { match = { app_id = "x" }, opacity = 1.5 } }), "above 1 is refused")
+            H.check(not pcall(r.compile, { { match = { app_id = "x" }, opacity = "half" } }), "a string is refused")
+        end,
+    },
+
+    {
+        "corners is refused at load: the stock shell cannot round corners (effects are blur and shadow only)",
+        function()
+            local ok, err = pcall(rules().compile, { { match = { app_id = "x" }, corners = { radius = 8 } } })
+            H.check(not ok and tostring(err):find("corners", 1, true), "corners must raise naming the field")
+        end,
+    },
+
+    {
+        "maximised is a boolean rule field applied to the window",
+        function()
+            local r = rules()
+            local c = r.compile({ { match = { app_id = "foo" }, maximised = true } })
+            H.check(r.effects(c, win({ app_id = "foo" })).maximised == true, "maximised applies")
+            H.check(not pcall(r.compile, { { match = { app_id = "x" }, maximised = "yes" } }), "non-boolean refused")
+        end,
+    },
 }
