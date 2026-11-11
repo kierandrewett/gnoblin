@@ -17,6 +17,21 @@ local function win(t)
     }
 end
 
+-- A started shell over one 800 by 600 screen, a seat holding `rules` and one window made from `props`.
+local function shell(rules, props)
+    local core, host = require("fake_core")()
+    H.boot(core, host)
+    root:add(Seat({}))
+    root:add(Lock({}))
+    local screen = root:add(Screen({ width = 800, height = 600 }))
+    local w = root:add(Window(props))
+    root:find(Seat).data.window_rules = rules
+    H.load_shell()
+    root:find(Seat).screen = screen
+    H.start_shell(host)
+    return core, host, w
+end
+
 return {
     {
         "a pattern matches anywhere in the app_id unless anchored",
@@ -117,17 +132,9 @@ return {
     },
 
     {
-        "a rule that stops matching clears secure (the old one-way set kept it)",
+        "a rule that stops matching clears secure (a one-way set would keep it)",
         function()
-            local core, host = require("fake_core")()
-            H.boot(core, host)
-            root:add(Seat({}))
-            root:add(Lock({}))
-            root:add(Screen({ width = 800, height = 600 }))
-            local w = root:add(Window({ app_id = "bank" }))
-            root:find(Seat).data.window_rules = { { match = { app_id = "^bank$" }, secure = true } }
-            H.load_shell()
-            H.start_shell(host)
+            local _, host, w = shell({ { match = { app_id = "^bank$" }, secure = true } }, { app_id = "bank" })
             H.check(w.secure == true, "the rule sets secure")
             host.external(host.ids("Window")[1], "app_id", "notes")
             H.frame(host, 1)
@@ -138,15 +145,7 @@ return {
     {
         "a title change re-evaluates the rules: secure follows the new title",
         function()
-            local core, host = require("fake_core")()
-            H.boot(core, host)
-            root:add(Seat({}))
-            root:add(Lock({}))
-            root:add(Screen({ width = 800, height = 600 }))
-            local w = root:add(Window({ title = "Inbox" }))
-            root:find(Seat).data.window_rules = { { match = { title = "^Secret" }, secure = true } }
-            H.load_shell()
-            H.start_shell(host)
+            local _, host, w = shell({ { match = { title = "^Secret" }, secure = true } }, { title = "Inbox" })
             H.check(w.secure == false, "no rule matches the first title")
             host.external(host.ids("Window")[1], "title", "Secret plans")
             H.frame(host, 1)
@@ -157,15 +156,7 @@ return {
     {
         "re-applying unchanged rules writes nothing to the core",
         function()
-            local core, host = require("fake_core")()
-            H.boot(core, host)
-            root:add(Seat({}))
-            root:add(Lock({}))
-            root:add(Screen({ width = 800, height = 600 }))
-            root:add(Window({ app_id = "foo" }))
-            root:find(Seat).data.window_rules = { { match = { app_id = "foo" }, fullscreen = true } }
-            H.load_shell()
-            H.start_shell(host)
+            local core, host = shell({ { match = { app_id = "foo" }, fullscreen = true } }, { app_id = "foo" })
             local writes = 0
             local set = core.set
             core.set = function(...)
@@ -179,22 +170,15 @@ return {
     },
 
     {
-        "rules merge in list order: a later rule overrides a field, an earlier field another rule does not set stays",
+        "rules merge in list order: the last matching rule wins for each field, the others are kept",
         function()
-            local core, host = require("fake_core")()
-            H.boot(core, host)
-            root:add(Seat({}))
-            root:add(Lock({}))
-            root:add(Screen({ width = 800, height = 600 }))
-            local w = root:add(Window({ app_id = "foo" }))
-            root:find(Seat).data.window_rules = {
-                { match = { app_id = "foo" }, secure = true },
+            local _, _, w = shell({
                 { match = { app_id = "foo" }, fullscreen = true },
+                { match = { app_id = "foo" }, secure = true },
                 { match = { app_id = "foo" }, fullscreen = false },
-            }
-            H.load_shell()
-            H.start_shell(host)
-            H.check(w.secure == true and w.fullscreen == false, "secure kept, the last fullscreen wins")
+            }, { app_id = "foo" })
+            H.check(w.secure == true, "secure from the middle rule is kept")
+            H.check(w.fullscreen == false, "the last rule's fullscreen wins over the earlier true")
         end,
     },
 
@@ -209,10 +193,10 @@ return {
     },
 
     {
-        "corners is refused at load: the stock shell cannot round corners (effects are blur and shadow only)",
+        "corners is refused at load: the stock shell draws blur and shadow only",
         function()
             local ok, err = pcall(rules().compile, { { match = { app_id = "x" }, corners = { radius = 8 } } })
-            H.check(not ok and tostring(err):find("corners", 1, true), "corners must raise naming the field")
+            H.check(not ok and tostring(err):find("corners", 1, true) ~= nil, "corners must raise, naming the field")
         end,
     },
 
