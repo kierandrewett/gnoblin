@@ -82,7 +82,7 @@ use gnoblin_paint::{SharedPainter, decode};
 use gnoblin_render::scene_ids::NodeIdAllocator;
 use gnoblin_render::transaction::{Animation, Motion, TreeChange, TreeValue, land_at_once, visual_property};
 use gnoblin_render::{
-    Damage, Effects, Mat4, NodeKind, NodeSpec, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
+    Damage, Effects, Mat4, NodeKind, NodeSpec, Pass, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
 use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
@@ -112,6 +112,8 @@ const SHELL_OFFSET_LIMIT: f64 = 100_000.0;
 /// Why a blur or shadow on a node placed in 3D is not drawn: the text after the kind in an entry of the node's
 /// read-only `skipped` list, and the code the GLES renderer logs when it meets such a layer.
 const SKIPPED_ON_3D: &str = "unsupported-effect-on-3d";
+/// The reason a node's effect is skipped when the active renderer draws no effect of that kind.
+const SKIPPED_BY_RENDERER: &str = "unsupported-by-renderer";
 
 /// The orthographic camera's distance from the image plane, in logical pixels.
 const VIEW_ORTHO_DEPTH: f64 = 100.0;
@@ -417,6 +419,10 @@ pub struct Composer {
     /// What a View's capture picture draws in place of a secure node, the same choice an output capture makes for a
     /// secure layer. It is fixed for the session by the `capture.secure-treatment` setting.
     secure_treatment: SecureTreatment,
+    /// The effect kinds ([`Pass::name`]) the active renderer draws. A node's effect of any other kind is named in its
+    /// `skipped` list. The compositor sets it once from the backend before any frame; until then every kind is
+    /// taken as drawn.
+    effect_kinds: &'static [&'static str],
     /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
     /// changes.
     canvases: BTreeMap<NodeId, CanvasPicture>,
@@ -480,6 +486,7 @@ impl Composer {
             view_clock_ms: 0,
             paced_views: BTreeSet::new(),
             secure_treatment: SecureTreatment::default(),
+            effect_kinds: Pass::NAMES,
             canvases: BTreeMap::new(),
             painter,
         }
@@ -1939,6 +1946,7 @@ impl Composer {
         });
         self.main_seat = Some(id);
         self.publish_seat_screen();
+        self.publish_effect_kinds();
         Some(id)
     }
 
@@ -2781,21 +2789,57 @@ impl Composer {
         Some(world)
     }
 
-    /// The effects of `node` the renderer will not draw, one `<kind>: <reason>` text each, in list
-    /// order. A blur or a shadow on a node placed in 3D is skipped: the renderers have no depth
-    /// pass for a backdrop or a shadow, so they draw the layer without them.
+    /// The effects of `node` the renderer will not draw, one `<kind>: <reasons>` text each, in list order. A kind the
+    /// renderer cannot draw at all is `unsupported-by-renderer`. A blur or a shadow on a node placed in 3D is
+    /// `unsupported-effect-on-3d`: the renderers have no depth pass for a backdrop or a shadow, so they draw the layer
+    /// without them. An effect with both reasons names both, joined by `, `.
     fn skipped_effects(&self, node: NodeId) -> Vec<String> {
         let Some(effects) = self.scene.effects(node) else {
             return Vec::new();
         };
-        if effects.is_empty() || self.spatial_world(node).is_none() {
+        if effects.is_empty() {
             return Vec::new();
         }
+        let in_3d = self.spatial_world(node).is_some();
         effects
             .passes()
             .iter()
-            .map(|pass| format!("{}: {SKIPPED_ON_3D}", pass.name()))
+            .filter_map(|pass| {
+                let name = pass.name();
+                let mut reasons = Vec::new();
+                if !self.effect_kinds.contains(&name) {
+                    reasons.push(SKIPPED_BY_RENDERER);
+                }
+                if in_3d {
+                    reasons.push(SKIPPED_ON_3D);
+                }
+                (!reasons.is_empty()).then(|| format!("{name}: {}", reasons.join(", ")))
+            })
             .collect()
+    }
+
+    /// Tells the composer which effect kinds the active renderer draws, and publishes them on the main seat's
+    /// read-only `effect_kinds` so a shell can adapt before it sets an effect. The compositor calls it once, from the
+    /// backend, before any frame; the next [`Self::publish_skipped_effects`] names what is not drawn.
+    pub fn set_effect_kinds(&mut self, kinds: &'static [&'static str]) {
+        self.effect_kinds = kinds;
+        self.publish_effect_kinds();
+    }
+
+    /// Publishes the seat's `effect_kinds` when it differs from what the seat holds.
+    fn publish_effect_kinds(&mut self) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        let value = TreeValue::ListText(self.effect_kinds.iter().map(|kind| (*kind).to_owned()).collect());
+        if self.scene.value(seat, "effect_kinds") != Some(&value) {
+            let _ = self.scene.set_value(seat, "effect_kinds", value.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node: seat,
+                key: "effect_kinds".to_owned(),
+                value,
+            });
+        }
     }
 
     /// Publishes each node's read-only `skipped` list when it changes. A node whose effects the
@@ -6344,7 +6388,7 @@ mod tests {
 
     #[test]
     fn an_effect_on_a_node_placed_in_3d_is_reported_skipped_and_cleared_when_it_is_flat() {
-        use gnoblin_render::{BlurParams, Pass, Shadow};
+        use gnoblin_render::{BlurParams, Shadow};
         let (mut composer, _output) = screen();
         let node = NodeId::new(0x4000);
         let mut chain = Effects::new();
@@ -6409,6 +6453,126 @@ mod tests {
             queued_skipped(&mut composer, node),
             Some(Vec::new()),
             "a node that is flat again gets the empty list back"
+        );
+    }
+
+    /// A blur and a shadow, in that order.
+    fn blur_and_shadow() -> Effects {
+        use gnoblin_render::{BlurParams, Shadow};
+        let mut chain = Effects::new();
+        chain
+            .push(Pass::Blur(BlurParams {
+                radius: 4.0,
+                passes: 2,
+                ..BlurParams::default()
+            }))
+            .expect("a blur");
+        chain
+            .push(Pass::Shadow(Shadow {
+                offset: Vec3::new(0.0, 4.0, 0.0),
+                blur: 12.0,
+                spread: 0.0,
+                opacity: 1.0,
+                color: Color::BLACK,
+            }))
+            .expect("a shadow");
+        chain
+    }
+
+    #[test]
+    fn an_effect_the_renderer_cannot_draw_is_reported_skipped_by_kind() {
+        let (mut composer, _output) = screen();
+        let node = NodeId::new(0x4000);
+        composer.with_scene(|scene| {
+            scene
+                .insert(node, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+                .expect("the node");
+            scene.set_effects(node, blur_and_shadow()).expect("the effects");
+        });
+        composer.take_tree_changes();
+
+        composer.set_effect_kinds(&["shadow"]);
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            Some(vec!["blur: unsupported-by-renderer".to_owned()]),
+            "a renderer that draws shadows only skips the blur"
+        );
+
+        composer.set_effect_kinds(&[]);
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            Some(vec![
+                "blur: unsupported-by-renderer".to_owned(),
+                "shadow: unsupported-by-renderer".to_owned(),
+            ]),
+            "a renderer that draws none skips both, in list order"
+        );
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            None,
+            "an unchanged list is not republished"
+        );
+
+        composer.set_effect_kinds(Pass::NAMES);
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            Some(Vec::new()),
+            "a renderer that draws both skips nothing"
+        );
+    }
+
+    #[test]
+    fn an_effect_with_both_reasons_names_both_on_one_entry() {
+        let (mut composer, _output) = screen();
+        let node = NodeId::new(0x4000);
+        composer.with_scene(|scene| {
+            scene
+                .insert(node, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+                .expect("the node");
+            scene.set_effects(node, blur_and_shadow()).expect("the effects");
+            scene
+                .set_property(node, VisualProperty::RotationX, PropertyValue::Number(30.0))
+                .expect("a tilt");
+        });
+        composer.take_tree_changes();
+
+        composer.set_effect_kinds(&["shadow"]);
+        composer.publish_skipped_effects();
+        assert_eq!(
+            queued_skipped(&mut composer, node),
+            Some(vec![
+                "blur: unsupported-by-renderer, unsupported-effect-on-3d".to_owned(),
+                "shadow: unsupported-effect-on-3d".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
+        let mut composer = Composer::new();
+        composer.set_effect_kinds(&[]);
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        assert_eq!(
+            composer.with_scene(|scene| scene.value(seat, "effect_kinds").cloned()),
+            Some(TreeValue::ListText(Vec::new())),
+            "a kind set before the seat exists reaches the seat when it is made"
+        );
+        composer.take_tree_changes();
+
+        composer.set_effect_kinds(Pass::NAMES);
+        let want = TreeValue::ListText(vec!["blur".to_owned(), "shadow".to_owned()]);
+        assert!(composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value } if *node == seat && key == "effect_kinds" && *value == want
+        )));
+        composer.set_effect_kinds(Pass::NAMES);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged list is not republished"
         );
     }
 }

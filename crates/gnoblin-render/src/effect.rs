@@ -138,6 +138,9 @@ pub enum Pass {
 }
 
 impl Pass {
+    /// Every kind of pass, by [`Pass::name`]. A renderer that draws all of them reports exactly this list.
+    pub const NAMES: &'static [&'static str] = &["blur", "shadow"];
+
     /// The pass's name, as inspection tools report it.
     #[must_use]
     pub const fn name(&self) -> &'static str {

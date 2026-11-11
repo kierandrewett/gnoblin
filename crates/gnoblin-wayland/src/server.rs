@@ -446,6 +446,8 @@ impl Server {
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
         // A View's capture picture replaces a secure node the way the backend replaces a secure layer of an output.
         state.composer.set_secure_treatment(backend.secure_treatment());
+        // A node asks for effects the renderer may not draw: the composer names those in its `skipped` list.
+        state.composer.set_effect_kinds(backend.effect_kinds());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
         let clock = config.clock.clone();
         // A worker's answer lands here, so the lock settles on the loop that owns the state.

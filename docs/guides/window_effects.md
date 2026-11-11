@@ -44,17 +44,29 @@ It is the only effects path. The `window.add_effect` call and the window's
 ### Effects that are not drawn: `skipped`
 
 A node has a read-only `skipped` list. It names each effect in `effects` the
-renderer will not draw, as `<kind>: <reason>`, and it is empty when all are drawn.
+renderer will not draw, as `<kind>: <reasons>`, in list order, and it is empty when
+all are drawn.
 
-- The only reason today is `unsupported-effect-on-3d`.
-- It applies to a blur or a shadow on a node whose placement carries depth: a
-  rotation about x or y, a `z`, or a perspective `Camera` above it. The renderers
-  have no depth pass for a backdrop or a shadow.
+- `unsupported-by-renderer`: the active renderer draws no effect of that kind.
+  The GLES renderer draws blur and shadow. The software renderer (the default,
+  and what a nested session uses) and the Vulkan renderer draw neither, so every
+  effect on them is named, for example `blur: unsupported-by-renderer`.
+- `unsupported-effect-on-3d`: a blur or a shadow on a node whose placement
+  carries depth, which is a rotation about x or y, a `z`, or a perspective
+  `Camera` above it. The renderers have no depth pass for a backdrop or a
+  shadow.
+- An effect with both reasons names both on one entry, joined by `, `:
+  `blur: unsupported-by-renderer, unsupported-effect-on-3d`.
 - The compositor keeps the list current as the node moves, so a node that is
   flat again gets the empty list back.
 - A shell cannot write it.
-- It reports placement only. The software and Vulkan renderers draw no blur or
-  shadow at all, and they do not say so here.
+
+### Reading what the renderer draws: `seat.effect_kinds`
+
+The main seat has a read-only `effect_kinds` list of the effect kinds the active
+renderer draws: `{ "blur", "shadow" }` on GLES, empty on the software and Vulkan
+renderers. It is set once at startup. A shell reads it to decide whether to set
+an effect or to draw a flat fallback such as a tinted `Canvas`.
 
 ## Window rules that do not apply
 

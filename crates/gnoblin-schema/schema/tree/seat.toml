@@ -156,6 +156,16 @@ since = "0.2.0"
 default = false
 readonly = true
 
+# The effect kinds the active renderer draws, `blur` and `shadow` among them: GLES draws both, the software and
+# Vulkan renderers draw none. Read-only: the renderer sets it once at startup. A shell reads it to adapt before it
+# sets a node's `effects`; an effect of a kind not listed stays in the list and is named in the node's `skipped`
+# as `<kind>: unsupported-by-renderer`.
+[[object.property]]
+name = "effect_kinds"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

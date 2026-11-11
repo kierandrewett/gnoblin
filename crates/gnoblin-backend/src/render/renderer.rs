@@ -68,6 +68,18 @@ impl RendererKind {
             RendererChoice::Vulkan => Self::Vulkan,
         }
     }
+
+    /// The effect kinds the renderer draws, by [`gnoblin_render::Pass::name`].
+    ///
+    /// Only GLES draws a blur or a shadow. The software renderer leaves them undrawn
+    /// (`gnoblin-render-software`'s module comment) and the Vulkan renderer does not draw effects yet.
+    #[must_use]
+    pub const fn effect_kinds(self) -> &'static [&'static str] {
+        match self {
+            Self::Gles => gnoblin_render::Pass::NAMES,
+            Self::Software | Self::Vulkan => &[],
+        }
+    }
 }
 
 impl Default for RendererKind {

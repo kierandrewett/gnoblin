@@ -141,12 +141,15 @@ type = "list<object:effect>"
 since = "0.2.0"
 default = []
 
-# The effects in `effects` that are not drawn, one text each as `<kind>: <reason>`, in list
-# order; empty when every effect is drawn. Today the only reason is `unsupported-effect-on-3d`:
+# The effects in `effects` that are not drawn, one text each as `<kind>: <reasons>`, in list
+# order; empty when every effect is drawn. Two reasons exist. `unsupported-by-renderer`: the
+# active renderer draws no effect of that kind (GLES draws blur and shadow; the software and
+# Vulkan renderers draw none; `seat.effect_kinds` lists what is drawn). `unsupported-effect-on-3d`:
 # a blur or a shadow on a node whose placement carries depth (a rotation about x or y, a
 # `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
-# pass for backdrop and shadow passes. The compositor writes it when the node's placement
-# or `effects` changes; a client can read it and cannot set it.
+# pass for backdrop and shadow passes. An effect with both reasons names both on one text,
+# joined by `, `. The compositor writes it when the node's placement, its `effects` or the
+# renderer changes; a client can read it and cannot set it.
 [[object.property]]
 name = "skipped"
 type = "list<string>"

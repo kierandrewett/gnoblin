@@ -29,6 +29,10 @@ decodes, and writes it when it changes. A script does not write `content` by han
 The compositor paints the list into a picture the size of the node when `content` or the size changes, not every
 frame, and draws that picture where the node sits, with the node's opacity, transform and effects.
 
+The effects are the node's `effects` list, and the renderer may not draw all of them. An effect it skips is named in
+the node's read-only `skipped` list (`blur: unsupported-by-renderer`), and `seat.effect_kinds` lists the kinds it does
+draw. See [window effects](/guides/window_effects).
+
 If an op cannot be encoded, the runtime reports `draw op N: ...` and leaves the content as it was. If the compositor
 cannot decode a list, it refuses the write with `bad-paint` and the canvas keeps its last content.
 

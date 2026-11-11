@@ -659,6 +659,10 @@ impl<S: Host + 'static> Backend<S> for Nested {
         self.secure_treatment
     }
 
+    fn effect_kinds(&self) -> &'static [&'static str] {
+        crate::render::renderer::RendererKind::Software.effect_kinds()
+    }
+
     fn outputs(&self) -> &[Output] {
         &self.outputs
     }

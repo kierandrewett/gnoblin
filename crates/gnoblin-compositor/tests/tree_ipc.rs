@@ -372,6 +372,83 @@ fn a_shader_effect_refuses_the_whole_effects_set_bad_value() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// The headless session draws with the software renderer, which draws no blur: the node says so in `skipped`.
+#[test]
+fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "set".to_owned(),
+        node: 1000,
+        key: "effects".to_owned(),
+        value_kind: "list_effect".to_owned(),
+        value_effects: vec![
+            effect::Properties {
+                kind: "blur".to_owned(),
+                downscale: 2,
+                passes: 3,
+                blur_radius: 12.0,
+                tint: "#10203040".to_owned(),
+                ..Default::default()
+            },
+            effect::Properties {
+                kind: "shadow".to_owned(),
+                offset_y: 4.0,
+                blur_radius: 12.0,
+                colour: "#00000080".to_owned(),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    });
+    transact(&mut wire, 2, 0, 1, ops);
+    // The reply and the change batches interleave with the frame that publishes the skipped list, so read frames
+    // until both the reply and the list have arrived.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut replied = false;
+    let mut changes: Vec<change::Properties> = Vec::new();
+    while !replied
+        || !changes
+            .iter()
+            .any(|change| change.node == 1000 && change.key == "skipped")
+    {
+        assert!(Instant::now() < deadline, "no skipped list arrived: {changes:?}");
+        let envelope = wire.receive().expect("a frame");
+        match envelope.member.as_str() {
+            "transact" => {
+                let reply = envelope.payload_as::<ReplyPayload>().expect("the reply decodes");
+                assert!(reply.applied, "the effects validate: {reply:?}");
+                replied = true;
+            }
+            "changes" => changes.extend(
+                envelope
+                    .payload_as::<ChangesPayload>()
+                    .expect("the batch decodes")
+                    .changes,
+            ),
+            other => panic!("unexpected frame `{other}`"),
+        }
+    }
+    let skipped = changes
+        .iter()
+        .rev()
+        .find(|change| change.node == 1000 && change.key == "skipped")
+        .expect("the skipped list is published");
+    assert_eq!(skipped.value_kind, "list_text");
+    assert_eq!(
+        skipped.value_texts,
+        vec![
+            "blur: unsupported-by-renderer".to_owned(),
+            "shadow: unsupported-by-renderer".to_owned()
+        ],
+        "the software renderer draws neither, and a node with effects says so"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
 /// Create one node of class `canvas` under `parent`.
 fn create_canvas(id: u64, parent: u64) -> Vec<op::Properties> {
     let mut ops = create(id, parent);

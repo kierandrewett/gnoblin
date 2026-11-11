@@ -429,6 +429,11 @@ impl<S: Host + 'static> Backend<S> for Drm {
         None
     }
 
+    fn effect_kinds(&self) -> &'static [&'static str] {
+        // The scan-out path draws with the GLES renderer.
+        gnoblin_backend::render::renderer::RendererKind::Gles.effect_kinds()
+    }
+
     fn output_controls(&self) -> gnoblin_backend::OutputControls {
         gnoblin_backend::OutputControls {
             gamma: true,

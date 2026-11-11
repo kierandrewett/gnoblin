@@ -746,6 +746,10 @@ impl<S: Host + 'static> Backend<S> for Headless {
         self.secure_treatment
     }
 
+    fn effect_kinds(&self) -> &'static [&'static str] {
+        self.renderer.effect_kinds()
+    }
+
     fn output_controls(&self) -> OutputControls {
         OutputControls {
             gamma: true,

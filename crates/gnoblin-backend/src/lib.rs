@@ -575,6 +575,14 @@ pub trait Backend<S: Host + 'static> {
         gnoblin_render_frame::frame::SecureTreatment::default()
     }
 
+    /// The effect kinds (`blur`, `shadow`: [`gnoblin_render::Pass::name`]) this backend's renderer draws.
+    ///
+    /// The default is none, so a backend that does not say is honest about it. The host reads it to name each
+    /// effect a node asks for and the renderer cannot draw in the node's `skipped` list.
+    fn effect_kinds(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// What this backend can control on its outputs: gamma tables and power state.
     ///
     /// The default is nothing, so a backend that does not implement the controls is
