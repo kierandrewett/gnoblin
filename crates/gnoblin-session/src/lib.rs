@@ -96,6 +96,10 @@
 //! 17. A child that keeps crashing never gets its budget back, so one bad minute
 //!     disables it for the rest of the login —
 //!     `a_stable_child_gets_its_restart_budget_back`.
+//! 18. An optional extension that keeps crashing degrades the session, or stalls the start
+//!     sequence behind it: the XR extension gives up after its budget with one warning and
+//!     leaves the session up —
+//!     `a_crash_looping_xr_extension_gives_up_once_and_leaves_the_session_up`.
 //!
 //! `src/model.rs` adds model-based tests over random event sequences for the
 //! invariants no single scenario can establish: the compositor is never

@@ -418,7 +418,12 @@ where
 {
     /// Connects to a socket and reads the registry.
     pub fn connect(socket: &Path, state: S) -> Self {
-        let stream = UnixStream::connect(socket).expect("the session is listening");
+        Self::from_stream(UnixStream::connect(socket).expect("the session is listening"), state)
+    }
+
+    /// Reads the registry over a connection that already exists, such as one end of a socket
+    /// pair whose other end the session adopted.
+    pub fn from_stream(stream: UnixStream, state: S) -> Self {
         stream
             .set_read_timeout(Some(TIMEOUT))
             .expect("a read timeout on the client socket");

@@ -46,6 +46,15 @@ pub const FD_VARIABLE: &str = "GNOBLIN_IPC_FD";
 /// role: the role is part of the message.
 pub const CONTROL_VARIABLE: &str = "GNOBLIN_IPC_CONTROL_FD";
 
+/// The role of a handover that carries a Wayland connection instead of an IPC stream.
+///
+/// The guardian makes a connected socket pair for the XR extension, gives the extension one end as
+/// `WAYLAND_SOCKET` and hands the compositor the other under this role. The compositor adopts it as a
+/// Wayland client with the `view` role (capture globals only), which is why the role is the
+/// connection's and not something a process claims by connecting. A peer-credential promise by pid
+/// cannot do this job: a pair the guardian made reports the guardian's pid for both ends.
+pub const VIEW_ROLE: &str = "view";
+
 /// The payload of one handover message: the role the stream is for.
 ///
 /// The stream itself travels as `SCM_RIGHTS` ancillary data; the payload says which

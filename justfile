@@ -75,11 +75,12 @@ msrv_toolchain := "1.97.0"
 msrv:
     cargo +{{msrv_toolchain}} check --workspace --all-targets --locked
 
-# Build the workspace in release mode, then install the session under PREFIX, with DESTDIR
+# Build the workspace and the XR extension in release mode, then install the session under PREFIX, with DESTDIR
 # prepended for staging. Every installed file is listed in share/gnoblin/install-manifest.
 # See xtask/src/dist.rs. Remove with `cargo xtask dist uninstall --prefix PREFIX`.
 dist prefix="/usr/local" destdir="":
     cargo build --release --workspace
+    cargo build --release --manifest-path extensions/gnoblin-xr/Cargo.toml --target-dir "${CARGO_TARGET_DIR:-target}"
     cargo xtask dist install --prefix "{{prefix}}" --destdir "{{destdir}}"
 
 # Check advisories, licences, duplicate versions and git sources.

@@ -140,6 +140,28 @@ fn a_view_role_client_sees_only_the_capture_globals() {
 }
 
 #[test]
+fn an_adopted_socket_is_a_view_client_whatever_process_holds_the_other_end() {
+    // The guardian makes a socket pair, gives the extension one end and hands the compositor the
+    // other. The pair's credentials name the guardian for both ends, so the role cannot come from
+    // a promise by pid: it is the adopted connection's own. No promise is recorded here, and the
+    // peer is this very process, yet the registry is the view role's.
+    let session = Session::start(None);
+    session.run(|handle| {
+        let (server_end, client_end) = std::os::unix::net::UnixStream::pair().expect("a socket pair");
+        handle.control.adopt_view(server_end);
+        let client = Bare::from_stream(client_end, App);
+        assert_eq!(
+            client.interfaces(),
+            VIEW_REGISTRY,
+            "an adopted connection sees exactly the capture globals"
+        );
+        // An ordinary connection from the same process still gets the core globals.
+        let ordinary = Bare::connect(handle.socket(), App);
+        assert!(ordinary.interfaces().contains(&"wl_compositor".to_owned()));
+    });
+}
+
+#[test]
 fn a_view_role_client_cannot_bind_a_hidden_global_by_name() {
     let session = Session::start(None);
     session.run(|handle| {

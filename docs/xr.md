@@ -9,9 +9,51 @@ Gnoblin draws every panel itself, with the frame, the shadow and the effects you
 
 ## How XR mode starts
 
-The `gnoblin-xr` extension starts the OpenXR session. When the session is up it creates a seat named `xr` on the owner
-socket. That seat is the headset's pointer. The stock shell builds the room when this seat appears and removes it when
+XR mode is off. The guardian starts `gnoblin-xr` only when you opt in:
+
+1. Set `GNOBLIN_XR=1` in the environment the guardian is started with. Any other value, or no value, leaves it off, even
+   when the program is installed.
+2. Have `gnoblin-xr` installed. The guardian looks for it beside `gnoblin`, in the prefix's `libexec`, then on `PATH`.
+   `cargo xtask dist install` installs it as `libexec/gnoblin-xr` when it was built (`just dist` builds it). To run a
+   build that is not installed, set `GNOBLIN_XR_PROGRAM` to its path; it has no effect without `GNOBLIN_XR=1`.
+
+If `GNOBLIN_XR=1` is set and no binary is found, the guardian logs one warning and the session starts without it.
+
+The setting is an environment variable because the guardian starts before the Lua configuration runs and reads no
+configuration file. A `gnoblin.configure` key would take effect only after a restart of the guardian's child list, which
+nothing does today.
+
+### What the program gets
+
+- **A Wayland connection with the `view` role.** The guardian makes a connected socket pair for each start. The program
+  receives one end as `WAYLAND_SOCKET`, and the compositor adopts the other as a client that sees `wl_shm`,
+  `ext_image_copy_capture_manager_v1` and `gnoblin_view_source_manager_v1` and no other global. The role belongs to the
+  connection, so the program cannot ask for more by connecting to the session socket.
+- **The owner socket.** The program connects to `GNOBLIN_IPC_SOCKET`, or `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`, as every
+  client of the session's user does. It reads the tree and creates the `xr` seat through the owner's ordinary calls.
+
+### What the program does once it runs
+
+`gnoblin-xr` starts the OpenXR session. When the session is up it creates a seat named `xr` on the owner socket.
+That seat is the headset's pointer. The stock shell builds the room when this seat appears and removes it when
 the seat goes. Nothing in your configuration needs to name the room.
+
+### When it stops
+
+The guardian starts the program after the front and before the autostart applications, and does not wait for it to
+report ready. It stops it before the front, after the applications.
+
+If the program exits, the guardian restarts it:
+
+- The wait before the first restart is 250 ms. It doubles for each restart in a row, up to 4 s.
+- A program that stays up for a minute gets its budget back.
+- After the fifth failed restart the guardian logs one warning and starts it no more:
+  `[guardian] xr failed after 5 restarts; it is optional, so the session continues without it`.
+- The session is not reported degraded and no other child is touched.
+- A start that cannot be made (no compositor control socket, or the program cannot be executed) counts as a failed run
+  of the same budget.
+
+Logs are under the `xr` name: `[guardian] started xr (generation N, pid P)` and the program's own lines.
 
 ## What the stock shell does
 

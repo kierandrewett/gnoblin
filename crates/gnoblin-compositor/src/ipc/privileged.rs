@@ -92,8 +92,9 @@ pub fn socket_is_owner(stream: &UnixStream) -> bool {
 /// socket the guardian passed in, and the tests give it a socket pair they made. It runs
 /// on its own thread, so a blocked read never holds up the serving threads.
 ///
-/// A handover naming a role outside [`ROLES`] is dropped, which closes its descriptor, and
-/// logged. A message that was read but refused is logged and skipped, because the control
+/// A handover naming a role outside [`ROLES`] and other than [`privilege::VIEW_ROLE`] is dropped,
+/// which closes its descriptor, and logged. The view role is not an owner connection: its stream is
+/// a Wayland connection, which `adopt` gives to the Wayland server with the capture-only `view` role. A message that was read but refused is logged and skipped, because the control
 /// socket is still usable. Only a read error ends the loop, since the socket itself is then
 /// unusable and carrying on would mean serving nothing silently.
 ///
@@ -104,7 +105,7 @@ pub fn receive_handovers(control: &UnixStream, mut adopt: impl FnMut(String, Uni
             Ok(None) => return,
             Ok(Some(handover)) => {
                 let role = handover.role;
-                if !ROLES.contains(&role.as_str()) {
+                if !ROLES.contains(&role.as_str()) && role != privilege::VIEW_ROLE {
                     log::warn!(
                         area = "ipc",
                         role = %role,
@@ -142,7 +143,8 @@ pub fn guardian_from_environment() -> Result<Option<UnixStream>, Inherited> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ROLES, owner_of, socket_is_owner};
+    use super::{ROLES, owner_of, receive_handovers, socket_is_owner};
+    use gnoblin_proto::privilege;
 
     #[test]
     fn the_owner_is_the_uid_the_compositor_runs_as() {
@@ -168,5 +170,34 @@ mod tests {
         for role in ["compositor", "invented", "guardian", "runtime2", ""] {
             assert!(!ROLES.contains(&role), "`{role}` is not a handover role");
         }
+        assert!(
+            !ROLES.contains(&privilege::VIEW_ROLE),
+            "the view role is a Wayland connection, not an owner IPC connection"
+        );
+    }
+
+    #[test]
+    fn the_view_role_is_adopted_and_an_unknown_role_is_dropped() {
+        let (guardian, compositor) = rustix::net::socketpair(
+            rustix::net::AddressFamily::UNIX,
+            rustix::net::SocketType::SEQPACKET,
+            rustix::net::SocketFlags::CLOEXEC,
+            None,
+        )
+        .expect("a control socket");
+        let (stream, _peer) = std::os::unix::net::UnixStream::pair().expect("a stream");
+        for role in ["invented", privilege::VIEW_ROLE, "runtime"] {
+            privilege::send_handover(&guardian, role, &stream).expect("a handover");
+        }
+        drop(guardian);
+        let mut adopted = Vec::new();
+        receive_handovers(&std::os::unix::net::UnixStream::from(compositor), |role, _| {
+            adopted.push(role);
+        });
+        assert_eq!(
+            adopted,
+            ["view", "runtime"],
+            "the unknown role never reaches the adopter"
+        );
     }
 }

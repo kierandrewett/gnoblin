@@ -32,7 +32,13 @@ fn inherited() -> InheritedEnvironment<'static> {
 }
 
 fn plan() -> Plan {
-    Plan::standard(true, false, ["first.desktop".to_owned(), "second.desktop".to_owned()]).expect("valid plan")
+    Plan::standard(
+        true,
+        false,
+        false,
+        ["first.desktop".to_owned(), "second.desktop".to_owned()],
+    )
+    .expect("valid plan")
 }
 
 fn rules() -> Rules {
@@ -262,6 +268,171 @@ fn a_crash_looping_runtime_stops_and_degrades_the_session() {
             "a failed child must never be spawned again"
         );
     }
+}
+
+/// The session with the XR extension planned: compositor, services, runtime, front, xr, two apps.
+const XR: ChildId = ChildId::new(5);
+/// The applications' ids once the extension takes the fifth slot.
+const XR_FIRST_APP: ChildId = ChildId::new(6);
+const XR_SECOND_APP: ChildId = ChildId::new(7);
+
+fn up_with_xr() -> Guardian {
+    let plan = Plan::standard(
+        true,
+        false,
+        true,
+        ["first.desktop".to_owned(), "second.desktop".to_owned()],
+    )
+    .expect("valid plan");
+    let mut guardian = Guardian::new(plan, rules());
+    guardian.apply(at(0, EventKind::Start));
+    ready(&mut guardian, COMPOSITOR, 1);
+    ready(&mut guardian, SERVICES, 2);
+    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, FRONT, 4);
+    assert_eq!(guardian.session(), SessionState::Up);
+    guardian
+}
+
+#[test]
+fn the_xr_extension_starts_with_no_readiness_to_wait_for() {
+    let mut guardian = Guardian::new(
+        Plan::standard(true, false, true, Vec::new()).expect("valid plan"),
+        rules(),
+    );
+    guardian.apply(at(0, EventKind::Start));
+    ready(&mut guardian, COMPOSITOR, 1);
+    ready(&mut guardian, SERVICES, 2);
+    ready(&mut guardian, RUNTIME, 3);
+    let effects = ready(&mut guardian, FRONT, 4);
+    assert_eq!(
+        spawns(actions(effects)),
+        vec![(XR, 1)],
+        "the extension starts after the front"
+    );
+    assert_eq!(
+        state(&guardian, XR),
+        ChildState::Running,
+        "no readiness report is waited for"
+    );
+    assert_eq!(guardian.session(), SessionState::Up);
+
+    // A tick far past any readiness deadline does not kill it.
+    assert!(kills(tick(&mut guardian, 600_000)).is_empty());
+    assert_eq!(state(&guardian, XR), ChildState::Running);
+}
+
+#[test]
+fn a_crash_looping_xr_extension_gives_up_once_and_leaves_the_session_up() {
+    let mut guardian = up_with_xr();
+    let mut now = 100;
+    for attempt in 1..=5u32 {
+        let effects = exited(&mut guardian, XR, ExitStatus::Exited(1), now);
+        assert_eq!(state(&guardian, XR), ChildState::Backoff);
+        let expected = [250u64, 500, 1000, 2000, 4000][usize::try_from(attempt - 1).expect("attempt fits")];
+        assert!(
+            messages(&effects)
+                .iter()
+                .any(|message| message.contains(&format!("restarting xr in {expected} ms"))),
+            "attempt {attempt} waits {expected} ms: {}",
+            messages(&effects).join(" | ")
+        );
+        now += 5000;
+        assert_eq!(
+            spawns(actions(tick(&mut guardian, now))),
+            vec![(XR, u64::from(attempt + 1))]
+        );
+    }
+
+    let effects = exited(&mut guardian, XR, ExitStatus::Exited(1), now);
+    assert_eq!(state(&guardian, XR), ChildState::Failed);
+    assert_eq!(
+        guardian.session(),
+        SessionState::Up,
+        "an optional extension that gave up is not a degraded session"
+    );
+    let given_up = messages(&effects)
+        .iter()
+        .filter(|message| message.contains("xr failed after 5 restarts"))
+        .count();
+    assert_eq!(
+        given_up,
+        1,
+        "one line says it gave up: {}",
+        messages(&effects).join(" | ")
+    );
+    assert_eq!(level_of(&effects, "xr failed after"), Some(Level::Warning));
+    assert!(spawns(actions(effects)).is_empty());
+
+    for _ in 0..20 {
+        now += 10_000;
+        assert!(
+            spawns(actions(tick(&mut guardian, now))).is_empty(),
+            "a failed extension is never spawned again"
+        );
+    }
+    for other in [SERVICES, RUNTIME, FRONT, XR_FIRST_APP] {
+        assert_eq!(state(&guardian, other), ChildState::Running, "{other:?} keeps running");
+    }
+}
+
+#[test]
+fn an_xr_extension_that_cannot_be_started_is_retried_then_dropped_without_stopping_anything() {
+    // The supervisor reports a failed spawn as `Exited(70)`.
+    let mut guardian = up_with_xr();
+    let mut now = 100;
+    for _ in 0..5 {
+        exited(&mut guardian, XR, ExitStatus::Exited(70), now);
+        now += 5000;
+        tick(&mut guardian, now);
+    }
+    exited(&mut guardian, XR, ExitStatus::Exited(70), now);
+    assert_eq!(state(&guardian, XR), ChildState::Failed);
+    assert_eq!(guardian.session(), SessionState::Up);
+}
+
+#[test]
+fn a_stable_xr_extension_gets_its_restart_budget_back() {
+    let mut guardian = up_with_xr();
+    exited(&mut guardian, XR, ExitStatus::Exited(1), 100);
+    tick(&mut guardian, 350);
+    assert_eq!(guardian.status(XR).expect("xr").restarts, 1);
+    tick(&mut guardian, 60_400);
+    assert_eq!(guardian.status(XR).expect("xr").restarts, 0);
+}
+
+#[test]
+fn the_xr_extension_stops_after_the_applications_and_before_the_front() {
+    let mut guardian = up_with_xr();
+    let mut now = 100;
+    let mut order = signals(guardian.apply(at(
+        now,
+        EventKind::Shutdown {
+            reason: ShutdownReason::Logout,
+        },
+    )));
+    for child in [XR_SECOND_APP, XR_FIRST_APP, XR, FRONT, RUNTIME, SERVICES, COMPOSITOR] {
+        now += 100;
+        let instance = generation(&guardian, child);
+        order.extend(signals(guardian.apply(at(
+            now,
+            EventKind::Exited {
+                child,
+                generation: instance,
+                status: ExitStatus::Exited(0),
+            },
+        ))));
+    }
+    // The applications are one rank here, so only the relative order of the ranks is fixed.
+    let position = |child: ChildId| {
+        order
+            .iter()
+            .position(|signalled| *signalled == child)
+            .expect("signalled")
+    };
+    assert!(position(XR) > position(XR_FIRST_APP) && position(XR) > position(XR_SECOND_APP));
+    assert!(position(XR) < position(FRONT));
+    assert_eq!(guardian.session(), SessionState::Ended);
 }
 
 #[test]

@@ -14,9 +14,10 @@ const COMPOSITOR: ChildId = ChildId::new(1);
 const SERVICES: ChildId = ChildId::new(2);
 const RUNTIME: ChildId = ChildId::new(3);
 const FRONT: ChildId = ChildId::new(4);
-const FIRST_APP: ChildId = ChildId::new(5);
-const SECOND_APP: ChildId = ChildId::new(6);
-const CHILDREN: [ChildId; 6] = [COMPOSITOR, SERVICES, RUNTIME, FRONT, FIRST_APP, SECOND_APP];
+const XR: ChildId = ChildId::new(5);
+const FIRST_APP: ChildId = ChildId::new(6);
+const SECOND_APP: ChildId = ChildId::new(7);
+const CHILDREN: [ChildId; 7] = [COMPOSITOR, SERVICES, RUNTIME, FRONT, XR, FIRST_APP, SECOND_APP];
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
 /// every platform, so a failing seed replays exactly.
@@ -41,7 +42,13 @@ impl Rng {
 }
 
 fn plan() -> Plan {
-    Plan::standard(true, false, ["first.desktop".to_owned(), "second.desktop".to_owned()]).expect("valid plan")
+    Plan::standard(
+        true,
+        false,
+        true,
+        ["first.desktop".to_owned(), "second.desktop".to_owned()],
+    )
+    .expect("valid plan")
 }
 
 fn rules() -> Rules {
@@ -64,11 +71,11 @@ fn slot(child: ChildId) -> usize {
 /// spawn is matched" checkable.
 #[derive(Default)]
 struct Observed {
-    generation: [u64; 6],
-    live: [bool; 6],
-    spawns: [u32; 6],
-    exits: [u32; 6],
-    kills: [u32; 6],
+    generation: [u64; 7],
+    live: [bool; 7],
+    spawns: [u32; 7],
+    exits: [u32; 7],
+    kills: [u32; 7],
 }
 
 struct Harness {
@@ -334,7 +341,7 @@ fn generate(rng: &mut Rng, guardian: &Guardian, now: &mut u64) -> Event {
         },
         // A late exit from an earlier instance.
         17 | 18 => {
-            let child = CHILDREN[usize::try_from(rng.below(6)).expect("six children")];
+            let child = CHILDREN[usize::try_from(rng.below(7)).expect("seven children")];
             EventKind::Exited {
                 child,
                 generation: generation(child).saturating_sub(1),
@@ -413,7 +420,7 @@ fn invariants_hold_over_random_sequences() {
             );
         }
         // A child never spins: the budget bounds every restartable one.
-        for child in [SERVICES, RUNTIME] {
+        for child in [SERVICES, RUNTIME, XR] {
             assert!(
                 harness.observed.spawns[slot(child)] <= 1 + crate::Backoff::guardian().max_restarts,
                 "seed {seed}: {child:?} was spawned {} times",
@@ -435,7 +442,7 @@ fn invariants_hold_over_random_sequences() {
         if harness.reached_up {
             reached_up += 1;
         }
-        for index in 0..6 {
+        for index in 0..7 {
             totals.spawns[index] += harness.observed.spawns[index];
             totals.exits[index] += harness.observed.exits[index];
             totals.kills[index] += harness.observed.kills[index];

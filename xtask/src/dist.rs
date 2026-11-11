@@ -3,9 +3,10 @@
 //!
 //! `install` copies the binaries the build wrote to `target/<profile>/` and the data files under
 //! `data/` and the portal crate's `data/` into `<destdir><prefix>`, in the layout the binaries read:
-//! `bin/gnoblin`, `libexec/xdg-desktop-portal-gnoblin`, `share/gnoblin/lua` and so on. Files that name
-//! an absolute path (the Wayland session entry and the portal's D-Bus service) carry an `@PREFIX@`
-//! placeholder, replaced with the prefix as the file is written.
+//! `bin/gnoblin`, `libexec/xdg-desktop-portal-gnoblin`, `libexec/gnoblin-xr` when it was built,
+//! `share/gnoblin/lua` and so on. Files that name an absolute path (the Wayland session entry and the
+//! portal's D-Bus service) carry an `@PREFIX@` placeholder, replaced with the prefix as the file is
+//! written.
 //!
 //! Every installed file is listed in `share/gnoblin/install-manifest` as `<sha256>  <path>`, relative
 //! to the prefix. An install replaces only files the manifest lists and that still hold the content it
@@ -71,6 +72,10 @@ enum InstallItem {
     },
     /// Every file under a repository directory, kept in the same relative layout under `to`.
     Tree { from: &'static str, to: &'static str },
+    /// A program the build may not have written: installed from `target/<profile>/<name>` when it is
+    /// there and skipped when it is not. An optional extension has its own workspace, so building the
+    /// session alone must still install.
+    BuiltIfPresent { name: &'static str, to: &'static str },
 }
 
 /// What the session installs. The optional packages (ananicy rules, the GeoClue authorisation file)
@@ -93,6 +98,13 @@ const ITEMS: &[InstallItem] = &[
         to: "libexec/xdg-desktop-portal-gnoblin",
         mode: FileMode::Program,
         template: false,
+    },
+    // The XR extension, from its own workspace (`extensions/gnoblin-xr`). `just dist` builds it into
+    // the same target directory; the guardian finds it in `libexec` and starts it only when the user
+    // sets `GNOBLIN_XR=1`.
+    InstallItem::BuiltIfPresent {
+        name: "gnoblin-xr",
+        to: "libexec/gnoblin-xr",
     },
     InstallItem::File {
         from: InstallSource::Built("libpam_gnoblin_keyring.so"),
@@ -425,6 +437,17 @@ fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
                 mode,
                 template,
             }),
+            InstallItem::BuiltIfPresent { name, to } => {
+                let source = built.join(name);
+                if source.is_file() {
+                    planned.push(Planned {
+                        to: to.to_owned(),
+                        source,
+                        mode: FileMode::Program,
+                        template: false,
+                    });
+                }
+            }
             InstallItem::Tree { from, to } => {
                 let mut files = Vec::new();
                 walk(&repo.join(from), "", &mut files)?;
@@ -755,6 +778,28 @@ mod tests {
         ] {
             assert!(seen.contains(expected), "missing {expected}");
         }
+    }
+
+    #[test]
+    fn the_xr_extension_is_installed_only_when_it_was_built() {
+        let built = std::env::temp_dir().join(format!("gnoblin-dist-xr-{}", std::process::id()));
+        fs::create_dir_all(&built).unwrap();
+        let without = plan(&repo_root(), &built).unwrap();
+        assert!(
+            without.iter().all(|entry| entry.to != "libexec/gnoblin-xr"),
+            "a build without the extension installs without it"
+        );
+
+        fs::write(built.join("gnoblin-xr"), b"binary").unwrap();
+        let with = plan(&repo_root(), &built).unwrap();
+        let entry = with
+            .iter()
+            .find(|entry| entry.to == "libexec/gnoblin-xr")
+            .expect("the built extension is installed");
+        assert_eq!(entry.source, built.join("gnoblin-xr"));
+        assert_eq!(entry.mode, FileMode::Program);
+        assert!(!entry.template);
+        fs::remove_dir_all(&built).unwrap();
     }
 
     #[test]

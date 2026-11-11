@@ -5,7 +5,7 @@
 ## Commands
 
 ```sh
-just dist prefix=/usr/local                 # cargo build --release --workspace, then install
+just dist prefix=/usr/local                 # cargo build --release --workspace and the XR extension, then install
 just dist prefix=/opt/gnoblin destdir=/tmp/stage
 cargo xtask dist install --prefix /usr/local [--destdir DIR] [--profile NAME]
 cargo xtask dist uninstall --prefix /usr/local [--destdir DIR]
@@ -27,6 +27,7 @@ cargo xtask dist uninstall --prefix /usr/local [--destdir DIR]
 | -------------------------------------------------------------------------------------- | ----------------------------------- |
 | `bin/gnoblin`, `bin/gnoblinctl`                                                        | build directory                     |
 | `libexec/xdg-desktop-portal-gnoblin`                                                   | build directory                     |
+| `libexec/gnoblin-xr` (only when built)                                                 | build directory                     |
 | `lib/security/pam_gnoblin_keyring.so`                                                  | build directory                     |
 | `lib/pam.d/gnoblin-lock`                                                               | `data/pam.d/gnoblin-lock`           |
 | `lib/systemd/user/gnoblin-session.target`                                              | `data/session/systemd-user/`        |

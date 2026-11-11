@@ -870,17 +870,29 @@ impl Guardian {
                     self.ladder(now, effects);
                 }
             }
-            Restart::Backoff(backoff) => {
+            Restart::Backoff(backoff) | Restart::Optional(backoff) => {
                 let restarts = self.children[index].restarts;
                 if restarts >= backoff.max_restarts {
                     self.children[index].state = ChildState::Failed;
                     self.children[index].deadline = None;
-                    note(
-                        Level::Error,
-                        format!("[guardian] {name} failed after {restarts} restarts; the session is degraded"),
-                        effects,
-                    );
-                    self.degrade(index);
+                    if matches!(restart, Restart::Optional(_)) {
+                        // The session never needed this child, so its loss is one warning and
+                        // nothing else: no degraded state, and no stall of the start sequence.
+                        note(
+                            Level::Warning,
+                            format!(
+                                "[guardian] {name} failed after {restarts} restarts; it is optional, so the session continues without it"
+                            ),
+                            effects,
+                        );
+                    } else {
+                        note(
+                            Level::Error,
+                            format!("[guardian] {name} failed after {restarts} restarts; the session is degraded"),
+                            effects,
+                        );
+                        self.degrade(index);
+                    }
                 } else {
                     let attempt = restarts + 1;
                     let delay = backoff.delay(attempt);
@@ -1067,7 +1079,7 @@ impl Guardian {
         // `WORKER_STABLE_RESET_MS` does for the worker.
         for index in 0..self.children.len() {
             let child = &mut self.children[index];
-            let Restart::Backoff(backoff) = child.spec.restart else {
+            let (Restart::Backoff(backoff) | Restart::Optional(backoff)) = child.spec.restart else {
                 continue;
             };
             if child.restarts == 0 || !matches!(child.state, ChildState::Ready | ChildState::Running) {

@@ -18,6 +18,10 @@
 //!   never inherits what its predecessor left unread;
 //! - the report descriptor it writes readiness and configuration revisions on
 //!   ([`gnoblin_proto::report`]);
+//! - for the XR extension alone, its Wayland connection as `WAYLAND_SOCKET`, one end of a socket
+//!   pair made for the spawn. The compositor gets the other end over the same control socket, tagged
+//!   [`privilege::VIEW_ROLE`], and serves it with the `view` role, so the extension's registry is the
+//!   capture globals and nothing else;
 //! - for the compositor alone, the child end of the control socket the guardian hands each
 //!   privileged stream over. It is made fresh for every compositor spawn, so a restarted
 //!   compositor never reads a handover meant for its predecessor.
@@ -93,12 +97,31 @@ pub const RAW_SERVICES_VARIABLE: &str = "GNOBLIN_LOG_RAW_SERVICES";
 /// The portal backend binary the guardian starts as its `portal` child.
 const PORTAL_PROGRAM: &str = "xdg-desktop-portal-gnoblin";
 
+/// Set to `1` in the guardian's environment to start the XR extension. Without it the guardian
+/// plans no `xr` child, whether or not the binary is installed: a headset session is the user's
+/// choice, not something a package makes for them.
+pub const XR_VARIABLE: &str = "GNOBLIN_XR";
+
+/// Names the extension binary to start instead of looking for an installed one. For a build tree
+/// that was never installed. It has no effect unless [`XR_VARIABLE`] is `1`.
+pub const XR_PROGRAM_VARIABLE: &str = "GNOBLIN_XR_PROGRAM";
+
+/// The XR extension binary the guardian starts as its `xr` child.
+const XR_PROGRAM: &str = "gnoblin-xr";
+
+/// The variable a Wayland client reads for an already connected socket. The XR extension is
+/// handed its `view` connection this way and has no other way to reach the compositor's display.
+const WAYLAND_SOCKET: &str = "WAYLAND_SOCKET";
+
 /// How the guardian role runs.
 pub struct SupervisorConfig {
     /// The executable to start the children from, which is this binary.
     pub program: PathBuf,
     /// The portal backend binary, when one is installed. Without it the plan has no portal child.
     pub portal_program: Option<PathBuf>,
+    /// The XR extension binary, when the user opted in with [`XR_VARIABLE`] and it was found.
+    /// Without it the plan has no `xr` child.
+    pub xr_program: Option<PathBuf>,
     /// The children to supervise.
     pub plan: Plan,
     /// How the guardian behaves: the stop grace, the safe-mode threshold, the environment.
@@ -134,14 +157,32 @@ impl SupervisorConfig {
             library_path: &library_path,
             data_dirs: &data_dirs,
         };
-        let portal_program = portal_beside(&program);
+        let portal_program = find_program(search_dirs(&program), PORTAL_PROGRAM);
         if portal_program.is_none() {
             log(
                 Level::Warning,
                 "[guardian] xdg-desktop-portal-gnoblin is not installed; the session starts without its portal",
             );
         }
-        let mut plan = Plan::standard(false, portal_program.is_some(), Vec::new()).map_err(SupervisorError::Plan)?;
+        let xr_program = match choose_xr(
+            std::env::var(XR_VARIABLE).ok().as_deref(),
+            std::env::var_os(XR_PROGRAM_VARIABLE).map(PathBuf::from),
+            search_dirs(&program),
+        ) {
+            XrChoice::Off => None,
+            XrChoice::Missing => {
+                log(
+                    Level::Warning,
+                    &format!(
+                        "[guardian] {XR_VARIABLE}=1 but {XR_PROGRAM} is not installed; the session starts without the XR extension"
+                    ),
+                );
+                None
+            }
+            XrChoice::Found(path) => Some(path),
+        };
+        let mut plan = Plan::standard(false, portal_program.is_some(), xr_program.is_some(), Vec::new())
+            .map_err(SupervisorError::Plan)?;
         let mut rules = Rules::standard(&inherited);
         let mut tick = Duration::from_millis(200);
         if std::env::var_os(TEST_FAST_VARIABLE).is_some() {
@@ -154,6 +195,7 @@ impl SupervisorConfig {
         Ok(SupervisorConfig {
             program,
             portal_program,
+            xr_program,
             plan,
             rules,
             recovery: read_recovery(&recovery_path),
@@ -229,6 +271,23 @@ struct Supervisor {
 }
 
 impl Supervisor {
+    /// A supervisor over `config`, with this process's environment as the base every child inherits.
+    fn new(config: SupervisorConfig, raw: raw::RawSink) -> Supervisor {
+        let guardian = Guardian::with_recovery(config.plan.clone(), config.rules.clone(), config.recovery.clone());
+        let (sender, receiver) = channel();
+        Supervisor {
+            raw,
+            config,
+            guardian,
+            base: base_environment(),
+            running: BTreeMap::new(),
+            control: None,
+            sender,
+            receiver,
+            start: Instant::now(),
+        }
+    }
+
     /// The current tick, measured from the session's start.
     fn now(&self) -> Tick {
         Tick::new(u64::try_from(self.start.elapsed().as_millis()).unwrap_or(u64::MAX))
@@ -303,6 +362,33 @@ impl Supervisor {
                 }
             }
         }
+        // The XR extension reaches the compositor's display on one connection the guardian
+        // makes for it, so its role is the connection's and not something it can claim by
+        // connecting to the session's socket. Its end travels as `WAYLAND_SOCKET`; the
+        // compositor's end is handed over, tagged `view`, once the child exists.
+        let mut view_child = None;
+        let mut view_number = None;
+        let mut view_handover = None;
+        if spec.kind == ChildKind::Xr {
+            match self.view_connection() {
+                Ok((child_end, compositor_end, number)) => {
+                    view_child = Some(child_end);
+                    view_number = Some(number);
+                    view_handover = Some((privilege::VIEW_ROLE.to_owned(), compositor_end));
+                }
+                Err(reason) => {
+                    // The extension is optional and is useless without its connection, so it is
+                    // not started at all; its restart policy decides how long to keep asking.
+                    log(Level::Warning, &format!("[guardian] {name}: not started: {reason}"));
+                    self.report(EventKind::Exited {
+                        child,
+                        generation,
+                        status: ExitStatus::Exited(70),
+                    });
+                    return;
+                }
+            }
+        }
         let (reader, writer) = match readiness_pipe() {
             Ok(pipe) => pipe,
             Err(error) => {
@@ -327,6 +413,9 @@ impl Supervisor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0);
+        if let Some(number) = view_number {
+            command.env(WAYLAND_SOCKET, number.to_string());
+        }
         // The report descriptor, which every child gets.
         if let Ok(number) = inheritable(&writer) {
             command.env(report::READY_VARIABLE, number.to_string());
@@ -336,7 +425,7 @@ impl Supervisor {
         // A child that dies takes its end with it, so the compositor sees the end of stream, and
         // a restarted child never inherits the unread bytes a previous one left in its pair.
         let mut privileged_child = None;
-        let mut privileged_handover = None;
+        let mut privileged_handover = view_handover;
         if let Some(role) = self.role_name(&spec).filter(|role| privileged_role(role)) {
             if self.control.is_none() {
                 // Without a control socket the compositor cannot receive the stream, so a child
@@ -383,6 +472,7 @@ impl Supervisor {
         restore(&writer);
         drop(writer);
         drop(privileged_child);
+        drop(view_child);
         drop(control_child);
 
         let mut process = match started {
@@ -464,6 +554,15 @@ impl Supervisor {
                     .expect("the portal child is planned only when its binary was found");
                 Command::new(program)
             }
+            ChildKind::Xr => {
+                // The extension is planned only when its binary was found, so the binary is there to run.
+                let program = self
+                    .config
+                    .xr_program
+                    .as_ref()
+                    .expect("the xr child is planned only when its binary was found");
+                Command::new(program)
+            }
             ChildKind::Compositor | ChildKind::Runtime | ChildKind::Services | ChildKind::Front => {
                 let mut command = Command::new(&self.config.program);
                 let role = self.role_name(spec).unwrap_or_else(|| "guardian".to_owned());
@@ -481,8 +580,24 @@ impl Supervisor {
             ChildKind::Services => Some("services".to_owned()),
             ChildKind::Front => Some("front".to_owned()),
             ChildKind::Portal => Some("portal".to_owned()),
+            ChildKind::Xr => Some("xr".to_owned()),
             ChildKind::Autostart => None,
         }
+    }
+
+    /// A connected pair of sockets for the XR extension's Wayland connection: its end, with the
+    /// descriptor number it is inheritable as, and the end the compositor adopts.
+    ///
+    /// Without the control socket the compositor cannot receive its end, so the extension would hold
+    /// a connection nothing serves; that is refused here instead.
+    fn view_connection(&self) -> Result<(OwnedFd, OwnedFd, i32), String> {
+        if self.control.is_none() {
+            return Err("there is no compositor control socket to hand its connection over".to_owned());
+        }
+        let (child_end, compositor_end) = socket_pair(rustix::net::SocketType::STREAM)
+            .map_err(|error| format!("cannot create its Wayland connection: {error}"))?;
+        let number = inheritable(&child_end).map_err(|error| format!("cannot pass its Wayland connection: {error}"))?;
+        Ok((child_end, compositor_end, number))
     }
 
     /// Hand one privileged stream to the compositor over the control socket.
@@ -528,39 +643,70 @@ fn privileged_role(role: &str) -> bool {
     matches!(role, "runtime" | "services" | "portal")
 }
 
-/// The portal backend's binary: beside the guardian, in the prefix's `libexec`, or on the path.
-fn portal_beside(program: &Path) -> Option<PathBuf> {
+/// The directories an optional child's binary is looked for in: beside the guardian, in the
+/// prefix's `libexec`, then on the path.
+fn search_dirs(program: &Path) -> Vec<PathBuf> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let beside = program
         .parent()
         .into_iter()
         .flat_map(|dir| [dir.to_path_buf(), dir.join("../libexec")]);
-    find_portal(beside.chain(std::env::split_paths(&path)))
+    beside.chain(std::env::split_paths(&path)).collect()
 }
 
-/// The first directory that holds a regular file named as the portal backend.
-fn find_portal(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+/// The first directory that holds a regular file named `name`.
+fn find_program(dirs: impl IntoIterator<Item = PathBuf>, name: &str) -> Option<PathBuf> {
     dirs.into_iter()
-        .map(|dir| dir.join(PORTAL_PROGRAM))
+        .map(|dir| dir.join(name))
         .find(|candidate| candidate.is_file())
+}
+
+/// What the user's choice and the installed files make of the XR extension.
+#[derive(Debug, PartialEq, Eq)]
+enum XrChoice {
+    /// Not requested: no `xr` child, and nothing is looked for.
+    Off,
+    /// Requested, but no binary was found.
+    Missing,
+    /// Requested, and this binary starts.
+    Found(PathBuf),
+}
+
+/// Decide whether the session plans an `xr` child.
+///
+/// `requested` is the value of [`XR_VARIABLE`]: only `1` opts in, so an unset variable, `0` and
+/// a typo all leave the extension off. `explicit` is [`XR_PROGRAM_VARIABLE`], which names the
+/// binary; without it the binary is looked for in `dirs`.
+fn choose_xr(requested: Option<&str>, explicit: Option<PathBuf>, dirs: impl IntoIterator<Item = PathBuf>) -> XrChoice {
+    if requested != Some("1") {
+        return XrChoice::Off;
+    }
+    let found = match explicit {
+        Some(path) => path.is_file().then_some(path),
+        None => find_program(dirs, XR_PROGRAM),
+    };
+    found.map_or(XrChoice::Missing, XrChoice::Found)
 }
 
 /// A plan whose restart ladders are short, for the test-only hook.
 fn fast_plan(plan: &Plan) -> Result<Plan, SupervisorError> {
+    let fast = Backoff {
+        initial: Tick::new(20),
+        factor: 2,
+        max: Tick::new(80),
+        max_restarts: 3,
+        stable_after: secs(1),
+    };
     let children: Vec<ChildSpec> = plan
         .children()
         .iter()
         .map(|child| {
             let mut child = child.clone();
-            if matches!(child.restart, Restart::Backoff(_)) {
-                child.restart = Restart::Backoff(Backoff {
-                    initial: Tick::new(20),
-                    factor: 2,
-                    max: Tick::new(80),
-                    max_restarts: 3,
-                    stable_after: secs(1),
-                });
-            }
+            child.restart = match child.restart {
+                Restart::Backoff(_) => Restart::Backoff(fast),
+                Restart::Optional(_) => Restart::Optional(fast),
+                other => other,
+            };
             child
         })
         .collect();
@@ -833,27 +979,13 @@ fn log(level: Level, message: &str) {
 /// [`SupervisorError`] when the role cannot start at all, which is the case a session manager reports
 /// rather than retries.
 pub fn run(config: SupervisorConfig) -> Result<u8, SupervisorError> {
-    let base = base_environment();
-    let guardian = Guardian::with_recovery(config.plan.clone(), config.rules.clone(), config.recovery.clone());
-    let (sender, receiver) = channel();
-    let start = Instant::now();
     let (raw_sink, raw_receiver, raw_dropped) = raw::RawSink::channel();
     let logger = std::thread::Builder::new()
         .name("gnoblin-raw-log".to_owned())
         .spawn(move || raw::run_logger(&raw_receiver, &raw_dropped))
         .map_err(SupervisorError::Descriptors)?;
-    let mut supervisor = Supervisor {
-        raw: raw_sink,
-        config,
-        guardian,
-        base,
-        running: BTreeMap::new(),
-        control: None,
-        sender: sender.clone(),
-        receiver,
-        start,
-    };
-    watch_signals(&sender)?;
+    let mut supervisor = Supervisor::new(config, raw_sink);
+    watch_signals(&supervisor.sender)?;
     supervisor.report(EventKind::Start);
     loop {
         // The tick interval bounds how long a shutdown request is unnoticed and how often
@@ -959,7 +1091,7 @@ mod portal_tests {
         std::fs::create_dir_all(&dir).expect("a temporary directory");
         let expected = dir.join(PORTAL_PROGRAM);
         std::fs::write(&expected, b"").expect("a stand-in portal");
-        assert_eq!(find_portal([dir.clone()]), Some(expected));
+        assert_eq!(find_program([dir.clone()], PORTAL_PROGRAM), Some(expected));
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 
@@ -968,7 +1100,239 @@ mod portal_tests {
         let dir = std::env::temp_dir().join(format!("gnoblin-portal-missing-{}", std::process::id()));
         // A directory where the binary should be is not a binary.
         std::fs::create_dir_all(dir.join(PORTAL_PROGRAM)).expect("a directory in the binary's place");
-        assert_eq!(find_portal([dir.clone()]), None);
+        assert_eq!(find_program([dir.clone()], PORTAL_PROGRAM), None);
         std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+}
+
+#[cfg(test)]
+mod xr_tests {
+    use super::*;
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::os::unix::net::UnixStream;
+
+    const COMPOSITOR: ChildId = ChildId::new(1);
+    const XR: ChildId = ChildId::new(2);
+
+    /// A directory of its own that is removed when the test ends, even by a failed assertion.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("gnoblin-xr-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("a temporary directory");
+            Self(dir)
+        }
+
+        fn program(&self, name: &str, script: &str) -> PathBuf {
+            let path = self.0.join(name);
+            std::fs::write(&path, script).expect("a stand-in program");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("executable");
+            path
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A supervisor over a compositor and the `xr` child, which starts `program`.
+    fn supervisor(program: PathBuf) -> (Supervisor, std::sync::mpsc::Receiver<raw::RawLine>) {
+        let plan = Plan::new(vec![
+            ChildSpec::new(COMPOSITOR, ChildKind::Compositor, "compositor"),
+            ChildSpec::new(XR, ChildKind::Xr, "xr"),
+        ])
+        .expect("a valid plan");
+        let inherited = InheritedEnvironment {
+            prefix: "/usr",
+            path: "/usr/bin:/bin",
+            library_path: "",
+            data_dirs: "/usr/share",
+        };
+        let config = SupervisorConfig {
+            program: PathBuf::from("/nonexistent/gnoblin"),
+            portal_program: None,
+            xr_program: Some(program),
+            plan,
+            rules: Rules::standard(&inherited),
+            recovery: Recovery::default(),
+            recovery_path: std::env::temp_dir().join(format!("gnoblin-xr-recovery-{}", std::process::id())),
+            tick: Duration::from_millis(10),
+            raw_services: false,
+        };
+        let (sink, lines, _dropped) = raw::RawSink::channel();
+        (Supervisor::new(config, sink), lines)
+    }
+
+    /// The next event the loop was sent that is an exit, within a bound.
+    fn next_exit(supervisor: &Supervisor) -> (ChildId, u64, ExitStatus) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let wait = deadline.saturating_duration_since(Instant::now());
+            match supervisor.receiver.recv_timeout(wait) {
+                Ok(LoopWake::Event(Event {
+                    kind:
+                        EventKind::Exited {
+                            child,
+                            generation,
+                            status,
+                        },
+                    ..
+                })) => return (child, generation, status),
+                Ok(_) => {}
+                Err(error) => panic!("no exit was reported: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_extension_is_off_unless_the_user_opts_in_with_one() {
+        let scratch = Scratch::new("off");
+        let binary = scratch.program(XR_PROGRAM, "#!/bin/sh\n");
+        let dirs = || vec![scratch.0.clone()];
+        assert_eq!(choose_xr(None, None, dirs()), XrChoice::Off, "installed is not enough");
+        assert_eq!(choose_xr(Some("0"), None, dirs()), XrChoice::Off);
+        assert_eq!(choose_xr(Some("true"), None, dirs()), XrChoice::Off, "only 1 opts in");
+        assert_eq!(choose_xr(Some(""), None, dirs()), XrChoice::Off);
+        assert_eq!(choose_xr(Some("1"), None, dirs()), XrChoice::Found(binary));
+    }
+
+    #[test]
+    fn an_opt_in_without_the_binary_is_reported_as_missing_and_not_faked() {
+        let scratch = Scratch::new("missing");
+        assert_eq!(choose_xr(Some("1"), None, [scratch.0.clone()]), XrChoice::Missing);
+        // A directory where the binary should be is not a binary.
+        std::fs::create_dir_all(scratch.0.join(XR_PROGRAM)).expect("a directory in the binary's place");
+        assert_eq!(choose_xr(Some("1"), None, [scratch.0.clone()]), XrChoice::Missing);
+    }
+
+    #[test]
+    fn an_explicit_program_replaces_the_search_and_must_exist() {
+        let scratch = Scratch::new("explicit");
+        let installed = scratch.program(XR_PROGRAM, "#!/bin/sh\n");
+        let built = scratch.program("built-xr", "#!/bin/sh\n");
+        assert_eq!(
+            choose_xr(Some("1"), Some(built.clone()), [scratch.0.clone()]),
+            XrChoice::Found(built)
+        );
+        assert_eq!(
+            choose_xr(Some("1"), Some(scratch.0.join("absent")), [scratch.0.clone()]),
+            XrChoice::Missing,
+            "a named binary that is not there is not replaced by the installed one ({installed:?})"
+        );
+        assert_eq!(choose_xr(None, Some(installed), [scratch.0.clone()]), XrChoice::Off);
+    }
+
+    #[test]
+    fn the_xr_role_is_the_view_handover_and_a_logged_role() {
+        assert_eq!(privilege::VIEW_ROLE, "view");
+        assert!(
+            !privileged_role("xr"),
+            "the extension gets no owner IPC pair from the guardian"
+        );
+        assert_eq!(raw::policy("xr", false), raw::RawPolicy::Redacted);
+    }
+
+    #[test]
+    fn the_fast_hook_shortens_the_optional_ladder_and_keeps_its_policy() {
+        let plan = Plan::standard(false, false, true, Vec::new()).expect("plan");
+        let fast = fast_plan(&plan).expect("fast plan");
+        let xr = fast
+            .children()
+            .iter()
+            .find(|child| child.kind == ChildKind::Xr)
+            .expect("xr");
+        let Restart::Optional(backoff) = xr.restart else {
+            panic!("the extension stays optional: {:?}", xr.restart);
+        };
+        assert_eq!(backoff.max_restarts, 3);
+        assert_eq!(backoff.initial, Tick::new(20));
+    }
+
+    #[test]
+    fn the_xr_child_is_handed_a_live_wayland_socket_and_the_compositor_its_other_end() {
+        let scratch = Scratch::new("spawn");
+        // Answers on the descriptor it was given: a valid connected socket reads what the
+        // compositor's end wrote and writes back, and the dev display variable is not in play.
+        let program = scratch.program(
+            "stub-xr",
+            "#!/bin/sh\nread line <&\"$WAYLAND_SOCKET\"\necho \"fd=$WAYLAND_SOCKET got=$line view=${GNOBLIN_VIEW_DISPLAY-unset}\" >&\"$WAYLAND_SOCKET\"\n",
+        );
+        let (mut supervisor, _lines) = supervisor(program);
+        // The compositor's end of the control socket, which the test plays.
+        let (guardian_end, compositor_control) =
+            socket_pair(rustix::net::SocketType::SEQPACKET).expect("the control socket");
+        supervisor.control = Some(guardian_end);
+        let control = UnixStream::from(compositor_control);
+        control
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .expect("a read timeout");
+
+        supervisor.spawn(XR, 1, "xr", &Environment::new());
+        assert!(supervisor.running.contains_key(&XR), "the extension was started");
+
+        let handover = privilege::receive_handover(&control)
+            .expect("the handover is readable")
+            .expect("the control socket is open");
+        assert_eq!(
+            handover.role,
+            privilege::VIEW_ROLE,
+            "the compositor serves it as a view"
+        );
+        let mut connection = UnixStream::from(handover.stream);
+        connection
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .expect("a read timeout");
+        connection
+            .write_all(b"hello\n")
+            .expect("the extension's end is connected");
+        let mut answer = String::new();
+        connection
+            .read_to_string(&mut answer)
+            .expect("the extension answers and exits");
+        assert!(answer.contains("got=hello"), "it read from the descriptor: {answer}");
+        assert!(answer.contains("view=unset"), "no development display is set: {answer}");
+        let number: i32 = answer
+            .strip_prefix("fd=")
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|number| number.parse().ok())
+            .unwrap_or_else(|| panic!("WAYLAND_SOCKET is a descriptor number: {answer}"));
+        assert!(number > 2, "a descriptor beyond the standard three: {number}");
+
+        assert_eq!(next_exit(&supervisor), (XR, 1, ExitStatus::Exited(0)));
+    }
+
+    #[test]
+    fn the_xr_child_is_not_started_without_a_compositor_to_hand_its_connection_to() {
+        let scratch = Scratch::new("no-control");
+        let marker = scratch.0.join("ran");
+        let program = scratch.program("stub-xr", &format!("#!/bin/sh\ntouch {}\n", marker.display()));
+        let (mut supervisor, _lines) = supervisor(program);
+        assert!(supervisor.control.is_none());
+
+        supervisor.spawn(XR, 1, "xr", &Environment::new());
+        assert!(!supervisor.running.contains_key(&XR), "no process was started");
+        assert_eq!(
+            next_exit(&supervisor),
+            (XR, 1, ExitStatus::Exited(70)),
+            "the failure goes to the child's restart policy"
+        );
+        assert!(!marker.exists(), "the program never ran");
+    }
+
+    #[test]
+    fn a_program_that_cannot_be_executed_is_reported_as_a_failed_start() {
+        let scratch = Scratch::new("no-exec");
+        let (mut supervisor, _lines) = supervisor(scratch.0.join("absent"));
+        let (guardian_end, _compositor_control) =
+            socket_pair(rustix::net::SocketType::SEQPACKET).expect("the control socket");
+        supervisor.control = Some(guardian_end);
+
+        supervisor.spawn(XR, 1, "xr", &Environment::new());
+        assert_eq!(next_exit(&supervisor), (XR, 1, ExitStatus::Exited(70)));
     }
 }

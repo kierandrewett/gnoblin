@@ -1080,6 +1080,24 @@ impl State {
         self.access.promise(pid, role);
     }
 
+    /// Adopts a connected socket the guardian made as a client with the `view` role.
+    ///
+    /// The role is the connection's own, recorded before its first request, so the client's
+    /// registry is the capture globals and nothing else. It is not looked up by process: the
+    /// guardian made both ends of the pair, so the peer credentials of the end this server holds
+    /// name the guardian and no promise by pid could tell the extension apart.
+    pub(crate) fn adopt_view(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<Client> {
+        let client = self.insert_client(
+            stream,
+            Arc::new(crate::protocols::wl_compositor::WlCompositorClientState::new(
+                &self.access,
+            )),
+            ClientRole::View,
+        )?;
+        log::debug!(area = "access", client = ?client.id(), "a view connection joined");
+        Ok(client)
+    }
+
     /// Accepts a connection that arrived through a `wp_security_context_v1` sandbox.
     ///
     /// The connection is a client of its own — it has its own registry, its own

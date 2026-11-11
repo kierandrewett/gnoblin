@@ -77,7 +77,7 @@ use gnoblin_layers::provider::COMPOSITOR_CRATE;
 use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
-use gnoblin_proto::{Envelope, Handshake, HandshakeKind, read_frame, write_frame};
+use gnoblin_proto::{Envelope, Handshake, HandshakeKind, privilege, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
@@ -284,6 +284,8 @@ impl IpcServer {
             );
         }
 
+        // The Wayland server adopts the guardian's `view` handovers, which are not owner connections.
+        let wayland = control.clone();
         let dispatcher = Dispatcher {
             store,
             observation,
@@ -319,7 +321,7 @@ impl IpcServer {
                 let served = events.clone();
                 let thread = spawn(
                     "gnoblin-ipc-control",
-                    move || serve_control(guardian, roles, served, version),
+                    move || serve_control(guardian, roles, served, version, wayland),
                     &path,
                 )?;
                 (Some(clone), Some(thread))
@@ -581,9 +583,16 @@ fn serve_control(
     roles: BTreeMap<String, PrivilegedRole>,
     events: Sender<IpcEvent>,
     version: Version,
+    wayland: ControlHandle,
 ) {
     let mut serving: BTreeMap<ClientId, Serving> = BTreeMap::new();
     super::privileged::receive_handovers(&guardian, |role, stream| {
+        if role == privilege::VIEW_ROLE {
+            // A Wayland connection for the XR extension, served by the Wayland server with the
+            // capture-only role. It is not an owner connection and has no identity here.
+            wayland.adopt_view(stream);
+            return;
+        }
         let Some(declared) = roles.get(&role) else {
             // A role this session does not configure has nothing to serve, so the stream is
             // dropped and whatever holds the other end sees its peer go.

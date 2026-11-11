@@ -506,6 +506,11 @@ impl Server {
                             Command::MoveWindow { window, geometry } => state.move_window(window, geometry),
                             Command::SetOpacity { window, opacity } => state.set_window_opacity(window, opacity),
                             Command::GrantRole { pid, role } => state.grant_role(pid, role),
+                            Command::AdoptView { stream } => {
+                                if let Err(error) = state.adopt_view(stream) {
+                                    log::warn!(%error, "a view connection could not be adopted");
+                                }
+                            }
                             Command::ProtectSession { pid, reply } => {
                                 let _ = reply.send(state.protect_hosted_session(pid));
                             }
@@ -976,6 +981,17 @@ impl ControlHandle {
         self.control.push(Command::GrantRole { pid, role });
     }
 
+    /// Adopts `stream` as a Wayland client with the `view` role: the capture globals and nothing
+    /// else (`design/xr-extension.md`, G7).
+    ///
+    /// The guardian made the stream's other end and gave it to the extension process, so the
+    /// role belongs to the connection and nothing the process does can change it. A stream the
+    /// loop cannot insert is closed and logged. Returns once the command is queued; the loop
+    /// accepts it before it reads the stream's first request.
+    pub fn adopt_view(&self, stream: std::os::unix::net::UnixStream) {
+        self.control.push(Command::AdoptView { stream });
+    }
+
     /// Asks for a hosted session to be protected, as the manager's `Protect` does.
     ///
     /// [`None`] means the loop did not answer in time; `false` means no session runs
@@ -1309,6 +1325,8 @@ enum Command {
     },
     /// Promise a role to a process the compositor is about to start.
     GrantRole { pid: u32, role: ClientRole },
+    /// Adopt a connected socket as a client with the `view` role; see `ControlHandle::adopt_view`.
+    AdoptView { stream: std::os::unix::net::UnixStream },
     /// Protect a hosted session, and answer whether the process was found.
     ProtectSession {
         pid: u32,

@@ -53,7 +53,11 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
   pictures.
 - No DMA-BUF path: pictures are `wl_shm` bytes, copied through a staging buffer.
 - No environment, no layers of the extension's own. Buttons and scroll are not wired: the runtime has no button source yet.
-- The `[powers.process]` entry that starts this program is not written.
+
+## Starting
+
+The guardian starts this program when the user sets `GNOBLIN_XR=1`; see `docs/xr.md`. It hands the program a Wayland connection with the
+`view` role as `WAYLAND_SOCKET` and restarts it with backoff. `GNOBLIN_XR_PROGRAM` names a build that is not installed.
 
 ## Build and test
 

@@ -33,6 +33,12 @@ pub enum ChildKind {
     Front,
     /// One autostart application, from the configuration's `autostart` table.
     Autostart,
+    /// `gnoblin-xr`: the out-of-process OpenXR extension (`design/xr-extension.md`, G7).
+    ///
+    /// It is optional and off unless the user opts in. The guardian starts it with a connected
+    /// Wayland socket of the `view` role and nothing else privileged, and a failure of it never
+    /// degrades the session.
+    Xr,
 }
 
 impl ChildKind {
@@ -40,10 +46,11 @@ impl ChildKind {
     ///
     /// An autostart application is a plain desktop application: it has no way to
     /// say "ready", so it counts as running as soon as it is spawned and the
-    /// guardian never kills it for missing a deadline.
+    /// guardian never kills it for missing a deadline. The XR extension is the same:
+    /// it waits for a headset on its own schedule, so it has no readiness to report.
     #[must_use]
     pub const fn reports_ready(self) -> bool {
-        !matches!(self, Self::Autostart)
+        !matches!(self, Self::Autostart | Self::Xr)
     }
 }
 
@@ -60,6 +67,10 @@ pub enum Restart {
     Never,
     /// Restarted with bounded exponential backoff and a circuit breaker.
     Backoff(Backoff),
+    /// Restarted like [`Restart::Backoff`], but the session does not depend on the child: when
+    /// the budget runs out the child is failed with one warning and the session is not
+    /// reported degraded, because nothing the session needs stopped working.
+    Optional(Backoff),
 }
 
 /// Bounded exponential backoff with a crash-loop circuit breaker.
@@ -148,7 +159,8 @@ impl ChildSpec {
     /// A child with the policy its kind implies.
     ///
     /// The compositor ends the session when it exits; the runtime and services
-    /// restart with [`Backoff::guardian`]; the front and autostart
+    /// restart with [`Backoff::guardian`]; the XR extension restarts with the same
+    /// ladder but its failure is not the session's ([`Restart::Optional`]); the front and autostart
     /// applications are not restarted, because the session manager owns front
     /// retries and a user application that dies is not the session's to raise.
     /// Every kind except autostart applications reports readiness within
@@ -158,6 +170,7 @@ impl ChildSpec {
         let restart = match kind {
             ChildKind::Compositor => Restart::EndsSession,
             ChildKind::Runtime | ChildKind::Services | ChildKind::Portal => Restart::Backoff(Backoff::guardian()),
+            ChildKind::Xr => Restart::Optional(Backoff::guardian()),
             ChildKind::Front | ChildKind::Autostart => Restart::Never,
         };
         Self {
@@ -262,14 +275,20 @@ impl Plan {
     }
 
     /// The session Gnoblin starts today: compositor, services, runtime, then the portal when
-    /// the session has one, then the front when the session manager asks for one, then each
-    /// autostart entry in configuration order.
+    /// the session has one, then the front when the session manager asks for one, then the XR
+    /// extension when the user opted in and it is installed, then each autostart entry in
+    /// configuration order.
     ///
     /// Services start before the runtime because the runtime's user scripts can
     /// reach them during their own start, and because a session whose agents are
     /// missing must be visible before user policy runs. Identifiers are assigned
     /// `1..=n` in this order.
-    pub fn standard(front: bool, portal: bool, autostart: impl IntoIterator<Item = String>) -> Result<Self, PlanError> {
+    pub fn standard(
+        front: bool,
+        portal: bool,
+        xr: bool,
+        autostart: impl IntoIterator<Item = String>,
+    ) -> Result<Self, PlanError> {
         let mut next = 1;
         let mut children = Vec::new();
         for (kind, name) in [
@@ -286,6 +305,10 @@ impl Plan {
         }
         if front {
             children.push(ChildSpec::new(ChildId::new(next), ChildKind::Front, "front"));
+            next += 1;
+        }
+        if xr {
+            children.push(ChildSpec::new(ChildId::new(next), ChildKind::Xr, "xr"));
             next += 1;
         }
         for name in autostart {
@@ -326,7 +349,7 @@ mod tests {
 
     #[test]
     fn the_portal_starts_after_the_runtime_and_before_the_front_and_autostart() {
-        let plan = Plan::standard(true, true, ["app.desktop".to_owned()]).expect("valid plan");
+        let plan = Plan::standard(true, true, false, ["app.desktop".to_owned()]).expect("valid plan");
         assert_eq!(
             names(&plan),
             ["compositor", "services", "runtime", "portal", "front", "app.desktop"]
@@ -335,8 +358,39 @@ mod tests {
 
     #[test]
     fn without_a_portal_the_plan_is_the_session_it_was_before() {
-        let plan = Plan::standard(false, false, Vec::new()).expect("valid plan");
+        let plan = Plan::standard(false, false, false, Vec::new()).expect("valid plan");
         assert_eq!(names(&plan), ["compositor", "services", "runtime"]);
+    }
+
+    #[test]
+    fn the_xr_extension_starts_after_the_front_and_before_autostart() {
+        let plan = Plan::standard(true, true, true, ["app.desktop".to_owned()]).expect("valid plan");
+        assert_eq!(
+            names(&plan),
+            [
+                "compositor",
+                "services",
+                "runtime",
+                "portal",
+                "front",
+                "xr",
+                "app.desktop"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_xr_extension_is_not_planned_unless_asked_for() {
+        let plan = Plan::standard(true, true, false, Vec::new()).expect("valid plan");
+        assert!(!names(&plan).contains(&"xr"), "{:?}", names(&plan));
+    }
+
+    #[test]
+    fn the_xr_extension_reports_no_readiness_and_gives_up_without_degrading() {
+        let spec = ChildSpec::new(ChildId::new(5), ChildKind::Xr, "xr");
+        assert!(!ChildKind::Xr.reports_ready(), "the extension has no readiness channel");
+        assert_eq!(spec.ready_within, None);
+        assert_eq!(spec.restart, Restart::Optional(Backoff::guardian()));
     }
 
     #[test]

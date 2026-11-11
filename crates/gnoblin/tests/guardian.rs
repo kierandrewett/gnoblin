@@ -416,6 +416,80 @@ fn a_privileged_descriptor_reaches_only_its_own_role() {
     );
 }
 
+/// An executable stand-in for the XR extension, in a directory the test owns.
+fn xr_stand_in(directory: &TempDir, body: &str) -> PathBuf {
+    let path = directory.path().join("gnoblin-xr");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("the stand-in program");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("executable");
+    path
+}
+
+#[test]
+fn the_xr_extension_is_not_started_unless_the_user_opts_in() {
+    let programs = tempfile::tempdir().expect("a temporary directory");
+    let program = xr_stand_in(&programs, "exec sleep 600");
+    // The binary is there and named, and the opt-in is not: the session is the one it always was.
+    let session = Session::start_with(&[("GNOBLIN_XR_PROGRAM", program.to_str().expect("a path"))]);
+    let log = session.wait_for("[guardian] session ready");
+    assert!(
+        !log.contains("started xr ("),
+        "the extension started without an opt-in:\n{log}"
+    );
+}
+
+#[test]
+fn an_opted_in_xr_extension_is_given_a_wayland_socket_no_other_child_has() {
+    let programs = tempfile::tempdir().expect("a temporary directory");
+    let program = xr_stand_in(&programs, "exec sleep 600");
+    let session = Session::start_with(&[
+        ("GNOBLIN_XR", "1"),
+        ("GNOBLIN_XR_PROGRAM", program.to_str().expect("a path")),
+    ]);
+    session.wait_for("configuration revision 1 accepted");
+    let xr = session.pid("xr");
+    let runtime = session.pid("runtime");
+    let compositor = session.pid("compositor");
+
+    let number = inherited(xr, "WAYLAND_SOCKET").expect("the extension was given a Wayland socket");
+    let held = socket_at(xr, number).expect("the socket is a descriptor of the extension");
+    assert!(held.starts_with("socket:["), "{held}");
+    assert!(
+        inherited(runtime, "WAYLAND_SOCKET").is_none(),
+        "only the extension is handed a connection"
+    );
+    assert!(
+        !socket_inodes(runtime).contains(&held),
+        "the runtime holds the extension's connection"
+    );
+    assert!(
+        !socket_inodes(compositor).contains(&held),
+        "the compositor holds the other end of the pair, which is a different socket"
+    );
+    assert!(
+        inherited(xr, "GNOBLIN_IPC_FD").is_none(),
+        "the extension is no privileged role of the guardian's"
+    );
+    session.sessions();
+}
+
+#[test]
+fn a_crash_looping_xr_extension_is_dropped_and_the_session_carries_on() {
+    let programs = tempfile::tempdir().expect("a temporary directory");
+    let program = xr_stand_in(&programs, "exit 1");
+    let session = Session::start_with(&[
+        ("GNOBLIN_XR", "1"),
+        ("GNOBLIN_XR_PROGRAM", program.to_str().expect("a path")),
+    ]);
+    let log = session.wait_for("xr failed after 3 restarts; it is optional");
+    assert!(
+        !log.contains("the session is degraded"),
+        "an optional extension does not degrade the session:\n{log}"
+    );
+    // The compositor, runtime and services are untouched, and the session still answers.
+    session.sessions();
+    assert!(!session.log().contains("session stopping"), "{}", session.log());
+}
+
 #[test]
 fn the_guardian_refuses_to_start_without_a_runtime_directory() {
     // A guardian with nowhere to put a socket is a session manager's configuration error, and
