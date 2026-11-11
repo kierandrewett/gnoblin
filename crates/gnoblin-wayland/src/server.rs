@@ -388,6 +388,15 @@ impl Server {
             let ping = ping.clone();
             move || ping.ping()
         });
+        // The lock's password check runs on a worker thread against the session user; with no
+        // user in the environment every attempt fails closed.
+        let lock_user = std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).ok();
+        let (lock_auth, lock_results) = crate::lock_auth::LockAuth::new(
+            Arc::new(gnoblin_lock_auth::PamAuthenticator::new(
+                gnoblin_lock_auth::DEFAULT_SERVICE,
+            )),
+            lock_user,
+        );
         let mut state = State::new(
             display,
             &outputs,
@@ -403,12 +412,22 @@ impl Server {
             config.visual_bell,
             config.visual_accessibility,
             &config.extensions,
+            lock_auth,
         )?;
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
         let clock = config.clock.clone();
+        // A worker's answer lands here, so the lock settles on the loop that owns the state.
+        event_loop
+            .handle()
+            .insert_source(lock_results, |event, (), state: &mut State| {
+                if let smithay::reexports::calloop::channel::Event::Msg(done) = event {
+                    state.finish_authentication(done);
+                }
+            })
+            .map_err(|error| StartupError::EventLoop(error.into()))?;
         let heads = crate::output_config::BackendOutputConfig::new(backend.as_mut(), state.output_positions()).heads();
         state.publish_output_heads(heads);
         // The keyboard is configured before the socket is bound, so the first client that

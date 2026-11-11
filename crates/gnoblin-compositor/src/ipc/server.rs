@@ -1487,7 +1487,7 @@ impl Dispatcher {
     }
 
     /// The frame applied a batch: the holder hears its changes in the order they were applied,
-    /// then each event the frame delivered, one `event` signal apiece.
+    /// then each answer the frame settled, then each event the frame delivered, one signal apiece.
     fn tree_changed(&mut self, client: ClientId, batch: &TreeBatch) {
         let Some(connection) = self.connections.get_mut(&client) else {
             return;
@@ -1497,6 +1497,13 @@ impl Dispatcher {
                 tree_host::NAMESPACE,
                 tree_host::member::CHANGES,
                 &changes_payload(batch.serial, &batch.changes),
+            ));
+        }
+        for answer in &batch.answers {
+            connection.send(&Envelope::event_message(
+                tree_host::NAMESPACE,
+                tree_host::member::ANSWER,
+                &tree_host::answer_payload(answer),
             ));
         }
         for event in &batch.events {

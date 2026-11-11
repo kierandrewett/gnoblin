@@ -44,6 +44,7 @@ gnoblin-wm = { path = "../gnoblin-wm" }
 # for `Lock::apply`, and the cover, the input gate and the embargo are what its
 # effects perform (design/rust-compositor.md, "Session lock: gnoblin-lock").
 gnoblin-lock = { path = "../gnoblin-lock" }
+gnoblin-lock-auth = { path = "../gnoblin-lock-auth" }
 # Output layout: the backend's connected outputs become a declarative layout here,
 # so the window manager sees the same monitor rectangles the display configuration
 # and the portal will.

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_proto::tree::seat::ChordPayload;
 use gnoblin_proto::tree::tree::{
-    AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
 use gnoblin_proto::tree::{change, effect, op, snapshot_node};
 use gnoblin_render::Pass;
@@ -23,8 +23,8 @@ use gnoblin_render::transaction::{
 use gnoblin_secret::SecretText;
 use gnoblin_types::{ClientId, Color, NodeId};
 use gnoblin_wayland::{
-    ChordEvent, ChordState, EffectSpec, FrameTreeEvent, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
-    keysym_name,
+    ChordEvent, ChordState, EffectSpec, FrameTreeEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks, TreeInput,
+    TreeQueue, keysym_name,
 };
 
 use super::server::IpcEvent;
@@ -35,8 +35,9 @@ use super::tree::{
 /// The namespace the tree answers on.
 pub const NAMESPACE: &str = "tree";
 
-/// The members the tree answers on: `attach` and `transact` are requests, and
-/// `snapshot`, `changes`, `event` and `chord` are the events that follow them.
+/// The members the tree answers on: `attach` and `transact` are requests, `answer` is the
+/// shell's reply to an `authenticate` change, and `snapshot`, `changes`, `event` and `chord`
+/// are the events that follow them.
 pub mod member {
     pub const ATTACH: &str = "attach";
     pub const TRANSACT: &str = "transact";
@@ -44,6 +45,7 @@ pub mod member {
     pub const CHANGES: &str = "changes";
     pub const EVENT: &str = "event";
     pub const CHORD: &str = "chord";
+    pub const ANSWER: &str = "answer";
 }
 
 /// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
@@ -232,6 +234,16 @@ fn removed_nodes(change: &TreeChange) -> Vec<u64> {
     match change {
         TreeChange::Destroyed { removed, .. } => removed.iter().map(|node| node.get()).collect(),
         TreeChange::Created { .. } | TreeChange::Parented { .. } | TreeChange::Set { .. } => Vec::new(),
+    }
+}
+
+/// One answer to a `call` the compositor settled, as the `answer` event.
+#[must_use]
+pub fn answer_payload(answer: &TreeAnswer) -> AnswerPayload {
+    AnswerPayload {
+        token: answer.token,
+        result: answer.result.clone().into_bytes(),
+        error: answer.error.clone(),
     }
 }
 

@@ -95,6 +95,8 @@ use gnoblin_render_frame::frame::{Layer, OutputFrame, Surface, SurfaceSource};
 use gnoblin_types::{ClientId, Color, OutputId, Rect};
 
 use crate::State;
+use crate::lock_auth::AuthDone;
+use gnoblin_render::transaction::TreeCall;
 
 use crate::log;
 
@@ -345,6 +347,43 @@ impl State {
             LockState::Locked | LockState::Unlocking | LockState::CoverFailed => "locked",
         });
         self.publish();
+    }
+
+    /// Whether the session is locked by an owner that may be asked to unlock it: the only state in
+    /// which a password check can unlock.
+    fn lock_is_held(&self) -> bool {
+        self.lock.state() == LockState::Locked && self.lock.locker().is_some()
+    }
+
+    /// Starts the password checks the shell asked for this frame. A refused check is answered at
+    /// once; an accepted-to-run one answers when its worker finishes (see [`Self::finish_authentication`]).
+    pub(crate) fn begin_authentications(&mut self, calls: Vec<TreeCall>) {
+        for mut call in calls {
+            let locked = self.lock_is_held();
+            let now = self.lock_auth.now_ms();
+            let password = std::mem::take(&mut call.text);
+            if let Some(answer) = self.lock_auth.begin(call.token, password, locked, now) {
+                self.tree.answer(answer.token, answer.result, answer.error);
+            }
+        }
+    }
+
+    /// Settles a finished password check: the shell gets its answer, and the session unlocks only
+    /// on an accepted check while it is still locked by its owner.
+    pub(crate) fn finish_authentication(&mut self, done: AuthDone) {
+        let locked = self.lock_is_held();
+        let now = self.lock_auth.now_ms();
+        let Some(settled) = self.lock_auth.finish(done, locked, now) else {
+            return;
+        };
+        if settled.unlock
+            && let Some(locker) = self.lock.locker()
+        {
+            let effects = self.lock.apply(LockEvent::UnlockRequested { locker });
+            self.apply_lock(effects);
+        }
+        self.tree
+            .answer(settled.answer.token, settled.answer.result, settled.answer.error);
     }
 
     /// Takes the session lock for the compositor's `lock` method and answers `reply`

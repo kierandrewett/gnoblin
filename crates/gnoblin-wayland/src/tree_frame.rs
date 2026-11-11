@@ -70,6 +70,19 @@ pub struct TreeBatch {
     pub calls: Vec<TreeCall>,
     /// Events the frame delivers to the shell, in the order they arrived.
     pub events: Vec<FrameTreeEvent>,
+    /// Answers to `authenticate` calls the compositor settled, in the order they settled.
+    pub answers: Vec<TreeAnswer>,
+}
+
+/// The outcome of one `authenticate` call, for the shell to see in the next batch.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TreeAnswer {
+    /// The token of the call this answers.
+    pub token: u64,
+    /// The result: empty on refusal.
+    pub result: String,
+    /// The error: empty on success.
+    pub error: String,
 }
 
 /// A request a client made of its window, which the shell decides on instead of the window
@@ -331,6 +344,10 @@ pub struct TreeFrame {
     /// Seat `claim` and `unclaim` calls the applied transactions made, in op order, for the
     /// compositor to apply.
     claims: Vec<TreeCall>,
+    /// `authenticate` calls the applied transactions made, in op order, for the compositor to check.
+    authentications: Vec<TreeCall>,
+    /// Answers to authentications, published with the next batch.
+    answers: Vec<TreeAnswer>,
     /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
     /// took them. A destroyed seat takes its claims with it.
     destroyed: Vec<NodeId>,
@@ -359,6 +376,8 @@ impl TreeFrame {
             next_seq: 0,
             frames: 0,
             claims: Vec::new(),
+            authentications: Vec::new(),
+            answers: Vec::new(),
             destroyed: Vec::new(),
             revisions: TreeRevisions::new(),
         }
@@ -437,6 +456,20 @@ impl TreeFrame {
         std::mem::take(&mut self.claims)
     }
 
+    /// Take the `authenticate` calls the applied transactions made, in op order, for the compositor
+    /// to check against the session's password.
+    pub fn take_authentications(&mut self) -> Vec<TreeCall> {
+        std::mem::take(&mut self.authentications)
+    }
+
+    /// Queue the answer to an `authenticate` call; the next published batch carries it to the shell.
+    /// An answer changes no scene, so it bumps no serial.
+    pub fn answer(&mut self, token: u64, result: String, error: String) {
+        self.answers.push(TreeAnswer { token, result, error });
+        // The answer rides the next published batch, so a frame must run to publish it.
+        self.queue.wake();
+    }
+
     /// Take the nodes the published batches destroyed since the last take, for the compositor to
     /// drop the seat claims they held.
     pub fn take_destroyed(&mut self) -> Vec<NodeId> {
@@ -510,13 +543,18 @@ impl TreeFrame {
                 Ok(mut done) => {
                     changed |= !(done.changes.is_empty() && done.animations.is_empty() && done.calls.is_empty());
                     self.inputs.extend(done.inputs.iter().copied());
-                    // The calls move into the batch and the seat claims out to the compositor: each
-                    // call has exactly one owner from here, so a password is never copied out of it.
-                    let (claims, calls): (Vec<TreeCall>, Vec<TreeCall>) =
+                    // The calls move into the batch, and the seat claims and password checks move out to
+                    // the compositor: each call has exactly one owner from here, so a password is never
+                    // copied out of it.
+                    let (claims, rest): (Vec<TreeCall>, Vec<TreeCall>) =
                         std::mem::take(&mut done.calls).into_iter().partition(|call| {
                             scene.class(call.node) == Some("seat")
                                 && matches!(call.method.as_str(), "claim" | "unclaim")
                         });
+                    let (auths, calls): (Vec<TreeCall>, Vec<TreeCall>) = rest
+                        .into_iter()
+                        .partition(|call| scene.class(call.node) == Some("lock") && call.method == "authenticate");
+                    self.authentications.extend(auths);
                     self.claims.extend(claims);
                     batch.changes.extend(done.changes.iter().cloned());
                     batch.animations.extend(done.animations.iter().cloned());
@@ -543,7 +581,8 @@ impl TreeFrame {
             self.serial += 1;
             self.revisions.record(self.serial, &batch.changes);
         }
-        if changed || !batch.events.is_empty() {
+        batch.answers = std::mem::take(&mut self.answers);
+        if changed || !batch.events.is_empty() || !batch.answers.is_empty() {
             batch.serial = self.serial;
             (self.publish)(batch);
         }

@@ -18,7 +18,7 @@ struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "seat")
+        matches!(class, "node" | "seat" | "lock")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -30,7 +30,8 @@ impl ClassInfo for Table {
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
-        matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim")
+        (matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim"))
+            || (class == "lock" && method == "authenticate")
     }
 }
 
@@ -257,6 +258,67 @@ fn a_refused_transaction_changes_nothing_in_the_frame() {
     let refusal = replies[0].1.as_ref().expect_err("the transaction is refused");
     assert_eq!(refusal.failed_op, 1);
     assert_eq!(replies[0].0, 0);
+}
+
+#[test]
+fn lock_authenticate_calls_leave_the_batch_for_the_compositor() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    let lock = NodeId::new(0x300);
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![
+            TreeOp::New {
+                class: "lock".to_owned(),
+                id: lock,
+            },
+            TreeOp::Insert {
+                node: lock,
+                parent: ROOT,
+                index: None,
+            },
+            TreeOp::TreeCall {
+                token: 5,
+                node: lock,
+                method: "authenticate".to_owned(),
+                args: Vec::new(),
+                text: SecretText::new("correct horse"),
+            },
+        ]),
+        &replies,
+    );
+
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let attempts = frame.take_authentications();
+    assert_eq!(attempts.len(), 1, "the authenticate call is kept for the compositor");
+    assert_eq!(attempts[0].token, 5);
+    assert_eq!(attempts[0].text.expose(), "correct horse");
+    assert!(frame.take_authentications().is_empty(), "taking drains the attempts");
+    assert!(
+        take_batches().iter().all(|batch| batch.calls.is_empty()),
+        "the password call never reaches the shell"
+    );
+    assert!(replies.lock().unwrap()[0].1.is_ok());
+}
+
+#[test]
+fn an_answer_reaches_the_shell_in_the_next_batch_without_a_serial_bump() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    frame.answer(5, "ok".to_owned(), String::new());
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let batches = take_batches();
+    assert_eq!(batches.len(), 1, "an answer alone publishes a batch");
+    assert_eq!(batches[0].answers.len(), 1);
+    assert_eq!(batches[0].answers[0].token, 5);
+    assert_eq!(batches[0].answers[0].result, "ok");
+    assert!(batches[0].answers[0].error.is_empty());
+    assert!(batches[0].changes.is_empty());
+    assert_eq!(batches[0].serial, 0, "an answer changes no scene, so no serial");
 }
 
 #[test]

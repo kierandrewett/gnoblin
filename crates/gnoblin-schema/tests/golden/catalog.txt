@@ -484,6 +484,7 @@ object lock since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
   property state type string since 0.2.0 secret false
+  method authenticate since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
 object tree since 0.2.0 secret false
   method attach since 0.2.0 secret false function false
@@ -2003,6 +2004,9 @@ message Lock {
     // since 0.2.0
     string state = 18;
   }
+
+  // Method `authenticate`, since 0.2.0.
+  message AuthenticateArgs {}
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}

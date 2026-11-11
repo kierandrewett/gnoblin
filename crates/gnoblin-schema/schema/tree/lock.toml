@@ -14,3 +14,10 @@ type = "string"
 since = "0.2.0"
 default = "not-locked"
 readonly = true
+
+# Check the password `text` against the session user. The compositor answers with `token`:
+# `result` `ok` on accept; `error` `denied`, `rate-limited` (`result` is the retry-after in ms),
+# `not-locked`, `busy`, or `failed: <reason>`. The password never enters a batch.
+[[object.method]]
+name = "authenticate"
+since = "0.2.0"

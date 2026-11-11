@@ -574,6 +574,9 @@ pub struct State {
     /// The protocol bookkeeping the lock needs: held confirmations, lock surfaces, the
     /// cover generation and the presentation barrier.
     pub(crate) lock_tables: ExtSessionLockV1Tables,
+    /// The lock's password checks: the `authenticate` calls the shell makes are run here,
+    /// off the loop, and settle the session's unlock (see [`crate::lock_auth`]).
+    pub(crate) lock_auth: crate::lock_auth::LockAuth,
 
     /// The capture sessions, the pixels a capture copies from and the capture globals.
     /// It is one value so the compositor's own fields stay a short list, and so the whole
@@ -630,6 +633,7 @@ impl State {
         visual_bell: crate::server::VisualBellSettings,
         visual_accessibility: crate::server::VisualAccessibilitySettings,
         extensions: &[Arc<dyn Extension>],
+        lock_auth: crate::lock_auth::LockAuth,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
         let output_manager = ZwlrOutputManagementV1State::new(display_handle.clone());
@@ -867,6 +871,7 @@ impl State {
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
             lock_tables: ExtSessionLockV1Tables::default(),
+            lock_auth,
             capture,
             frame_tables,
             session_host,
@@ -3508,6 +3513,8 @@ impl Host for State {
         }
         self.reconcile_seats();
         let claims = self.tree.take_claims();
+        let authentications = self.tree.take_authentications();
+        self.begin_authentications(authentications);
         self.apply_claims(claims);
         let destroyed = self.tree.take_destroyed();
         self.release_seat_nodes(&destroyed);
