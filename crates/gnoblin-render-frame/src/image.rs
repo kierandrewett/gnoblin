@@ -139,6 +139,10 @@ impl Image {
 
     /// Overwrites every pixel with opaque black.
     fn fill_opaque_black(&mut self) {
+        // A row of no pixels has no bytes: `chunks_mut` refuses a chunk size of zero.
+        if self.stride == 0 {
+            return;
+        }
         for row in self.data.chunks_mut(self.stride) {
             for pixel in row.chunks_mut(4) {
                 pixel.copy_from_slice(&[0, 0, 0, 255]);
@@ -198,5 +202,14 @@ mod tests {
         assert_eq!(image.stride(), 12);
         assert_eq!(image.data().len(), 24);
         assert_eq!(image.colour_at(2, 1), Some([0, 0, 0, 255]));
+    }
+
+    #[test]
+    fn a_blank_image_with_no_width_or_no_height_is_empty() {
+        for size in [Size::new(0, 4), Size::new(4, 0), Size::new(0, 0)] {
+            let image = Image::blank(size);
+            assert_eq!(image.size(), size);
+            assert!(image.data().is_empty(), "{size:?} holds no pixel");
+        }
     }
 }
