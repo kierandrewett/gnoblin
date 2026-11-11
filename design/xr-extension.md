@@ -687,6 +687,7 @@ Testable on an Agent37 instance with Monado's simulated headset.
 - Connection: the extension is a guardian-started process with the single-purpose `view` role (G7). The guardian
   promises the role by pid before the spawn. The extension takes a connected socket through `WAYLAND_SOCKET`, or
   connects to `GNOBLIN_VIEW_DISPLAY` for development. It sees the view-source and image-copy-capture globals only.
+- Status: view capture reads each View's frame into `wl_shm` (`extensions/gnoblin-xr/crates/xr-capture`) and the bridge drives it. The frames are not copied into an OpenXR swapchain yet, so test 3 below is open.
 - Extension: session, view, layers, gpu, input. No engine: the environment is a solid colour.
 - Monado: simulated driver and the null compositor (exists in Monado's documentation; how to select it is
   unverified).
