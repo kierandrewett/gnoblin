@@ -53,6 +53,8 @@ pub struct ShellRole {
     vm: ShellVm,
     /// Every diagnostic the VM has reported since it booted, oldest first.
     diagnostics: Vec<String>,
+    /// The errors the user's shell files raised when they loaded.
+    user_errors: Vec<String>,
 }
 
 impl ShellRole {
@@ -60,6 +62,7 @@ impl ShellRole {
         Self {
             vm,
             diagnostics: Vec::new(),
+            user_errors: Vec::new(),
         }
     }
 
@@ -86,9 +89,17 @@ impl ShellRole {
         self.vm.run(name, src)
     }
 
-    /// Loads the stock shell and the user's shell files into the VM (see [`ShellVm::load_shell`]).
+    /// Loads the stock shell and the user's shell files into the VM (see [`ShellVm::load_shell`]). The errors the
+    /// user's files raised are kept for [`ShellRole::user_file_errors`].
     pub fn load_shell(&mut self, stock: &Path, user: Option<&Path>) -> Result<Vec<String>, ShellVmError> {
-        self.vm.load_shell(stock, user)
+        let errors = self.vm.load_shell(stock, user)?;
+        self.user_errors.clone_from(&errors);
+        Ok(errors)
+    }
+
+    /// The errors the user's shell files raised when they loaded, in load order.
+    pub fn user_file_errors(&self) -> &[String] {
+        &self.user_errors
     }
 }
 

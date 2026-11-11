@@ -9,7 +9,7 @@ mod support;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket};
+use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket, connect_session_shell};
 use support::{Client, Locker, Session};
 
 /// The stock Lua library the shell VM loads (`node.lua` and the modules beside it).
@@ -348,11 +348,13 @@ fn user_config(files: &[(&str, &str)]) -> tempfile::TempDir {
     dir
 }
 
-/// Loads the stock shell and then the user's files in `config`, the way the runtime role does after it connects.
-/// Returns the errors the user's files raised.
-fn load_session_shell(role: &mut ShellRole, config: &Path) -> Vec<String> {
-    role.load_shell(&stock_library(), Some(config))
-        .expect("the stock shell loads from the shipped library")
+/// Starts the shell the way the runtime role does: [`connect_session_shell`] over the session's owner socket
+/// attaches the VM, loads the stock shell from the shipped library, then the user's files in `config`.
+/// `crates/gnoblin-lua/src/role.rs` passes this same function to `ShellSlot::from_env`.
+fn connect_session(session: &Session, config: &Path) -> ShellRole {
+    let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
+    let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
+    connect_session_shell(&env, &stock_library(), Some(config)).expect("the runtime's shell entry starts the shell")
 }
 
 /// `prop` of the window whose app id is `app_id`, as text, read inside the VM; `none` when there is no such window.
@@ -372,7 +374,6 @@ fn window_prop(role: &mut ShellRole, app_id: &str, prop: &str) -> String {
 #[test]
 fn a_window_rule_in_the_users_shell_file_applies_to_a_mapped_window() {
     let session = Session::start();
-    let mut role = connect(&session);
     let config = user_config(&[(
         "shell.lua",
         "seat.data.window_rules = {\n\
@@ -380,8 +381,12 @@ fn a_window_rule_in_the_users_shell_file_applies_to_a_mapped_window() {
          \x20 { match = { app_id = '^org%.example%.faded$' }, opacity = 0.5 },\n\
          }\n",
     )]);
-    let errors = load_session_shell(&mut role, config.path());
-    assert!(errors.is_empty(), "the user's file loads: {errors:?}");
+    let mut role = connect_session(&session, config.path());
+    assert!(
+        role.user_file_errors().is_empty(),
+        "the user's file loads: {:?}",
+        role.user_file_errors()
+    );
     tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
         mirror_counts(role) == (1, 1)
     });
@@ -408,11 +413,15 @@ fn a_window_rule_in_the_users_shell_file_applies_to_a_mapped_window() {
 #[test]
 fn a_syntax_error_in_the_users_shell_file_leaves_the_stock_shell_running() {
     let session = Session::start();
-    let mut role = connect(&session);
     let config = user_config(&[("shell.lua", "seat.data.window_rules = {{{ this is not lua")]);
-    let errors = load_session_shell(&mut role, config.path());
+    let mut role = connect_session(&session, config.path());
+    let errors = role.user_file_errors().to_vec();
     assert_eq!(errors.len(), 1, "one error for the one broken file: {errors:?}");
     assert!(errors[0].contains("shell.lua"), "the error names the file: {errors:?}");
+    // The stock shell is running: its Desk is built and it places a mapped window.
+    tick_until(&mut role, "the stock shell never built the screen's Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
     tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
         mirror_counts(role) == (1, 1)
     });
@@ -432,12 +441,12 @@ fn a_syntax_error_in_the_users_shell_file_leaves_the_stock_shell_running() {
 #[test]
 fn a_workspace_rule_in_the_users_shell_file_places_the_window_on_that_workspace() {
     let session = Session::start();
-    let mut role = connect(&session);
     let config = user_config(&[(
         "shell/10-rules.lua",
         "seat.data.window_rules = { { match = { app_id = '^org%.example%.term$' }, workspace = { id = '3' } } }\n",
     )]);
-    assert!(load_session_shell(&mut role, config.path()).is_empty());
+    let mut role = connect_session(&session, config.path());
+    assert!(role.user_file_errors().is_empty());
     tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
         mirror_counts(role) == (1, 1)
     });
@@ -459,12 +468,12 @@ fn a_workspace_rule_in_the_users_shell_file_places_the_window_on_that_workspace(
 #[test]
 fn a_workspace_set_in_the_users_shell_file_activates() {
     let session = Session::start();
-    let mut role = connect(&session);
     let config = user_config(&[(
         "shell.lua",
         "seat.data.workspace_sets = { { name = 'work', entries = { { workspace = '2' } } } }\n",
     )]);
-    assert!(load_session_shell(&mut role, config.path()).is_empty());
+    let mut role = connect_session(&session, config.path());
+    assert!(role.user_file_errors().is_empty());
     tick_until(&mut role, "the stock shell never built the screen's Desk", |role| {
         desk_probe(role) == "1 1"
     });
