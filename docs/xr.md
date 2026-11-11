@@ -30,7 +30,7 @@ nothing does today.
   `ext_image_copy_capture_manager_v1` and `gnoblin_view_source_manager_v1` and no other global. The role belongs to the
   connection, so the program cannot ask for more by connecting to the session socket.
 - **The owner socket.** The program connects to `GNOBLIN_IPC_SOCKET`, or `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`, as every
-  client of the session's user does. It reads the tree and creates the `xr` seat through the owner's ordinary calls.
+  client of the session's user does. It attaches to the tree as an observer: it reads the snapshot and the changes beside the stock shell, which holds the tree, and it may only create the `xr` seat, destroy it and send pointer input. The seat goes when the program's connection closes.
 
 ### What the program does once it runs
 

@@ -2,8 +2,12 @@
 //! node API. It takes request values and returns message values. It owns no
 //! socket; slice 5b wires it to one.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use gnoblin_render::Scene;
-use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeApplied, TreeRefusal, TreeValue, ValueType};
+use gnoblin_render::transaction::{
+    ClassInfo, Code, PropertyInfo, TreeApplied, TreeOp, TreeRefusal, TreeValue, ValueType,
+};
 use gnoblin_schema::{Catalog, DefaultValue, Namespace, ObjectType, SchemaError, Type as SchemaType};
 use gnoblin_types::NodeId;
 
@@ -65,7 +69,7 @@ pub struct TreeSnapshot {
 
 /// The connection that holds the tree. The server issues one per accepted connection, and
 /// a session compares them by value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TreeHolder(u64);
 
 impl TreeHolder {
@@ -82,13 +86,36 @@ impl TreeHolder {
     }
 }
 
-/// The shell's attachment: which connection holds the tree, and the epoch of that hold. The
-/// scene and its serial belong to the frame that applies transactions, so this owns only the
-/// claim.
+/// How a connection attaches to the tree (`tree.attach`, `mode`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AttachMode {
+    /// The shell: it holds the tree, and only one connection at a time may.
+    Holder,
+    /// A reader beside the shell. It hears the snapshot and every change, never holds the tree, and may only make
+    /// and destroy its own seats and send pointer input (design/node-core.md, F2b).
+    Observer,
+}
+
+impl AttachMode {
+    /// The mode the wire's `mode` text names: empty or `holder`, or `observer`. Anything else is `None`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "" | "holder" => Some(Self::Holder),
+            "observer" => Some(Self::Observer),
+            _ => None,
+        }
+    }
+}
+
+/// The tree's attachments: which connection holds the tree, which observe it, and the seats each observer made.
+/// The scene and its serial belong to the frame that applies transactions, so this owns only the claims.
 #[derive(Debug, Default)]
 pub struct TreeSession {
     epoch: u32,
     holder: Option<TreeHolder>,
+    /// Each observing connection, with the seat nodes it made and so may destroy.
+    observers: BTreeMap<TreeHolder, BTreeSet<NodeId>>,
 }
 
 /// What an attach grants: the epoch of the new hold. The serial is read from the frame, so the
@@ -103,7 +130,8 @@ impl TreeSession {
     /// Attach the shell from `holder`. Only the session owner's connection may attach, and
     /// `is_owner` is whether that connection is the session owner's (`ipc::privileged`).
     /// Any other is refused `not-owner`. A second holder while one is live is refused
-    /// `shell-already-attached`; the same holder attaching again gets a new epoch.
+    /// `shell-already-attached`; the same holder attaching again gets a new epoch. A connection
+    /// that observed becomes the holder and stops observing.
     pub fn attach(&mut self, holder: TreeHolder, is_owner: bool) -> Result<TreeAttachment, TreeRefusal> {
         if !is_owner {
             return Err(refusal(Code::NotOwner));
@@ -111,8 +139,24 @@ impl TreeSession {
         if self.holder.is_some_and(|live| live != holder) {
             return Err(refusal(Code::ShellAlreadyAttached));
         }
+        self.observers.remove(&holder);
         self.epoch += 1;
         self.holder = Some(holder);
+        Ok(TreeAttachment { epoch: self.epoch })
+    }
+
+    /// Attach `observer` as a reader. Any number may, beside a holder or none, and only the session owner's
+    /// connection may (`not-owner` otherwise). The connection that holds the tree cannot also observe it
+    /// (`shell-already-attached`). Attaching again keeps the seats the observer made and raises its epoch.
+    pub fn attach_observer(&mut self, observer: TreeHolder, is_owner: bool) -> Result<TreeAttachment, TreeRefusal> {
+        if !is_owner {
+            return Err(refusal(Code::NotOwner));
+        }
+        if self.holder == Some(observer) {
+            return Err(refusal(Code::ShellAlreadyAttached));
+        }
+        self.epoch += 1;
+        self.observers.entry(observer).or_default();
         Ok(TreeAttachment { epoch: self.epoch })
     }
 
@@ -124,11 +168,93 @@ impl TreeSession {
         }
     }
 
+    /// Ends the observation of `observer` and returns the seats it made, which the caller destroys. `None` when
+    /// the connection was not observing.
+    pub fn release_observer(&mut self, observer: TreeHolder) -> Option<BTreeSet<NodeId>> {
+        self.observers.remove(&observer)
+    }
+
     /// The connection holding the tree, if a shell is attached.
     #[must_use]
     pub const fn holder(&self) -> Option<TreeHolder> {
         self.holder
     }
+
+    /// Whether `connection` is an observer.
+    #[must_use]
+    pub fn is_observer(&self, connection: TreeHolder) -> bool {
+        self.observers.contains_key(&connection)
+    }
+
+    /// Whether anything is attached: a holder or an observer. The compositor announces its own changes only then.
+    #[must_use]
+    pub fn has_attachments(&self) -> bool {
+        self.holder.is_some() || !self.observers.is_empty()
+    }
+
+    /// Every observing connection.
+    #[must_use]
+    pub fn observers(&self) -> Vec<TreeHolder> {
+        self.observers.keys().copied().collect()
+    }
+
+    /// The seats `observer` made and may destroy.
+    #[must_use]
+    pub fn seats_of(&self, observer: TreeHolder) -> BTreeSet<NodeId> {
+        self.observers.get(&observer).cloned().unwrap_or_default()
+    }
+
+    /// Records the seats an applied observer transaction made and destroyed.
+    pub fn record_seats(&mut self, observer: TreeHolder, made: &[NodeId], destroyed: &[NodeId]) {
+        if let Some(seats) = self.observers.get_mut(&observer) {
+            seats.extend(made.iter().copied());
+            for node in destroyed {
+                seats.remove(node);
+            }
+        }
+    }
+}
+
+/// What an observer's transaction makes and destroys, or the index of the first op an observer may not send.
+///
+/// An observer may send a `new` of class `seat`, a `set` of that seat's `name` in the same transaction, a `destroy`
+/// of a seat it made (`owned`), and an `input` on a seat it made. Everything else is the holder's. The returned seats are the ones made
+/// and destroyed, for the caller to record once the transaction applies.
+///
+/// # Errors
+///
+/// The index of the first op the observer may not send; the whole transaction is refused.
+pub fn observer_ops(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Result<(Vec<NodeId>, Vec<NodeId>), usize> {
+    let mut made: Vec<NodeId> = Vec::new();
+    let mut destroyed: Vec<NodeId> = Vec::new();
+    for (index, op) in ops.iter().enumerate() {
+        let allowed = match op {
+            TreeOp::New { class, id } if class == "seat" => {
+                made.push(*id);
+                true
+            }
+            TreeOp::Set {
+                node,
+                key,
+                timing: None,
+                ..
+            } => key == "name" && made.contains(node),
+            TreeOp::Destroy { node } => {
+                let own = owned.contains(node) || made.contains(node);
+                if own {
+                    destroyed.push(*node);
+                }
+                own
+            }
+            // Input goes out on a seat the observer made itself, never on the shell's or another observer's.
+            TreeOp::Input { seat, .. } => owned.contains(seat) || made.contains(seat),
+            _ => false,
+        };
+        if !allowed {
+            return Err(index);
+        }
+    }
+    Ok((made, destroyed))
 }
 
 /// Snapshot every node of `scene` at `serial`, in paint order, split into chunks. The frame
@@ -438,6 +564,171 @@ mod tests {
         let next = session.attach(OTHER_HOLDER, true).expect("the freed tree attaches");
         assert_eq!(next.epoch, 2);
         assert_eq!(session.holder(), Some(OTHER_HOLDER));
+    }
+
+    #[test]
+    fn observers_attach_beside_a_holder_without_taking_the_tree() {
+        let mut session = attached_session();
+        let first = session
+            .attach_observer(OTHER_HOLDER, true)
+            .expect("an observer attaches");
+        let second = session
+            .attach_observer(TreeHolder::new(3), true)
+            .expect("any number of observers attach");
+        assert_eq!(first.epoch, 2);
+        assert_eq!(second.epoch, 3);
+        assert_eq!(session.holder(), Some(HOLDER), "an observer never holds the tree");
+        assert!(session.is_observer(OTHER_HOLDER));
+        assert!(!session.is_observer(HOLDER));
+        assert_eq!(session.observers(), vec![OTHER_HOLDER, TreeHolder::new(3)]);
+    }
+
+    #[test]
+    fn an_observer_attaches_before_any_holder_and_the_holder_is_not_refused() {
+        let mut session = TreeSession::default();
+        session
+            .attach_observer(OTHER_HOLDER, true)
+            .expect("an observer attaches");
+        assert!(session.has_attachments());
+        assert_eq!(session.holder(), None);
+        session
+            .attach(HOLDER, true)
+            .expect("the shell attaches after an observer");
+        assert_eq!(session.holder(), Some(HOLDER));
+    }
+
+    #[test]
+    fn a_non_owner_cannot_observe_and_the_holder_cannot_also_observe() {
+        let mut session = attached_session();
+        assert_eq!(
+            session.attach_observer(OTHER_HOLDER, false).expect_err("refused").code,
+            Code::NotOwner
+        );
+        assert_eq!(
+            session.attach_observer(HOLDER, true).expect_err("refused").code,
+            Code::ShellAlreadyAttached
+        );
+        assert!(!session.is_observer(OTHER_HOLDER));
+    }
+
+    #[test]
+    fn releasing_an_observer_returns_the_seats_it_made() {
+        let mut session = attached_session();
+        session.attach_observer(OTHER_HOLDER, true).expect("attach");
+        session.record_seats(OTHER_HOLDER, &[NodeId::new(7), NodeId::new(8)], &[]);
+        session.record_seats(OTHER_HOLDER, &[], &[NodeId::new(7)]);
+        assert_eq!(session.seats_of(OTHER_HOLDER), BTreeSet::from([NodeId::new(8)]));
+        assert_eq!(
+            session.release_observer(OTHER_HOLDER),
+            Some(BTreeSet::from([NodeId::new(8)]))
+        );
+        assert_eq!(session.release_observer(OTHER_HOLDER), None);
+        assert!(!session.has_attachments() || session.holder().is_some());
+    }
+
+    #[test]
+    fn a_connection_that_observed_and_then_holds_stops_observing() {
+        let mut session = TreeSession::default();
+        session.attach_observer(HOLDER, true).expect("observe");
+        session.attach(HOLDER, true).expect("hold");
+        assert!(!session.is_observer(HOLDER));
+    }
+
+    fn new_seat(id: u64) -> TreeOp {
+        TreeOp::New {
+            class: "seat".to_owned(),
+            id: NodeId::new(id),
+        }
+    }
+
+    fn set_name(node: u64, key: &str) -> TreeOp {
+        TreeOp::Set {
+            node: NodeId::new(node),
+            key: key.to_owned(),
+            value: TreeValue::Text("xr".to_owned()),
+            timing: None,
+        }
+    }
+
+    #[test]
+    fn an_observer_may_make_a_named_seat_destroy_its_own_and_send_input() {
+        let owned = BTreeSet::from([NodeId::new(9)]);
+        let input = TreeOp::Input {
+            node: NodeId::new(1),
+            seat: NodeId::new(5),
+            input: gnoblin_render::transaction::PointerInput::Leave,
+        };
+        let ops = [
+            new_seat(5),
+            set_name(5, "name"),
+            input,
+            TreeOp::Destroy { node: NodeId::new(9) },
+        ];
+        let (made, destroyed) = observer_ops(&ops, &owned).expect("every op is allowed");
+        assert_eq!(made, vec![NodeId::new(5)]);
+        assert_eq!(destroyed, vec![NodeId::new(9)]);
+    }
+
+    #[test]
+    fn an_observer_is_refused_at_the_first_op_that_is_not_its_own() {
+        let owned = BTreeSet::from([NodeId::new(9)]);
+        let refused = |ops: Vec<TreeOp>| observer_ops(&ops, &owned).expect_err("refused");
+        // Another class, a destroy of a node it did not make, a set of another key or of a node it did not make.
+        assert_eq!(
+            refused(vec![TreeOp::New {
+                class: "node".to_owned(),
+                id: NodeId::new(5)
+            }]),
+            0
+        );
+        assert_eq!(refused(vec![new_seat(5), TreeOp::Destroy { node: NodeId::new(4) }]), 1);
+        assert_eq!(refused(vec![new_seat(5), set_name(5, "focus")]), 1);
+        assert_eq!(
+            refused(vec![set_name(9, "name")]),
+            0,
+            "the name is set only when the seat is made"
+        );
+        // Input on a seat the observer did not make.
+        assert_eq!(
+            refused(vec![TreeOp::Input {
+                node: NodeId::new(1),
+                seat: NodeId::new(4),
+                input: gnoblin_render::transaction::PointerInput::Leave,
+            }]),
+            0
+        );
+        assert_eq!(
+            refused(vec![TreeOp::TreeCall {
+                node: NodeId::new(9),
+                method: "claim".to_owned(),
+                args: Vec::new(),
+                text: gnoblin_secret::SecretText::default(),
+                token: 1,
+            }]),
+            0
+        );
+        assert_eq!(
+            refused(vec![TreeOp::Insert {
+                node: NodeId::new(5),
+                parent: NodeId::new(1),
+                index: None
+            }]),
+            0
+        );
+    }
+
+    #[test]
+    fn an_observer_set_may_not_animate() {
+        let animated = TreeOp::Set {
+            node: NodeId::new(5),
+            key: "name".to_owned(),
+            value: TreeValue::Text("xr".to_owned()),
+            timing: Some(gnoblin_render::transaction::Timing {
+                seconds: 1.0,
+                samples: Vec::new(),
+            }),
+        };
+        assert_eq!(observer_ops(&[new_seat(5), animated], &BTreeSet::new()), Err(1));
     }
 
     #[test]

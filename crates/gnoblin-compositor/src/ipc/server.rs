@@ -88,7 +88,7 @@ use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
-use super::tree::{TreeAttached, TreeReply, TreeSnapshot};
+use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
     self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, reply_payload,
     snapshot_payloads,
@@ -1452,8 +1452,13 @@ impl Dispatcher {
             self.refuse(client, envelope, MALFORMED, &message);
             return;
         }
+        let Some(mode) = AttachMode::parse(&args.mode) else {
+            let message = format!("tree attach mode `{}` is not served", args.mode);
+            self.refuse(client, envelope, MALFORMED, &message);
+            return;
+        };
         let is_owner = self.is_owner(client);
-        self.tree.attach(client, envelope.request_id, is_owner);
+        self.tree.attach(client, envelope.request_id, is_owner, mode);
     }
 
     /// `transact`: refused at once when the dispatcher can decide it; otherwise `tree_reply`

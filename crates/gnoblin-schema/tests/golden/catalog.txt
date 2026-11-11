@@ -466,6 +466,7 @@ object lock since 0.2.0 secret false
 object tree since 0.2.0 secret false
   method attach since 0.2.0 secret false function false
     param version type uint since 0.2.0 secret false
+    param mode type string since 0.2.0 secret false
   method transact since 0.2.0 secret true function false
     param base_serial type uint since 0.2.0 secret false
     param serial type uint since 0.2.0 secret false
@@ -1952,6 +1953,8 @@ message Tree {
   message AttachArgs {
     // since 0.2.0
     uint64 version = 1;
+    // since 0.2.0
+    string mode = 2;
   }
 
   // Method `transact`, since 0.2.0, secret.

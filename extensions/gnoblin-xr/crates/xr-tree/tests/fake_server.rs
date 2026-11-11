@@ -199,3 +199,25 @@ fn attach_refusal_is_an_error() {
     let result = TreeClient::from_stream(serve(vec![refusal]));
     assert!(result.is_err(), "a refused attach must not yield a client");
 }
+
+#[test]
+fn the_client_attaches_as_an_observer_so_the_shell_keeps_the_tree() {
+    let (client, mut server) = UnixStream::pair().expect("socket pair");
+    let owner = thread::spawn(move || {
+        let attach = read_frame(&mut server).expect("read attach").expect("attach frame");
+        for event in &attached_and_snapshot(Vec::new()) {
+            write_frame(&mut server, event).expect("answer");
+        }
+        let _ = read_frame(&mut server);
+        attach
+    });
+    let tree = TreeClient::from_stream(client).expect("attach");
+    drop(tree);
+    let attach = owner.join().expect("the owner thread");
+    let args: gnoblin_proto::tree::tree::AttachArgs = attach.payload_as().expect("the attach arguments decode");
+    assert_eq!(
+        args.mode, "observer",
+        "a second tree holder is refused, so the extension must observe"
+    );
+    assert_eq!(args.version, 1);
+}

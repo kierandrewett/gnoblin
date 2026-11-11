@@ -25,7 +25,10 @@ fn attach(wire: &mut Wire, request_id: u64) {
         NAMESPACE,
         "attach",
         request_id,
-        &AttachArgs { version: 1 },
+        &AttachArgs {
+            version: 1,
+            mode: String::new(),
+        },
     ));
 }
 

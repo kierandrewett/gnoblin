@@ -29,7 +29,8 @@ use gnoblin_wayland::{
 
 use super::server::IpcEvent;
 use super::tree::{
-    TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, snapshot_of, tree_listing,
+    AttachMode, TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, observer_ops, snapshot_of,
+    tree_listing,
 };
 
 /// The namespace the tree answers on.
@@ -95,10 +96,27 @@ impl TreeHostHandle {
         TreeHooks {
             queue: self.queue.clone(),
             classes: Arc::clone(&self.classes) as Arc<dyn ClassInfo + Send + Sync>,
-            attached: Arc::new(move || lock(&attached_session).holder().is_some()),
+            attached: Arc::new(move || lock(&attached_session).has_attachments()),
             publish: Arc::new(move |batch: TreeBatch| {
                 serial.store(batch.serial, Ordering::Release);
-                let holder = lock(&session).holder();
+                let (holder, observers) = {
+                    let session = lock(&session);
+                    (session.holder(), session.observers())
+                };
+                // An observer hears the changes in serial order and nothing else: the answers, events and
+                // chords of a batch are the shell's.
+                if !batch.changes.is_empty() {
+                    for observer in observers {
+                        let _ = events.send(IpcEvent::TreeChanged {
+                            client: ClientId::new(observer.get()),
+                            batch: TreeBatch {
+                                serial: batch.serial,
+                                changes: batch.changes.clone(),
+                                ..TreeBatch::default()
+                            },
+                        });
+                    }
+                }
                 if let Some(holder) = holder {
                     let _ = events.send(IpcEvent::TreeChanged {
                         client: ClientId::new(holder.get()),
@@ -110,14 +128,21 @@ impl TreeHostHandle {
     }
 
     /// Queues the attach of `client`. The frame decides it at the current serial and sends
-    /// `IpcEvent::TreeAttached` with the outcome and, on success, the snapshot to send.
-    pub fn attach(&self, client: ClientId, request_id: u64, is_owner: bool) {
+    /// `IpcEvent::TreeAttached` with the outcome and, on success, the snapshot to send. A holder
+    /// takes the tree; an observer only reads it and never moves where the shell places windows.
+    pub fn attach(&self, client: ClientId, request_id: u64, is_owner: bool, mode: AttachMode) {
         let session = Arc::clone(&self.session);
         let classes = Arc::clone(&self.classes);
         let events = self.events.clone();
         self.queue.read(move |scene, serial| {
-            let outcome = lock(&session).attach(holder(client), is_owner).map(|attachment| {
-                scene.set_shell_places(true);
+            let granted = match mode {
+                AttachMode::Holder => lock(&session).attach(holder(client), is_owner),
+                AttachMode::Observer => lock(&session).attach_observer(holder(client), is_owner),
+            };
+            let outcome = granted.map(|attachment| {
+                if mode == AttachMode::Holder {
+                    scene.set_shell_places(true);
+                }
                 (
                     TreeAttached {
                         epoch: attachment.epoch,
@@ -135,19 +160,27 @@ impl TreeHostHandle {
         });
     }
 
-    /// Release the hold `client` has, when it is the holder.
+    /// Release what `client` has: the hold, when it is the holder, or its observation, when it is an observer. An
+    /// observer's seats are destroyed with its connection.
     pub fn detach(&self, client: ClientId) {
         let shared = Arc::clone(&self.session);
-        let released = {
+        let (released, seats) = {
             let mut session = lock(&shared);
             let before = session.holder();
             session.detach(holder(client));
-            before != session.holder()
+            (before != session.holder(), session.release_observer(holder(client)))
         };
         if released {
             // The frame clears the flag at its next read, so the wm places windows again.
             self.queue
                 .read(move |scene, _| scene.set_shell_places(lock(&shared).holder().is_some()));
+        }
+        for seat in seats.into_iter().flatten() {
+            // One transaction for each seat, so one already gone does not keep the rest alive. It is admitted
+            // whoever holds the tree, and nobody waits for its answer.
+            let tx = TreeTransaction::new(vec![TreeOp::Destroy { node: seat }]);
+            self.queue
+                .submit(self.serial.load(Ordering::Acquire), tx, || true, |_, _| {});
         }
     }
 
@@ -157,7 +190,14 @@ impl TreeHostHandle {
     /// with `IpcEvent::TreeReply`.
     pub fn transact(&self, client: ClientId, request_id: u64, mut args: TransactArgs) -> Option<TreeReply> {
         let me = holder(client);
-        if lock(&self.session).holder() != Some(me) {
+        let (is_holder, owned) = {
+            let session = lock(&self.session);
+            (
+                session.holder() == Some(me),
+                session.is_observer(me).then(|| session.seats_of(me)),
+            )
+        };
+        if !is_holder && owned.is_none() {
             return Some(self.refusal(Code::NotPrivileged, -1));
         }
         let base_serial = args.base_serial;
@@ -167,12 +207,32 @@ impl TreeHostHandle {
             Ok(tx) => tx,
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
+        // An observer's seats, as the transaction would make and destroy them. They are recorded once it applies.
+        let mut seats = None;
+        if let Some(owned) = owned.filter(|_| !is_holder) {
+            match observer_ops(&tx.ops, &owned) {
+                Ok(touched) => seats = Some(touched),
+                Err(index) => {
+                    return Some(self.refusal(Code::NotHolder, i32::try_from(index).unwrap_or(-1)));
+                }
+            }
+        }
         let events = self.events.clone();
         // Asked again when the frame applies: a holder that detached while the transaction
-        // waited for the frame has lost the tree, and the frame refuses it.
+        // waited for the frame has lost the tree, and the frame refuses it. An observer that
+        // detached has lost its place the same way.
         let session = Arc::clone(&self.session);
-        let admitted = move || lock(&session).holder() == Some(me);
+        let admitted = {
+            let session = Arc::clone(&session);
+            move || {
+                let session = lock(&session);
+                session.holder() == Some(me) || session.is_observer(me)
+            }
+        };
         self.queue.submit(base_serial, tx, admitted, move |serial, result| {
+            if let (Some((made, destroyed)), Ok(_)) = (&seats, &result) {
+                lock(&session).record_seats(me, made, destroyed);
+            }
             let _ = events.send(IpcEvent::TreeReply {
                 client,
                 request_id,

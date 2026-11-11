@@ -54,7 +54,7 @@
 //!
 //! [`Code::as_str`] gives each code's spelling in design/node-core.md table 4.4.
 //! Codes that belong to other slices (`stale-base`, `invalid-serial`,
-//! `not-privileged`, `shell-already-attached`, `bad-paint`) are declared so the
+//! `not-privileged`, `shell-already-attached`, `not-holder`, `bad-paint`) are declared so the
 //! spellings live in one place; this module never returns them. A scene refusal
 //! with no table code maps to `bad-value`.
 
@@ -132,6 +132,8 @@ pub enum Code {
     NotPrivileged,
     /// Declared for another slice: the shell is already attached.
     ShellAlreadyAttached,
+    /// The connection is an observer, and the op is one only the tree's holder may send.
+    NotHolder,
     /// Declared for another slice: a paint value is malformed.
     BadPaint,
     /// A scene refusal with no table code of its own.
@@ -164,6 +166,7 @@ impl Code {
             Self::InvalidSerial => "invalid-serial",
             Self::NotPrivileged => "not-privileged",
             Self::ShellAlreadyAttached => "shell-already-attached",
+            Self::NotHolder => "not-holder",
             Self::BadPaint => "bad-paint",
             Self::BadValue => "bad-value",
         }

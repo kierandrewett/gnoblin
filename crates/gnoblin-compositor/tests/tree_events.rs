@@ -37,7 +37,10 @@ fn attach_holding_window(wire: &mut Wire, title: &str) -> u64 {
             NAMESPACE,
             "attach",
             request_id,
-            &AttachArgs { version: 1 },
+            &AttachArgs {
+                version: 1,
+                mode: String::new(),
+            },
         ));
         let envelope = wire.receive().expect("the attach reply");
         let attached: AttachedPayload = envelope.payload_as().expect("the payload decodes");

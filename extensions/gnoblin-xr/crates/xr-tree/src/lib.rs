@@ -31,6 +31,9 @@ use xr_scene::{CameraProjection, Class, NodeId, TreeNode, TreeView};
 pub const NAMESPACE: &str = "tree";
 
 const ATTACH_VERSION: u64 = 1;
+/// The extension reads the tree beside the shell and never holds it: the owner refuses a second holder
+/// (`shell-already-attached`), and an observer may still create its seat and send pointer input.
+const ATTACH_MODE: &str = "observer";
 const FIRST_REQUEST_ID: u64 = 1;
 /// The parent id the wire uses for "no parent": a root.
 const NIL: u64 = 0;
@@ -245,6 +248,7 @@ impl TreeClient {
             FIRST_REQUEST_ID,
             &AttachArgs {
                 version: ATTACH_VERSION,
+                mode: ATTACH_MODE.to_owned(),
             },
         ))?;
         let deadline = Instant::now() + CONNECT_WAIT;

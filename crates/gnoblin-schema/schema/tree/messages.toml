@@ -19,6 +19,14 @@ name = "version"
 type = "uint"
 since = "0.2.0"
 
+# How the connection attaches: `holder` (the default when empty) takes the tree as the shell and is the only one that
+# may change it; `observer` reads the snapshot and the change stream and may only create and destroy its own seats and
+# send pointer input (design/node-core.md, F2 and F2b).
+[[object.method.param]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+
 # Apply one transaction. `base_serial` is the last change batch the shell applied; `serial`
 # is the shell's transaction counter, monotone per connection. Secret: a `call` op carries a
 # `text` that may be a password, so every transact frame is flagged and redacted by the envelope.

@@ -677,6 +677,7 @@ fn every_refusal_code_has_the_table_4_4_spelling() {
         (Code::InvalidSerial, "invalid-serial"),
         (Code::NotPrivileged, "not-privileged"),
         (Code::ShellAlreadyAttached, "shell-already-attached"),
+        (Code::NotHolder, "not-holder"),
         (Code::BadPaint, "bad-paint"),
         (Code::BadValue, "bad-value"),
     ];

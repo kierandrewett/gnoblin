@@ -25,7 +25,10 @@ fn attach(wire: &mut Wire, request_id: u64) {
         NAMESPACE,
         "attach",
         request_id,
-        &AttachArgs { version: 1 },
+        &AttachArgs {
+            version: 1,
+            mode: String::new(),
+        },
     ));
 }
 
@@ -1362,5 +1365,369 @@ fn a_shell_write_of_tiled_false_takes_the_tiled_edges_off_again() {
         TILED_EDGES.iter().all(|edge| !states.contains(edge)),
         "a window the shell untiled has no tiled edge: {states:?}"
     );
+    session.stop().expect("the session stops cleanly");
+}
+
+// ---- Observers (design/node-core.md, F2 and F2b) ----------------------------------------------
+
+/// Attaches as an observer: it reads the tree and may only make its own seats and send input.
+fn attach_observer(wire: &mut Wire, request_id: u64) -> (AttachedPayload, Vec<snapshot_node::Properties>) {
+    wire.send(&Envelope::request_message(
+        NAMESPACE,
+        "attach",
+        request_id,
+        &AttachArgs {
+            version: 1,
+            mode: "observer".to_owned(),
+        },
+    ));
+    let attached: AttachedPayload = reply(wire, "attach");
+    let nodes = snapshot_nodes(wire, attached.serial);
+    (attached, nodes)
+}
+
+fn destroy_op(node: u64) -> op::Properties {
+    op::Properties {
+        kind: "destroy".to_owned(),
+        node,
+        ..Default::default()
+    }
+}
+
+/// A seat made the way the XR extension makes it: new, then its name, and no parent.
+fn unparented_seat(id: u64, name: &str) -> Vec<op::Properties> {
+    vec![
+        op::Properties {
+            kind: "new".to_owned(),
+            class: "seat".to_owned(),
+            id,
+            ..Default::default()
+        },
+        set_text(id, "name", name),
+    ]
+}
+
+#[test]
+fn an_observer_attaches_while_the_shell_holds_the_tree_and_hears_its_changes() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    transact(&mut shell, 2, 0, 1, create(1000, held.root));
+    let _: ChangesPayload = event(&mut shell, "changes");
+    let _: ReplyPayload = reply(&mut shell, "transact");
+
+    let mut observer = Wire::connect(session.socket());
+    let (attached, nodes) = attach_observer(&mut observer, 1);
+    assert_ne!(attached.epoch, held.epoch, "an observer has an epoch of its own");
+    assert_eq!(attached.serial, 1);
+    assert!(
+        nodes.iter().any(|node| node.id == 1000),
+        "the observer's snapshot holds what the shell made: {nodes:?}"
+    );
+
+    transact(&mut shell, 3, 1, 2, create(1001, held.root));
+    let from_shell: ChangesPayload = event(&mut shell, "changes");
+    let _: ReplyPayload = reply(&mut shell, "transact");
+    let heard: ChangesPayload = event(&mut observer, "changes");
+    assert_eq!(heard.serial, from_shell.serial, "the observer hears the same batch");
+    assert!(heard.changes.iter().any(|c| c.kind == "created" && c.node == 1001));
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn any_number_of_observers_attach_and_a_shell_still_attaches_after_them() {
+    let session = Session::start();
+    let mut first = Wire::connect(session.socket());
+    let (a, _) = attach_observer(&mut first, 1);
+    let mut second = Wire::connect(session.socket());
+    let (b, _) = attach_observer(&mut second, 1);
+    assert_ne!(a.epoch, b.epoch);
+
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    assert_ne!(held.epoch, a.epoch);
+    assert_ne!(held.epoch, b.epoch);
+
+    let mut again = Wire::connect(session.socket());
+    attach(&mut again, 1);
+    assert_eq!(
+        again.receive().expect("an error frame").error_code(),
+        Some("shell-already-attached"),
+        "a second holder is still refused (F2)"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_is_refused_a_structural_op_and_the_whole_transaction_with_it() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let id = u64::from(attached.epoch as u32) << 32 | 1;
+
+    // The seat is allowed; the node after it is not. Nothing of the transaction lands.
+    let mut ops = unparented_seat(id, "xr");
+    ops.extend(create(id + 1, held.root));
+    transact(&mut observer, 2, 0, 1, ops);
+    let refused: ReplyPayload = reply(&mut observer, "transact");
+    assert!(!refused.applied);
+    assert_eq!(refused.code, "not-holder");
+    assert_eq!(
+        refused.failed_op, 2,
+        "the refusal names the first op the observer may not send"
+    );
+
+    for forbidden in [
+        vec![set_double(held.root, "x", 1.0)],
+        vec![destroy_op(id)],
+        create(id + 2, held.root)[1..].to_vec(),
+    ] {
+        transact(&mut observer, 3, 0, 2, forbidden);
+        let refused: ReplyPayload = reply(&mut observer, "transact");
+        assert_eq!(refused.code, "not-holder");
+    }
+
+    let mut later = Wire::connect(session.socket());
+    let (_, nodes) = attach_observer(&mut later, 1);
+    assert!(
+        nodes.iter().all(|node| node.id != id && node.id != id + 1),
+        "a refused transaction changes nothing: {nodes:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_makes_a_seat_and_the_shell_and_the_observer_hear_of_it() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    attach_and_snapshot(&mut shell, 1);
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let id = u64::from(attached.epoch as u32) << 32 | 1;
+
+    transact(&mut observer, 2, 0, 0, unparented_seat(id, "xr"));
+    let applied: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(
+        applied.applied,
+        "an observer's new seat with its name applies: {applied:?}"
+    );
+
+    let heard = changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.kind == "created" && c.node == id)
+            && all.iter().any(|c| c.kind == "set" && c.node == id && c.key == "name")
+    });
+    assert!(
+        heard
+            .iter()
+            .any(|c| c.kind == "set" && c.node == id && c.key == "name" && c.value_text == "xr"),
+        "the shell hears the seat's name: {heard:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_sends_pointer_input_on_its_seat_to_a_window() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    attach_and_snapshot(&mut shell, 1);
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let id = u64::from(attached.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 0, unparented_seat(id, "xr"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "{made:?}");
+
+    // The seat is advertised before the client connects, so the client binds it.
+    let mut client = Client::connect(session.wayland());
+    client.map_window("org.example.window", "Observed target");
+    client.pointers_on_every_seat();
+    let window = window_node_after_mapping(&mut shell, "Observed target");
+
+    transact(
+        &mut observer,
+        3,
+        made.serial,
+        0,
+        vec![pointer_input(window, id, "motion", 4.0, 5.0)],
+    );
+    let sent: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(sent.applied, "an observer's input applies: {sent:?}");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.roundtrip();
+        let entered = client.pointer_events().iter().any(|(seat, event)| {
+            seat == "xr" && matches!(event, support::PointerEvent::Enter { x, y, .. } if *x == 4.0 && *y == 5.0)
+        });
+        if entered {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no enter on seat xr: {:?}",
+            client.pointer_events()
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_destroys_its_own_seat_and_not_another_connections() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    transact(&mut shell, 2, 0, 1, create_seat(1000, held.root, "shell-seat"));
+    let _: ChangesPayload = event(&mut shell, "changes");
+    let _: ReplyPayload = reply(&mut shell, "transact");
+
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let id = u64::from(attached.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 0, unparented_seat(id, "mine"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "{made:?}");
+
+    transact(&mut observer, 3, made.serial, 0, vec![destroy_op(1000)]);
+    let refused: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert_eq!(
+        refused.code, "not-holder",
+        "a seat the observer did not make is not its to destroy"
+    );
+
+    transact(&mut observer, 4, made.serial, 0, vec![destroy_op(id)]);
+    let destroyed: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(destroyed.applied, "{destroyed:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observers_seats_are_destroyed_when_it_disconnects() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    attach_and_snapshot(&mut shell, 1);
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let id = u64::from(attached.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 0, unparented_seat(id, "xr"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "{made:?}");
+    changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.kind == "created" && c.node == id)
+    });
+
+    drop(observer);
+    let gone = changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.kind == "destroyed" && c.node == id)
+    });
+    assert!(gone.iter().any(|c| c.kind == "destroyed" && c.node == id));
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_unknown_attach_mode_is_malformed() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    wire.send(&Envelope::request_message(
+        NAMESPACE,
+        "attach",
+        1,
+        &AttachArgs {
+            version: 1,
+            mode: "spectator".to_owned(),
+        },
+    ));
+    let refusal = wire.receive().expect("an error frame");
+    assert!(refusal.error_code().is_some(), "{refusal:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_is_refused_a_call_a_second_seat_of_the_same_name_and_input_on_a_seat_it_did_not_make() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    transact(&mut shell, 2, 0, 1, create_seat(1000, held.root, "shell-seat"));
+    let _: ChangesPayload = event(&mut shell, "changes");
+    let _: ReplyPayload = reply(&mut shell, "transact");
+
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let id = u64::from(attached.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 0, unparented_seat(id, "xr"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "{made:?}");
+
+    // A call on any node, even its own seat.
+    let call = op::Properties {
+        kind: "call".to_owned(),
+        node: id,
+        method: "claim".to_owned(),
+        ..Default::default()
+    };
+    transact(&mut observer, 3, made.serial, 0, vec![call]);
+    let refused: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert_eq!(refused.code, "not-holder", "a call is the holder's");
+
+    // Input on the shell's seat, which the observer did not make: refused whole.
+    transact(
+        &mut observer,
+        4,
+        made.serial,
+        0,
+        vec![pointer_input(1, 1000, "motion", 1.0, 1.0)],
+    );
+    let refused: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert_eq!(
+        refused.code, "not-holder",
+        "input goes out only on a seat the observer made"
+    );
+
+    // A second seat of a name that exists is refused and nothing of the transaction lands.
+    let mut ops = unparented_seat(id + 1, "xr");
+    ops.extend(unparented_seat(id + 2, "fresh"));
+    transact(&mut observer, 5, made.serial, 0, ops);
+    let duplicate: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(!duplicate.applied, "a second seat named xr is refused: {duplicate:?}");
+    assert_eq!(duplicate.failed_op, 1, "the refusal names the duplicate's name");
+
+    let mut later = Wire::connect(session.socket());
+    let (_, nodes) = attach_observer(&mut later, 1);
+    assert!(
+        nodes.iter().all(|node| node.id != id + 1 && node.id != id + 2),
+        "a refused transaction leaves no seat behind: {nodes:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_does_not_become_the_holder_when_the_holder_detaches() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+
+    drop(shell);
+    // The observer still has no hold: a structural op is refused, and a shell can take the tree.
+    let (mut next, taken, _) = attach_once_released(&session, 1);
+    assert_ne!(taken.epoch, held.epoch);
+    transact(
+        &mut observer,
+        2,
+        0,
+        0,
+        create(u64::from(attached.epoch as u32) << 32 | 9, taken.root),
+    );
+    let refused: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert_eq!(
+        refused.code, "not-holder",
+        "an observer stays an observer after the holder is gone"
+    );
+
+    transact(&mut next, 2, 0, 1, create(1000, taken.root));
+    let applied: ReplyPayload = reply_skipping_changes(&mut next, "transact");
+    assert!(applied.applied, "the new shell holds the tree: {applied:?}");
     session.stop().expect("the session stops cleanly");
 }

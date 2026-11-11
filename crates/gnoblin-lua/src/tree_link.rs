@@ -124,7 +124,10 @@ impl TreeLink for SocketTreeLink {
             NAMESPACE,
             "attach",
             id,
-            &AttachArgs { version },
+            &AttachArgs {
+                version,
+                mode: String::new(),
+            },
         ))
     }
 
