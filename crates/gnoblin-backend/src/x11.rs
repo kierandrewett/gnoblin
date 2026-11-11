@@ -3,9 +3,10 @@
 //! `gnoblin-xwayland` owns the X11 side: the start parameters the `xwayland`
 //! configuration section produces, the supervision policy that decides when a dead
 //! server is started again, and the window table that turns X11 windows into the
-//! events `gnoblin-wm` already consumes. `gnoblin-wayland` owns the Wayland side:
-//! it spawns the process, hands Smithay's `X11Wm` the X connection and performs
-//! the X11 requests the policy asks for.
+//! [`NodeChange`]s a window node is made of. `gnoblin-wayland` owns the Wayland side:
+//! it spawns the process, hands Smithay's `X11Wm` the X connection, performs
+//! the X11 requests the policy asks for and turns each [`NodeChange`] into the same
+//! window node a Wayland toplevel becomes.
 //!
 //! Neither crate may name the other, and both may name this one, so the vocabulary
 //! they share lives here. The rule shapes the types below:
@@ -15,8 +16,8 @@
 //!   server at all and the Wayland crate stays the only place that knows how an
 //!   X11 surface is configured.
 //! - The policy decides, the compositor performs. [`Windows::handle`] answers with
-//!   the `gnoblin-wm` effects and the handful of X11 requests the compositor has to
-//!   send; it never touches a surface itself.
+//!   the [`NodeChange`]s to the window's node and the handful of X11 requests the
+//!   compositor has to send; it never touches a surface itself.
 //! - The clock is a parameter. [`Session`] is ticked by its caller, so a restart
 //!   policy is a deterministic function of the instants it is handed rather than a
 //!   thread with a sleep in it.
@@ -49,7 +50,6 @@
 use std::time::{Duration, Instant};
 
 use gnoblin_types::{Rect, Scale, WindowId};
-use gnoblin_wm::{Effect, Wm};
 
 /// What to do with a start attempt.
 #[derive(Clone, PartialEq, Debug)]
@@ -119,11 +119,11 @@ pub enum Restart {
 
 /// One X11 window, as the X11 side sees it.
 ///
-/// The fields are the ones the window manager classifies a window by: the class and
+/// The fields are the ones the policy classifies a window by: the class and
 /// instance a launch matches, the title a rule matches, the transient parent that
 /// makes it a dialog, and the override-redirect flag that makes it unmanaged. The
-/// geometry is in global logical coordinates because that is the space
-/// `gnoblin-wm` places and configures in.
+/// geometry is in global logical coordinates because that is the space windows are
+/// placed and configured in.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct WindowMeta<'a> {
     /// The X11 window id.
@@ -209,8 +209,64 @@ pub enum X11Request {
     },
 }
 
+/// A window the policy took in: what its node is created from.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Opened {
+    /// The managed identity of the window.
+    pub window: WindowId,
+    /// The application id: the class, or the instance name when the class is empty.
+    pub app_id: String,
+    /// The title.
+    pub title: String,
+    /// The managed window this one is a dialog of, when it names a parent the policy holds.
+    pub transient_for: Option<WindowId>,
+    /// The rectangle the client asked for.
+    pub requested: Rect,
+}
+
+/// One change an X11 event makes to a window's node, in the order it happens.
+///
+/// These are the same facts a Wayland toplevel's lifecycle carries: it opens, its title
+/// and application id change, it moves, it asks for focus and it closes.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum NodeChange {
+    /// A window was taken in.
+    Opened(Opened),
+    /// The window asked for focus, or was shown again, which is the same request.
+    Activate {
+        /// The managed window.
+        window: WindowId,
+    },
+    /// The window unmapped or was destroyed.
+    Closed {
+        /// The managed window.
+        window: WindowId,
+    },
+    /// The window asked to be at a rectangle, or moved itself there.
+    Geometry {
+        /// The managed window.
+        window: WindowId,
+        /// The rectangle, with the fields the client did not change filled in.
+        geometry: Rect,
+    },
+    /// The title changed.
+    Title {
+        /// The managed window.
+        window: WindowId,
+        /// The new title.
+        title: String,
+    },
+    /// The application id changed.
+    AppId {
+        /// The managed window.
+        window: WindowId,
+        /// The new application id.
+        app_id: String,
+    },
+}
+
 /// What the compositor does with one X11 event.
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct EventOutcome {
     /// The window the event is about, when the policy decided it is managed.
     ///
@@ -218,8 +274,8 @@ pub struct EventOutcome {
     /// or an event about a window the policy never took in. The compositor keeps no
     /// window entry for it.
     pub window: Option<WindowId>,
-    /// The window manager effects to apply, in order.
-    pub effects: Vec<Effect>,
+    /// The changes to the window's node, in order.
+    pub changes: Vec<NodeChange>,
     /// The X11 requests to send, in order.
     pub commands: Vec<X11Request>,
 }
@@ -241,11 +297,10 @@ impl EventOutcome {
     }
 }
 
-/// The X11 window policy: one X11 window in, window manager events and X11
-/// requests out.
+/// The X11 window policy: one X11 window in, node changes and X11 requests out.
 pub trait Windows: Send {
     /// Takes one X11 event and answers what the compositor should do about it.
-    fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> EventOutcome;
+    fn handle(&mut self, event: WindowEvent<'_>) -> EventOutcome;
 
     /// Asks the client to close a window.
     ///
@@ -351,12 +406,12 @@ mod tests {
     }
 
     /// An outcome with no window is the shape a caller short-circuits on, so it
-    /// carries no effects and no commands either.
+    /// carries no changes and no commands either.
     #[test]
     fn an_outcome_with_no_window_asks_for_nothing() {
         let outcome = EventOutcome::nothing();
         assert_eq!(outcome.window, None);
-        assert!(outcome.effects.is_empty());
+        assert!(outcome.changes.is_empty());
         assert!(outcome.commands.is_empty());
     }
 }

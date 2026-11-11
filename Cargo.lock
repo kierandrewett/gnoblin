@@ -960,7 +960,6 @@ dependencies = [
  "gnoblin-render-software",
  "gnoblin-render-vulkan",
  "gnoblin-types",
- "gnoblin-wm",
  "smithay",
  "wayland-client",
  "wayland-protocols",
@@ -1787,10 +1786,9 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
  "gnoblin-config",
- "gnoblin-layers",
+ "gnoblin-render",
  "gnoblin-types",
  "gnoblin-wayland",
- "gnoblin-wm",
  "tempfile",
  "x11rb",
 ]

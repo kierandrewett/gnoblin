@@ -1635,6 +1635,12 @@ kind = "same-shape"
 reason = "the backend's raw sample phase and the input crate's touchpad phase are different types that share the begin, update, end, cancel shape"
 
 [[allow]]
+left = "gnoblin-backend::SlideDirection"
+right = "gnoblin-wm::WorkspaceDirection"
+kind = "same-shape"
+reason = "the composer's slide takes its own direction so gnoblin-backend does not depend on gnoblin-wm; the window manager's copy and the effect that carries it go with the window manager (lane W5), and the slide with them"
+
+[[allow]]
 left = "gnoblin-lua::MirrorChangeKind"
 right = "gnoblin-render::TreeChange"
 kind = "same-shape"

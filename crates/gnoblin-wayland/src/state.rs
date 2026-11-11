@@ -61,7 +61,7 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy};
+use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy, SlideDirection};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
@@ -1443,7 +1443,10 @@ impl State {
                     // The switch's visibility changes follow this effect in the same batch, so
                     // they see the slide begun here.
                     if let Some(direction) = direction {
-                        self.composer.begin_workspace_slide(direction);
+                        self.composer.begin_workspace_slide(match direction {
+                            gnoblin_wm::WorkspaceDirection::Later => SlideDirection::Later,
+                            gnoblin_wm::WorkspaceDirection::Earlier => SlideDirection::Earlier,
+                        });
                     }
                     log::debug!(area = "workspace", %workspace, ?direction, "shown");
                 }
@@ -1823,26 +1826,29 @@ impl State {
             // The window fades out from the picture its buffer holds now, before the
             // client can free that buffer.
             self.composer.close_window(window);
-            // The layout a window remembered goes with it: a recycled identity must not
-            // inherit another window's source.
-            self.forget_layout(window);
         }
-        // The sessions that captured the window go with it: nothing may serve the pixels
-        // of a window that is no longer on screen, and each client hears `stopped`.
-        self.capture.window_closed(window);
-        // A renderer hears `closed` once and its frame is forgotten, so the window is
-        // never left with a decoration nothing will update.
-        self.close_window_frame(window);
+        self.release_window(window);
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
         self.publish();
     }
 
+    /// What a window's closing ends, whatever protocol it arrived on: the layout a window
+    /// remembered goes with it, so a recycled identity cannot inherit another window's source;
+    /// the sessions that captured it end, so nothing serves the pixels of a window that is no
+    /// longer on screen and each client hears `stopped`; and a renderer's frame for it closes,
+    /// so the window is never left with a decoration nothing will update.
+    pub(crate) fn release_window(&mut self, window: WindowId) {
+        self.forget_layout(window);
+        self.capture.window_closed(window);
+        self.close_window_frame(window);
+    }
+
     /// A toplevel committed: record its title, application id and buffer.
     ///
     /// An X11 window's `wl_surface` also reaches this commit hook, because the compositor
-    /// hook runs for every surface; it has no `xdg_toplevel` attributes and its content
-    /// arrives through the X11 surface, so it is not a toplevel commit.
+    /// hook runs for every surface; it has no `xdg_toplevel` attributes, so its commit takes
+    /// [`State::x11_committed`] instead.
     pub(crate) fn toplevel_committed(&mut self, surface: &WlSurface) {
         let Some(window) = self.window_of(surface) else {
             return;
@@ -1852,6 +1858,7 @@ impl State {
             .get(&window)
             .is_some_and(|entry| entry.surface.toplevel().is_none())
         {
+            self.x11_committed(window, surface);
             return;
         }
         let (app_id, title) = with_states(surface, |states| {
@@ -1935,7 +1942,7 @@ impl State {
     /// from `SurfaceAttributes`: `on_commit_buffer_handler` takes the buffer out of the
     /// attributes when it applies a commit, so the renderer's copy is the only one that
     /// still knows what the client drew.
-    fn sync_content(&mut self, window: WindowId, surface: &WlSurface) {
+    pub(crate) fn sync_content(&mut self, window: WindowId, surface: &WlSurface) {
         let factor = crate::protocols::wp_alpha_modifier_v1::committed_factor(surface);
         self.composer.set_window_surface_alpha(window, factor);
         match committed_content(surface) {

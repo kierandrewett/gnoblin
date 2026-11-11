@@ -18,18 +18,23 @@
 
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use x11rb::connection::Connection as _;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::ConnectionExt as _;
-use x11rb::protocol::xproto::{AtomEnum, CreateWindowAux, PropMode, WindowClass};
+use x11rb::protocol::xproto::{AtomEnum, CreateGCAux, CreateWindowAux, PropMode, Rectangle, WindowClass};
 use x11rb::rust_connection::{DefaultStream, RustConnection};
 use x11rb::wrapper::ConnectionExt as _;
 
 use gnoblin_backend::headless::Headless;
-use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
+use gnoblin_render::transaction::{TreeChange, TreeValue};
+use gnoblin_wayland::{
+    Config, ControlHandle, FrameTreeEvent, LoopError, ObservedWindow, Server, SessionSnapshot, TreeBatch,
+    TreeFrameInput, TreeHooks,
+};
 
 use gnoblin_xwayland::{Capabilities, Handle, Settings, Status, Xwayland};
 
@@ -149,7 +154,12 @@ struct Session {
 
 impl Session {
     /// A session with an Xwayland session configured from `settings`.
-    fn start(mut settings: Settings, path: Option<std::ffi::OsString>) -> Self {
+    fn start(settings: Settings, path: Option<std::ffi::OsString>) -> Self {
+        Self::start_with_tree(settings, path, TreeHooks::default())
+    }
+
+    /// A session whose tree publishes through `tree`, as a shell's connection would hear it.
+    fn start_with_tree(mut settings: Settings, path: Option<std::ffi::OsString>, tree: TreeHooks) -> Self {
         use std::os::unix::fs::PermissionsExt as _;
 
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -163,6 +173,7 @@ impl Session {
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket),
+            tree,
             ..Config::default()
         };
         let xwayland = Xwayland::new(settings, path);
@@ -309,6 +320,29 @@ impl XClient {
 
     fn map(&self, window: u32) {
         self.connection.map_window(window).expect("a map request");
+        self.connection.flush().expect("the requests reach the server");
+    }
+
+    /// Fills a window with its foreground colour, which is what gives the server pixels to
+    /// present for it.
+    fn paint(&self, window: u32) {
+        let screen = &self.connection.setup().roots[self.screen];
+        let gc = self.connection.generate_id().expect("a graphics context id");
+        self.connection
+            .create_gc(gc, window, &CreateGCAux::new().foreground(screen.black_pixel))
+            .expect("a graphics context");
+        self.connection
+            .poly_fill_rectangle(
+                window,
+                gc,
+                &[Rectangle {
+                    x: 0,
+                    y: 0,
+                    width: 300,
+                    height: 200,
+                }],
+            )
+            .expect("a fill");
         self.connection.flush().expect("the requests reach the server");
     }
 
@@ -568,5 +602,142 @@ fn a_missing_binary_is_a_disabled_session() {
         // The session keeps serving Wayland clients and stops cleanly, which is what "no
         // panic" means for a compositor with X11 switched off.
         assert_eq!(handle.windows().windows().count(), 0);
+    });
+}
+
+/// What a shell connected to the session has heard so far: every batch the tree published.
+type Heard = Arc<Mutex<Vec<TreeBatch>>>;
+
+/// The batches published so far, once `predicate` holds for them.
+fn wait_for_batches(heard: &Heard, predicate: impl Fn(&[TreeBatch]) -> bool) -> Vec<TreeBatch> {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let batches = heard.lock().expect("the batch lock").clone();
+        if predicate(&batches) {
+            return batches;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the shell never heard what the test waits for; heard: {batches:#?}"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// The nodes a shell has been told are ready, in the order it heard them.
+fn ready_nodes(batches: &[TreeBatch]) -> Vec<gnoblin_types::NodeId> {
+    batches
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter(|FrameTreeEvent { event, .. }| matches!(event, TreeFrameInput::Ready))
+        .map(|event| event.node)
+        .collect()
+}
+
+/// The changes a shell has been told about, in the order it heard them.
+fn changes_heard(batches: &[TreeBatch]) -> Vec<TreeChange> {
+    batches.iter().flat_map(|batch| batch.changes.iter().cloned()).collect()
+}
+
+/// The version of the `Xwayland` the path finds, as `(major, minor)`.
+fn xwayland_version(path: &std::ffi::OsStr) -> Option<(u32, u32)> {
+    let output = std::process::Command::new("Xwayland")
+        .arg("-version")
+        .env("PATH", path)
+        .output()
+        .ok()?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let version = text.split("Version ").nth(1)?.split_whitespace().next()?;
+    let mut parts = version.split('.');
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
+}
+
+/// An X11 window is the same window node to the shell that a Wayland toplevel is: created as
+/// a `window` with its title and application id, announced ready once when it has content,
+/// given a size, and destroyed when the window goes.
+///
+/// A server older than 23.1 does not bind `xwayland-shell-v1`: it names a window's surface by
+/// a Wayland object id that Smithay does not let a compositor pair with the window, so no
+/// content ever reaches a node. The test is skipped, with a printed reason, on such a server.
+#[test]
+fn an_x11_window_node_reaches_the_shell_like_a_wayland_window() {
+    let Some(path) = display_path() else {
+        return;
+    };
+    if xwayland_version(&path).is_none_or(|version| version < (23, 1)) {
+        println!(
+            "skipping: the Xwayland on PATH is older than 23.1 or unreadable ({:?}), so it does not pair surfaces through xwayland-shell-v1",
+            xwayland_version(&path)
+        );
+        return;
+    }
+    let heard: Heard = Arc::default();
+    let tree = TreeHooks {
+        publish: {
+            let heard = Arc::clone(&heard);
+            Arc::new(move |batch| heard.lock().expect("the batch lock").push(batch))
+        },
+        ..TreeHooks::default()
+    };
+    let session = Session::start_with_tree(real_settings(), Some(path), tree);
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let window = client.create_window("gnoblin node window", "GnoblinNode", false);
+        client.map(window);
+        // A window the manager has taken in is one the client can draw into.
+        handle.wait_for_title("gnoblin node window");
+        client.paint(window);
+
+        let batches = wait_for_batches(&heard, |batches| !ready_nodes(batches).is_empty());
+        let ready = ready_nodes(&batches);
+        assert_eq!(ready.len(), 1, "the node is announced ready once: {batches:#?}");
+        let node = ready[0];
+
+        let changes = changes_heard(&batches);
+        assert!(
+            changes.iter().any(|change| matches!(
+                change,
+                TreeChange::Created { node: created, class, .. } if *created == node && class == "window"
+            )),
+            "the node is created as a window: {changes:#?}"
+        );
+        let text = |key: &str| {
+            changes.iter().find_map(|change| match change {
+                TreeChange::Set {
+                    node: set,
+                    key: set_key,
+                    value: TreeValue::Text(value),
+                } if *set == node && set_key == key => Some(value.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(text("title").as_deref(), Some("gnoblin node window"));
+        assert_eq!(
+            text("app_id").as_deref(),
+            Some("GnoblinNode"),
+            "the WM_CLASS class is the application id"
+        );
+        assert!(
+            changes.iter().any(|change| matches!(
+                change,
+                TreeChange::Set { node: set, key, value: TreeValue::Double(width) }
+                    if *set == node && key == "width" && *width > 0.0
+            )),
+            "the node is given the size of its content: {changes:#?}"
+        );
+
+        client.unmap(window);
+        let batches = wait_for_batches(&heard, |batches| {
+            changes_heard(batches)
+                .iter()
+                .any(|change| matches!(change, TreeChange::Destroyed { node: gone, .. } if *gone == node))
+        });
+        assert_eq!(ready_nodes(&batches).len(), 1, "an unmap announces no second window");
     });
 }

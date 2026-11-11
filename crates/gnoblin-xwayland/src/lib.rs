@@ -10,8 +10,9 @@
 //!   crash and when to give up. It is a state machine ticked by its caller, so the
 //!   compositor keeps the process and the clock and this crate keeps the policy.
 //! - **The window table.** [`Xwm`] is the X11 window management a floating desktop needs:
-//!   it turns X11 windows into the [`gnoblin_wm::Event`]s the window manager already
-//!   consumes, and answers with the X11 requests the compositor has to send.
+//!   it turns X11 windows into the [`gnoblin_backend::x11::NodeChange`]s that make the same
+//!   window node a Wayland toplevel becomes, and answers with the X11 requests the
+//!   compositor has to send.
 //!
 //! The XSETTINGS seam is [`XSettings`], an extension trait `gnoblin-compat-x11-xsettings`
 //! implements. Nothing here implements it for real; [`Recording`] is the test double that

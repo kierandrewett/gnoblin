@@ -11,11 +11,12 @@
 //! - **The window manager.** [`smithay::xwayland::xwm::X11Wm`] is the X11 window manager
 //!   proper: it takes the root window, honours the ICCCM and EWMH properties and reports
 //!   what X11 clients do. Its callbacks are the only place X11 windows become
-//!   [`gnoblin_wm::Event`]s.
+//!   [`gnoblin_backend::x11::NodeChange`]s.
 //! - **The policy.** Every callback builds a plain
 //!   [`gnoblin_backend::x11::WindowEvent`], asks the configured
-//!   [`gnoblin_backend::x11::Windows`] what it means and performs the answer: the effects
-//!   go through [`State::apply`], and the X11 requests through the surface.
+//!   [`gnoblin_backend::x11::Windows`] what it means and performs the answer: the changes
+//!   open, rename, place and close the same window node a Wayland toplevel gets, and the
+//!   X11 requests go through the surface.
 //!
 //! # Failure modes first
 //!
@@ -39,10 +40,11 @@
 //!
 //! # What this slice does not do
 //!
-//! - The pixels of an X11 window do not reach the scene yet: the window is managed,
-//!   configured and focused, and its buffer arrives on the Xwayland client's `wl_surface`
-//!   one commit path later (the X11 damage slice). A window with no content contributes
-//!   no layer, which is the same rule a Wayland window with no buffer follows.
+//! - An X11 window's pixels reach the scene through the commit of its `wl_surface`, by the
+//!   same path a toplevel's do ([`State::x11_committed`]): the node, its title and
+//!   application id, its ready announcement and its geometry are the ones a Wayland window
+//!   has. A window with no content contributes no layer, which is the same rule a Wayland
+//!   window with no buffer follows.
 //! - Interactive move and resize from an X11 client's title bar are reported by Smithay
 //!   and answered with nothing; the same drag works from the Wayland side.
 //! - Maximise, fullscreen, minimise, above/below, sticky and shade requests from X11
@@ -76,9 +78,12 @@ use smithay::xwayland::xwm::settings::Value as SettingValue;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, X11Surface, X11Wm, XwmId};
 use smithay::xwayland::{XWayland, XWaylandClientData, XwmHandler};
 
-use gnoblin_backend::x11::{self, Launch, Restart, Session, Start, WindowEvent, WindowMeta, X11Request};
-use gnoblin_types::Rect;
-use gnoblin_wm::Event;
+use gnoblin_backend::x11::{
+    self, Launch, NodeChange, Opened, Restart, Session, Start, WindowEvent, WindowMeta, X11Request,
+};
+use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec, LocalName};
+use gnoblin_types::{Rect, WindowId};
+use gnoblin_wm::{ActivationDecision, Effect, Event, WindowProtocol, WindowSpec, Wm};
 
 use crate::selection_bridge::ToWayland;
 use crate::state::State;
@@ -452,7 +457,7 @@ impl State {
     }
 
     /// Removes an X11 window from the manager after its server went away.
-    pub(crate) fn x11_window_gone(&mut self, window: gnoblin_types::WindowId) {
+    pub(crate) fn x11_window_gone(&mut self, window: WindowId) {
         // The composer may still hold a window the manager has forgotten at its unmap, fading
         // or hidden, so it is closed before the manager is asked.
         self.composer.close_window(window);
@@ -467,6 +472,7 @@ impl State {
                 output.output.leave(&wl_surface);
             }
         }
+        self.release_window(window);
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
         self.publish();
@@ -481,22 +487,33 @@ impl State {
             WindowEvent::Destroyed(x11) => running.windows.managed_window(*x11),
             _ => None,
         };
-        let outcome = running.windows.handle(event, &mut self.wm);
+        let outcome = running.windows.handle(event);
+        // The window manager hears the changes first, as it does for a toplevel: the scene
+        // learns a window with the geometry the manager gave it.
+        let mut effects = Vec::new();
+        for change in &outcome.changes {
+            effects.extend(apply_change(&mut self.wm, change));
+        }
         if let (Some(window), Some(surface)) = (outcome.window, surface) {
             running.surfaces.insert(window, surface.clone());
             if !self.windows.contains_key(&window) {
                 // A deferred open has no geometry yet; the window is placed when the policy
                 // answers, as for a Wayland toplevel.
-                let geometry = self
-                    .wm
-                    .window(window)
-                    .map_or(gnoblin_types::Rect::EMPTY, |managed| managed.geometry);
+                let geometry = self.wm.window(window).map_or(Rect::EMPTY, |managed| managed.geometry);
                 self.windows
                     .insert(window, crate::state::WindowEntry::x11(surface.clone()));
                 self.composer.insert_window(window, geometry);
             }
         }
-        self.apply(outcome.effects);
+        for change in &outcome.changes {
+            if let NodeChange::Opened(Opened { window, .. })
+            | NodeChange::Title { window, .. }
+            | NodeChange::AppId { window, .. } = change
+            {
+                self.publish_x11_text(*window);
+            }
+        }
+        self.apply(effects);
         for command in outcome.commands {
             running.send(command);
         }
@@ -507,21 +524,48 @@ impl State {
         if let Some(window) = destroyed {
             self.windows.remove(&window);
             self.composer.close_window(window);
+            self.release_window(window);
             running.surfaces.remove(&window);
         } else if let Some(window) = outcome.window
             && self.wm.window(window).is_none()
         {
             self.windows.remove(&window);
             self.composer.unmap_window(window);
+            self.release_window(window);
         }
         self.x11 = Some(running);
+        self.publish();
+    }
+
+    /// Writes a window's title and application id, as the window manager holds them, to its
+    /// entry and its node. Each one that changed reaches the shell as a property change.
+    fn publish_x11_text(&mut self, window: WindowId) {
+        let Some(managed) = self.wm.window(window) else {
+            return;
+        };
+        let (title, app_id) = (managed.title.clone(), managed.app_id.clone());
+        self.composer.set_window_text(window, &title, &app_id);
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.title = title;
+            entry.app_id = app_id;
+        }
+    }
+
+    /// An X11 window's surface committed: its content, text and state reach its node.
+    ///
+    /// The commit is where an X11 window's node first has pixels, so it is also where the
+    /// shell hears the window is ready, exactly as for a toplevel's first buffer.
+    pub(crate) fn x11_committed(&mut self, window: WindowId, surface: &WlSurface) {
+        self.publish_x11_text(window);
+        self.publish_window_state(window);
+        self.sync_content(window, surface);
         self.publish();
     }
 
     /// Asks the X11 policy to close a window: the same answer a person closing it gets.
     /// The policy names the close and the surface sends it. `false` when no X11 session
     /// holds the window, so nothing was asked.
-    pub(crate) fn close_x11_window(&mut self, window: gnoblin_types::WindowId) -> bool {
+    pub(crate) fn close_x11_window(&mut self, window: WindowId) -> bool {
         let Some(mut running) = self.x11.take() else {
             return false;
         };
@@ -530,10 +574,71 @@ impl State {
         for command in outcome.commands {
             running.send(command);
         }
-        self.apply(outcome.effects);
         self.x11 = Some(running);
         self.publish();
         known
+    }
+}
+
+/// The spec the window manager takes an X11 window in with.
+fn window_spec(opened: &Opened) -> WindowSpec {
+    let spec = match opened.transient_for {
+        Some(parent) => WindowSpec::transient(opened.window, &opened.app_id, parent),
+        None => WindowSpec::normal(opened.window, &opened.app_id),
+    };
+    // The window is an X11 window, so the manager records it as `surface_x11` rather than
+    // a Wayland toplevel.
+    WindowSpec {
+        protocol: WindowProtocol::X11,
+        ..spec.with_title(&opened.title).with_requested(opened.requested)
+    }
+}
+
+/// Registers the `gnoblin.surface_x11:<window id>` record for a managed X11 window.
+///
+/// Only the X11 side knows the window is an X11 one, so the record is registered here and
+/// not by the manager, under the provider name the X11 policy crate has always used (not
+/// the compositor's own, which carries more rights). The record is scoped to the window,
+/// so closing the window ends it and the close path needs no extra step.
+fn register_surface_record(wm: &mut Wm, window: WindowId) {
+    if wm.window(window).is_none() {
+        // The manager refused the window, and that refusal is already in the effects.
+        return;
+    }
+    let Ok(local) = LocalName::keyed("surface_x11", &window.get().to_string()) else {
+        debug_assert!(false, "a numeric window id always forms a valid local name");
+        return;
+    };
+    let spec = LayerSpec::new(local, LayerScope::Window(Some(window)), Band::Windows);
+    let result = wm.register_surface(&LayerProvider::Gnoblin("gnoblin-xwayland"), spec);
+    debug_assert!(result.is_ok(), "surface record for {window} refused: {result:?}");
+}
+
+/// Applies one change the X11 policy made to the window manager and answers its effects.
+fn apply_change(wm: &mut Wm, change: &NodeChange) -> Vec<Effect> {
+    match change {
+        NodeChange::Opened(opened) => {
+            let effects = wm.apply(Event::WindowOpened(window_spec(opened)));
+            register_surface_record(wm, opened.window);
+            effects
+        }
+        NodeChange::Activate { window } => wm.apply(Event::ActivationRequested {
+            window: *window,
+            decision: ActivationDecision::Allow,
+        }),
+        NodeChange::Closed { window } => wm.apply(Event::WindowClosed { window: *window }),
+        NodeChange::Geometry { window, geometry } => wm.apply(Event::MoveResize {
+            window: *window,
+            geometry: *geometry,
+        }),
+        NodeChange::Title { window, title } => wm.apply(Event::WindowTitleChanged {
+            window: *window,
+            title: title.clone(),
+        }),
+        NodeChange::AppId { window, app_id } => wm.apply(Event::WindowAppIdChanged {
+            window: *window,
+            app_id: app_id.clone(),
+        }),
     }
 }
 
@@ -851,6 +956,16 @@ impl XWaylandShellHandler for State {
             .as_mut()
             .expect("xwayland-shell-v1 exists with the session that binds it")
     }
+
+    /// A window and its surface were paired. Xwayland commits a window's first buffer before
+    /// it names the pairing, so the commit that carried the pixels found no window; the pairing
+    /// is the moment the window's node can first be given them. A surface that has not
+    /// committed yet is a no-op here: its commit follows.
+    fn surface_associated(&mut self, _xwm: XwmId, wl_surface: WlSurface, _surface: X11Surface) {
+        if let Some(window) = self.window_of(&wl_surface) {
+            self.x11_committed(window, &wl_surface);
+        }
+    }
 }
 
 impl DndGrabHandler for State {}
@@ -877,5 +992,175 @@ impl XWaylandKeyboardGrabHandler for State {
 
     fn keyboard_focus_for_xsurface(&self, surface: &WlSurface) -> Option<Self::KeyboardFocus> {
         Some(surface.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gnoblin_types::{OutputId, WorkspaceId};
+    use gnoblin_wm::{WindowKind, WmOptions};
+
+    fn session() -> Wm {
+        let mut wm = Wm::new(WmOptions::default());
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(1),
+        });
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(1),
+            rect: Rect::new(0, 0, 1920, 1080),
+        });
+        wm
+    }
+
+    fn id(x11: u64) -> WindowId {
+        WindowId::new((1 << 63) | x11)
+    }
+
+    fn open(x11: u64, app_id: &str, title: &str) -> Opened {
+        Opened {
+            window: id(x11),
+            app_id: app_id.to_owned(),
+            title: title.to_owned(),
+            transient_for: None,
+            requested: Rect::new(0, 0, 300, 200),
+        }
+    }
+
+    /// The rectangle the manager told a window to use, if it told it anything.
+    fn configured(effects: &[Effect], window: WindowId) -> Option<Rect> {
+        effects.iter().find_map(|effect| match effect {
+            Effect::Configure {
+                window: configured,
+                geometry,
+                ..
+            } if *configured == window => Some(*geometry),
+            _ => None,
+        })
+    }
+
+    /// Opening is what takes an X11 window into management, and the manager's answer is
+    /// the geometry the client is told to adopt.
+    #[test]
+    fn an_opened_window_is_managed_with_its_title_and_class() {
+        let mut wm = session();
+
+        let effects = apply_change(&mut wm, &NodeChange::Opened(open(3, "XTerm", "kieran@fsociety")));
+
+        let managed = wm.window(id(3)).expect("the window is managed");
+        assert_eq!(managed.app_id, "XTerm");
+        assert_eq!(managed.title, "kieran@fsociety");
+        assert_eq!(configured(&effects, id(3)), Some(managed.geometry));
+    }
+
+    /// A managed X11 window is a surface record, so layer tooling sees it beside the Wayland
+    /// toplevels. Its record is scoped to the window, so closing it ends the record too.
+    #[test]
+    fn an_opened_x11_window_registers_a_surface_record_that_closing_ends() {
+        let mut wm = session();
+        let window = id(3);
+        let name = format!("gnoblin.surface_x11:{}", window.get());
+
+        apply_change(&mut wm, &NodeChange::Opened(open(3, "XTerm", "t")));
+
+        let record = wm
+            .layers()
+            .records()
+            .find(|record| record.name.to_string() == name)
+            .expect("the opened window has a surface record");
+        assert_eq!(record.spec.band, Band::Windows);
+        assert_eq!(record.spec.scope, LayerScope::Window(Some(window)));
+
+        apply_change(&mut wm, &NodeChange::Closed { window });
+        assert!(wm.layers().records().all(|record| record.name.to_string() != name));
+    }
+
+    /// A closed window leaves the manager: no window, no focus, no ghost.
+    #[test]
+    fn a_closed_window_leaves_the_manager() {
+        let mut wm = session();
+        apply_change(&mut wm, &NodeChange::Opened(open(4, "XTerm", "t")));
+        apply_change(&mut wm, &NodeChange::Activate { window: id(4) });
+        assert_eq!(wm.focused(), Some(id(4)), "the opened window took focus");
+
+        apply_change(&mut wm, &NodeChange::Closed { window: id(4) });
+
+        assert!(wm.window(id(4)).is_none(), "the manager holds no window");
+        assert_eq!(wm.focused(), None);
+    }
+
+    /// A title or application id change reaches the manager's record, which is what rules
+    /// and the window's node text read.
+    #[test]
+    fn a_title_and_an_app_id_change_reach_the_manager() {
+        let mut wm = session();
+        apply_change(&mut wm, &NodeChange::Opened(open(5, "XTerm", "old")));
+
+        apply_change(
+            &mut wm,
+            &NodeChange::Title {
+                window: id(5),
+                title: "new".to_owned(),
+            },
+        );
+        apply_change(
+            &mut wm,
+            &NodeChange::AppId {
+                window: id(5),
+                app_id: "Renamed".to_owned(),
+            },
+        );
+
+        let managed = wm.window(id(5)).expect("still managed");
+        assert_eq!(managed.title, "new");
+        assert_eq!(managed.app_id, "Renamed");
+    }
+
+    /// A geometry change reaches the window manager, so the answer is the geometry the work
+    /// area allows rather than the geometry the client asked for.
+    #[test]
+    fn a_geometry_change_goes_through_the_manager() {
+        let mut wm = session();
+        apply_change(&mut wm, &NodeChange::Opened(open(5, "XTerm", "t")));
+        let before = wm.window(id(5)).expect("managed").geometry;
+
+        let effects = apply_change(
+            &mut wm,
+            &NodeChange::Geometry {
+                window: id(5),
+                // Far outside the output, so the manager's clamp is what decides.
+                geometry: Rect::new(9_000, 9_000, 600, 400),
+            },
+        );
+
+        let managed = wm.window(id(5)).expect("still managed");
+        assert_ne!(managed.geometry, before, "the request moved the window");
+        assert_eq!(managed.geometry.size().width, 600);
+        assert_eq!(managed.geometry.size().height, 400);
+        assert_eq!(
+            configured(&effects, id(5)),
+            Some(managed.geometry),
+            "the client hears the geometry the manager allowed"
+        );
+    }
+
+    /// A dialog follows the window it is transient for instead of being placed on its
+    /// own, which is what keeps a file chooser over the application that opened it.
+    #[test]
+    fn a_transient_window_follows_its_parent() {
+        let mut wm = session();
+        apply_change(&mut wm, &NodeChange::Opened(open(6, "App", "main")));
+        let mut dialog = open(7, "App", "open file");
+        dialog.transient_for = Some(id(6));
+
+        apply_change(&mut wm, &NodeChange::Opened(dialog));
+
+        let child = wm.window(id(7)).expect("the dialog is managed");
+        assert_eq!(child.transient_for, Some(id(6)));
+        assert_eq!(child.kind, WindowKind::Dialog);
+        let parent = wm.window(id(6)).expect("the parent is managed");
+        assert_eq!(child.workspace, parent.workspace);
+        assert_eq!(child.output, parent.output);
     }
 }

@@ -78,7 +78,6 @@ use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, Sur
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 use gnoblin_render_software::{ViewCamera, ViewProjection, render_view};
-use gnoblin_wm::WorkspaceDirection;
 
 use crate::log;
 
@@ -173,6 +172,15 @@ struct Closing {
     content: Content,
     /// What the window becomes when the fade ends.
     on_end: CloseEnd,
+}
+
+/// Which way a workspace switch moves, as the order of the workspaces reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlideDirection {
+    /// The new workspace comes after the old one in the order.
+    Later,
+    /// The new workspace comes before the old one in the order.
+    Earlier,
 }
 
 /// The horizontal offsets a workspace switch moves windows along, in global logical pixels.
@@ -1104,7 +1112,7 @@ impl Composer {
     /// `Later` is the switch to the next workspace, which lies to the right: the windows being left
     /// slide left and the new ones come in from the right. Reduced motion starts no slide: the
     /// windows change at once.
-    pub fn begin_workspace_slide(&mut self, direction: WorkspaceDirection) {
+    pub fn begin_workspace_slide(&mut self, direction: SlideDirection) {
         if self.reduced_motion {
             self.workspace_slide = None;
             return;
@@ -1116,8 +1124,8 @@ impl Composer {
             .map(|rect| f64::from(rect.width))
             .fold(0.0, f64::max);
         let (outgoing, incoming) = match direction {
-            WorkspaceDirection::Later => (-distance, distance),
-            WorkspaceDirection::Earlier => (distance, -distance),
+            SlideDirection::Later => (-distance, distance),
+            SlideDirection::Earlier => (distance, -distance),
         };
         self.workspace_slide = Some(WorkspaceSlide { outgoing, incoming });
     }
@@ -1858,7 +1866,7 @@ impl Composer {
         }
     }
 
-    /// Sets the paint order, topmost first as `gnoblin-wm` reports it.
+    /// Sets the paint order, topmost first.
     pub fn set_stacking(&mut self, order: &[WindowId]) {
         let mut kept: Vec<WindowId> = Vec::with_capacity(self.order.len());
         // Each window is kept once; a repeat later in the reversed order is dropped.
@@ -3409,7 +3417,7 @@ mod tests {
         composer.insert_window(window, Rect::new(20, 30, 40, 50));
         composer.set_window_content(window, Some(content()));
         composer.advance_motion(MOTION_MS);
-        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.begin_workspace_slide(SlideDirection::Later);
         composer.set_window_visible(window, false);
         composer.end_workspace_slide();
         assert!(!composer.windows[&window].visible, "the window is hidden");
@@ -3443,7 +3451,7 @@ mod tests {
         composer.set_window_visible(window, false);
         composer.advance_motion(MOTION_MS * 2);
         assert!(composer.window_matrix(window).is_none(), "a hidden window has no node");
-        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.begin_workspace_slide(SlideDirection::Later);
         composer.set_window_visible(window, true);
         composer.end_workspace_slide();
         assert_eq!(
@@ -3477,13 +3485,13 @@ mod tests {
         composer.advance_motion(MOTION_MS);
         composer.set_window_visible(entering, false);
         composer.advance_motion(MOTION_MS * 2);
-        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.begin_workspace_slide(SlideDirection::Later);
         composer.set_window_visible(leaving, false);
         composer.set_window_visible(entering, true);
         composer.end_workspace_slide();
         composer.advance_motion(MOTION_MS / 2);
         let before = [drawn_pose(&composer, leaving).0.x, drawn_pose(&composer, entering).0.x];
-        composer.begin_workspace_slide(WorkspaceDirection::Earlier);
+        composer.begin_workspace_slide(SlideDirection::Earlier);
         composer.set_window_visible(leaving, true);
         composer.set_window_visible(entering, false);
         composer.end_workspace_slide();
@@ -3514,7 +3522,7 @@ mod tests {
             composer.set_window_content(window, Some(content()));
         }
         composer.set_window_visible(entering, false);
-        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.begin_workspace_slide(SlideDirection::Later);
         composer.set_window_visible(leaving, false);
         composer.set_window_visible(entering, true);
         composer.end_workspace_slide();

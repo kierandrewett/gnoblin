@@ -1,11 +1,13 @@
-//! The X11 window table: one X11 window in, `gnoblin-wm` events and X11 requests out.
+//! The X11 window table: one X11 window in, node changes and X11 requests out.
 //!
 //! This is the window management a floating desktop needs: X11 clients position
 //! themselves and expect their position honoured, their windows are managed when they
 //! map rather than when they are created, and an override-redirect window (a menu, a
 //! tooltip, a drag icon) is never a window at all. The table below is the whole
 //! policy, and it is pure: no X connection, no Smithay type, no clock. The compositor
-//! asks it what an event means and performs the answer.
+//! asks it what an event means and performs the answer, and the answer is the same
+//! facts a Wayland toplevel's lifecycle carries (open, title, application id,
+//! geometry, activation, close), so an X11 window becomes the same window node.
 //!
 //! # Failure modes first
 //!
@@ -14,28 +16,30 @@
 //! 1. **A menu steals focus.** An override-redirect window has no managed identity at
 //!    all, so a map request is answered with nothing and an activation request for one
 //!    is refused: `an_override_redirect_popup_is_never_managed`.
-//! 2. **A window outlives its client.** A destroyed window leaves the manager whether
+//! 2. **A window outlives its client.** A destroyed window leaves the table whether
 //!    or not the client sent an unmap first, so a killed client cannot leave a
-//!    focusable ghost: `a_destroyed_window_leaves_the_manager`.
+//!    focusable ghost: `a_destroyed_window_leaves_the_table`.
 //! 3. **A late event resurrects a closed window.** Every arm ignores an id the table
 //!    does not hold, so a configure or title event that arrives after the destroy does
 //!    not open a window: `an_event_for_an_unknown_window_changes_nothing`.
-//! 4. **A client resize is refused.** A configure request is fed back through the
-//!    window manager as a move/resize, so the manager's constraint answers it and the
-//!    client hears the geometry it will actually get:
-//!    `a_configure_request_goes_through_the_manager`.
+//! 4. **A client resize is dropped.** A configure request is answered with the
+//!    rectangle it asked for, the fields it left alone filled in from the last known
+//!    one, so the compositor's placement answers it and the client hears the geometry
+//!    it will actually get: `a_configure_request_keeps_the_fields_the_client_left_alone`.
 //! 5. **A dialog is placed away from its parent.** A transient window names its parent
-//!    and the window manager keeps the two together: `a_transient_window_follows_its_parent`.
+//!    when the table holds that parent, and the compositor keeps the two together:
+//!    `a_transient_window_names_its_managed_parent`.
 //! 6. **Two windows share an identity.** The X11 window id is the identity, mapped into
 //!    a band the Wayland counter cannot reach: `an_x11_identity_is_in_its_own_band`.
+//! 7. **A rename never reaches the node.** A title or class change on a managed window
+//!    is a change to its node, and one on an unmanaged window is nothing:
+//!    `a_title_and_a_class_change_reach_the_node`.
 
 use std::collections::BTreeMap;
 
-use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec, LocalName};
 use gnoblin_types::{Rect, WindowId};
-use gnoblin_wm::{ActivationDecision, Event, WindowKind, WindowProtocol, WindowSpec, Wm};
 
-use gnoblin_backend::x11::{EventOutcome, WindowEvent, WindowMeta, Windows, X11Request};
+use gnoblin_backend::x11::{EventOutcome, NodeChange, Opened, WindowEvent, WindowMeta, Windows, X11Request};
 
 /// The bit that separates an X11 window identity from a Wayland one.
 ///
@@ -66,12 +70,12 @@ struct KnownWindow {
     override_redirect: bool,
     /// The window's rectangle as the server has it.
     geometry: Rect,
-    /// The managed identity, for a window the manager took in.
+    /// The managed identity, for a window the table took in.
     managed: Option<WindowId>,
 }
 
 impl KnownWindow {
-    /// The application id the window manager matches a window by.
+    /// The application id a window is matched by.
     ///
     /// The class is what an X11 window's desktop entry matches; the instance name is
     /// the fallback for a client that set only that half of `WM_CLASS`.
@@ -87,7 +91,7 @@ impl KnownWindow {
 /// The X11 window policy.
 ///
 /// One table, one rule set: an X11 window is managed when it maps, and it leaves the
-/// manager when it unmaps or is destroyed. An override-redirect window is recorded so
+/// table when it unmaps or is destroyed. An override-redirect window is recorded so
 /// a later event can be answered about it, but it is never managed and never focused.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Xwm {
@@ -97,25 +101,6 @@ pub struct Xwm {
     allow_grabs: bool,
     /// The classes or instances allowed to take a grab.
     grab_access_rules: Vec<String>,
-}
-
-/// Registers the `gnoblin.surface_x11:<window id>` record for a managed X11 window.
-///
-/// Xwayland owns the record because only this crate knows the window is an X11 one. The
-/// record is scoped to the window, so `WindowClosed` ends it with the window and the close
-/// path needs no extra step.
-fn register_surface_record(wm: &mut Wm, window: WindowId) {
-    if wm.window(window).is_none() {
-        // The manager refused the window, and that refusal is already in the effects.
-        return;
-    }
-    let Ok(local) = LocalName::keyed("surface_x11", &window.get().to_string()) else {
-        debug_assert!(false, "a numeric window id always forms a valid local name");
-        return;
-    };
-    let spec = LayerSpec::new(local, LayerScope::Window(Some(window)), Band::Windows);
-    let result = wm.register_surface(&LayerProvider::Gnoblin("gnoblin-xwayland"), spec);
-    debug_assert!(result.is_ok(), "surface record for {window} refused: {result:?}");
 }
 
 impl Xwm {
@@ -129,7 +114,7 @@ impl Xwm {
         }
     }
 
-    /// The managed identity of an X11 window, when the manager holds it.
+    /// The managed identity of an X11 window, when the table holds it.
     #[must_use]
     pub fn managed(&self, x11: u32) -> Option<WindowId> {
         self.windows.get(&x11).and_then(|entry| entry.managed)
@@ -165,75 +150,58 @@ impl Xwm {
         entry.geometry = meta.geometry;
     }
 
-    /// The window spec the manager is asked to take a window in with.
-    fn spec(&self, x11: u32) -> Option<WindowSpec> {
+    /// What a window is taken in with.
+    fn opened(&self, x11: u32) -> Option<Opened> {
         let entry = self.windows.get(&x11)?;
-        let id = window_id(x11);
-        // A transient names its parent only when the manager holds that parent; an
-        // unmanaged parent (an override-redirect window, or one the manager never saw)
-        // cannot be anchored to, so the window is placed on its own instead of being
-        // pinned to an identity nothing will ever close.
-        let spec = match entry.transient_for.and_then(|parent| self.managed(parent)) {
-            Some(parent) => WindowSpec {
-                kind: WindowKind::Dialog,
-                transient_for: Some(parent),
-                ..WindowSpec::normal(id, entry.app_id())
-            },
-            None => WindowSpec::normal(id, entry.app_id()),
-        };
-        // The window is an X11 window, so the manager records it as `surface_x11`
-        // rather than a Wayland toplevel.
-        Some(WindowSpec {
-            protocol: WindowProtocol::X11,
-            ..spec.with_title(&entry.title).with_requested(entry.geometry)
+        Some(Opened {
+            window: window_id(x11),
+            app_id: entry.app_id().to_owned(),
+            title: entry.title.clone(),
+            // A transient names its parent only when the table holds that parent; an
+            // unmanaged parent (an override-redirect window, or one the table never saw)
+            // cannot be anchored to, so the window is placed on its own instead of being
+            // pinned to an identity nothing will ever close.
+            transient_for: entry.transient_for.and_then(|parent| self.managed(parent)),
+            requested: entry.geometry,
         })
     }
 
     /// A client asked for its window to become visible.
-    fn map_requested(&mut self, meta: &WindowMeta<'_>, wm: &mut Wm) -> EventOutcome {
+    fn map_requested(&mut self, meta: &WindowMeta<'_>) -> EventOutcome {
         self.remember(meta);
         if meta.override_redirect {
-            // Unmanaged by definition: the client maps it itself and the manager never
-            // grants, configures or focuses it.
+            // Unmanaged by definition: the client maps it itself and the compositor
+            // never grants, configures or focuses it.
             return EventOutcome::nothing();
         }
         if let Some(window) = self.managed(meta.x11) {
-            // A window the manager still holds is being shown again, which is a
+            // A window the table still holds is being shown again, which is a
             // request for attention rather than a new window.
             return EventOutcome {
                 window: Some(window),
-                effects: wm.apply(Event::ActivationRequested {
-                    window,
-                    decision: ActivationDecision::Allow,
-                }),
+                changes: vec![NodeChange::Activate { window }],
                 commands: vec![X11Request::SetMapped { window, mapped: true }],
             };
         }
-        let Some(spec) = self.spec(meta.x11) else {
+        let Some(opened) = self.opened(meta.x11) else {
             return EventOutcome::nothing();
         };
-        let window = spec.id;
+        let window = opened.window;
         if let Some(entry) = self.windows.get_mut(&meta.x11) {
             entry.managed = Some(window);
         }
-        let mut effects = wm.apply(Event::WindowOpened(spec));
-        register_surface_record(wm, window);
         // Mapping is the X11 equivalent of a toplevel's first committed buffer: the
-        // window is now a candidate for focus, and whether it takes it is the window
-        // manager's answer.
-        effects.extend(wm.apply(Event::ActivationRequested {
-            window,
-            decision: ActivationDecision::Allow,
-        }));
+        // window is now a candidate for focus, and whether it takes it is the
+        // compositor's answer.
         EventOutcome {
             window: Some(window),
-            effects,
+            changes: vec![NodeChange::Opened(opened), NodeChange::Activate { window }],
             commands: vec![X11Request::SetMapped { window, mapped: true }],
         }
     }
 
     /// A window left the screen, or went away with its client.
-    fn closed(&mut self, x11: u32, wm: &mut Wm) -> EventOutcome {
+    fn closed(&mut self, x11: u32) -> EventOutcome {
         let Some(entry) = self.windows.remove(&x11) else {
             return EventOutcome::nothing();
         };
@@ -242,7 +210,7 @@ impl Xwm {
         };
         EventOutcome {
             window: Some(window),
-            effects: wm.apply(Event::WindowClosed { window }),
+            changes: vec![NodeChange::Closed { window }],
             commands: Vec::new(),
         }
     }
@@ -253,15 +221,15 @@ impl Windows for Xwm {
         self.managed(xwindow)
     }
 
-    fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> EventOutcome {
+    fn handle(&mut self, event: WindowEvent<'_>) -> EventOutcome {
         match event {
             WindowEvent::Created(meta) => {
                 self.remember(&meta);
                 EventOutcome::nothing()
             }
-            WindowEvent::MapRequested(meta) => self.map_requested(&meta, wm),
+            WindowEvent::MapRequested(meta) => self.map_requested(&meta),
             WindowEvent::Mapped(x11) => EventOutcome::of(self.managed(x11)),
-            WindowEvent::Unmapped(x11) | WindowEvent::Destroyed(x11) => self.closed(x11, wm),
+            WindowEvent::Unmapped(x11) | WindowEvent::Destroyed(x11) => self.closed(x11),
             WindowEvent::ConfigureRequested {
                 x11,
                 geometry,
@@ -289,10 +257,10 @@ impl Windows for Xwm {
                 };
                 EventOutcome {
                     window: Some(window),
-                    effects: wm.apply(Event::MoveResize {
+                    changes: vec![NodeChange::Geometry {
                         window,
                         geometry: candidate,
-                    }),
+                    }],
                     commands: Vec::new(),
                 }
             }
@@ -304,12 +272,12 @@ impl Windows for Xwm {
                 let Some(window) = entry.managed else {
                     return EventOutcome::nothing();
                 };
-                // A client that moved itself is honoured: the manager clamps the
+                // A client that moved itself is honoured: the compositor clamps the
                 // rectangle and the client hears the answer, which is what makes an
                 // X11 application's own positioning work on a floating desktop.
                 EventOutcome {
                     window: Some(window),
-                    effects: wm.apply(Event::MoveResize { window, geometry }),
+                    changes: vec![NodeChange::Geometry { window, geometry }],
                     commands: Vec::new(),
                 }
             }
@@ -324,10 +292,10 @@ impl Windows for Xwm {
                 };
                 EventOutcome {
                     window: Some(window),
-                    effects: wm.apply(Event::WindowTitleChanged {
+                    changes: vec![NodeChange::Title {
                         window,
                         title: title.to_owned(),
-                    }),
+                    }],
                     commands: Vec::new(),
                 }
             }
@@ -343,22 +311,19 @@ impl Windows for Xwm {
                     .unwrap_or_default();
                 EventOutcome {
                     window: Some(window),
-                    effects: wm.apply(Event::WindowAppIdChanged { window, app_id }),
+                    changes: vec![NodeChange::AppId { window, app_id }],
                     commands: Vec::new(),
                 }
             }
             WindowEvent::ActivationRequested(x11) => {
                 let Some(window) = self.managed(x11) else {
-                    // The request came from a window the manager does not hold, which
+                    // The request came from a window the table does not hold, which
                     // includes every override-redirect window: a menu cannot take focus.
                     return EventOutcome::nothing();
                 };
                 EventOutcome {
                     window: Some(window),
-                    effects: wm.apply(Event::ActivationRequested {
-                        window,
-                        decision: ActivationDecision::Allow,
-                    }),
+                    changes: vec![NodeChange::Activate { window }],
                     commands: Vec::new(),
                 }
             }
@@ -372,7 +337,7 @@ impl Windows for Xwm {
         }
         EventOutcome {
             window: Some(window),
-            effects: Vec::new(),
+            changes: Vec::new(),
             commands: vec![X11Request::Close { window }],
         }
     }
@@ -390,21 +355,6 @@ impl Windows for Xwm {
 mod tests {
     use super::*;
 
-    use gnoblin_types::{OutputId, WorkspaceId};
-    use gnoblin_wm::{Effect, WmOptions};
-
-    fn session() -> Wm {
-        let mut wm = Wm::new(WmOptions::default());
-        wm.apply(Event::WorkspaceAdded {
-            workspace: WorkspaceId::new(1),
-        });
-        wm.apply(Event::OutputConnected {
-            output: OutputId::new(1),
-            rect: Rect::new(0, 0, 1920, 1080),
-        });
-        wm
-    }
-
     fn meta<'a>(x11: u32, class: &'a str, title: &'a str) -> WindowMeta<'a> {
         WindowMeta {
             x11,
@@ -417,14 +367,10 @@ mod tests {
         }
     }
 
-    /// The rectangle the manager told a window to use, if it told it anything.
-    fn configured(effects: &[Effect], window: WindowId) -> Option<Rect> {
-        effects.iter().find_map(|effect| match effect {
-            Effect::Configure {
-                window: configured,
-                geometry,
-                ..
-            } if *configured == window => Some(*geometry),
+    /// The node `changes` open, if they open one.
+    fn opened(changes: &[NodeChange]) -> Option<&Opened> {
+        changes.iter().find_map(|change| match change {
+            NodeChange::Opened(opened) => Some(opened),
             _ => None,
         })
     }
@@ -448,85 +394,108 @@ mod tests {
     #[test]
     fn an_override_redirect_popup_is_never_managed() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
         let mut popup = meta(9, "Gimp", "menu");
         popup.override_redirect = true;
 
+        assert_eq!(xwm.handle(WindowEvent::Created(popup.clone())), EventOutcome::nothing());
         assert_eq!(
-            xwm.handle(WindowEvent::Created(popup.clone()), &mut wm),
+            xwm.handle(WindowEvent::MapRequested(popup.clone())),
             EventOutcome::nothing()
         );
-        assert_eq!(
-            xwm.handle(WindowEvent::MapRequested(popup.clone()), &mut wm),
-            EventOutcome::nothing()
-        );
-        assert_eq!(
-            xwm.handle(WindowEvent::ActivationRequested(9), &mut wm),
-            EventOutcome::nothing()
-        );
+        assert_eq!(xwm.handle(WindowEvent::ActivationRequested(9)), EventOutcome::nothing());
 
-        assert!(wm.windows().next().is_none(), "no window may enter the manager");
         assert_eq!(xwm.managed(9), None);
         assert!(xwm.knows(9), "the table still answers about the window");
     }
 
-    /// Mapping is what takes a window into management, and the manager's answer is the
-    /// geometry the client is told to adopt.
+    /// Mapping is what takes a window into management: the window opens with its title,
+    /// its class as the application id and the rectangle it asked for, asks for focus,
+    /// and the server is told it is mapped.
     #[test]
-    fn a_mapped_window_is_managed_with_its_title_and_class() {
+    fn a_mapped_window_opens_with_its_title_and_class() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
         let window = window_id(3);
 
-        let outcome = xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "kieran@fsociety")), &mut wm);
+        let outcome = xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "kieran@fsociety")));
 
         assert_eq!(outcome.window, Some(window));
-        let managed = wm.window(window).expect("the window is managed");
-        assert_eq!(managed.app_id, "XTerm");
-        assert_eq!(managed.title, "kieran@fsociety");
-        let geometry = configured(&outcome.effects, window).expect("the manager configures the window");
-        assert_eq!(geometry, managed.geometry);
+        assert_eq!(
+            outcome.changes,
+            vec![
+                NodeChange::Opened(Opened {
+                    window,
+                    app_id: "XTerm".to_owned(),
+                    title: "kieran@fsociety".to_owned(),
+                    transient_for: None,
+                    requested: Rect::new(0, 0, 300, 200),
+                }),
+                NodeChange::Activate { window },
+            ]
+        );
+        assert_eq!(outcome.commands, vec![X11Request::SetMapped { window, mapped: true }]);
+        assert_eq!(xwm.managed(3), Some(window));
+    }
+
+    /// A window with no class still has an application id: the instance name.
+    #[test]
+    fn a_window_with_no_class_is_matched_by_its_instance() {
+        let mut xwm = Xwm::new(false, Vec::new());
+
+        let outcome = xwm.handle(WindowEvent::MapRequested(meta(3, "", "t")));
+
+        assert_eq!(
+            opened(&outcome.changes).map(|opened| opened.app_id.as_str()),
+            Some("instance")
+        );
+    }
+
+    /// Mapping a window the table still holds is a request for attention, not a second
+    /// window: it opens nothing and asks for focus again.
+    #[test]
+    fn a_window_mapped_again_is_not_opened_twice() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        let window = window_id(3);
+        xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "t")));
+
+        let outcome = xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "t")));
+
+        assert_eq!(outcome.changes, vec![NodeChange::Activate { window }]);
         assert_eq!(outcome.commands, vec![X11Request::SetMapped { window, mapped: true }]);
     }
 
-    /// A managed X11 window is a surface record, so layer tooling sees it beside the Wayland
-    /// toplevels. Its record is scoped to the window, so unmapping it ends the record too.
-    #[test]
-    fn a_mapped_x11_window_registers_a_surface_record_that_unmapping_ends() {
-        let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
-        let window = window_id(3);
-        let name = format!("gnoblin.surface_x11:{}", window.get());
-
-        xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "kieran@fsociety")), &mut wm);
-
-        let record = wm
-            .layers()
-            .records()
-            .find(|record| record.name.to_string() == name)
-            .expect("the mapped window has a surface record");
-        assert_eq!(record.spec.band, Band::Windows);
-        assert_eq!(record.spec.scope, LayerScope::Window(Some(window)));
-
-        xwm.handle(WindowEvent::Unmapped(3), &mut wm);
-        assert!(wm.layers().records().all(|record| record.name.to_string() != name));
-    }
-
-    /// A client that exits sends no unmap, so a destroy leaves the manager the same way
+    /// A client that exits sends no unmap, so a destroy closes the window the same way
     /// an unmap does: no window, no focus, no ghost.
     #[test]
-    fn a_destroyed_window_leaves_the_manager() {
+    fn a_destroyed_window_leaves_the_table() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
-        xwm.handle(WindowEvent::MapRequested(meta(4, "XTerm", "t")), &mut wm);
+        xwm.handle(WindowEvent::MapRequested(meta(4, "XTerm", "t")));
         let window = window_id(4);
-        assert!(wm.window(window).is_some());
 
-        let outcome = xwm.handle(WindowEvent::Destroyed(4), &mut wm);
+        let outcome = xwm.handle(WindowEvent::Destroyed(4));
 
         assert_eq!(outcome.window, Some(window));
-        assert!(wm.window(window).is_none(), "the manager holds no window");
+        assert_eq!(outcome.changes, vec![NodeChange::Closed { window }]);
         assert!(!xwm.knows(4), "the table forgets the window");
+        assert_eq!(xwm.managed_window(4), None);
+    }
+
+    /// An unmap closes the window too, and a window that was never managed closes
+    /// nothing.
+    #[test]
+    fn an_unmapped_window_closes_and_an_unmanaged_one_closes_nothing() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        xwm.handle(WindowEvent::MapRequested(meta(4, "XTerm", "t")));
+        let window = window_id(4);
+
+        assert_eq!(
+            xwm.handle(WindowEvent::Unmapped(4)).changes,
+            vec![NodeChange::Closed { window }]
+        );
+
+        let mut created_only = Xwm::new(false, Vec::new());
+        created_only.handle(WindowEvent::Created(meta(5, "XTerm", "t")));
+        assert_eq!(created_only.handle(WindowEvent::Destroyed(5)), EventOutcome::nothing());
+        assert!(!created_only.knows(5));
     }
 
     /// An event about a window the table never saw is not an open: a stale title or
@@ -534,7 +503,6 @@ mod tests {
     #[test]
     fn an_event_for_an_unknown_window_changes_nothing() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
 
         for event in [
             WindowEvent::Unmapped(77),
@@ -553,62 +521,151 @@ mod tests {
                 size: true,
             },
         ] {
-            assert_eq!(xwm.handle(event, &mut wm), EventOutcome::nothing());
+            assert_eq!(xwm.handle(event), EventOutcome::nothing());
         }
-        assert!(wm.windows().next().is_none());
+        assert!(!xwm.knows(77));
     }
 
-    /// A configure request reaches the window manager, so the answer is the geometry
-    /// the work area allows rather than the geometry the client asked for.
+    /// A configure request that changes one half of the rectangle keeps the other half
+    /// as the table last had it, so the compositor places the whole rectangle.
     #[test]
-    fn a_configure_request_goes_through_the_manager() {
+    fn a_configure_request_keeps_the_fields_the_client_left_alone() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
-        xwm.handle(WindowEvent::MapRequested(meta(5, "XTerm", "t")), &mut wm);
+        xwm.handle(WindowEvent::MapRequested(meta(5, "XTerm", "t")));
         let window = window_id(5);
-        let before = wm.window(window).expect("managed").geometry;
 
-        let outcome = xwm.handle(
-            WindowEvent::ConfigureRequested {
-                x11: 5,
-                // Far outside the output, so the manager's clamp is what decides.
-                geometry: Rect::new(9_000, 9_000, 600, 400),
-                position: true,
-                size: true,
-            },
-            &mut wm,
+        let moved = xwm.handle(WindowEvent::ConfigureRequested {
+            x11: 5,
+            geometry: Rect::new(40, 50, 999, 999),
+            position: true,
+            size: false,
+        });
+        assert_eq!(
+            moved.changes,
+            vec![NodeChange::Geometry {
+                window,
+                geometry: Rect::new(40, 50, 300, 200),
+            }]
         );
 
-        let managed = wm.window(window).expect("still managed");
-        assert_ne!(managed.geometry, before, "the request moved the window");
-        assert_eq!(managed.geometry.size().width, 600);
-        assert_eq!(managed.geometry.size().height, 400);
+        let resized = xwm.handle(WindowEvent::ConfigureRequested {
+            x11: 5,
+            geometry: Rect::new(9_000, 9_000, 600, 400),
+            position: false,
+            size: true,
+        });
         assert_eq!(
-            configured(&outcome.effects, window),
-            Some(managed.geometry),
-            "the client hears the geometry the manager allowed"
+            resized.changes,
+            vec![NodeChange::Geometry {
+                window,
+                geometry: Rect::new(0, 0, 600, 400),
+            }],
+            "the position is the one the server last reported, not the request's"
         );
     }
 
-    /// A dialog follows the window it is transient for instead of being placed on its
-    /// own, which is what keeps a file chooser over the application that opened it.
+    /// A configure the server reports is recorded and handed on as the window's
+    /// geometry; an override-redirect window's own configure is recorded and answered
+    /// with nothing.
     #[test]
-    fn a_transient_window_follows_its_parent() {
+    fn a_configured_window_reports_its_geometry() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
-        xwm.handle(WindowEvent::MapRequested(meta(6, "App", "main")), &mut wm);
+        xwm.handle(WindowEvent::MapRequested(meta(5, "XTerm", "t")));
+        let mut popup = meta(6, "Gimp", "menu");
+        popup.override_redirect = true;
+        xwm.handle(WindowEvent::Created(popup));
+
+        let geometry = Rect::new(10, 20, 30, 40);
+        assert_eq!(
+            xwm.handle(WindowEvent::Configured { x11: 5, geometry }).changes,
+            vec![NodeChange::Geometry {
+                window: window_id(5),
+                geometry,
+            }]
+        );
+        assert_eq!(
+            xwm.handle(WindowEvent::Configured { x11: 6, geometry }),
+            EventOutcome::nothing()
+        );
+    }
+
+    /// A dialog names the window it is transient for when the table holds it, which is
+    /// what keeps a file chooser over the application that opened it; a parent the
+    /// table does not hold is not named.
+    #[test]
+    fn a_transient_window_names_its_managed_parent() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        xwm.handle(WindowEvent::MapRequested(meta(6, "App", "main")));
         let mut dialog = meta(7, "App", "open file");
         dialog.transient_for = Some(6);
 
-        let outcome = xwm.handle(WindowEvent::MapRequested(dialog), &mut wm);
+        let outcome = xwm.handle(WindowEvent::MapRequested(dialog));
 
-        let child = wm.window(window_id(7)).expect("the dialog is managed");
         assert_eq!(outcome.window, Some(window_id(7)));
-        assert_eq!(child.transient_for, Some(window_id(6)));
-        assert_eq!(child.kind, WindowKind::Dialog);
-        let parent = wm.window(window_id(6)).expect("the parent is managed");
-        assert_eq!(child.workspace, parent.workspace);
-        assert_eq!(child.output, parent.output);
+        assert_eq!(
+            opened(&outcome.changes).and_then(|opened| opened.transient_for),
+            Some(window_id(6))
+        );
+
+        let mut orphan = meta(8, "App", "orphan");
+        orphan.transient_for = Some(99);
+        let outcome = xwm.handle(WindowEvent::MapRequested(orphan));
+        assert_eq!(opened(&outcome.changes).and_then(|opened| opened.transient_for), None);
+    }
+
+    /// A title or class change on a managed window is a change to its node; the class
+    /// falls back to the instance name as at the open, and an unmanaged window's change
+    /// is recorded and reported as nothing.
+    #[test]
+    fn a_title_and_a_class_change_reach_the_node() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "old")));
+        let window = window_id(3);
+
+        assert_eq!(
+            xwm.handle(WindowEvent::TitleChanged { x11: 3, title: "new" }).changes,
+            vec![NodeChange::Title {
+                window,
+                title: "new".to_owned(),
+            }]
+        );
+        assert_eq!(
+            xwm.handle(WindowEvent::ClassChanged(meta(3, "Renamed", "new"))).changes,
+            vec![NodeChange::AppId {
+                window,
+                app_id: "Renamed".to_owned(),
+            }]
+        );
+        assert_eq!(
+            xwm.handle(WindowEvent::ClassChanged(meta(3, "", "new"))).changes,
+            vec![NodeChange::AppId {
+                window,
+                app_id: "instance".to_owned(),
+            }]
+        );
+
+        xwm.handle(WindowEvent::Created(meta(4, "Menu", "m")));
+        assert_eq!(
+            xwm.handle(WindowEvent::TitleChanged { x11: 4, title: "n" }),
+            EventOutcome::nothing()
+        );
+        assert_eq!(
+            xwm.handle(WindowEvent::ClassChanged(meta(4, "Other", "n"))),
+            EventOutcome::nothing()
+        );
+    }
+
+    /// A managed window that asks for focus changes its node's focus request; an
+    /// unmanaged one cannot.
+    #[test]
+    fn a_managed_window_can_ask_for_activation() {
+        let mut xwm = Xwm::new(false, Vec::new());
+        xwm.handle(WindowEvent::MapRequested(meta(3, "XTerm", "t")));
+
+        assert_eq!(
+            xwm.handle(WindowEvent::ActivationRequested(3)).changes,
+            vec![NodeChange::Activate { window: window_id(3) }]
+        );
     }
 
     /// Closing a managed window is a `WM_DELETE_WINDOW` request, so a client with
@@ -616,14 +673,13 @@ mod tests {
     #[test]
     fn a_close_request_is_a_delete_window() {
         let mut xwm = Xwm::new(false, Vec::new());
-        let mut wm = session();
-        xwm.handle(WindowEvent::MapRequested(meta(8, "App", "main")), &mut wm);
+        xwm.handle(WindowEvent::MapRequested(meta(8, "App", "main")));
 
         assert_eq!(
             xwm.close(window_id(8)),
             EventOutcome {
                 window: Some(window_id(8)),
-                effects: Vec::new(),
+                changes: Vec::new(),
                 commands: vec![X11Request::Close { window: window_id(8) }],
             }
         );
