@@ -156,12 +156,6 @@ const ITEMS: &[InstallItem] = &[
         mode: FileMode::Data,
         template: false,
     },
-    InstallItem::File {
-        from: InstallSource::Repo("data/shaders/tint.frag"),
-        to: "share/gnoblin/shaders/tint.frag",
-        mode: FileMode::Data,
-        template: false,
-    },
     InstallItem::Tree {
         from: "data/default-config",
         to: "share/gnoblin/default-config",

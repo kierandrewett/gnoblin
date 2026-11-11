@@ -18,6 +18,5 @@
 - `pam.d/gnoblin-lock` is the PAM service the session lock checks passwords
   through. It includes the system `login` stack for `auth` and `account`, and
   `xtask dist` installs it as `lib/pam.d/gnoblin-lock`.
-- `shaders/tint.frag` is an example shader available to configuration rules.
 
 The session data is installed by `cmake/install-session.cmake`.

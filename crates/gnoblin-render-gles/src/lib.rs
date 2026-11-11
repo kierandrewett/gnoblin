@@ -13,7 +13,7 @@
 //! Smithay's `GlesFrame` compiles the fragment source it is handed against its own
 //! `#version 100` vertex shader, so it can only run a shader written in GLSL ES 1.00 — and
 //! `naga`, the compiler D12 chose, has no GLSL ES 1.00 output. D12 also says every effect
-//! and user shader is written *once* in one language and compiled per backend, so the
+//! is written *once* in one language and compiled per backend, so the
 //! language is WGSL and the passes are compiled here: `naga` validates a module and emits
 //! GLSL ES 3.10, and `glow` (the safe GL API Smithay's `renderer_glow` feature hands out)
 //! compiles and draws it. Smithay still owns the EGL context and the import of a client's
@@ -28,9 +28,9 @@
 //!    driver ever sees it.
 //! 2. It is the language a Vulkan backend takes unchanged (`naga` emits SPIR-V from the same
 //!    module), which is what "written once, compiled per backend" needs.
-//! 3. Its uniform layout rules agree with GLSL's `std140` for every type the uniform schema
-//!    declares, so one set of byte offsets describes both targets. `program.rs` is the CPU
-//!    side of that agreement and `tests::a_user_shader_reads_its_uniforms` is the proof.
+//! 3. Its uniform layout rules agree with GLSL's `std140` for every member of the block, so
+//!    one set of byte offsets describes both targets. `Uniforms::pack` is the CPU side of
+//!    that agreement.
 //!
 //! The camera is orthographic and drawing is in painter's order, which is the 2D subset the
 //! scene accepts today; the transform is a rectangle, exactly as the plan states for this
@@ -42,7 +42,7 @@
 //! destination rectangle and the target's size as attributes, so the fragment stage is the
 //! only stage with a uniform block: one block per program, bound once, overwritten per
 //! draw. That is what makes "uniforms typed-checked and uploaded" a single small write of a
-//! 96-byte buffer plus the user's own fields.
+//! 96-byte buffer.
 //!
 //! | Pass    | Shader                 | Draws                                        |
 //! | ------- | ---------------------- | -------------------------------------------- |
@@ -50,7 +50,6 @@
 //! | surface | [`shaders::SURFACE`]   | a client buffer, tinted and corner-clipped    |
 //! | shadow  | [`shaders::SHADOW`]    | a [`Pass::Shadow`], behind its layer          |
 //! | blur    | [`shaders::BLUR`]      | one axis of a Gaussian over the backdrop      |
-//! | shader  | a user's WGSL          | the layer through the user's `shade`          |
 //!
 //! # Where the pixels go
 //!
@@ -83,19 +82,13 @@
 //!    to the frame's background, the copy is clamped to the output and the texture clamps at
 //!    its edge, so a blur at the boundary repeats the boundary pixel:
 //!    `tests::a_blur_at_the_edge_repeats_the_edge`.
-//! 5. **A broken user shader kills the frame loop.** A shader that fails to compile disables
-//!    that pass, is reported once, and the frame is still drawn:
-//!    `tests::a_broken_user_shader_leaves_the_frame_drawn`.
-//! 6. **A uniform of the wrong type is uploaded as garbage.** A value whose type the
-//!    registered schema does not declare is refused before a byte of it is uploaded:
-//!    `tests::a_user_shader_refuses_a_mistyped_uniform`.
-//! 7. **GL state leaks from one frame into the next.** Every frame begins from the state
+//! 5. **GL state leaks from one frame into the next.** Every frame begins from the state
 //!    [`GlContext::begin`] sets and every pass resets what it changes:
 //!    `tests::a_frame_does_not_inherit_the_last_frames_state`.
-//! 8. **Damage is ignored and the whole output is repainted.** Only the damage is scissored
+//! 6. **Damage is ignored and the whole output is repainted.** Only the damage is scissored
 //!    in, so an undamaged pixel keeps what it had:
 //!    `tests::damage_limits_what_is_repainted`.
-//! 9. **A resize keeps the old target.** [`Gles::resize`] replaces the target and the new one
+//! 7. **A resize keeps the old target.** [`Gles::resize`] replaces the target and the new one
 //!    holds no pixels: `tests::a_resize_replaces_the_target`.
 
 gnoblin_log::logger!(log = "render");
@@ -111,7 +104,7 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::{Physical, Rectangle};
 
-use gnoblin_render::{Effects, Mat4, Pass, UniformSchema};
+use gnoblin_render::{Mat4, Pass};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
 use gl::{Depth, Framebuffer, GlContext, Program, QuadPlacement, Texture};
@@ -120,7 +113,6 @@ use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overl
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
-use gnoblin_render_frame::shader::ShaderError;
 use gnoblin_render_frame::shader::uniforms::Uniforms;
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
@@ -128,30 +120,6 @@ use gnoblin_render_frame::shader::uniforms::Uniforms;
 /// A radius larger than half the shorter side is clamped by the shader anyway; this bound
 /// keeps the buffer arithmetic far from an overflow.
 const MAX_RADIUS: f32 = 4096.0;
-
-/// A user shader: the WGSL a caller registered and the uniforms it declares.
-///
-/// The source defines one function,
-///
-/// ```wgsl
-/// fn shade(uv: vec2<f32>) -> vec4<f32>
-/// ```
-///
-/// whose `uv` is the layer's texture coordinate — already cropped and scaled — and whose
-/// return value is the layer's premultiplied colour. The shader may read the uniform block
-/// (`gnoblin.<field>`), sample the layer (`textureSample(gnoblin_tex, gnoblin_sampler, uv)`)
-/// and use the framework's own members, such as `gnoblin.rect` and `gnoblin.opacity`.
-///
-/// The schema is the contract between the shader and the scene: every field it declares is
-/// appended to the uniform block in declaration order, and a [`Pass::Shader`] whose values do
-/// not match those declarations is refused rather than uploaded.
-#[derive(Clone, PartialEq, Debug)]
-pub struct UserShader {
-    /// The WGSL source.
-    pub source: String,
-    /// The uniforms the source declares.
-    pub schema: UniformSchema,
-}
 
 /// A GLES renderer and the offscreen target it draws into.
 pub struct Gles {
@@ -163,13 +131,6 @@ pub struct Gles {
     scratch: Option<[Framebuffer; 2]>,
     /// The effect programs, compiled once.
     passes: Passes,
-    /// The registered user shader and the program its source compiled to.
-    user: Option<Registered>,
-    /// A shader failure that has not been reported yet.
-    ///
-    /// It is reported once and then dropped: a shader that fails every frame would otherwise
-    /// log a line per frame for the life of the session.
-    error: Option<ShaderError>,
     /// The target's size in physical pixels.
     physical: Size,
     /// How many frames were drawn into the target. A frame with no damage leaves this alone,
@@ -193,7 +154,6 @@ impl std::fmt::Debug for Gles {
             .debug_struct("Gles")
             .field("physical", &self.physical)
             .field("draws", &self.draws)
-            .field("user", &self.user.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -215,14 +175,6 @@ pub struct ScanBuffer {
     framebuffer: Framebuffer,
     /// The texture behind the framebuffer. Kept alive for as long as the framebuffer is used.
     _texture: GlesTexture,
-}
-
-/// A registered user shader and the program it compiled to, if it compiled.
-struct Registered {
-    /// The source and schema the caller registered.
-    shader: UserShader,
-    /// The program, or [`None`] when the source was refused.
-    program: Option<Program>,
 }
 
 impl Gles {
@@ -259,8 +211,6 @@ impl Gles {
             target,
             scratch: None,
             passes,
-            user: None,
-            error: None,
             physical,
             draws: 0,
             damage: Vec::new(),
@@ -339,45 +289,6 @@ impl Gles {
         Ok(())
     }
 
-    /// Registers the user shader a layer's [`Pass::Shader`] runs, or clears it.
-    ///
-    /// The source is compiled once here, at registration, so a broken shader is known before
-    /// the first frame that would draw it and costs that frame nothing. A failure leaves no
-    /// program registered, is reported once (see [`Gles::take_shader_error`]) and leaves the
-    /// layer drawn by the default surface pass: one window's shader must never be the reason
-    /// a session stops drawing.
-    pub fn set_user_shader(&mut self, shader: Option<UserShader>) {
-        let Some(shader) = shader else {
-            self.user = None;
-            return;
-        };
-        match program::compile(&mut self.device, &shader.source, &shader.schema) {
-            Ok(program) => {
-                self.user = Some(Registered {
-                    shader,
-                    program: Some(program),
-                });
-            }
-            Err(error) => {
-                log::warn!(
-                    area = "render",
-                    line = error.line(),
-                    "a user shader was refused; its pass is disabled"
-                );
-                self.error = Some(error);
-                self.user = Some(Registered { shader, program: None });
-            }
-        }
-    }
-
-    /// The shader failure that has not been reported yet, cleared by the call.
-    ///
-    /// The frame loop drains this once per iteration and reports it; a caller that ignores it
-    /// does not accumulate failures, because the next one replaces this.
-    pub fn take_shader_error(&mut self) -> Option<ShaderError> {
-        self.error.take()
-    }
-
     /// Draws `frame`, repainting only what it damaged.
     ///
     /// `scale` is the output's compositing scale: a frame's rectangles are logical and the
@@ -387,8 +298,7 @@ impl Gles {
     ///
     /// [`RenderError::Failed`] when the driver refuses an operation. A client buffer that
     /// cannot be imported is not an error: a client may destroy it at any time, and the rest
-    /// of the frame still has to appear. A broken user shader is not an error either — it is
-    /// reported once and its pass is skipped.
+    /// of the frame still has to appear.
     pub fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
         if frame.is_empty() {
             return Ok(());
@@ -567,8 +477,6 @@ impl Gles {
             target,
             scratch,
             passes,
-            user,
-            error,
             physical,
             cursor_under,
             cursor_under_rect,
@@ -590,8 +498,6 @@ impl Gles {
             target,
             scratch,
             passes,
-            user,
-            error,
             physical: *physical,
             scale,
             background,
@@ -667,7 +573,7 @@ impl Gles {
             .scissor(Some(Rect::new(0, 0, physical.width, physical.height)));
         let uniforms = Uniforms::surface(quad, src, tint, 1.0, corner);
         let mut bytes = Vec::new();
-        self.passes.surface.pack_fixed(&uniforms, &mut bytes);
+        self.passes.surface.pack(&uniforms, &mut bytes);
         self.device
             .draw(&self.passes.surface, &bytes, quad, Some(texture), QuadPlacement::FLAT)?;
         self.device.scissor(None);
@@ -750,8 +656,6 @@ struct Painter<'a> {
     target: &'a Framebuffer,
     scratch: &'a mut Option<[Framebuffer; 2]>,
     passes: &'a mut Passes,
-    user: &'a mut Option<Registered>,
-    error: &'a mut Option<ShaderError>,
     physical: Size,
     scale: Scale,
     background: Color,
@@ -773,7 +677,7 @@ impl Painter<'_> {
             ..
         } = self;
         let uniforms = Uniforms::solid(rect, *background, Color::WHITE, 1.0);
-        passes.solid.pack_fixed(&uniforms, bytes);
+        passes.solid.pack(&uniforms, bytes);
         device.draw(&passes.solid, bytes, rect, None, QuadPlacement::FLAT)
     }
 
@@ -856,7 +760,7 @@ impl Painter<'_> {
                     let blurred = self.blur(quad, *blur, grouped)?;
                     grouped |= blurred;
                 }
-                Pass::Shadow(_) | Pass::Blur(_) | Pass::Shader(_) => {}
+                Pass::Shadow(_) | Pass::Blur(_) => {}
             }
         }
         // A grouped layer is drawn at full opacity into its group, which then fades as one.
@@ -872,56 +776,18 @@ impl Painter<'_> {
             }
             (None, _) => Uniforms::surface(quad, src, tint, opacity, radius),
         };
-        // A shader pass replaces the layer's own fragment stage; a refusal is reported once
-        // and the default pass draws the layer instead, so one window's shader cannot blank
-        // the output.
-        let mut refusal = None;
         let drawn = {
             let Self {
-                device,
-                passes,
-                user,
-                bytes,
-                ..
+                device, passes, bytes, ..
             } = self;
-            match resolve(user, effects) {
-                Ok(Some((program, values))) => match program.pack(&uniforms, &values, bytes) {
-                    Ok(()) => device.draw(program, bytes, quad, texture, placement),
-                    Err(error) => {
-                        refusal = Some(error);
-                        let default = if texture.is_some() {
-                            &passes.surface
-                        } else {
-                            &passes.solid
-                        };
-                        default.pack_fixed(&uniforms, bytes);
-                        device.draw(default, bytes, quad, texture, placement)
-                    }
-                },
-                Ok(None) => {
-                    let default = if texture.is_some() {
-                        &passes.surface
-                    } else {
-                        &passes.solid
-                    };
-                    default.pack_fixed(&uniforms, bytes);
-                    device.draw(default, bytes, quad, texture, placement)
-                }
-                Err(error) => {
-                    refusal = Some(error);
-                    let default = if texture.is_some() {
-                        &passes.surface
-                    } else {
-                        &passes.solid
-                    };
-                    default.pack_fixed(&uniforms, bytes);
-                    device.draw(default, bytes, quad, texture, placement)
-                }
-            }
+            let program = if texture.is_some() {
+                &passes.surface
+            } else {
+                &passes.solid
+            };
+            program.pack(&uniforms, bytes);
+            device.draw(program, bytes, quad, texture, placement)
         };
-        if let Some(error) = refusal {
-            self.report(error);
-        }
         match (drawn, fade) {
             (Ok(()), Some(factor)) => self.fade_group(quad, factor),
             (drawn, _) => drawn,
@@ -958,7 +824,7 @@ impl Painter<'_> {
             device, passes, bytes, ..
         } = self;
         let uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], Color::WHITE, 1.0, 0.0);
-        passes.surface.pack_fixed(&uniforms, bytes);
+        passes.surface.pack(&uniforms, bytes);
         device.draw(&passes.surface, bytes, quad, Some(texture), QuadPlacement::FLAT)
     }
 
@@ -988,7 +854,7 @@ impl Painter<'_> {
         let mut uniforms = Uniforms::solid(quad, shadow.color, Color::WHITE, shadow.opacity);
         uniforms.corner = radius;
         uniforms.params = [blur, blur, blur, 0.0];
-        passes.shadow.pack_fixed(&uniforms, bytes);
+        passes.shadow.pack(&uniforms, bytes);
         device.draw(&passes.shadow, bytes, quad, None, QuadPlacement::FLAT)
     }
 
@@ -1065,7 +931,7 @@ impl Painter<'_> {
             uniforms.params = [step / physical.width as f32, 0.0, 1.0, 1.0];
             device.begin(second)?;
             device.scissor(Some(region));
-            passes.blur.pack_fixed(&uniforms, bytes);
+            passes.blur.pack(&uniforms, bytes);
             device.draw(&passes.blur, bytes, region, Some(first.texture()), QuadPlacement::FLAT)?;
             device.end()?;
             // The vertical sweep writes back into the group over the same region, so the next
@@ -1085,7 +951,7 @@ impl Painter<'_> {
             };
             device.begin(first)?;
             device.scissor(Some(write));
-            passes.blur.pack_fixed(&uniforms, bytes);
+            passes.blur.pack(&uniforms, bytes);
             device.draw(&passes.blur, bytes, region, Some(second.texture()), QuadPlacement::FLAT)?;
         }
         // Back to the damage scissor, which the rest of this rectangle's passes expect.
@@ -1129,7 +995,7 @@ impl Painter<'_> {
         device.scissor(Some(*clip));
         device.blend_group(opacity)?;
         let uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, 1.0, 0.0);
-        passes.surface.pack_fixed(&uniforms, bytes);
+        passes.surface.pack(&uniforms, bytes);
         let drawn = device.draw(&passes.surface, bytes, rect, Some(group.texture()), QuadPlacement::FLAT);
         device.blend_premultiplied()?;
         drawn
@@ -1145,15 +1011,6 @@ impl Painter<'_> {
         let second = self.device.target(self.physical)?;
         *self.scratch = Some([first, second]);
         Ok(())
-    }
-
-    /// Records a refusal, once per frame at most: a shader that fails every frame must not
-    /// log a line per frame for the life of the session.
-    fn report(&mut self, error: ShaderError) {
-        if self.error.is_none() {
-            log::warn!(area = "render", %error, "a user shader was refused; its pass is disabled");
-            *self.error = Some(error);
-        }
     }
 
     /// Lifts the scissor and sends the frame to the driver.
@@ -1198,34 +1055,6 @@ impl Painter<'_> {
         device.end()?;
         drawn
     }
-}
-
-/// The program and uniform values a layer's shader pass runs with.
-///
-/// A pass whose schema is not the registered shader's is a refusal: the values belong to the
-/// pass, the declaration belongs to the source, and only agreement between them makes an
-/// upload meaningful.
-fn resolve<'a>(
-    user: &'a mut Option<Registered>,
-    effects: &Effects,
-) -> Result<Option<(&'a Program, Vec<gnoblin_render::ResolvedUniform>)>, ShaderError> {
-    let Some(pass) = effects.passes().iter().find_map(|pass| match pass {
-        Pass::Shader(shader) => Some(shader),
-        Pass::Blur(_) | Pass::Shadow(_) => None,
-    }) else {
-        return Ok(None);
-    };
-    let Some(registered) = user.as_mut() else {
-        // A shader pass with no registered source draws the layer normally: the caller asked
-        // for a pass the session has not provided a shader for.
-        return Ok(None);
-    };
-    if pass.schema() != &registered.shader.schema {
-        return Err(ShaderError::refusal(
-            "a pass declares a uniform schema the registered shader does not have".to_owned(),
-        ));
-    }
-    Ok(registered.program.as_ref().map(|program| (program, pass.resolved())))
 }
 
 impl Passes {

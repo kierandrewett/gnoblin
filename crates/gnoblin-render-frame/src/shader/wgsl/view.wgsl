@@ -1,7 +1,7 @@
 // The whole-output pass that applies the magnifier view and the colour matrix.
 //
 // It is a separate pass with its own small uniform block, not the 96-byte block of the
-// preamble: nothing a user shader declares reaches it, and the layer passes never see its
+// preamble: the layer passes never see its
 // fields. The renderer copies the finished output into a scratch target and draws this
 // stage over the whole output, sampling the copy, so every pixel is read from what was
 // drawn before the view and the matrix were applied. The draw replaces the output rather

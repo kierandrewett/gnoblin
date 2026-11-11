@@ -46,7 +46,7 @@
 //! | `scene` | The node tree, transforms, damage recording, hit testing |
 //! | `damage` | Per-output damage rectangles and the merge rule |
 //! | `tween` | Animation tracks and their terminal reports |
-//! | `effect` | Per-node visual effects (blur, shadow, shader) |
+//! | `effect` | Per-node visual effects (blur, shadow) |
 //! | `property` | Typed visual property values and their kinds |
 //! | `camera`, `matrix` | Perspective and orthographic projection, 4x4 matrices |
 //! | `easing` | Timing curves for tracks |
@@ -74,8 +74,9 @@
 //!    `tween::tests::a_uniform_scale_track_supersedes_an_axis_track_and_the_other_axis_survives`.
 //! 3. Damage misses a child of a transformed parent:
 //!    `scene::tests::damage_covers_a_child_of_a_transformed_parent`.
-//! 4. A user shader uniform with the wrong type is accepted:
-//!    `effect::tests::a_wrong_uniform_type_is_refused_and_the_value_is_unchanged`.
+//! 4. An effect pass with a value outside its range, or a shadow with a depth offset, is accepted:
+//!    `effect::tests::a_blur_refuses_an_out_of_range_value_by_name`,
+//!    `effect::tests::a_3d_shadow_offset_is_refused_by_name`.
 //! 5. Retarget jumps the value: `tween::tests::retarget_never_jumps_the_value`.
 //! 6. A move leaves the old pixels behind:
 //!    `scene::tests::damage_covers_where_a_node_was_before_it_moved`.
@@ -110,9 +111,6 @@
 //! 16. A hit test misses a transformed node:
 //!     `scene::tests::hit_testing_goes_through_the_inverse_transform`,
 //!     `scene::tests::a_rotated_parent_is_hit_through_the_inverse_rotation`.
-//! 17. An undeclared or reserved shader uniform is accepted:
-//!     `effect::tests::an_undeclared_uniform_is_refused`,
-//!     `effect::tests::a_reserved_or_malformed_name_is_refused`.
 //!
 //! # Model test
 //!
@@ -160,10 +158,10 @@ pub use camera::{Camera, CameraError, Projection};
 
 /// Damage rectangles per output and the merge helper.
 pub use damage::{Damage, OutputDamage, merge_rects};
-/// Per-node visual effects (blur, shadow, custom shader) and their limits.
+/// Per-node visual effects (blur, shadow) and their limits.
 pub use effect::{
     BlurParams, EffectError, EffectExtent, Effects, MAX_BLUR_GRADE, MAX_BLUR_PASSES, MAX_BLUR_RADIUS, MAX_PASSES,
-    MAX_UNIFORMS, MIN_BLUR_DOWNSCALE, Pass, ResolvedUniform, Shader, Shadow, UniformSchema, UniformType, UniformValue,
+    MIN_BLUR_DOWNSCALE, Pass, Shadow,
 };
 /// Geometry and identity types re-exported from `gnoblin-types`.
 pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsupported3d, Unsupported3dField, Vec3};

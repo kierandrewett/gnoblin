@@ -26,7 +26,7 @@ use crate::log;
 pub enum RendererKind {
     /// Smithay's Pixman renderer: pixels with no GPU.
     Software,
-    /// Smithay's GLES renderer: effects and user shaders, on a surfaceless EGL context when
+    /// Smithay's GLES renderer: effects, on a surfaceless EGL context when
     /// it draws offscreen.
     Gles,
     /// The Vulkan renderer on the device the loader offers, which may be a software driver.
@@ -191,7 +191,7 @@ impl AnyRenderer {
 
     /// The GLES renderer, when this is one.
     ///
-    /// A caller that wants the draw counter or a shader error asks for it here; the other
+    /// A caller that wants the draw counter asks for it here; the other
     /// renderers answer [`None`], because a question about a GL device has no answer without
     /// one.
     #[must_use]

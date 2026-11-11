@@ -3,7 +3,7 @@
 //!
 //! The pass has its own uniform block of 128 bytes, laid out as `GnoblinView` in
 //! `wgsl/view.wgsl`: eight `vec4`s, so std140 and WGSL agree on the offsets without padding.
-//! It is never the 96-byte user-shader block, so a user shader's declared fields cannot reach
+//! It is never the 96-byte layer block, so a layer pass cannot reach
 //! it and this pass cannot change what a layer pass reads.
 //!
 //! The pass runs only when the frame has a view or a matrix that changes a pixel. An identity

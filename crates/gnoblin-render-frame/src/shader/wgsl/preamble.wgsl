@@ -1,17 +1,13 @@
 // The preamble every fragment stage is compiled with.
 //
-// One uniform block serves every pass, generated once here and shared by the effect
-// shaders and the user shader, so a pass uploads one small buffer and a user shader
-// gets its declared uniforms appended to the same struct at the offset the layout
-// rules give them.
+// One uniform block serves every pass, so a pass uploads one small buffer.
 //
 // Layout rule: every member is a `vec4` except the trailing `corner` and `opacity`
 // scalars and the `vec2` padding. The struct is therefore 96 bytes, a multiple of 16,
 // which is the alignment that WGSL's uniform layout and GLSL's `std140` both give it.
-// A user field therefore starts at offset 96 in both languages, and `UniformLayout` in
-// `program.rs` is the CPU side of that agreement.
+// `Uniforms::pack` in `uniforms.rs` is the CPU side of that agreement.
 //
-// The `textureSample` pair is declared here rather than in each body so a user shader
+// The `textureSample` pair is declared here rather than in each body so a pass
 // can sample the layer it is shading without declaring anything.
 
 struct Gnoblin {
@@ -32,10 +28,8 @@ struct Gnoblin {
     corner: f32,
     // Group opacity, 0 to 1.
     opacity: f32,
-    // Keeps the block a multiple of 16 bytes so a user field's offset is the same in
-    // both languages.
+    // Keeps the block a multiple of 16 bytes.
     padding: vec2<f32>,
-    // gnoblin:user-fields
 }
 
 @group(0) @binding(0) var<uniform> gnoblin: Gnoblin;

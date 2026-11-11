@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-render"
-description = "Scene graph, effects, user shaders, animation and tween player, and damage."
+description = "Scene graph, effects, animation and tween player, and damage."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

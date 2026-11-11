@@ -1,7 +1,7 @@
 // The vertex stage every pass shares.
 //
 // It is written in WGSL because the shader language of D12 is WGSL: the fragment
-// stages below are the effects and the user shaders, and this stage is the one quad
+// stages below are the effects, and this stage is the one quad
 // they all draw, so writing it in another language would mean two compilers for one
 // pass.
 //

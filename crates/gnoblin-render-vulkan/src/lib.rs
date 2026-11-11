@@ -21,7 +21,7 @@
 //! - **Damage**: only the damage is repainted. Each rectangle is a scissor, and overlapping
 //!   rectangles are made disjoint first so a translucent layer is never blended twice.
 //!
-//! Layers carrying a 3D model, the blur, shadow and shader passes and a buffer's
+//! Layers carrying a 3D model, the blur and shadow passes and a buffer's
 //! `set_buffer_transform` are not drawn, which is what the GLES renderer does for the last of
 //! them and what the design note schedules for the others.
 //!

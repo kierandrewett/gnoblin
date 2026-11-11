@@ -30,12 +30,11 @@ use smithay::backend::renderer::Texture as _;
 use smithay::backend::renderer::gles::{GlesError, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
 
-use gnoblin_render::ResolvedUniform;
 use gnoblin_types::{Color, Rect, Size};
 
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::shader::uniforms::{UniformLayout, Uniforms};
-use gnoblin_render_frame::shader::{ShaderError, Stage};
+use gnoblin_render_frame::shader::Stage;
+use gnoblin_render_frame::shader::uniforms::{BLOCK_BYTES, Uniforms};
 
 use crate::log;
 
@@ -116,8 +115,8 @@ pub(crate) struct GlContext {
     renderer: GlowRenderer,
     /// The one-pixel white texture a pass binds when it has no layer texture.
     ///
-    /// A solid layer carries no pixels, but a user shader still samples `gnoblin_tex`;
-    /// white is the identity for a multiply, so such a shader's own colour is the only
+    /// A solid layer carries no pixels, but every pass declares `gnoblin_tex`, so it needs a bound texture;
+    /// white is the identity for a multiply, so the pass's own colour is the only
     /// thing that shows.
     white: Texture,
     /// The size of the target last bound, which the vertex stage needs as an attribute.
@@ -125,16 +124,6 @@ pub(crate) struct GlContext {
 }
 
 impl GlContext {
-    /// The device on a fresh surfaceless GLES context.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unavailable`] when EGL offers no context on this machine.
-    #[cfg(test)]
-    pub(crate) fn new() -> Result<Self, RenderError> {
-        Self::on(super::egl::context()?)
-    }
-
     /// The device on `renderer`'s context, which the caller has made current or will have
     /// made current by the time this returns.
     ///
@@ -201,18 +190,12 @@ impl GlContext {
         name.contains("llvmpipe") || name.contains("softpipe") || name.contains("swrast")
     }
 
-    /// Links a program from GLSL sources and records its uniform layout.
+    /// Links a program from GLSL sources.
     ///
     /// # Errors
     ///
-    /// [`CompileFailure`] with the driver's log, which the caller turns into a line of the
-    /// shader that was written.
-    pub(crate) fn program(
-        &mut self,
-        vertex: &str,
-        fragment: &str,
-        layout: UniformLayout,
-    ) -> Result<Program, CompileFailure> {
+    /// [`CompileFailure`] with the driver's log.
+    pub(crate) fn program(&mut self, vertex: &str, fragment: &str) -> Result<Program, CompileFailure> {
         let built = self.renderer.with_context(|gl| unsafe {
             // SAFETY: compiling and linking only create and destroy names this closure owns;
             // nothing outside it refers to them until `Program` takes ownership of the linked
@@ -281,7 +264,6 @@ impl GlContext {
             program,
             buffer,
             geometry,
-            layout,
         })
     }
 
@@ -774,51 +756,28 @@ fn context_compile_lost(error: GlesError) -> CompileFailure {
     }
 }
 
-/// A program: the linked GLSL, its uniform buffer and its layout.
+/// A program: the linked GLSL and its uniform buffer.
 pub(crate) struct Program {
     program: glow::Program,
     /// The uniform block's buffer.
     buffer: glow::Buffer,
     /// The geometry buffer this program's draws upload their vertices to.
     geometry: glow::Buffer,
-    /// Where each uniform sits in the block.
-    layout: UniformLayout,
 }
 
 impl std::fmt::Debug for Program {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("Program")
-            .field("bytes", &self.layout.bytes())
+            .field("bytes", &BLOCK_BYTES)
             .finish_non_exhaustive()
     }
 }
 
 impl Program {
-    /// Packs the uniforms of a pass that declares no user field.
-    ///
-    /// It cannot fail: a program with no user fields packs only the fixed members, and a
-    /// failed pack of those would be a bug in the layout rather than in a caller's value.
-    pub(crate) fn pack_fixed(&self, uniforms: &Uniforms, out: &mut Vec<u8>) {
-        if let Err(error) = self.layout.pack(uniforms, &[], out) {
-            log::debug!(area = "render", %error, "an effect pass failed to pack its uniforms");
-        }
-    }
-
-    /// Packs the uniforms of the next draw, checking each value against the declaration.
-    ///
-    /// # Errors
-    ///
-    /// [`ShaderError`] when a value's type is not the type the compiled shader declares for
-    /// that name: uploading it would put four bytes where a vector belongs, which reads back
-    /// as a value nobody wrote.
-    pub(crate) fn pack(
-        &self,
-        uniforms: &Uniforms,
-        values: &[ResolvedUniform],
-        out: &mut Vec<u8>,
-    ) -> Result<(), ShaderError> {
-        self.layout.pack(uniforms, values, out)
+    /// Packs the uniforms of the next draw. Every pass shares one fixed block, so it cannot fail.
+    pub(crate) fn pack(&self, uniforms: &Uniforms, out: &mut Vec<u8>) {
+        uniforms.pack(out);
     }
 }
 

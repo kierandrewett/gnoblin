@@ -208,9 +208,8 @@ pub enum TreeValue {
     ListDouble(Vec<f64>),
     /// A list of strings.
     ListText(Vec<String>),
-    /// A list of effect passes, at most [`MAX_EFFECTS`] long. Only blur and shadow are
-    /// accepted; a shader pass is refused, because the compositor does not run them from
-    /// the tree yet.
+    /// A list of effect passes, at most [`MAX_EFFECTS`] long. Only blur and shadow exist;
+    /// the tree has no user shader pass, so any other kind is refused before it gets here.
     Effects(Vec<Pass>),
     /// A node reference, or `None` for nil.
     Node(Option<NodeId>),
@@ -870,14 +869,9 @@ fn size_within(len: usize, cap: usize) -> Result<(), Code> {
     if len <= cap { Ok(()) } else { Err(Code::TooLarge) }
 }
 
-/// Check one pass of an `effects` list. Only blur and shadow are accepted: a shader pass
-/// is refused `bad-value`, because the tree cannot carry a compiled module yet. A value
-/// that is NaN or infinite is `not-finite`; any other out-of-range value is `out-of-range`.
+/// Check one pass of an `effects` list: its values must be finite and in range. A value that
+/// is NaN or infinite is `not-finite`; any other out-of-range value is `out-of-range`.
 fn check_effect_pass(pass: &Pass) -> Result<(), Code> {
-    match pass {
-        Pass::Blur(_) | Pass::Shadow(_) => {}
-        Pass::Shader(_) => return Err(Code::BadValue),
-    }
     pass.validate().map_err(|error| match error {
         EffectError::Unsupported3d(_) => Code::BadValue,
         _ if pass_has_non_finite(pass) => Code::NotFinite,
@@ -916,7 +910,6 @@ fn pass_has_non_finite(pass: &Pass) -> bool {
         ]
         .iter()
         .any(|value| !value.is_finite()),
-        Pass::Shader(_) => false,
     }
 }
 

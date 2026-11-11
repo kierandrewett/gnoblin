@@ -21,7 +21,7 @@
 //! # The uniform block and the quad
 //!
 //! Each draw's 96-byte block is packed by the same code the GLES renderer uses
-//! ([`UniformLayout`]), so the two cannot disagree about an offset. The block sits at a
+//! ([`Uniforms::pack`]), so the two cannot disagree about an offset. The block sits at a
 //! 256-byte stride, which is the largest alignment Vulkan allows a dynamic uniform offset
 //! to demand. The shared vertex stage takes one instance of 22 floats per quad: the
 //! rectangle and the viewport, three columns of an optional projection and its parameters.
@@ -33,7 +33,7 @@ use smithay::utils::{Physical, Rectangle};
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
 use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface};
 use gnoblin_render_frame::geometry::physical_rect;
-use gnoblin_render_frame::shader::uniforms::{UniformLayout, Uniforms};
+use gnoblin_render_frame::shader::uniforms::Uniforms;
 
 /// The distance between two draws' uniform blocks, in bytes.
 pub(super) const UNIFORM_STRIDE: usize = 256;
@@ -257,10 +257,7 @@ impl Draws {
         quad: Rect,
         uniforms: &Uniforms,
     ) {
-        // The fixed layout has no user fields, so packing it cannot be refused.
-        if UniformLayout::fixed().pack(uniforms, &[], &mut self.block).is_err() {
-            return;
-        }
+        uniforms.pack(&mut self.block);
         let offset = built.draws.len() * UNIFORM_STRIDE;
         built.uniforms.resize(offset + UNIFORM_STRIDE, 0);
         built.uniforms[offset..offset + self.block.len()].copy_from_slice(&self.block);

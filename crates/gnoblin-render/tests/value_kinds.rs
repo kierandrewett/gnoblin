@@ -8,7 +8,7 @@ use gnoblin_render::transaction::{
     ClassInfo, Code, MAX_EFFECTS, MAX_LIST, MAX_TEXT_BYTES, PropertyInfo, TreeOp, TreeRefusal, TreeTransaction,
     TreeValue, ValueType, validate_and_apply,
 };
-use gnoblin_render::{BlurParams, Pass, Shader, UniformSchema};
+use gnoblin_render::{BlurParams, Pass};
 use gnoblin_render::{NodeSpec, Scene};
 use gnoblin_types::{NodeId, Rect};
 
@@ -335,17 +335,6 @@ fn effects_over_the_cap_are_too_large() {
             set(win, "effects", TreeValue::Effects(vec![blur; MAX_EFFECTS + 1])),
         ),
         Code::TooLarge,
-    );
-}
-
-#[test]
-fn a_shader_effect_is_refused_as_bad_value() {
-    let mut scene = scene();
-    let win = node(&mut scene, 0x100, "Window");
-    let shader = Pass::Shader(Shader::new(UniformSchema::default()));
-    assert_refused(
-        apply(&mut scene, set(win, "effects", TreeValue::Effects(vec![shader]))),
-        Code::BadValue,
     );
 }
 

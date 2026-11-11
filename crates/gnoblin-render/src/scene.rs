@@ -336,7 +336,7 @@ pub enum SceneError {
     Camera(CameraError),
     /// A property value was refused.
     Property(PropertyError),
-    /// An effect or uniform was refused.
+    /// An effect was refused.
     Effect(EffectError),
     /// The actor may not destroy or move this node: it belongs to another actor.
     NotOwner(NodeId),

@@ -1,12 +1,10 @@
-//! Effects: an ordered list of named passes with typed uniforms.
+//! Effects: an ordered list of named passes, blur and shadow.
 //!
 //! The plan gives the renderer effects as GLES passes (Renderer card). This
 //! module is the scene-side description of those passes: a pass names what it
-//! is, carries the values the shader or effect needs, and is validated where it
-//! enters the scene so the renderer never has to guess. A user shader declares
-//! its uniforms in a [`UniformSchema`]; every value set on it is checked against
-//! that declaration, so a float written into a `vec4` slot is refused before a
-//! frame is drawn rather than silently reading as the wrong component.
+//! is, carries the values the effect needs, and is validated where it enters
+//! the scene, so the renderer never has to guess. There is no user shader pass:
+//! the compositor ships blur and shadow, and the tree refuses any other kind.
 //!
 //! Order is the pass order: a list is applied in the order it was pushed, which
 //! is what makes "blur then recolour" a different description from "recolour
@@ -15,8 +13,6 @@
 //! Shadow offsets are [`Vec3`] even though this build only accepts `z == 0`, for
 //! the same reason transforms are: a depth value is refused with the named
 //! `unsupported-3d` error instead of being silently dropped.
-
-use std::collections::BTreeMap;
 
 use gnoblin_types::{Color, RectF, Unsupported3d, Unsupported3dField, Vec3};
 
@@ -27,249 +23,8 @@ use gnoblin_types::{Color, RectF, Unsupported3d, Unsupported3dField, Vec3};
 /// refused and the caller can simplify the chain.
 pub const MAX_PASSES: usize = 32;
 
-/// The largest number of uniforms one user shader may declare.
-pub const MAX_UNIFORMS: usize = 32;
-
 /// The largest blur radius a pass accepts, in logical pixels.
 pub const MAX_BLUR_RADIUS: f32 = 100.0;
-
-/// A uniform's declared type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UniformType {
-    /// One float.
-    Float,
-    /// Two floats.
-    Vec2,
-    /// Three floats.
-    Vec3,
-    /// Four floats.
-    Vec4,
-    /// One signed integer.
-    Int,
-}
-
-impl UniformType {
-    /// The type's spelling in a uniform declaration.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Float => "float",
-            Self::Vec2 => "vec2",
-            Self::Vec3 => "vec3",
-            Self::Vec4 => "vec4",
-            Self::Int => "int",
-        }
-    }
-
-    /// The value a shader reads when the caller set nothing.
-    ///
-    /// The shader guide documents unset custom uniforms as zero; keeping the
-    /// default here means a declaration alone is enough to render.
-    #[must_use]
-    pub const fn default_value(self) -> UniformValue {
-        match self {
-            Self::Float => UniformValue::Float(0.0),
-            Self::Vec2 => UniformValue::Vec2([0.0; 2]),
-            Self::Vec3 => UniformValue::Vec3([0.0; 3]),
-            Self::Vec4 => UniformValue::Vec4([0.0; 4]),
-            Self::Int => UniformValue::Int(0),
-        }
-    }
-}
-
-/// A uniform's value, carrying its type.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum UniformValue {
-    /// One float.
-    Float(f32),
-    /// Two floats.
-    Vec2([f32; 2]),
-    /// Three floats.
-    Vec3([f32; 3]),
-    /// Four floats.
-    Vec4([f32; 4]),
-    /// One signed integer.
-    Int(i32),
-}
-
-impl UniformValue {
-    /// The value's type.
-    #[must_use]
-    pub const fn kind(self) -> UniformType {
-        match self {
-            Self::Float(_) => UniformType::Float,
-            Self::Vec2(_) => UniformType::Vec2,
-            Self::Vec3(_) => UniformType::Vec3,
-            Self::Vec4(_) => UniformType::Vec4,
-            Self::Int(_) => UniformType::Int,
-        }
-    }
-
-    /// Whether every component is finite.
-    #[must_use]
-    pub fn is_finite(self) -> bool {
-        match self {
-            Self::Float(value) => value.is_finite(),
-            Self::Vec2(values) => values.iter().all(|value| value.is_finite()),
-            Self::Vec3(values) => values.iter().all(|value| value.is_finite()),
-            Self::Vec4(values) => values.iter().all(|value| value.is_finite()),
-            Self::Int(_) => true,
-        }
-    }
-}
-
-/// The uniforms a user shader declares, with their types.
-///
-/// The schema is a name and type list, not a map, so the renderer can build the
-/// shader's uniform block in declaration order and the refusal for a duplicate
-/// name is a property of the declaration rather than of insertion order.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct UniformSchema {
-    entries: Vec<(String, UniformType)>,
-}
-
-impl UniformSchema {
-    /// A schema from its declarations.
-    pub fn new(entries: Vec<(&str, UniformType)>) -> Result<Self, EffectError> {
-        if entries.len() > MAX_UNIFORMS {
-            return Err(EffectError::TooManyUniforms {
-                max: MAX_UNIFORMS,
-                got: entries.len(),
-            });
-        }
-        let mut declared: Vec<(String, UniformType)> = Vec::with_capacity(entries.len());
-        for (name, kind) in entries {
-            validate_uniform_name(name)?;
-            if declared.iter().any(|(existing, _)| existing == name) {
-                return Err(EffectError::DuplicateUniform { name: name.to_owned() });
-            }
-            declared.push((name.to_owned(), kind));
-        }
-        Ok(Self { entries: declared })
-    }
-
-    /// The declarations, in order.
-    #[must_use]
-    pub fn entries(&self) -> &[(String, UniformType)] {
-        &self.entries
-    }
-
-    /// The declared type of a name.
-    #[must_use]
-    pub fn kind_of(&self, name: &str) -> Option<UniformType> {
-        self.entries
-            .iter()
-            .find(|(declared, _)| declared == name)
-            .map(|(_, kind)| *kind)
-    }
-
-    /// The number of declarations.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Whether the shader declares no uniform.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-}
-
-/// Check a uniform name against the shader guide's rules.
-fn validate_uniform_name(name: &str) -> Result<(), EffectError> {
-    let valid = !name.is_empty()
-        && name.len() <= 64
-        && name.starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_');
-    if !valid {
-        return Err(EffectError::InvalidUniformName { name: name.to_owned() });
-    }
-    if name.starts_with("gnoblin_") {
-        return Err(EffectError::ReservedUniform { name: name.to_owned() });
-    }
-    Ok(())
-}
-
-/// A resolved uniform, in declaration order.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ResolvedUniform {
-    /// The declared name.
-    pub name: String,
-    /// The declared type.
-    pub kind: UniformType,
-    /// The value, or the type's zero when the caller set none.
-    pub value: UniformValue,
-}
-
-/// A user shader pass with its declared uniforms and current values.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Shader {
-    schema: UniformSchema,
-    values: BTreeMap<String, UniformValue>,
-}
-
-impl Shader {
-    /// A shader from a validated schema.
-    #[must_use]
-    pub fn new(schema: UniformSchema) -> Self {
-        Self {
-            schema,
-            values: BTreeMap::new(),
-        }
-    }
-
-    /// The shader's declarations.
-    #[must_use]
-    pub fn schema(&self) -> &UniformSchema {
-        &self.schema
-    }
-
-    /// Set a declared uniform.
-    ///
-    /// An undeclared name is refused rather than ignored: the shader never reads
-    /// it, so accepting it would make a typo look like a working configuration.
-    pub fn set_uniform(&mut self, name: &str, value: UniformValue) -> Result<(), EffectError> {
-        let expected = self
-            .schema
-            .kind_of(name)
-            .ok_or_else(|| EffectError::UnknownUniform { name: name.to_owned() })?;
-        if expected != value.kind() {
-            return Err(EffectError::WrongUniformType {
-                name: name.to_owned(),
-                expected,
-                got: value.kind(),
-            });
-        }
-        if !value.is_finite() {
-            return Err(EffectError::NonFinite { field: "uniform" });
-        }
-        self.values.insert(name.to_owned(), value);
-        Ok(())
-    }
-
-    /// The value set for a name, if any.
-    #[must_use]
-    pub fn uniform(&self, name: &str) -> Option<UniformValue> {
-        self.values.get(name).copied()
-    }
-
-    /// Every declared uniform with its value, in declaration order.
-    #[must_use]
-    pub fn resolved(&self) -> Vec<ResolvedUniform> {
-        self.schema
-            .entries()
-            .iter()
-            .map(|(name, kind)| ResolvedUniform {
-                name: name.clone(),
-                kind: *kind,
-                value: self.values.get(name).copied().unwrap_or(kind.default_value()),
-            })
-            .collect()
-    }
-}
 
 /// The most blur passes one blur effect may run.
 pub const MAX_BLUR_PASSES: u32 = 8;
@@ -380,8 +135,6 @@ pub enum Pass {
     Blur(BlurParams),
     /// A drop shadow.
     Shadow(Shadow),
-    /// A user fragment shader.
-    Shader(Shader),
 }
 
 impl Pass {
@@ -391,7 +144,6 @@ impl Pass {
         match self {
             Self::Blur(_) => "blur",
             Self::Shadow(_) => "shadow",
-            Self::Shader(_) => "shader",
         }
     }
 
@@ -443,14 +195,6 @@ impl Pass {
                 }
                 Ok(())
             }
-            Self::Shader(shader) => {
-                for resolved in shader.resolved() {
-                    if !resolved.value.is_finite() {
-                        return Err(EffectError::NonFinite { field: "uniform" });
-                    }
-                }
-                Ok(())
-            }
         }
     }
 
@@ -474,7 +218,7 @@ impl Pass {
                     bottom: (blur + shadow.offset.y).max(0.0),
                 }
             }
-            Self::Blur(_) | Self::Shader(_) => EffectExtent::ZERO,
+            Self::Blur(_) => EffectExtent::ZERO,
         }
     }
 }
@@ -649,7 +393,7 @@ impl EffectExtent {
     }
 }
 
-/// A refused effect or uniform.
+/// A refused effect.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectError {
     /// A value needs depth support.
@@ -660,42 +404,6 @@ pub enum EffectError {
         max: usize,
         /// The size including the refused pass.
         got: usize,
-    },
-    /// The shader declares too many uniforms.
-    TooManyUniforms {
-        /// The cap.
-        max: usize,
-        /// The size including the refused declaration.
-        got: usize,
-    },
-    /// A uniform name is not a legal identifier.
-    InvalidUniformName {
-        /// The refused name.
-        name: String,
-    },
-    /// A uniform name uses the reserved prefix.
-    ReservedUniform {
-        /// The refused name.
-        name: String,
-    },
-    /// A name is declared twice.
-    DuplicateUniform {
-        /// The repeated name.
-        name: String,
-    },
-    /// A value was set for a name the shader does not declare.
-    UnknownUniform {
-        /// The undeclared name.
-        name: String,
-    },
-    /// A value's type differs from the declaration.
-    WrongUniformType {
-        /// The name.
-        name: String,
-        /// The declared type.
-        expected: UniformType,
-        /// The supplied type.
-        got: UniformType,
     },
     /// A component is NaN or infinite.
     NonFinite {
@@ -720,19 +428,6 @@ impl std::fmt::Display for EffectError {
             Self::TooManyPasses { max, got } => {
                 write!(formatter, "an effect chain allows {max} passes, got {got}")
             }
-            Self::TooManyUniforms { max, got } => {
-                write!(formatter, "a shader allows {max} uniforms, got {got}")
-            }
-            Self::InvalidUniformName { name } => write!(formatter, "`{name}` is not a uniform name"),
-            Self::ReservedUniform { name } => write!(formatter, "`{name}` uses the reserved `gnoblin_` prefix"),
-            Self::DuplicateUniform { name } => write!(formatter, "`{name}` is declared twice"),
-            Self::UnknownUniform { name } => write!(formatter, "the shader declares no uniform `{name}`"),
-            Self::WrongUniformType { name, expected, got } => write!(
-                formatter,
-                "`{name}` is declared {} and was given {}",
-                expected.name(),
-                got.name()
-            ),
             Self::NonFinite { field } => write!(formatter, "`{field}` is not finite"),
             Self::OutOfRange { field, min, max } => {
                 write!(formatter, "`{field}` must be between {min} and {max}")
@@ -746,68 +441,6 @@ impl std::error::Error for EffectError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn schema() -> UniformSchema {
-        UniformSchema::new(vec![("strength", UniformType::Float), ("tint", UniformType::Vec4)]).expect("valid schema")
-    }
-
-    #[test]
-    fn a_wrong_uniform_type_is_refused_and_the_value_is_unchanged() {
-        let mut shader = Shader::new(schema());
-        let error = shader
-            .set_uniform("strength", UniformValue::Vec4([0.0; 4]))
-            .expect_err("must refuse");
-        assert_eq!(
-            error,
-            EffectError::WrongUniformType {
-                name: "strength".to_owned(),
-                expected: UniformType::Float,
-                got: UniformType::Vec4,
-            }
-        );
-        assert_eq!(shader.uniform("strength"), None);
-    }
-
-    #[test]
-    fn an_undeclared_uniform_is_refused() {
-        let mut shader = Shader::new(schema());
-        let error = shader
-            .set_uniform("strengh", UniformValue::Float(0.5))
-            .expect_err("must refuse");
-        assert_eq!(
-            error,
-            EffectError::UnknownUniform {
-                name: "strengh".to_owned()
-            }
-        );
-    }
-
-    #[test]
-    fn a_reserved_or_malformed_name_is_refused() {
-        assert_eq!(
-            UniformSchema::new(vec![("gnoblin_width", UniformType::Float)]).expect_err("reserved"),
-            EffectError::ReservedUniform {
-                name: "gnoblin_width".to_owned()
-            }
-        );
-        assert!(matches!(
-            UniformSchema::new(vec![("1strength", UniformType::Float)]),
-            Err(EffectError::InvalidUniformName { .. })
-        ));
-        assert!(matches!(
-            UniformSchema::new(vec![("a", UniformType::Float), ("a", UniformType::Float)]),
-            Err(EffectError::DuplicateUniform { .. })
-        ));
-    }
-
-    #[test]
-    fn unset_uniforms_resolve_to_their_type_zero_in_declaration_order() {
-        let shader = Shader::new(schema());
-        let resolved = shader.resolved();
-        assert_eq!(resolved[0].name, "strength");
-        assert_eq!(resolved[0].value, UniformValue::Float(0.0));
-        assert_eq!(resolved[1].value, UniformValue::Vec4([0.0; 4]));
-    }
 
     #[test]
     fn a_shadow_extends_the_node_bounds_by_its_offset_and_blur() {

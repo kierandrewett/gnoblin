@@ -1,124 +1,37 @@
 //! The GLES shader compiler: WGSL in, GLSL ES 3.10 out, and a line number when it fails.
 //!
-//! D12's rule is that every effect and user shader is written once in one language and
-//! compiled per backend. The language is WGSL (`mod.rs` records why), `naga` is the
-//! compiler, and this module is the GLES half of it: the module is parsed and validated by
-//! `naga`, written as GLSL ES 3.10 by `naga`'s own backend, and only then handed to the
-//! driver. A shader that fails any step answers a [`ShaderError`] carrying the line of the
-//! *user's* source, and never a [`RenderError`]: a broken shader disables its own pass, not
-//! the frame.
+//! D12's rule is that every effect is written once in one language and compiled per backend.
+//! The language is WGSL (`mod.rs` records why), `naga` is the compiler, and this module is the
+//! GLES half of it: the module is parsed and validated by `naga`, written as GLSL ES 3.10 by
+//! `naga`'s own backend, and only then handed to the driver.
 //!
 //! The sources, the uniform block's layout and [`ShaderError`] are renderer-neutral and live
 //! in [`gnoblin_render_frame::shader`]; what stays here is what needs a GL driver.
 //!
 //! # Failure modes
 //!
-//! 1. **A shader with a syntax error kills the frame loop.** Compiling answers an error and
-//!    no program, and the caller keeps drawing:
-//!    `tests::a_broken_user_shader_leaves_the_frame_drawn`.
-//! 2. **An error points at the generated preamble instead of the user's line.** The
-//!    preamble's line count is subtracted, so the number a caller reports is the number the
-//!    user can count to: `tests::a_syntax_error_names_the_user_line`.
+//! 1. **A pass that does not compile draws garbage.** A shipped pass that fails any step
+//!    answers [`RenderError::Unavailable`] when the renderer is built, so a broken pass is a
+//!    startup failure and never a frame that fails at its first draw.
 
 use naga::back::glsl::{Options as GlslOptions, PipelineOptions, Version, Writer};
 use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
-use crate::gl::{CompileFailure, GlContext, Program};
+use crate::gl::{GlContext, Program};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::shader::sources as shaders;
-use gnoblin_render_frame::shader::uniforms::UniformLayout;
-use gnoblin_render_frame::shader::{ENTRY, ShaderError, ShaderOrigin, Stage};
+use gnoblin_render_frame::shader::{ENTRY, ShaderError, Stage};
 
 use crate::log;
 
-/// How a line in the generated module maps to a line of the source that was written.
-///
-/// A user's module is the preamble, then their source, then an entry point, so an error's
-/// line is the generated one minus the preamble's. The effect passes are generated whole by
-/// the compositor, so their lines are already the ones a reader can count to.
-#[derive(Clone, Copy)]
-struct Shift {
-    /// The number of generated lines before the writable source starts.
-    preamble: usize,
-    /// The number of lines the writable source has, which is the highest line an error can
-    /// point at.
-    user: usize,
-}
-
-impl Shift {
-    /// A module whose lines are all the compositor's.
-    const NONE: Self = Self {
-        preamble: 0,
-        user: usize::MAX,
-    };
-
-    /// A module that ends with a caller's source.
-    fn user(preamble: usize, user: usize) -> Self {
-        Self {
-            preamble,
-            user: user.max(1),
-        }
-    }
-
-    /// The line of the writable source a generated line refers to.
-    fn line(self, generated: usize) -> usize {
-        if generated > self.preamble {
-            (generated - self.preamble).min(self.user)
-        } else {
-            // The failure is in the generated part, which the caller cannot see; their first
-            // line is the closest true statement.
-            1
-        }
-    }
-}
-
-/// Compiles a user shader into a program on `device`.
-///
-/// The module is the preamble with the schema's uniforms in its block, the user's `shade`
-/// function and the generated entry point that maps the quad onto the layer's texture, so a
-/// user shader samples the pixels it is shading without knowing about crops, scale or
-/// orientation.
-///
-/// # Errors
-///
-/// [`ShaderError`] with the line of the user's own source. The caller keeps drawing.
-pub(crate) fn compile(
-    device: &mut GlContext,
-    source: &str,
-    schema: &gnoblin_render::UniformSchema,
-) -> Result<Program, ShaderError> {
-    let layout = UniformLayout::with_schema(schema);
-    let preamble = shaders::preamble(schema);
-    let mut module = String::with_capacity(preamble.len() + source.len() + shaders::USER_ENTRY.len());
-    module.push_str(&preamble);
-    module.push('\n');
-    let offset = module.lines().count();
-    module.push_str(source);
-    module.push('\n');
-    module.push_str(shaders::USER_ENTRY);
-    let shift = Shift::user(offset, source.lines().count());
-    let fragment = translate(&module, "user shader", Stage::Fragment, shift)?;
-    let vertex = translate(shaders::VERTEX, "vertex stage", Stage::Vertex, Shift::NONE)?;
-    device
-        .program(&vertex, &fragment, layout)
-        .map_err(|failure| from_failure(shift, failure))
-}
-
 /// Translates WGSL to GLSL ES 3.10.
-fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) -> Result<String, ShaderError> {
+fn translate(source: &str, pass: &'static str, stage: Stage) -> Result<String, ShaderError> {
     let module = Frontend::new().parse(source).map_err(|error| {
         let (line, column) = error.location(source).map_or((0, 0), |location| {
             (location.line_number as usize, location.line_position as usize)
         });
-        ShaderError::new(
-            ShaderOrigin::Effect(context),
-            stage,
-            shift.line(line),
-            column,
-            error.message().to_owned(),
-        )
+        ShaderError::new(pass, stage, line, column, error.message().to_owned())
     })?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
@@ -126,13 +39,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
             let (line, column) = error.location(source).map_or((0, 0), |location| {
                 (location.line_number as usize, location.line_position as usize)
             });
-            ShaderError::new(
-                ShaderOrigin::Effect(context),
-                stage,
-                shift.line(line),
-                column,
-                format!("{error}"),
-            )
+            ShaderError::new(pass, stage, line, column, format!("{error}"))
         })?;
     let options = GlslOptions {
         version: Version::Embedded {
@@ -162,7 +69,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
     .map_err(|error| {
         log::debug!(area = "render", %error, "naga could not write GLSL");
         ShaderError::new(
-            ShaderOrigin::Effect(context),
+            pass,
             stage,
             0,
             0,
@@ -172,29 +79,6 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
     Ok(output)
 }
 
-/// Turns a driver failure into an error at the line of the user's source.
-///
-/// A driver's log is `ERROR: 0:12: message`, where the middle field is the line of the
-/// *generated* module; the preamble's lines come off it. A failure inside the preamble
-/// itself is reported at the user's first line, because their source is the only one they
-/// can act on.
-fn from_failure(shift: Shift, failure: CompileFailure) -> ShaderError {
-    let mut line = 0;
-    for part in failure.log.split(':') {
-        if let Ok(number) = part.trim().parse::<usize>() {
-            line = number;
-            break;
-        }
-    }
-    line = shift.line(line);
-    let detail = if failure.log.trim().is_empty() {
-        format!("{} was refused by the driver", failure.stage)
-    } else {
-        failure.log
-    };
-    ShaderError::new(ShaderOrigin::User, failure.stage, line, 0, detail)
-}
-
 /// Links an effect program from its WGSL stages.
 ///
 /// # Errors
@@ -202,18 +86,16 @@ fn from_failure(shift: Shift, failure: CompileFailure) -> ShaderError {
 /// [`RenderError::Unavailable`] when a pass the compositor ships fails to compile, which is a
 /// bug in the tree rather than a caller's mistake: there is no frame to draw without it.
 pub(crate) fn link(device: &mut GlContext, vertex: &str, fragment: &str) -> Result<Program, RenderError> {
-    let vertex_glsl = translate(vertex, "vertex stage", Stage::Vertex, Shift::NONE).map_err(|error| {
+    let vertex_glsl = translate(vertex, "vertex", Stage::Vertex).map_err(|error| {
         log::debug!(area = "render", %error, "an effect pass does not compile");
         RenderError::Unavailable
     })?;
-    let fragment_glsl = translate(fragment, "effect pass", Stage::Fragment, Shift::NONE).map_err(|error| {
+    let fragment_glsl = translate(fragment, "effect", Stage::Fragment).map_err(|error| {
         log::debug!(area = "render", %error, "an effect pass does not compile");
         RenderError::Unavailable
     })?;
-    device
-        .program(&vertex_glsl, &fragment_glsl, UniformLayout::fixed())
-        .map_err(|failure| {
-            log::debug!(area = "render", ?failure, "an effect pass does not link");
-            RenderError::Unavailable
-        })
+    device.program(&vertex_glsl, &fragment_glsl).map_err(|failure| {
+        log::debug!(area = "render", ?failure, "an effect pass does not link");
+        RenderError::Unavailable
+    })
 }

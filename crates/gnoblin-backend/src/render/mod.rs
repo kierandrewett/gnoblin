@@ -9,7 +9,7 @@
 //! | -------------------------- | ------------------------------------------------------------------- |
 //! | `gnoblin-render-frame`     | the renderer-neutral seam: `OutputFrame`, layers, overlays, `Image`, geometry, shared WGSL shaders, `RenderError`, `wl_shm` writer |
 //! | `gnoblin-render-software`  | Pixman: the frame into an offscreen buffer, damage-only             |
-//! | `gnoblin-render-gles`      | Smithay's GLES renderer: the same frame with effects and shaders    |
+//! | `gnoblin-render-gles`      | Smithay's GLES renderer: the same frame with effects                |
 //! | `gnoblin-render-vulkan`    | `ash`: the same frame on a GPU or lavapipe (`vulkan` feature)        |
 //!
 //! This module keeps what needs the scene and the choice of renderer:
@@ -48,8 +48,8 @@
 //!
 //! `AnyRenderer` is an enum with one `match` per call, written once by a macro. A trait
 //! would name the same four calls, but they are all the three renderers have in common:
-//! GLES alone has an EGL display and context, a scan-out buffer, user shaders, a shader
-//! error and a draw counter; Vulkan owns its device and target; Pixman has neither. Every
+//! GLES alone has an EGL display and context, a scan-out buffer and a
+//! draw counter; Vulkan owns its device and target; Pixman has neither. Every
 //! caller that wants one of those would have to downcast out of a `Box<dyn ...>`, or the
 //! trait would grow methods two of the three implement as no-ops. The set is closed and
 //! chosen at build time, so an enum costs nothing a trait buys: adding a renderer is a

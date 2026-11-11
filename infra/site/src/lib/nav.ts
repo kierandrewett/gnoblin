@@ -119,7 +119,6 @@ export const NAV: NavSection[] = [
                     { label: "Window rules", slug: "guides/window_rules" },
                     { label: "Window effects", slug: "guides/window_effects" },
                     { label: "Animations", slug: "guides/animations" },
-                    { label: "Shaders", slug: "guides/shaders" },
                     { label: "Cursors", slug: "guides/cursors" },
                     { label: "Session settings", slug: "guides/session_settings" },
                     { label: "Window menu", slug: "guides/window_menu" },

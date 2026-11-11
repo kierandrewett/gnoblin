@@ -663,7 +663,6 @@ fn effect_spec(entry: &effect::Properties) -> EffectSpec {
 
 /// The wire entry a render pass echoes as. A blur's colour is the tint and a shadow's is
 /// its colour; each channel is quantised to eight bits, the form the compositor accepts.
-/// A shader pass has no wire form yet, so it echoes as an empty kind.
 fn effect_properties(pass: &Pass) -> effect::Properties {
     match pass {
         Pass::Blur(blur) => effect::Properties {
@@ -689,7 +688,6 @@ fn effect_properties(pass: &Pass) -> effect::Properties {
             colour: hex_colour(shadow.color),
             ..effect::Properties::default()
         },
-        Pass::Shader(_) => effect::Properties::default(),
     }
 }
 
