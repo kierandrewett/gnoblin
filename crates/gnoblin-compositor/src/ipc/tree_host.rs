@@ -11,8 +11,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
-use gnoblin_proto::tree::seat::ChordPayload;
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -47,6 +48,7 @@ pub mod member {
     pub const CHANGES: &str = "changes";
     pub const EVENT: &str = "event";
     pub const CHORD: &str = "chord";
+    pub const GESTURE: &str = "gesture";
     pub const ANSWER: &str = "answer";
 }
 
@@ -361,6 +363,11 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             kind: "chord".to_owned(),
             ..base
         },
+        // A claimed gesture is sent as the `gesture` signal, see `gesture_payload`.
+        TreeFrameInput::Gesture(_) => EventPayload {
+            kind: "gesture".to_owned(),
+            ..base
+        },
         TreeFrameInput::Input(input) => {
             let kind = input.name().to_owned();
             match input {
@@ -403,6 +410,21 @@ pub fn chord_payload(chord: &ChordEvent) -> ChordPayload {
             ChordState::Release => "release",
         }
         .to_owned(),
+    }
+}
+
+/// The `gesture` signal for a claimed touchpad gesture that advanced.
+#[must_use]
+pub fn gesture_payload(delivery: &GestureDelivery) -> GesturePayload {
+    GesturePayload {
+        id: delivery.id,
+        kind: delivery.kind.as_str().to_owned(),
+        fingers: i64::from(delivery.fingers),
+        phase: delivery.phase.as_str().to_owned(),
+        dx: delivery.dx,
+        dy: delivery.dy,
+        scale: delivery.scale,
+        rotation: delivery.rotation,
     }
 }
 

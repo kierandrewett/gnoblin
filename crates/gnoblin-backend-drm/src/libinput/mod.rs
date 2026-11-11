@@ -254,15 +254,7 @@ impl Libinput {
     ///
     /// A device the seat has not announced has no number to name, so its sample is dropped
     /// rather than attributed to another device.
-    fn gesture(
-        &mut self,
-        device: &libinput::Device,
-        kind: RawTouchpadKind,
-        phase: RawTouchpadPhase,
-        fingers: u8,
-        (dx, dy): (f64, f64),
-        scale: f64,
-    ) {
+    fn gesture(&mut self, device: &libinput::Device, kind: RawTouchpadKind, phase: RawTouchpadPhase, step: Step) {
         let sysname = device.sysname().to_string();
         let Some(known) = self.devices.iter().find(|known| known.sysname == sysname) else {
             log::warn!(area = "input", sysname = %sysname, "a gesture from a device that was never announced");
@@ -272,10 +264,11 @@ impl Libinput {
             device: known.id,
             phase,
             kind,
-            fingers,
-            dx,
-            dy,
-            scale,
+            fingers: step.fingers,
+            dx: step.delta.0,
+            dy: step.delta.1,
+            scale: step.scale,
+            angle: step.angle,
         }));
     }
 
@@ -385,9 +378,7 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Swipe,
                     RawTouchpadPhase::Begin,
-                    fingers,
-                    (0.0, 0.0),
-                    1.0,
+                    Step::begin(fingers),
                 );
             }
             BackendEvent::GestureSwipeUpdate { event } => {
@@ -396,14 +387,15 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Swipe,
                     RawTouchpadPhase::Update,
-                    0,
-                    (delta.x, -delta.y),
-                    1.0,
+                    Step {
+                        delta: (delta.x, delta.y),
+                        ..Step::REST
+                    },
                 );
             }
             BackendEvent::GestureSwipeEnd { event } => {
                 let phase = end_phase(event.cancelled());
-                self.gesture(&event.device(), RawTouchpadKind::Swipe, phase, 0, (0.0, 0.0), 1.0);
+                self.gesture(&event.device(), RawTouchpadKind::Swipe, phase, Step::REST);
             }
             BackendEvent::GesturePinchBegin { event } => {
                 let fingers = fingers_of(event.fingers());
@@ -411,25 +403,25 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Pinch,
                     RawTouchpadPhase::Begin,
-                    fingers,
-                    (0.0, 0.0),
-                    1.0,
+                    Step::begin(fingers),
                 );
             }
             BackendEvent::GesturePinchUpdate { event } => {
-                let scale = event.scale();
                 self.gesture(
                     &event.device(),
                     RawTouchpadKind::Pinch,
                     RawTouchpadPhase::Update,
-                    0,
-                    (event.delta_x(), event.delta_y()),
-                    scale,
+                    Step {
+                        delta: (event.delta_x(), event.delta_y()),
+                        scale: event.scale(),
+                        angle: event.angle_delta().to_radians(),
+                        ..Step::REST
+                    },
                 );
             }
             BackendEvent::GesturePinchEnd { event } => {
                 let phase = end_phase(event.cancelled());
-                self.gesture(&event.device(), RawTouchpadKind::Pinch, phase, 0, (0.0, 0.0), 1.0);
+                self.gesture(&event.device(), RawTouchpadKind::Pinch, phase, Step::REST);
             }
             BackendEvent::GestureHoldBegin { event } => {
                 let fingers = fingers_of(event.fingers());
@@ -437,14 +429,12 @@ impl Libinput {
                     &event.device(),
                     RawTouchpadKind::Hold,
                     RawTouchpadPhase::Begin,
-                    fingers,
-                    (0.0, 0.0),
-                    1.0,
+                    Step::begin(fingers),
                 );
             }
             BackendEvent::GestureHoldEnd { event } => {
                 let phase = end_phase(event.cancelled());
-                self.gesture(&event.device(), RawTouchpadKind::Hold, phase, 0, (0.0, 0.0), 1.0);
+                self.gesture(&event.device(), RawTouchpadKind::Hold, phase, Step::REST);
             }
             // A touch frame is the boundary between two atomic updates, which the seat applies
             // in order anyway; a tablet tool is read by `gnoblin-input` from the raw channel,
@@ -515,6 +505,30 @@ pub fn kind_of(device: &libinput::Device) -> DeviceKind {
 /// The finger count libinput reports, clamped to the range a gesture can carry.
 fn fingers_of(fingers: u32) -> u8 {
     u8::try_from(fingers).unwrap_or(u8::MAX)
+}
+
+/// What one gesture sample carries besides its phase and kind.
+#[derive(Clone, Copy)]
+struct Step {
+    fingers: u8,
+    delta: (f64, f64),
+    scale: f64,
+    angle: f64,
+}
+
+impl Step {
+    /// A sample that moved nothing: no fingers named, no movement, a scale of one.
+    const REST: Self = Self {
+        fingers: 0,
+        delta: (0.0, 0.0),
+        scale: 1.0,
+        angle: 0.0,
+    };
+
+    /// A begin, which names its finger count and moves nothing.
+    const fn begin(fingers: u8) -> Self {
+        Self { fingers, ..Self::REST }
+    }
 }
 
 /// The phase a gesture's end reports, given whether libinput cancelled it.

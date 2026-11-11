@@ -9,7 +9,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use gnoblin_proto::tree::seat::ChordPayload;
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload,
     TransactArgs,
@@ -18,8 +18,8 @@ use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
 
 use crate::tree_mirror::{
-    Attached, LinkError, LuaChange, LuaChord, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
-    SnapshotNode, TreeEvent, TreeLink, TxReply,
+    Attached, LinkError, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue,
+    MirrorChangeKind, SnapshotNode, TreeEvent, TreeLink, TxReply,
 };
 
 const NAMESPACE: &str = "tree";
@@ -335,6 +335,21 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                 claim: payload.id,
                 chord: payload.chord,
                 state: payload.state,
+            }))
+        }
+        (Some(Kind::Event(_)), "gesture") => {
+            let payload = envelope
+                .payload_as::<GesturePayload>()
+                .ok_or_else(|| undecodable(member))?;
+            Ok(LuaIncoming::Gesture(LuaGesture {
+                claim: payload.id,
+                kind: payload.kind,
+                fingers: payload.fingers,
+                phase: payload.phase,
+                dx: payload.dx,
+                dy: payload.dy,
+                scale: payload.scale,
+                rotation: payload.rotation,
             }))
         }
         (Some(Kind::Event(_)), "changes") => {

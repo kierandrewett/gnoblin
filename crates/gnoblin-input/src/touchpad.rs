@@ -51,6 +51,8 @@ pub struct TouchpadSample {
     pub dy: f64,
     /// Cumulative scale since the begin; one for a swipe.
     pub scale: f64,
+    /// Rotation since the previous sample in radians, clockwise positive; zero for a swipe.
+    pub angle: f64,
 }
 
 /// The gesture in flight, if any.
@@ -119,7 +121,7 @@ impl TouchpadStream {
                     dx: sample.dx,
                     dy: sample.dy,
                     scale: sample.scale,
-                    angle_delta: 0.0,
+                    angle_delta: sample.angle,
                 })
             }
             TouchpadPhase::End => {
@@ -160,6 +162,7 @@ mod tests {
             dx,
             dy,
             scale,
+            angle: 0.0,
         }
     }
 
@@ -276,6 +279,23 @@ mod tests {
                 assert!((scale - 0.6).abs() < 1e-9);
             }
             other => panic!("expected a pinch end, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_pinch_update_carries_the_rotation_since_the_last_sample() {
+        let mut stream = TouchpadStream::default();
+        stream.feed(
+            Tick::new(1),
+            sample(TouchpadPhase::Begin, TouchpadKind::Pinch, 0.0, 0.0, 1.0),
+        );
+        let turned = TouchpadSample {
+            angle: 0.25,
+            ..sample(TouchpadPhase::Update, TouchpadKind::Pinch, 0.0, 0.0, 1.1)
+        };
+        match stream.feed(Tick::new(2), turned) {
+            Some(GestureEvent::Update { angle_delta, .. }) => assert!((angle_delta - 0.25).abs() < 1e-9),
+            other => panic!("expected a pinch update, got {other:?}"),
         }
     }
 }

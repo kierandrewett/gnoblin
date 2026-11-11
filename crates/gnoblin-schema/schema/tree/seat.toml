@@ -194,6 +194,31 @@ name = "id"
 type = "int"
 since = "0.2.0"
 
+# Claim a touchpad gesture for this seat: the compositor withholds every gesture of `kind` (`swipe` or
+# `pinch`) with `fingers` contacts (2 to 5) from the configured bindings and emits `gesture` to the owner,
+# from its begin to its end or cancel. `id` is allocated by the shell, per connection, never reused, and
+# shares its number space with `claim`: `unclaim` removes either. One holder per kind and finger count:
+# a second claim of the same gesture is refused, and a claim of an id already held replaces it. A gesture
+# that began while the session was locked, or before the claim, is not delivered. Only the owner may claim.
+[[object.method]]
+name = "claim_gesture"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "fingers"
+type = "int"
+since = "0.2.0"
+
 # A claimed chord changed state: `state` is `press`, `release` or `repeat`.
 [[object.signal]]
 name = "chord"
@@ -212,4 +237,54 @@ since = "0.2.0"
 [[object.signal.field]]
 name = "state"
 type = "string"
+since = "0.2.0"
+
+# A claimed gesture advanced: `phase` is `begin`, `update`, `end` or `cancel`. `dx` and `dy` are the
+# centroid's movement since the begin, in touchpad units (x to the right, y downward); `scale` is the
+# mean distance of the contacts from their centroid relative to the begin (1 is unchanged, above 1 a
+# spread); `rotation` is the contacts' rotation since the begin in radians, clockwise positive. A swipe
+# reports a scale of 1 and a rotation of 0. `cancel` follows a lift that libinput cancelled, a lock
+# that came up mid-gesture, and ends the gesture without an `end`.
+[[object.signal]]
+name = "gesture"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "fingers"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "phase"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "rotation"
+type = "double"
 since = "0.2.0"

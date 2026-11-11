@@ -122,6 +122,15 @@ impl GestureKind {
             Self::Pinch => "pinch",
         }
     }
+
+    /// The kind a name spells, the inverse of [`as_str`](Self::as_str).
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "swipe" => Some(Self::Swipe),
+            "pinch" => Some(Self::Pinch),
+            _ => None,
+        }
+    }
 }
 
 /// Which phase of a gesture an event is.
@@ -135,6 +144,18 @@ pub enum GesturePhase {
     End,
     /// The gesture ended without an end event.
     Cancel,
+}
+
+impl GesturePhase {
+    /// The name a signal reports for this phase.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Begin => "begin",
+            Self::Update => "update",
+            Self::End => "end",
+            Self::Cancel => "cancel",
+        }
+    }
 }
 
 /// Why a gesture was cancelled.

@@ -27,7 +27,7 @@ use mlua::{Function, Lua, MultiValue, Table, Thread, Value};
 use crate::require::{ModuleRoots, Modules};
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
 use crate::tree_mirror::{
-    LuaChange, LuaChord, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId, SnapshotNode, TreeLink,
+    LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId, SnapshotNode, TreeLink,
 };
 
 /// The budgets the shell VM runs under. Three kinds of entry into Lua, each with its own:
@@ -138,6 +138,8 @@ pub struct LuaEvent {
     pub bubbles: bool,
     /// A claimed chord the compositor reports; node.lua routes it to the seat that made the claim.
     pub chord: Option<LuaChord>,
+    /// A claimed touchpad gesture the compositor reports; node.lua routes it like a chord.
+    pub gesture: Option<LuaGesture>,
     /// Positional strings: an `answer` event carries the call's result and its error, else empty.
     pub args: Vec<String>,
 }
@@ -178,9 +180,9 @@ pub struct ShellVm {
 }
 
 /// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, a
-/// `Seat.claim` the chord to grab and a `View.capture` the path to write. Every other call that carries text is
-/// treated as carrying a password.
-const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "capture"];
+/// `Seat.claim` the chord to grab, a `Seat.claim_gesture` the kind of gesture and a `View.capture` the path to write.
+/// Every other call that carries text is treated as carrying a password.
+const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "capture"];
 
 /// What the sent-log keeps of one op for a stale-base retry. A call that carries a secret is not kept: its text
 /// is not held past the send, so a retry cannot send it again. A call whose text is plain content is kept, so a
@@ -340,6 +342,7 @@ impl ShellVm {
                                 kind: "destroyed".to_owned(),
                                 bubbles: false,
                                 chord: None,
+                                gesture: None,
                                 args: Vec::new(),
                             }),
                     );
@@ -426,6 +429,7 @@ impl ShellVm {
                     kind: event.kind,
                     bubbles: false,
                     chord: None,
+                    gesture: None,
                     args: Vec::new(),
                 }),
                 LuaIncoming::Chord(chord) => tree_events.push(LuaEvent {
@@ -433,6 +437,15 @@ impl ShellVm {
                     kind: "chord".to_owned(),
                     bubbles: false,
                     chord: Some(chord),
+                    gesture: None,
+                    args: Vec::new(),
+                }),
+                LuaIncoming::Gesture(gesture) => tree_events.push(LuaEvent {
+                    target: 0,
+                    kind: "gesture".to_owned(),
+                    bubbles: false,
+                    chord: None,
+                    gesture: Some(gesture),
                     args: Vec::new(),
                 }),
                 LuaIncoming::Attached(_) | LuaIncoming::Snapshot { .. } => {
@@ -446,6 +459,7 @@ impl ShellVm {
                             kind: token.to_string(),
                             bubbles: false,
                             chord: None,
+                            gesture: None,
                             args: vec![String::from_utf8_lossy(&result).into_owned(), error],
                         }),
                         None => diagnostics.push(format!("answer {token} has no pending call")),
@@ -598,6 +612,18 @@ impl ShellVm {
                 claim.set("chord", chord.chord.as_str()).map_err(lua_error)?;
                 claim.set("state", chord.state.as_str()).map_err(lua_error)?;
                 entry.set("chord", claim).map_err(lua_error)?;
+            }
+            if let Some(gesture) = &event.gesture {
+                let claim = lua.create_table().map_err(lua_error)?;
+                claim.set("claim", gesture.claim).map_err(lua_error)?;
+                claim.set("kind", gesture.kind.as_str()).map_err(lua_error)?;
+                claim.set("fingers", gesture.fingers).map_err(lua_error)?;
+                claim.set("phase", gesture.phase.as_str()).map_err(lua_error)?;
+                claim.set("dx", gesture.dx).map_err(lua_error)?;
+                claim.set("dy", gesture.dy).map_err(lua_error)?;
+                claim.set("scale", gesture.scale).map_err(lua_error)?;
+                claim.set("rotation", gesture.rotation).map_err(lua_error)?;
+                entry.set("gesture", claim).map_err(lua_error)?;
             }
             events_table.set(i + 1, entry).map_err(lua_error)?;
         }

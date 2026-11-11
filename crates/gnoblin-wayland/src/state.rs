@@ -3436,16 +3436,21 @@ impl Host for State {
             }
             // A scroll that moved nothing sends nothing, so a client never sees an empty frame.
             InputEvent::PointerAxis { .. } => {}
-            // A gesture is routed to a configured binding and never to a client. While the session
-            // is locked it fires nothing: bindings do not run on the lock screen.
+            // A gesture a shell claimed goes to that shell and to no client or binding; any other is
+            // routed to a configured binding and never to a client. While the session is locked it
+            // fires nothing: bindings do not run on the lock screen.
             InputEvent::Touchpad(sample) => {
                 let lock = if self.lock.state() == LockState::Unlocked {
                     gnoblin_input::GestureLock::Unlocked
                 } else {
                     gnoblin_input::GestureLock::Locked
                 };
-                if let Some(fire) = self.touchpad_gestures.route(self.clock, lock, sample) {
-                    crate::touchpad::run(&fire);
+                match self.touchpad_gestures.route(self.clock, lock, sample) {
+                    crate::touchpad::Routed::Fire(fire) => crate::touchpad::run(&fire),
+                    crate::touchpad::Routed::Claimed(delivery) => {
+                        self.tree.gesture(NodeId::new(delivery.holder), delivery);
+                    }
+                    crate::touchpad::Routed::Dropped => {}
                 }
             }
             InputEvent::Touch {

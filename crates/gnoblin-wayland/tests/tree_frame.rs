@@ -38,6 +38,7 @@ impl ClassInfo for Table {
 
     fn has_method(&self, class: &str, method: &str) -> bool {
         (matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim"))
+            || (class == "seat" && method == "claim_gesture")
             || (class == "lock" && method == "authenticate")
             || (class == "window" && method == "close")
             || (class == "canvas" && method == "measure")
@@ -181,6 +182,13 @@ fn seat_claim_calls_are_captured_in_op_order_and_others_are_not() {
                 text: SecretText::new("Ctrl+Q"),
             },
             TreeOp::TreeCall {
+                token: 4,
+                node: seat,
+                method: "claim_gesture".to_owned(),
+                args: vec![8, 3],
+                text: SecretText::new("swipe"),
+            },
+            TreeOp::TreeCall {
                 token: 3,
                 node: seat,
                 method: "unclaim".to_owned(),
@@ -194,11 +202,17 @@ fn seat_claim_calls_are_captured_in_op_order_and_others_are_not() {
     frame.drain(&mut scene, clock(Duration::ZERO));
 
     let claims = frame.take_claims();
-    assert_eq!(claims.len(), 2, "only seat claim and unclaim calls are kept");
+    assert_eq!(
+        claims.len(),
+        3,
+        "only seat claim, claim_gesture and unclaim calls are kept"
+    );
     assert_eq!(claims[0].method, "claim");
     assert_eq!(claims[0].text.expose(), "Ctrl+Shift+P");
-    assert_eq!(claims[1].method, "unclaim");
-    assert_eq!(claims[1].args, vec![7]);
+    assert_eq!(claims[1].method, "claim_gesture");
+    assert_eq!((claims[1].args.clone(), claims[1].text.expose()), (vec![8, 3], "swipe"));
+    assert_eq!(claims[2].method, "unclaim");
+    assert_eq!(claims[2].args, vec![7]);
     assert!(frame.take_claims().is_empty(), "taking drains the claims");
     assert!(replies.lock().unwrap()[0].1.is_ok());
 }
@@ -663,6 +677,7 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
             TreeFrameInput::Ready => "ready",
             TreeFrameInput::Requested => "requested",
             TreeFrameInput::Chord(_) => "chord",
+            TreeFrameInput::Gesture(_) => "gesture",
         })
         .collect();
     assert_eq!(names, ["enter", "motion", "press", "release", "scroll", "leave"]);

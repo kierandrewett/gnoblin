@@ -358,6 +358,7 @@ fn event(target: u64, kind: &str) -> LuaEvent {
         kind: kind.to_string(),
         bubbles: false,
         chord: None,
+        gesture: None,
         args: Vec::new(),
     }
 }

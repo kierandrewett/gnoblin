@@ -88,8 +88,8 @@ use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
 use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
-    self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, reply_payload,
-    snapshot_payloads,
+    self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, gesture_payload,
+    reply_payload, snapshot_payloads,
 };
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 use gnoblin_render::transaction::TreeRefusal;
@@ -1470,18 +1470,22 @@ impl Dispatcher {
             ));
         }
         for event in &batch.events {
-            if let TreeFrameInput::Chord(chord) = &event.event {
-                connection.send(&Envelope::event_message(
+            match &event.event {
+                TreeFrameInput::Chord(chord) => connection.send(&Envelope::event_message(
                     tree_host::NAMESPACE,
                     tree_host::member::CHORD,
                     &chord_payload(chord),
-                ));
-            } else {
-                connection.send(&Envelope::event_message(
+                )),
+                TreeFrameInput::Gesture(delivery) => connection.send(&Envelope::event_message(
+                    tree_host::NAMESPACE,
+                    tree_host::member::GESTURE,
+                    &gesture_payload(delivery),
+                )),
+                _ => connection.send(&Envelope::event_message(
                     tree_host::NAMESPACE,
                     tree_host::member::EVENT,
                     &event_payload(event),
-                ));
+                )),
             }
         }
     }

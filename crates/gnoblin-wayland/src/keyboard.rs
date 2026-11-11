@@ -558,14 +558,22 @@ impl State {
         self.rebuild_keymap();
     }
 
-    /// Applies the seat `claim` and `unclaim` calls the shell's transactions made. A claim binds its
-    /// chord in the router, so the router delivers it before any client; an unclaim removes it.
+    /// Applies the seat `claim`, `claim_gesture` and `unclaim` calls the shell's transactions made. A
+    /// claim binds its chord in the router, so the router delivers it before any client; a gesture claim
+    /// takes its gesture from the touchpad bindings; an unclaim removes either.
     pub(crate) fn apply_claims(&mut self, calls: Vec<TreeCall>) {
         for call in calls {
             let Some(&id) = call.args.first() else {
                 log::warn!(area = "claim", method = %call.method, "a seat claim call has no id");
                 continue;
             };
+            if call.method == "claim_gesture" {
+                self.claim_gesture(&call, id);
+                continue;
+            }
+            if call.method == "unclaim" {
+                self.touchpad_gestures.claims_mut().unclaim(call.node.get(), id);
+            }
             let name = claim_name(call.node, id);
             let Ok(bound) = Name::new(&name) else {
                 log::warn!(area = "claim", claim = %name, "a seat claim name is not a valid binding name");
@@ -618,6 +626,8 @@ impl State {
             }
             self.keyboard_tables.claims.remove(&name);
         }
+        let holders: Vec<u64> = gone.iter().map(|node| node.get()).collect();
+        self.touchpad_gestures.claims_mut().release(&holders);
         self.keyboard_tables
             .pressed_claims
             .retain(|_, claim| !gone.contains(&claim.node));

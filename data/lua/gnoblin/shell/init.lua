@@ -28,8 +28,20 @@ function motion(seconds)
     return seat.reduced_motion and 0 or seconds
 end
 
--- Key and gesture bindings: Gnoblin claims each chord, so no client sees it. `keys` maps a chord to its fn and
--- `claims` maps the claim id the compositor reports back to its chord. A bound fn runs on press.
+-- Key and gesture bindings: Gnoblin claims each chord or gesture, so no client sees it. `keys` maps a chord (or a
+-- gesture's spelling) to its fn and `claims` maps the claim id the compositor reports back to it. A bound chord fn runs
+-- on press. A key spelled `Swipe3` or `Pinch4` (the gesture and its finger count) claims that gesture: its fn runs for
+-- every phase, with `e.phase` ("begin", "update", "end" or "cancel"), `e.dx` and `e.dy` (the movement since the
+-- begin), `e.scale` (1 for a swipe; above 1 for a spread) and `e.rotation` (radians, clockwise positive). A fn of
+-- `false` claims the chord or gesture and does nothing with it.
+local GESTURES = { Swipe = "swipe", Pinch = "pinch" }
+local function claim_key(seat, key, grab)
+    local name, fingers = key:match("^(%a+)(%d+)$")
+    if GESTURES[name] then
+        return seat:claim_gesture(GESTURES[name], tonumber(fingers))
+    end
+    return seat:claim(key, grab)
+end
 function Seat:bind(map)
     local keys, claims = self.data.keys or {}, self.data.claims or {}
     local chords = {}
@@ -39,7 +51,7 @@ function Seat:bind(map)
     table.sort(chords)
     for _, chord in ipairs(chords) do
         keys[chord] = map[chord] or nil
-        claims[self:claim(chord, map[chord] ~= false)] = chord
+        claims[claim_key(self, chord, map[chord] ~= false)] = chord
     end
     self.data.keys, self.data.claims = keys, claims
 end
@@ -55,6 +67,13 @@ function Seat:on_chord(e)
     local chord = self.data.claims[e.claim]
     local fn = chord and self.data.keys[chord]
     if fn and e.state == "press" then
+        fn(e)
+    end
+end
+function Seat:on_gesture(e)
+    local key = self.data.claims[e.claim]
+    local fn = key and self.data.keys[key]
+    if fn then
         fn(e)
     end
 end
@@ -134,15 +153,22 @@ function Desk:position(ws)
         end
     end
 end
-function Desk:show(ws)
+-- Slides to `ws`. `done` (0 to 1, default 0) is how much of the slide a touchpad gesture has already made: the
+-- slide carries on from where the workspaces are and takes the rest of its time.
+function Desk:show(ws, done)
     local from = self.active
     if not ws or ws == from then
         return
     end
+    done = done or 0
     local dir, W = self:position(ws) > self:position(from) and 1 or -1, self.width
-    ws.x, ws.visible, ws.active, from.active, self.active = dir * W, true, true, false, ws
-    from:to(motion(0.25), { x = -dir * W }, ease.out_cubic)
-    await(ws:to(motion(0.25), { x = 0 }, ease.out_cubic))
+    ws.x, ws.visible, ws.active, from.active, self.active = dir * W * (1 - done), true, true, false, ws
+    if done > 0 then
+        from.x = -dir * W * done
+    end
+    local seconds = motion(0.25 * (1 - done))
+    from:to(seconds, { x = -dir * W }, ease.out_cubic)
+    await(ws:to(seconds, { x = 0 }, ease.out_cubic))
     if self.active ~= from then
         from.visible, from.x = false, 0
     end
@@ -917,5 +943,6 @@ require("gnoblin.shell.lock")
 require("gnoblin.shell.overview")
 require("gnoblin.shell.launcher")
 require("gnoblin.shell.workspaces")
+require("gnoblin.shell.gestures")
 require("gnoblin.shell.xr")
 require("gnoblin.shell.decorations")

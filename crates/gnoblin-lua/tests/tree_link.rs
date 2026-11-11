@@ -7,10 +7,10 @@ use std::os::unix::net::UnixStream;
 
 use gnoblin_lua::tree_link::SocketTreeLink;
 use gnoblin_lua::tree_mirror::{
-    Attached, LuaChange, LuaChord, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
-    TreeLink, TxReply,
+    Attached, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
+    SnapshotNode, TreeLink, TxReply,
 };
-use gnoblin_proto::tree::seat::ChordPayload;
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -73,6 +73,41 @@ fn a_chord_event_arrives_as_a_chord_not_a_node_event() {
             claim: 7,
             chord: "Super+q".to_owned(),
             state: "press".to_owned(),
+        })]
+    );
+}
+
+#[test]
+fn a_gesture_event_arrives_as_a_gesture_with_its_movement() {
+    let (mut link, mut server) = pair();
+    send(
+        &mut server,
+        &Envelope::event_message(
+            "tree",
+            "gesture",
+            &GesturePayload {
+                id: 9,
+                kind: "pinch".to_owned(),
+                fingers: 4,
+                phase: "update".to_owned(),
+                dx: 1.5,
+                dy: -2.5,
+                scale: 1.25,
+                rotation: 0.5,
+            },
+        ),
+    );
+    assert_eq!(
+        drain(&mut link),
+        vec![LuaIncoming::Gesture(LuaGesture {
+            claim: 9,
+            kind: "pinch".to_owned(),
+            fingers: 4,
+            phase: "update".to_owned(),
+            dx: 1.5,
+            dy: -2.5,
+            scale: 1.25,
+            rotation: 0.5,
         })]
     );
 }

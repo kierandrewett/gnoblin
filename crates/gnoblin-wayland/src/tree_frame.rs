@@ -17,6 +17,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
+use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
 use gnoblin_render::transaction::{
     ClassInfo, Code, Motion, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
@@ -224,6 +225,8 @@ pub enum TreeFrameInput {
     Requested,
     /// A claimed chord changed state. The claim is the shell's, named by its `id`.
     Chord(ChordEvent),
+    /// A claimed touchpad gesture advanced. The claim is the shell's, named by its `id`.
+    Gesture(GestureDelivery),
 }
 
 #[cfg(test)]
@@ -570,6 +573,11 @@ impl TreeFrame {
         self.push_event(node, TreeFrameInput::Chord(event));
     }
 
+    /// Records a claimed gesture advancing on the seat `node`, delivered to the shell in the next batch.
+    pub fn gesture(&mut self, node: NodeId, delivery: GestureDelivery) {
+        self.push_event(node, TreeFrameInput::Gesture(delivery));
+    }
+
     /// Records a pointer edge over `node`, delivered to the shell in the next batch.
     pub fn input(&mut self, node: NodeId, input: TreeInput) {
         self.push_event(node, TreeFrameInput::Input(input));
@@ -733,7 +741,7 @@ impl TreeFrame {
                     let (claims, rest): (Vec<TreeCall>, Vec<TreeCall>) =
                         std::mem::take(&mut done.calls).into_iter().partition(|call| {
                             scene.class(call.node) == Some("seat")
-                                && matches!(call.method.as_str(), "claim" | "unclaim")
+                                && matches!(call.method.as_str(), "claim" | "claim_gesture" | "unclaim")
                         });
                     let (auths, calls): (Vec<TreeCall>, Vec<TreeCall>) = rest
                         .into_iter()

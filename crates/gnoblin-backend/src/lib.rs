@@ -382,6 +382,8 @@ pub struct RawTouchpadSample {
     pub dy: f64,
     /// Cumulative scale since the begin; one for a swipe.
     pub scale: f64,
+    /// Rotation since the previous sample in radians, clockwise positive; zero for a swipe.
+    pub angle: f64,
 }
 
 /// Where a [`RawTouchpadSample`] sits in its gesture.

@@ -507,8 +507,8 @@ local function extend(base, name)
     end
 end
 
--- Chord claims. The Lua side allocates each claim id (per VM, from 1, never reused) and remembers which seat
--- made it, so a chord event from the compositor can be routed to that seat.
+-- Chord and gesture claims. The Lua side allocates each claim id (per VM, from 1, never reused, one number space for
+-- both) and remembers which seat made it, so a chord or gesture event from the compositor can be routed to that seat.
 local claims, next_claim = {}, 0
 local function install_claims(c)
     rawset(c, "claim", function(seat, chord, grab)
@@ -516,6 +516,15 @@ local function install_claims(c)
         local id = next_claim
         claims[id] = seat
         core.call(rawget(seat, ID), "claim", string.pack("<i8i8", id, grab and 1 or 0), chord)
+        return id
+    end)
+    -- A gesture of `kind` ("swipe" or "pinch") with `fingers` contacts: the compositor sends it to this seat as
+    -- `gesture` events, from its begin to its end, and to no client.
+    rawset(c, "claim_gesture", function(seat, kind, fingers)
+        next_claim = next_claim + 1
+        local id = next_claim
+        claims[id] = seat
+        core.call(rawget(seat, ID), "claim_gesture", string.pack("<i8i8", id, fingers), kind)
         return id
     end)
     rawset(c, "unclaim", function(seat, id)
@@ -854,6 +863,11 @@ return function(t, changes, events, created)
             local seat = claims[e.chord.claim]
             if seat and nodes[rawget(seat, ID)] then
                 emit(seat, "chord", e.chord)
+            end
+        elseif e.gesture then -- a claimed gesture: routed the same way
+            local seat = claims[e.gesture.claim]
+            if seat and nodes[rawget(seat, ID)] then
+                emit(seat, "gesture", e.gesture)
             end
         elseif e.bubbles then -- input: the path is fixed first, as in the DOM
             e.target = wrap(e.target)

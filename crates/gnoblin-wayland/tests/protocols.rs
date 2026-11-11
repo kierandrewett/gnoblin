@@ -1847,7 +1847,7 @@ impl gnoblin_render::transaction::ClassInfo for ClaimClasses {
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
-        class == "seat" && matches!(method, "claim" | "unclaim")
+        class == "seat" && matches!(method, "claim" | "claim_gesture" | "unclaim")
     }
 }
 
@@ -2202,6 +2202,220 @@ fn a_locked_session_never_fires_a_claimed_chord() {
         assert!(
             chord_events(&batches).is_empty(),
             "a locked session does not fire a claimed chord at the shell"
+        );
+    });
+}
+
+/// The gesture events the shell's mirror received, in order, with the seat they were for.
+fn gesture_events(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>) -> Vec<(NodeId, gnoblin_input::GestureDelivery)> {
+    batches
+        .lock()
+        .expect("the batch lock")
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter_map(|event| match &event.event {
+            gnoblin_wayland::TreeFrameInput::Gesture(delivery) => Some((event.node, *delivery)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Waits until the shell has heard `count` gestures, then a moment longer, and returns them.
+fn settled_gestures(
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    count: usize,
+) -> Vec<(NodeId, gnoblin_input::GestureDelivery)> {
+    let deadline = Instant::now() + TIMEOUT;
+    while gesture_events(batches).len() < count {
+        assert!(Instant::now() < deadline, "the shell hears {count} gesture events");
+        thread::sleep(Duration::from_millis(5));
+    }
+    thread::sleep(Duration::from_millis(100));
+    gesture_events(batches)
+}
+
+/// One touchpad sample: a swipe of `fingers` fingers that moved `dx` since the last sample.
+fn swipe_sample(fingers: u8, phase: gnoblin_backend::RawTouchpadPhase, dx: f64) -> InputEvent {
+    InputEvent::Touchpad(gnoblin_backend::RawTouchpadSample {
+        device: 1,
+        phase,
+        kind: gnoblin_backend::RawTouchpadKind::Swipe,
+        fingers,
+        dx,
+        dy: 0.0,
+        scale: 1.0,
+        angle: 0.0,
+    })
+}
+
+/// A whole swipe: its begin, a move of 30 and a move of 20, and its end.
+fn swipe_gesture(session: &Handle, fingers: u8) {
+    use gnoblin_backend::RawTouchpadPhase::{Begin, End, Update};
+    for (phase, dx) in [(Begin, 0.0), (Update, 30.0), (Update, 20.0), (End, 0.0)] {
+        session.control.inject_input(swipe_sample(fingers, phase, dx));
+    }
+}
+
+/// The shell creates its seat and claims a swipe of `fingers` fingers under `id`.
+fn claim_swipe_on_shell(queue: &gnoblin_wayland::TreeQueue, base: &mut u64, fingers: i64) {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+    assert!(
+        apply_on_shell(
+            queue,
+            base,
+            TreeTransaction::new(vec![
+                TreeOp::New {
+                    class: "seat".to_owned(),
+                    id: CLAIM_SEAT,
+                },
+                TreeOp::TreeCall {
+                    node: CLAIM_SEAT,
+                    method: "claim_gesture".to_owned(),
+                    args: vec![1, fingers],
+                    token: 1,
+                    text: SecretText::new("swipe"),
+                },
+            ]),
+        ),
+        "the shell's gesture claim applies"
+    );
+}
+
+#[test]
+fn a_claimed_swipe_reaches_the_shell_from_begin_to_end() {
+    use gnoblin_input::GesturePhase::{Begin, End, Update};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        claim_swipe_on_shell(&queue, &mut 0, 3);
+        swipe_gesture(session, 3);
+
+        let heard = settled_gestures(&batches, 4);
+        let phases: Vec<_> = heard
+            .iter()
+            .map(|(_, delivery)| (delivery.phase, delivery.dx))
+            .collect();
+        assert_eq!(
+            phases,
+            [(Begin, 0.0), (Update, 30.0), (Update, 50.0), (End, 50.0)],
+            "the shell follows the fingers: each event carries the total so far"
+        );
+        assert!(
+            heard
+                .iter()
+                .all(|(node, delivery)| *node == CLAIM_SEAT && delivery.id == 1 && delivery.fingers == 3),
+            "every event is for the claiming seat under its claim id: {heard:?}"
+        );
+    });
+}
+
+#[test]
+fn a_swipe_nobody_claimed_sends_the_shell_nothing() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        claim_swipe_on_shell(&queue, &mut 0, 3);
+        swipe_gesture(session, 4);
+        // A claimed swipe after it proves every sample before it was routed.
+        swipe_gesture(session, 3);
+
+        let heard = settled_gestures(&batches, 4);
+        assert_eq!(heard.len(), 4, "only the three-finger swipe is the shell's: {heard:?}");
+        assert!(heard.iter().all(|(_, delivery)| delivery.fingers == 3));
+    });
+}
+
+#[test]
+fn an_unclaimed_gesture_is_delivered_again_after_the_shell_unclaims() {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut base = 0;
+        claim_swipe_on_shell(&queue, &mut base, 3);
+        swipe_gesture(session, 3);
+        settled_gestures(&batches, 4);
+
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![TreeOp::TreeCall {
+                    node: CLAIM_SEAT,
+                    method: "unclaim".to_owned(),
+                    args: vec![1],
+                    token: 2,
+                    text: SecretText::default(),
+                }]),
+            ),
+            "the shell's unclaim applies"
+        );
+        swipe_gesture(session, 3);
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(
+            gesture_events(&batches).len(),
+            4,
+            "after the unclaim the swipe is nobody's and the shell hears nothing"
+        );
+    });
+}
+
+#[test]
+fn a_destroyed_seat_takes_its_gesture_claims_and_its_gesture_with_it() {
+    use gnoblin_backend::RawTouchpadPhase::{Begin, End, Update};
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut base = 0;
+        claim_swipe_on_shell(&queue, &mut base, 3);
+        session.control.inject_input(swipe_sample(3, Begin, 0.0));
+        session.control.inject_input(swipe_sample(3, Update, 30.0));
+        settled_gestures(&batches, 2);
+
+        assert!(
+            apply_on_shell(
+                &queue,
+                &mut base,
+                TreeTransaction::new(vec![TreeOp::Destroy { node: CLAIM_SEAT }])
+            ),
+            "the shell destroys its seat mid-gesture"
+        );
+        session.control.inject_input(swipe_sample(3, Update, 20.0));
+        session.control.inject_input(swipe_sample(3, End, 0.0));
+        swipe_gesture(session, 3);
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(
+            gesture_events(&batches).len(),
+            2,
+            "a destroyed seat hears nothing more, of the gesture it held or of the next"
+        );
+    });
+}
+
+#[test]
+fn a_locked_session_never_delivers_a_claimed_gesture() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        claim_swipe_on_shell(&queue, &mut 0, 3);
+        let mut locker = Client::connect(session.socket());
+        let manager: ext_session_lock_manager_v1::ExtSessionLockManagerV1 = locker
+            .globals
+            .bind(&locker.qh, 1..=1, ())
+            .expect("the session advertises ext_session_lock_manager_v1");
+        let _lock = manager.lock(&locker.qh, ());
+        locker.wait_for(|state| state.lock_locked == 1);
+        session.wait_for(|observation| observation.lock_state() == LockState::Locked);
+
+        swipe_gesture(session, 3);
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            gesture_events(&batches).is_empty(),
+            "a locked session does not deliver a claimed gesture to the shell"
         );
     });
 }

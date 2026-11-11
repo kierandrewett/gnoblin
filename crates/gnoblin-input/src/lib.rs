@@ -84,6 +84,7 @@
 pub mod binding;
 pub mod chord;
 pub mod gesture;
+pub mod gesture_claims;
 pub mod gesture_router;
 pub mod idle;
 pub mod name;
@@ -95,6 +96,9 @@ pub use chord::{Chord, ChordKind, Key, Keysyms, ParseError, Symbol};
 pub use gesture::{
     CancelReason, Contact, ContactPhase, EdgeBand, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase,
     Recogniser,
+};
+pub use gesture_claims::{
+    ClaimError, ClaimRoute, GestureClaim, GestureClaims, GestureDelivery, Holder, MAX_CLAIM_FINGERS, MIN_CLAIM_FINGERS,
 };
 pub use gesture_router::{
     GestureAction, GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats,

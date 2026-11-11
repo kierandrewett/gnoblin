@@ -664,11 +664,24 @@ object seat since 0.2.0 secret false
     param grab type bool since 0.2.0 secret false
   method unclaim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
+  method claim_gesture since 0.2.0 secret false function false
+    param id type int since 0.2.0 secret false
+    param kind type string since 0.2.0 secret false
+    param fingers type int since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
   signal chord since 0.2.0 secret false
     field id type int since 0.2.0 secret false
     field chord type string since 0.2.0 secret false
     field state type string since 0.2.0 secret false
+  signal gesture since 0.2.0 secret false
+    field id type int since 0.2.0 secret false
+    field kind type string since 0.2.0 secret false
+    field fingers type int since 0.2.0 secret false
+    field phase type string since 0.2.0 secret false
+    field dx type double since 0.2.0 secret false
+    field dy type double since 0.2.0 secret false
+    field scale type double since 0.2.0 secret false
+    field rotation type double since 0.2.0 secret false
 object surface since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -2400,6 +2413,16 @@ message Seat {
     int64 id = 1;
   }
 
+  // Method `claim_gesture`, since 0.2.0.
+  message ClaimGestureArgs {
+    // since 0.2.0
+    int64 id = 1;
+    // since 0.2.0
+    string kind = 2;
+    // since 0.2.0
+    int64 fingers = 3;
+  }
+
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}
 
@@ -2411,6 +2434,26 @@ message Seat {
     string chord = 2;
     // since 0.2.0
     string state = 3;
+  }
+
+  // Signal `gesture`, since 0.2.0.
+  message GesturePayload {
+    // since 0.2.0
+    int64 id = 1;
+    // since 0.2.0
+    string kind = 2;
+    // since 0.2.0
+    int64 fingers = 3;
+    // since 0.2.0
+    string phase = 4;
+    // since 0.2.0
+    double dx = 5;
+    // since 0.2.0
+    double dy = 6;
+    // since 0.2.0
+    double scale = 7;
+    // since 0.2.0
+    double rotation = 8;
   }
 }
 

@@ -201,6 +201,19 @@ pub struct LuaChord {
     pub state: String,
 }
 
+/// A claimed touchpad gesture the compositor saw advance: `claim` is the id the Lua side allocated.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LuaGesture {
+    pub claim: i64,
+    pub kind: String,
+    pub fingers: i64,
+    pub phase: String,
+    pub dx: f64,
+    pub dy: f64,
+    pub scale: f64,
+    pub rotation: f64,
+}
+
 /// The reply to attach: the epoch this shell holds, the root and the snapshot serial.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attached {
@@ -231,6 +244,7 @@ pub enum LuaIncoming {
     },
     Event(TreeEvent),
     Chord(LuaChord),
+    Gesture(LuaGesture),
 }
 
 /// A failure of the link itself: the socket closed or a frame did not decode.
