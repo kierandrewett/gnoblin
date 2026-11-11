@@ -15,7 +15,6 @@ error unknown-effect-kind since 0.2.0
 error not-floating since 0.2.0
 error transient-follows-parent since 0.2.0
 error refused since 0.2.0
-error unknown-layout since 0.2.0
 error unknown-set since 0.2.0
 object capture since 0.2.0 secret false
   method open since 0.2.0 secret false function false
@@ -102,7 +101,6 @@ object output since 0.2.0 secret false
   property y type int since 0.2.0 secret false
   property width type uint since 0.2.0 secret false
   property height type uint since 0.2.0 secret false
-  property layout type string since 0.2.0 secret false
   method apply since 0.2.0 secret false function false
     param x type int since 0.2.0 secret false
     param y type int since 0.2.0 secret false
@@ -111,11 +109,6 @@ object output since 0.2.0 secret false
     param primary type bool since 0.2.0 secret false
     param enabled type bool since 0.2.0 secret false
     param mode type string since 0.2.0 secret false
-  method set_layout since 0.2.0 secret false function false
-    param root type string since 0.2.0 secret false
-    param module type string since 0.2.0 secret false
-    param hash type string since 0.2.0 secret false
-    param options type bytes since 0.2.0 secret false
   signal closed since 0.2.0 secret false
   signal added since 0.2.0 secret false
     field output_id type string since 0.2.0 secret false
@@ -378,24 +371,10 @@ object window since 0.2.0 secret false
     field seat type string since 0.2.0 secret false
 object workspace since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
-  property layout type string since 0.2.0 secret false
-  method set_layout since 0.2.0 secret false function false
-    param root type string since 0.2.0 secret false
-    param module type string since 0.2.0 secret false
-    param hash type string since 0.2.0 secret false
-    param options type bytes since 0.2.0 secret false
-  method layout_command since 0.2.0 secret false function false
-    param name type string since 0.2.0 secret false
-    param params type string since 0.2.0 secret false
   method activate_set since 0.2.0 secret false function true
     param name type string since 0.2.0 secret false
   signal set_activated since 0.2.0 secret false
     field set type string since 0.2.0 secret false
-  signal layout_changed since 0.2.0 secret false
-    field layout type string since 0.2.0 secret false
-  signal layout_failed since 0.2.0 secret false
-    field layout type string since 0.2.0 secret false
-    field reason type string since 0.2.0 secret false
   signal created since 0.2.0 secret false
     field workspace type object:workspace since 0.2.0 secret false
   signal removed since 0.2.0 secret false
@@ -1029,8 +1008,6 @@ message Output {
     uint64 width = 12;
     // since 0.2.0
     uint64 height = 13;
-    // since 0.2.0
-    string layout = 14;
   }
 
   // Method `apply`, since 0.2.0.
@@ -1049,18 +1026,6 @@ message Output {
     bool enabled = 6;
     // since 0.2.0
     string mode = 7;
-  }
-
-  // Method `set_layout`, since 0.2.0.
-  message SetLayoutArgs {
-    // since 0.2.0
-    string root = 1;
-    // since 0.2.0
-    string module = 2;
-    // since 0.2.0
-    string hash = 3;
-    // since 0.2.0
-    bytes options = 4;
   }
 
   // Signal `closed`, since 0.2.0.
@@ -1715,28 +1680,6 @@ message Workspace {
   message Properties {
     // since 0.2.0
     uint64 id = 1;
-    // since 0.2.0
-    string layout = 2;
-  }
-
-  // Method `set_layout`, since 0.2.0.
-  message SetLayoutArgs {
-    // since 0.2.0
-    string root = 1;
-    // since 0.2.0
-    string module = 2;
-    // since 0.2.0
-    string hash = 3;
-    // since 0.2.0
-    bytes options = 4;
-  }
-
-  // Method `layout_command`, since 0.2.0.
-  message LayoutCommandArgs {
-    // since 0.2.0
-    string name = 1;
-    // since 0.2.0
-    string params = 2;
   }
 
   // Method `activate_set`, since 0.2.0.
@@ -1749,20 +1692,6 @@ message Workspace {
   message SetActivatedPayload {
     // since 0.2.0
     string set = 1;
-  }
-
-  // Signal `layout_changed`, since 0.2.0.
-  message LayoutChangedPayload {
-    // since 0.2.0
-    string layout = 1;
-  }
-
-  // Signal `layout_failed`, since 0.2.0.
-  message LayoutFailedPayload {
-    // since 0.2.0
-    string layout = 1;
-    // since 0.2.0
-    string reason = 2;
   }
 
   // Signal `created`, since 0.2.0.
@@ -1817,9 +1746,7 @@ enum GnoblinError {
   // since 0.2.0
   GNOBLIN_REFUSED = 16;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_LAYOUT = 17;
-  // since 0.2.0
-  GNOBLIN_UNKNOWN_SET = 18;
+  GNOBLIN_UNKNOWN_SET = 17;
 }
 -- tree.proto
 // Generated from the object schema by gnoblin-proto's build script. Do not

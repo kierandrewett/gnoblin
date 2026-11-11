@@ -607,16 +607,20 @@ fn a_pointer_over_overlapping_windows_reaches_the_topmost_frame() {
 }
 
 #[test]
-fn a_pointer_over_a_tiled_window_reaches_its_own_frame() {
-    let session = Session::start_tiled(Some(ClientRole::FrameRenderer));
+fn a_pointer_over_a_placed_window_reaches_its_own_frame() {
+    let session = Session::start(Some(ClientRole::FrameRenderer));
     session.run(|handle| {
         let mut renderer = Renderer::start(handle);
-        // Master tiling puts the first window on the left half of the output and the
-        // second on the right, so the second window starts at x 512.
+        // Place the first window on the left half of the output and the second on the right,
+        // so the second window starts at x 512.
         let _left = map_sized_window(handle, "left", (512, 768));
         wait_renderer(&mut renderer, "the first frame", |state| state.frames.len() == 1);
         let _right = map_sized_window(handle, "right", (512, 768));
         wait_renderer(&mut renderer, "the second frame", |state| state.frames.len() == 2);
+        handle.control.move_window(WindowId::new(1), Rect::new(0, 0, 512, 768));
+        handle
+            .control
+            .move_window(WindowId::new(2), Rect::new(512, 0, 512, 768));
         let left_frame = renderer.client.state.frames[0].clone();
         let right_frame = renderer.client.state.frames[1].clone();
         // The left frame's region covers its whole window, so a pointer that reached it

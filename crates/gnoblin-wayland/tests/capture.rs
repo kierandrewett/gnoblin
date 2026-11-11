@@ -51,11 +51,6 @@ use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_ba
 use wayland_protocols::xdg::system_bell::v1::client::xdg_system_bell_v1;
 use wayland_protocols_wlr::screencopy::v1::client::{zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1};
 
-#[path = "owned/master.rs"]
-mod master;
-
-use master::MasterLayouts;
-
 /// How long a test waits for the session to reach a state before failing.
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -143,13 +138,6 @@ impl Session {
     /// Creates a session on sockets of its own.
     fn start() -> Self {
         Self::start_with(Protocols::default())
-    }
-
-    /// Creates a session whose layout tiles the windows the master-stack way.
-    fn start_tiled() -> Self {
-        let mut session = Self::start();
-        session.server.install_layouts(Rc::new(MasterLayouts));
-        session
     }
 
     /// Creates a session with an explicit protocol configuration.
@@ -1499,14 +1487,24 @@ fn capture_window(capture: &mut Client, title: &str) -> Shm {
 }
 
 #[test]
-fn a_capture_of_a_tiled_window_is_its_placed_rectangle() {
-    let session = Session::start_tiled();
+fn a_capture_of_a_placed_window_is_its_placed_rectangle() {
+    let session = Session::start();
     session.run(|session| {
         let mut left_app = Client::app(session.socket());
         let mut right_app = Client::app(session.socket());
         let _left = left_app.map_window("org.gnoblin.Left", "Left", 512, 768, RED);
         let _right = right_app.map_window("org.gnoblin.Right", "Right", 512, 768, GREEN);
-        // The master layout places the first window on the left half and the second on the right.
+        // Place the windows side by side, the left one on the left half of the output.
+        let observation = session
+            .wait_for(|observation| observation.titled("Left").is_some() && observation.titled("Right").is_some());
+        let left_id = observation.titled("Left").expect("the left window").id;
+        let right_id = observation.titled("Right").expect("the right window").id;
+        session
+            .control
+            .move_window(left_id, gnoblin_types::Rect::new(0, 0, 512, 768));
+        session
+            .control
+            .move_window(right_id, gnoblin_types::Rect::new(512, 0, 512, 768));
         session.wait_for(|observation| {
             observation
                 .titled("Left")
@@ -1517,7 +1515,7 @@ fn a_capture_of_a_tiled_window_is_its_placed_rectangle() {
         });
 
         let mut capture = Client::capturer(session.privileged_socket());
-        // A capture is the window's tiled size, not the 800 by 600 cascade a floating window gets.
+        // A capture is the window's placed size, not the 800 by 600 cascade a floating window gets.
         let left = capture_window(&mut capture, "Left");
         assert_eq!(
             (left.width, left.height),
@@ -1570,7 +1568,7 @@ fn secure_rule(app_id: &str) -> gnoblin_wm::Rule {
 
 #[test]
 fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
-    let session = Session::start_tiled();
+    let session = Session::start();
     session.run(|session| {
         // The rule is set before either window maps, so it applies at the first manage.
         let secret = secure_rule("org.gnoblin.Secret");
@@ -1607,7 +1605,7 @@ fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
 
 #[test]
 fn a_reload_that_drops_the_secure_rule_unmasks_the_window() {
-    let session = Session::start_tiled();
+    let session = Session::start();
     session.run(|session| {
         session
             .control

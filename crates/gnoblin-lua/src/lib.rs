@@ -99,9 +99,8 @@
 //! - `gnoblin.configure` is available while the configuration loads. IPC 0.2.0
 //!   declares no runtime configuration method yet, so a call at run time is
 //!   refused with that reason rather than mutating a document nothing applies.
-//! - `require` also answers for layout modules, read from the shipped and user layout
-//!   roots by `layout::LayoutModuleLoader`, which holds one layout VM per configuration evaluation.
-//!   `gnoblin.load` stays the one loader of configuration files.
+//! - `require` loads plain modules from the user root and then the shipped root, once per
+//!   evaluation. `gnoblin.load` stays the one loader of configuration files.
 //! - Requests (`RequestOffered` and `RequestFinished`) are dropped: prompts and
 //!   input policy are later lanes, and an unanswered request already fails closed
 //!   in the broker.
@@ -121,7 +120,6 @@ mod extension_bindings;
 mod extensions;
 mod glob;
 mod host;
-pub mod layout;
 mod lifecycle;
 mod loader;
 #[cfg(test)]
@@ -130,6 +128,7 @@ mod lua_names;
 pub mod module_dir;
 mod process;
 mod requests;
+mod require;
 pub mod role;
 mod session_api;
 mod session_status;

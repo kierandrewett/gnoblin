@@ -196,13 +196,11 @@ impl Default for LockObservation {
     }
 }
 
-/// One workspace at one instant: its identity and the layout it runs.
+/// One workspace at one instant: its identity.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct ObservedWorkspace {
     /// The workspace's policy identity.
     pub id: WorkspaceId,
-    /// The layout the window manager runs on this workspace.
-    pub layout: String,
 }
 
 /// One output at one instant: every property the `gnoblin.output` object publishes.
@@ -216,8 +214,6 @@ pub struct ObservedOutput {
     pub id: OutputId,
     /// The connector name of the output, such as `DP-1`.
     pub name: String,
-    /// The default layout this output's workspaces fall back to.
-    pub layout: String,
     /// The vendor, as EDID reports it. Empty when the backend has none.
     pub make: String,
     /// The model name. Empty when the backend has none.
@@ -473,14 +469,12 @@ pub struct SessionSnapshot {
     pub(crate) windows: BTreeMap<WindowId, ObservedWindow>,
     /// The outputs the session presents on.
     pub(crate) outputs: Vec<OutputId>,
-    /// Every workspace the window manager arranges, with the layout it runs.
+    /// Every workspace the window manager arranges.
     pub(crate) workspaces: Vec<ObservedWorkspace>,
-    /// Every output the session presents on: its connector name and its default layout.
-    pub(crate) output_layouts: Vec<ObservedOutput>,
+    /// Every output the session presents on, with the properties it publishes.
+    pub(crate) output_details: Vec<ObservedOutput>,
     /// The logical rectangle each output occupies, so a reader can map a layout point onto it.
     pub(crate) output_rects: Vec<(OutputId, Rect)>,
-    /// Each workspace whose last layout run failed, with the reason it failed.
-    pub(crate) layout_failures: Vec<(WorkspaceId, &'static str)>,
     /// The window holding keyboard focus, if any.
     pub(crate) focus: Option<WindowId>,
     /// The windows in stacking order, topmost first. A raise moves a window to index 0.
@@ -588,16 +582,16 @@ impl SessionSnapshot {
         &self.outputs
     }
 
-    /// Every workspace the window manager arranges, with its layout.
+    /// Every workspace the window manager arranges.
     #[must_use]
     pub fn workspaces(&self) -> &[ObservedWorkspace] {
         &self.workspaces
     }
 
-    /// Every output with its connector name and default layout.
+    /// Every output with its connector name and the properties it publishes.
     #[must_use]
-    pub fn output_layouts(&self) -> &[ObservedOutput] {
-        &self.output_layouts
+    pub fn output_details(&self) -> &[ObservedOutput] {
+        &self.output_details
     }
 
     /// The logical rectangle an output occupies, if the session presents on it.
@@ -607,12 +601,6 @@ impl SessionSnapshot {
             .iter()
             .find(|(id, _)| *id == output)
             .map(|(_, rect)| *rect)
-    }
-
-    /// The reason each workspace's last layout run failed.
-    #[must_use]
-    pub fn layout_failures(&self) -> &[(WorkspaceId, &'static str)] {
-        &self.layout_failures
     }
 
     /// The one managed window, when a test knows there is exactly one.
@@ -695,8 +683,8 @@ pub trait Observer: Send + Sync + std::fmt::Debug {
 impl SessionSnapshot {
     /// The same snapshot with the outputs it presents on, for a test or a recorded replay.
     #[must_use]
-    pub fn with_output_layouts(mut self, outputs: Vec<ObservedOutput>) -> Self {
-        self.output_layouts = outputs;
+    pub fn with_output_details(mut self, outputs: Vec<ObservedOutput>) -> Self {
+        self.output_details = outputs;
         self
     }
 
@@ -749,9 +737,8 @@ impl SessionSnapshot {
             windows: windows.into_iter().map(|window| (window.id, window)).collect(),
             outputs,
             workspaces: Vec::new(),
-            output_layouts: Vec::new(),
+            output_details: Vec::new(),
             output_rects: Vec::new(),
-            layout_failures: Vec::new(),
             focus,
             stack: Vec::new(),
             lock: LockObservation::default(),

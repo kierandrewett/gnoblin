@@ -8,9 +8,8 @@
 //! between the composition root and the pure crates.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use smithay::backend::input::{Axis, AxisSource, ButtonState, InputTime, TouchSlot};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
@@ -73,7 +72,7 @@ use gnoblin_render::Mat4;
 use gnoblin_render::transaction::PointerInput;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
-use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
+use gnoblin_wm::layout::{Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
@@ -231,33 +230,6 @@ pub(crate) struct OutputEntry {
 
 /// The compositor state every protocol handler receives.
 ///
-/// Builds the layout engines for the window manager and takes runtime layout changes.
-///
-/// The compositor implements this over its per-workspace and per-output overrides, so
-/// `set_workspace` and `set_output` store the choice that `engine` later resolves.
-pub trait LayoutControl {
-    /// Builds a fresh engine for `workspace`, resolving its layout from the overrides.
-    fn engine(&self, workspace: WorkspaceId, output: Option<&str>) -> Box<dyn LayoutEngine>;
-
-    /// Stores `selector` as `workspace`'s layout override, loading its module if needed.
-    ///
-    /// # Errors
-    /// A refusal message when the layout cannot be loaded.
-    fn set_workspace(&self, workspace: WorkspaceId, selector: &gnoblin_config::LayoutSelector) -> Result<(), String>;
-
-    /// Stores `selector` as `output`'s default layout, loading its module if needed.
-    ///
-    /// # Errors
-    /// A refusal message when the layout cannot be loaded.
-    fn set_output(&self, output: &str, selector: &gnoblin_config::LayoutSelector) -> Result<(), String>;
-
-    /// The layout name `workspace` runs now, as the engine would resolve it.
-    fn layout_name(&self, workspace: WorkspaceId, output: Option<&str>) -> String;
-
-    /// The default layout of `output`, which its workspaces fall back to.
-    fn output_layout(&self, output: &str) -> String;
-}
-
 /// The fields are private: a handler asks for what it needs through the accessor
 /// methods below, so a protocol module cannot reach into another one's table.
 pub struct State {
@@ -554,11 +526,6 @@ pub struct State {
     pub(crate) modal: Option<Modal>,
     /// The modal events queued since the last take, in the order they arrived.
     pub(crate) modal_events: Vec<ModalEvent>,
-    /// The reason each workspace's last layout run failed, until its next placement.
-    pub(crate) layout_failures: BTreeMap<WorkspaceId, &'static str>,
-    /// The layout control the compositor installed, which builds engines and holds the
-    /// runtime layout overrides. `None` until a layout is installed.
-    layouts: Option<Rc<dyn LayoutControl>>,
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     last_frame: Option<(OutputId, Vec<Rect>)>,
@@ -598,12 +565,6 @@ pub struct State {
     /// state can drift from this one.
     observer: Option<Arc<dyn Observer>>,
 }
-
-/// How long one loop turn may wait for a layout run that is still in flight.
-const LAYOUT_FRAME_BUDGET: Duration = Duration::from_millis(4);
-
-/// How long a layout command waits for its engine's answer before the workspace floats.
-const LAYOUT_COMMAND_WAIT: Duration = Duration::from_secs(2);
 
 impl State {
     /// Builds the state, its globals and its outputs.
@@ -865,8 +826,6 @@ impl State {
             tree: TreeFrame::with_hooks(tree),
             modal: None,
             modal_events: Vec::new(),
-            layout_failures: BTreeMap::new(),
-            layouts: None,
             last_frame: None,
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
@@ -1492,7 +1451,9 @@ impl State {
                     tiled,
                     work_area,
                 } => self.place_tiled(workspace, placement, tiled, work_area),
-                Effect::LayoutFailed { workspace, reason } => self.layout_failed(workspace, reason),
+                Effect::LayoutFailed { workspace, reason } => {
+                    log::warn!(area = "layout", %workspace, reason, "a layout run failed; the workspace runs floating");
+                }
             }
         }
         self.composer.end_workspace_slide();
@@ -1983,78 +1944,12 @@ impl State {
         self.apply(effects);
     }
 
-    /// Installs the factory that makes one layout engine per workspace and submits
-    /// every workspace's arrangement.
-    pub(crate) fn install_layouts(&mut self, control: Rc<dyn LayoutControl>) {
-        let factory = Rc::clone(&control);
-        self.layouts = Some(control);
-        let effects = self
-            .wm
-            .set_layout_engines(move |workspace, output| factory.engine(workspace, output));
-        self.apply(effects);
-        self.publish();
-    }
-
-    /// Sets one workspace's layout at runtime. The workspace's engine is replaced; the
-    /// old one is dropped with its run.
-    ///
-    /// # Errors
-    /// The control's refusal when the layout module cannot be loaded; nothing changes.
-    pub(crate) fn set_workspace_layout(
-        &mut self,
-        workspace: WorkspaceId,
-        selector: &gnoblin_config::LayoutSelector,
-    ) -> Result<(), String> {
-        let control = self
-            .layouts
-            .clone()
-            .ok_or_else(|| "no layouts are installed".to_owned())?;
-        control.set_workspace(workspace, selector)?;
-        let effects = self.wm.rebuild_layout(workspace);
-        self.apply(effects);
-        self.publish();
-        Ok(())
-    }
-
-    /// Sends `command` to `workspace`'s layout and applies the placements it answers
-    /// with. The answer is the refusal: `unknown layout` when the workspace has no
-    /// layout to ask, `refused` when the layout does not know the command. A layout
-    /// that fails while answering reports `layout_failed` and the workspace floats.
-    ///
-    /// # Errors
-    /// The refusal message, and nothing changes.
-    pub(crate) fn layout_command(
-        &mut self,
-        workspace: WorkspaceId,
-        command: gnoblin_wm::layout::LayoutCommand,
-    ) -> Result<(), String> {
-        let deadline = std::time::Instant::now() + LAYOUT_COMMAND_WAIT;
-        match self.wm.layout_command(workspace, command, deadline) {
-            Ok(effects) => {
-                self.apply(effects);
-                self.publish();
-                Ok(())
-            }
-            Err(gnoblin_wm::CommandError::UnknownLayout) => {
-                Err(format!("unknown layout: workspace {} has no layout", workspace.get()))
-            }
-            Err(gnoblin_wm::CommandError::Refused) => Err("refused: the layout does not know that command".to_owned()),
-        }
-    }
-
-    /// Every workspace the window manager arranges, with the layout it runs.
+    /// Every workspace the window manager arranges.
     fn observed_workspaces(&self) -> Vec<crate::observation::ObservedWorkspace> {
-        let Some(control) = self.layouts.as_ref() else {
-            return Vec::new();
-        };
-        let output = self.wm.arrange_output_name();
         self.wm
             .workspaces()
             .iter()
-            .map(|&id| crate::observation::ObservedWorkspace {
-                id,
-                layout: control.layout_name(id, output),
-            })
+            .map(|&id| crate::observation::ObservedWorkspace { id })
             .collect()
     }
 
@@ -2063,9 +1958,6 @@ impl State {
     /// The backend reports no EDID, so `make` and `model` stay empty and `transform` is
     /// normal: the headless and DRM paths do not rotate yet, and nothing here guesses.
     fn observed_outputs(&self) -> Vec<crate::observation::ObservedOutput> {
-        let Some(control) = self.layouts.as_ref() else {
-            return Vec::new();
-        };
         self.outputs
             .iter()
             .map(|entry| {
@@ -2073,7 +1965,6 @@ impl State {
                 let mode = observed_mode(entry.mode);
                 crate::observation::ObservedOutput {
                     id: entry.backend,
-                    layout: control.output_layout(&name),
                     make: String::new(),
                     model: String::new(),
                     modes: vec![mode.clone()],
@@ -2087,28 +1978,6 @@ impl State {
                 }
             })
             .collect()
-    }
-
-    /// Sets an output's default layout at runtime. Every workspace's engine is replaced,
-    /// so a workspace with its own override gets a fresh engine for that override.
-    ///
-    /// # Errors
-    /// The control's refusal when the layout module cannot be loaded, or when no output has
-    /// that name; nothing changes.
-    pub(crate) fn set_output_layout(
-        &mut self,
-        output: &str,
-        selector: &gnoblin_config::LayoutSelector,
-    ) -> Result<(), String> {
-        let control = self
-            .layouts
-            .clone()
-            .ok_or_else(|| "no layouts are installed".to_owned())?;
-        control.set_output(output, selector)?;
-        let effects = self.wm.rebuild_all_layouts();
-        self.apply(effects);
-        self.publish();
-        Ok(())
     }
 
     /// Appends an effect to a window's stack, in paint order, and publishes the window.
@@ -2196,21 +2065,6 @@ impl State {
         })
     }
 
-    /// Lets the window manager collect the layout runs that finished and applies the
-    /// placements they settle on.
-    ///
-    /// The server calls this once per loop turn. Without it an installed layout never
-    /// settles, and the tiling events the window manager holds back for it are never
-    /// applied.
-    pub(crate) fn poll_layouts(&mut self) {
-        let deadline = Instant::now() + LAYOUT_FRAME_BUDGET;
-        let effects = self.wm.apply(Event::Frame { deadline });
-        if !effects.is_empty() {
-            self.apply(effects);
-            self.publish();
-        }
-    }
-
     /// Applies one tiled placement from a settled layout run.
     ///
     /// The window is configured to the placement's size. Its position is the geometry's
@@ -2242,8 +2096,6 @@ impl State {
         let Some(state) = self.wm.window(window).map(|entry| entry.state) else {
             return;
         };
-        // A placement from a settled run means the workspace's layout works again.
-        self.layout_failures.remove(&workspace);
         let geometry = placed_geometry(RectF::new(position.x, position.y, placement.width, placement.height));
         let base = gnoblin_types::Transform {
             offset: Vec3::new(0.0, 0.0, position.z),
@@ -2255,18 +2107,6 @@ impl State {
         self.composer.set_window_visible(window, placement.visible);
         self.composer.set_window_opacity(window, placement.opacity as f32);
         self.configure(window, geometry, state, tiled, work_area);
-    }
-
-    /// Records that a workspace's layout run failed. The window manager already runs that
-    /// workspace floating; the reason is kept for the compositor to report.
-    fn layout_failed(&mut self, workspace: WorkspaceId, reason: &'static str) {
-        log::warn!(area = "layout", %workspace, reason, "failed; the workspace runs floating");
-        self.layout_failures.insert(workspace, reason);
-    }
-
-    /// The reason a workspace's layout last failed, or `None` when it has no failure on record.
-    pub(crate) fn layout_failure(&self, workspace: WorkspaceId) -> Option<&'static str> {
-        self.layout_failures.get(&workspace).copied()
     }
 
     /// The matrix a window's node is drawn with and its projected bounds, or `None` when it
@@ -2841,18 +2681,17 @@ impl State {
         self.sync_authority_lock();
         self.sync_foreign_toplevels();
         let workspaces = self.observed_workspaces();
-        let output_layouts = self.observed_outputs();
+        let output_details = self.observed_outputs();
         let mut snapshot = SessionSnapshot {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
             stack: self.wm.stack().to_vec(),
             workspaces,
-            output_layouts,
+            output_details,
             output_rects: self
                 .outputs
                 .iter()
                 .filter_map(|entry| self.output_rect(entry.backend).map(|rect| (entry.backend, rect)))
                 .collect(),
-            layout_failures: self.layout_failures.iter().map(|(ws, reason)| (*ws, *reason)).collect(),
             focus: focused,
             lock: LockObservation {
                 state: self.lock.state(),

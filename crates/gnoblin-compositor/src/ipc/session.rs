@@ -98,16 +98,8 @@ mod member {
     pub const UNRESPONSIVE: &str = "unresponsive";
     /// The `window` object's effects property: its `effect` objects, first to last.
     pub const EFFECTS: &str = "effects";
-    /// The layout name of an `output` or `workspace` object.
-    pub const LAYOUT: &str = "layout";
     /// The name of an `output` object, as the compositor reports it.
     pub const NAME: &str = "name";
-    /// The reason field of a `layout_failed` signal.
-    pub const REASON: &str = "reason";
-    /// The `layout_changed` signal, sent when an object's layout changes.
-    pub const LAYOUT_CHANGED: &str = "layout_changed";
-    /// The `layout_failed` signal, sent when a layout change is refused.
-    pub const LAYOUT_FAILED: &str = "layout_failed";
     /// The `workspace` object's set_activated signal, sent once per workspace when the window
     /// manager makes a configured workspace set the live set.
     pub const SET_ACTIVATED: &str = "set_activated";
@@ -138,10 +130,6 @@ mod member {
 struct PublishedWorkspace {
     /// The `workspace` object's identity.
     object: ObjectId,
-    /// The layout name last published for this workspace.
-    layout: String,
-    /// Why the workspace's layout failed to apply, if it did, so a client can show the reason.
-    failure: Option<&'static str>,
 }
 
 /// What the graph last published for one output.
@@ -643,7 +631,7 @@ impl SessionSync {
     /// Creates, changes and closes `output` objects to match the snapshot.
     fn apply_outputs(&mut self, snapshot: &SessionSnapshot, failures: &mut Vec<PublishFailure>) {
         let mut seen = BTreeSet::new();
-        for output in snapshot.output_layouts() {
+        for output in snapshot.output_details() {
             seen.insert(output.id);
             if let Err(error) = self.publish_output(output) {
                 failures.push(PublishFailure::new("output", output.id.get(), error));
@@ -716,22 +704,15 @@ impl SessionSync {
             ("y".to_owned(), Value::Int(i64::from(output.rect.y))),
             ("width".to_owned(), Value::Uint(u64::from(output.rect.width))),
             ("height".to_owned(), Value::Uint(u64::from(output.rect.height))),
-            ("layout".to_owned(), Value::Text(output.layout.clone())),
         ])
     }
 
-    /// Creates, changes and closes `workspace` objects to match the snapshot, and raises
-    /// `layout_changed` and `layout_failed` where the layout or its failure changed.
-    ///
-    /// A failure is raised once when it first appears; a workspace that stops failing
-    /// (its layout was replaced) simply publishes its layout again.
+    /// Creates, changes and closes `workspace` objects to match the snapshot.
     fn apply_workspaces(&mut self, snapshot: &SessionSnapshot, failures: &mut Vec<PublishFailure>) {
-        let layout_failures: BTreeMap<WorkspaceId, &'static str> = snapshot.layout_failures().iter().copied().collect();
         let mut seen = BTreeSet::new();
         for workspace in snapshot.workspaces() {
             seen.insert(workspace.id);
-            let failure = layout_failures.get(&workspace.id).copied();
-            if let Err(error) = self.publish_workspace(workspace, failure) {
+            if let Err(error) = self.publish_workspace(workspace) {
                 failures.push(PublishFailure::new("workspace", workspace.id.get(), error));
             }
         }
@@ -751,63 +732,15 @@ impl SessionSync {
         }
     }
 
-    /// Creates or updates one workspace object and raises its layout signals.
-    fn publish_workspace(
-        &mut self,
-        workspace: &ObservedWorkspace,
-        failure: Option<&'static str>,
-    ) -> Result<(), ModelError> {
-        let Some(previous) = self.workspaces.get(&workspace.id).cloned() else {
-            let properties = Fields::from([
-                (member::ID.to_owned(), Value::Uint(workspace.id.get())),
-                (member::LAYOUT.to_owned(), Value::Text(workspace.layout.clone())),
-            ]);
-            let object = self.graph.create(TypeKey::gnoblin("workspace"), properties)?;
-            if let Some(reason) = failure {
-                self.raise_failed(object, &workspace.layout, reason)?;
-            }
-            self.workspaces.insert(
-                workspace.id,
-                PublishedWorkspace {
-                    object,
-                    layout: workspace.layout.clone(),
-                    failure,
-                },
-            );
+    /// Creates the `workspace` object the first time the snapshot names its workspace.
+    fn publish_workspace(&mut self, workspace: &ObservedWorkspace) -> Result<(), ModelError> {
+        if self.workspaces.contains_key(&workspace.id) {
             return Ok(());
-        };
-        let object = previous.object;
-        if previous.layout != workspace.layout {
-            self.graph
-                .set(object, member::LAYOUT, Value::Text(workspace.layout.clone()))?;
-            self.raise_changed(object, &workspace.layout)?;
         }
-        if let Some(reason) = failure.filter(|reason| previous.failure != Some(*reason)) {
-            self.raise_failed(object, &workspace.layout, reason)?;
-        }
-        self.workspaces.insert(
-            workspace.id,
-            PublishedWorkspace {
-                object,
-                layout: workspace.layout.clone(),
-                failure,
-            },
-        );
+        let properties = Fields::from([(member::ID.to_owned(), Value::Uint(workspace.id.get()))]);
+        let object = self.graph.create(TypeKey::gnoblin("workspace"), properties)?;
+        self.workspaces.insert(workspace.id, PublishedWorkspace { object });
         Ok(())
-    }
-    /// Raises `layout_changed` on a workspace object.
-    fn raise_changed(&mut self, object: ObjectId, layout: &str) -> Result<(), ModelError> {
-        let fields = Fields::from([(member::LAYOUT.to_owned(), Value::Text(layout.to_owned()))]);
-        self.graph.signal(object, member::LAYOUT_CHANGED, fields).map(|_| ())
-    }
-
-    /// Raises `layout_failed` on a workspace object, with the reason the run failed.
-    fn raise_failed(&mut self, object: ObjectId, layout: &str, reason: &str) -> Result<(), ModelError> {
-        let fields = Fields::from([
-            (member::LAYOUT.to_owned(), Value::Text(layout.to_owned())),
-            (member::REASON.to_owned(), Value::Text(reason.to_owned())),
-        ]);
-        self.graph.signal(object, member::LAYOUT_FAILED, fields).map(|_| ())
     }
 
     /// Raises `set_activated` on every published workspace object, naming the set the window
@@ -1043,7 +976,6 @@ mod tests {
         ObservedOutput {
             id: OutputId::new(id),
             name: name.to_owned(),
-            layout: "floating".to_owned(),
             make: String::new(),
             model: String::new(),
             modes: vec!["1920x1080@60.000".to_owned()],
@@ -1061,7 +993,7 @@ mod tests {
         let mut store = store();
         let subscription = store.subscribe(Filter::All);
         let snapshot =
-            snapshot(Vec::new(), None).with_output_layouts(vec![output(1, "DP-1", Rect::new(0, 0, 1920, 1080))]);
+            snapshot(Vec::new(), None).with_output_details(vec![output(1, "DP-1", Rect::new(0, 0, 1920, 1080))]);
         store.apply(&snapshot).expect("the graph accepts the output");
         let observations = drained(&mut store, &subscription);
         let view = opened(&observations, "gnoblin.output");
@@ -1081,7 +1013,6 @@ mod tests {
         assert_eq!(view.property("y"), Some(&Value::Int(0)));
         assert_eq!(view.property("width"), Some(&Value::Uint(1920)));
         assert_eq!(view.property("height"), Some(&Value::Uint(1080)));
-        assert_eq!(view.property("layout"), Some(&Value::Text("floating".to_owned())));
     }
 
     #[test]
@@ -1089,7 +1020,7 @@ mod tests {
         let mut store = store();
         let subscription = store.subscribe(Filter::All);
         store
-            .apply(&snapshot(Vec::new(), None).with_output_layouts(vec![output(
+            .apply(&snapshot(Vec::new(), None).with_output_details(vec![output(
                 1,
                 "DP-1",
                 Rect::new(0, 0, 1920, 1080),
@@ -1102,7 +1033,7 @@ mod tests {
             ..output(1, "DP-1", Rect::new(0, 0, 1920, 1080))
         };
         store
-            .apply(&snapshot(Vec::new(), None).with_output_layouts(vec![moved]))
+            .apply(&snapshot(Vec::new(), None).with_output_details(vec![moved]))
             .expect("applied");
         let mut changed: Vec<String> = drained(&mut store, &subscription)
             .into_iter()

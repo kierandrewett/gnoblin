@@ -96,16 +96,13 @@ pub use generated::{
     CaptureSecureTreatment, CaptureSettings, ClickMethod, ColorScheme, ColourFilter, Compat, CompatCapture, Compositor,
     Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers, Gesture,
     GestureAction, GestureDirection, GestureKind, GesturePoint, Handedness, Input, InputSource, InputSourceType,
-    InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Layout, LayoutOutput, LayoutWorkspace,
-    Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction,
-    PointingStick, Protocol, Protocols, RendererChoice, RuleClientType, RuleCorners, RuleWorkspace, ScrollMethod,
-    Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet,
-    TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType,
-    WindowManagement, WindowMatch, WindowRule, WindowRuleType, Workspace, WorkspaceSet, WorkspaceSetEntry, Xwayland,
-    XwaylandExtension,
+    InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Location, LocationAccuracy, LogConsole,
+    Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction, PointingStick, Protocol, Protocols, RendererChoice,
+    RuleClientType, RuleCorners, RuleWorkspace, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys,
+    Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad,
+    Trackball, VisualAccessibility, VisualBellType, WindowManagement, WindowMatch, WindowRule, WindowRuleType, Workspace,
+    WorkspaceSet, WorkspaceSetEntry, Xwayland, XwaylandExtension,
 };
-/// The layout a setting names: a layout name, or a module reference and its options.
-pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
 /// The built-in keyring rule: from the environment, from a document, or from the last accepted file.
 pub use keyring::{
     keyring_enabled_from_document, keyring_enabled_from_environment, keyring_enabled_from_store,

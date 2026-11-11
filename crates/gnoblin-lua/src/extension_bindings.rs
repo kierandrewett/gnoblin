@@ -28,7 +28,6 @@ use mlua::{AnyUserData, Error, Function, Lua, Table, Value};
 use crate::bindings::{MODULES, Subscription, callbacks};
 use crate::extensions::ExtensionRegistry;
 use crate::host::{Shared, Watching};
-use crate::layout::is_layout_name;
 
 /// The name a method or signal table may not use: `on` is the subscription entry.
 const RESERVED: &str = "on";
@@ -61,7 +60,7 @@ pub(super) fn bind<T: Transport + 'static>(
         modules.set(name, module)?;
     }
     let granted = granted.clone();
-    let layouts = Rc::clone(shared);
+    let shared = Rc::clone(shared);
     lua.globals().set(
         "require",
         lua.create_function(move |lua, name: String| {
@@ -70,13 +69,8 @@ pub(super) fn bind<T: Transport + 'static>(
                 return Ok(Value::Table(module));
             }
             if !loaded.contains(&name) {
-                // Not an extension namespace. A layout name answers with a reference; any
-                // other name is a plain module, run once per evaluation.
-                if is_layout_name(&name) {
-                    let reference = layouts.borrow_mut().layouts.reference(&name).map_err(Error::runtime)?;
-                    return Ok(Value::UserData(lua.create_userdata(reference)?));
-                }
-                let loader = layouts.borrow().modules.clone();
+                // Not an extension namespace: a plain module, run once per evaluation.
+                let loader = shared.borrow().modules.clone();
                 let loader = loader.ok_or_else(|| {
                     Error::runtime(format!("unknown module `{name}`: no configuration is being evaluated"))
                 })?;

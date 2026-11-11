@@ -174,7 +174,6 @@ fn compositor() -> Result<(), Exit> {
     if let Err(error) = gnoblin_compat_host::session::configure(&mut config, gnoblin_compat_host::Mode::default()) {
         log::warn!("compat adapters not loaded, starting without them: {error:?}");
     }
-    gnoblin_compositor::configure_layouts_from_environment(&mut config);
     gnoblin_compositor::configure_cursor_from_environment(&mut config);
     gnoblin_compositor::configure_bell_from_environment(&mut config);
     gnoblin_compositor::configure_accessibility_from_environment(&mut config);

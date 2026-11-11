@@ -1,6 +1,6 @@
 -- tests/lua/tiling_test.lua: the stock tiled layouts of data/lua/gnoblin/shell/tiling.lua (Tiling, Monocle, GridLayout,
 -- Dwindle, Kiosk). Each class is a Workspace whose arrange() is a binding over its window children. Expected
--- rectangles are workspace-relative, integral, and use the defaults of the old layouts in data/lua/gnoblin/layouts.
+-- rectangles are workspace-relative and integral.
 local H = require("harness")
 
 local CLASSES = { "Tiling", "Monocle", "GridLayout", "Dwindle", "Kiosk" }

@@ -1,10 +1,6 @@
--- data/lua/gnoblin/shell/tiling.lua: the stock tiled layouts, ported from data/lua/gnoblin/layouts (which stay
--- untouched until the compositor loads this shell). Each class is a Workspace whose arrange() is a binding over its
+-- data/lua/gnoblin/shell/tiling.lua: the stock tiled layouts. Each class is a Workspace whose arrange() is a binding over its
 -- window children, so adding, removing, reordering or resizing, and changing an option field, re-arranges with no
 -- handler. Positions and sizes are floored to whole pixels. Coordinates are workspace-relative.
--- Not yet loaded by the compositor: the old layouts remain the live ones until the shell VM is wired.
--- Dropped from the old API: the M.arrange/ctx/on_request contract and the command tables (inc, dec, swap, rotate,
--- resize_ratio, next, prev). Options are class fields; the focused window comes from the seat.
 
 local ORIENTATIONS = { left = true, right = true, top = true, bottom = true }
 local FILLS = { row = true, column = true }

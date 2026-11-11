@@ -1640,22 +1640,6 @@ assert(string.match(tostring(message), "requires itself") ~= nil, "message was "
 }
 
 #[test]
-fn a_missing_layout_reference_keeps_the_unknown_module_message() {
-    let config = Config::new("require-layout-missing");
-    config.write(
-        "init.lua",
-        r#"
-local ok, message = pcall(require, "layouts.nothing")
-assert(not ok, "require returned a layout that does not exist")
-assert(string.match(tostring(message), "unknown module `layouts.nothing`") ~= nil, "message was " .. tostring(message))
-"#,
-    );
-    let (_server, mut host) = pair();
-    let report = host.run_config(&config.paths()).expect("the run starts");
-    assert!(report.errors.is_empty(), "{:#?}", report.errors);
-}
-
-#[test]
 fn a_timer_delay_outside_one_day_or_not_a_number_is_refused() {
     let config = Config::new("timer-range");
     config.write(

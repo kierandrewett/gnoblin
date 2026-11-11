@@ -52,7 +52,7 @@ use crate::output_config::OutputConfigHost;
 use gnoblin_config::Protocols;
 use gnoblin_layers::{LayerHandle, LayerProvider, LayerSpec};
 use gnoblin_output::LayoutError;
-use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
@@ -527,9 +527,6 @@ impl Server {
                             Command::DrawnNode { window, reply } => {
                                 let _ = reply.send(state.drawn_node(window));
                             }
-                            Command::LayoutFailure { workspace, reply } => {
-                                let _ = reply.send(state.layout_failure(workspace));
-                            }
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
                             Command::VisualBell(settings) => state.apply_visual_bell_settings(settings),
                             Command::VisualAccessibility(settings) => {
@@ -582,22 +579,8 @@ impl Server {
                                 let _ = reply.send(state.window_visual(window, change));
                             }
                             Command::Lock { reply } => state.request_lock(reply),
-                            Command::SetWorkspaceLayout {
-                                workspace,
-                                selector,
-                                reply,
-                            } => {
-                                let _ = reply.send(state.set_workspace_layout(workspace, &selector));
-                            }
                             Command::ActivateWorkspaceSet { name, reply } => {
                                 let _ = reply.send(state.activate_workspace_set(&name));
-                            }
-                            Command::SetOutputLayout {
-                                output,
-                                selector,
-                                reply,
-                            } => {
-                                let _ = reply.send(state.set_output_layout(&output, &selector));
                             }
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
@@ -615,13 +598,6 @@ impl Server {
                             }
                             Command::ExportedWindow { handle, reply } => {
                                 let _ = reply.send(state.exported_window(&handle));
-                            }
-                            Command::Layout {
-                                workspace,
-                                command,
-                                reply,
-                            } => {
-                                let _ = reply.send(state.layout_command(workspace, command));
                             }
                             Command::AddEffect { window, spec, reply } => {
                                 let _ = reply.send(state.add_effect(window, spec));
@@ -702,14 +678,6 @@ impl Server {
         self.state.access().promise(pid, role);
     }
 
-    /// Installs the layout engines, one per workspace, that arrange the windows.
-    ///
-    /// Called by the composition root before the loop runs. A layout that is never
-    /// installed leaves the window manager tiling nothing.
-    pub fn install_layouts(&mut self, control: std::rc::Rc<dyn crate::state::LayoutControl>) {
-        self.state.install_layouts(control);
-    }
-
     /// Runs until the loop is stopped.
     ///
     /// Each iteration flushes the clients, takes the backend's input and state
@@ -786,9 +754,6 @@ impl Server {
                         log::warn!(area = "access", ?error, "a sandbox listener could not be watched");
                     }
                 }
-                // A layout run that finished since the last turn places its windows before
-                // this turn's frame is drawn.
-                state.poll_layouts();
                 let events = backend.dispatch(state);
                 let outputs_changed = scale_changed || events.iter().any(is_output_change);
                 if outputs_changed {
@@ -935,43 +900,12 @@ impl ControlHandle {
         answer.recv_timeout(std::time::Duration::from_secs(3)).ok()
     }
 
-    /// Sets a workspace's layout to the module `selector` names. `None` when the loop did
-    /// not answer in time; otherwise the refusal message when the layout cannot load.
-    pub fn set_workspace_layout(
-        &self,
-        workspace: WorkspaceId,
-        selector: &gnoblin_config::LayoutSelector,
-    ) -> Option<Result<(), String>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::SetWorkspaceLayout {
-            workspace,
-            selector: selector.clone(),
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
     /// Makes the configured workspace set `name` the live set. `None` when the loop did not
     /// answer in time; otherwise the window manager's answer, `Ok` once the set is shown.
     pub fn activate_workspace_set(&self, name: &str) -> Option<Result<(), WorkspaceSetRefusal>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::ActivateWorkspaceSet {
             name: name.to_owned(),
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Sets an output's default layout; same answers as [`ControlHandle::set_workspace_layout`].
-    pub fn set_output_layout(
-        &self,
-        output: &str,
-        selector: &gnoblin_config::LayoutSelector,
-    ) -> Option<Result<(), String>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::SetOutputLayout {
-            output: output.to_owned(),
-            selector: selector.clone(),
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1018,22 +952,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::ExportedWindow {
             handle: handle.to_owned(),
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Sends a command to a workspace's layout. `None` when the loop did not answer in
-    /// time; otherwise `Err` carries the refusal (`unknown layout:` or `refused:`).
-    pub fn layout_command(
-        &self,
-        workspace: WorkspaceId,
-        command: gnoblin_wm::layout::LayoutCommand,
-    ) -> Option<Result<(), String>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::Layout {
-            workspace,
-            command,
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -1106,14 +1024,6 @@ impl ControlHandle {
     pub fn drawn_node(&self, window: WindowId) -> Option<Option<(gnoblin_render::Mat4, Rect)>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::DrawnNode { window, reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// The reason a workspace's last layout run failed, or `None` when it has none on record.
-    #[must_use]
-    pub fn layout_failure(&self, workspace: gnoblin_types::WorkspaceId) -> Option<Option<&'static str>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::LayoutFailure { workspace, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -1362,18 +1272,6 @@ enum Command {
         name: String,
         reply: std::sync::mpsc::SyncSender<Result<(), WorkspaceSetRefusal>>,
     },
-    /// A workspace's layout choice; the answer is the refusal, if any.
-    SetWorkspaceLayout {
-        workspace: WorkspaceId,
-        selector: gnoblin_config::LayoutSelector,
-        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
-    },
-    /// An output's default layout choice; the answer is the refusal, if any.
-    SetOutputLayout {
-        output: String,
-        selector: gnoblin_config::LayoutSelector,
-        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
-    },
     /// A shell visual request from the IPC, and the channel its answer goes back on: `Ok(())`
     /// when the drawing changed, `Err` with the reason when it did not.
     WindowVisual {
@@ -1402,12 +1300,6 @@ enum Command {
     ExportedWindow {
         handle: String,
         reply: std::sync::mpsc::SyncSender<Option<WindowId>>,
-    },
-    /// A command for a workspace's layout; the answer is the refusal, if any.
-    Layout {
-        workspace: WorkspaceId,
-        command: gnoblin_wm::layout::LayoutCommand,
-        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Adds an effect to a window's stack; see `ControlHandle::add_effect`.
     AddEffect {
@@ -1445,11 +1337,6 @@ enum Command {
     DrawnNode {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<Option<(gnoblin_render::Mat4, Rect)>>,
-    },
-    /// The reason a workspace's last layout run failed.
-    LayoutFailure {
-        workspace: gnoblin_types::WorkspaceId,
-        reply: std::sync::mpsc::SyncSender<Option<&'static str>>,
     },
     /// Whether window property changes land at once instead of animating.
     ReducedMotion(bool),

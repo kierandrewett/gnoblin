@@ -1,12 +1,12 @@
 //! Where the installed Lua modules live.
 //!
-//! The shipped layout modules and the shell's stock library both resolve their install directory from
-//! `GNOBLIN_PREFIX`, so the resolution lives here rather than in either consumer.
+//! The shell's stock library resolves its install directory from `GNOBLIN_PREFIX`, so the resolution
+//! lives here rather than in the consumer.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-/// Where the layout modules of a prefix are installed.
+/// Where the installed Lua modules of a prefix live.
 pub fn installed_module_dir(prefix: &Path) -> PathBuf {
     prefix.join("share/gnoblin/lua")
 }

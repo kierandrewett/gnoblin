@@ -151,12 +151,9 @@ pub(super) struct Shared<T: Transport> {
     pub(super) reports: Vec<ScriptError>,
     /// The extension schemas `require` binds from; a signal's declared fields come from here.
     pub(super) extensions: ExtensionRegistry,
-    /// The loader that answers `require` for a layout module with a reference. It holds
-    /// the one layout VM of the current configuration evaluation.
-    pub(super) layouts: crate::layout::LayoutModuleLoader,
     /// The configuration VM's modules for one evaluation, so a plain `require` runs each
     /// module once. `None` outside an evaluation.
-    pub(super) modules: Option<Rc<crate::layout::Modules>>,
+    pub(super) modules: Option<Rc<crate::require::Modules>>,
     /// Set when the compositor asks for a reload, and cleared by [`Host::take_reload_request`].
     /// The request arrives as a signal while the pump observes the graph, so the caller acts on
     /// it once the pump returns.
@@ -485,7 +482,6 @@ impl<T: Transport + 'static> Host<T> {
             reported: BTreeSet::new(),
             reports: Vec::new(),
             extensions: ExtensionRegistry::new(),
-            layouts: crate::layout::LayoutModuleLoader::new(limits),
             modules: None,
             reload_requested: false,
             reload_failures: 0,
@@ -561,12 +557,8 @@ impl<T: Transport + 'static> Host<T> {
             std::env::var_os("GNOBLIN_PREFIX").as_deref(),
         ));
         let user = path.path().parent().map(Path::to_path_buf);
-        let roots = crate::layout::ModuleRoots { shipped, user };
-        {
-            let mut shared = self.shared.borrow_mut();
-            shared.layouts.reset(roots.clone());
-            shared.modules = Some(Rc::new(crate::layout::Modules::new(roots)));
-        }
+        let roots = crate::require::ModuleRoots { shipped, user };
+        self.shared.borrow_mut().modules = Some(Rc::new(crate::require::Modules::new(roots)));
         {
             let mut shared = self.shared.borrow_mut();
             shared.document = Value::Map(BTreeMap::new());

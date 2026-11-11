@@ -17,10 +17,8 @@
 //! The tests below are the crate's "failure modes first" list, one to an item; the
 //! crate documentation names which test covers which mode.
 
-use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -30,13 +28,9 @@ use gnoblin_backend::headless::Headless;
 use gnoblin_layers::InputPolicy;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
-use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
+use gnoblin_types::{Point, Rect, WindowId};
 use gnoblin_wayland::{
-    Clock, Config, ControlHandle, LayoutControl, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot,
-    SystemClock,
-};
-use gnoblin_wm::layout::{
-    Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
+    Clock, Config, ControlHandle, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot, SystemClock,
 };
 use gnoblin_wm::{FocusMode, NewWindowFocus, POINTER_REST, WmOptions};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
@@ -448,105 +442,58 @@ fn headless_screen() -> (i32, i32) {
     )
 }
 
-/// A session whose layout puts two windows side by side, with a gap between them. The first
-/// window takes focus when it maps and the second does not, so pointer focus is what moves it.
-fn pair_session(focus_mode: FocusMode) -> Session {
-    scripted_session(focus_mode, Shape::Pair)
-}
-
-/// A session whose master-stack layout tiles two windows: `Left` takes the left half of the
-/// output and `Right` the right half. They touch, so the output has no empty space between them.
-fn master_session(focus_mode: FocusMode) -> Session {
-    scripted_session(focus_mode, Shape::Master)
-}
-
-fn scripted_session(focus_mode: FocusMode, shape: Shape) -> Session {
-    scripted_with(
+/// A session that takes focus under `focus_mode`, on the system clock.
+fn focus_session(focus_mode: FocusMode) -> Session {
+    session_on(
         WmOptions {
             focus_mode,
             ..WmOptions::default()
         },
-        shape,
         Arc::new(SystemClock),
     )
 }
 
-/// A master-stack session whose pointer rests before a hover focus change: the change waits
+/// A hover session whose pointer rests before a hover focus change: the change waits
 /// `POINTER_REST` on the new window, and only a test advances the clock that measures it.
-fn rest_master_session() -> Session {
-    rest_master_session_on(Arc::new(ManualClock::new()))
+fn rest_session() -> Session {
+    rest_session_on(Arc::new(ManualClock::new()))
 }
 
 /// The rest session on a clock the test owns, so the test decides when wall time passes.
-fn rest_master_session_on(clock: Arc<ManualClock>) -> Session {
-    scripted_with(
+fn rest_session_on(clock: Arc<ManualClock>) -> Session {
+    session_on(
         WmOptions {
             focus_mode: FocusMode::Hover,
             focus_change_on_pointer_rest: true,
             ..WmOptions::default()
         },
-        Shape::Master,
         clock,
     )
 }
 
-/// Starts a session with the given window manager options, a scripted engine and a session
-/// clock source. A [`ManualClock`] moves only when its owner moves it, so a rest timer never
-/// expires during a client round trip that the test did not ask for.
-fn scripted_with(wm: WmOptions, shape: Shape, clock: Arc<dyn Clock>) -> Session {
-    let mut session = Session::start_configured(
+/// A session with the given window manager options on the clock the caller chooses. A
+/// [`ManualClock`] moves only when its owner moves it, so a rest timer never expires during a
+/// client round trip that the test did not ask for.
+fn session_on(wm: WmOptions, clock: Arc<dyn Clock>) -> Session {
+    Session::start_configured(
         Headless::new(),
         Config {
             wm,
             clock,
             ..Config::default()
         },
-    );
-    let shape: SharedShape = Arc::new(Mutex::new(shape));
-    let _made = install_scripted(&mut session, shape);
-    session
+    )
 }
 
-/// Waits until the master layout has tiled both windows, then checks the rectangles it chose.
-/// A layout change fails here, loudly, rather than letting the hover tests run on other geometry.
-/// The rectangles are the drawn ones, and the observed geometry is that same rectangle.
-fn wait_for_master(session: &Handle) {
-    let deadline = Instant::now() + TIMEOUT;
-    loop {
-        let left = drawn(session, window_id(session, "Left")).1;
-        let right = drawn(session, window_id(session, "Right")).1;
-        let tiled = (left.x, left.right(), left.bottom()) == (0, 512, 768)
-            && (right.x, right.right(), right.bottom()) == (512, 1024, 768);
-        if tiled {
-            return;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the master layout never tiled the windows; left {left:?}, right {right:?}"
-        );
-        thread::sleep(Duration::from_millis(5));
-    }
+/// Maps `Left` and `Right` on the left and right halves of the output and waits until both are
+/// drawn there. The two halves touch, so the output has no empty space between the windows.
+fn map_split_pair(session: &Handle, client: &mut Client) -> (Window, Window) {
+    map_pair(session, client, SPLIT_LEFT, SPLIT_RIGHT)
 }
 
-/// Maps `Left` and `Right` on one client and waits until the master layout tiles them. The
-/// windows are created without a buffer, then configured and drawn at the size the master
-/// layout chose, as the master test does: a buffer attached before the first configure
-/// leaves the window at its default size and the layout never lands.
-fn map_master_pair(session: &Handle, client: &mut Client) -> (Window, Window) {
-    let (width, height) = headless_screen();
-    let left = client.create_window("org.gnoblin.Left", "Left");
-    let right = client.create_window("org.gnoblin.Right", "Right");
-    client.roundtrip();
-    settle_size(client, (width / 2, height));
-    draw_configured(client, &left);
-    draw_configured(client, &right);
-    wait_for_master(session);
-    (left, right)
-}
-
-/// A point outside both windows of `master_session` and outside the output. The two windows
+/// A point outside both windows of the split pair and outside the output. The two windows
 /// cover the whole output, so no point inside it is clear of both.
-fn master_gap_point() -> Point {
+fn outside_output_point() -> Point {
     let (width, height) = headless_screen();
     Point::new(width + 50, height / 2)
 }
@@ -1158,192 +1105,53 @@ impl Dispatch<xdg_popup::XdgPopup, ()> for App {
     }
 }
 
-/// The arrangement the test engine answers with. The test changes it between
-/// runs to move, tilt or fail the placements.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Shape {
-    /// The first window takes the left half; the rest share the right half.
-    Master,
-    /// Every window is flat at `(100, 100)`, 300 by 200.
-    Flat,
-    /// Window `i` is at `(100 + 500 * i, 100)`, 300 by 200: the windows sit side by side with
-    /// a gap between them.
-    Pair,
-    /// Window `i` is at `(100 + 100 * i, 100)`, 300 by 200: each window overlaps the one
-    /// below it, so the lower window keeps a strip that nothing covers.
-    Overlap,
-    /// The flat rectangle at `(100, 100)`, 300 by 200, turned 30 degrees about Z: its corners
-    /// leave the unrotated rectangle.
-    Spun,
-    /// The flat rectangle, rotated 40 degrees about Y and lifted 200 units in depth.
-    Tilt,
-    /// Every window is flat at `(100 * count, 0)`, 300 by 200: a placement moves
-    /// whenever a window is added.
-    Shift,
-    /// The engine raises an error on every run.
-    Fail,
-}
+/// The rectangles the pair tests place their windows at: two windows with a gap between them.
+const PAIR_LEFT: Rect = Rect::new(100, 100, 300, 200);
+/// The rectangle the pair tests place `Right` at.
+const PAIR_RIGHT: Rect = Rect::new(600, 100, 300, 200);
+/// The left half of the output, which the master tests tile.
+const SPLIT_LEFT: Rect = Rect::new(0, 0, 512, 768);
+/// The right half of the output.
+const SPLIT_RIGHT: Rect = Rect::new(512, 0, 512, 768);
+/// Two overlapping windows: `Right` covers the right part of `Left`.
+const OVERLAP_LOWER: Rect = Rect::new(100, 100, 300, 200);
+/// The window above `OVERLAP_LOWER`, shifted right by 100.
+const OVERLAP_UPPER: Rect = Rect::new(200, 100, 300, 200);
 
-/// The shape the engines read, shared with the test.
-type SharedShape = Arc<Mutex<Shape>>;
-
-/// A test-local engine implementing the layout contract. Every run is ready at once.
-struct ScriptedEngine {
-    shape: SharedShape,
-    ready: Option<(gnoblin_wm::layout::Generation, Result<Reply, LayoutFailure>)>,
-}
-
-impl ScriptedEngine {
-    fn arrange(shape: Shape, params: &Params) -> Result<Reply, LayoutFailure> {
-        let windows = params.windows();
-        let placements = match shape {
-            Shape::Fail => return Err(LayoutFailure::Error),
-            Shape::Master => {
-                let (width, height) = (params.output_width(), params.output_height());
-                let half = width / 2.0;
-                let Some((master, stack)) = windows.split_first() else {
-                    return Ok(Reply::Handled(Handled {
-                        placements: Vec::new(),
-                        camera: Camera::Orthographic,
-                        effects: Vec::new(),
-                    }));
-                };
-                let mut placements = vec![Placement::rect(master.id, 0.0, 0.0, half, height)];
-                let slot = height / stack.len().max(1) as f64;
-                for (index, window) in stack.iter().enumerate() {
-                    placements.push(Placement::rect(window.id, half, slot * index as f64, half, slot));
-                }
-                placements
-            }
-            Shape::Flat => windows
-                .iter()
-                .map(|window| Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0))
-                .collect(),
-            Shape::Pair => windows
-                .iter()
-                .enumerate()
-                .map(|(index, window)| Placement::rect(window.id, 100.0 + 500.0 * index as f64, 100.0, 300.0, 200.0))
-                .collect(),
-            Shape::Overlap => windows
-                .iter()
-                .enumerate()
-                .map(|(index, window)| Placement::rect(window.id, 100.0 + 100.0 * index as f64, 100.0, 300.0, 200.0))
-                .collect(),
-            Shape::Tilt => windows
-                .iter()
-                .map(|window| Placement {
-                    transform: Transform3::Trs {
-                        position: Vec3::new(100.0, 100.0, 200.0),
-                        rotation_degrees: Vec3::new(0.0, 40.0, 0.0),
-                        scale: Vec3::new(1.0, 1.0, 1.0),
-                    },
-                    ..Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0)
-                })
-                .collect(),
-            Shape::Spun => windows
-                .iter()
-                .map(|window| Placement {
-                    transform: Transform3::Trs {
-                        position: Vec3::new(100.0, 100.0, 0.0),
-                        rotation_degrees: Vec3::new(0.0, 0.0, 30.0),
-                        scale: Vec3::new(1.0, 1.0, 1.0),
-                    },
-                    ..Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0)
-                })
-                .collect(),
-            Shape::Shift => {
-                let x = 100.0 * windows.len() as f64;
-                windows
-                    .iter()
-                    .map(|window| Placement::rect(window.id, x, 0.0, 300.0, 200.0))
-                    .collect()
-            }
-        };
-        Ok(Reply::Handled(Handled {
-            placements,
-            camera: Camera::Orthographic,
-            effects: Vec::new(),
-        }))
+/// Pumps the client until the session observes a window titled `title`.
+fn wait_titled(session: &Handle, client: &mut Client, title: &str) {
+    let deadline = Instant::now() + TIMEOUT;
+    while session.windows().titled(title).is_none() {
+        assert!(Instant::now() < deadline, "the window {title} is never observed");
+        thread::sleep(Duration::from_millis(5));
+        client.roundtrip();
     }
 }
 
-impl LayoutEngine for ScriptedEngine {
-    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
-        gnoblin_wm::layout::LayoutKind::Tiling
+/// Creates a window, places it at `rect` through the session's control, and configures and
+/// draws it at that size. The placement is drawn at `rect` before this returns.
+fn place_window(session: &Handle, client: &mut Client, app_id: &str, title: &str, rect: Rect) -> Window {
+    let window = client.create_window(app_id, title);
+    wait_titled(session, client, title);
+    session.control.move_window(window_id(session, title), rect);
+    settle_size(client, (rect.width as i32, rect.height as i32));
+    draw_configured(client, &window);
+    let deadline = Instant::now() + TIMEOUT;
+    while drawn(session, window_id(session, title)).1 != rect {
+        assert!(
+            Instant::now() < deadline,
+            "the window {title} is never drawn at {rect:?}"
+        );
+        thread::sleep(Duration::from_millis(5));
     }
-
-    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
-        gnoblin_wm::layout::LayoutExtent::Output
-    }
-
-    fn declares(&self, _command: &str) -> bool {
-        false
-    }
-
-    fn submit(&mut self, job: Job, generation: gnoblin_wm::layout::Generation) -> gnoblin_wm::layout::Ticket {
-        let shape = *self.shape.lock().expect("the shape lock");
-        let result = match job {
-            Job::Arrange(params) | Job::Request(gnoblin_wm::layout::Request { params, .. }) => {
-                Self::arrange(shape, &params)
-            }
-            Job::Command(..) => Ok(Reply::Declined),
-        };
-        self.ready = Some((generation, result));
-        gnoblin_wm::layout::Ticket::new(generation)
-    }
-
-    fn collect(&mut self, generation: gnoblin_wm::layout::Generation, _deadline: Instant) -> LayoutOutcome {
-        match self.ready.take() {
-            Some((ready, result)) if ready == generation => LayoutOutcome::Ready { generation, result },
-            other => {
-                self.ready = other;
-                LayoutOutcome::Pending
-            }
-        }
-    }
+    window
 }
 
-/// Installs one engine per workspace, all reading `shape`, and returns the
-/// workspaces the factory was asked for.
-fn install_scripted(session: &mut Session, shape: SharedShape) -> Arc<Mutex<Vec<WorkspaceId>>> {
-    let made = Arc::new(Mutex::new(Vec::new()));
-    let record = Arc::clone(&made);
-    session
-        .server
-        .install_layouts(Rc::new(ScriptedLayouts { record, shape }));
-    made
-}
-
-/// Builds the scripted engine for every workspace and refuses runtime layout changes.
-struct ScriptedLayouts {
-    record: Arc<Mutex<Vec<WorkspaceId>>>,
-    shape: SharedShape,
-}
-
-impl LayoutControl for ScriptedLayouts {
-    fn engine(&self, workspace: WorkspaceId, _output: Option<&str>) -> Box<dyn LayoutEngine> {
-        self.record.lock().expect("the workspace lock").push(workspace);
-        Box::new(ScriptedEngine {
-            shape: Arc::clone(&self.shape),
-            ready: None,
-        })
-    }
-
-    fn set_workspace(&self, _workspace: WorkspaceId, _selector: &gnoblin_config::LayoutSelector) -> Result<(), String> {
-        Err("the scripted layouts take no runtime choice".to_owned())
-    }
-
-    fn set_output(&self, _output: &str, _selector: &gnoblin_config::LayoutSelector) -> Result<(), String> {
-        Err("the scripted layouts take no runtime choice".to_owned())
-    }
-
-    fn layout_name(&self, _workspace: WorkspaceId, _output: Option<&str>) -> String {
-        "scripted".to_owned()
-    }
-
-    fn output_layout(&self, _output: &str) -> String {
-        "scripted".to_owned()
-    }
+/// Places `Left` and `Right` on one client at the given rectangles.
+fn map_pair(session: &Handle, client: &mut Client, left: Rect, right: Rect) -> (Window, Window) {
+    let left_window = place_window(session, client, "org.gnoblin.Left", "Left", left);
+    let right_window = place_window(session, client, "org.gnoblin.Right", "Right", right);
+    (left_window, right_window)
 }
 
 /// Processes the client's events until its toplevel is configured to `size`.
@@ -1385,164 +1193,6 @@ fn drawn(session: &Handle, window: WindowId) -> (gnoblin_render::Mat4, Rect) {
     }
 }
 
-#[test]
-fn a_master_stack_places_three_real_clients_at_their_configured_sizes() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Master));
-    let _made = install_scripted(&mut session, shape);
-    session.run(|session| {
-        let (screen_w, screen_h) = headless_screen();
-        let (half, height) = (screen_w / 2, screen_h);
-        let mut first = Client::connect(session.socket());
-        let mut second = Client::connect(session.socket());
-        let mut third = Client::connect(session.socket());
-        let w1 = first.create_window("org.gnoblin.Master", "Master");
-        let w2 = second.create_window("org.gnoblin.Stack", "Upper");
-        let w3 = third.create_window("org.gnoblin.Stack", "Lower");
-
-        // The master is the first window; the stack is the other two in creation order.
-        settle_size(&mut first, (half, height));
-        settle_size(&mut second, (half, height / 2));
-        settle_size(&mut third, (half, height / 2));
-        draw_configured(&mut first, &w1);
-        draw_configured(&mut second, &w2);
-        draw_configured(&mut third, &w3);
-
-        let master = window_id(session, "Master");
-        let upper = window_id(session, "Upper");
-        let lower = window_id(session, "Lower");
-        assert_eq!(drawn(session, master).1, Rect::new(0, 0, half as u32, height as u32));
-        assert_eq!(
-            drawn(session, upper).1,
-            Rect::new(half, 0, half as u32, (height / 2) as u32)
-        );
-        assert_eq!(
-            drawn(session, lower).1,
-            Rect::new(half, height / 2, half as u32, (height / 2) as u32)
-        );
-    });
-}
-
-#[test]
-fn a_tiled_master_receives_tiled_states_and_work_area_bounds_on_the_wire() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Master));
-    let _made = install_scripted(&mut session, shape);
-    session.run(|session| {
-        let (screen_w, screen_h) = headless_screen();
-        let (half, height) = (screen_w / 2, screen_h);
-        let mut first = Client::connect(session.socket());
-        let mut second = Client::connect(session.socket());
-        let w1 = first.create_window("org.gnoblin.Master", "Master");
-        let w2 = second.create_window("org.gnoblin.Stack", "Upper");
-        settle_size(&mut first, (half, height));
-        settle_size(&mut second, (half, height));
-        draw_configured(&mut first, &w1);
-        draw_configured(&mut second, &w2);
-
-        // The master fills the left half: its left and top and bottom edges sit on the work
-        // area, and its right edge abuts the stack, so all four edges are tiled.
-        let states = &first.state.states;
-        assert!(states.contains(&xdg_toplevel::State::TiledLeft), "states {states:?}");
-        assert!(states.contains(&xdg_toplevel::State::TiledTop), "states {states:?}");
-        assert!(states.contains(&xdg_toplevel::State::TiledBottom), "states {states:?}");
-        assert!(states.contains(&xdg_toplevel::State::TiledRight), "states {states:?}");
-        // Bounds are the work area, which the client may use to cap its size.
-        assert_eq!(first.state.bounds, Some((screen_w, screen_h)));
-    });
-}
-
-/// Maps one window under `shape` and returns the matrix and projected bounds it is drawn with.
-fn draw_single(shape: Shape) -> (gnoblin_render::Mat4, Rect) {
-    let mut session = Session::start(Headless::new());
-    let shared: SharedShape = Arc::new(Mutex::new(shape));
-    let _made = install_scripted(&mut session, shared);
-    let outcome = Arc::new(Mutex::new(None));
-    let record = Arc::clone(&outcome);
-    session.run(move |session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("org.gnoblin.Single", "Single");
-        settle_size(&mut client, (300, 200));
-        draw_configured(&mut client, &window);
-        let id = window_id(session, "Single");
-        *record.lock().expect("the outcome lock") = Some(drawn(session, id));
-    });
-    let result = outcome.lock().expect("the outcome lock").take();
-    result.expect("the body recorded the drawn node")
-}
-
-#[test]
-fn a_rotated_z_offset_placement_reaches_the_renderer_as_a_3d_matrix() {
-    let (flat_matrix, flat_bounds) = draw_single(Shape::Flat);
-    let (tilt_matrix, tilt_bounds) = draw_single(Shape::Tilt);
-
-    assert_eq!(
-        flat_bounds,
-        Rect::new(100, 100, 300, 200),
-        "the flat placement is drawn where it was placed"
-    );
-    // A rotation about Y puts a non-zero entry in the x/z cross terms; the flat matrix has none.
-    let rotated = |m: &gnoblin_render::Mat4| m.m[0][2].abs() > 1e-6 || m.m[2][0].abs() > 1e-6;
-    assert!(
-        !rotated(&flat_matrix),
-        "the flat placement has no rotation: {:?}",
-        flat_matrix.m
-    );
-    assert!(
-        rotated(&tilt_matrix),
-        "the rotated placement's node matrix is not flat: {:?}",
-        tilt_matrix.m
-    );
-    assert_ne!(
-        tilt_matrix.m, flat_matrix.m,
-        "the 3D placement changes the matrix the renderer draws with"
-    );
-    assert_ne!(
-        tilt_bounds, flat_bounds,
-        "the projected bounds differ from the flat placement"
-    );
-    assert!(
-        tilt_bounds.width < flat_bounds.width,
-        "a 40 degree turn about Y narrows the projected width: {tilt_bounds:?} against {flat_bounds:?}"
-    );
-}
-
-/// Projects a surface-local point through a drawn matrix, the way the renderer places it.
-fn project(matrix: &gnoblin_render::Mat4, (u, v): (f64, f64)) -> (f64, f64) {
-    let [x, y, _, w] = matrix.apply([u, v, 0.0, 1.0]);
-    (x / w, y / w)
-}
-
-/// The global pixel the drawn matrix puts surface point `local` at, rounded to a pointer position.
-fn drawn_at(matrix: &gnoblin_render::Mat4, local: (f64, f64)) -> Point {
-    let (x, y) = project(matrix, local);
-    Point::new(x.round() as i32, y.round() as i32)
-}
-
-/// Checks that projecting a 300 by 200 surface through `matrix` reproduces the drawn bounds, so
-/// the predictions below use the same geometry the renderer draws with.
-fn assert_projection_matches(matrix: &gnoblin_render::Mat4, bounds: Rect) {
-    let corners = [(0.0, 0.0), (300.0, 0.0), (0.0, 200.0), (300.0, 200.0)].map(|local| project(matrix, local));
-    let min_x = corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
-    let max_x = corners.iter().map(|c| c.0).fold(f64::NEG_INFINITY, f64::max);
-    let min_y = corners.iter().map(|c| c.1).fold(f64::INFINITY, f64::min);
-    let max_y = corners.iter().map(|c| c.1).fold(f64::NEG_INFINITY, f64::max);
-    let projected = (min_x, min_y, max_x, max_y);
-    let drawn = (
-        bounds.x as f64,
-        bounds.y as f64,
-        bounds.right() as f64,
-        bounds.bottom() as f64,
-    );
-    assert!(
-        (projected.0 - drawn.0).abs() <= 1.0
-            && (projected.1 - drawn.1).abs() <= 1.0
-            && (projected.2 - drawn.2).abs() <= 1.0
-            && (projected.3 - drawn.3).abs() <= 1.0,
-        "the projection {projected:?} disagrees with the drawn bounds {drawn:?}"
-    );
-}
-
 /// Moves the pointer to `at`, lets the loop process it, and returns the surface point the client
 /// received, or `None` when the pointer is over no surface of the client.
 fn point_at(session: &Handle, client: &mut Client, at: Point) -> Option<(f64, f64)> {
@@ -1562,135 +1212,11 @@ fn assert_pointer_at(got: Option<(f64, f64)>, want: (f64, f64), what: &str) {
 }
 
 #[test]
-fn a_rotated_window_receives_the_pointer_where_it_is_drawn() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Tilt));
-    let _made = install_scripted(&mut session, shape);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("org.gnoblin.Tilted", "Tilted");
-        settle_size(&mut client, (300, 200));
-        draw_configured(&mut client, &window);
-        let (matrix, bounds) = drawn(session, window_id(session, "Tilted"));
-        assert_projection_matches(&matrix, bounds);
-
-        // Points the drawn window covers, but which the unrotated 300 by 200 rectangle does not
-        // place where the window is drawn: a point inside the rectangle that is not on the turned
-        // surface would be missed by the drawn geometry and hit by the stale rectangle.
-        for local in [(60.0, 40.0), (240.0, 160.0)] {
-            let at = drawn_at(&matrix, local);
-            assert_pointer_at(point_at(session, &mut client, at), local, &format!("the point {at:?}"));
-        }
-
-        // (101, 101) is inside the unrotated rectangle, but the 40 degree turn about Y moved the
-        // window's left edge to about x = 135, so the window is not drawn there.
-        let corner = Point::new(101, 101);
-        assert!(
-            Rect::new(100, 100, 300, 200).contains(corner),
-            "the corner is inside the rectangle"
-        );
-        assert!(
-            !bounds.contains(corner),
-            "the corner is outside the drawn window {bounds:?}"
-        );
-        assert_eq!(
-            point_at(session, &mut client, corner),
-            None,
-            "the rotated window does not receive a pointer where only its unrotated rectangle is"
-        );
-    });
-}
-
-#[test]
-fn a_window_turned_out_of_its_rectangle_receives_the_pointer_outside_it() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Spun));
-    let _made = install_scripted(&mut session, shape);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("org.gnoblin.Spun", "Spun");
-        settle_size(&mut client, (300, 200));
-        draw_configured(&mut client, &window);
-        let (matrix, bounds) = drawn(session, window_id(session, "Spun"));
-        assert_projection_matches(&matrix, bounds);
-
-        // The corner of the turned surface lies outside the unrotated rectangle, which ends at y = 100.
-        let local = (20.0, 30.0);
-        let at = drawn_at(&matrix, local);
-        assert!(
-            !Rect::new(100, 100, 300, 200).contains(at),
-            "{at:?} is outside the unrotated rectangle"
-        );
-        assert!(bounds.contains(at), "{at:?} is drawn");
-        assert_pointer_at(point_at(session, &mut client, at), local, &format!("the point {at:?}"));
-    });
-}
-
-#[test]
-fn a_press_reaches_a_window_turned_out_of_its_rectangle_where_it_is_drawn() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Spun));
-    let _made = install_scripted(&mut session, shape);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("org.gnoblin.Spun", "Spun");
-        settle_size(&mut client, (300, 200));
-        draw_configured(&mut client, &window);
-        let (matrix, _bounds) = drawn(session, window_id(session, "Spun"));
-
-        // The turned surface's corner is drawn above the unrotated rectangle, which starts at
-        // y = 100. A press there reaches the client: it gets the press and the release.
-        let at = drawn_at(&matrix, (20.0, 30.0));
-        assert!(
-            !Rect::new(100, 100, 300, 200).contains(at),
-            "{at:?} is outside the unrotated rectangle"
-        );
-        let before = client.state.pointer_buttons;
-        client.click(session, at);
-        client.wait_until("the press and release on the drawn content", |seen| {
-            seen.state.pointer_buttons >= before + 2
-        });
-    });
-}
-
-#[test]
-fn a_press_where_a_rotated_window_is_not_drawn_reaches_nothing() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Tilt));
-    let _made = install_scripted(&mut session, shape);
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("org.gnoblin.Tilted", "Tilted");
-        settle_size(&mut client, (300, 200));
-        draw_configured(&mut client, &window);
-        let (_matrix, bounds) = drawn(session, window_id(session, "Tilted"));
-
-        // The 40 degree turn moved the window's left edge to about x = 135, so the corner inside
-        // the unrotated rectangle is not drawn, and a press there reaches nothing.
-        let corner = Point::new(101, 101);
-        assert!(
-            Rect::new(100, 100, 300, 200).contains(corner),
-            "the corner is inside the rectangle"
-        );
-        assert!(!bounds.contains(corner), "the corner is not drawn");
-        let before = client.state.pointer_buttons;
-        client.click(session, corner);
-        settle(session);
-        client.roundtrip();
-        assert_eq!(
-            client.state.pointer_buttons, before,
-            "a press where the window is not drawn reached it"
-        );
-    });
-}
-
-#[test]
 fn overlapping_windows_at_equal_depth_go_to_the_last_drawn_and_a_raise_moves_the_winner() {
-    let session = overlap_session(WmOptions::default(), Arc::new(ManualClock::new()));
+    let session = session_on(WmOptions::default(), Arc::new(ManualClock::new()));
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
 
         // Both windows are flat at the same depth and cover (250, 150). Right is drawn last, so it
@@ -1714,119 +1240,6 @@ fn overlapping_windows_at_equal_depth_go_to_the_last_drawn_and_a_raise_moves_the
     });
 }
 
-#[test]
-fn a_failing_engine_leaves_the_workspace_floating_and_reports_the_error() {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Fail));
-    let made = install_scripted(&mut session, shape);
-    session.run(move |session| {
-        let mut client = Client::connect(session.socket());
-        let _window = client.map_window("org.gnoblin.Floating", "Floating");
-        let id = window_id(session, "Floating");
-        let deadline = Instant::now() + TIMEOUT;
-        let workspace = loop {
-            if let Some(workspace) = made.lock().expect("the workspace lock").first().copied() {
-                break workspace;
-            }
-            assert!(Instant::now() < deadline, "no layout engine was asked for a workspace");
-            thread::sleep(Duration::from_millis(5));
-        };
-        while session.control.layout_failure(workspace) != Some(Some("error")) {
-            assert!(
-                Instant::now() < deadline,
-                "the failed run is never recorded: {:?}",
-                session.control.layout_failure(workspace)
-            );
-            thread::sleep(Duration::from_millis(5));
-        }
-        // Nothing was placed, so the window is still managed, mapped and visible.
-        let snapshot = session.windows();
-        let observed = snapshot.window(id).expect("the window is still managed");
-        assert!(
-            observed.mapped && observed.visible,
-            "the floating window stays mapped and visible"
-        );
-    });
-}
-
-/// Records the first window's drawn x into `seen` when it changes, and returns it.
-fn sample_x(session: &Handle, window: WindowId, seen: &mut Vec<i32>) -> i32 {
-    let x = drawn(session, window).1.x;
-    if seen.last() != Some(&x) {
-        seen.push(x);
-    }
-    x
-}
-
-/// One window at 100 under `Shift`; a second window maps, which moves the first to 200.
-/// Returns every distinct x the first window is drawn at, from 100 to the settled place.
-fn shift_samples(reduced: bool) -> Vec<i32> {
-    let mut session = Session::start(Headless::new());
-    let shape: SharedShape = Arc::new(Mutex::new(Shape::Shift));
-    let _made = install_scripted(&mut session, shape);
-    session.handle.control.set_reduced_motion(reduced);
-    let samples = Arc::new(Mutex::new(Vec::new()));
-    let record = Arc::clone(&samples);
-    session.run(move |session| {
-        let mut first = Client::connect(session.socket());
-        let w1 = first.create_window("org.gnoblin.Shift", "First");
-        settle_size(&mut first, (300, 200));
-        draw_configured(&mut first, &w1);
-        let id = window_id(session, "First");
-
-        // Wait for the first placement to land before the second window exists.
-        let deadline = Instant::now() + TIMEOUT;
-        while drawn(session, id).1.x != 100 {
-            assert!(Instant::now() < deadline, "the first window never reaches 100");
-            thread::sleep(Duration::from_millis(2));
-        }
-        let mut seen = vec![100];
-
-        let mut second = Client::connect(session.socket());
-        let w2 = second.create_window("org.gnoblin.Shift", "Second");
-        settle_size(&mut second, (300, 200));
-        draw_configured(&mut second, &w2);
-
-        let deadline = Instant::now() + TIMEOUT;
-        while sample_x(session, id, &mut seen) != 200 {
-            assert!(
-                Instant::now() < deadline,
-                "the first window never reaches 200: {seen:?}"
-            );
-            thread::sleep(Duration::from_millis(2));
-        }
-        // Let any tween finish, then take the value it settled on.
-        thread::sleep(Duration::from_millis(400));
-        sample_x(session, id, &mut seen);
-        *record.lock().expect("the samples lock") = seen;
-    });
-    samples.lock().expect("the samples lock").clone()
-}
-
-#[test]
-fn a_moved_placement_tweens_from_where_the_window_is_drawn() {
-    let seen = shift_samples(false);
-    assert_eq!(seen.first(), Some(&100), "the window starts at its old place: {seen:?}");
-    assert_eq!(seen.last(), Some(&200), "the tween ends at the target: {seen:?}");
-    assert!(
-        seen.windows(2).all(|pair| pair[0] <= pair[1]),
-        "the tween moves one way from the old place to the new: {seen:?}"
-    );
-    assert!(
-        seen.iter().any(|x| (101..200).contains(x)),
-        "the window is drawn between the old and new place while the tween runs: {seen:?}"
-    );
-}
-
-#[test]
-fn reduced_motion_moves_a_placement_at_once() {
-    let seen = shift_samples(true);
-    assert_eq!(
-        seen,
-        vec![100, 200],
-        "with reduced motion no intermediate position is drawn"
-    );
-}
 #[test]
 fn a_modal_takes_the_keys_from_the_client_until_it_is_cleared() {
     let session = Session::start(Headless::new());
@@ -1923,11 +1336,10 @@ fn a_click_in_an_overlap_goes_to_the_topmost_window() {
 
 #[test]
 fn click_mode_leaves_focus_where_the_pointer_passes() {
-    let session = pair_session(FocusMode::Click);
+    let session = focus_session(FocusMode::Click);
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let first = client.map_window("org.gnoblin.Left", "Left");
-        let second = client.map_window("org.gnoblin.Right", "Right");
+        let (first, second) = map_pair(session, &mut client, PAIR_LEFT, PAIR_RIGHT);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.roundtrip();
         assert!(client.keyboard_is_on(&first), "the first window holds the keyboard");
@@ -1948,11 +1360,10 @@ fn click_mode_leaves_focus_where_the_pointer_passes() {
 
 #[test]
 fn hover_focuses_the_window_the_pointer_enters() {
-    let session = pair_session(FocusMode::Hover);
+    let session = focus_session(FocusMode::Hover);
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let first = client.map_window("org.gnoblin.Left", "Left");
-        let second = client.map_window("org.gnoblin.Right", "Right");
+        let (first, second) = map_pair(session, &mut client, PAIR_LEFT, PAIR_RIGHT);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
 
         client.move_pointer(session, only_point_of(session, "Right"));
@@ -1971,15 +1382,15 @@ fn hover_focuses_the_window_the_pointer_enters() {
 
 #[test]
 fn hover_keeps_focus_when_the_pointer_crosses_a_gap() {
-    let session = master_session(FocusMode::Hover);
+    let session = focus_session(FocusMode::Hover);
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let (_first, second) = map_master_pair(session, &mut client);
+        let (_first, second) = map_split_pair(session, &mut client);
         client.move_pointer(session, only_point_of(session, "Right"));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
 
         let left = client.state.pointer_leaves;
-        client.move_pointer(session, master_gap_point());
+        client.move_pointer(session, outside_output_point());
         assert!(client.state.pointer_leaves > left, "the pointer left the second window");
         assert!(
             session
@@ -1997,15 +1408,15 @@ fn hover_keeps_focus_when_the_pointer_crosses_a_gap() {
 
 #[test]
 fn hover_strict_clears_focus_when_the_pointer_crosses_a_gap() {
-    let session = master_session(FocusMode::HoverStrict);
+    let session = focus_session(FocusMode::HoverStrict);
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let (_first, second) = map_master_pair(session, &mut client);
+        let (_first, second) = map_split_pair(session, &mut client);
         client.move_pointer(session, only_point_of(session, "Right"));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
 
         let left = client.state.pointer_leaves;
-        client.move_pointer(session, master_gap_point());
+        client.move_pointer(session, outside_output_point());
         assert!(client.state.pointer_leaves > left, "the pointer left the second window");
         session.wait_for(|observation| observation.focused().is_none());
         client.roundtrip();
@@ -2016,10 +1427,10 @@ fn hover_strict_clears_focus_when_the_pointer_crosses_a_gap() {
 
 #[test]
 fn a_held_button_stops_hover_from_moving_focus() {
-    let session = master_session(FocusMode::Hover);
+    let session = focus_session(FocusMode::Hover);
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let (first, second) = map_master_pair(session, &mut client);
+        let (first, second) = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Left"));
         client.left_button(session, true);
@@ -2035,7 +1446,7 @@ fn a_held_button_stops_hover_from_moving_focus() {
         );
 
         // Leave through the gap, then re-enter the second window to hover-focus it.
-        client.move_pointer(session, master_gap_point());
+        client.move_pointer(session, outside_output_point());
         client.move_pointer(session, only_point_of(session, "Right"));
         client.wait_until("the keyboard on the second window", |seen| seen.keyboard_is_on(&second));
     });
@@ -2054,10 +1465,10 @@ fn focused_title(session: &Handle) -> Option<String> {
 
 #[test]
 fn rest_focus_moves_to_the_window_the_pointer_rests_on() {
-    let session = rest_master_session();
+    let session = rest_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _pair = map_master_pair(session, &mut client);
+        let _pair = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Right"));
         session.control.advance(POINTER_REST);
@@ -2067,10 +1478,10 @@ fn rest_focus_moves_to_the_window_the_pointer_rests_on() {
 
 #[test]
 fn rest_focus_waits_the_full_rest_before_moving() {
-    let session = rest_master_session();
+    let session = rest_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _pair = map_master_pair(session, &mut client);
+        let _pair = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Right"));
         session.control.advance(POINTER_REST - 1);
@@ -2087,10 +1498,10 @@ fn rest_focus_waits_the_full_rest_before_moving() {
 
 #[test]
 fn motion_restarts_the_rest_before_focus_moves() {
-    let session = rest_master_session();
+    let session = rest_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _pair = map_master_pair(session, &mut client);
+        let _pair = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         let inside = only_point_of(session, "Right");
         client.move_pointer(session, inside);
@@ -2112,13 +1523,13 @@ fn motion_restarts_the_rest_before_focus_moves() {
 
 #[test]
 fn leaving_the_window_cancels_a_pending_rest_focus() {
-    let session = rest_master_session();
+    let session = rest_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _pair = map_master_pair(session, &mut client);
+        let _pair = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Right"));
-        client.move_pointer(session, master_gap_point());
+        client.move_pointer(session, outside_output_point());
         session.control.advance(POINTER_REST);
         settle(session);
         assert_eq!(
@@ -2131,10 +1542,10 @@ fn leaving_the_window_cancels_a_pending_rest_focus() {
 
 #[test]
 fn closing_the_window_cancels_a_pending_rest_focus() {
-    let session = rest_master_session();
+    let session = rest_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let (_first, second) = map_master_pair(session, &mut client);
+        let (_first, second) = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Right"));
         client.destroy(second);
@@ -2154,10 +1565,10 @@ fn closing_the_window_cancels_a_pending_rest_focus() {
 
 #[test]
 fn a_held_button_ignores_a_pending_rest_focus() {
-    let session = rest_master_session();
+    let session = rest_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _pair = map_master_pair(session, &mut client);
+        let _pair = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Left"));
         client.left_button(session, true);
@@ -2183,10 +1594,10 @@ fn a_held_button_ignores_a_pending_rest_focus() {
 #[test]
 fn a_client_round_trip_does_not_advance_the_session_clock() {
     let clock = Arc::new(ManualClock::new());
-    let session = rest_master_session_on(clock.clone());
+    let session = rest_session_on(clock.clone());
     session.run(move |session| {
         let mut client = Client::connect(session.socket());
-        let _pair = map_master_pair(session, &mut client);
+        let _pair = map_split_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Right"));
         // The clock only moves when the test moves it, so the round trip must leave the rest
@@ -2206,16 +1617,10 @@ fn a_client_round_trip_does_not_advance_the_session_clock() {
 /// The auto-raise delay the session's window manager uses, in milliseconds.
 const AUTO_RAISE_DELAY: u64 = 500;
 
-/// A session whose two windows overlap. `Left` maps first and lies below `Right`, and the part
-/// of `Left` that `Right` does not cover is where a press reaches `Left` alone.
-fn overlap_session(wm: WmOptions, clock: Arc<ManualClock>) -> Session {
-    scripted_with(wm, Shape::Overlap, clock)
-}
-
 /// A session where the pointer focuses the window it enters, and an auto-raise follows after
 /// `AUTO_RAISE_DELAY` on a clock the test moves.
 fn auto_raise_session() -> Session {
-    overlap_session(
+    session_on(
         WmOptions {
             focus_mode: FocusMode::Hover,
             auto_raise: true,
@@ -2237,11 +1642,10 @@ fn topmost(observation: &SessionSnapshot) -> Option<&str> {
 
 #[test]
 fn raise_on_click_raises_the_window_pressed_in_its_exposed_part() {
-    let session = overlap_session(WmOptions::default(), Arc::new(ManualClock::new()));
+    let session = session_on(WmOptions::default(), Arc::new(ManualClock::new()));
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
 
         // Right covers the overlap, so a press there reaches Right until Left is raised.
@@ -2265,7 +1669,7 @@ fn raise_on_click_raises_the_window_pressed_in_its_exposed_part() {
 
 #[test]
 fn raise_on_click_off_focuses_the_window_without_raising_it() {
-    let session = overlap_session(
+    let session = session_on(
         WmOptions {
             raise_on_click: false,
             ..WmOptions::default()
@@ -2274,8 +1678,7 @@ fn raise_on_click_off_focuses_the_window_without_raising_it() {
     );
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
         let before = session.windows().stacking().to_vec();
 
@@ -2291,8 +1694,7 @@ fn auto_raise_raises_the_window_the_pointer_rests_on_after_the_delay() {
     let session = auto_raise_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
         // Enter Right first, so the pointer's move onto Left is a real enter that arms the raise.
         client.move_pointer(session, only_point_of(session, "Right"));
@@ -2317,8 +1719,7 @@ fn auto_raise_is_cancelled_when_the_pointer_leaves_before_the_delay() {
     let session = auto_raise_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let _pair = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
         client.move_pointer(session, only_point_of(session, "Right"));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
@@ -2343,8 +1744,7 @@ fn auto_raise_does_nothing_once_its_window_is_closed() {
     let session = auto_raise_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let (lower, _upper) = map_pair(session, &mut client, OVERLAP_LOWER, OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
         client.move_pointer(session, only_point_of(session, "Left"));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
@@ -2366,8 +1766,8 @@ fn auto_raise_ignores_the_pointer_while_a_button_holds_its_grab() {
     let session = auto_raise_session();
     session.run(|session| {
         let mut client = Client::connect(session.socket());
-        let _lower = client.map_window("org.gnoblin.Left", "Left");
-        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        let _lower = place_window(session, &mut client, "org.gnoblin.Left", "Left", OVERLAP_LOWER);
+        let _upper = place_window(session, &mut client, "org.gnoblin.Right", "Right", OVERLAP_UPPER);
         session.wait_for(|observation| topmost(observation) == Some("Right"));
         client.move_pointer(session, only_point_of(session, "Right"));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));

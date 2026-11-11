@@ -28,26 +28,8 @@ pub struct ModuleRoots {
     pub user: Option<PathBuf>,
 }
 
-/// The root a module was found under.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Root {
-    Shipped,
-    User,
-}
-
-impl Root {
-    /// The name a layout reference records for this root.
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Shipped => "shipped",
-            Self::User => "user",
-        }
-    }
-}
-
-/// A module name resolved to its file, and the root the file was found under.
+/// A module name resolved to its file.
 pub(crate) struct Resolved {
-    pub(crate) root: Root,
     pub(crate) path: PathBuf,
 }
 
@@ -91,13 +73,7 @@ impl Modules {
         Ok((value, hash))
     }
 
-    /// Load module `name` again from its source, replacing the cached value. A layout
-    /// is registered this way, so a changed module is the one that runs.
-    pub(crate) fn reload(&self, lua: &Lua, name: &str) -> mlua::Result<(LuaValue, u64)> {
-        self.loaded.borrow_mut().remove(name);
-        self.fetch(lua, name)
-    }
-
+    /// Read module `name` from its file and run it. The caller caches the result.
     fn load(&self, lua: &Lua, name: &str) -> mlua::Result<(LuaValue, u64)> {
         let resolved = resolve(&self.roots, name).map_err(runtime)?;
         let source = read_source(&resolved.path, name).map_err(runtime)?;
@@ -127,7 +103,7 @@ pub(crate) fn is_module_name(name: &str) -> bool {
     name.split('.').all(is_component)
 }
 
-/// The file a module name stands for, and the root it was found under.
+/// The file a module name stands for.
 ///
 /// A `gnoblin.` name is looked up under the shipped root alone. Any other name is looked
 /// up under the user root first, so a user file shadows a shipped one. The canonical path
@@ -137,13 +113,13 @@ pub(crate) fn resolve(roots: &ModuleRoots, name: &str) -> Result<Resolved, Strin
         return Err(format!("`{name}` is not a module name"));
     }
     let reserved = name.starts_with("gnoblin.");
-    let mut searched: Vec<(Root, &Path)> = Vec::new();
+    let mut searched: Vec<&Path> = Vec::new();
     if let Some(user) = roots.user.as_deref().filter(|_| !reserved) {
-        searched.push((Root::User, user));
+        searched.push(user);
     }
-    searched.push((Root::Shipped, roots.shipped.as_path()));
+    searched.push(roots.shipped.as_path());
     let relative = format!("{}.lua", name.replace('.', "/"));
-    for &(root, dir) in &searched {
+    for dir in &searched {
         let candidate = dir.join(&relative);
         if !candidate.is_file() {
             continue;
@@ -153,11 +129,11 @@ pub(crate) fn resolve(roots: &ModuleRoots, name: &str) -> Result<Resolved, Strin
         if !path.starts_with(&base) {
             return Err(format!("module `{name}` resolves outside its root `{}`", dir.display()));
         }
-        return Ok(Resolved { root, path });
+        return Ok(Resolved { path });
     }
     let places = searched
         .iter()
-        .map(|(_, dir)| format!("`{}`", dir.display()))
+        .map(|dir| format!("`{}`", dir.display()))
         .collect::<Vec<_>>()
         .join(" then ");
     let reserved_note = if reserved {

@@ -89,7 +89,6 @@ mod cursor;
 mod eis;
 mod extensions;
 mod ipc;
-mod layout;
 mod log_store;
 mod monitors;
 /// Portal negotiation, the pure decision layer behind the `org.freedesktop.impl.portal` services.
@@ -130,10 +129,6 @@ pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot, default_privileged_socket_path};
 pub use gnoblin_xwayland::xsettings::XSettings;
 pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync, guardian_from_environment};
-pub use layout::{
-    LayoutSettings, configure_from_environment as configure_layouts_from_environment,
-    configure_from_store as configure_layouts_from_store,
-};
 pub use log_store::open_log_file;
 pub use monitors::{
     configure_from_environment as configure_monitors_from_environment,
@@ -225,9 +220,6 @@ pub struct SessionConfig {
     /// A namespace is routed to its provider connection and granted to the privileged
     /// connections that list it. An extension that fails to load is absent from this list.
     pub extensions: Vec<ipc::ExtensionRoute>,
-    /// The `layout` section: which layout each workspace runs. The default floats every
-    /// workspace; [`configure_layouts_from_store`] fills it from the accepted document.
-    pub layouts: LayoutSettings,
     /// The power backend `gnoblin.session.poweroff()`, `reboot()`, `suspend()` and `hibernate()`
     /// reach, or [`None`] for a session that links none: every power verb is then refused
     /// `unavailable`. The binary passes the machine's init-system backend; a test passes a fake.
@@ -399,8 +391,6 @@ impl Compositor {
             Some(session) => Server::with_xwayland(backend, wayland, session),
         }
         .map_err(Error::Wayland)?;
-        let layouts = std::rc::Rc::new(layout::WorkspaceLayouts::new(config.layouts));
-        server.install_layouts(layouts.clone());
         let control = server.control();
         let observation = server.observation();
 

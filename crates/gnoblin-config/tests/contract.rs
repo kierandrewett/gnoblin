@@ -88,11 +88,6 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "the IPC extension section of host configuration, loaded by gnoblin_config::extensions",
     ),
     (
-        "layout",
-        "0.2.0",
-        "the layout section: which Lua layout engine arranges each workspace, loaded by gnoblin-compositor",
-    ),
-    (
         "compat",
         "0.2.0",
         "the compatibility section: which D-Bus adapters the services role serves, read by the adapters at start",

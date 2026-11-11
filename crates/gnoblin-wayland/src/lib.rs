@@ -250,8 +250,8 @@ pub use process::{ProcessIdentity, WindowProcess};
 pub use protocols::extension::{
     Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
 };
-/// The layout control and the session's state.
-pub use state::{LayoutControl, State};
+/// The session's state.
+pub use state::State;
 /// The X11 session that runs Xwayland.
 pub use xwayland::XwaylandSession;
 

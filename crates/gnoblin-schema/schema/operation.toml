@@ -23,7 +23,7 @@ name = "operation_id"
 type = "uint"
 since = "0.2.0"
 
-# The method the script called, such as `set_layout`, `present`, `wait` or `kill`.
+# The method the script called, such as `apply`, `present`, `wait` or `kill`.
 [[object.signal.field]]
 name = "method"
 type = "string"
