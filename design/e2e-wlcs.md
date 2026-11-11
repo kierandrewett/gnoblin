@@ -42,7 +42,7 @@ Limits of the injection:
 - A focused toplevel was never sent `xdg_toplevel.state.activated`. Every wlcs window waits for it.
 - `wl_pointer.frame` was only sent after scroll. Enter, leave, motion and buttons were not closed by a frame, which clients at version 5 or later (GTK, Qt) rely on.
 - `wl_surface.frame` callbacks of subsurfaces and popups were never answered.
-- A popup's `wl_surface.frame` callback was never answered, so every popup test timed out waiting for the first frame of its menu. A popup is not drawn (the scene holds one buffer per window), so its commit now repaints the outputs and the callback is answered by the frame that follows.
+- A popup's `wl_surface.frame` callback was never answered, so every popup test timed out waiting for the first frame of its menu. A popup is not drawn (the scene holds one buffer per window, `gnoblin-1whg`), so its commit now repaints the outputs and the callback is answered by the frame that follows.
 - A popup took no pointer input: `State::surface_under` asked only the window the scene picked, and the scene picks by the window's bounds, so a popup hanging past its window's edge was unreachable. Popups are asked first, from the top of the window stack down to the picked window (`crates/gnoblin-wayland/src/popup.rs`), at the position the compositor last configured them at, which is also what the suite expects after `xdg_popup.reposition` and before the client's acknowledgement.
 - `xdg_popup.grab` was logged and ignored. A grabbed popup now takes the keyboard, a press on another client dismisses the grab (child popups first) and a window that takes the keyboard ends it.
 - A popup that was destroyed under the pointer left the client waiting for `wl_pointer.leave` (the suite's client fails on an enter without one): the pointer is moved on to what lies under it as the popup goes.
@@ -53,17 +53,19 @@ Each has a test in `crates/gnoblin-wayland` or `crates/gnoblin-wlcs`.
 
 ## Result
 
-Core subset: 702 tests, 310 pass, 170 fail, 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve) and 2 crash (wlcs itself aborts on `wl_touch.frame`). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
+The popup tests (`XdgPopupPositionerTest`, `XdgPopupStable`, `XdgPopupTest`) pass but for three: 88 more are skipped because the suite's popup of a layer surface and of a `zxdg_shell_v6` surface need globals the compositor does not serve.
+
+Core subset: 702 tests, 363 pass, 117 fail, 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve) and 2 crash (wlcs itself aborts on `wl_touch.frame`). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
 
 - `gnoblin-f3cp`: xdg window geometry.
-- `gnoblin-6hac`: popups.
+- `gnoblin-wrns`: Smithay's zero-size positioner anchor rectangle.
 - `gnoblin-y3yk`: touch.
 - `gnoblin-ve4a`: protocol errors the suite expects.
-- `gnoblin-jpbf`: toplevel configuration.
+- `gnoblin-jpbf`: toplevel configuration, and the interactive move two popup tests need.
 - `gnoblin-v3hw`: subsurfaces and surface events.
 - `gnoblin-of0d`: later-phase protocols.
 
-The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until those issues are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 310 passing tests, and the list of what is left.
+The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until those issues are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 363 passing tests, and the list of what is left.
 
 ## CI
 

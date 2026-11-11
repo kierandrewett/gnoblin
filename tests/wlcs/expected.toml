@@ -415,7 +415,7 @@ issue = "gnoblin-f3cp"
 [[known_failure]]
 pattern = "XdgPopupTest.zero_size_anchor_rect_stable"
 reason = "the pinned Smithay raises invalid_input for a zero-size xdg_positioner anchor rectangle; xdg-shell allows it (only a negative size is an error) and there is no patch series for Smithay"
-issue = "gnoblin-6hac"
+issue = "gnoblin-wrns"
 
 [[known_failure]]
 pattern = "XdgPopupTest.when_parent_surface_is_moved_*"
