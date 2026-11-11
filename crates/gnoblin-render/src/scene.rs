@@ -1074,7 +1074,7 @@ impl Scene {
         let mut views = Vec::new();
         let mut stack: Vec<NodeId> = self.root_ids().to_vec();
         while let Some(node) = stack.pop() {
-            if self.class(node) == Some("View") && self.drawn(node) {
+            if self.class(node) == Some("view") && self.drawn(node) {
                 views.push(node);
             }
             stack.extend(self.children(node).unwrap_or(&[]));
@@ -2070,7 +2070,7 @@ mod tests {
         scene
             .reparent(NodeId::new(5), Some(NodeId::new(3)))
             .expect("source child");
-        scene.set_class(NodeId::new(2), Some("View".to_owned())).expect("class");
+        scene.set_class(NodeId::new(2), Some("view".to_owned())).expect("class");
         scene.set_source(NodeId::new(2), Some(NodeId::new(3))).expect("source");
         scene
     }

@@ -598,7 +598,7 @@ impl Composer {
         let mut views = BTreeSet::new();
         let mut stack: Vec<NodeId> = self.scene.root_ids().to_vec();
         while let Some(node) = stack.pop() {
-            if self.scene.class(node) == Some("View") {
+            if self.scene.class(node) == Some("view") {
                 views.insert(node);
             }
             stack.extend(self.scene.children(node).unwrap_or(&[]));
@@ -2537,7 +2537,7 @@ mod tests {
             spec.parent = parent;
             scene.insert(view, spec).expect("a view node");
             scene
-                .set_class(view, Some("View".to_owned()))
+                .set_class(view, Some("view".to_owned()))
                 .expect("the view's class");
             scene.set_source(view, source).expect("the view's source");
         });
