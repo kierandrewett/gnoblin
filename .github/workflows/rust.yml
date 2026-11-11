@@ -4,7 +4,11 @@ on:
   push:
     paths:
       - "crates/**"
+      - "extensions/**"
       - "xtask/**"
+      - "data/lua/**"
+      - "docs/**"
+      - "design/docs-parity/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -17,7 +21,11 @@ on:
   pull_request:
     paths:
       - "crates/**"
+      - "extensions/**"
       - "xtask/**"
+      - "data/lua/**"
+      - "docs/**"
+      - "design/docs-parity/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -35,7 +43,7 @@ defaults:
 
 jobs:
   workspace:
-    name: Build, lint, test, dependency rules, licences
+    name: Build, lint, test, dependency rules, duplicate types, documented names, licences
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -52,7 +60,27 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show active-toolchain
       - name: Run the workspace gate
-        run: just ci
+        run: just workspace-ci
+
+  # The XR extension is a workspace of its own (`extensions/gnoblin-xr`, own lockfile), so the job above does not
+  # build, lint, test or check its licences. `just ci` runs both gates.
+  extensions:
+    name: Extension workspace format, lint, test, licences
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just and cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-deny
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Run the extension workspace gate
+        run: just ext-ci
 
   # The minimum supported Rust version (`rust-version` in Cargo.toml), checked with
   # the exact pinned dependencies. The version here must equal `msrv_toolchain` in

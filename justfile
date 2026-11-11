@@ -57,8 +57,8 @@ compat-report:
     cargo xtask compat-report
 
 # Fail on a struct or enum two crates declare twice and `xtask/dupes-allow.toml`
-# does not waive. Local only: `just ci` stays the commands that need no network, so
-# this is not part of it. `just dupes-warn` prints without failing.
+# does not waive. Part of `just ci`. `just dupes-warn` prints the same report without
+# failing, for a lane that is mid-migration.
 dupes:
     cargo xtask dupes --deny
 
@@ -66,14 +66,21 @@ dupes:
 dupes-warn:
     cargo xtask dupes --warn
 
+# Fail on a documented `gnoblin` name the implemented surface lacks, unless
+# `design/docs-parity/allow.toml` lists it.
+docs-parity:
+    cargo xtask docs-parity
+
 # Minimum supported Rust version: `rust-version` in Cargo.toml, measured against the
 # exact pinned dependencies. Needs `rustup toolchain install 1.97.0 --profile minimal`
 # locally; the CI `msrv` job installs it. Keep this version equal to `rust-version`.
 msrv_toolchain := "1.97.0"
 
-# Check every crate and target with the minimum supported toolchain.
+# Check every crate and target of both workspaces with the minimum supported toolchain. The extension workspace
+# declares the same `rust-version`.
 msrv:
     cargo +{{msrv_toolchain}} check --workspace --all-targets --locked
+    cargo +{{msrv_toolchain}} check --manifest-path {{ext_manifest}} --workspace --all-targets --locked
 
 # Build the workspace and the XR extension in release mode, then install the session under PREFIX, with DESTDIR
 # prepended for staging. Every installed file is listed in share/gnoblin/install-manifest.
@@ -87,5 +94,32 @@ dist prefix="/usr/local" destdir="":
 deny:
     cargo deny check
 
-# The whole gate, in the order that fails fastest.
-ci: fmt-check build clippy test deps logging layout deny
+# The extension workspace (`extensions/gnoblin-xr`) is its own workspace with its own lockfile and target
+# directory, so the root recipes above do not reach it. It uses the toolchain and the rustfmt settings at the
+# repository root, and the same `deny.toml`.
+ext_manifest := "extensions/gnoblin-xr/Cargo.toml"
+
+# Fail if any file of the extension workspace is not rustfmt-clean.
+ext-fmt-check:
+    cargo fmt --manifest-path {{ext_manifest}} --all --check
+
+# Lint every target of the extension workspace.
+ext-clippy:
+    cargo clippy --manifest-path {{ext_manifest}} --workspace --all-targets --locked -- --deny warnings
+
+# Run the extension workspace's tests.
+ext-test:
+    cargo test --manifest-path {{ext_manifest}} --workspace --all-targets --locked
+
+# Check the extension workspace's advisories, licences, duplicate versions and git sources.
+ext-deny:
+    cargo deny --manifest-path {{ext_manifest}} check
+
+# The extension workspace's whole gate.
+ext-ci: ext-fmt-check ext-clippy ext-test ext-deny
+
+# The root workspace's whole gate, in the order that fails fastest.
+workspace-ci: fmt-check build clippy test deps logging layout dupes docs-parity deny
+
+# Everything CI runs: the root workspace and the extension workspace.
+ci: workspace-ci ext-ci

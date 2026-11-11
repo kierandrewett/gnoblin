@@ -836,6 +836,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "xr-smoke"
+version = "0.1.0"
+dependencies = [
+ "gnoblin-client",
+ "rustix",
+ "wayland-client",
+ "wayland-protocols",
+ "xr-scene",
+ "xr-tree",
+]
+
+[[package]]
 name = "xr-tree"
 version = "0.1.0"
 dependencies = [

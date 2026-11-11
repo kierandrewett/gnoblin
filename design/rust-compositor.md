@@ -630,9 +630,9 @@ adding a type, search for the shape and reuse it.
 `cargo xtask dupes --deny` reports a struct or enum that two crates declare with
 the same name or the same shape. A genuine homonym — two meanings that share a
 word, such as a backend `Output` and the window manager's — is waived in
-`xtask/dupes-allow.toml` with a reason. The check is local and not part of
-`just ci`, because a lane mid-migration must be able to read the report with
-`--warn`.
+`xtask/dupes-allow.toml` with a reason. The check is part of `just ci`, so a
+duplicate does not reach the branch; a lane mid-migration reads the report with
+`--warn` (`just dupes-warn`).
 
 ## From the current tree to the new crates
 
