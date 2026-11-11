@@ -17,6 +17,11 @@
 //!   visible and has committed content, because a node is what "these pixels are on
 //!   screen" means: a client that attaches no buffer has no node, is never drawn and
 //!   damages nothing.
+//! - **One node per drawn surface of that window.** A window's subsurfaces and popups are nodes under its node
+//!   (class `surface`, `role` `subsurface` or `popup`), each placed by its own offset in its parent's plane, so
+//!   they follow the window's transform and opacity and are drawn, damaged, captured and hit-tested through the
+//!   scene like the window. The window's own node stays the toplevel surface alone: its size, its effects and
+//!   its corner radius never reach a popup. See [`Composer::set_window_surfaces`].
 //! - **The stacking order**, bottom first: the scene's sibling order, which is also
 //!   what its hit test and the frame use, so they agree about what is on top.
 //! - **The windows' visual transforms** (opacity, tint), kept here so a node can be
@@ -59,6 +64,12 @@
 //! 9. **A closed window vanishes at once.** A window the client destroyed fades its last
 //!    picture out, copied from its buffer before the client can free it:
 //!    `a_closing_window_is_drawn_from_its_picture`.
+//! 10. **A popup or a subsurface is not drawn.** The window's surface tree is nodes in the scene, drawn above (or,
+//!     for a subsurface placed below its parent, behind) the toplevel surface in the order the client set:
+//!     `a_popup_past_the_window_edge_is_drawn_at_its_offset_above_the_window`,
+//!     `a_subsurface_below_its_parent_is_drawn_behind_it`.
+//! 11. **A secure window shows through its popups.** The window's mark is on every surface of its tree:
+//!     `a_popup_of_a_secure_window_is_secure`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -73,7 +84,7 @@ use gnoblin_render::transaction::{Animation, Motion, TreeChange, TreeValue, land
 use gnoblin_render::{
     Damage, Effects, Mat4, NodeKind, NodeSpec, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
-use gnoblin_types::{Color, NodeId, OutputId, PointF, Rect, RectF, Size, TrackId, Vec3, WindowId};
+use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Size, TrackId, Vec3, WindowId};
 
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
@@ -183,6 +194,65 @@ pub struct Content {
     pub transform: Transform,
 }
 
+/// What a surface of a window's tree is, besides the window's own toplevel surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TreeSurfaceRole {
+    /// A `wl_subsurface` of the toplevel surface, of a popup or of another subsurface.
+    Subsurface,
+    /// An `xdg_popup`.
+    Popup,
+}
+
+impl TreeSurfaceRole {
+    /// The `role` the surface's node publishes to the tree.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Subsurface => "subsurface",
+            Self::Popup => "popup",
+        }
+    }
+}
+
+/// One surface of a window's tree below its toplevel surface: what it is, where it sits and what it shows.
+///
+/// The list a window is given ([`Composer::set_window_surfaces`]) is in tree order: a surface comes after its
+/// parent, and the surfaces that share a parent are in the order they paint, bottom first.
+#[derive(Clone, Debug)]
+pub struct TreeSurface {
+    /// Names the surface among the others of the window. It is stable for the surface's life, so the surface keeps
+    /// its node across lists.
+    pub key: u64,
+    /// The `key` of the surface this one is placed against, or `None` for the window's toplevel surface.
+    pub parent: Option<u64>,
+    /// What the surface is.
+    pub role: TreeSurfaceRole,
+    /// Whether the surface paints before its parent's own pixels, which is a subsurface placed below its parent.
+    pub behind: bool,
+    /// The surface's top left corner in its parent's plane, in logical pixels.
+    pub offset: Point,
+    /// The `wp_alpha_modifier_v1` factor the surface committed, one when it set none. It multiplies the opacity
+    /// of everything under the surface too.
+    pub alpha: f32,
+    /// What the surface committed.
+    pub content: Content,
+    /// Where its pixels come from.
+    pub source: SurfaceSource,
+    /// Whether the surface committed since the last list, so its pixels may have changed under the same buffer.
+    pub damaged: bool,
+}
+
+/// A surface of a window's tree that has a scene node.
+#[derive(Clone, Copy, Debug)]
+struct TreeNode {
+    node: NodeId,
+    /// The parent surface the node was made under, so a surface that moves to another parent is made again.
+    parent: Option<u64>,
+    role: TreeSurfaceRole,
+    /// The position and size last published to the tree, as `[x, y, width, height]`; NaN before the first.
+    published: [f64; 4],
+}
+
 /// What a closing window becomes once its fade ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CloseEnd {
@@ -238,8 +308,8 @@ struct WindowNode {
     secure: bool,
     /// The client's content, when it has committed one.
     content: Option<Content>,
-    /// The buffer the content is read from, when the client has attached one.
-    buffer: Option<WlBuffer>,
+    /// The pixels the content is read from, when the client has attached a buffer.
+    buffer: Option<SurfaceSource>,
     /// The window's last picture, once it is closing: drawn in place of its buffer until its
     /// fade ends, when the window is removed.
     closing: Option<Closing>,
@@ -256,6 +326,12 @@ struct WindowNode {
     /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
     /// tree's, when a subsurface reaches past the root surface.
     hit_extent: Option<Rect>,
+    /// The surfaces of the window's tree below its toplevel surface, in tree order. See [`TreeSurface`].
+    tree: Vec<TreeSurface>,
+    /// The scene node of each surface in `tree` that is drawn, by the surface's key.
+    tree_nodes: BTreeMap<u64, TreeNode>,
+    /// The key of each node in `tree_nodes`.
+    tree_keys: BTreeMap<NodeId, u64>,
 }
 
 /// The window management policy the main seat publishes for the stock shell to read.
@@ -740,15 +816,19 @@ impl Composer {
     /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A
     /// buffer that cannot be read (a DMA-BUF, say) leaves its window out, so it draws nothing.
     fn window_pictures(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, Image> {
-        let mut pictures: BTreeMap<NodeId, Image> = self
-            .windows
-            .values()
-            .filter_map(|entry| {
-                let node = entry.node.filter(|node| nodes.contains(node))?;
-                let image = shm::readback(entry.buffer.as_ref()?).ok()?;
-                Some((node, image))
-            })
-            .collect();
+        let mut pictures: BTreeMap<NodeId, Image> = BTreeMap::new();
+        for entry in self.windows.values() {
+            let own = entry.node.zip(entry.buffer.as_ref());
+            let below = entry
+                .tree
+                .iter()
+                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source)));
+            for (node, source) in own.into_iter().chain(below) {
+                if let Some(image) = nodes.contains(&node).then(|| source_picture(source)).flatten() {
+                    pictures.insert(node, image);
+                }
+            }
+        }
         // A View of a subtree that holds canvases draws them too. The view renderer blends straight alpha and a
         // canvas picture is premultiplied, as every snapshot is.
         for (node, picture) in &self.canvases {
@@ -889,6 +969,9 @@ impl Composer {
                 applied_size: None,
                 published_geometry: None,
                 hit_extent: None,
+                tree: Vec::new(),
+                tree_nodes: BTreeMap::new(),
+                tree_keys: BTreeMap::new(),
             },
         );
         self.order.push(window);
@@ -1148,14 +1231,13 @@ impl Composer {
             return None;
         }
         let entry = self.windows.get(&window)?;
-        let buffer = entry.buffer.as_ref()?;
+        let source = entry.buffer.as_ref()?;
         let content = entry.content?;
-        let image = shm::readback(buffer).ok()?;
-        Some(Closing {
-            image: Arc::new(image),
-            content,
-            on_end,
-        })
+        let image = match source {
+            SurfaceSource::Buffer(buffer) => Arc::new(shm::readback(buffer).ok()?),
+            SurfaceSource::Snapshot(image) => Arc::clone(image),
+        };
+        Some(Closing { image, content, on_end })
     }
 
     /// The body of [`Composer::close_window`]: fades the picture `closing` keeps, or removes
@@ -1206,6 +1288,11 @@ impl Composer {
     fn start_fade(&mut self, window: WindowId, node: NodeId, closing: Closing) {
         self.cancel_tracks(window);
         let on_end = closing.on_end;
+        if on_end == CloseEnd::Remove {
+            // The client is destroying the window, so the buffers of its popups and subsurfaces may go at any
+            // moment: they leave with it rather than fading from pixels that may no longer be there.
+            self.drop_tree_nodes(window);
+        }
         if let Some(entry) = self.windows.get_mut(&window) {
             entry.closing = Some(closing);
         }
@@ -2143,14 +2230,288 @@ impl Composer {
     /// The scene does not look inside it, so it carries no damage of its own; the
     /// commit that attached it went through [`Composer::set_window_content`].
     pub fn set_window_buffer(&mut self, window: WindowId, buffer: Option<WlBuffer>) {
+        self.set_window_source(window, buffer.map(SurfaceSource::Buffer));
+    }
+
+    /// [`Composer::set_window_buffer`] for pixels that are not a client's live buffer.
+    pub fn set_window_source(&mut self, window: WindowId, source: Option<SurfaceSource>) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
         let node = entry.node;
-        entry.buffer = buffer;
+        entry.buffer = source;
         // A View that draws this window re-reads its pixels from the new buffer.
         if let Some(node) = node {
             let _ = self.scene.mark_dirty(node);
+        }
+    }
+
+    /// Replaces the surfaces of a window's tree below its toplevel surface: its subsurfaces and its popups.
+    ///
+    /// Each surface is a node of its own under its parent's node, so it moves, fades and is captured with the
+    /// window, and it is damaged exactly where it is drawn: a surface that is new, moved, resized or reordered
+    /// damages its rectangle, one that is no longer in the list damages the rectangle it held, and one that
+    /// committed since the last list ([`TreeSurface::damaged`]) damages its rectangle though nothing else changed.
+    /// The window's own node keeps the toplevel surface alone. Nodes are made when the window has a node, so a list
+    /// given to a window that is not drawn is kept and built when it is; a window that is closing keeps the tree it
+    /// had until it is gone.
+    pub fn set_window_surfaces(&mut self, window: WindowId, surfaces: Vec<TreeSurface>) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.tree = surfaces;
+        self.sync_tree(window);
+    }
+
+    /// Makes the scene nodes under a window's node match its tree: nodes for new surfaces, none for gone ones,
+    /// each node's place, size and order, and the tree's view of all of it.
+    fn sync_tree(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let Some(window_node) = entry.node else {
+            return;
+        };
+        if entry.closing.is_some() || (entry.tree.is_empty() && entry.tree_nodes.is_empty()) {
+            return;
+        }
+        let mut tree = std::mem::take(&mut entry.tree);
+        let mut nodes = std::mem::take(&mut entry.tree_nodes);
+        // A surface counts once, and only under a parent that came before it.
+        let mut seen = BTreeSet::new();
+        tree.retain(|surface| surface.parent.is_none_or(|parent| seen.contains(&parent)) && seen.insert(surface.key));
+        self.remove_stale_tree_nodes(&tree, &mut nodes);
+        for surface in &tree {
+            let parent = match surface.parent {
+                None => window_node,
+                Some(parent) => match nodes.get(&parent) {
+                    Some(parent) => parent.node,
+                    None => continue,
+                },
+            };
+            let bounds = Rect::from_size(surface.content.size);
+            let transform = Self::tree_transform(surface);
+            if let Some(existing) = nodes.get(&surface.key) {
+                self.update_tree_node(existing.node, bounds, transform, surface);
+            } else if let Some(node) = self.create_tree_node(parent, bounds, transform, surface) {
+                nodes.insert(
+                    surface.key,
+                    TreeNode {
+                        node,
+                        parent: surface.parent,
+                        role: surface.role,
+                        published: [f64::NAN; 4],
+                    },
+                );
+            }
+        }
+        self.order_tree_nodes(window_node, &tree, &nodes);
+        for surface in &tree {
+            if let Some(node) = nodes.get_mut(&surface.key) {
+                self.publish_tree_geometry(node, surface);
+            }
+        }
+        for surface in &mut tree {
+            surface.damaged = false;
+        }
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.tree_keys = nodes.iter().map(|(key, node)| (node.node, *key)).collect();
+        entry.tree_nodes = nodes;
+        entry.tree = tree;
+    }
+
+    /// Removes the nodes of surfaces that are gone from `tree`, or that now have another parent or role, along with
+    /// everything under them: a surface still wanted under a removed node is made again by the caller.
+    fn remove_stale_tree_nodes(&mut self, tree: &[TreeSurface], nodes: &mut BTreeMap<u64, TreeNode>) {
+        let wanted: BTreeMap<u64, &TreeSurface> = tree.iter().map(|surface| (surface.key, surface)).collect();
+        let mut stale: BTreeSet<u64> = nodes
+            .iter()
+            .filter(|(key, node)| {
+                wanted
+                    .get(key)
+                    .is_none_or(|surface| surface.parent != node.parent || surface.role != node.role)
+            })
+            .map(|(key, _)| *key)
+            .collect();
+        loop {
+            let below: Vec<u64> = nodes
+                .iter()
+                .filter(|(key, node)| !stale.contains(key) && node.parent.is_some_and(|parent| stale.contains(&parent)))
+                .map(|(key, _)| *key)
+                .collect();
+            if below.is_empty() {
+                break;
+            }
+            stale.extend(below);
+        }
+        let tops: Vec<NodeId> = stale
+            .iter()
+            .filter_map(|key| nodes.get(key))
+            .filter(|node| node.parent.is_none_or(|parent| !stale.contains(&parent)))
+            .map(|node| node.node)
+            .collect();
+        for node in tops {
+            self.drop_node(node);
+        }
+        nodes.retain(|key, _| !stale.contains(key));
+    }
+
+    /// The transform a surface's node holds: its offset in its parent's plane and its alpha factor.
+    fn tree_transform(surface: &TreeSurface) -> VisualTransform {
+        let mut transform = VisualTransform::IDENTITY;
+        transform.base.offset = Vec3::new(f64::from(surface.offset.x), f64::from(surface.offset.y), 0.0);
+        transform.opacity = if surface.alpha.is_finite() {
+            surface.alpha.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        transform
+    }
+
+    /// Makes the node of a surface that has none, under `parent`, and announces it to the tree as a `surface`.
+    fn create_tree_node(
+        &mut self,
+        parent: NodeId,
+        bounds: Rect,
+        transform: VisualTransform,
+        surface: &TreeSurface,
+    ) -> Option<NodeId> {
+        let Some(id) = self.node_ids.allocate() else {
+            log::warn!(
+                area = "render",
+                "no compositor node id is left; a surface of a window is not drawn"
+            );
+            return None;
+        };
+        let mut spec = NodeSpec::new(bounds);
+        spec.parent = Some(parent);
+        spec.transform = transform;
+        // The pointer reaches a popup or a subsurface through the protocol engine's own surface lookup, which is
+        // what knows input regions, so the scene's pick passes through these nodes.
+        spec.input = false;
+        if let Err(error) = self.scene.insert(id, spec) {
+            log::warn!(
+                area = "render",
+                ?error,
+                "the node of a surface of a window is refused; it is not drawn"
+            );
+            return None;
+        }
+        let role = surface.role.name();
+        let _ = self.scene.set_class(id, Some("surface".to_owned()));
+        let _ = self.scene.set_text(id, "role", role.to_owned());
+        let _ = self.scene.set_value(id, "mapped", TreeValue::Bool(true));
+        let _ = self.scene.set_behind(id, surface.behind);
+        let index = self.scene.root_ids().iter().position(|root| *root == id).unwrap_or(0);
+        self.tree_changes.push(TreeChange::Created {
+            node: id,
+            class: "surface".to_owned(),
+            index,
+        });
+        let position = self
+            .scene
+            .children(parent)
+            .and_then(|children| children.iter().position(|child| *child == id))
+            .unwrap_or(0);
+        self.tree_changes.push(TreeChange::Parented {
+            node: id,
+            parent,
+            index: position,
+        });
+        for (key, value) in [
+            ("role", TreeValue::Text(role.to_owned())),
+            ("mapped", TreeValue::Bool(true)),
+        ] {
+            self.tree_changes.push(TreeChange::Set {
+                node: id,
+                key: key.to_owned(),
+                value,
+            });
+        }
+        Some(id)
+    }
+
+    /// Brings a surface's node to its size, place and paint side, and damages it when the surface committed.
+    fn update_tree_node(&mut self, node: NodeId, bounds: Rect, transform: VisualTransform, surface: &TreeSurface) {
+        if self.scene.bounds(node) != Some(bounds) {
+            let _ = self.scene.set_bounds(node, bounds);
+        }
+        // A write of the transform it already holds still damages the node, which is what a commit means: the
+        // buffer's handle is the same and its pixels are not.
+        if surface.damaged || self.scene.transform(node) != Some(&transform) {
+            let _ = self.scene.set_transform(node, transform);
+        }
+        let _ = self.scene.set_behind(node, surface.behind);
+    }
+
+    /// Puts the children of the window's node, and of each surface's node, in paint order: the surfaces behind their
+    /// parent first, then whatever else is there (the shell's own nodes keep their order among themselves), then
+    /// the surfaces above, each group in the order the tree gave.
+    fn order_tree_nodes(&mut self, window_node: NodeId, tree: &[TreeSurface], nodes: &BTreeMap<u64, TreeNode>) {
+        let parents =
+            std::iter::once((window_node, None)).chain(nodes.iter().map(|(key, node)| (node.node, Some(*key))));
+        for (parent, key) in parents.collect::<Vec<_>>() {
+            let mine: Vec<(NodeId, bool)> = tree
+                .iter()
+                .filter(|surface| surface.parent == key)
+                .filter_map(|surface| Some((nodes.get(&surface.key)?.node, surface.behind)))
+                .collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let current = self.scene.children(parent).unwrap_or(&[]).to_vec();
+            let owned: BTreeSet<NodeId> = mine.iter().map(|(node, _)| *node).collect();
+            let mut order: Vec<NodeId> = mine
+                .iter()
+                .filter(|(_, behind)| *behind)
+                .map(|(node, _)| *node)
+                .collect();
+            order.extend(current.iter().filter(|node| !owned.contains(node)));
+            order.extend(mine.iter().filter(|(_, behind)| !*behind).map(|(node, _)| *node));
+            if order != current {
+                let _ = self.scene.set_order(Some(parent), &order);
+            }
+        }
+    }
+
+    /// Publishes a surface's position and size to the tree when they changed since the last publish.
+    fn publish_tree_geometry(&mut self, node: &mut TreeNode, surface: &TreeSurface) {
+        let values = [
+            f64::from(surface.offset.x),
+            f64::from(surface.offset.y),
+            f64::from(surface.content.size.width),
+            f64::from(surface.content.size.height),
+        ];
+        for (index, (key, value)) in ["x", "y", "width", "height"].into_iter().zip(values).enumerate() {
+            if node.published[index] == value {
+                continue;
+            }
+            node.published[index] = value;
+            self.tree_changes.push(TreeChange::Set {
+                node: node.node,
+                key: key.to_owned(),
+                value: TreeValue::Double(value),
+            });
+        }
+    }
+
+    /// Removes the nodes of a window's tree and forgets the tree, leaving the window's own node.
+    fn drop_tree_nodes(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let nodes = std::mem::take(&mut entry.tree_nodes);
+        entry.tree_keys.clear();
+        entry.tree.clear();
+        let tops: Vec<NodeId> = nodes
+            .values()
+            .filter(|node| node.parent.is_none_or(|parent| !nodes.contains_key(&parent)))
+            .map(|node| node.node)
+            .collect();
+        for node in tops {
+            self.drop_node(node);
         }
     }
 
@@ -2274,66 +2635,7 @@ impl Composer {
                     self.push_canvas(canvas, rect, frame, &mut spatial);
                 }
             }
-            let (source, content) = if let Some(closing) = &entry.closing {
-                (SurfaceSource::Snapshot(Arc::clone(&closing.image)), closing.content)
-            } else {
-                let (Some(content), Some(buffer)) = (entry.content, entry.buffer.as_ref()) else {
-                    // A window whose client has committed content but no buffer has no
-                    // pixels to draw.
-                    continue;
-                };
-                (SurfaceSource::Buffer(buffer.clone()), content)
-            };
-            // The window's placed rectangle is the scene's, mid-tween, not its target.
-            let Some(pose) = self.pose(*window) else {
-                continue;
-            };
-            let dst = Rect::new(
-                pose.bounds.x.saturating_sub(rect.x),
-                pose.bounds.y.saturating_sub(rect.y),
-                pose.bounds.width,
-                pose.bounds.height,
-            );
-            let model = entry.node.and_then(|node| self.model(node, rect));
-            let on_output = match model {
-                // A projected window's flat rectangle says nothing about where it lands.
-                Some(_) => entry
-                    .node
-                    .and_then(|node| self.scene.absolute_bounds(node))
-                    .is_some_and(|bounds| bounds.intersection(rect).is_some()),
-                None => dst.intersection(rect).is_some(),
-            };
-            if !on_output {
-                // The window is on another output.
-                continue;
-            }
-            if model.is_some() && !spatial {
-                // A tilted window's pixels can land anywhere on the output, so while one is on
-                // it the whole output is repainted rather than its flat rectangle.
-                frame.push_damage(Rect::new(0, 0, rect.width, rect.height));
-                spatial = true;
-            }
-            if pose.transform.base.rotation_degrees.z != 0.0 {
-                // Pixman's frame API rotates the whole destination rather than one
-                // layer, so a rotated window would appear as its bounding box. The
-                // scene's damage already covers the rotated bounds, so skipping the
-                // layer repaints those pixels with the background rather than leaving
-                // stale ones.
-                log::debug!(area = "render", %window, "a rotated window is not drawn by the software renderer");
-                continue;
-            }
-            frame.push_layer(Layer::Surface(Surface {
-                source,
-                src: content.src,
-                dst,
-                transform: content.transform,
-                opacity: pose.transform.opacity,
-                tint: pose.transform.tint,
-                corner_radius: pose.transform.corner_radius,
-                effects: self.scene.effects(window_node).cloned().unwrap_or_default(),
-                model,
-                secure: entry.secure,
-            }));
+            self.push_window(*window, entry, window_node, rect, frame, &mut spatial);
         }
         for (_, canvas) in waiting {
             self.push_canvas(canvas, rect, frame, &mut spatial);
@@ -2668,6 +2970,9 @@ impl Composer {
             }
             if let Some(entry) = self.windows.get_mut(&window) {
                 entry.node = None;
+                // The nodes under the window's node went with it; the tree is kept to be made again.
+                entry.tree_nodes.clear();
+                entry.tree_keys.clear();
             }
             return;
         };
@@ -2690,6 +2995,7 @@ impl Composer {
                 }
                 self.publish_geometry(window);
                 self.retarget(window, animate);
+                self.sync_tree(window);
             }
             None => {
                 // The window has no node yet: it gets one and takes its target at once, except that
@@ -2750,6 +3056,7 @@ impl Composer {
                         if fades_in {
                             self.retarget(window, true);
                         }
+                        self.sync_tree(window);
                     }
                     Err(error) => {
                         log::warn!(area = "render", %window, ?error, "the window's node is refused; it is not drawn");
@@ -2759,13 +3066,150 @@ impl Composer {
         }
     }
 
-    /// A window's node as the scene holds it now: its placed rectangle and its transform,
-    /// both mid-tween while a property animates. `None` when the window has no node.
+    /// A window's node's transform as the scene holds it now, mid-tween while a property animates. `None` when
+    /// the window has no node.
     fn pose(&self, window: WindowId) -> Option<Pose> {
         let node = self.windows.get(&window)?.node?;
-        let bounds = self.scene.content_bounds(node)?.to_pixel();
         let transform = *self.scene.transform(node)?;
-        Some(Pose { bounds, transform })
+        Some(Pose { transform })
+    }
+
+    /// Adds the layers of a window's whole surface tree to `frame`: the surfaces behind the toplevel surface, the
+    /// toplevel surface, then every surface above it, each in paint order.
+    fn push_window(
+        &self,
+        window: WindowId,
+        entry: &WindowNode,
+        node: NodeId,
+        output: Rect,
+        frame: &mut OutputFrame,
+        spatial: &mut bool,
+    ) {
+        let Some(pose) = self.pose(window) else {
+            return;
+        };
+        let paint = Paint {
+            output,
+            window,
+            entry,
+            node,
+            tint: pose.transform.tint,
+            // Pixman's frame API rotates the whole destination rather than one layer, so a rotated window would
+            // appear as its bounding box: the window and its tree are left out, and the scene's damage, which
+            // covers the rotated bounds, repaints those pixels with the background rather than leaving stale ones.
+            rotated: pose.transform.base.rotation_degrees.z != 0.0,
+        };
+        self.push_children(&paint, node, true, frame, spatial);
+        let own = match &entry.closing {
+            Some(closing) => Some((SurfaceSource::Snapshot(Arc::clone(&closing.image)), closing.content)),
+            // A window whose client has committed content but no buffer has no pixels to draw.
+            None => entry
+                .content
+                .zip(entry.buffer.clone())
+                .map(|(content, source)| (source, content)),
+        };
+        if let Some((source, content)) = own {
+            let drawn = Drawn {
+                source,
+                content,
+                // The window's placed pose, mid-tween, not its target.
+                opacity: pose.transform.opacity,
+                corner_radius: pose.transform.corner_radius,
+                effects: self.scene.effects(node).cloned().unwrap_or_default(),
+            };
+            self.push_surface(&paint, node, drawn, frame, spatial);
+        }
+        self.push_children(&paint, node, false, frame, spatial);
+    }
+
+    /// Adds the layers of the surfaces under `parent` that paint behind it (`behind`) or in front of it, each with
+    /// the surfaces under it.
+    fn push_children(&self, paint: &Paint, parent: NodeId, behind: bool, frame: &mut OutputFrame, spatial: &mut bool) {
+        for child in self.scene.children(parent).unwrap_or(&[]) {
+            if self.scene.behind(*child) != Some(behind) {
+                continue;
+            }
+            let Some(surface) = paint
+                .entry
+                .tree_keys
+                .get(child)
+                .and_then(|key| paint.entry.tree.iter().find(|surface| surface.key == *key))
+            else {
+                continue;
+            };
+            self.push_children(paint, *child, true, frame, spatial);
+            // A surface of the tree takes the window's opacity and its own factors, and none of the window's
+            // effects or corner radius: a shadow belongs to the toplevel, and a menu is not rounded by its window.
+            let drawn = Drawn {
+                source: surface.source.clone(),
+                content: surface.content,
+                opacity: self.opacity_within(paint.node, *child),
+                corner_radius: 0.0,
+                effects: Effects::new(),
+            };
+            self.push_surface(paint, *child, drawn, frame, spatial);
+            self.push_children(paint, *child, false, frame, spatial);
+        }
+    }
+
+    /// The product of the opacities from `node` up to `root` inclusive.
+    fn opacity_within(&self, root: NodeId, node: NodeId) -> f32 {
+        let mut opacity = 1.0;
+        let mut current = Some(node);
+        while let Some(id) = current {
+            opacity *= self.scene.transform(id).map_or(1.0, |transform| transform.opacity);
+            current = if id == root { None } else { self.scene.parent(id) };
+        }
+        opacity
+    }
+
+    /// Adds the layer of one surface of a window where the scene places its node now, unless it is on another
+    /// output or cannot be drawn.
+    fn push_surface(&self, paint: &Paint, node: NodeId, drawn: Drawn, frame: &mut OutputFrame, spatial: &mut bool) {
+        let output = paint.output;
+        let Some(placed) = self.scene.content_bounds(node).map(RectF::to_pixel) else {
+            return;
+        };
+        let dst = Rect::new(
+            placed.x.saturating_sub(output.x),
+            placed.y.saturating_sub(output.y),
+            placed.width,
+            placed.height,
+        );
+        let model = self.model(node, output);
+        let on_output = match model {
+            // A projected surface's flat rectangle says nothing about where it lands.
+            Some(_) => self
+                .scene
+                .absolute_bounds(node)
+                .is_some_and(|bounds| bounds.intersection(output).is_some()),
+            None => dst.intersection(Rect::new(0, 0, output.width, output.height)).is_some(),
+        };
+        if !on_output {
+            return;
+        }
+        if model.is_some() && !*spatial {
+            // A tilted surface's pixels can land anywhere on the output, so while one is on it the whole output is
+            // repainted rather than its flat rectangle.
+            frame.push_damage(Rect::new(0, 0, output.width, output.height));
+            *spatial = true;
+        }
+        if paint.rotated {
+            log::debug!(area = "render", window = %paint.window, "a rotated window is not drawn by the software renderer");
+            return;
+        }
+        frame.push_layer(Layer::Surface(Surface {
+            source: drawn.source,
+            src: drawn.content.src,
+            dst,
+            transform: drawn.content.transform,
+            opacity: drawn.opacity,
+            tint: paint.tint,
+            corner_radius: drawn.corner_radius,
+            effects: drawn.effects,
+            model,
+            secure: paint.entry.secure,
+        }));
     }
 }
 
@@ -2774,6 +3218,15 @@ impl Composer {
 /// its node's bounds.
 fn secure_mask() -> Image {
     Image::new(Size::new(1, 1), 4, vec![128, 128, 128, 255]).expect("a one-pixel image is valid")
+}
+
+/// The pixels of a surface's source as the view renderer reads them, or `None` for a buffer that cannot be read
+/// (a DMA-BUF, say).
+fn source_picture(source: &SurfaceSource) -> Option<Image> {
+    match source {
+        SurfaceSource::Buffer(buffer) => shm::readback(buffer).ok(),
+        SurfaceSource::Snapshot(image) => Some(Image::clone(image)),
+    }
 }
 
 /// A premultiplied pixel as straight alpha.
@@ -2791,11 +3244,30 @@ fn local(rect: Rect, output: Rect) -> Rect {
     rect.translate(-output.x, -output.y)
 }
 
-/// A window's node as the scene holds it this frame: the rectangle it is placed at on the
-/// output plane and its transform, both of which a running tween moves.
+/// A window's node as the scene holds it this frame: its transform, which a running tween moves.
 struct Pose {
-    bounds: Rect,
     transform: VisualTransform,
+}
+
+/// What one window's layers are drawn with: the output, the window and the look every surface of its tree shares.
+struct Paint<'a> {
+    output: Rect,
+    window: WindowId,
+    entry: &'a WindowNode,
+    /// The window's node, at the root of the tree.
+    node: NodeId,
+    tint: Color,
+    /// Whether the window is rotated, which the software renderer cannot draw.
+    rotated: bool,
+}
+
+/// What one surface's layer shows, which differs between the toplevel surface and the rest of the tree.
+struct Drawn {
+    source: SurfaceSource,
+    content: Content,
+    opacity: f32,
+    corner_radius: f32,
+    effects: Effects,
 }
 
 /// Whether a scale can be drawn at all. The renderer draws a window at its scaled bounds, so
@@ -3925,12 +4397,17 @@ mod tests {
         assert!(composer.set_shell_offset(window, -100_000.0, 100_000.0).is_ok());
     }
 
-    /// The rectangle and opacity `window` is drawn at. Compose builds each surface's destination
-    /// from `pose`, so this is what the frame draws. A unit test cannot attach a `WlBuffer`, so
-    /// no frame layer exists to inspect; asserting the pose asserts the drawn pose.
+    /// The rectangle and opacity `window` is drawn at: its node's placed rectangle and the opacity of its
+    /// transform, which are what the frame's layer for the window is built from.
     fn drawn_pose(composer: &Composer, window: WindowId) -> (Rect, f32) {
         let pose = composer.pose(window).expect("a window with content has a node");
-        (pose.bounds, pose.transform.opacity)
+        let node = composer.window_node(window).expect("a window with content has a node");
+        let bounds = composer
+            .scene
+            .content_bounds(node)
+            .expect("a node has bounds")
+            .to_pixel();
+        (bounds, pose.transform.opacity)
     }
 
     /// Starts a linear track of `property` on `window`'s node, lasting `duration_ms`.
@@ -5935,3 +6412,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "surface_tree_tests.rs"]
+mod surface_tree_tests;

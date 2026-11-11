@@ -191,9 +191,11 @@ impl State {
         let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface) else {
             return;
         };
-        // A popup is not drawn, so its commit damages nothing by itself; the outputs are repainted so the frame
-        // that answers its frame callback is one that happens.
-        self.damage_outputs();
+        // A popup with pixels is drawn as a node of its window's surface tree, so its commit damages exactly where
+        // it is drawn when the tree is next built. A popup that is not drawn on any output (it has no buffer yet,
+        // or hangs wholly off the outputs) damages nothing, and its frame callback is answered at the end of the
+        // iteration instead, so a client that paces a menu by it still draws it.
+        self.callbacks_due = true;
         if popup.is_initial_configure_sent() {
             return;
         }

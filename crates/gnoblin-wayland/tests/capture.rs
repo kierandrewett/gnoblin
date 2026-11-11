@@ -34,7 +34,8 @@ use gnoblin_types::NodeId;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks, TreeQueue};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_subcompositor,
+    wl_subsurface, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
@@ -832,6 +833,83 @@ fn a_screencopy_of_the_output_returns_the_window_pixels() {
     });
 }
 
+/// Maps a red window of 200 by 150 with a green subsurface that overlaps its right edge and hangs 40 pixels past it,
+/// marks the window secure when `secure` is set, and captures the output through `wlr-screencopy`. Returns the
+/// capture's pixels and the window's origin.
+fn capture_output_with_subsurface(session: &Handle, secure: bool) -> (Shm, u32, u32) {
+    let mut app = Client::app(session.socket());
+    let window = app.map_window("org.gnoblin.Red", "Red", 200, 150, RED);
+    let geometry = session.only_window();
+    let subcompositor: wl_subcompositor::WlSubcompositor = app
+        .globals
+        .bind(&app.qh, 1..=1, ())
+        .expect("the session advertises wl_subcompositor");
+    let child = app.compositor.create_surface(&app.qh, ());
+    let subsurface = subcompositor.get_subsurface(&child, &window.surface, &app.qh, ());
+    subsurface.set_position(180, 100);
+    let shm = Shm::new(&app, 60, 40, GREEN);
+    child.attach(Some(&shm.buffer), 0, 0);
+    child.damage(0, 0, 60, 40);
+    child.commit();
+    // The parent's commit applies the synchronized subsurface's, and its frame callback says the frame that draws
+    // them reached the output.
+    app.damage_and_wait(&window, 0, 0, 1, 1);
+    if secure {
+        session.mark_secure("org.gnoblin.Red", true);
+    }
+
+    let mut capture = Client::capturer(session.privileged_socket());
+    let frame = capture.screencopy(0);
+    let (width, height, _stride, _format) = capture.screencopy_geometry();
+    let pixels = Shm::new(&capture, width, height, 0);
+    frame.copy(&pixels.buffer);
+    capture.wait_until(|state| state.screencopy_ready >= 1, "the screencopy frame ready");
+    (pixels, geometry.x as u32, geometry.y as u32)
+}
+
+/// A client's subsurface hangs past its window's edge, and the output's capture shows it: the capture reads the
+/// same frame the output does, which draws the window's whole surface tree (`gnoblin-1whg`).
+#[test]
+fn a_screencopy_of_the_output_returns_a_subsurface_hanging_past_its_window() {
+    let session = Session::start();
+    session.run(|session| {
+        let (pixels, x, y) = capture_output_with_subsurface(session, false);
+        assert_eq!(pixels.pixel(x + 5, y + 5), RED, "the window's own pixels");
+        assert_eq!(
+            pixels.pixel(x + 190, y + 110),
+            GREEN,
+            "the subsurface is above the window where they overlap"
+        );
+        assert_eq!(
+            pixels.pixel(x + 220, y + 120),
+            GREEN,
+            "and is captured past the window's edge"
+        );
+        assert_eq!(pixels.pixel(x + 245, y + 120), BLACK, "with the background beyond it");
+    });
+}
+
+/// A secure window masks everything it draws, its subsurfaces and popups included: the capture must not show the
+/// part of the tree that hangs past the window's edge, where the window's own rectangle would not cover it.
+#[test]
+fn a_secure_window_masks_a_subsurface_hanging_past_it_in_a_capture_of_the_output() {
+    let session = Session::start();
+    session.run(|session| {
+        let (pixels, x, y) = capture_output_with_subsurface(session, true);
+        assert_ne!(pixels.pixel(x + 5, y + 5), RED, "the secure window is masked");
+        assert_ne!(
+            pixels.pixel(x + 220, y + 120),
+            GREEN,
+            "and so is its subsurface, where it hangs past the window"
+        );
+        assert_eq!(
+            pixels.pixel(x + 245, y + 120),
+            BLACK,
+            "beyond which the background shows"
+        );
+    });
+}
+
 #[test]
 fn a_screencopy_with_overlay_cursor_draws_the_cursor_and_one_without_does_not() {
     let session = Session::start();
@@ -1261,6 +1339,30 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
         _: &QueueHandle<Self>,
     ) {
         // `registry_queue_init` keeps the global list in the object data.
+    }
+}
+
+impl Dispatch<wl_subcompositor::WlSubcompositor, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &wl_subcompositor::WlSubcompositor,
+        _: <wl_subcompositor::WlSubcompositor as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_subsurface::WlSubsurface, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &wl_subsurface::WlSubsurface,
+        _: <wl_subsurface::WlSubsurface as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 

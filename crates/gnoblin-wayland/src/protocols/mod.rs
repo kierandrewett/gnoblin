@@ -49,8 +49,8 @@
 //! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
 //! | [`wp_viewporter`] | `wp_viewporter` | creates the global; Smithay validates a viewport on commit |
 //! | [`gnoblin_view_source_v1`] | `gnoblin_view_source_manager_v1` | the owner-only capture source of a View node; refused for a node that is not a View |
-//! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
-//! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its window's opacity when the composer draws it; a factor on a subsurface has no effect because subsurfaces are not drawn |
+//! | [`xdg_shell`] | `xdg_shell` | toplevels, popups (drawn above their window, `surface_tree.rs`), configure and ack |
+//! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its opacity and that of everything hanging from it when the composer draws it: a window's own, or a subsurface's or a popup's |
 //! | [`wp_fifo_v1`] | `wp_fifo_manager_v1` | a client's commits are shown in order; barriers are released on each frame tick |
 //! | [`xdg_dialog_v1`] | `xdg_wm_dialog_v1` | a modal child takes focus from its parent and the parent's focus is redirected to it until unset; the window manager floats the dialog above its parent |
 //! | [`xdg_foreign`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |

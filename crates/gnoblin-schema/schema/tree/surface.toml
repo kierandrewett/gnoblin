@@ -7,7 +7,8 @@ name = "surface"
 since = "0.2.0"
 base = "node"
 
-# `popup`, `layer`, `lock`, `cursor`, or `drag`.
+# `popup`, `subsurface`, `layer`, `lock`, `cursor`, or `drag`. A window's popups and subsurfaces are children of the
+# window's node that the compositor draws, so the tree can name them; the shell cannot move or destroy them.
 [[object.property]]
 name = "role"
 type = "string"

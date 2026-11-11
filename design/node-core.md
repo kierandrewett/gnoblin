@@ -129,13 +129,13 @@ tree. Animatable properties are marked **A**.
 
 Signals: `destroyed()`. Input signals (`press`, `release`, `motion`, `scroll`, `enter`, `leave`, `key`) are section 5.
 
-**Surface** (base `Node`). A client surface that is not a toplevel: popup, layer shell, session lock, cursor, drag icon.
+**Surface** (base `Node`). A client surface that is not a toplevel: popup, subsurface, layer shell, session lock, cursor, drag icon. A window's popups and subsurfaces are children of the window's node that the compositor draws and positions (a popup at the place the compositor configured it, a subsurface at the offset its client set), so a capture of the window includes them; the shell cannot move or destroy them.
 
-| Property | Type     | Default | Flags                                                 |
-| -------- | -------- | ------- | ----------------------------------------------------- |
-| `role`   | `string` | none    | readonly (`popup`, `layer`, `lock`, `cursor`, `drag`) |
-| `mapped` | `bool`   | `false` | readonly                                              |
-| `app_id` | `string` | `""`    | readonly                                              |
+| Property | Type     | Default | Flags                                                               |
+| -------- | -------- | ------- | ------------------------------------------------------------------- |
+| `role`   | `string` | none    | readonly (`popup`, `subsurface`, `layer`, `lock`, `cursor`, `drag`) |
+| `mapped` | `bool`   | `false` | readonly                                                            |
+| `app_id` | `string` | `""`    | readonly                                                            |
 
 **Window** (base `Node`). A toplevel: xdg-shell, X11, foreign toplevel.
 

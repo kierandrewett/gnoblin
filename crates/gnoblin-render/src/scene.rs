@@ -51,6 +51,11 @@
 //! - `input` (default on): [`Scene::hit_test`] skips a node whose input is unset,
 //!   but still tests its children, so the node passes hits through to what is under
 //!   it. [`Scene::set_input`] causes no damage, because nothing is drawn differently.
+//! - `behind` (default off): a renderer paints a node's own content and then its
+//!   children in order; a child with `behind` set is painted before its parent's own
+//!   content instead, so it shows through where the parent is transparent. It is how
+//!   a `wl_subsurface` placed below its parent is drawn. [`Scene::set_behind`]
+//!   damages the subtree, because the pixels it shows change.
 //!
 //! # Opacity
 //!
@@ -169,6 +174,7 @@ pub struct Node {
     input: bool,
     /// A rectangle beyond `bounds` the node also takes hits over, in its local plane.
     hit_extent: Option<Rect>,
+    behind: bool,
     owner: Actor,
     parented_by: Option<Actor>,
     class: Option<String>,
@@ -233,6 +239,12 @@ impl Node {
     #[must_use]
     pub const fn input(&self) -> bool {
         self.input
+    }
+
+    /// Whether the node paints before its parent's own content.
+    #[must_use]
+    pub const fn behind(&self) -> bool {
+        self.behind
     }
 
     /// The actor that created the node. Only it may destroy the node.
@@ -576,6 +588,7 @@ impl Scene {
             clip: spec.clip,
             input: spec.input,
             hit_extent: None,
+            behind: false,
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
             class: None,
@@ -884,6 +897,22 @@ impl Scene {
         }
         self.change(id, |node| node.clip = clip);
         Ok(())
+    }
+
+    /// Paint a node before its parent's own content, or after it again. The subtree's bounds before
+    /// and after are damage, because what is shown under the parent's transparent pixels changes.
+    pub fn set_behind(&mut self, id: NodeId, behind: bool) -> Result<(), SceneError> {
+        let node = self.nodes.get(&id).ok_or(SceneError::UnknownNode(id))?;
+        if node.behind != behind {
+            self.change(id, |node| node.behind = behind);
+        }
+        Ok(())
+    }
+
+    /// Whether a node paints before its parent's own content, or `None` for an unknown node.
+    #[must_use]
+    pub fn behind(&self, id: NodeId) -> Option<bool> {
+        self.nodes.get(&id).map(Node::behind)
     }
 
     /// Let a node be the target of a hit, or make it pass hits through to what is under it.
@@ -2042,6 +2071,7 @@ mod tests {
                 clip: false,
                 input: true,
                 hit_extent: None,
+                behind: false,
                 owner: Actor::Compositor,
                 parented_by: None,
                 class: None,
@@ -2063,6 +2093,7 @@ mod tests {
                 clip: false,
                 input: true,
                 hit_extent: None,
+                behind: false,
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
                 class: None,
@@ -2240,5 +2271,49 @@ mod tests {
             .expect("blur");
         scene.insert(node, spec).expect("node");
         assert_eq!(scene.absolute_bounds(node), Some(rect(30, 40, 100, 100)));
+    }
+
+    #[test]
+    fn a_node_is_not_behind_its_parent_until_it_is_set() {
+        let mut scene = scene_with_output();
+        let (parent, child) = (NodeId::new(1), NodeId::new(2));
+        scene
+            .insert(parent, NodeSpec::new(rect(0, 0, 100, 100)))
+            .expect("parent");
+        let mut spec = NodeSpec::new(rect(0, 0, 50, 50));
+        spec.parent = Some(parent);
+        scene.insert(child, spec).expect("child");
+        assert_eq!(scene.behind(child), Some(false));
+        assert_eq!(scene.behind(NodeId::new(99)), None);
+        assert_eq!(
+            scene.set_behind(NodeId::new(99), true),
+            Err(SceneError::UnknownNode(NodeId::new(99)))
+        );
+    }
+
+    #[test]
+    fn setting_behind_damages_the_subtree_once() {
+        let mut scene = scene_with_output();
+        let (parent, child) = (NodeId::new(1), NodeId::new(2));
+        scene
+            .insert(parent, NodeSpec::new(rect(0, 0, 100, 100)))
+            .expect("parent");
+        let mut spec = NodeSpec::new(rect(0, 0, 50, 50));
+        spec.parent = Some(parent);
+        scene.insert(child, spec).expect("child");
+        scene.take_damage();
+
+        scene.set_behind(child, true).expect("behind");
+        assert_eq!(scene.behind(child), Some(true));
+        assert!(
+            damage_covers(&mut scene, rect(0, 0, 50, 50)),
+            "what is shown under the parent changes"
+        );
+
+        scene.set_behind(child, true).expect("behind again");
+        assert!(
+            scene.take_damage().for_output(OutputId::new(0)).is_none(),
+            "a flag that did not change damages nothing"
+        );
     }
 }

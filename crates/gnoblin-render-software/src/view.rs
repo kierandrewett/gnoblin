@@ -252,7 +252,8 @@ impl Clipper {
 }
 
 /// Draws `id` and then its children in order, so a later sibling paints over an
-/// earlier one. `parent_opacity` is the product of the opacity above `id`.
+/// earlier one. A child with `behind` set paints before `id`'s own content, so `id` covers it
+/// where `id` is opaque. `parent_opacity` is the product of the opacity above `id`.
 fn draw_node<'a>(
     ctx: &ViewContext<'_>,
     buffers: &dyn Fn(NodeId) -> Option<&'a Image>,
@@ -277,14 +278,24 @@ fn draw_node<'a>(
     let Some(bounds) = ctx.scene.bounds(id) else {
         return;
     };
-    if let Some(source) = buffers(id) {
-        paint(ctx, &plane, bounds, source, opacity, clips, pixels);
-    }
     let clipping = ctx.scene.clip(id) == Some(true);
     if clipping {
         clips.push(Clipper { plane, bounds });
     }
-    for child in ctx.scene.children(id).unwrap_or(&[]) {
+    let children = ctx.scene.children(id).unwrap_or(&[]);
+    for child in children.iter().filter(|child| ctx.scene.behind(**child) == Some(true)) {
+        draw_node(ctx, buffers, *child, opacity, clips, pixels);
+    }
+    if clipping {
+        clips.pop();
+    }
+    if let Some(source) = buffers(id) {
+        paint(ctx, &plane, bounds, source, opacity, clips, pixels);
+    }
+    if clipping {
+        clips.push(Clipper { plane, bounds });
+    }
+    for child in children.iter().filter(|child| ctx.scene.behind(**child) != Some(true)) {
         draw_node(ctx, buffers, *child, opacity, clips, pixels);
     }
     if clipping {
@@ -728,6 +739,28 @@ mod tests {
             pixel(&image, 120, 120),
             BLUE,
             "the later sibling shows where it is alone"
+        );
+    }
+
+    #[test]
+    fn a_child_behind_its_parent_paints_before_the_parents_own_pixels() {
+        let mut scene = Scene::new();
+        let root = node(&mut scene, 1, None, Rect::new(0, 0, 200, 200));
+        node(&mut scene, 2, Some(1), Rect::new(0, 0, 100, 100));
+        node(&mut scene, 3, Some(2), Rect::new(50, 50, 100, 100));
+        let buffers = HashMap::from([(id(2), solid(100, 100, RED)), (id(3), solid(100, 100, BLUE))]);
+        let size = Size::new(200, 200);
+
+        let image = render(&scene, root, &ortho_centred(200, 200), size, &buffers);
+        assert_eq!(pixel(&image, 75, 75), BLUE, "a child paints over its parent by default");
+
+        scene.set_behind(id(3), true).expect("the child is set behind");
+        let image = render(&scene, root, &ortho_centred(200, 200), size, &buffers);
+        assert_eq!(pixel(&image, 75, 75), RED, "a child behind its parent is covered by it");
+        assert_eq!(
+            pixel(&image, 120, 120),
+            BLUE,
+            "and shows where the parent does not reach"
         );
     }
 

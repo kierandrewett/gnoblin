@@ -260,6 +260,11 @@ pub struct State {
     pub(crate) popups: PopupManager,
     /// The popup grabs the seats hold, so a window that takes the keyboard from a grabbed popup can end the grab.
     pub(crate) popup_grabs: Vec<crate::popup::HeldGrab>,
+    /// The windows whose surface trees are to be built again, and the surfaces that committed since they were.
+    pub(crate) surface_trees: crate::surface_tree::SurfaceTrees,
+    /// Whether a popup committed since the last frame, so its frame callbacks are answered at the end of this
+    /// iteration even when no frame was drawn.
+    pub(crate) callbacks_due: bool,
     /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
     #[allow(dead_code)]
     pub(crate) output_manager_state: OutputManagerState,
@@ -748,6 +753,8 @@ impl State {
             extra_seats: std::collections::BTreeMap::new(),
             popups: PopupManager::default(),
             popup_grabs: Vec::new(),
+            surface_trees: crate::surface_tree::SurfaceTrees::default(),
+            callbacks_due: false,
             output_manager_state,
             viewporter_state,
             decoration_state,
@@ -2442,6 +2449,12 @@ impl State {
         self.composer.end_frame();
     }
 
+    /// Whether a popup committed since this was last asked, which is when its client's frame callbacks are due even
+    /// if nothing was drawn. The flag is cleared.
+    pub(crate) fn take_callbacks_due(&mut self) -> bool {
+        std::mem::take(&mut self.callbacks_due)
+    }
+
     /// The damage of the frame the host described for `output`, if it described one.
     ///
     /// The frame hook asks immediately after rendering that output, which is why one
@@ -3378,6 +3391,9 @@ impl State {
 
 impl Host for State {
     fn begin_frame(&mut self) {
+        // The surface trees of the windows that changed reach the composer before it reports its own changes and
+        // takes its damage, so a popup that committed since the last frame is drawn in this one.
+        self.flush_surface_trees();
         // The pointer may have moved since the last frame; its old and new places are
         // damaged before the damage is taken.
         let redraw = std::mem::take(&mut self.cursor_shape_changed);

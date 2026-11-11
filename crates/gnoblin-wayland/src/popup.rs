@@ -11,9 +11,9 @@
 //! adds is the rule that is the compositor's own: a window that takes keyboard focus from the popup's window ends
 //! the grab, because the popup would otherwise stay open over a window nobody can see it belongs to.
 //!
-//! A popup is not drawn: the scene holds one buffer per window, so a popup's pixels never reach an output. The
-//! compositor answers its frame callbacks all the same (a client that paces a menu by them would never draw it
-//! otherwise), and it finds the popup under the pointer from the position the compositor last configured it at.
+//! A popup is drawn as a node under its window's node (`surface_tree.rs`), at the position the compositor last
+//! configured it at: the same position the pointer finds it from. The compositor answers its frame callbacks too,
+//! because a client that paces a menu by them would never draw it otherwise.
 
 use smithay::backend::input::InputTime;
 use smithay::desktop::utils::under_from_surface_tree;
@@ -85,6 +85,13 @@ fn geometry_origin(surface: &WlSurface) -> Point<i32, Logical> {
     })
 }
 
+/// Where a popup's surface starts, relative to the origin of the surface its window's toplevel is drawn from: the
+/// toplevel's window geometry origin, plus the popup's configured position and those of the popups it hangs from,
+/// less the popup's own window geometry origin in its surface.
+pub(crate) fn popup_origin(root: &WlSurface, popup: &PopupKind, xdg: &PopupSurface) -> Point<i32, Logical> {
+    geometry_origin(root) + location_in_root(xdg) - popup.geometry().loc
+}
+
 impl State {
     /// The popup surface under a global position, topmost first, with its origin in global coordinates, in the
     /// shape [`State::surface_under`] answers.
@@ -120,12 +127,11 @@ impl State {
         let origin = self.composer.window_frame(window)?;
         let origin = Point::<i32, Logical>::from((origin.x, origin.y));
         let inside = Point::<f64, Logical>::from((position.x - f64::from(origin.x), position.y - f64::from(origin.y)));
-        let geometry = geometry_origin(&root);
         for (popup, _) in PopupManager::popups_for_surface(&root) {
             let PopupKind::Xdg(xdg) = &popup else {
                 continue;
             };
-            let at = geometry + location_in_root(xdg) - popup.geometry().loc;
+            let at = popup_origin(&root, &popup, xdg);
             if let Some((surface, offset)) =
                 under_from_surface_tree(popup.wl_surface(), inside, at, WindowSurfaceType::ALL)
             {
@@ -167,6 +173,7 @@ impl State {
                 log::debug!(area = "xdg", ?error, "a reactive popup could not be moved");
             }
         }
+        self.mark_surface_tree_dirty(window);
     }
 
     /// An `xdg_popup.grab`: the popup takes the keyboard and the pointer follows its client.
@@ -240,6 +247,8 @@ impl State {
     /// there to name.
     pub(crate) fn popup_gone(&mut self, popup: &PopupSurface) {
         self.popups.cleanup();
+        // The popup leaves its window's tree, and the scene damages the pixels it held when the tree is next built.
+        self.mark_all_surface_trees_dirty();
         let (ended, held): (Vec<HeldGrab>, Vec<HeldGrab>) = std::mem::take(&mut self.popup_grabs)
             .into_iter()
             .partition(|held| held.grab.has_ended());
@@ -262,7 +271,6 @@ impl State {
         if let Some(mut focus) = self.pointer.current_focus() {
             while &focus != popup.wl_surface() {
                 let Some(parent) = get_parent(&focus) else {
-                    self.damage_outputs();
                     return;
                 };
                 focus = parent;
@@ -282,6 +290,5 @@ impl State {
             );
             pointer.frame(self);
         }
-        self.damage_outputs();
     }
 }

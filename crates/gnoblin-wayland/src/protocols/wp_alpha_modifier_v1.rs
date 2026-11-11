@@ -4,9 +4,10 @@
 //!
 //! The factor is a committed, double-buffered property of the surface. The composer
 //! takes the product of it and the window's group opacity when it draws the window, so
-//! a factor of one half over a black background paints half the colour. Only the root
-//! surface is drawn, so the factor applies to the whole window; a factor set on a
-//! subsurface has no effect because subsurfaces are not drawn separately.
+//! a factor of one half over a black background paints half the colour. The factor of the
+//! window's own surface applies to the window; the factor of a subsurface or a popup applies
+//! to that surface and to everything that hangs from it, on top of its window's opacity
+//! (`surface_tree.rs`).
 //!
 //! # Failure modes
 //!

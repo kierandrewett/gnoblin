@@ -229,7 +229,10 @@ pub fn render(
         }
     }
     state.end_frame();
-    if drew {
+    // A popup that hangs wholly off every output is drawn nowhere, so its commit damages nothing and no frame
+    // follows it; its client is answered all the same, because there is no frame of it to wait for.
+    let due = state.take_callbacks_due();
+    if drew || due {
         // A client that asked for a frame callback gets one answer per frame it was
         // shown, and an iteration that drew nothing showed nothing. Without this a
         // client that paces itself by the callback — a nested session always does —

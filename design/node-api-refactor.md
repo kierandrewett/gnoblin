@@ -648,7 +648,7 @@ the picked node, then up its ancestors until `stop()`.
 
 | Class              | Is                                  | Adds                                                                                                                                       |
 | ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Surface`          | client content                      | read-only `role`: `popup`, `layer`, `lock`, `cursor`, `drag`, `x11`                                                                        |
+| `Surface`          | client content                      | read-only `role`: `popup`, `subsurface`, `layer`, `lock`, `cursor`, `drag`, `x11`                                                          |
 | `Window : Surface` | an app window                       | see below                                                                                                                                  |
 | `Canvas`           | content Gnoblin paints              | `draw`: `{ rect = {x, y, w, h}, radius, fill }`, `{ text, size, color, font }`, `{ icon, size }`, `{ image }`; `measure(text, size, font)` |
 | `View`             | a subtree drawn through a camera    | `source` (kept alive), `camera`, `capture{ cursor }`                                                                                       |

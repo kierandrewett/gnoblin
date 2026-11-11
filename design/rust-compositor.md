@@ -3284,11 +3284,14 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
   list keep it. The crate guarantees only that an error message does not echo
   it.
 
-- **Popups are not drawn** (`gnoblin-1whg`). A popup is placed, hit by the pointer, grabbed and
-  dismissed (`crates/gnoblin-wayland/src/popup.rs`), and its frame callbacks are
-  answered, but the scene holds one buffer per window, so a popup's pixels, like a
-  subsurface's, never reach an output. The plan assumes surface trees are composed
-  by the phase 2 gate.
+- **Popups and subsurfaces are drawn** (`gnoblin-1whg`). A window's tree is a node per surface under the
+  window's node (`crates/gnoblin-wayland/src/surface_tree.rs` builds the list, the composer in
+  `crates/gnoblin-backend/src/render/compose.rs` keeps the nodes): a popup is placed where the
+  compositor configured it (`popup.rs`), a subsurface at the offset its client set and above or below
+  its parent as `place_above` and `place_below` say. They follow the window's transform and opacity,
+  are captured with it and masked when it is secure; only the toplevel has shadows, blur and a corner
+  radius. The shell sees them as `surface` nodes with `role` `popup` or `subsurface` that it cannot
+  move or destroy.
 
 - **Smithay refuses a zero-size positioner anchor rectangle.** xdg-shell allows it
   (only a negative size is `invalid_input`); the pinned Smithay raises the error

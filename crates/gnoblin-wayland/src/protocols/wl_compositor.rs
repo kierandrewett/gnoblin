@@ -20,6 +20,9 @@
 //!    it a destination for input once it has a buffer.
 //! 4. Only for a non-synchronous subsurface, the commit is attributed to its root
 //!    surface, which is the toplevel the window manager knows.
+//! 5. The window the surface belongs to, through its subsurface parents or its popup root, is marked so its surface
+//!    tree (`surface_tree.rs`) is built again before the next frame, and the surface is recorded as having
+//!    committed so its pixels are damaged.
 
 use std::sync::{Arc, OnceLock};
 
@@ -92,12 +95,16 @@ impl CompositorHandler for State {
     fn destroyed(&mut self, surface: &WlSurface) {
         // A touch point on a surface cannot outlive it, whether it was a toplevel or a subsurface.
         self.end_touches_on(surface);
+        // A subsurface or a popup that goes leaves its window's tree without a commit to say so.
+        self.mark_all_surface_trees_dirty();
     }
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.popups.commit(surface);
         self.popup_committed(surface);
+        // The window the surface belongs to draws its surface tree again, and this surface's pixels with it.
+        self.surface_committed(surface);
         // A lock surface with a buffer is the only surface input may reach while the
         // session is covered, so the lock hears about it before anything else runs.
         self.lock_surface_committed(surface);

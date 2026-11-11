@@ -47,8 +47,8 @@
 //! Interactive move and resize, drawing the lock surface itself and the
 //! effects passes belong to later slices, and so does the capture and selection surface
 //! the lock embargo guards. Nothing here is a stub that silently pretends to work: a
-//! popup is placed, hit by the pointer, grabbed and dismissed but not drawn (the scene
-//! holds one buffer per window), a decoration request is answered with
+//! popup is placed, hit by the pointer, grabbed, dismissed and drawn above its window,
+//! a decoration request is answered with
 //! client-side decorations, and a frame is presented as
 //! [`gnoblin_backend::Present::Nothing`] because a headless output scans out nothing —
 //! the pixels are still composed and readable.
@@ -173,6 +173,11 @@
 //!    opaque.** The composer refuses the rotation and the renderer blends the
 //!    opacity: `overlapping_windows_are_drawn_in_stacking_order` and
 //!    `a_half_transparent_window_blends_with_the_background`.
+//! 10. **A popup or a subsurface is not drawn.** The window's popups and subsurfaces are nodes of the
+//!     scene under its own, drawn above it (or, for a subsurface placed below its parent, behind it) and
+//!     damaged where they commit: `a_popup_hanging_past_its_window_is_drawn_above_it`,
+//!     `a_subsurface_below_the_parent_is_drawn_behind_it` and
+//!     `a_destroyed_popup_leaves_the_screen` in `tests/surface_tree.rs`.
 //!
 //! # Determinism
 //!
@@ -202,6 +207,7 @@ mod protocols;
 mod selection_bridge;
 mod server;
 mod state;
+mod surface_tree;
 mod touchpad;
 mod tree_frame;
 mod view_capture;
