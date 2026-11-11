@@ -13,6 +13,7 @@ gnoblin-client = { path = "../../../../crates/gnoblin-client" }
 xr-scene = { path = "../xr-scene" }
 xr-capture = { path = "../xr-capture" }
 xr-gpu = { path = "../xr-gpu" }
+xr-input = { path = "../xr-input" }
 xr-layers = { path = "../xr-layers" }
 xr-session = { path = "../xr-session" }
 xr-tree = { path = "../xr-tree" }

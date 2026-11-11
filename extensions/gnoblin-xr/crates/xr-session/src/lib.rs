@@ -4,11 +4,13 @@
 //! the state machine over it. Neither has OpenXR types, so the loop is tested
 //! with a fake runtime. [`openxr_runtime`] is the one OpenXR-backed `Runtime`:
 //! a headless (`XR_MND_headless`) session, or one on a Vulkan device; the only `unsafe` in the crate.
+//! [`openxr_input`] holds the controller actions the Vulkan session reads for the pointer.
 //!
 //! The Vulkan session also creates swapchains and submits layers. The owner socket client is in
 //! `xr-tree`, and the binary that joins the two is `gnoblin-xr`.
 
 pub mod frame_loop;
+pub mod openxr_input;
 pub mod openxr_runtime;
 pub mod runtime;
 #[cfg(any(test, feature = "testing"))]

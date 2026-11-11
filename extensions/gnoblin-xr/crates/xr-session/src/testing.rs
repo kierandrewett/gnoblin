@@ -2,8 +2,9 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use xr_input::ControllerState;
 use xr_layers::{Eye, SubmittedLayer, SwapchainId};
-use xr_scene::{Pose, Ray};
+use xr_scene::Pose;
 
 use crate::runtime::{Capabilities, FrameTiming, Result, Runtime, RuntimeError, SessionEvent};
 
@@ -23,7 +24,7 @@ pub enum Call {
     BeginFrame,
     EndFrame(i64),
     LocateHead(i64),
-    LocateRay(i64),
+    LocateController(i64),
     LocateViews(i64),
     CreateSwapchain { width: u32, height: u32, format: i64 },
     AcquireImage(SwapchainId),
@@ -62,7 +63,10 @@ pub struct FakeSwapchain {
 pub struct FakeRuntime {
     pub script: VecDeque<Step>,
     pub head: Option<Pose>,
-    pub ray: Option<Ray>,
+    /// What `locate_controller` reports once `controller_script` is used up.
+    pub controller: ControllerState,
+    /// One sample per `locate_controller` call, consumed from the front before `controller` applies.
+    pub controller_script: VecDeque<ControllerState>,
     pub eyes: Option<[Eye; 2]>,
     pub capabilities: Capabilities,
     pub calls: Vec<Call>,
@@ -164,9 +168,9 @@ impl Runtime for FakeRuntime {
         Ok(self.head)
     }
 
-    fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
-        self.record(Call::LocateRay(display_time))?;
-        Ok(self.ray)
+    fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
+        self.record(Call::LocateController(display_time))?;
+        Ok(self.controller_script.pop_front().unwrap_or(self.controller))
     }
 
     fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {

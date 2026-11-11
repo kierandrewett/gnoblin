@@ -551,6 +551,17 @@ The last capability name is a proposal under D22's `model.<object>.<member>` for
 | B or Y           | `BTN_EXTRA`                     |
 
 - One ray at a time. The hand that pressed a button last sends the ray. The right hand sends it at start.
+- Built (`extensions/gnoblin-xr`, `xr-input`, `xr-session/src/openxr_input.rs`, `gnoblin-xr/src/pointer.rs`): the right
+  hand only. Aim pose, trigger (`BTN_LEFT`), grip or B (`BTN_RIGHT`) and the thumbstick (axis) are bound on
+  `khr/simple_controller`, `oculus/touch_controller`, `htc/vive_controller`, `valve/index_controller` and
+  `meta/touch_controller_plus`, by an action set `gnoblin`. Trigger and grip are float actions; the pointer presses at
+  0.75 and releases at 0.25. The stick has a 0.15 deadzone, then scrolls up to 400 axis units a second. Not built: the
+  thumbstick click, A, X and Y, B as `BTN_EXTRA` (on a Touch-style controller B is the `BTN_RIGHT` source here), the left
+  hand and the hand switch.
+- Implicit grab is built as G2 says: a press holds the pointer on the window under the ray until the last button is
+  up. The coordinates are the ray's intersection with the grabbed window's plane, so they run outside the window's
+  rectangle during a drag.
+- Gaze fallback: with no tracked aim pose the ray leaves the head along its forward axis.
 - Workspace and monitor switching are Gnoblin bindings on these buttons. Bindings already match pointer buttons
   (`crates/gnoblin-input/src/chord.rs:404`).
 
@@ -825,6 +836,27 @@ starting`, and picks llvmpipe. The service reports opaque-fd image import and ex
   `xrBeginFrame` with `XR_ERROR_CALL_ORDER_INVALID` ("without xrWaitFrame") after a successful `xrWaitFrame`. It fails the
   same way on the commit before this lane's changes, so it is not caused by them. The default binary now asks for a
   Vulkan session first and falls back to headless only when that fails.
+
+Verified on Agent37, 2026-11-11 (the `XrInput2` lane), on a fresh instance, with Monado built from the head of its
+`main` at `8913adb` (the recipe above, `ninja -j3`, 599 targets) and lavapipe:
+
+- **The simulated driver has no hands unless told.** `SIMULATED_ENABLE=1` alone gives a simulated HMD and `<none>` for
+  both hands. Adding `SIMULATED_LEFT=simple SIMULATED_RIGHT=simple` gives a simulated simple controller on each hand.
+  `monado-service` also needs a real pipe on stdin (`sleep 3000 | monado-service`): with stdin on `/dev/null` it fails
+  at `epoll_ctl(stdin)`.
+- **The action set attaches and syncs.** `monado_simulated_controllers_give_an_aim_ray_and_sync_actions` (ignored,
+  gated by `GNOBLIN_XR_MONADO=1`) connects a Vulkan session, finds all five interaction profiles accepted by
+  `xrSuggestInteractionProfileBindings` (including `meta/touch_controller_plus`, with the extension enabled), attaches the
+  set, and runs 120 frames. `xrSyncActions` succeeds on every frame, and the session reaches `Focused`. The right-hand aim
+  pose is located in 119 of the 120 frames (the first, in `Ready`, has no active aim, so its ray is the gaze), and
+  `locate_controller` reports a unit-vector ray from it. An earlier run of the same test without
+  `SIMULATED_LEFT` and `SIMULATED_RIGHT` had no aim pose on any frame and reported the gaze ray (the head's forward axis)
+  on all 120 frames, which is the fallback.
+- **Not verified:** a button press or a scroll from a real input. The simulated controllers have nothing to press, so
+  select, secondary and scroll read 0 throughout; their effect on the owner is covered by the bridge tests with a scripted
+  runtime. The other four interaction profiles were accepted by the runtime but never matched a controller. The same
+  run's `monado_vulkan_session_holds_the_uploaded_pixels_and_accepts_a_quad` still passes, and
+  `monado_headless_runs_one_empty_frame` still fails at `xrBeginFrame`, as noted above.
 
 Not verified: that the picture is visible (the null compositor draws nothing, so only acceptance by `xrEndFrame`
 and the image contents are checked), WiVRn and any real headset, the projection layer against a runtime, and a

@@ -6,8 +6,9 @@
 
 use std::fmt;
 
+use xr_input::ControllerState;
 use xr_layers::{Eye, SubmittedLayer, SwapchainId};
-use xr_scene::{Pose, Ray};
+use xr_scene::Pose;
 
 /// The OpenXR session states, as `XrSessionState` reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,11 +107,12 @@ pub trait Runtime {
     /// The head's pose in the local reference space at `display_time`, if the
     /// runtime tracks it.
     fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>>;
-    /// The pointing ray (controller or gaze) in the local reference space at
-    /// `display_time`, if the runtime tracks one. The headless runtime has none.
-    fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
+    /// The controller at `display_time`: the pointing ray (the aim pose of the right-hand controller, or the gaze
+    /// when none is tracked) in the local reference space, and the select, secondary and scroll inputs. A runtime with
+    /// no input source, as a headless session is, reports [`ControllerState::default`]: no ray and nothing pressed.
+    fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
         let _ = display_time;
-        Ok(None)
+        Ok(ControllerState::default())
     }
     /// The two eye views in the local reference space at `display_time`, left first, if the runtime locates them.
     fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {

@@ -9,6 +9,7 @@ members = [
     "crates/gnoblin-xr",
     "crates/xr-capture",
     "crates/xr-gpu",
+    "crates/xr-input",
     "crates/xr-layers",
     "crates/xr-runtime",
     "crates/xr-scene",

@@ -164,6 +164,7 @@ dependencies = [
  "gnoblin-proto",
  "xr-capture",
  "xr-gpu",
+ "xr-input",
  "xr-layers",
  "xr-scene",
  "xr-session",
@@ -798,6 +799,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "xr-input"
+version = "0.1.0"
+dependencies = [
+ "xr-scene",
+]
+
+[[package]]
 name = "xr-layers"
 version = "0.1.0"
 dependencies = [
@@ -822,6 +830,7 @@ version = "0.1.0"
 dependencies = [
  "openxr",
  "xr-gpu",
+ "xr-input",
  "xr-layers",
  "xr-scene",
 ]

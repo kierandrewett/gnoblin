@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 openxr = { version = "0.22", features = ["loaded"] }
 xr-gpu = { path = "../xr-gpu" }
+xr-input = { path = "../xr-input" }
 xr-layers = { path = "../xr-layers" }
 xr-scene = { path = "../xr-scene" }
 

@@ -1,7 +1,7 @@
 # XR mode
 
 XR mode shows your Gnoblin windows in a headset. Each window is a flat panel hanging in a room round you. You look at
-a panel and point at it with a controller to move the pointer over that window.
+a panel and point at it with a controller to move the pointer over that window, click it and scroll it.
 
 Gnoblin draws every panel itself, with the frame, the shadow and the effects you see on a monitor. A separate program,
 `gnoblin-xr`, copies each panel into an OpenXR session and tells the OpenXR runtime where to put it. The runtime
@@ -137,7 +137,37 @@ The shell does nothing else for the `xr` seat:
 - Whether the compositor sends `enter` events to the windows for the `xr` seat, which the hover focus modes would need,
   was not checked.
 
-Buttons and scroll are not wired yet: the extension sends pointer motion and leave only.
+### Controller input
+
+The extension reads the right-hand controller through one OpenXR action set, `gnoblin`, and sends what it reads to the
+`xr` seat. The bindings are suggested for five interaction profiles; the runtime picks the one that matches the
+controller in the hand.
+
+| Input     | `khr/simple_controller` | `oculus/touch_controller`, `meta/touch_controller_plus`, `valve/index_controller` | `htc/vive_controller`           | Sent as                               |
+| --------- | ----------------------- | --------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------- |
+| Aim       | `aim/pose`              | `aim/pose`                                                                        | `aim/pose`                      | The pointing ray                      |
+| Select    | `select/click`          | `trigger/value`                                                                   | `trigger/value`                 | `BTN_LEFT` (`0x110`)                  |
+| Secondary | `menu/click`            | `squeeze/value` or `b/click`                                                      | `squeeze/click` or `menu/click` | `BTN_RIGHT` (`0x111`)                 |
+| Scroll    | none                    | `thumbstick`                                                                      | `trackpad`                      | Axis amounts, vertical and horizontal |
+
+- **Buttons.** A trigger or grip presses at 75% pull and releases at 25%, so a half pull neither presses nor chatters.
+  A click input reports 0 or 1.
+- **Scroll.** A stick inside a 15% deadzone does nothing. Past it, the speed grows from zero to 400 axis units a second
+  at full deflection. Push up to scroll up the page. A frame longer than 100 ms scrolls as 100 ms.
+- **Grab.** A press goes to the window under the ray and holds the pointer on it, as a mouse button does. While any
+  button is down, motion, scroll and the release go to that window. The ray does not leave it or enter another.
+- **Drag.** The coordinates keep following the ray on the grabbed window's plane, so a drag past the window's edge
+  reports pixels outside the window. The release of the last button ends the grab, and the pointer then leaves and
+  enters as usual.
+- **Press over nothing.** It goes nowhere, and neither does its release.
+- **No controller: gaze.** When the runtime has no tracked aim pose for the right hand, the ray leaves the head and
+  points straight ahead. The select and secondary inputs still work if anything is bound to them. The headless session
+  has no input source at all: no ray, no buttons, no scroll.
+- **A refused input** is logged with the owner's reason and skipped. The frame, and the next frames' input, carry on.
+
+Not wired: the thumbstick click (`BTN_MIDDLE`), the A, X and Y buttons (`BTN_SIDE`, `BTN_EXTRA`), the left hand and
+switching hands. On a Touch-style controller B is the secondary input, so it sends `BTN_RIGHT`, not `BTN_EXTRA`. The ray
+comes from the right hand only.
 
 ## Limits
 

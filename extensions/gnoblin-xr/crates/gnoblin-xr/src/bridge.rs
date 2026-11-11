@@ -132,8 +132,8 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                     orientation: IDENTITY,
                 });
                 let planned = plan(tree.model(), &head, opts);
-                let ray = frames.locate_ray(frame.display_time)?;
-                pointer.update(tree, &planned.layers, ray)?;
+                let controller = frames.locate_controller(frame.display_time)?;
+                pointer.update(tree, &planned.layers, &controller, frame.display_time)?;
                 let wanted = view_nodes(&planned.layers);
                 for (node, error) in captures.sync(&wanted) {
                     eprintln!("gnoblin-xr: capture of view {node:?} failed: {error}");
@@ -194,6 +194,7 @@ mod tests {
     use xr_capture::views::Fault as CaptureFault;
     use xr_capture::wayland::Frame as Picture;
     use xr_gpu::{FakePresenter, SwapchainFormat};
+    use xr_input::{BTN_LEFT, BTN_RIGHT, ControllerState, SCROLL_RATE};
     use xr_layers::{EyeVisibility, ImageRect, NoticeKind, SubmittedLayer, SwapchainId};
     use xr_scene::{Layer, Placement, Ray, Space};
     use xr_session::runtime::{FrameTiming, SessionEvent, SessionState};
@@ -285,6 +286,17 @@ mod tests {
         hang_up: bool,
         ops_sink: Option<std::sync::mpsc::Sender<Vec<gnoblin_proto::tree::op::Properties>>>,
     ) -> UnixStream {
+        serve_refusing(nodes, hang_up, ops_sink, &[])
+    }
+
+    /// As [`serve_with_ops`], and refuses (`applied: false`, code `refused-by-test`) every transaction that holds an
+    /// `input` op of one of the `refused` kinds. The refused ops still reach `ops_sink`.
+    fn serve_refusing(
+        nodes: Vec<snapshot_node::Properties>,
+        hang_up: bool,
+        ops_sink: Option<std::sync::mpsc::Sender<Vec<gnoblin_proto::tree::op::Properties>>>,
+        refused: &'static [&'static str],
+    ) -> UnixStream {
         let events = vec![
             Envelope::reply_message(
                 "tree",
@@ -327,15 +339,24 @@ mod tests {
                 if let Some(sink) = &ops_sink {
                     let _ = sink.send(args.ops.clone());
                 }
+                // A refused entry is an input kind (`button`), or a kind and a state (`button:0`: releases only).
+                let refuse = args.ops.iter().any(|op| {
+                    refused.contains(&op.input_kind.as_str())
+                        || refused.contains(&format!("{}:{}", op.input_kind, op.state).as_str())
+                });
                 let reply = Envelope::reply_message(
                     "tree",
                     "transact",
                     request.request_id,
                     &ReplyPayload {
                         serial,
-                        applied: true,
-                        failed_op: -1,
-                        code: String::new(),
+                        applied: !refuse,
+                        failed_op: if refuse { 0 } else { -1 },
+                        code: if refuse {
+                            "refused-by-test".to_owned()
+                        } else {
+                            String::new()
+                        },
                         removed: Vec::new(),
                     },
                 );
@@ -415,7 +436,7 @@ mod tests {
         };
 
         pointer
-            .update(&mut tree, &layers, Some(through_centre))
+            .update(&mut tree, &layers, &aiming(through_centre), 0)
             .expect("motion");
         let sent: Vec<_> = ops.try_iter().flatten().collect();
         let motion = sent
@@ -427,12 +448,14 @@ mod tests {
 
         // The same pixel again sends nothing.
         pointer
-            .update(&mut tree, &layers, Some(through_centre))
+            .update(&mut tree, &layers, &aiming(through_centre), FRAME)
             .expect("still hovering");
         assert!(ops.try_recv().is_err(), "an unchanged hit sends no new input");
 
         // A ray that misses leaves the window it was over.
-        pointer.update(&mut tree, &layers, None).expect("leave");
+        pointer
+            .update(&mut tree, &layers, &ControllerState::default(), 2 * FRAME)
+            .expect("leave");
         let left: Vec<_> = ops.try_iter().flatten().collect();
         let leave = left.iter().find(|op| op.input_kind == "leave").expect("a leave op");
         assert_eq!(leave.node, 3);
@@ -450,7 +473,7 @@ mod tests {
         };
 
         pointer
-            .update(&mut tree, &front_quad(), Some(through_centre))
+            .update(&mut tree, &front_quad(), &aiming(through_centre), 0)
             .expect("motion");
         let sent: Vec<_> = ops.try_iter().flatten().collect();
         let created = sent
@@ -479,7 +502,7 @@ mod tests {
         };
 
         pointer
-            .update(&mut tree, &front_quad(), Some(through_centre))
+            .update(&mut tree, &front_quad(), &aiming(through_centre), 0)
             .expect("motion");
         let sent: Vec<_> = ops.try_iter().flatten().collect();
         assert!(
@@ -488,6 +511,467 @@ mod tests {
         );
         let motion = sent.iter().find(|op| op.input_kind == "motion").expect("a motion op");
         assert_eq!(motion.seat, 9, "the pointer delivers on the existing xr seat");
+    }
+
+    /// The time between two frames in these tests: 16 ms, in nanoseconds.
+    const FRAME: i64 = 16_000_000;
+
+    /// A controller whose ray is `ray` and that holds nothing.
+    fn aiming(ray: Ray) -> ControllerState {
+        ControllerState {
+            ray: Some(ray),
+            ..ControllerState::default()
+        }
+    }
+
+    /// The ray from `(x, 0, 0)` straight ahead.
+    fn ahead(x: f64) -> Ray {
+        Ray {
+            origin: [x, 0.0, 0.0],
+            direction: [0.0, 0.0, -1.0],
+        }
+    }
+
+    /// `ray` with the select input at `select`.
+    fn selecting(ray: Ray, select: f32) -> ControllerState {
+        ControllerState { select, ..aiming(ray) }
+    }
+
+    /// Two 1 m by 1 m windows of 1000 by 1000 px, side by side a metre ahead: the View `2` showing window `3` centred
+    /// at x = -1, and the View `4` showing window `5` centred at x = +1.
+    fn two_windows() -> Vec<Layer> {
+        let quad = |id: u64, source: u64, x: f64| {
+            Layer::Quad(Placement {
+                id,
+                source,
+                pose: Pose {
+                    position: [x, 0.0, -1.0],
+                    orientation: IDENTITY,
+                },
+                size: [1.0, 1.0],
+                extent: [1000.0, 1000.0],
+                opacity: 1.0,
+                space: Space::World,
+                input: true,
+            })
+        };
+        vec![quad(2, 3, -1.0), quad(4, 5, 1.0)]
+    }
+
+    /// A pointer, and the ops the fake owner receives from it.
+    fn pointer_with_owner(
+        refused: &'static [&'static str],
+    ) -> (
+        Pointer,
+        TreeClient,
+        std::sync::mpsc::Receiver<Vec<gnoblin_proto::tree::op::Properties>>,
+    ) {
+        let (sink, ops) = std::sync::mpsc::channel();
+        let stream = serve_refusing(room_with_one_view(), false, Some(sink), refused);
+        let tree = TreeClient::from_stream(stream).expect("attach");
+        (Pointer::default(), tree, ops)
+    }
+
+    /// The input ops received since the last call, as `(kind, node, button, state)` for the kinds the tests compare.
+    fn received(
+        ops: &std::sync::mpsc::Receiver<Vec<gnoblin_proto::tree::op::Properties>>,
+    ) -> Vec<gnoblin_proto::tree::op::Properties> {
+        ops.try_iter().flatten().filter(|op| op.kind == "input").collect()
+    }
+
+    /// `(input kind, node)` for each op.
+    fn kinds(sent: &[gnoblin_proto::tree::op::Properties]) -> Vec<(&str, u64)> {
+        sent.iter().map(|op| (op.input_kind.as_str(), op.node)).collect()
+    }
+
+    #[test]
+    fn a_press_then_a_release_sends_state_one_then_zero_for_the_left_button() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = front_quad();
+        let centre = ahead(0.0);
+
+        pointer
+            .update(&mut tree, &layers, &selecting(centre, 0.0), 0)
+            .expect("hover");
+        assert_eq!(kinds(&received(&ops)), [("motion", 3)]);
+
+        pointer
+            .update(&mut tree, &layers, &selecting(centre, 1.0), FRAME)
+            .expect("press");
+        let sent = received(&ops);
+        assert_eq!(
+            kinds(&sent),
+            [("button", 3)],
+            "the press goes to the window under the ray"
+        );
+        assert_eq!((sent[0].button, sent[0].state), (u64::from(BTN_LEFT), 1));
+        assert_eq!((sent[0].x, sent[0].y), (960.0, 540.0), "at the point the ray hit");
+
+        pointer
+            .update(&mut tree, &layers, &selecting(centre, 1.0), 2 * FRAME)
+            .expect("held");
+        assert!(received(&ops).is_empty(), "a held button sends nothing new");
+
+        pointer
+            .update(&mut tree, &layers, &selecting(centre, 0.0), 3 * FRAME)
+            .expect("release");
+        let sent = received(&ops);
+        assert_eq!(kinds(&sent), [("button", 3)]);
+        assert_eq!((sent[0].button, sent[0].state), (u64::from(BTN_LEFT), 0));
+    }
+
+    #[test]
+    fn the_secondary_input_is_the_right_button() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = front_quad();
+        let mut state = aiming(ahead(0.0));
+        state.secondary = 1.0;
+
+        pointer.update(&mut tree, &layers, &state, 0).expect("press");
+        let sent = received(&ops);
+        let button = sent.iter().find(|op| op.input_kind == "button").expect("a button op");
+        assert_eq!((button.button, button.state), (u64::from(BTN_RIGHT), 1));
+    }
+
+    #[test]
+    fn a_drag_across_windows_keeps_the_grab_and_reports_pixels_outside_the_window() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = two_windows();
+
+        // Press on window 3 (centre: x = -1 m).
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(-1.0), 1.0), 0)
+            .expect("press");
+        let sent = received(&ops);
+        assert_eq!(
+            kinds(&sent),
+            [("motion", 3), ("button", 3)],
+            "motion in, then the press"
+        );
+
+        // Drag over window 5 (x = +1 m): the owner still hears from window 3 only, and the point is 2 m right of
+        // window 3's centre: (2 + 0.5) m of 1 m is 2500 px.
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 1.0), FRAME)
+            .expect("drag");
+        let sent = received(&ops);
+        assert_eq!(kinds(&sent), [("motion", 3)], "no leave, and nothing for window 5");
+        assert_eq!((sent[0].x, sent[0].y), (2500.0, 500.0));
+
+        // Drag into the void, far to the right of both windows: still window 3, plane coordinates.
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(10.0), 1.0), 2 * FRAME)
+            .expect("drag out");
+        let sent = received(&ops);
+        assert_eq!(
+            kinds(&sent),
+            [("motion", 3)],
+            "a miss does not leave while a button is held"
+        );
+        assert_eq!((sent[0].x, sent[0].y), (11500.0, 500.0));
+
+        // A frame that locates no ray at all sends nothing and keeps the grab.
+        pointer
+            .update(
+                &mut tree,
+                &layers,
+                &ControllerState {
+                    select: 1.0,
+                    ..ControllerState::default()
+                },
+                3 * FRAME,
+            )
+            .expect("tracking lost");
+        assert!(received(&ops).is_empty());
+
+        // Release over window 5: the last motion and the release go to window 3, then the pointer leaves 3 and enters 5.
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 0.0), 4 * FRAME)
+            .expect("release");
+        let sent = received(&ops);
+        assert_eq!(
+            kinds(&sent),
+            [("motion", 3), ("button", 3), ("leave", 3), ("motion", 5)]
+        );
+        assert_eq!(sent[1].state, 0);
+        assert_eq!((sent[3].x, sent[3].y), (500.0, 500.0));
+    }
+
+    #[test]
+    fn a_release_in_the_void_ends_the_grab_and_then_leaves() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = two_windows();
+
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(-1.0), 1.0), 0)
+            .expect("press");
+        received(&ops);
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(10.0), 0.0), FRAME)
+            .expect("release");
+        let sent = received(&ops);
+        let order: Vec<_> = kinds(&sent);
+        assert_eq!(order, [("motion", 3), ("button", 3), ("leave", 3)]);
+    }
+
+    #[test]
+    fn the_grab_ends_with_the_last_of_two_held_buttons() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = two_windows();
+        let both = |ray, select, secondary| ControllerState {
+            select,
+            secondary,
+            ..aiming(ray)
+        };
+
+        pointer
+            .update(&mut tree, &layers, &both(ahead(-1.0), 1.0, 0.0), 0)
+            .expect("left down");
+        pointer
+            .update(&mut tree, &layers, &both(ahead(1.0), 1.0, 1.0), FRAME)
+            .expect("right down");
+        received(&ops);
+        // The left button comes up over window 5: the grab is still held by the right one.
+        pointer
+            .update(&mut tree, &layers, &both(ahead(1.0), 0.0, 1.0), 2 * FRAME)
+            .expect("left up");
+        let sent = received(&ops);
+        assert_eq!(kinds(&sent), [("button", 3)], "still grabbed: no leave");
+        assert_eq!((sent[0].button, sent[0].state), (u64::from(BTN_LEFT), 0));
+        pointer
+            .update(&mut tree, &layers, &both(ahead(1.0), 0.0, 0.0), 3 * FRAME)
+            .expect("right up");
+        let sent = received(&ops);
+        assert_eq!(kinds(&sent), [("button", 3), ("leave", 3), ("motion", 5)]);
+        assert_eq!((sent[0].button, sent[0].state), (u64::from(BTN_RIGHT), 0));
+    }
+
+    #[test]
+    fn a_press_over_no_window_is_dropped_with_its_release() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = two_windows();
+
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(10.0), 1.0), 0)
+            .expect("press in the void");
+        // Dragged onto a window while still held: the window never saw the press, so it gets no release.
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 1.0), FRAME)
+            .expect("onto a window");
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 0.0), 2 * FRAME)
+            .expect("release");
+        let sent = received(&ops);
+        assert!(
+            sent.iter().all(|op| op.input_kind != "button"),
+            "no button op was delivered: {:?}",
+            kinds(&sent)
+        );
+    }
+
+    #[test]
+    fn the_stick_scrolls_the_window_under_the_ray() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = front_quad();
+        let stick = |x, y| ControllerState {
+            scroll: (x, y),
+            ..aiming(ahead(0.0))
+        };
+
+        pointer.update(&mut tree, &layers, &stick(0.0, 0.0), 0).expect("hover");
+        received(&ops);
+        // 50 ms of full deflection towards the user (down): 50 ms * SCROLL_RATE units a second, down the page.
+        pointer
+            .update(&mut tree, &layers, &stick(0.0, -1.0), 50_000_000)
+            .expect("scroll down");
+        let sent = received(&ops);
+        assert_eq!(kinds(&sent), [("scroll", 3)]);
+        assert!(
+            (sent[0].dy - f64::from(SCROLL_RATE) * 0.05).abs() < 1e-3,
+            "{}",
+            sent[0].dy
+        );
+        assert_eq!(sent[0].dx, 0.0);
+        assert_eq!((sent[0].x, sent[0].y), (960.0, 540.0));
+
+        pointer
+            .update(&mut tree, &layers, &stick(1.0, 0.0), 100_000_000)
+            .expect("scroll right");
+        let sent = received(&ops);
+        assert!(
+            (sent[0].dx - f64::from(SCROLL_RATE) * 0.05).abs() < 1e-3,
+            "{}",
+            sent[0].dx
+        );
+        assert_eq!(sent[0].dy, 0.0);
+
+        pointer
+            .update(&mut tree, &layers, &stick(0.1, 0.1), 150_000_000)
+            .expect("inside the deadzone");
+        assert!(received(&ops).is_empty(), "a stick at rest scrolls nothing");
+    }
+
+    #[test]
+    fn scroll_over_no_window_is_dropped_and_a_grab_takes_the_scroll() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&[]);
+        let layers = two_windows();
+        let stick = |ray, select| ControllerState {
+            scroll: (0.0, -1.0),
+            select,
+            ..aiming(ray)
+        };
+
+        pointer
+            .update(&mut tree, &layers, &stick(ahead(10.0), 0.0), 0)
+            .expect("void");
+        pointer
+            .update(&mut tree, &layers, &stick(ahead(10.0), 0.0), 50_000_000)
+            .expect("void scroll");
+        assert!(received(&ops).is_empty(), "nothing to scroll over");
+
+        pointer
+            .update(&mut tree, &layers, &stick(ahead(-1.0), 1.0), 100_000_000)
+            .expect("grab");
+        received(&ops);
+        pointer
+            .update(&mut tree, &layers, &stick(ahead(1.0), 1.0), 150_000_000)
+            .expect("scroll while dragging");
+        let sent = received(&ops);
+        assert_eq!(
+            kinds(&sent),
+            [("motion", 3), ("scroll", 3)],
+            "the scroll follows the grab"
+        );
+        assert_eq!((sent[1].x, sent[1].y), (2500.0, 500.0));
+    }
+
+    #[test]
+    fn a_refused_press_is_logged_and_starts_no_grab() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&["button"]);
+        let layers = two_windows();
+
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(-1.0), 1.0), 0)
+            .expect("refusal is not an error");
+        assert_eq!(
+            kinds(&received(&ops)),
+            [("motion", 3), ("button", 3)],
+            "the press was sent and refused"
+        );
+
+        // The loop carries on: the pointer is free, so it moves on to window 5, and the release is not sent.
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 1.0), FRAME)
+            .expect("moves on");
+        assert_eq!(
+            kinds(&received(&ops)),
+            [("leave", 3), ("motion", 5)],
+            "no grab was taken"
+        );
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 0.0), 2 * FRAME)
+            .expect("release");
+        assert!(
+            received(&ops).is_empty(),
+            "the window never took the press, so it gets no release"
+        );
+    }
+
+    #[test]
+    fn a_refused_motion_is_sent_again() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&["motion"]);
+        let layers = front_quad();
+        pointer
+            .update(&mut tree, &layers, &aiming(ahead(0.0)), 0)
+            .expect("refusal is not an error");
+        pointer
+            .update(&mut tree, &layers, &aiming(ahead(0.0)), FRAME)
+            .expect("again");
+        assert_eq!(
+            kinds(&received(&ops)),
+            [("motion", 3), ("motion", 3)],
+            "a motion the owner refused is not remembered as sent"
+        );
+    }
+
+    #[test]
+    fn a_refused_release_still_ends_the_grab() {
+        let (mut pointer, mut tree, ops) = pointer_with_owner(&["button:0"]);
+        let layers = two_windows();
+
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(-1.0), 1.0), 0)
+            .expect("press");
+        received(&ops);
+        pointer
+            .update(&mut tree, &layers, &selecting(ahead(1.0), 0.0), FRAME)
+            .expect("release");
+        assert_eq!(
+            kinds(&received(&ops)),
+            [("motion", 3), ("button", 3), ("leave", 3), ("motion", 5)],
+            "the refusal is logged, and the pointer moves on to window 5"
+        );
+    }
+
+    #[test]
+    fn the_bridge_delivers_controller_input_from_the_runtime_each_frame() {
+        let (sink, ops) = std::sync::mpsc::channel();
+        let mut tree =
+            TreeClient::from_stream(serve_with_ops(room_of(&[(2, 0.0, -1000.0)]), false, Some(sink))).expect("attach");
+        let mut runtime = FakeRuntime::new(script(4));
+        let frame = |select: f32| ControllerState {
+            select,
+            ..aiming(ahead(0.0))
+        };
+        runtime.controller_script = [frame(0.0), frame(1.0), frame(1.0), frame(0.0)].into();
+        let mut frames = FrameLoop::new(runtime);
+        let outcome = run(
+            &mut tree,
+            &mut frames,
+            &Options::default(),
+            &mut ScriptedFrames::default(),
+            &mut FakePresenter::default(),
+            |_| {},
+        )
+        .expect("bridge runs");
+        assert_eq!(outcome, Outcome::SessionExited);
+
+        let sent = received(&ops);
+        assert_eq!(kinds(&sent), [("motion", 3), ("button", 3), ("button", 3)]);
+        assert_eq!((sent[1].button, sent[1].state), (u64::from(BTN_LEFT), 1));
+        assert_eq!((sent[2].button, sent[2].state), (u64::from(BTN_LEFT), 0));
+    }
+
+    #[test]
+    fn an_owner_that_refuses_all_input_does_not_stop_the_frames() {
+        let (sink, ops) = std::sync::mpsc::channel();
+        let stream = serve_refusing(
+            room_of(&[(2, 0.0, -1000.0)]),
+            false,
+            Some(sink),
+            &["motion", "button", "scroll", "leave"],
+        );
+        let mut tree = TreeClient::from_stream(stream).expect("attach");
+        let mut runtime = FakeRuntime::new(script(3));
+        runtime.controller = ControllerState {
+            select: 1.0,
+            scroll: (0.0, -1.0),
+            ..aiming(ahead(0.0))
+        };
+        let mut frames = FrameLoop::new(runtime);
+        let mut reports = Reports::default();
+        let outcome = run(
+            &mut tree,
+            &mut frames,
+            &Options::default(),
+            &mut ScriptedFrames::default(),
+            &mut FakePresenter::default(),
+            |report| reports.push(report),
+        )
+        .expect("a refusal does not end the bridge");
+        assert_eq!(outcome, Outcome::SessionExited);
+        assert_eq!(reports.plans.len(), 3, "every frame ran");
+        assert!(!received(&ops).is_empty(), "the bridge kept trying");
     }
 
     fn state(state: SessionState) -> Step {

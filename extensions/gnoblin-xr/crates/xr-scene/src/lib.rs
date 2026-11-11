@@ -7,7 +7,7 @@
 //!
 //! - [`tree`]: the mirrored node model ([`TreeView`], [`TreeNode`], [`Class`]).
 //! - [`plan`]: [`plan`] turns the `room` subtree into a [`Plan`] of [`Layer`]s.
-//! - [`pick`]: [`pick`] finds the layer and the pixel a ray lands on.
+//! - [`pick`]: [`pick`] finds the layer and the pixel a ray lands on; [`project`] finds the pixel on a chosen layer's plane.
 //! - [`math`]: [`Pose`] and the quaternion arithmetic both of them use.
 //!
 //! Everything here is deterministic: the same tree, head pose and options give
@@ -19,6 +19,6 @@ pub mod plan;
 pub mod tree;
 
 pub use math::{HeadPose, IDENTITY, Pose};
-pub use pick::{Hit, Ray, pick};
+pub use pick::{Hit, Ray, pick, project};
 pub use plan::{Layer, Options, Placement, Plan, SkipReason, Skipped, Space, plan};
 pub use tree::{CameraProjection, Class, NodeId, TreeNode, TreeView};

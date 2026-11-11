@@ -17,9 +17,11 @@ use std::sync::Arc;
 
 use openxr as xr;
 use xr_gpu::VulkanDevice;
+use xr_input::{ControllerState, pointing_ray};
 use xr_layers::{Eye, EyeVisibility, Fov, ImageRect, SubmittedLayer, SwapchainId};
 use xr_scene::{Pose, Space};
 
+use crate::openxr_input::Input;
 use crate::runtime::{Capabilities, FrameTiming, Runtime, RuntimeError, SessionEvent, SessionState};
 
 /// A graphics binding a session can be created with. It adds what the swapchain calls need on top of
@@ -27,12 +29,15 @@ use crate::runtime::{Capabilities, FrameTiming, Runtime, RuntimeError, SessionEv
 pub trait Binding: xr::Graphics {
     /// Whether sessions on this binding can create swapchains. The headless binding cannot.
     const SWAPCHAINS: bool;
+    /// Whether sessions on this binding read controller input. The headless binding has no input source.
+    const INPUT: bool;
     /// The raw `VkImage` handle of a swapchain image, if the binding is Vulkan.
     fn image_handle(image: &Self::SwapchainImage) -> Option<u64>;
 }
 
 impl Binding for xr::Headless {
     const SWAPCHAINS: bool = false;
+    const INPUT: bool = false;
     fn image_handle(_: &Self::SwapchainImage) -> Option<u64> {
         None
     }
@@ -40,6 +45,7 @@ impl Binding for xr::Headless {
 
 impl Binding for xr::Vulkan {
     const SWAPCHAINS: bool = true;
+    const INPUT: bool = true;
     fn image_handle(image: &Self::SwapchainImage) -> Option<u64> {
         Some(*image)
     }
@@ -47,9 +53,11 @@ impl Binding for xr::Vulkan {
 
 /// A session driven through the OpenXR loader.
 ///
-/// Field order matters for drop: the swapchains, session and spaces are dropped first, then the Vulkan device they
+/// Field order matters for drop: the input actions, swapchains, session and spaces are dropped first, then the Vulkan device they
 /// used (if any), then the instance, and the entry (which holds the loaded library) last.
 pub struct OpenxrRuntime<G: Binding = xr::Headless> {
+    /// The controller actions, attached to the session. `None` on a session with no input source.
+    input: Option<Input>,
     swapchains: BTreeMap<u64, xr::Swapchain<G>>,
     next_swapchain: u64,
     session: xr::Session<G>,
@@ -147,6 +155,8 @@ impl OpenxrRuntime<xr::Vulkan> {
         // The colour scale carries a layer's opacity. A runtime without it still shows the layers, opaque.
         let color_scale_bias = available.khr_composition_layer_color_scale_bias;
         enabled.khr_composition_layer_color_scale_bias = color_scale_bias;
+        // The Quest Touch Plus controller has an interaction profile of its own, which needs this extension to bind.
+        enabled.meta_touch_controller_plus = available.meta_touch_controller_plus;
 
         let instance = entry
             .create_instance(&application(application_name), &enabled, &[], &())
@@ -213,7 +223,13 @@ impl<G: Binding> OpenxrRuntime<G> {
             color_scale_bias,
             swapchain_formats,
         };
+        let input = if G::INPUT {
+            Some(Input::create(&instance, &session)?)
+        } else {
+            None
+        };
         Ok(Self {
+            input,
             swapchains: BTreeMap::new(),
             next_swapchain: 0,
             session,
@@ -371,16 +387,26 @@ impl<G: Binding> Runtime for OpenxrRuntime<G> {
     }
 
     fn locate_head(&mut self, display_time: i64) -> crate::runtime::Result<Option<Pose>> {
-        let location = self
-            .head
-            .locate(&self.local, xr::Time::from_nanos(display_time))
-            .map_err(|e| err("locating the head", e))?;
-        let flags = location.location_flags;
-        let valid = xr::SpaceLocationFlags::POSITION_VALID | xr::SpaceLocationFlags::ORIENTATION_VALID;
-        if !flags.contains(valid) {
-            return Ok(None);
-        }
-        Ok(Some(from_posef(&location.pose)))
+        self.head_pose(display_time)
+    }
+
+    fn locate_controller(&mut self, display_time: i64) -> crate::runtime::Result<ControllerState> {
+        let Some(input) = &self.input else {
+            return Ok(ControllerState::default());
+        };
+        let sample = input.poll(&self.session, &self.local, xr::Time::from_nanos(display_time))?;
+        // With no tracked controller the ray is the gaze: it leaves the head, straight ahead.
+        let head = if sample.aim.is_none() {
+            self.head_pose(display_time)?
+        } else {
+            None
+        };
+        Ok(ControllerState {
+            ray: pointing_ray(sample.aim.as_ref(), head.as_ref()),
+            select: sample.select,
+            secondary: sample.secondary,
+            scroll: sample.scroll,
+        })
     }
 
     fn locate_views(&mut self, display_time: i64) -> crate::runtime::Result<Option<[Eye; 2]>> {
@@ -476,6 +502,25 @@ impl<G: Binding> Runtime for OpenxrRuntime<G> {
 }
 
 impl<G: Binding> OpenxrRuntime<G> {
+    /// The head's pose in the local space at `display_time`, if the runtime reports it valid.
+    fn head_pose(&self, display_time: i64) -> crate::runtime::Result<Option<Pose>> {
+        let location = self
+            .head
+            .locate(&self.local, xr::Time::from_nanos(display_time))
+            .map_err(|e| err("locating the head", e))?;
+        let flags = location.location_flags;
+        let valid = xr::SpaceLocationFlags::POSITION_VALID | xr::SpaceLocationFlags::ORIENTATION_VALID;
+        if !flags.contains(valid) {
+            return Ok(None);
+        }
+        Ok(Some(from_posef(&location.pose)))
+    }
+
+    /// The interaction profiles the runtime accepted bindings for. Empty on a session with no input source.
+    pub fn bound_profiles(&self) -> &[&'static str] {
+        self.input.as_ref().map_or(&[], Input::bound_profiles)
+    }
+
     fn space(&self, space: Space) -> &xr::Space {
         match space {
             Space::World => &self.local,
@@ -539,7 +584,7 @@ fn to_posef(pose: &Pose) -> xr::Posef {
     }
 }
 
-fn from_posef(pose: &xr::Posef) -> Pose {
+pub(crate) fn from_posef(pose: &xr::Posef) -> Pose {
     let p = pose.position;
     let o = pose.orientation;
     Pose {
@@ -597,7 +642,7 @@ fn map_state(state: xr::SessionState) -> SessionState {
     }
 }
 
-fn err(what: &str, e: impl std::fmt::Debug) -> RuntimeError {
+pub(crate) fn err(what: &str, e: impl std::fmt::Debug) -> RuntimeError {
     RuntimeError(format!("{what}: {e:?}"))
 }
 
@@ -649,6 +694,88 @@ mod tests {
             .end_frame(timing.predicted_display_time, &[])
             .expect("end frame");
         runtime.end_session().expect("end");
+    }
+
+    /// Runs a Vulkan session against Monado's simulated driver and checks the controller input: the action set
+    /// attaches (`connect_vulkan` fails otherwise), at least one interaction profile took the suggested bindings,
+    /// `xrSyncActions` succeeds on every frame, the right-hand aim pose is located, and `locate_controller` reports a ray
+    /// built from it. Monado's simulated driver makes controllers only when it is told which: `SIMULATED_LEFT=simple
+    /// SIMULATED_RIGHT=simple` give `khr/simple_controller` ones (without them it has a head and no hands, and the ray is
+    /// the gaze).
+    ///
+    /// Run with `GNOBLIN_XR_MONADO=1 cargo test -- --ignored`, with `XR_RUNTIME_JSON` pointing at Monado's manifest and a
+    /// running `monado-service` started with `SIMULATED_ENABLE=1 SIMULATED_LEFT=simple SIMULATED_RIGHT=simple
+    /// XRT_COMPOSITOR_NULL=1`.
+    #[test]
+    #[ignore = "needs Monado with the simulated driver and a Vulkan driver; set GNOBLIN_XR_MONADO=1 and run with --ignored"]
+    fn monado_simulated_controllers_give_an_aim_ray_and_sync_actions() {
+        if std::env::var_os("GNOBLIN_XR_MONADO").as_deref() != Some("1".as_ref()) {
+            return;
+        }
+        let (mut runtime, _device) = OpenxrRuntime::connect_vulkan("gnoblin-xr-input-test").expect("connect");
+        let bound = runtime.bound_profiles().to_vec();
+        eprintln!("profiles that took the bindings: {bound:?}");
+        assert!(!bound.is_empty(), "no interaction profile took the suggested bindings");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut ready = false;
+        while !ready && std::time::Instant::now() < deadline {
+            match runtime.poll_event().expect("poll") {
+                Some(SessionEvent::StateChanged(state)) => ready = state == SessionState::Ready,
+                None => std::thread::sleep(std::time::Duration::from_millis(10)),
+            }
+        }
+        assert!(ready, "the session never reached READY");
+        runtime.begin_session().expect("begin session");
+
+        let mut state = SessionState::Ready;
+        let mut aimed = 0;
+        let mut gazed = 0;
+        let mut focused_frames = 0;
+        for frame in 0..120 {
+            while let Some(SessionEvent::StateChanged(next)) = runtime.poll_event().expect("poll") {
+                eprintln!("session state: {next:?}");
+                state = next;
+            }
+            let timing = runtime.wait_frame().expect("wait frame");
+            runtime.begin_frame().expect("begin frame");
+            let time = timing.predicted_display_time;
+
+            let sample = runtime
+                .input
+                .as_ref()
+                .expect("a Vulkan session reads input")
+                .poll(&runtime.session, &runtime.local, xr::Time::from_nanos(time))
+                .expect("xrSyncActions and the action reads succeed");
+            let controller = runtime.locate_controller(time).expect("locate_controller");
+            if frame % 20 == 0 {
+                eprintln!("frame {frame} ({state:?}): sample {sample:?}, ray {:?}", controller.ray);
+            }
+            if state == SessionState::Focused {
+                focused_frames += 1;
+            }
+            if sample.aim.is_some() {
+                aimed += 1;
+            } else if controller.ray.is_some() {
+                gazed += 1;
+            }
+            if let Some(ray) = controller.ray {
+                let length = ray.direction.iter().map(|c| c * c).sum::<f64>().sqrt();
+                assert!(
+                    (length - 1.0).abs() < 1e-3,
+                    "the ray direction is a unit vector: {ray:?}"
+                );
+            } else {
+                panic!("frame {frame}: neither the aim pose nor the head is located: {sample:?}");
+            }
+            runtime.end_frame(time, &[]).expect("end frame");
+        }
+        eprintln!("frames with an aim pose: {aimed}, with gaze only: {gazed}, focused: {focused_frames}");
+        assert!(
+            aimed > 0,
+            "the simulated controller's aim pose was never located ({gazed} gaze-only frames)"
+        );
+        // The simulated controllers have nothing to press, so select, secondary and scroll stay at rest.
     }
 
     /// Runs a Vulkan session against Monado with a Vulkan driver (lavapipe on Agent37), creates a swapchain, uploads a

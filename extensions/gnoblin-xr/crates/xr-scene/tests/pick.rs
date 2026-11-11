@@ -1,6 +1,6 @@
 //! Tests for `pick`: ray against layers, last-drawn wins.
 
-use xr_scene::{Hit, IDENTITY, Layer, Placement, Ray, Space, pick};
+use xr_scene::{Hit, IDENTITY, Layer, Placement, Pose, Ray, Space, pick, project};
 
 fn quad(id: u64, z: f64, input: bool) -> Layer {
     Layer::Quad(Placement {
@@ -111,4 +111,63 @@ fn projection_layers_are_not_picked() {
         input: true,
     })];
     assert!(pick(&layers, &ray([0.0, 0.0, 0.0], [0.0, 0.0, -1.0])).is_none());
+}
+
+#[test]
+fn project_maps_a_ray_outside_the_quad_to_pixels_beyond_its_extent() {
+    // 1 m by 0.5 m at 1000 by 500 px: 2 px per mm. One metre to the right of the centre is 1000 px past it.
+    let layers = [quad(7, -2.0, true)];
+    let outside = ray([1.0, 0.0, 0.0], [0.0, 0.0, -1.0]);
+    assert_eq!(pick(&layers, &outside), None, "the ray misses the rectangle");
+    let hit = project(&layers, 7, &outside).expect("the plane is still struck");
+    assert_eq!((hit.id, hit.source), (7, 107));
+    assert!(
+        (hit.u - 1500.0).abs() < 1e-9 && (hit.v - 250.0).abs() < 1e-9,
+        "({}, {})",
+        hit.u,
+        hit.v
+    );
+}
+
+#[test]
+fn project_ignores_layers_in_front_and_the_input_flag() {
+    // The nearer quad would take the pick; project names the quad it wants.
+    let layers = [quad(1, -2.0, false), quad(2, -1.0, true)];
+    let hit = project(&layers, 1, &ray([0.0, 0.0, 0.0], [0.0, 0.0, -1.0])).expect("hit");
+    assert_eq!(hit.id, 1);
+}
+
+#[test]
+fn project_has_no_answer_for_an_unknown_layer_or_a_ray_that_never_reaches_the_plane() {
+    let layers = [quad(7, -2.0, true)];
+    assert_eq!(project(&layers, 8, &ray([0.0; 3], [0.0, 0.0, -1.0])), None);
+    assert_eq!(project(&layers, 7, &ray([0.0; 3], [1.0, 0.0, 0.0])), None, "parallel");
+    assert_eq!(
+        project(&layers, 7, &ray([0.0; 3], [0.0, 0.0, 1.0])),
+        None,
+        "away from the plane"
+    );
+}
+
+#[test]
+fn a_pose_points_down_its_own_negative_z_axis() {
+    let forward = Ray::from_pose(&Pose {
+        position: [1.0, 2.0, 3.0],
+        orientation: IDENTITY,
+    });
+    assert_eq!(forward.origin, [1.0, 2.0, 3.0]);
+    assert_eq!(forward.direction, [0.0, 0.0, -1.0]);
+
+    // A quarter turn about +Y (counter-clockwise from above) turns -Z towards -X.
+    let half = std::f64::consts::FRAC_1_SQRT_2;
+    let turned = Ray::from_pose(&Pose {
+        position: [0.0; 3],
+        orientation: [0.0, half, 0.0, half],
+    });
+    let [x, y, z] = turned.direction;
+    assert!(
+        (x + 1.0).abs() < 1e-12 && y.abs() < 1e-12 && z.abs() < 1e-12,
+        "{:?}",
+        turned.direction
+    );
 }

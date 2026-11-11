@@ -27,6 +27,11 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
   the layers to submit: a quad per flat View, a projection per stereo View, in plan order. Opacity below 1 becomes a
   colour scale when `XR_KHR_composition_layer_color_scale_bias` is enabled. Layers beyond `maxLayerCount` are dropped,
   head-locked ones first, and reported `layer-budget`. See `crates/xr-layers/README.md`.
+- **`xr-input`** (library, no OpenXR types): the controller input model. A `ControllerState` (the pointing ray, the
+  select and secondary values, the scroll stick) goes in once per frame; `Controller::update` returns the ordered
+  `PointerEvent`s: `BTN_LEFT` for select and `BTN_RIGHT` for secondary, pressed at 0.75 and released at 0.25, and scroll
+  amounts past a 0.15 deadzone at up to 400 axis units a second. `pointing_ray` picks the aim pose, else the head's
+  gaze.
 - **`xr-gpu`** (library): the `Presenter` trait copies one captured picture into one acquired swapchain image. `format`
   chooses the swapchain format (`R8G8B8A8_SRGB` or `B8G8R8A8_SRGB`, the runtime's first choice) and converts `wl_shm`
   Argb8888 or Xrgb8888 into it. `VulkanPresenter` does the copy through `ash` on a device made by
@@ -37,7 +42,7 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
 - **`gnoblin-xr`** `surfaces.rs`: one swapchain per planned View. It is made when the View first has a picture, remade when
   the picture's size changes, filled only when the capture's `serial` changes, and destroyed when the View leaves the plan
   or the bridge ends. A swapchain is submitted only after a picture is in it.
-- **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `xr`: the bridge reuses a seat of that name from the owner snapshot and creates one on first use. A miss sends `leave` for the window last hovered.
+- **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's controller is read (`Runtime::locate_controller`) and the pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `xr`: the bridge reuses a seat of that name from the owner snapshot and creates one on first use. A miss sends `leave` for the window last hovered, unless a button is held. Select is `BTN_LEFT`, secondary is `BTN_RIGHT` and the stick scrolls. A press grabs the window under the ray until the last button is up; the coordinates keep following the ray on the grabbed window's plane. The owner refusing an op is logged, not fatal.
 - **`gnoblin-xr`** (binary): connects to the owner socket (`$GNOBLIN_IPC_SOCKET`, else `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`),
   attaches to the `tree` namespace, opens a Vulkan OpenXR session and runs `bridge::run`. When the runtime cannot give a
   Vulkan session it prints why and runs a headless session, which plans and drives the pointer and shows nothing. The

@@ -17,6 +17,10 @@ The OpenXR session and frame loop for `gnoblin-xr`. It is a library with no sock
 - `openxr_runtime`: `OpenxrRuntime`, the OpenXR-backed `Runtime`. It loads the loader with `Entry::load`, checks for
   `XR_MND_headless`, creates the instance and a headless session, and reports `Ready` through `poll_event`. It is the only
   module with `unsafe` code. The unsafe calls are the loader load and `xrCreateSession`, and each has a `SAFETY` comment.
+- `openxr_input`: the action set `gnoblin` (`aim` pose, `select` and `secondary` floats, `scroll` vector2) and the table
+  that binds it on five interaction profiles. `OpenxrRuntime::connect_vulkan` attaches it; `Runtime::locate_controller`
+  syncs it each frame and returns the ray (the aim pose, else the head's gaze) and the input values. The headless session
+  has no input source. This module has no `unsafe`.
 - `testing` (test only): a `FakeRuntime` that records the calls the loop makes.
 
 ## Scope

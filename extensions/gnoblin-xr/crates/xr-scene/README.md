@@ -17,6 +17,9 @@ which rule each function implements.
   entry with its `SkipReason`. The head pose is accepted to match the per-frame call, but it is not read.
 - `pick(layers, ray) -> Option<Hit>`: tests a ray against the quad layers in reverse submission order. The first hit wins.
   It returns the View's `id`, its pixel coordinates `(u, v)` within the View's extent, and the hit point.
+- `project(layers, view, ray) -> Option<Hit>`: intersects a ray with one chosen quad's plane with no bounds check, so
+  `(u, v)` can be negative or past the extent. It is the coordinate of a drag that has left the window it grabbed.
+- `Ray::from_pose(pose)`: the ray down a pose's `-Z` axis, for an aim pose or the head's gaze.
 
 ## Rules
 

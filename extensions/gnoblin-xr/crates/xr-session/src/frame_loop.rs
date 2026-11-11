@@ -19,8 +19,9 @@
 
 use std::time::Duration;
 
+use xr_input::ControllerState;
 use xr_layers::SubmittedLayer;
-use xr_scene::{Pose, Ray};
+use xr_scene::Pose;
 
 use crate::runtime::{Result, Runtime, SessionEvent, SessionState};
 
@@ -57,14 +58,14 @@ pub struct FrameLoop<R: Runtime> {
 }
 
 impl<R: Runtime> FrameLoop<R> {
-    /// The pointing ray at `display_time`, if the runtime tracks one. Called by the caller
+    /// The controller at `display_time`: its pointing ray and its inputs. Called by the caller
     /// alongside the frame, not inside [`FrameLoop::tick`], so frame pacing is unchanged.
     ///
     /// # Errors
     ///
-    /// The runtime fails to locate the ray.
-    pub fn locate_ray(&mut self, display_time: i64) -> Result<Option<Ray>> {
-        self.runtime.locate_ray(display_time)
+    /// The runtime fails to locate the controller.
+    pub fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
+        self.runtime.locate_controller(display_time)
     }
 
     pub fn new(runtime: R) -> Self {

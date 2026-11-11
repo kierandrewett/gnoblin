@@ -1,0 +1,15 @@
+[package]
+name = "xr-input"
+description = "Pure controller input model for gnoblin-xr: a controller sample to pointer button and scroll events."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+xr-scene = { path = "../xr-scene" }
+
+[lints]
+workspace = true
