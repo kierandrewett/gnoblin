@@ -23,6 +23,9 @@ local FIELDS = {
     opacity = function(v)
         return type(v) == "number" and v >= 0 and v <= 1
     end,
+    xr = function(v)
+        return type(v) == "boolean"
+    end,
 }
 
 local function fail(i, msg)

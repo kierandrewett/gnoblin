@@ -273,6 +273,7 @@ function Window:apply_rules()
     end
     state.key = key
     rule_state[self] = state
+    self.data.xr = fx.xr -- read by xr.lua: `xr = false` keeps the window out of the headset's room
     for _, field in ipairs(RULE_FIELDS) do
         if field == "maximised" and fx.maximised ~= nil then
             if fx.maximised then
@@ -589,4 +590,5 @@ require("gnoblin.shell.lock")
 require("gnoblin.shell.overview")
 require("gnoblin.shell.launcher")
 require("gnoblin.shell.workspaces")
+require("gnoblin.shell.xr")
 require("gnoblin.shell.decorations")

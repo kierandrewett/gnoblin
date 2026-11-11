@@ -11,6 +11,9 @@ local SCHEMA = {
             name = { type = "string", default = "" },
             x = { type = "number", default = 0 },
             y = { type = "number", default = 0 },
+            z = { type = "number", default = 0 },
+            rotation = { type = "table", default = { 0, 0, 0 } }, -- radians about x, y, z, as node.toml says
+            input = { type = "boolean", default = true },
             width = { type = "number", default = 0 },
             height = { type = "number", default = 0 },
             opacity = { type = "number", default = 1 },
@@ -45,6 +48,7 @@ local SCHEMA = {
             title = { type = "string", default = "" },
             fullscreen = { type = "boolean", default = false },
             maximised = { type = "boolean", default = false },
+            minimised = { type = "boolean", default = false },
         },
         signals = { "closed", "request", "activate" },
         methods = { "close" },
@@ -57,7 +61,14 @@ local SCHEMA = {
         methods = { "camera", "capture" },
     },
     { name = "Screen", base = "View", props = { connector = { type = "string", default = "" } } },
-    { name = "Camera", base = "Node" },
+    {
+        name = "Camera",
+        base = "Node",
+        props = {
+            projection = { type = "string", default = "orthographic" },
+            metres = { type = "number", default = 0.001 },
+        },
+    },
     {
         name = "Seat",
         base = "Node",

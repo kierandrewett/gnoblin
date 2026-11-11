@@ -50,6 +50,7 @@ export const NAV: NavSection[] = [
             { label: "Bingux", slug: "bingux" },
             { label: "Build a desktop", slug: "build-a-desktop" },
             { label: "GNOME applications", slug: "gnome-apps" },
+            { label: "XR mode", slug: "xr" },
         ],
     },
     {

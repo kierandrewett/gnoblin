@@ -18,7 +18,7 @@ end
 
 -- The stock shell: ui, then floating and strip (before init, which makes every Desk workspace a Floating), then
 -- init. `sys` is the host's system table; the stub is inert. `H.floating` is the module floating.lua returns, so the
--- pure placement function is `H.floating.place`; `H.strip` is strip.lua's module (`H.strip.ring`, `H.strip.column`).
+-- pure placement function is `H.floating.place`; `H.strip` is strip.lua's module (`H.strip.ring`, `H.strip.column`); `H.xr` is xr.lua's ring.
 local shell_path_set = false
 function H.load_shell()
     sys = sys or {
@@ -40,6 +40,7 @@ function H.load_shell()
     require("gnoblin.shell")
     H.floating = require("gnoblin.shell.floating")
     H.strip = require("gnoblin.shell.strip")
+    H.xr = require("gnoblin.shell.xr") -- `H.xr.arrange` is the pure ring
     Focus = require("gnoblin.shell.focus")
     Snap = require("gnoblin.shell.snap")
     Rules = require("gnoblin.shell.rules")
