@@ -104,9 +104,11 @@ impl State {
     /// Whether the shell decides this window's requests: it holds the tree, the session is not locked, and the
     /// window has a node.
     fn shell_decides(&self, window: WindowId) -> bool {
-        self.lock.state() == gnoblin_lock::State::Unlocked
-            && self.composer.shell_places()
-            && self.composer.window_node(window).is_some()
+        decider(
+            self.lock.state() == gnoblin_lock::State::Unlocked,
+            self.composer.shell_places(),
+            self.composer.window_node(window).is_some(),
+        ) == Decider::Shell
     }
 
     /// Hands a request to whoever decides it: the shell as an event on the window's node, or the record directly
@@ -267,40 +269,79 @@ impl State {
     /// Brings an X11 window in line with its node: the three flags become its `_NET_WM_STATE`, and the frame
     /// the shell placed it in becomes its configure, so the client hears where it is and how big.
     fn configure_x11_from_node(&mut self, window: WindowId, state: WindowState, size: Option<(u32, u32)>) {
-        let frame = self.composer.window_frame(window);
-        let hidden = state.minimised;
+        let answer = x11_answer(state, self.composer.window_frame(window), size);
         let Some(Managed::X11(surface)) = self.windows.get(&window).map(|entry| &entry.surface) else {
             return;
         };
-        if let Err(error) = surface.set_maximized(state.maximised) {
+        if let Err(error) = surface.set_maximized(answer.maximised) {
             log::debug!(area = "toplevel", %error, %window, "the X11 maximised state was not sent");
         }
-        if let Err(error) = surface.set_fullscreen(state.fullscreen) {
+        if let Err(error) = surface.set_fullscreen(answer.fullscreen) {
             log::debug!(area = "toplevel", %error, %window, "the X11 fullscreen state was not sent");
         }
-        if let Err(error) = surface.set_hidden(hidden) {
+        if let Err(error) = surface.set_hidden(answer.hidden) {
             log::debug!(area = "toplevel", %error, %window, "the X11 hidden state was not sent");
         }
-        let rect = match (frame, size) {
-            (Some(frame), Some((width, height))) => Some(Rect::new(frame.x, frame.y, width, height)),
-            (Some(frame), None) => Some(frame),
-            (None, _) => None,
-        };
-        if let Some(rect) = rect
+        if let Some(rect) = answer.frame
             && let Err(error) = surface.configure(Some(x11_geometry(rect)))
         {
             log::debug!(area = "toplevel", %error, %window, "the X11 configure failed");
         }
-        self.set_visible(window, !hidden);
+        self.set_visible(window, !answer.hidden);
         log::debug!(
             area = "toplevel",
             %window,
-            maximised = state.maximised,
-            fullscreen = state.fullscreen,
-            minimised = state.minimised,
-            ?rect,
+            maximised = answer.maximised,
+            fullscreen = answer.fullscreen,
+            minimised = answer.hidden,
+            rect = ?answer.frame,
             "configured an X11 window from the shell's node"
         );
+    }
+}
+
+/// Who decides a window's requests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Decider {
+    /// The shell, through an event on the window's node.
+    Shell,
+    /// The compositor's record, applied directly.
+    Record,
+}
+
+/// Whether the shell decides: the session is unlocked, a shell holds the tree and the window has a node.
+const fn decider(unlocked: bool, shell_places: bool, has_node: bool) -> Decider {
+    if unlocked && shell_places && has_node {
+        Decider::Shell
+    } else {
+        Decider::Record
+    }
+}
+
+/// What an X11 window is told for the state its node holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct X11Answer {
+    /// `_NET_WM_STATE_MAXIMIZED_*`.
+    maximised: bool,
+    /// `_NET_WM_STATE_FULLSCREEN`.
+    fullscreen: bool,
+    /// `_NET_WM_STATE_HIDDEN`.
+    hidden: bool,
+    /// The configure to send: the node's frame with the size the shell wrote, or `None` when the node has no frame.
+    frame: Option<Rect>,
+}
+
+/// The X11 answer for the shell's flags, the node's frame and the size the shell wrote.
+fn x11_answer(state: WindowState, frame: Option<Rect>, size: Option<(u32, u32)>) -> X11Answer {
+    let frame = match (frame, size) {
+        (Some(frame), Some((width, height))) => Some(Rect::new(frame.x, frame.y, width, height)),
+        (frame, _) => frame,
+    };
+    X11Answer {
+        maximised: state.maximised,
+        fullscreen: state.fullscreen,
+        hidden: state.minimised,
+        frame,
     }
 }
 
@@ -349,4 +390,97 @@ fn write_pending(
         }
         changed
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use gnoblin_types::Rect;
+
+    use super::{Decider, WindowRequest, X11Answer, decider, x11_answer};
+    use crate::fallback::WindowState;
+    use crate::tree_frame::TreeRequest;
+
+    const FRAME: Rect = Rect::new(40, 50, 300, 200);
+
+    // An X11 window's maximise, fullscreen and minimise requests, from a client, a taskbar or the control surface,
+    // are the same node requests a Wayland toplevel's are: the shell reads them by name.
+    #[test]
+    fn an_x11_window_state_request_becomes_the_node_request_the_shell_reads() {
+        let named = |request: WindowRequest| request.tree().name();
+        assert_eq!(named(WindowRequest::Maximise(true)), "maximize");
+        assert_eq!(named(WindowRequest::Maximise(false)), "unmaximize");
+        assert_eq!(named(WindowRequest::Fullscreen(true)), "fullscreen");
+        assert_eq!(named(WindowRequest::Fullscreen(false)), "unfullscreen");
+        assert_eq!(named(WindowRequest::Minimise(true)), "minimize");
+        assert_eq!(named(WindowRequest::Minimise(false)), "unminimize");
+        assert_eq!(named(WindowRequest::Close), "close");
+        assert_eq!(WindowRequest::Activate.tree(), TreeRequest::Activate);
+        assert_eq!(WindowRequest::Raise.tree(), TreeRequest::Raise);
+        assert_eq!(WindowRequest::Lower.tree(), TreeRequest::Lower);
+    }
+
+    // With a shell attached the request is the shell's; with none, a locked session or a window with no node it is
+    // the record's, and the fallback applies it (`fallback.rs` holds those decisions).
+    #[test]
+    fn a_request_goes_to_the_shell_only_while_it_holds_the_tree_unlocked_and_the_window_has_a_node() {
+        assert_eq!(decider(true, true, true), Decider::Shell);
+        assert_eq!(decider(true, false, true), Decider::Record, "no shell holds the tree");
+        assert_eq!(decider(false, true, true), Decider::Record, "the session is covered");
+        assert_eq!(
+            decider(true, true, false),
+            Decider::Record,
+            "the window has no node yet"
+        );
+    }
+
+    // The shell writes the three flags and a size; an X11 window hears them as its `_NET_WM_STATE` and a configure
+    // at the frame the shell placed it in.
+    #[test]
+    fn the_shells_flags_and_size_become_the_x11_windows_state_and_frame() {
+        let state = WindowState {
+            maximised: true,
+            fullscreen: false,
+            minimised: false,
+        };
+        assert_eq!(
+            x11_answer(state, Some(FRAME), Some((640, 480))),
+            X11Answer {
+                maximised: true,
+                fullscreen: false,
+                hidden: false,
+                frame: Some(Rect::new(40, 50, 640, 480)),
+            },
+            "the size the shell wrote replaces the frame's, and the position stays"
+        );
+        let fullscreen = WindowState {
+            maximised: false,
+            fullscreen: true,
+            minimised: false,
+        };
+        let answer = x11_answer(fullscreen, Some(FRAME), Some((1920, 1080)));
+        assert!(answer.fullscreen && !answer.maximised && !answer.hidden);
+    }
+
+    #[test]
+    fn a_minimised_x11_window_is_told_it_is_hidden() {
+        let state = WindowState {
+            minimised: true,
+            ..WindowState::default()
+        };
+        let answer = x11_answer(state, Some(FRAME), None);
+        assert!(answer.hidden);
+        assert_eq!(
+            answer.frame,
+            Some(FRAME),
+            "with no size written the frame is kept as it is"
+        );
+        assert!(!x11_answer(WindowState::default(), Some(FRAME), None).hidden);
+    }
+
+    // A window whose node has no frame yet is sent its flags and no configure: there is nowhere to put it.
+    #[test]
+    fn an_x11_window_with_no_frame_is_sent_no_configure() {
+        let answer = x11_answer(WindowState::default(), None, Some((640, 480)));
+        assert_eq!(answer.frame, None);
+    }
 }

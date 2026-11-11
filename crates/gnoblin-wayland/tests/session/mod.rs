@@ -283,6 +283,14 @@ pub struct App {
     pub button_serial: Option<u32>,
     /// How many times the keyboard entered a surface of this client.
     pub keyboard_enters: u32,
+    /// How many times the pointer entered a surface of this client.
+    pub pointer_enters: u32,
+    /// How many times the pointer left a surface of this client.
+    pub pointer_leaves: u32,
+    /// How many `wl_surface.enter` events arrived: a surface is on an output.
+    pub surface_enters: u32,
+    /// How many `wl_surface.leave` events arrived.
+    pub surface_leaves: u32,
     /// How many `xdg_surface.configure` events arrived.
     pub configures: u32,
     /// The last surface configure serial.
@@ -582,8 +590,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Button { serial, .. } = event {
-            state.button_serial = Some(serial);
+        match event {
+            wl_pointer::Event::Button { serial, .. } => state.button_serial = Some(serial),
+            wl_pointer::Event::Enter { .. } => state.pointer_enters += 1,
+            wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
+            _ => {}
         }
     }
 }
@@ -852,7 +863,24 @@ impl Dispatch<ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()> fo
 }
 
 wayland_client::delegate_noop!(App: ignore wl_compositor::WlCompositor);
-wayland_client::delegate_noop!(App: ignore wl_surface::WlSurface);
+
+impl Dispatch<wl_surface::WlSurface, ()> for App {
+    fn event(
+        state: &mut Self,
+        _: &wl_surface::WlSurface,
+        event: <wl_surface::WlSurface as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_surface::Event::Enter { .. } => state.surface_enters += 1,
+            wl_surface::Event::Leave { .. } => state.surface_leaves += 1,
+            _ => {}
+        }
+    }
+}
+
 wayland_client::delegate_noop!(App: ignore wl_shm::WlShm);
 wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);

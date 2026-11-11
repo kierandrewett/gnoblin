@@ -15,7 +15,7 @@ use gnoblin_render::transaction::{
 };
 use gnoblin_secret::SecretText;
 use gnoblin_types::NodeId;
-use gnoblin_wayland::{TreeBatch, TreeFrameInput, TreeHooks, TreeQueue};
+use gnoblin_wayland::{TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue};
 
 use super::TIMEOUT;
 
@@ -126,6 +126,41 @@ impl Shell {
         wait(&format!("{count} `{name}` request(s)"), || {
             (self.requests(node).iter().filter(|seen| **seen == name).count() >= count).then_some(())
         });
+    }
+
+    /// The pointer edges the compositor delivered for `node`, in the order they arrived.
+    pub fn inputs(&self, node: NodeId) -> Vec<TreeInput> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.events)
+            .filter(|event| event.node == node)
+            .filter_map(|event| match &event.event {
+                TreeFrameInput::Input(input) => Some(*input),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Waits until `node` has been sent `count` pointer edges named `name` (`enter`, `motion`, `press`, `release`,
+    /// `leave`).
+    #[track_caller]
+    pub fn wait_input(&self, node: NodeId, name: &str, count: usize) {
+        wait(&format!("{count} `{name}` pointer edge(s)"), || {
+            (self.inputs(node).iter().filter(|seen| seen.name() == name).count() >= count).then_some(())
+        });
+    }
+
+    /// Every pointer edge any node has been sent, so a test can prove none reached a shell that held nothing.
+    pub fn input_count(&self) -> usize {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.events)
+            .filter(|event| matches!(event.event, TreeFrameInput::Input(_)))
+            .count()
     }
 
     /// Writes `values` to `node` in one transaction, as the shell answers a request, and waits for it to apply. A
