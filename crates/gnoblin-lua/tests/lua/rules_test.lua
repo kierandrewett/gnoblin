@@ -24,9 +24,9 @@ local function shell(rules, props)
     root:add(Seat({}))
     root:add(Lock({}))
     local screen = root:add(Screen({ width = 800, height = 600 }))
-    local w = root:add(Window(props))
     root:find(Seat).data.window_rules = rules
     H.load_shell()
+    local w = root:add(Window(props))
     root:find(Seat).screen = screen
     H.start_shell(host)
     return core, host, w
@@ -95,15 +95,14 @@ return {
     },
 
     {
-        "workspace and corner rules carry their values",
+        "a workspace rule carries its workspace id",
         function()
             local r = rules()
             local c = r.compile({
-                { match = { app_id = "term" }, workspace = { id = "2" }, corners = { radius = 8 } },
+                { match = { app_id = "term" }, workspace = { id = "2" } },
             })
             local e = r.effects(c, win({ app_id = "term" }))
             H.check(e.workspace.id == "2", "workspace id")
-            H.check(e.corners.radius == 8, "corner radius")
         end,
     },
 

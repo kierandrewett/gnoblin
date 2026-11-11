@@ -155,12 +155,13 @@ end
 function focus_settings()
     return Focus.settings(seat.focus_options or {})
 end
--- Window rules: seat.window_rules is the user's list, compiled once per table (a bad rule fails at load).
+-- Window rules: seat.data.window_rules is the user's list, compiled once per table (a bad rule fails at load).
 local rules_src, rules_compiled, rules_seen
 function window_rules()
-    if not rules_seen or rules_src ~= seat.window_rules then
-        rules_seen, rules_src = true, seat.window_rules
-        rules_compiled = Rules.compile(seat.window_rules or {})
+    local src = seat and seat.data.window_rules or nil
+    if not rules_seen or rules_src ~= src then
+        rules_seen, rules_src = true, src
+        rules_compiled = Rules.compile(src or {})
     end
     return rules_compiled
 end
@@ -176,6 +177,7 @@ function Window:on_ready()
     if Focus.opens_focused(focus_settings(), self.from_launcher) then
         seat.focus = self
     end
+    self:apply_rules()
 end
 -- What the rules last did to each window, kept off the node: the key of the rules that matched, and the
 -- fields the rules wrote, so a field no rule sets any more goes back to its default.
@@ -186,7 +188,7 @@ local function rule_view(w)
     return {
         app_id = w.app_id,
         title = w.title,
-        focused = seat.focus == w,
+        focused = seat ~= nil and seat.focus == w,
         workspace_id = ws and ws.name or nil,
     }
 end
