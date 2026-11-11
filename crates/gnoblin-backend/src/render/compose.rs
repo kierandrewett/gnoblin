@@ -218,9 +218,8 @@ struct WindowNode {
     effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
     visible: bool,
-    /// Whether the window's surface is secure, so a capture masks it. The window
-    /// manager sets it from a matched `secure` rule; the layer registry records the same
-    /// flag for the window's surface record.
+    /// Whether the window's surface is secure, so a capture masks it. The shell sets it by writing `secure` on the
+    /// window's node; the layer registry records the same flag for the window's surface record.
     secure: bool,
     /// The client's content, when it has committed one.
     content: Option<Content>,
@@ -1134,6 +1133,23 @@ impl Composer {
     /// running finish on their own.
     pub fn end_workspace_slide(&mut self) {
         self.workspace_slide = None;
+    }
+
+    /// Applies the `secure` value the shell wrote on each window's node to the window's mark, so a window the shell
+    /// marks is masked in a capture and one it clears is not. A window whose node holds no `secure` value keeps
+    /// its mark. Called each frame after the tree's transactions apply.
+    pub fn follow_shell_secure(&mut self) {
+        let written: Vec<(WindowId, bool)> = self
+            .windows
+            .iter()
+            .filter_map(|(window, entry)| match self.scene.value(entry.node?, "secure")? {
+                TreeValue::Bool(secure) => Some((*window, *secure)),
+                _ => None,
+            })
+            .collect();
+        for (window, secure) in written {
+            self.set_window_secure(window, secure);
+        }
     }
 
     /// Marks a window's surface secure, or clears the mark.
@@ -2496,6 +2512,49 @@ mod tests {
         assert!(
             damage_of(&mut composer, output).is_some(),
             "clearing the mark redraws the window"
+        );
+    }
+
+    // The shell marks a window secure by writing `secure` on its node. The composer follows the node: the mark
+    // takes effect when the shell writes it, and clears when the shell writes false.
+    #[test]
+    fn a_secure_value_the_shell_wrote_on_the_node_marks_the_window() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        assert!(damage_of(&mut composer, output).is_some(), "the new node is drawn once");
+
+        composer.follow_shell_secure();
+        assert_eq!(
+            damage_of(&mut composer, output),
+            None,
+            "a node with no secure value keeps the window's mark"
+        );
+
+        composer.with_scene(|scene| {
+            scene
+                .set_value(node, "secure", TreeValue::Bool(true))
+                .expect("the node takes it")
+        });
+        composer.follow_shell_secure();
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "the shell's mark redraws the window for capture"
+        );
+        composer.follow_shell_secure();
+        assert_eq!(damage_of(&mut composer, output), None, "the same mark damages nothing");
+
+        composer.with_scene(|scene| {
+            scene
+                .set_value(node, "secure", TreeValue::Bool(false))
+                .expect("the node takes it")
+        });
+        composer.follow_shell_secure();
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "the shell clearing the mark redraws the window"
         );
     }
 

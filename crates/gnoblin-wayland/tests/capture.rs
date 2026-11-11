@@ -22,13 +22,16 @@ use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_config::Protocols;
 use gnoblin_lock::State as LockState;
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
+use gnoblin_types::NodeId;
+use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks, TreeQueue};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface,
@@ -70,6 +73,8 @@ struct Handle {
     /// privileged and may bind a capture global; an application's may not.
     privileged_socket: PathBuf,
     control: ControlHandle,
+    /// The shell's side of the tree: the queue it writes a window node's `secure` through.
+    tree: TreeQueue,
     observation: Arc<Mutex<SessionSnapshot>>,
 }
 
@@ -113,6 +118,80 @@ impl Handle {
         let observation = self.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
         observation.only().expect("one mapped window").geometry
     }
+
+    /// Marks the window with `app_id` secure, or clears the mark, the way the stock shell does: it writes `secure`
+    /// on the window's node. Waits for the compositor to make the node and for the frame that applies the write.
+    fn mark_secure(&self, app_id: &str, secure: bool) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let (sender, receiver) = mpsc::channel();
+            let wanted = app_id.to_owned();
+            self.tree.read(move |scene, serial| {
+                let mut stack: Vec<NodeId> = scene.root_ids().to_vec();
+                let mut found = None;
+                while let Some(node) = stack.pop() {
+                    if scene.class(node) == Some("window") && scene.text(node, "app_id") == Some(wanted.as_str()) {
+                        found = Some(node);
+                        break;
+                    }
+                    stack.extend(scene.children(node).unwrap_or(&[]));
+                }
+                let _ = sender.send((found, serial));
+            });
+            let (found, serial) = receiver.recv_timeout(TIMEOUT).expect("the frame loop ran the read");
+            if let Some(node) = found {
+                let (reply, answer) = mpsc::channel();
+                self.tree.submit(
+                    serial,
+                    TreeTransaction::new(vec![TreeOp::Set {
+                        node,
+                        key: "secure".to_owned(),
+                        value: TreeValue::Bool(secure),
+                        timing: None,
+                    }]),
+                    || true,
+                    move |_, result| {
+                        let _ = reply.send(result.map(|_| ()));
+                    },
+                );
+                match answer.recv_timeout(TIMEOUT).expect("the frame loop answered the write") {
+                    Ok(()) => return,
+                    Err(refusal) if refusal.code == Code::StaleBase && Instant::now() < deadline => continue,
+                    Err(refusal) => panic!("the shell's write was refused: {refusal}"),
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the compositor never made a node for {app_id}"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+/// The schema the tree checks the test's transactions against: every node takes a `secure` flag.
+struct SecureClasses;
+
+impl ClassInfo for SecureClasses {
+    fn has_class(&self, class: &str) -> bool {
+        matches!(class, "node" | "window")
+    }
+
+    fn is_a(&self, class: &str, ancestor: &str) -> bool {
+        class == ancestor || (ancestor == "node" && class == "window")
+    }
+
+    fn property(&self, _class: &str, key: &str) -> Option<PropertyInfo> {
+        (key == "secure").then_some(PropertyInfo {
+            kind: ValueType::Bool,
+            readonly: false,
+            animated: false,
+        })
+    }
+
+    fn has_method(&self, _class: &str, _method: &str) -> bool {
+        false
+    }
 }
 
 /// Stops the session when the worker finishes, including when it panics.
@@ -144,7 +223,13 @@ impl Session {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
+        let tree = TreeQueue::default();
         let config = Config {
+            tree: TreeHooks {
+                queue: tree.clone(),
+                classes: Arc::new(SecureClasses),
+                ..TreeHooks::default()
+            },
             socket_path: Some(socket.clone()),
             privileged_socket_path: Some(privileged_socket.clone()),
             protocols,
@@ -156,6 +241,7 @@ impl Session {
             socket,
             privileged_socket,
             control: server.control(),
+            tree,
             observation: server.observation(),
         };
         // Capture tests read the pixels a window has once it has landed, not the fade it
@@ -1551,28 +1637,10 @@ fn a_capture_of_a_placed_window_is_its_placed_rectangle() {
     });
 }
 
-/// A rule that marks the window with `app_id` secure, so its capture is masked.
-fn secure_rule(app_id: &str) -> gnoblin_wm::Rule {
-    gnoblin_wm::Rule {
-        matcher: gnoblin_wm::Match {
-            app_id: Some(gnoblin_wm::Pattern::new(app_id).expect("a valid pattern")),
-            ..gnoblin_wm::Match::default()
-        },
-        fields: gnoblin_wm::RuleFields {
-            secure: Some(true),
-            ..gnoblin_wm::RuleFields::default()
-        },
-    }
-}
-
 #[test]
-fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
+fn a_window_the_shell_marks_secure_is_masked_in_its_capture() {
     let session = Session::start();
     session.run(|session| {
-        // The rule is set before either window maps, so it applies at the first manage.
-        let secret = secure_rule("org.gnoblin.Secret");
-        session.control.set_window_rules(vec![secret]);
-
         let mut secret_app = Client::app(session.socket());
         let mut plain_app = Client::app(session.socket());
         let _secret = secret_app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);
@@ -1589,6 +1657,9 @@ fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
                 .is_some_and(|window| window.geometry == gnoblin_types::Rect::new(0, 0, 512, 768))
         });
 
+        // The shell marks the window the way a stock rule does: it writes `secure` on the window's node.
+        session.mark_secure("org.gnoblin.Secret", true);
+
         let mut capture = Client::capturer(session.privileged_socket());
         let secret = capture_window(&mut capture, "Secret");
         assert_ne!(
@@ -1602,44 +1673,40 @@ fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
             "the whole secure window is masked, not only its corner"
         );
 
-        // The unrestricted window beside it still captures its colour, so the masking is the rule's doing.
+        // The unmarked window beside it still captures its colour, so the masking is the shell's doing.
         let plain = capture_window(&mut capture, "Plain");
         assert_eq!(
             plain.pixel(5, 5),
             GREEN,
-            "the window the rule does not match keeps its colour"
+            "the window the shell did not mark keeps its colour"
         );
     });
 }
 
 #[test]
-fn a_reload_that_drops_the_secure_rule_unmasks_the_window() {
+fn a_shell_that_clears_the_secure_mark_unmasks_the_window() {
     let session = Session::start();
     session.run(|session| {
-        session
-            .control
-            .set_window_rules(vec![secure_rule("org.gnoblin.Secret")]);
-
         let mut secret_app = Client::app(session.socket());
         let _secret = secret_app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);
         session.wait_for(|observation| observation.titled("Secret").is_some());
 
+        session.mark_secure("org.gnoblin.Secret", true);
         let mut capture = Client::capturer(session.privileged_socket());
         assert_ne!(
             capture_window(&mut capture, "Secret").pixel(5, 5),
             RED,
-            "the secure rule masks the window before the reload"
+            "the shell's mark masks the window"
         );
 
-        // The reload is applied by the compositor loop, which the capture also waits on, so the
-        // window is captured again until the withdrawn rule shows, under a deadline rather than a
-        // fixed sleep.
-        session.control.set_window_rules(Vec::new());
+        // The shell's write is applied by the compositor loop, which the capture also waits on, so the
+        // window is captured again until the cleared mark shows, under a deadline rather than a fixed sleep.
+        session.mark_secure("org.gnoblin.Secret", false);
         let deadline = Instant::now() + Duration::from_secs(5);
         while capture_window(&mut capture, "Secret").pixel(5, 5) != RED {
             assert!(
                 Instant::now() < deadline,
-                "the reload did not unmask the window within 5 seconds"
+                "the cleared mark did not unmask the window within 5 seconds"
             );
             thread::sleep(Duration::from_millis(20));
         }
