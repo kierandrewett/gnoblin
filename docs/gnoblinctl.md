@@ -154,22 +154,20 @@ gnoblinctl output get 6 width
 their possible values, and `gnoblinctl OBJECT --help` names its signals. The
 methods that exist are:
 
-- `output`: `set_layout`, `apply`
+- `output`: `apply`
 - `window`: `focus`, `present`, `kill`, `close`, `set_minimized`,
   `set_maximized`, `set_fullscreen`, `move`, `resize`, `set_workspace`,
   `set_output`, `add_effect`, `request_menu`
-- `workspace`: `set_layout`, `layout_command`
 - `layers`: `register`
 
 `session` declares no methods. Its signals are `ready`, `bell` and
-`reload_requested`. The `window` signal `menu_requested` and the `workspace`
-signals `layout_changed` and `layout_failed` are declared in the same way.
+`reload_requested`. The `window` signal `menu_requested` is declared in the same way.
 
 Calling a method takes its parameters by name. Leaving one out is refused with an
 error that names the ones the method needs:
 
 ```sh
-gnoblinctl output call 6 set_layout
+gnoblinctl output call 6 apply
 ```
 
 ## Config

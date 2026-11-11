@@ -12,8 +12,6 @@
 > - `gnoblin.session.reload_requested`
 > - `gnoblin.window.closed` (schema payload, not the legacy record)
 > - `gnoblin.window.menu_requested`
-> - `gnoblin.workspace.layout_changed`
-> - `gnoblin.workspace.layout_failed`
 
 This event reference describes callback registration and legacy event payloads.
 Names and payloads outside the list above are not delivered in Rust.

@@ -146,9 +146,6 @@
 - The scene's paint and hit order is the sibling order: a node's position among its siblings is its paint order, last on top. `z_order` is removed from `NodeSpec`, and `set_z_order` and `set_z_orders` are replaced by `raise`, `lower`, `move_to`, `insert_at`, `reparent_at` and `set_order(parent, &[NodeId])`, which refuses a list that is not a permutation of the siblings. The composer no longer keeps a second stacking order. Node-api step 2 (D35).
 - The schema holds the ten node-core tree classes (`Node`, `Surface`, `Window`, `Canvas`, `View`, `Screen`, `Camera`, `Seat`, `Workspace`, `Lock`) and the `tree` owner-socket messages, in namespace `tree`. The owner socket is the only transport, so the Lua stub, bindings and stock files leave the tree out. Node-core step 3, slice 2; the compositor does not serve these messages yet.
 - The Lua module `gnoblin.shell.floating` (`data/lua/gnoblin/shell/floating.lua`) places floating windows in free space, cascade and centre, as the `Floating`, `Cascade` and `Centred` classes on the node class system. Its placement matches the 212 committed placement goldens, and `shell/init.lua` loads it, so the shell places new windows.
-- The shipped `gnoblin.layouts.strip` layout places windows as columns in a strip wider than the screen, with a view
-  offset, stacked or tabbed columns, and the `width`, `consume`, `expel`, `move_column`, `fit_all`, `toggle_tabbed`,
-  `focus` and `scroll_to` commands. It replaces the scrolling layout, which is removed.
 - The window manager accepts up to `MAX_WINDOWS` (256) windows. A window past the cap is refused with
   `TooManyWindows` before any state changes. Each provider in the layer registry has its own limit; extension
   providers keep the default of 32.
@@ -188,8 +185,7 @@
 
 - Window records past the 32nd window do not trip a debug assertion, because the window manager's layer provider has
   its own limit.
-- The `layout_failed` signal's documented `reason` values now match the ones it emits.
-- Pointer picking goes through the scene: a press or pointer motion over a window that a layout turned or moved
+- Pointer picking goes through the scene: a press or pointer motion over a window that the shell turned or moved
   reaches the window where it is drawn, not the unrotated rectangle it was placed in. Stacking ties still go to the
   last-drawn window.
 - The composer's window nodes take their ids from `NodeIdAllocator` (`gnoblin-render`, `scene_ids.rs`), which starts at the compositor id base, never reuses an id and refuses exhaustion. Before, they started at 1, inside the shell's id range, so a shell node could collide with a window node (`duplicate-node`). A window whose node cannot be created is logged and not drawn, rather than dropped silently.

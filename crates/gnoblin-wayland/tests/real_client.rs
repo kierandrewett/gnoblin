@@ -17,6 +17,7 @@
 //! The tests below are the crate's "failure modes first" list, one to an item; the
 //! crate documentation names which test covers which mode.
 
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -1191,6 +1192,18 @@ fn drawn(session: &Handle, window: WindowId) -> (gnoblin_render::Mat4, Rect) {
         assert!(Instant::now() < deadline, "the window {window:?} is never drawn");
         thread::sleep(Duration::from_millis(5));
     }
+}
+
+/// Projects a surface-local point through a drawn matrix, the way the renderer places it.
+fn project(matrix: &gnoblin_render::Mat4, (u, v): (f64, f64)) -> (f64, f64) {
+    let [x, y, _, w] = matrix.apply([u, v, 0.0, 1.0]);
+    (x / w, y / w)
+}
+
+/// The global pixel the drawn matrix puts surface point `local` at, rounded to a pointer position.
+fn drawn_at(matrix: &gnoblin_render::Mat4, local: (f64, f64)) -> Point {
+    let (x, y) = project(matrix, local);
+    Point::new(x.round() as i32, y.round() as i32)
 }
 
 /// Moves the pointer to `at`, lets the loop process it, and returns the surface point the client

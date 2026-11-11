@@ -56,9 +56,6 @@ Every read of one output returns the same object, so you can keep it and read it
 `output:apply(x, y, scale, transform, primary, enabled, mode)` applies a new configuration to one output. The result
 arrives as property changes, so read the object to see what the compositor did.
 
-`output:set_layout(root, module, hash, options)` sets the default layout for workspaces on this output. It takes the
-same layout reference as [workspace:set_layout](/shell-api/workspaces).
-
 ## Not in the schema yet
 
 These names appear in earlier design notes. The `output` object does not declare them, so they are not available from

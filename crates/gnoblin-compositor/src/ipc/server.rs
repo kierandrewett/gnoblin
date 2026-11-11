@@ -78,7 +78,7 @@ use gnoblin_layers::{Band, LayerProvider, LayerScope, LayerSpec};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, read_frame, write_frame};
-use gnoblin_types::{ClientId, ErrorCode, Version, WindowId, WorkspaceId};
+use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
     ControlHandle, EffectSpec, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput,
     WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal, WorkspaceSetRefusal,

@@ -8,7 +8,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use mlua::{Lua, RegistryKey, Value as LuaValue};
 
@@ -92,12 +91,6 @@ impl Modules {
     }
 }
 
-/// Install `require` into `lua`, resolving through `modules`.
-pub(crate) fn install(lua: &Lua, modules: Rc<Modules>) -> mlua::Result<()> {
-    let require = lua.create_function(move |lua, name: String| modules.fetch(lua, &name).map(|(value, _)| value))?;
-    lua.globals().set("require", require)
-}
-
 /// Whether `name` is a dotted module name, every part an identifier.
 pub(crate) fn is_module_name(name: &str) -> bool {
     name.split('.').all(is_component)
@@ -172,12 +165,4 @@ pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
 /// A runtime error with a message, as the VM reports it.
 pub(crate) fn runtime(message: impl Into<String>) -> mlua::Error {
     mlua::Error::RuntimeError(message.into())
-}
-
-/// The plain message of a Lua error, without the error-kind prefix.
-pub(crate) fn message(error: mlua::Error) -> String {
-    match error {
-        mlua::Error::RuntimeError(text) => text,
-        other => other.to_string(),
-    }
 }

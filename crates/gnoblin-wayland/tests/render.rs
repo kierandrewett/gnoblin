@@ -399,7 +399,7 @@ fn wait_for_rect(session: &Handle, title: &str, rect: Rect) -> ObservedWindow {
 #[test]
 fn a_mapped_window_is_drawn_once_its_open_fade_finishes() {
     for_each_renderer(|backend| {
-        let mut session = Session::start_live(backend);
+        let session = Session::start_live(backend);
         session.run(|session| {
             let mut client = Client::connect(session.socket());
             let window = client.create_window("Floating");

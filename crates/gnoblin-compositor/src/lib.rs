@@ -385,7 +385,7 @@ impl Compositor {
         let mut xwayland_factory =
             xwayland::factory(xwayland_path.clone(), config.xsettings.take(), Arc::clone(&reporter));
         let applied = config.xwayland.clone();
-        let mut server = match xwayland_factory(applied.clone()) {
+        let server = match xwayland_factory(applied.clone()) {
             // No X11: the server has no X server, no grab manager and no process.
             None => Server::new(backend, wayland),
             Some(session) => Server::with_xwayland(backend, wayland, session),

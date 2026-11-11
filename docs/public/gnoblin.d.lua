@@ -303,7 +303,6 @@ function operation:on(name, callback) end
 ---@field y integer
 ---@field width integer
 ---@field height integer
----@field layout string
 local output = {}
 ---@param x integer
 ---@param y integer
@@ -314,12 +313,6 @@ local output = {}
 ---@param mode string
 ---@return gnoblin.Operation
 function output:apply(x, y, scale, transform, primary, enabled, mode) end
----@param root string
----@param module string
----@param hash string
----@param options string
----@return gnoblin.Operation
-function output:set_layout(root, module, hash, options) end
 ---@param name "closed"
 ---@param callback fun(fields: table)
 ---@return gnoblin.Subscription
@@ -748,28 +741,9 @@ function window:on(name, callback) end
 
 ---@class gnoblin.workspace
 ---@field id integer
----@field layout string
 local workspace = {}
----@param root string
----@param module string
----@param hash string
----@param options string
----@return gnoblin.Operation
-function workspace:set_layout(root, module, hash, options) end
----@param name string
----@param params string
----@return gnoblin.Operation
-function workspace:layout_command(name, params) end
 ---@param name "set_activated"
 ---@param callback fun(fields: { set: string })
----@return gnoblin.Subscription
-function workspace:on(name, callback) end
----@param name "layout_changed"
----@param callback fun(fields: { layout: string })
----@return gnoblin.Subscription
-function workspace:on(name, callback) end
----@param name "layout_failed"
----@param callback fun(fields: { layout: string, reason: string })
 ---@return gnoblin.Subscription
 function workspace:on(name, callback) end
 ---@param name "created"

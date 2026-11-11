@@ -97,11 +97,11 @@ pub use generated::{
     Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers, Gesture,
     GestureAction, GestureDirection, GestureKind, GesturePoint, Handedness, Input, InputSource, InputSourceType,
     InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Location, LocationAccuracy, LogConsole,
-    Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction, PointingStick, Protocol, Protocols, RendererChoice,
-    RuleClientType, RuleCorners, RuleWorkspace, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys,
-    Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad,
-    Trackball, VisualAccessibility, VisualBellType, WindowManagement, WindowMatch, WindowRule, WindowRuleType, Workspace,
-    WorkspaceSet, WorkspaceSetEntry, Xwayland, XwaylandExtension,
+    Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction, PointingStick, Protocol, Protocols,
+    RendererChoice, RuleClientType, RuleCorners, RuleWorkspace, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts,
+    SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction,
+    ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType, WindowManagement, WindowMatch, WindowRule,
+    WindowRuleType, Workspace, WorkspaceSet, WorkspaceSetEntry, Xwayland, XwaylandExtension,
 };
 /// The built-in keyring rule: from the environment, from a document, or from the last accepted file.
 pub use keyring::{

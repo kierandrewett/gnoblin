@@ -22,7 +22,6 @@ use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -1578,7 +1577,17 @@ fn a_window_matched_by_a_secure_rule_is_masked_in_its_capture() {
         let mut plain_app = Client::app(session.socket());
         let _secret = secret_app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);
         let _plain = plain_app.map_window("org.gnoblin.Plain", "Plain", 512, 768, GREEN);
-        session.wait_for(|observation| observation.titled("Secret").is_some() && observation.titled("Plain").is_some());
+        let observation = session
+            .wait_for(|observation| observation.titled("Secret").is_some() && observation.titled("Plain").is_some());
+        let secret_id = observation.titled("Secret").expect("the secure window").id;
+        session
+            .control
+            .move_window(secret_id, gnoblin_types::Rect::new(0, 0, 512, 768));
+        session.wait_for(|observation| {
+            observation
+                .titled("Secret")
+                .is_some_and(|window| window.geometry == gnoblin_types::Rect::new(0, 0, 512, 768))
+        });
 
         let mut capture = Client::capturer(session.privileged_socket());
         let secret = capture_window(&mut capture, "Secret");

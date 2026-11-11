@@ -66,7 +66,7 @@ families.
 | `gnoblin.capability.changed`   | `revision`   | integer               | Native state revision.                                                                       |
 | `gnoblin.focus.policy-changed` | `policy`     | focus policy record   | Effective policy after a successful config commit; see the [shared types](/shell-api/types). |
 | `gnoblin.operation.completed`  | `ok`         | boolean               | `true` on success, `false` on failure.                                                       |
-| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation, such as `set_layout`.                                |
+| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation, such as `apply`.                                     |
 | `gnoblin.operation.completed`  | `error`      | string                | Failure code such as `refused`; empty on success.                                            |
 
 #### Session and configuration

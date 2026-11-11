@@ -373,7 +373,6 @@ fn activate_set_answers_an_operation_on_the_live_workspace() {
     let mut server = Server::new(Graph::new(catalog()), VERSION);
     let mut properties = Fields::new();
     properties.insert("id".to_owned(), Value::Uint(1));
-    properties.insert("layout".to_owned(), Value::Text("floating".to_owned()));
     server
         .create(TypeKey::gnoblin("workspace"), properties)
         .expect("the graph takes a workspace");
