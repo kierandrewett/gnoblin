@@ -151,10 +151,24 @@ impl TreeCore {
     }
 
     /// Take the writes of this tick as one transaction stamped with `serial`, and start the
-    /// next tick against the same mirror.
+    /// next tick against the same mirror. What the transaction wrote stays readable to the next ticks until
+    /// [`TreeCore::begin_tick`]: the compositor's batch that brings it into the mirror may be frames away, and a binding
+    /// that runs meanwhile must find the nodes and values the shell has just written.
     pub fn take_transaction(&mut self, serial: u64) -> LuaTransaction {
         let tick = std::mem::take(&mut self.tick);
+        self.tick = LuaTxBuilder::seeded(tick.sent(&self.mirror));
         tick.into_transaction(&self.mirror, serial)
+    }
+
+    /// Starts a tick, after the batches that arrived are applied to the mirror. `settled` says every transaction sent
+    /// has been answered and none waits to be sent again: the mirror holds what the compositor did, so reads come
+    /// from it. Otherwise what the shell wrote is read as it wrote it, over a mirror that is up to date elsewhere.
+    pub fn begin_tick(&mut self, settled: bool) {
+        if settled {
+            self.tick.settle();
+        } else {
+            self.tick.refresh(&self.mirror);
+        }
     }
 
     /// The messages `core.report` received since the last call, oldest first.
@@ -279,10 +293,12 @@ impl TreeCore {
             .map_err(|e| e.to_string())
     }
 
-    fn destroy(&mut self, node: NodeId) -> Result<(), String> {
+    /// Destroys `node` and its subtree. Returns the `(holder, key)` of each stored node
+    /// reference that became nil.
+    fn destroy(&mut self, node: NodeId) -> Result<Vec<(NodeId, String)>, String> {
         self.tick
             .destroy(&self.mirror, node)
-            .map(|_| ())
+            .map(|destroyed| destroyed.cleared)
             .map_err(|e| e.to_string())
     }
 
@@ -599,7 +615,16 @@ pub fn install(lua: &Lua, core: &Shared) -> mlua::Result<Table> {
     let shared = Rc::clone(core);
     table.set(
         "destroy",
-        lua.create_function(move |_, node: i64| shared.borrow_mut().destroy(node_arg(node)?).map_err(lua_err))?,
+        lua.create_function(move |lua, node: i64| {
+            let cleared = shared.borrow_mut().destroy(node_arg(node)?).map_err(lua_err)?;
+            let list = lua.create_table_with_capacity(cleared.len(), 0)?;
+            for (holder, key) in cleared {
+                list.push(
+                    lua.create_sequence_from([Value::Integer(holder as i64), Value::String(lua.create_string(&key)?)])?,
+                )?;
+            }
+            Ok(list)
+        })?,
     )?;
 
     let shared = Rc::clone(core);

@@ -841,7 +841,11 @@ fn removing_every_output_keeps_the_cover() {
 
         let output = session.snapshot().outputs().first().copied().expect("an output");
         session.backend.disconnect_output(output);
-        let observation = session.wait_for(|observation| observation.outputs().is_empty());
+        // The output goes in one snapshot and the lock's state in the next, so wait for both: a snapshot published
+        // between the two shows no output with the old state.
+        let observation = session.wait_for(|observation| {
+            observation.outputs().is_empty() && observation.lock_state() == LockState::CoverFailed
+        });
         assert_eq!(
             observation.lock_state(),
             LockState::CoverFailed,

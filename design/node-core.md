@@ -444,9 +444,32 @@ Decision: the conflict check is per node. Two transactions conflict only when th
    serial order.
 4. **Gap.** A batch whose serial is not the next one means a missed batch. The shell drops its mirror and attaches
    again on the same connection; the compositor answers with a fresh snapshot (F23).
-5. **Restart.** The shell process exits; its connection closes. The compositor moves each window the old shell placed
-   to `root`, keeping its geometry, and marks it `placed` so nothing re-places it. Nodes the old shell created are
-   destroyed. The new shell attaches and gets a snapshot. Windows stay where they were drawn.
+5. **Restart.** The shell process exits; its connection closes. The compositor lets go of the tree
+   (`Scene::shell_places` goes false, so the window manager places windows again) and, in its next frame, destroys
+   every node the old shell created, before any transaction of that frame. A compositor node the old shell had
+   parented inside one of those nodes (a window under a workspace) moves to `root`, last among its children, first.
+   A node is the old shell's when its owner is the shell; the seats an observer made are not (they go with the
+   observer's connection). The destruction is announced like any other: a holder that attaches in the meantime gets
+   the snapshot as the shell left it, then the `destroyed` batch. The new shell therefore starts from the compositor's
+   own nodes and builds its own Desk once. Nothing is adopted: a node's Lua state (a Desk's `screen`, a room's table)
+   lives in the shell's VM and does not survive it, so a node left behind could only be a second copy, drawn and
+   never updated. A subtree that holds a compositor node the compositor parented itself (a popup) cannot be moved
+   out, so it is refused and stays; that is rare, and the next shell builds beside it.
+   Tests: `a_detached_shells_nodes_are_destroyed_with_its_connection`,
+   `a_window_the_detached_shell_parented_goes_back_to_the_root_when_its_node_is_destroyed` and
+   `an_observers_seat_outlives_the_shell_that_detached` (`tests/tree_ipc.rs`), and
+   `a_restarted_shell_builds_the_tree_one_shell_makes_not_a_second_copy` (`tests/shell_vm.rs`).
+
+The shell VM keeps its own view true while a transaction is in flight. The compositor answers transactions in order,
+and a refusal carries the tree's serial, not the one the shell stamped, so the VM matches a reply to the oldest
+transaction it sent. A refusal `stale-base` or `unknown-node` drops the failed op and sends the others again on the next
+base, without any op on a node the mirror no longer holds (a window that closed meanwhile takes its titlebar with it),
+so a one-shot op such as a destroy is not lost with a write that was moot. What a sent transaction wrote stays
+readable to the shell's next ticks until every transaction sent has been answered: the nodes it made, and the values it
+set on nodes the mirror holds (a Desk sizes its workspaces; a window placed the next frame must read that size, not
+the mirror's zero). Then the mirror says what is so, so a refused transaction's writes are forgotten and a native write
+that crossed the shell's own wins. A destroyed subtree is announced to the shell node by node, the deepest first, so
+each node's bindings stop.
 
 Change batch entries (`tree.changes`):
 

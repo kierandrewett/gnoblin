@@ -722,12 +722,25 @@ return function(t, changes, events, created)
                 end
             end
         else
-            local n = wrap(e.target)
+            -- A destroyed node is already gone from the mirror when its event arrives, so only a face Lua made earlier
+            -- can still run its handlers; one Lua destroyed itself has none left, and there is nothing to wrap.
+            local n
+            if e.type == "destroyed" then
+                n = nodes[e.target]
+            else
+                n = wrap(e.target)
+            end
             if n then
                 emit(n, e.type, table.unpack(e.args or {}))
             end
             if e.type == "destroyed" then
+                if n then -- its bindings must not run again against a node that is gone
+                    for _, b in pairs(rawget(n, BOUND)) do
+                        b.dead = true
+                    end
+                end
                 nodes[e.target] = nil
+                readied[e.target] = nil
             end -- Gnoblin ended it; handlers have run
         end
     end

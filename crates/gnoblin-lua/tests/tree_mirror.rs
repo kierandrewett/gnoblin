@@ -220,7 +220,7 @@ fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
     let mirror = base_mirror();
     let mut tx = LuaTxBuilder::new();
 
-    let mut removed = tx.destroy(&mirror, 2).expect("node 2 exists");
+    let mut removed = tx.destroy(&mirror, 2).expect("node 2 exists").removed;
     removed.sort_unstable();
 
     assert_eq!(removed, vec![4]);
@@ -238,6 +238,92 @@ fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
         ),
         Err(TxError::UnknownNode(4))
     );
+}
+
+#[test]
+fn destroy_nils_the_references_to_the_subtree_and_names_them_without_sending_ops() {
+    let mirror = base_mirror();
+    let mut tx = LuaTxBuilder::new();
+    // Node 3 points at the doomed node 4 and at the survivor 1; node 2 (doomed) points at 3.
+    tx.set(&mirror, 3, "source", LuaValue::Node(4), None, None)
+        .expect("3 exists");
+    tx.set(&mirror, 3, "focus", LuaValue::Node(1), None, None)
+        .expect("3 exists");
+    tx.set(&mirror, 2, "source", LuaValue::Node(3), None, None)
+        .expect("2 exists");
+    let writes = tx.ops().len();
+
+    let destroyed = tx.destroy(&mirror, 2).expect("node 2 exists");
+
+    assert_eq!(destroyed.cleared, vec![(3, "source".to_owned())]);
+    assert_eq!(tx.get(&mirror, 3, "source"), Some(&LuaValue::Node(NIL)));
+    assert_eq!(tx.get(&mirror, 3, "focus"), Some(&LuaValue::Node(1)));
+    // Only the destroy is sent: the compositor clears the references itself.
+    assert_eq!(tx.ops().len(), writes + 1);
+}
+
+#[test]
+fn destroy_nils_references_held_by_untouched_base_nodes_too() {
+    let nodes = [
+        snap(1, NIL, 0, "node"),
+        snap(2, 1, 0, "node"),
+        SnapshotNode {
+            props: vec![("source".to_owned(), LuaValue::Node(2))],
+            ..snap(3, 1, 1, "node")
+        },
+    ];
+    let mirror = LuaMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds");
+    let mut tx = LuaTxBuilder::new();
+
+    let destroyed = tx.destroy(&mirror, 2).expect("node 2 exists");
+
+    assert_eq!(destroyed.cleared, vec![(3, "source".to_owned())]);
+    assert_eq!(tx.get(&mirror, 3, "source"), Some(&LuaValue::Node(NIL)));
+    assert_eq!(
+        mirror.value(3, "source"),
+        Some(&LuaValue::Node(2)),
+        "the base is untouched"
+    );
+}
+
+#[test]
+fn what_a_sent_transaction_wrote_is_read_by_the_next_builder_until_the_mirror_says_so() {
+    let mirror = base_mirror();
+    let mut tx = LuaTxBuilder::new();
+    tx.new_node(&mirror, 20, "node").expect("a new id");
+    tx.insert(&mirror, 20, 3, 0).expect("20 goes under 3");
+    tx.insert(&mirror, 4, 3, 1).expect("4 moves under 3");
+    tx.set(&mirror, 2, "opacity", LuaValue::Double(0.25), None, None)
+        .expect("2 exists");
+
+    // The next tick reads it all, though the mirror holds none of it yet.
+    let mut next = LuaTxBuilder::seeded(tx.sent(&mirror));
+    next.refresh(&mirror);
+    assert_eq!(next.children(&mirror, 3).expect("3 exists"), [20, 4]);
+    assert_eq!(next.children(&mirror, 2).expect("2 exists"), Vec::<NodeId>::new());
+    assert_eq!(next.node(&mirror, 4).expect("4 exists").parent, 3);
+    assert_eq!(next.node(&mirror, 20).expect("20 is read").parent, 3);
+    assert_eq!(next.get(&mirror, 2, "opacity"), Some(&LuaValue::Double(0.25)));
+    assert!(next.ops().is_empty(), "nothing is sent again");
+
+    // A child the compositor destroyed meanwhile is not listed.
+    let mut moved = base_mirror();
+    moved
+        .apply_changes(
+            6,
+            &[LuaChange {
+                removed: vec![4],
+                ..change(MirrorChangeKind::Destroyed, 4)
+            }],
+        )
+        .expect("the batch applies");
+    next.refresh(&moved);
+    assert_eq!(next.children(&moved, 3).expect("3 exists"), [20]);
+
+    // Answered: the mirror says what is so.
+    next.settle();
+    assert_eq!(next.children(&moved, 3).expect("3 exists"), Vec::<NodeId>::new());
+    assert_eq!(next.get(&moved, 2, "opacity"), None);
 }
 
 #[test]

@@ -161,7 +161,8 @@ impl TreeHostHandle {
     }
 
     /// Release what `client` has: the hold, when it is the holder, or its observation, when it is an observer. An
-    /// observer's seats are destroyed with its connection.
+    /// observer's seats are destroyed with its connection, and so are the nodes a holder made (design/node-core.md,
+    /// section 4.6 step 5), except the seats observers made.
     pub fn detach(&self, client: ClientId) {
         let shared = Arc::clone(&self.session);
         let (released, seats) = {
@@ -171,6 +172,15 @@ impl TreeHostHandle {
             (before != session.holder(), session.release_observer(holder(client)))
         };
         if released {
+            let seats = Arc::clone(&shared);
+            self.queue.reap_shell_nodes(move || {
+                let session = lock(&seats);
+                session
+                    .observers()
+                    .into_iter()
+                    .flat_map(|observer| session.seats_of(observer))
+                    .collect()
+            });
             // The frame clears the flag at its next read, so the wm places windows again.
             self.queue
                 .read(move |scene, _| scene.set_shell_places(lock(&shared).holder().is_some()));

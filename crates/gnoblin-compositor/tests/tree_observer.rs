@@ -21,13 +21,17 @@ const NAMESPACE: &str = "tree";
 const SHELL_PARENT: u64 = 2000;
 
 fn attach(wire: &mut Wire, request_id: u64) {
+    attach_as(wire, request_id, "");
+}
+
+fn attach_as(wire: &mut Wire, request_id: u64, mode: &str) {
     wire.send(&Envelope::request_message(
         NAMESPACE,
         "attach",
         request_id,
         &AttachArgs {
             version: 1,
-            mode: String::new(),
+            mode: mode.to_owned(),
         },
     ));
 }
@@ -82,19 +86,19 @@ fn snapshot_holding_window(wire: &mut Wire, title: &str) -> (AttachedPayload, Ve
     }
 }
 
-/// Attaches a fresh connection once the previous holder has released the tree.
+/// Attaches a fresh connection as an observer, beside the holder.
 fn fresh_observer(session: &Session) -> (Wire, AttachedPayload, Vec<snapshot_node::Properties>) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let mut wire = Wire::connect(session.socket());
-        attach(&mut wire, 1);
+        attach_as(&mut wire, 1, "observer");
         let envelope = wire.receive().expect("a frame");
         if envelope.error_code().is_none() {
             let attached: AttachedPayload = envelope.payload_as().expect("the payload decodes");
             let nodes = snapshot_nodes(&mut wire, attached.serial);
             return (wire, attached, nodes);
         }
-        assert!(Instant::now() < deadline, "the holder was never released");
+        assert!(Instant::now() < deadline, "the observer was never attached");
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -221,8 +225,8 @@ fn the_holder_parents_a_window_and_a_fresh_observer_sees_it_under_its_node() {
         .any(|change| change.kind == "parented" && change.node == window_id && change.parent == SHELL_PARENT);
     eprintln!("OBSERVER echo_to_author={echoed} batches_after_reply={changes:?}");
 
-    // A4: a fresh observer's snapshot shows the window under P, and P under the root.
-    drop(holder);
+    // A4: a fresh observer's snapshot shows the window under P, and P under the root. The holder stays attached:
+    // its nodes are destroyed with its connection.
     let (_fresh, _attached, nodes) = fresh_observer(&session);
     let window_after = nodes
         .iter()

@@ -16,7 +16,7 @@
 //! (`ShellLimits`): the frame as a whole, and each handler, binding or timer inside it. A handler that
 //! runs away is stopped and reported by name, and the frame goes on with the next one.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -140,10 +140,12 @@ pub struct ShellVm {
     reported: BTreeMap<String, (f64, u64)>,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
     incoming: Vec<LuaIncoming>,
-    /// The ops of each sent transaction, by serial, until its reply arrives. A refusal names its
-    /// failed op from this record, and a stale-base refusal re-sends the rest. A call that carries
+    /// The serial and ops of each sent transaction, oldest first, until its reply arrives. The compositor
+    /// answers in order, but a refusal carries the serial the tree had then, not the serial the shell
+    /// stamped, so a reply is matched to its transaction by position. A refusal names its failed op from
+    /// this record, and a stale-base or unknown-node refusal re-sends the rest. A call that carries
     /// text is recorded as `None`: its text is not kept past the send, so a retry cannot send it again.
-    sent: BTreeMap<u64, Vec<Option<LuaOp>>>,
+    sent: VecDeque<(u64, Vec<Option<LuaOp>>)>,
     /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it:
     /// a second transaction built on the same base is refused as stale.
     in_flight: Option<u64>,
@@ -244,7 +246,7 @@ impl ShellVm {
             reported: BTreeMap::new(),
             incoming,
             in_flight: None,
-            sent: BTreeMap::new(),
+            sent: VecDeque::new(),
             retry: Vec::new(),
         })
     }
@@ -294,12 +296,18 @@ impl ShellVm {
             match message {
                 LuaIncoming::Changes { serial, changes } => {
                     // A closed node runs its `destroyed` handlers before node.lua drops its face.
+                    // Every node the change took is told, the deepest first as `Node:destroy` does: a titlebar
+                    // under a closed window must stop its bindings, not read a node that is gone.
                     tree_events.extend(
                         changes
                             .iter()
                             .filter(|c| c.kind == MirrorChangeKind::Destroyed)
-                            .map(|c| LuaEvent {
-                                target: c.node,
+                            .flat_map(|c| {
+                                let subtree = c.removed.iter().copied().filter(|id| *id != c.node);
+                                subtree.rev().chain(std::iter::once(c.node))
+                            })
+                            .map(|node| LuaEvent {
+                                target: node,
                                 kind: "destroyed".to_owned(),
                                 bubbles: false,
                                 chord: None,
@@ -321,12 +329,14 @@ impl ShellVm {
                     );
                 }
                 LuaIncoming::Reply(reply) => {
-                    let ops = self.sent.remove(&reply.serial).unwrap_or_default();
-                    if !reply.applied && reply.code == "stale-base" && reply.failed_op >= 0 {
-                        // A published batch changed a node this transaction writes. The refused
-                        // transaction applied nothing, so its other ops are sent again on the next
-                        // base; the failed op is dropped, since the published change wins. The gate
-                        // stays shut until the mirror reaches this serial, which that batch does.
+                    let (sent_serial, ops) = self.sent.pop_front().unwrap_or((reply.serial, Vec::new()));
+                    let resend = matches!(reply.code.as_str(), "stale-base" | "unknown-node");
+                    if !reply.applied && resend && reply.failed_op >= 0 {
+                        // A published batch changed a node this transaction writes (stale-base), or
+                        // destroyed it (unknown-node). The refused transaction applied nothing, so its
+                        // other ops are sent again on the next base; the failed op is dropped, since
+                        // the published change wins. The gate stays shut until the mirror reaches
+                        // this serial, which that batch does.
                         let failed = usize::try_from(reply.failed_op).ok();
                         let mut kept: Vec<LuaOp> = Vec::new();
                         for (index, op) in ops.into_iter().enumerate() {
@@ -353,7 +363,7 @@ impl ShellVm {
                         kept.append(&mut self.retry);
                         self.retry = kept;
                     } else {
-                        if self.in_flight == Some(reply.serial) && !reply.applied {
+                        if self.in_flight == Some(sent_serial) && !reply.applied {
                             // A refused transaction never advances the serial, so the gate opens now.
                             self.in_flight = None;
                         }
@@ -415,6 +425,15 @@ impl ShellVm {
             }
         }
 
+        let settled = self.sent.is_empty() && self.retry.is_empty();
+        self.core.borrow_mut().begin_tick(settled);
+        // A node a later batch of this frame destroyed has nothing to wrap or to touch: its destroy event says so.
+        {
+            let core = self.core.borrow();
+            let mirror = core.mirror();
+            touched.retain(|(node, _)| mirror.node(*node).is_some());
+            created.retain(|node| mirror.node(*node).is_some());
+        }
         let wake = self.tick_lua(now, &touched, &created, events.into_iter().chain(tree_events))?;
         let reports = self.core.borrow_mut().take_reports();
         diagnostics.extend(self.throttle(now, reports));
@@ -429,13 +448,32 @@ impl ShellVm {
         };
         if let Some(mut tx) = tx {
             if !self.retry.is_empty() {
-                // Ops refused stale-base go first, on this base.
+                // Ops refused stale-base go first, on this base. An op on a node the tree has lost since is
+                // moot, and sending it would refuse the whole transaction again.
                 let mut ops = std::mem::take(&mut self.retry);
+                let core = self.core.borrow();
+                let mirror = core.mirror();
+                let mut made: Vec<NodeId> = Vec::new();
+                ops.retain(|op| match op {
+                    LuaOp::New { id, .. } => {
+                        made.push(*id);
+                        true
+                    }
+                    LuaOp::Set { node, .. } | LuaOp::Destroy { node } | LuaOp::Call { node, .. } => {
+                        made.contains(node) || mirror.node(*node).is_some()
+                    }
+                    LuaOp::Insert { node, parent, .. } => {
+                        (made.contains(node) || mirror.node(*node).is_some())
+                            && (made.contains(parent) || mirror.node(*parent).is_some())
+                    }
+                });
+                drop(core);
                 ops.append(&mut tx.ops);
                 tx.ops = ops;
             }
             if !tx.ops.is_empty() {
-                self.sent.insert(tx.serial, tx.ops.iter().map(retained_op).collect());
+                self.sent
+                    .push_back((tx.serial, tx.ops.iter().map(retained_op).collect()));
                 self.in_flight = Some(tx.serial);
                 self.link.transact(&tx).map_err(|e| ShellVmError::Link(e.0))?;
             }

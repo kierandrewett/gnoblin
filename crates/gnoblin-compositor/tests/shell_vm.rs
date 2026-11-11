@@ -105,6 +105,20 @@ fn window_placements(role: &mut ShellRole) -> Vec<(f64, f64, bool)> {
         .collect()
 }
 
+/// Waits until the Desk under the pointer has a workspace with a size. The shell places a window in the space its
+/// workspace has, so a window that maps before the screen's size has reached the workspaces lands in none.
+fn wait_for_sized_workspace(role: &mut ShellRole) {
+    tick_until(role, "the Desk's workspace never got a size", |role| {
+        role.run(
+            "workspace size",
+            "local d = desk() return tostring(d ~= nil and d.active ~= nil and d.active.width > 0 and d.active.height > 0)",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text")
+            == "true"
+    });
+}
+
 #[test]
 fn the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own() {
     let session = Session::start();
@@ -122,13 +136,22 @@ fn the_stock_shell_places_each_mapped_window_on_a_spot_of_its_own() {
         .expect("the probe returns text");
     assert_eq!(published, "true true", "the seat publishes its screen to the mirror");
 
+    wait_for_sized_workspace(&mut role);
     let mut client = Client::connect(session.wayland());
     let _first = client.map_window("org.example.first", "First");
     let _second = client.map_window("org.example.second", "Second");
 
-    tick_until(&mut role, "the shell never placed both windows", |role| {
-        window_placements(role).iter().filter(|(_, _, placed)| *placed).count() == 2
-    });
+    // `placed` is the shell's own flag, set when it writes the spot; the spot is in the mirror once the compositor
+    // has echoed the write, so wait for the two spots themselves.
+    tick_until(
+        &mut role,
+        "the shell never placed both windows on spots of their own",
+        |role| {
+            let placements = window_placements(role);
+            placements.iter().filter(|(_, _, placed)| *placed).count() == 2
+                && (placements[0].0, placements[0].1) != (placements[1].0, placements[1].1)
+        },
+    );
 
     let placements = window_placements(&mut role);
     let (a, b) = (placements[0], placements[1]);
@@ -151,34 +174,68 @@ fn the_composer_publishes_the_shell_chosen_spot_and_not_its_own_layout() {
     tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
         mirror_counts(role) == (1, 1)
     });
+    wait_for_sized_workspace(&mut role);
     let mut client = Client::connect(session.wayland());
     let _first = client.map_window("org.example.first", "First");
     let _second = client.map_window("org.example.second", "Second");
     tick_until(&mut role, "the shell never placed both windows", |role| {
         window_placements(role).iter().filter(|(_, _, placed)| *placed).count() == 2
     });
-    // Let the composer publish any geometry it has pending after the placement.
-    for _ in 0..30 {
-        role.tick(0.5).expect("a frame runs");
+    // What the compositor itself holds is what the shell chose, and stays so: each snapshot of an observer is
+    // taken in a frame of the compositor's own, so the rounds after the first have seen its frames go by.
+    let mut spots: Vec<(f64, f64)> = Vec::new();
+    for round in 0..4 {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            role.tick(0.5 + f64::from(round) * 0.016).expect("a frame runs");
+            let mut expected: Vec<(f64, f64)> = window_placements(&mut role).iter().map(|(x, y, _)| (*x, *y)).collect();
+            expected.sort_by(f64_pairs);
+            spots = published_spots(&session);
+            spots.sort_by(f64_pairs);
+            if spots == expected && expected.len() == 2 && expected[0] != expected[1] {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the compositor holds {spots:?}, not two different spots the shell chose ({expected:?}); VM diagnostics {:?}",
+                role.diagnostics()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
-    let placements = window_placements(&mut role);
-    assert_eq!(placements.len(), 2, "both windows are in the mirror: {placements:?}");
-    for (x, y, _) in &placements {
-        assert!(
-            x.is_finite() && y.is_finite(),
-            "the mirror holds a finite spot: {placements:?}"
-        );
-    }
+    assert_eq!(spots.len(), 2, "both windows are in the compositor's tree: {spots:?}");
     assert_ne!(
-        (placements[0].0, placements[0].1),
-        (placements[1].0, placements[1].1),
-        "the second window is elsewhere than the first: {placements:?}"
+        spots[0], spots[1],
+        "the second window is elsewhere than the first: {spots:?}"
     );
     assert!(
         role.diagnostics().is_empty(),
         "no refused transaction: {:?}",
         role.diagnostics()
     );
+}
+
+fn f64_pairs(a: &(f64, f64), b: &(f64, f64)) -> std::cmp::Ordering {
+    a.partial_cmp(b).expect("finite spots")
+}
+
+/// The `(x, y)` of every window in the compositor's own tree, read through a fresh observer. A value at its default
+/// is not carried in a snapshot, so it reads as zero.
+fn published_spots(session: &Session) -> Vec<(f64, f64)> {
+    let (_wire, _, nodes) = observe(session);
+    nodes
+        .iter()
+        .filter(|node| node.class == "window")
+        .map(|node| {
+            let value = |key: &str| {
+                node.props
+                    .iter()
+                    .find(|prop| prop.key == key)
+                    .map_or(0.0, |prop| prop.value_double)
+            };
+            (value("x"), value("y"))
+        })
+        .collect()
 }
 
 /// The Desk for the screen under the pointer: one per screen, built by `Screen:on_ready`.
@@ -227,9 +284,19 @@ fn a_mapped_window_reaches_the_mirror_and_runs_window_on_ready() {
 
     let mut client = Client::connect(session.wayland());
     let _first = client.map_window("org.example.first", "First");
-    for _ in 0..30 {
-        role.tick(0.5).expect("a frame runs");
-    }
+    tick_until(
+        &mut role,
+        "the window never reached the mirror and became ready",
+        |role| {
+            role.run(
+                "link probe",
+                "return tostring(#root:all('Window') >= 1 and ready_calls >= 1)",
+            )
+            .expect("the probe runs")
+            .expect("the probe returns text")
+                == "true"
+        },
+    );
     let state = role
         .run(
             "link probe",
@@ -392,6 +459,7 @@ fn a_window_rule_in_the_users_shell_file_applies_to_a_mapped_window() {
     tick_until(&mut role, "the rules never reached the mapped windows", |role| {
         window_prop(role, "org.example.secret", "secure") == "true"
             && window_prop(role, "org.example.faded", "opacity") == "0.5"
+            && window_prop(role, "org.example.plain", "secure") == "false"
     });
     assert_eq!(window_prop(&mut role, "org.example.plain", "secure"), "false");
     assert_eq!(window_prop(&mut role, "org.example.secret", "opacity"), "1.0");
@@ -462,25 +530,12 @@ fn a_workspace_rule_in_the_users_shell_file_places_the_window_on_that_workspace(
     tick_until(&mut role, "the window never reached the tree", |role| {
         workspace_of(role, "org.example.term") != "-"
     });
-    for frame in 0..60 {
-        role.tick(1.0 + f64::from(frame) * 0.016).expect("a frame runs");
-    }
-    let after_rule = workspace_of(&mut role, "org.example.term");
-    let moved = role
-        .run(
-            "manual move",
-            "for _, w in ipairs(root:all('Window')) do if w.app_id == 'org.example.term' then \
-             return tostring(w:move_to(desk().space.children[3])) end end",
-        )
-        .expect("the probe runs");
-    for frame in 0..60 {
-        role.tick(3.0 + f64::from(frame) * 0.016).expect("a frame runs");
-    }
-    let after_manual = workspace_of(&mut role, "org.example.term");
-    assert_eq!(
-        after_rule,
-        "3",
-        "the rule did not place the window; a manual move_to gave {moved:?} and left it on {after_manual}; diagnostics {:?}",
+    tick_until(&mut role, "the rule never placed the window on workspace 3", |role| {
+        workspace_of(role, "org.example.term") == "3"
+    });
+    assert!(
+        role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
         role.diagnostics()
     );
 }
@@ -609,6 +664,324 @@ fn a_tiling_workspace_configures_three_real_clients_to_their_tiles_with_tiled_ed
     assert!(
         role.diagnostics().is_empty(),
         "no refused transaction: {:?}",
+        role.diagnostics()
+    );
+}
+
+// ---- A restarted shell (design/node-core.md, section 4.6 step 5) ---------------------------------------------------
+
+/// Connects a shell once the previous holder's connection has closed and the compositor has released the tree.
+fn reconnect(session: &Session) -> ShellRole {
+    let socket = session.socket().to_str().expect("a UTF-8 socket path").to_owned();
+    let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match connect_owner_socket(&env, &stock_library()) {
+            Ok(role) => return role,
+            Err(error) => {
+                assert!(Instant::now() < deadline, "the tree was never released: {error:?}");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+}
+
+/// How many nodes are under the root, read inside the VM.
+fn node_count(role: &mut ShellRole) -> usize {
+    role.run(
+        "node count",
+        "local function count(n) local c = 0 for _, k in ipairs(n.children) do c = c + 1 + count(k) end return c end \
+         return tostring(count(root))",
+    )
+    .expect("the probe runs")
+    .expect("the probe returns text")
+    .parse()
+    .expect("a count")
+}
+
+/// A shell that restarts finds the old shell's nodes gone with its connection and builds its own Desk, so the tree is
+/// the size one shell makes it: not the old Desk, its workspaces and its bars left beside a second set. (gnoblin-pv63:
+/// the nodes stayed, and the Lua state that made them did not, so nothing could adopt or remove them.)
+#[test]
+fn a_restarted_shell_builds_the_tree_one_shell_makes_not_a_second_copy() {
+    let session = Session::start();
+    let mut first = connect(&session);
+    load_stock_shell(&mut first);
+    tick_until(&mut first, "the first shell never built the screen's Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
+    let one_shell = node_count(&mut first);
+    assert!(one_shell > 1, "the stock shell builds a tree: {one_shell} nodes");
+    drop(first);
+
+    let mut second = reconnect(&session);
+    load_stock_shell(&mut second);
+    tick_until(
+        &mut second,
+        "the restarted shell never built the screen's Desk",
+        |role| desk_probe(role) == "1 1",
+    );
+    tick_until(&mut second, "the old shell's nodes were never destroyed", |role| {
+        node_count(role) == one_shell
+    });
+    for frame in 0..20 {
+        second.tick(100.0 + f64::from(frame) * 0.016).expect("a frame runs");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(node_count(&mut second), one_shell, "nothing is built twice");
+    assert!(
+        second.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        second.diagnostics()
+    );
+}
+
+// ---- XR mode: the stock shell's room (data/lua/gnoblin/shell/xr.lua) -----------------------------------------------
+
+/// Attaches an observer connection and reads its snapshot, as the XR extension does.
+fn observe(session: &Session) -> (support::Wire, u64, Vec<gnoblin_proto::tree::snapshot_node::Properties>) {
+    use gnoblin_proto::Envelope;
+    use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, SnapshotPayload};
+
+    let mut wire = support::Wire::connect(session.socket());
+    wire.send(&Envelope::request_message(
+        "tree",
+        "attach",
+        1,
+        &AttachArgs {
+            version: 1,
+            mode: "observer".to_owned(),
+        },
+    ));
+    let attached: AttachedPayload = wire
+        .receive()
+        .expect("the attach reply")
+        .payload_as()
+        .expect("the attach payload decodes");
+    let mut nodes = Vec::new();
+    loop {
+        let chunk: SnapshotPayload = wire
+            .receive()
+            .expect("a snapshot chunk")
+            .payload_as()
+            .expect("the chunk decodes");
+        nodes.extend(chunk.nodes);
+        if chunk.last {
+            break;
+        }
+    }
+    (wire, u64::from(attached.epoch as u32) << 32 | 1, nodes)
+}
+
+/// Makes the seat named `xr` the way the XR extension does: an observer connection that creates it unparented.
+/// The seat lives as long as the returned wire; dropping the wire closes the connection, and the compositor
+/// destroys the seat.
+fn xr_seat(session: &Session) -> support::Wire {
+    use gnoblin_proto::tree::op;
+    use gnoblin_proto::tree::tree::{ReplyPayload, TransactArgs};
+    use gnoblin_proto::{Envelope, Kind};
+
+    let (mut wire, id, _) = observe(session);
+    wire.send(&Envelope::request_message(
+        "tree",
+        "transact",
+        2,
+        &TransactArgs {
+            base_serial: 0,
+            serial: 1,
+            ops: vec![
+                op::Properties {
+                    kind: "new".to_owned(),
+                    class: "seat".to_owned(),
+                    id,
+                    ..Default::default()
+                },
+                op::Properties {
+                    kind: "set".to_owned(),
+                    node: id,
+                    key: "name".to_owned(),
+                    value_kind: "text".to_owned(),
+                    value_text: "xr".to_owned(),
+                    ..Default::default()
+                },
+            ],
+        },
+    ));
+    loop {
+        let envelope = wire.receive().expect("a frame");
+        if matches!(envelope.kind, Some(Kind::Reply(_))) && envelope.member == "transact" {
+            let reply: ReplyPayload = envelope.payload_as().expect("the reply decodes");
+            assert!(reply.applied, "the xr seat was refused: {}", reply.code);
+            return wire;
+        }
+    }
+}
+
+/// `room views windows`: whether the node named `room` exists, how many `View`s it holds (the compositor has
+/// Views of its own elsewhere in the tree) and how many `Window`s the shell sees.
+fn xr_probe(role: &mut ShellRole) -> String {
+    role.run(
+        "xr probe",
+        "local room = root:find('#room') \
+         return (room and 'room' or 'none') .. ' ' .. tostring(room and #room:all('View') or 0) .. ' ' \
+         .. tostring(#root:all('Window'))",
+    )
+    .expect("the probe runs")
+    .expect("the probe returns text")
+}
+
+/// Ticks the VM until the xr probe reads `want`, or fails after ten seconds with what it last read.
+fn tick_until_xr(role: &mut ShellRole, what: &str, want: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut now = 0.0;
+    loop {
+        role.tick(now).expect("a frame runs");
+        now += 0.016;
+        let last = xr_probe(role);
+        if last == want {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{what}: the probe (room views windows) read `{last}`, not `{want}`; VM diagnostics {:?}",
+            role.diagnostics()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Ticks the VM until `watcher` has heard the compositor publish the destruction of every node in `gone`, then ticks
+/// it a few frames more so the shell has taken the same batch in. The shell destroys these nodes itself, so its own
+/// view of them is gone at once; what the compositor did is the watcher's to say. A frame that fails fails the test.
+fn tick_until_destroyed(role: &mut ShellRole, watcher: &mut support::Wire, gone: &[u64], what: &str) {
+    use gnoblin_proto::Kind;
+    use gnoblin_proto::tree::tree::ChangesPayload;
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut now = 0.0;
+    let mut heard: Vec<u64> = Vec::new();
+    watcher.set_read_timeout(Duration::from_millis(5));
+    while !gone.iter().all(|node| heard.contains(node)) {
+        role.tick(now).expect("a frame runs");
+        now += 0.016;
+        while let Some(envelope) = watcher.receive_within() {
+            if matches!(envelope.kind, Some(Kind::Event(_))) && envelope.member == "changes" {
+                let batch: ChangesPayload = envelope.payload_as().expect("the batch decodes");
+                for change in batch.changes.iter().filter(|change| change.kind == "destroyed") {
+                    heard.push(change.node);
+                    heard.extend(change.removed.iter().copied());
+                }
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{what}: the compositor published the destruction of {heard:?}, not of all of {gone:?}; VM diagnostics {:?}",
+            role.diagnostics()
+        );
+    }
+    for _ in 0..5 {
+        role.tick(now).expect("a frame runs after the destroy came back");
+        now += 0.016;
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// A shell with the stock library, one real client window and the xr room up: a View for the window. Also returns
+/// a watcher that attached once the room was up, and the id of the room and of its View.
+fn xr_room_with_one_window() -> (
+    Session,
+    ShellRole,
+    support::Wire,
+    support::Wire,
+    Client,
+    support::Window,
+    (u64, u64),
+) {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    let mut client = Client::connect(session.wayland());
+    let window = client.map_window("org.example.first", "First");
+    let seat = xr_seat(&session);
+    tick_until_xr(&mut role, "the room never got a View for the window", "room 1 1");
+    // The watcher attaches after the View exists in the shell's view, but the compositor may not have it yet: attach
+    // again until its snapshot holds the View.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let (watcher, ids) = loop {
+        role.tick(1.0).expect("a frame runs");
+        let (watcher, _, nodes) = observe(&session);
+        let room = nodes
+            .iter()
+            .find(|node| node.class == "camera")
+            .map(|camera| camera.parent);
+        let view = room.and_then(|room| nodes.iter().find(|node| node.class == "view" && node.parent == room));
+        if let (Some(room), Some(view)) = (room, view) {
+            break (watcher, (room, view.id));
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the compositor never held the room: {nodes:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    (session, role, seat, watcher, client, window, ids)
+}
+
+/// A client that closes its window while the room is up: the compositor drops the View with the shell's
+/// destroy, the shell's frames go on, and the room stays. (gnoblin-6zce: `core.destroy` answered nothing, so
+/// `Node:destroy` failed and the View stayed in the room; and the compositor's echo of the shell's own destroy
+/// failed the frame.)
+#[test]
+fn a_closed_clients_view_leaves_the_xr_room() {
+    let (_session, mut role, _seat, mut watcher, mut client, window, (_, view)) = xr_room_with_one_window();
+
+    client.destroy(window);
+    tick_until_destroyed(
+        &mut role,
+        &mut watcher,
+        &[view],
+        "the closed window's View never left the room",
+    );
+    assert_eq!(xr_probe(&mut role), "room 0 0");
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        role.diagnostics()
+    );
+}
+
+/// The xr seat goes (its extension disconnects): the room and its View are destroyed in the compositor, the shell
+/// goes on running, and the window stays on its workspace.
+#[test]
+fn the_xr_room_is_torn_down_when_the_seat_goes_and_the_windows_stay_on_their_workspaces() {
+    let (_session, mut role, seat, mut watcher, _client, _window, (room, view)) = xr_room_with_one_window();
+    let on_workspace = |role: &mut ShellRole| {
+        role.run(
+            "workspace probe",
+            "local w = root:all('Window')[1] return tostring(w:closest(Workspace) ~= nil)",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text")
+    };
+    tick_until(&mut role, "the window never joined a workspace", |role| {
+        on_workspace(role) == "true"
+    });
+
+    drop(seat);
+    tick_until_destroyed(
+        &mut role,
+        &mut watcher,
+        &[room, view],
+        "the room was never torn down with the seat",
+    );
+    assert_eq!(xr_probe(&mut role), "none 0 1");
+    assert_eq!(on_workspace(&mut role), "true", "the window stays on its workspace");
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
         role.diagnostics()
     );
 }

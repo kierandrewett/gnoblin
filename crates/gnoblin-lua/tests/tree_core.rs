@@ -2,7 +2,7 @@
 //! `node.lua` makes, with the refusals the schema and the transaction builder make.
 
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, Shared, TreeCore, TreeValueKind, install};
-use gnoblin_lua::tree_mirror::{LuaMirror, LuaOp, LuaValue, NIL, SnapshotNode};
+use gnoblin_lua::tree_mirror::{LuaChange, LuaMirror, LuaOp, LuaValue, MirrorChangeKind, NIL, SnapshotNode};
 use mlua::Lua;
 
 fn snap(id: u64, parent: u64, index: i64, class: &str) -> SnapshotNode {
@@ -14,6 +14,19 @@ fn snap(id: u64, parent: u64, index: i64, class: &str) -> SnapshotNode {
         title: String::new(),
         app_id: String::new(),
         props: Vec::new(),
+    }
+}
+
+fn change(kind: MirrorChangeKind, node: u64) -> LuaChange {
+    LuaChange {
+        kind,
+        node,
+        class: String::new(),
+        parent: NIL,
+        index: 0,
+        key: String::new(),
+        value: None,
+        removed: Vec::new(),
     }
 }
 
@@ -42,7 +55,10 @@ fn schema() -> Vec<ClassSpec> {
         ClassSpec {
             name: "Window".to_owned(),
             base: Some("Node".to_owned()),
-            props: vec![prop("w", TreeValueKind::Uint, false, None)],
+            props: vec![
+                prop("w", TreeValueKind::Uint, false, None),
+                prop("source", TreeValueKind::Node, false, None),
+            ],
             methods: vec!["close".to_owned()],
             ..ClassSpec::default()
         },
@@ -143,6 +159,18 @@ fn writes_are_seen_by_this_tick_and_the_mirror_is_unchanged_until_the_tx_is_take
         ]
     );
 
+    // Sent but not answered: the shell still reads what it wrote, and writes nothing again.
+    check(
+        &lua,
+        r#"
+        assert(core.get(2, "x") == 4)
+        assert(core.get(2, "title") == "main")
+        "#,
+    );
+    assert!(core.borrow_mut().take_transaction(10).ops.is_empty());
+
+    // Answered: the mirror says what is so.
+    core.borrow_mut().begin_tick(true);
     check(
         &lua,
         r#"
@@ -150,7 +178,6 @@ fn writes_are_seen_by_this_tick_and_the_mirror_is_unchanged_until_the_tx_is_take
         assert(core.get(2, "title") == nil)
         "#,
     );
-    assert!(core.borrow_mut().take_transaction(10).ops.is_empty());
 }
 
 #[test]
@@ -183,6 +210,113 @@ fn insert_and_destroy_are_checked_and_a_destroyed_node_is_gone_for_the_rest_of_t
         assert(not pcall(core.get, 2, "class"))
         "#,
     );
+}
+
+/// A node the shell made is read by the ticks that follow it until the compositor's batch brings it into the mirror:
+/// a binding that runs in between (a native change woke it) must find the node its own tick made.
+#[test]
+fn a_made_node_stays_readable_after_its_transaction_is_taken_until_the_mirror_holds_it() {
+    let (lua, core) = setup();
+    check(
+        &lua,
+        r#"
+        made = core.new("Node")
+        core.insert(1, made)
+        core.set(made, "x", 3)
+        core.set(2, "title", "sent")
+        "#,
+    );
+    let made = 7 << 32 | 1;
+    core.borrow_mut().take_transaction(6);
+    check(
+        &lua,
+        r#"
+        assert(core.get(made, "class") == "Node")
+        assert(core.get(made, "parent") == 1)
+        assert(core.get(made, "x") == 3)
+        assert(core.get(2, "title") == "sent", "a value the shell wrote is read back before the echo")
+        core.set(made, "x", 4)
+        assert(core.get(made, "x") == 4)
+        "#,
+    );
+    assert_eq!(
+        core.borrow_mut().take_transaction(7).ops.len(),
+        1,
+        "only the new write goes out"
+    );
+    check(&lua, r#"assert(core.get(2, "title") == "sent")"#);
+
+    // The compositor's batch arrives: the mirror holds the node, and reads come from it again.
+    let batch = [
+        LuaChange {
+            class: "node".to_owned(),
+            parent: 1,
+            ..change(MirrorChangeKind::Created, made)
+        },
+        LuaChange {
+            key: "x".to_owned(),
+            value: Some(LuaValue::Double(4.0)),
+            ..change(MirrorChangeKind::Set, made)
+        },
+    ];
+    core.borrow_mut()
+        .mirror_mut()
+        .apply_changes(6, &batch)
+        .expect("the batch applies");
+    core.borrow_mut().begin_tick(true);
+    check(
+        &lua,
+        r#"
+        assert(core.get(made, "x") == 4)
+        assert(core.get(2, "title") == nil, "once answered, the mirror says what is so")
+        "#,
+    );
+    assert!(core.borrow_mut().take_transaction(8).ops.is_empty());
+}
+
+/// A transaction the compositor refused for good never makes its nodes: they are not read as there.
+#[test]
+fn a_made_node_of_a_refused_transaction_is_forgotten() {
+    let (lua, core) = setup();
+    check(&lua, r#"made = core.new("Node")"#);
+    core.borrow_mut().take_transaction(6);
+    check(&lua, r#"assert(core.get(made, "class") == "Node")"#);
+    core.borrow_mut().begin_tick(true);
+    assert!(refused(&lua, r#"core.get(made, "class")"#).contains("no node"));
+}
+
+/// The contract `Node:destroy` in `node.lua` relies on, and the fake core in
+/// `tests/lua/fake_core.lua` follows: `core.destroy` answers a list of `{holder, key}`, one per
+/// stored node reference that became nil, and the nil is visible for the rest of the tick.
+#[test]
+fn destroy_answers_the_node_references_that_became_nil() {
+    let (lua, core) = setup();
+    check(
+        &lua,
+        r#"
+        local target = core.new("Node")
+        core.insert(1, target)
+        core.set(2, "source", target)
+        local cleared = core.destroy(target)
+        assert(type(cleared) == "table" and #cleared == 1)
+        assert(cleared[1][1] == 2 and cleared[1][2] == "source")
+        assert(core.get(2, "source") == nil)
+        local none = core.destroy(2)
+        assert(type(none) == "table" and #none == 0)
+        "#,
+    );
+    let ops = core.borrow_mut().take_transaction(9).ops;
+    let kinds: Vec<&str> = ops
+        .iter()
+        .map(|op| match op {
+            LuaOp::New { .. } => "new",
+            LuaOp::Insert { .. } => "insert",
+            LuaOp::Set { .. } => "set",
+            LuaOp::Destroy { .. } => "destroy",
+            LuaOp::Call { .. } => "call",
+        })
+        .collect();
+    assert_eq!(kinds, ["new", "insert", "set", "destroy", "destroy"]);
 }
 
 #[test]

@@ -13,12 +13,12 @@
 //! carries the shell's transactions can hold it on its own thread. The frame never waits
 //! on it; the lock is held only to move queued work out or back.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::{
-    Animation, ClassInfo, Code, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeRefusal,
+    Animation, ClassInfo, Code, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
     TreeTransaction, validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
@@ -41,6 +41,9 @@ type Admission = Box<dyn Fn() -> bool + Send>;
 /// A read that runs at the start of a frame, before its transactions.
 type Read = Box<dyn FnOnce(&mut Scene, u64) + Send>;
 
+/// The ids a reaping frame must leave alone, asked when the frame reaps.
+type Keep = Box<dyn FnOnce() -> BTreeSet<NodeId> + Send>;
+
 struct Submission {
     /// The serial the shell built the transaction against.
     base: u64,
@@ -54,6 +57,8 @@ struct Submission {
 #[derive(Default)]
 struct TreeQueued {
     reads: Vec<Read>,
+    /// Detached shells whose nodes the next frame destroys.
+    reaps: Vec<Keep>,
     submissions: VecDeque<Submission>,
 }
 
@@ -247,6 +252,38 @@ pub struct FrameTreeEvent {
     pub event: TreeFrameInput,
 }
 
+/// One transaction for each top-level node the shell made that is not in `keep`: the compositor's nodes it had
+/// parented inside go back under the root, then the node and what is left of its subtree is destroyed. A node is
+/// top-level when its parent is the compositor's or it has none. One transaction each, so a refusal (a popup the
+/// compositor parented inside the subtree cannot be moved out) leaves only that subtree behind.
+fn reap_transactions(scene: &Scene, keep: &BTreeSet<NodeId>) -> Vec<TreeTransaction> {
+    let shell_owned = |id: NodeId| scene.node(id).is_some_and(|node| node.owner() == Actor::Shell);
+    let mut reaped = Vec::new();
+    for id in scene.node_ids() {
+        if !shell_owned(id) || keep.contains(&id) || scene.parent(id).is_some_and(shell_owned) {
+            continue;
+        }
+        let mut ops = Vec::new();
+        let mut pending = vec![id];
+        while let Some(node) = pending.pop() {
+            for child in scene.children(node).unwrap_or_default().iter().copied() {
+                if shell_owned(child) {
+                    pending.push(child);
+                } else if let Some(root) = scene.root() {
+                    ops.push(TreeOp::Insert {
+                        node: child,
+                        parent: root,
+                        index: None,
+                    });
+                }
+            }
+        }
+        ops.push(TreeOp::Destroy { node: id });
+        reaped.push(TreeTransaction::new(ops));
+    }
+    reaped
+}
+
 /// The sending side of the tree queue. Clones share one queue.
 #[derive(Clone, Default)]
 pub struct TreeQueue {
@@ -285,6 +322,15 @@ impl TreeQueue {
             admitted: Box::new(admitted),
             reply: Box::new(reply),
         });
+        self.wake();
+    }
+
+    /// Queues the destruction of every node a shell made, for the next frame: its connection has closed, and
+    /// nothing is left to destroy them or to keep them in step. Windows and other compositor nodes the shell had
+    /// put under one of its nodes go back under the root first. `keep` is asked when the frame runs, and names the
+    /// shell-made nodes that belong to someone else (an observer's seats).
+    pub fn reap_shell_nodes(&self, keep: impl FnOnce() -> BTreeSet<NodeId> + Send + 'static) {
+        self.lock().reaps.push(Box::new(keep));
         self.wake();
     }
 
@@ -551,19 +597,39 @@ impl TreeFrame {
         let announced = std::mem::take(&mut self.compositor);
         let announced = if (self.attached)() { announced } else { Vec::new() };
         let frame_serial = self.serial;
-        let (reads, arrived) = {
+        let (reads, reaps, arrived) = {
             let mut queue = self.queue.lock();
-            (std::mem::take(&mut queue.reads), std::mem::take(&mut queue.submissions))
+            (
+                std::mem::take(&mut queue.reads),
+                std::mem::take(&mut queue.reaps),
+                std::mem::take(&mut queue.submissions),
+            )
         };
         for read in reads {
             read(&mut *scene, frame_serial);
         }
+        // A detached shell's nodes go first: the reads above (an attach among them) have seen the tree as the
+        // shell left it, and the batch below tells that holder what went.
+        let reaped: Vec<Submission> = reaps
+            .into_iter()
+            .flat_map(|keep| reap_transactions(scene, &keep()))
+            .map(|transaction| Submission {
+                base: frame_serial,
+                transaction,
+                admitted: Box::new(|| true),
+                reply: Box::new(|_, _| {}),
+            })
+            .collect();
 
         // Deferred work came first, then arrivals in arrival order. Every transaction is checked
         // when it applies, against the batches published since its base and the changes this
         // frame has already applied. A stale one that conflicts is refused here; one that does not
         // conflict still lands.
-        let mut queue: VecDeque<Submission> = self.deferred.drain(..).chain(arrived).collect();
+        let mut queue: VecDeque<Submission> = reaped
+            .into_iter()
+            .chain(self.deferred.drain(..))
+            .chain(arrived)
+            .collect();
         // Compositor changes lead the batch, ahead of the shell's transaction changes.
         let mut batch = TreeBatch {
             changes: announced,

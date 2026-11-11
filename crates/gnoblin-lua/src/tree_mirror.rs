@@ -603,20 +603,166 @@ impl std::fmt::Display for TxError {
 
 impl std::error::Error for TxError {}
 
+/// What destroying a node took with it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Destroyed {
+    /// The ids removed beneath the node, not the node itself.
+    pub removed: Vec<NodeId>,
+    /// The `(holder, key)` of each stored node reference that became nil.
+    pub cleared: Vec<(NodeId, String)>,
+}
+
 /// Collects the writes of one tick. The builder owns only its pending ops and an overlay of
 /// the nodes it wrote, so it can sit beside the mirror it reads in one struct without a
 /// self-reference. Every method that reads or writes takes the mirror the tick started from;
 /// reads see this tick's writes first, and that mirror is never changed.
+///
+/// The writes of a transaction that is sent but not yet answered stay readable to the ticks after it: what the
+/// shell wrote is what it reads until the compositor's batch brings the same into the mirror, so a binding that
+/// runs in between finds the nodes it made and the values it set (`SentWrites`, `seeded`, `settle`).
 #[derive(Debug, Default)]
 pub struct LuaTxBuilder {
     overlay: BTreeMap<NodeId, Option<NodeRecord>>,
     ops: Vec<LuaOp>,
+    /// The property writes of the transactions in flight, for the nodes the mirror already holds.
+    in_flight: BTreeMap<NodeId, BTreeMap<String, LuaValue>>,
+    /// The carried nodes of earlier ticks the overlay holds for want of the mirror.
+    seeds: Vec<NodeId>,
+    /// The carried nodes the mirror held when they were carried (moved, not made): one the mirror loses was
+    /// destroyed by the compositor.
+    held: Vec<NodeId>,
+}
+
+/// What a sent transaction wrote, kept readable until it is answered.
+#[derive(Debug, Default)]
+pub struct SentWrites {
+    /// The nodes it made, and the nodes it moved or gave children to, as they stand: the mirror does not show the
+    /// change yet.
+    pub nodes: Vec<(NodeId, NodeRecord)>,
+    /// Which of `nodes` the mirror held already.
+    pub held: Vec<NodeId>,
+    /// The properties it set on nodes the mirror holds.
+    pub props: BTreeMap<NodeId, BTreeMap<String, LuaValue>>,
 }
 
 impl LuaTxBuilder {
     /// An empty builder for one tick.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A builder with no writes that still reads what `sent` wrote. The transaction is in flight and nothing but
+    /// the shell writes those nodes and properties, so reading them as the shell left them is exact until the
+    /// compositor's batch brings them into the mirror.
+    pub fn seeded(sent: SentWrites) -> Self {
+        Self {
+            seeds: sent.nodes.iter().map(|(id, _)| *id).collect(),
+            held: sent.held,
+            overlay: sent.nodes.into_iter().map(|(id, record)| (id, Some(record))).collect(),
+            ops: Vec::new(),
+            in_flight: sent.props,
+        }
+    }
+
+    /// What the next tick must still read of this one's writes: the nodes made that `base` does not hold, the nodes
+    /// whose place or children differ from `base`'s, and the properties set on the nodes `base` holds, on top of
+    /// what earlier in-flight transactions wrote.
+    pub fn sent(&self, base: &LuaMirror) -> SentWrites {
+        let nodes: Vec<(NodeId, NodeRecord)> = self
+            .overlay
+            .iter()
+            .filter_map(|(id, entry)| {
+                let record = entry.as_ref()?;
+                let moved = base
+                    .node(*id)
+                    .is_none_or(|held| held.parent != record.parent || held.children != record.children);
+                moved.then(|| (*id, record.clone()))
+            })
+            .collect();
+        let held = nodes
+            .iter()
+            .map(|(id, _)| *id)
+            .filter(|id| base.node(*id).is_some())
+            .collect();
+        let mut props = self.in_flight.clone();
+        for op in &self.ops {
+            if let LuaOp::Set { node, key, value, .. } = op
+                && base.node(*node).is_some()
+            {
+                props.entry(*node).or_default().insert(key.clone(), value.clone());
+            }
+        }
+        SentWrites { nodes, held, props }
+    }
+
+    /// Brings the carried nodes up to date with `base` at the start of a tick: the properties come from the mirror
+    /// (a native write shows) with the in-flight writes on top, and a child the compositor destroyed is gone from
+    /// the list. Their place and children stay as the shell left them until the mirror holds the same.
+    pub fn refresh(&mut self, base: &LuaMirror) {
+        // A node the mirror held and no longer does was destroyed by the compositor.
+        let gone: Vec<NodeId> = self
+            .held
+            .iter()
+            .copied()
+            .filter(|id| base.node(*id).is_none())
+            .collect();
+        for id in &gone {
+            self.overlay.remove(id);
+        }
+        self.seeds.retain(|id| !gone.contains(id));
+        self.held.retain(|id| !gone.contains(id));
+        let exists = |overlay: &BTreeMap<NodeId, Option<NodeRecord>>, id: NodeId| match overlay.get(&id) {
+            Some(entry) => entry.is_some(),
+            None => base.node(id).is_some(),
+        };
+        let updates: Vec<(NodeId, Vec<NodeId>)> = self
+            .seeds
+            .iter()
+            .filter_map(|id| {
+                let record = self.overlay.get(id)?.as_ref()?;
+                let kept = record
+                    .children
+                    .iter()
+                    .copied()
+                    .filter(|c| exists(&self.overlay, *c))
+                    .collect();
+                Some((*id, kept))
+            })
+            .collect();
+        for (id, children) in updates {
+            if let Some(Some(record)) = self.overlay.get_mut(&id) {
+                record.children = children;
+                if let Some(held) = base.node(id) {
+                    record.props.clone_from(&held.props);
+                    if let Some(props) = self.in_flight.get(&id) {
+                        record
+                            .props
+                            .extend(props.iter().map(|(key, value)| (key.clone(), value.clone())));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Every transaction sent has been answered and none waits to be sent again: the mirror says what is so. The
+    /// in-flight properties go, and so do the carried nodes: the mirror holds what came, and what did not (a
+    /// refused transaction) never will. A node this tick has pending ops on stays, with what those ops wrote.
+    pub fn settle(&mut self) {
+        self.in_flight.clear();
+        let mut named: Vec<NodeId> = Vec::new();
+        for op in &self.ops {
+            match op {
+                LuaOp::New { id, .. } => named.push(*id),
+                LuaOp::Set { node, .. } | LuaOp::Destroy { node } | LuaOp::Call { node, .. } => named.push(*node),
+                LuaOp::Insert { node, parent, .. } => named.extend([*node, *parent]),
+            }
+        }
+        self.held.clear();
+        for id in std::mem::take(&mut self.seeds) {
+            if !named.contains(&id) {
+                self.overlay.remove(&id);
+            }
+        }
     }
 
     /// The node as this tick sees it, against the mirror the tick started from.
@@ -629,7 +775,13 @@ impl LuaTxBuilder {
 
     /// A property as this tick sees it.
     pub fn get<'a>(&'a self, base: &'a LuaMirror, id: NodeId, key: &str) -> Option<&'a LuaValue> {
-        self.node(base, id)?.props.get(key)
+        let record = self.node(base, id)?;
+        if !self.overlay.contains_key(&id)
+            && let Some(value) = self.in_flight.get(&id).and_then(|props| props.get(key))
+        {
+            return Some(value);
+        }
+        record.props.get(key)
     }
 
     /// The children of a node as this tick sees them, in order.
@@ -640,7 +792,12 @@ impl LuaTxBuilder {
     /// Copy a node into the overlay on first write, so the base is never touched.
     fn touch(&mut self, base: &LuaMirror, id: NodeId) -> Option<&mut NodeRecord> {
         if let std::collections::btree_map::Entry::Vacant(slot) = self.overlay.entry(id) {
-            let record = base.node(id)?.clone();
+            let mut record = base.node(id)?.clone();
+            if let Some(props) = self.in_flight.get(&id) {
+                record
+                    .props
+                    .extend(props.iter().map(|(key, value)| (key.clone(), value.clone())));
+            }
             slot.insert(Some(record));
         }
         self.overlay.get_mut(&id)?.as_mut()
@@ -728,8 +885,11 @@ impl LuaTxBuilder {
         false
     }
 
-    /// Destroy a node and its subtree. Returns the ids removed beneath it.
-    pub fn destroy(&mut self, base: &LuaMirror, node: NodeId) -> Result<Vec<NodeId>, TxError> {
+    /// Destroy a node and its subtree. Returns the ids removed beneath it and the stored node
+    /// references that became nil because their target went (section 3.4 of the design). The
+    /// compositor clears the same references and says so in its next batch, so the nil writes
+    /// stay local to this tick and are not sent as ops.
+    pub fn destroy(&mut self, base: &LuaMirror, node: NodeId) -> Result<Destroyed, TxError> {
         self.require(base, node)?;
         if node == base.root() {
             return Err(TxError::Root(node));
@@ -751,8 +911,49 @@ impl LuaTxBuilder {
         for id in &subtree {
             self.overlay.insert(*id, None);
         }
+        let cleared = self.clear_references_to(base, &subtree);
         self.ops.push(LuaOp::Destroy { node });
-        Ok(subtree.into_iter().filter(|id| *id != node).collect())
+        Ok(Destroyed {
+            removed: subtree.into_iter().filter(|id| *id != node).collect(),
+            cleared,
+        })
+    }
+
+    /// Sets every node reference that points into `gone` to nil, for this tick's reads. Returns
+    /// the holder and key of each, holders in id order and keys in name order. A holder that is
+    /// itself gone is skipped.
+    fn clear_references_to(&mut self, base: &LuaMirror, gone: &[NodeId]) -> Vec<(NodeId, String)> {
+        let dangling = |record: &NodeRecord| {
+            record
+                .props
+                .iter()
+                .filter(|(_, value)| matches!(value, LuaValue::Node(target) if gone.contains(target)))
+                .map(|(key, _)| key.clone())
+                .collect::<Vec<_>>()
+        };
+        let mut holders: BTreeMap<NodeId, Vec<String>> = BTreeMap::new();
+        for (id, record) in base.nodes.iter().filter(|(id, _)| !self.overlay.contains_key(*id)) {
+            let keys = dangling(record);
+            if !keys.is_empty() {
+                holders.insert(*id, keys);
+            }
+        }
+        for (id, entry) in &self.overlay {
+            let keys = entry.as_ref().map(dangling).unwrap_or_default();
+            if !keys.is_empty() {
+                holders.insert(*id, keys);
+            }
+        }
+        let mut cleared = Vec::new();
+        for (holder, keys) in holders {
+            for key in keys {
+                if let Some(record) = self.touch(base, holder) {
+                    record.props.insert(key.clone(), LuaValue::Node(NIL));
+                    cleared.push((holder, key));
+                }
+            }
+        }
+        cleared
     }
 
     /// Call a method on a node. The answer arrives later, by token.

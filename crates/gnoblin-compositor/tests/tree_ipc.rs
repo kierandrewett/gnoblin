@@ -420,22 +420,133 @@ fn a_transaction_is_visible_in_the_snapshot_of_the_next_attach() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// Attaches a holder once the previous one has let go and re-attaches it until the snapshot satisfies `done`: the
+/// compositor reaps a detached shell's nodes in a frame of its own, after the close.
+fn snapshot_until(
+    session: &Session,
+    what: &str,
+    done: impl Fn(&[snapshot_node::Properties]) -> bool,
+) -> (Wire, AttachedPayload, Vec<snapshot_node::Properties>) {
+    let (mut wire, mut attached, mut nodes) = attach_once_released(session, 1);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut request_id = 1;
+    while !done(&nodes) {
+        assert!(Instant::now() < deadline, "{what}: {nodes:?}");
+        std::thread::sleep(Duration::from_millis(10));
+        request_id += 1;
+        (attached, nodes) = reattach_skipping_changes(&mut wire, request_id);
+    }
+    (wire, attached, nodes)
+}
+
+/// Attaches again on this connection, passing over the change batches published meanwhile.
+fn reattach_skipping_changes(wire: &mut Wire, request_id: u64) -> (AttachedPayload, Vec<snapshot_node::Properties>) {
+    attach(wire, request_id);
+    let attached: AttachedPayload = reply_skipping_changes(wire, "attach");
+    let mut nodes = Vec::new();
+    loop {
+        let envelope = wire.receive().expect("a frame");
+        if envelope.member != "snapshot" {
+            continue;
+        }
+        let chunk: SnapshotPayload = envelope.payload_as().expect("the chunk decodes");
+        nodes.extend(chunk.nodes);
+        if chunk.last {
+            return (attached, nodes);
+        }
+    }
+}
+
+/// design/node-core.md, section 4.6 step 5: the nodes the old shell made are destroyed with its connection, so the
+/// next shell builds on the compositor's tree and not on a second copy of its own.
 #[test]
-fn a_detached_shell_leaves_its_nodes_in_the_tree() {
+fn a_detached_shells_nodes_are_destroyed_with_its_connection() {
     let session = Session::start();
     let mut first = Wire::connect(session.socket());
     let (attached, _) = attach_and_snapshot(&mut first, 1);
 
-    transact(&mut first, 2, 0, 1, create(1000, attached.root));
+    let mut ops = create(1000, attached.root);
+    ops.extend(create(1001, 1000));
+    transact(&mut first, 2, 0, 1, ops);
     let _: ChangesPayload = event(&mut first, "changes");
     let _: ReplyPayload = reply(&mut first, "transact");
     drop(first);
 
-    let (_holder, reattached, nodes) = attach_once_released(&session, 3);
-    assert_eq!(reattached.serial, 1, "the tree keeps the serial the shell left it at");
+    let (_holder, _, nodes) = snapshot_until(&session, "the old shell's nodes were never destroyed", |nodes| {
+        !nodes.iter().any(|node| node.id == 1000 || node.id == 1001)
+    });
     assert!(
-        nodes.iter().any(|node| node.id == 1000 && node.parent == attached.root),
-        "the next shell's snapshot still holds the node: {nodes:?}"
+        nodes.iter().any(|node| node.id == attached.root),
+        "the compositor's own nodes stay: {nodes:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+/// A window the old shell put under one of its nodes goes back under the root, and is not destroyed with the node.
+#[test]
+fn a_window_the_detached_shell_parented_goes_back_to_the_root_when_its_node_is_destroyed() {
+    let session = Session::start();
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.held", "Held");
+    let mut first = Wire::connect(session.socket());
+    let (attached, nodes) = snapshot_holding_window(&mut first, "Held");
+    let window = window_titled(&nodes, "Held").expect("the window node").id;
+
+    let mut ops = create(1000, attached.root);
+    ops.push(op::Properties {
+        kind: "insert".to_owned(),
+        node: window,
+        parent: 1000,
+        index: 0,
+        ..Default::default()
+    });
+    transact(&mut first, 2, attached.serial, attached.serial + 1, ops);
+    let applied: ReplyPayload = reply_skipping_changes(&mut first, "transact");
+    assert!(
+        applied.applied,
+        "the shell parents the window under its node: {applied:?}"
+    );
+    drop(first);
+
+    let (_holder, _, nodes) = snapshot_until(&session, "the old shell's node was never destroyed", |nodes| {
+        !nodes.iter().any(|node| node.id == 1000)
+    });
+    let held = window_titled(&nodes, "Held").expect("the window outlives the node it sat under");
+    assert_eq!(held.id, window);
+    assert_eq!(held.parent, attached.root, "the window is back under the root");
+    session.stop().expect("the session stops cleanly");
+}
+
+/// A seat an observer made belongs to the observer's connection, not to the shell: the shell detaching leaves it.
+#[test]
+fn an_observers_seat_outlives_the_shell_that_detached() {
+    let session = Session::start();
+    let mut observer = Wire::connect(session.socket());
+    let (watching, _) = attach_observer(&mut observer, 1);
+    let seat = u64::from(watching.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 1, unparented_seat(seat, "xr"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "the observer makes its seat: {made:?}");
+
+    let mut first = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut first, 1);
+    transact(
+        &mut first,
+        2,
+        attached.serial,
+        attached.serial + 1,
+        create(1000, attached.root),
+    );
+    let applied: ReplyPayload = reply_skipping_changes(&mut first, "transact");
+    assert!(applied.applied, "the shell makes a node: {applied:?}");
+    drop(first);
+
+    let (_holder, _, nodes) = snapshot_until(&session, "the old shell's node was never destroyed", |nodes| {
+        !nodes.iter().any(|node| node.id == 1000)
+    });
+    assert!(
+        nodes.iter().any(|node| node.id == seat && node.class == "seat"),
+        "the observer's seat is still in the tree: {nodes:?}"
     );
     session.stop().expect("the session stops cleanly");
 }
@@ -1144,9 +1255,8 @@ fn a_fresh_attach_carries_the_current_value_of_every_non_default_property() {
     let _: ChangesPayload = event(&mut wire, "changes");
     let applied: ReplyPayload = reply(&mut wire, "transact");
     assert!(applied.applied, "the sets validate: {applied:?}");
-    drop(wire);
 
-    let (_held, _, nodes) = attach_once_released(&session, 3);
+    let (_, nodes) = attach_and_snapshot(&mut wire, 3);
     let opacity = prop_of(&nodes, 1000, "opacity").expect("a non-default double is carried");
     assert_eq!(opacity.value_kind, "double");
     assert_eq!(opacity.value_double, 0.5);
@@ -1188,9 +1298,8 @@ fn a_value_set_back_to_its_default_is_no_longer_carried() {
     let _: ChangesPayload = event(&mut wire, "changes");
     let applied: ReplyPayload = reply(&mut wire, "transact");
     assert!(applied.applied, "the set validates: {applied:?}");
-    drop(wire);
 
-    let (_held, _, nodes) = attach_once_released(&session, 4);
+    let (_, nodes) = attach_and_snapshot(&mut wire, 4);
     assert!(
         prop_of(&nodes, 1000, "opacity").is_none(),
         "opacity back at its default is not carried"
@@ -1201,17 +1310,15 @@ fn a_value_set_back_to_its_default_is_no_longer_carried() {
 #[test]
 fn a_value_set_after_the_snapshot_is_published_once_and_not_repeated_in_it() {
     let session = Session::start();
-    {
-        let mut wire = Wire::connect(session.socket());
-        let (attached, _) = attach_and_snapshot(&mut wire, 1);
-        let mut ops = create(1000, attached.root);
-        ops.push(set_double(1000, "opacity", 0.5));
-        transact(&mut wire, 2, 0, 1, ops);
-        let _: ChangesPayload = event(&mut wire, "changes");
-        let _: ReplyPayload = reply(&mut wire, "transact");
-    }
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    let mut ops = create(1000, attached.root);
+    ops.push(set_double(1000, "opacity", 0.5));
+    transact(&mut wire, 2, 0, 1, ops);
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
 
-    let (mut wire, attached, nodes) = attach_once_released(&session, 3);
+    let (attached, nodes) = attach_and_snapshot(&mut wire, 3);
     assert_eq!(attached.serial, 1, "the snapshot is at the serial the value was set");
     assert_eq!(
         prop_of(&nodes, 1000, "opacity").map(|prop| prop.value_double),

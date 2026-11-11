@@ -158,6 +158,13 @@ impl FakeLink {
                         ..change(MirrorChangeKind::Set, *node)
                     });
                 }
+                LuaOp::Destroy { node } => {
+                    c.nodes.remove(node);
+                    changes.push(LuaChange {
+                        removed: vec![*node],
+                        ..change(MirrorChangeKind::Destroyed, *node)
+                    });
+                }
                 _ => {}
             }
         }
@@ -217,6 +224,17 @@ impl FakeLink {
     /// Lands `tx` as the compositor does: refused `stale-base` at the first op whose node a batch
     /// published after the base changed, otherwise applied whole and echoed.
     fn land(&self, tx: &LuaTransaction) {
+        if let Some(failed_op) = self.missing_op(tx) {
+            let serial = self.0.borrow().serial;
+            self.0.borrow_mut().queue.push(LuaIncoming::Reply(TxReply {
+                serial,
+                applied: false,
+                failed_op: failed_op as i64,
+                code: "unknown-node".into(),
+                removed: Vec::new(),
+            }));
+            return;
+        }
         if let Some(failed_op) = self.stale_op(tx) {
             self.0.borrow_mut().queue.push(LuaIncoming::Reply(TxReply {
                 serial: tx.serial,
@@ -241,6 +259,23 @@ impl FakeLink {
             code: String::new(),
             removed: Vec::new(),
         }));
+    }
+
+    /// The index of the first op of `tx` on a node the compositor no longer has (and `tx` does not make).
+    fn missing_op(&self, tx: &LuaTransaction) -> Option<usize> {
+        let c = self.0.borrow();
+        let mut made = Vec::new();
+        tx.ops.iter().position(|op| {
+            let node = match op {
+                LuaOp::New { id, .. } => {
+                    made.push(*id);
+                    return false;
+                }
+                LuaOp::Set { node, .. } | LuaOp::Insert { node, .. } | LuaOp::Destroy { node } => *node,
+                LuaOp::Call { node, .. } => *node,
+            };
+            !c.nodes.contains_key(&node) && !made.contains(&node)
+        })
     }
 
     /// The index of the first op of `tx` on a node that a batch published after `tx`'s base
@@ -271,6 +306,22 @@ impl FakeLink {
         c.queue.push(LuaIncoming::Changes {
             serial,
             changes: vec![set_change(node, "title", text)],
+        });
+    }
+
+    /// The compositor destroys `node` on its own, as it does a window whose client closed.
+    fn destroy_natively(&self, node: u64) {
+        let mut c = self.0.borrow_mut();
+        c.nodes.remove(&node);
+        c.serial += 1;
+        let serial = c.serial;
+        c.changed.insert(node, serial);
+        c.queue.push(LuaIncoming::Changes {
+            serial,
+            changes: vec![LuaChange {
+                removed: vec![node],
+                ..change(MirrorChangeKind::Destroyed, node)
+            }],
         });
     }
 
@@ -568,6 +619,49 @@ fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
         check(&mut vm, "title", "return root.children[1].title"),
         "ext",
         "the native title stands"
+    );
+}
+
+// (R2) a transaction refused `unknown-node` because the compositor destroyed a node it writes is sent again without the
+// ops on that node: a one-shot op in it, such as a destroy, is not lost with the write that was moot (gnoblin-6zce).
+#[test]
+fn unknown_node_refusal_resends_the_ops_on_nodes_that_are_still_there() {
+    let comp = compositor_with_root_and_window();
+    let mut vm = boot(&comp);
+    vm.frame(0.0, vec![]).expect("boot frame");
+    vm.run("make", "mine = Node()\nroot:add(mine)").expect("run make");
+    vm.frame(1.0, vec![]).expect("make frame");
+    vm.frame(2.0, vec![]).expect("echo frame");
+    assert_eq!(sent(&comp).len(), 1, "the new node went out");
+
+    comp.borrow_mut().hold = true;
+    vm.run("write", "root.children[1].title = \"moot\"\nmine:destroy()")
+        .expect("run write");
+    let held = vm.frame(3.0, vec![]).expect("write frame");
+    assert!(held.diagnostics.is_empty(), "{:?}", held.diagnostics);
+    assert_eq!(sent(&comp).len(), 2, "the write and the destroy are in flight");
+
+    FakeLink(comp.clone()).destroy_natively(2);
+    FakeLink(comp.clone()).release();
+    let refused = vm.frame(4.0, vec![]).expect("refusal frame");
+    assert!(
+        refused.diagnostics.is_empty(),
+        "an unknown-node refusal is retried, not reported: {:?}",
+        refused.diagnostics
+    );
+    let txs = sent(&comp);
+    assert_eq!(txs.len(), 3, "the surviving op is sent again");
+    assert!(
+        matches!(txs[2].as_slice(), [LuaOp::Destroy { .. }]),
+        "only the destroy of the shell's own node is sent again: {:?}",
+        txs[2]
+    );
+    FakeLink(comp.clone()).release();
+    vm.frame(5.0, vec![]).expect("applied frame");
+    assert_eq!(
+        comp.borrow().nodes.len(),
+        1,
+        "the shell's node is gone from the compositor, only the root is left"
     );
 }
 
