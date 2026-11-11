@@ -5,7 +5,7 @@ local Snap = require("gnoblin.shell.snap")
 local Rules = require("gnoblin.shell.rules")
 local Drag = require("gnoblin.shell.drag")
 require("gnoblin.shell.ui")
-require("gnoblin.shell.floating")
+local Placement = require("gnoblin.shell.floating")
 require("gnoblin.shell.strip")
 seat, lock = root:find(Seat), root:find(Lock)
 spawn, date = sys.spawn, sys.date
@@ -57,10 +57,10 @@ Node:extend("Desk")({
     active = Workspace,
     space = Node,
     width = function(d)
-        return d.screen.width
+        return d.screen and d.screen.width or 0
     end,
     height = function(d)
-        return d.screen.height
+        return d.screen and d.screen.height or 0
     end,
 })
 function Desk:workspace(name)
@@ -117,6 +117,31 @@ end
 function Desk:step(n)
     self:show(self.space.children[self.active.index + n])
 end
+-- Removes a workspace from the Desk. Its top-level windows move to the neighbour before it (the one after it, for the
+-- first), and that neighbour shows if the removed one was active. Refused (false) for a workspace of another Desk, or
+-- the last one.
+function Desk:remove_workspace(ws)
+    local list = self.space.children
+    local at
+    for i, c in ipairs(list) do
+        if c == ws then
+            at = i
+        end
+    end
+    if not at or #list < 2 then
+        return false
+    end
+    local to = list[at - 1] or list[at + 1]
+    for _, w in ipairs(ws:all("> Window")) do
+        to:add(w)
+    end
+    if self.active == ws then
+        self.active, to.active, to.visible, to.x = to, true, true, 0
+    end
+    ws:destroy()
+    self:arrange()
+    return true
+end
 function Workspace:on_activate()
     self:closest(Desk):show(self)
 end
@@ -129,27 +154,53 @@ function Workspace:walk(step) -- focus the next window in tree order
         end
     end
 end
+-- The Desk of each Screen, kept after the Screen is destroyed: a Screen's Desk loses its screen reference then.
+local desk_by_screen = setmetatable({}, { __mode = "k" })
+-- Desks whose output was unplugged with no other output left. Their windows wait here, hidden, for the next output.
+local parked_desks = {}
 function Screen:on_ready()
-    root:add(Desk({ screen = self }))
+    local parked = table.remove(parked_desks, 1)
+    if parked then -- an output came back: the parked Desk and its windows return to it
+        parked.screen = self
+        desk_by_screen[self] = parked
+        parked:arrange()
+        parked.active.visible = true
+        if not seat.focus then
+            seat.focus = parked.active:all(Window)[1] or parked:all(Window)[1]
+        end
+        return
+    end
+    desk_by_screen[self] = root:add(Desk({ screen = self }))
 end
-function Screen:on_destroyed() -- unplugged: its windows move to another desk
-    local gone = desk_of(self)
+function Screen:on_destroyed() -- unplugged: its windows move to another desk, or wait hidden for the next output
+    local gone = desk_by_screen[self]
+    desk_by_screen[self] = nil
     if not gone then
         return
     end
     local to
     for _, d in ipairs(root:all(Desk)) do
-        if d ~= gone then
+        if d ~= gone and d.screen then
             to = d
             break
         end
     end
-    for _, w in ipairs(gone:all("Workspace > Window")) do
-        if to then
+    if to then
+        for _, w in ipairs(gone:all("Workspace > Window")) do
             to.active:add(w)
         end
+        to:arrange()
+        gone:destroy()
+        return
     end
-    gone:destroy()
+    for _, ws in ipairs(gone.space.children) do
+        ws.visible = false
+    end
+    local f = seat.focus
+    if f and f:closest(Desk) == gone then
+        seat.focus = nil -- a window with no output cannot hold focus
+    end
+    table.insert(parked_desks, gone)
 end
 -- Focus and raise policy: the window_management focus keys the compositor publishes as readonly seat props.
 function focus_settings()
@@ -456,6 +507,50 @@ function Window:refit(a)
         local rect = Snap.tile_rect(self.data.snapped, a)
         self.x, self.y, self.width, self.height = rect.x, rect.y, rect.w, rect.h
     end
+end
+-- A rectangle moved to another output: shrunk to the area when larger, then moved inside it.
+local function fit_into(r, a)
+    return Placement.clamp({ x = r.x, y = r.y, w = math.min(r.w, a.w), h = math.min(r.h, a.h) }, a)
+end
+-- Moves the window to another workspace, on any Desk. Refused (false) for a fullscreen window, a dialog (it moves
+-- only with its parent), a workspace in no Desk, or the one it is already on. Its rectangles are refitted to the new
+-- Desk's work area.
+function Window:move_to(ws)
+    local to = ws and ws:is(Workspace) and ws:closest(Desk)
+    if not to or self.fullscreen or self.parent_window or self.parent == ws then
+        return false
+    end
+    local from = self.parent
+    local was_focused = seat.focus == self
+    ws:add(self)
+    if was_focused and not ws.active then -- the window left the screen, so focus passes to a window that stays
+        local next_focus
+        for _, o in ipairs(from:all(Window)) do
+            if o ~= self then
+                next_focus = o
+                break
+            end
+        end
+        seat.focus = next_focus
+    end
+    local a = to:work_area()
+    self:refit(a)
+    if not self.maximised and not self.data.snapped then
+        local r = fit_into({ x = self.x, y = self.y, w = self.width, h = self.height }, a)
+        self.x, self.y, self.width, self.height = r.x, r.y, r.w, r.h
+    end
+    if self.data.floating then
+        self.data.floating = fit_into(self.data.floating, a)
+    end
+    return true
+end
+-- Moves the window to the active workspace of the Desk on `screen`. Refused (false) when no Desk shows that screen.
+function Window:move_to_output(screen)
+    local to = desk_of(screen)
+    if not to then
+        return false
+    end
+    return self:move_to(to.active)
 end
 -- The client asks for a state change; the shell decides and the window's properties echo the answer.
 function Window:on_request(e)

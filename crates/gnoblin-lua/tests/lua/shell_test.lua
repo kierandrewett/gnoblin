@@ -599,7 +599,12 @@ return {
         function()
             local host, w = window_setup({})
             second_window(host)
-            local other_win = host.ids("Window")[2]
+            local other_win
+            for _, n in ipairs(root:all(Window)) do
+                if n ~= w then
+                    other_win = n
+                end
+            end
             root:find(Seat).focus = w
             w:move_to(desk().space.children[2])
             H.check(root:find(Seat).focus ~= w, "the moved window must give up focus")
@@ -620,10 +625,10 @@ return {
         "moving a window to another output reshapes it into that output's work area",
         function()
             local host, w = window_setup({})
-            local second = root:add(Screen({ width = 600, height = 400, x = 1920, y = 32 }))
+            local second = root:add(Screen({ width = 600, height = 400 }))
             w:move_to_output(second)
-            H.check(w.x >= 1920 and w.x + w.width <= 1920 + 600, "the window must fit the new output horizontally")
-            H.check(w.y >= 32 and w.y + w.height <= 32 + 400, "the window must fit the new output vertically")
+            H.check(w.x >= 0 and w.x + w.width <= 600, "the window must fit the new output horizontally")
+            H.check(w.y >= 0 and w.y + w.height <= 400, "the window must fit the new output vertically")
         end,
     },
     {
@@ -631,10 +636,10 @@ return {
         function()
             local host, w = window_setup({})
             w:maximise()
-            local second = root:add(Screen({ width = 600, height = 400, x = 1920, y = 32 }))
+            local second = root:add(Screen({ width = 600, height = 400 }))
             w:move_to_output(second)
             H.check(w.maximised, "the window must stay maximised")
-            H.check(w.x == 1920 and w.y == 32 and w.width == 600 and w.height == 400, "it must fill the new output")
+            H.check(w.x == 0 and w.y == 0 and w.width == 600 and w.height == 400, "it must fill the new output")
         end,
     },
     {
@@ -645,6 +650,114 @@ return {
             local home = w.parent
             w:move_to(desk().space.children[2])
             H.check(w.parent == home, "a fullscreen window must stay on its workspace")
+        end,
+    },
+    {
+        "a dialog does not move to another workspace on its own",
+        function()
+            local host, w = window_setup({})
+            local dialog = root:add(Window({ app_id = "dialog", parent_window = w }))
+            H.check(dialog.parent == w, "the dialog must be the parent window's child")
+            H.check(dialog:move_to(desk().space.children[2]) == false, "a dialog move must be refused")
+            H.check(dialog.parent == w, "a refused dialog must stay with its parent")
+        end,
+    },
+    {
+        "moving a parent window takes its dialog with it",
+        function()
+            local host, w = window_setup({})
+            local dialog = root:add(Window({ app_id = "dialog", parent_window = w }))
+            local target = desk().space.children[2]
+            w:move_to(target)
+            H.check(dialog:closest(Workspace) == target, "the dialog must follow its parent")
+        end,
+    },
+    {
+        "a dialog follows its parent to another output",
+        function()
+            local host, w = window_setup({})
+            local dialog = root:add(Window({ app_id = "dialog", parent_window = w }))
+            local second = root:add(Screen({ width = 600, height = 400 }))
+            w:move_to_output(second)
+            H.check(dialog:closest(Desk) == desk_of(second), "the dialog must follow its parent to the new output")
+        end,
+    },
+    {
+        "unplugging the last output keeps its windows hidden and drops focus",
+        function()
+            local host, w = window_setup({})
+            root:find(Seat).focus = w
+            host.close(host.ids("Screen")[1])
+            H.frame(host, 1, {})
+            H.frame(host, 2, {})
+            H.check(w.parent ~= nil, "the window must survive the unplug")
+            H.check(w:closest(Workspace).visible == false, "the window's workspace must be hidden")
+            H.check(seat_focus() == nil, "a window with no output cannot hold focus")
+        end,
+    },
+    {
+        "reconnecting an output adopts the parked windows and focuses one",
+        function()
+            local host, w = window_setup({})
+            root:find(Seat).focus = w
+            host.close(host.ids("Screen")[1])
+            H.frame(host, 1, {})
+            H.frame(host, 2, {})
+            local screen = root:add(Screen({ width = 1000, height = 800 }))
+            H.frame(host, 3, {})
+            H.check(w:closest(Workspace).visible, "the adopted workspace must show")
+            H.check(w:closest(Desk).screen == screen, "the window must be on the new output")
+            H.check(seat_focus() == w, "reconnecting must focus the window again")
+        end,
+    },
+    {
+        "unplugging one of two outputs moves its windows to the other output",
+        function()
+            local host, w = window_setup({})
+            local second = root:add(Screen({ width = 600, height = 400 }))
+            host.close(host.ids("Screen")[1])
+            H.frame(host, 1, {})
+            H.frame(host, 2, {})
+            H.check(w:closest(Desk) == desk_of(second), "the window must move to the remaining output")
+        end,
+    },
+    {
+        "removing a workspace moves its windows to the neighbour before it",
+        function()
+            local host, w = window_setup({})
+            local d = desk()
+            local ws1, ws2 = d.space.children[1], d.space.children[2]
+            ws2:add(w)
+            H.check(d:remove_workspace(ws2) == true, "a workspace with windows must be removable")
+            H.check(w:closest(Workspace) == ws1, "the window must move to the neighbour before the removed workspace")
+            H.check(d.active == ws1, "removing an inactive workspace must keep the active one")
+            H.check(#d.space.children == 8, "the removed workspace must leave the desk")
+        end,
+    },
+    {
+        "removing the active workspace shows its neighbour and refocuses the moved window",
+        function()
+            local host, w = window_setup({})
+            root:find(Seat).focus = w
+            local d = desk()
+            local ws2 = d.space.children[2]
+            H.check(d:remove_workspace(d.active) == true, "the active workspace must be removable")
+            H.check(d.active == ws2, "the neighbour must become active")
+            H.check(ws2.visible, "the neighbour must be visible")
+            H.check(w:closest(Workspace) == ws2, "the window must move to the neighbour")
+            H.check(seat_focus() == w, "the moved window must keep focus")
+        end,
+    },
+    {
+        "the last workspace of a desk cannot be removed",
+        function()
+            local host, w = window_setup({})
+            local d = desk()
+            while #d.space.children > 1 do
+                H.check(d:remove_workspace(d.space.children[#d.space.children]) == true, "a spare workspace must go")
+            end
+            H.check(d:remove_workspace(d.active) == false, "the last workspace must be refused")
+            H.check(#d.space.children == 1, "the refused workspace must stay")
         end,
     },
 }

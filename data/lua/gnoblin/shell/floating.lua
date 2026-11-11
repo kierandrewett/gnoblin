@@ -89,6 +89,8 @@ local MODES = {
         return cascade(rect(area.x, area.y, w, h), area, occupied)
     end,
 }
+-- `M.clamp` moves a rectangle the least distance inside an area; a window moved to another output uses it.
+M.clamp = clamp_inside
 
 -- The rectangle for a new window of w by h in `area`, avoiding `occupied` where possible. `mode` is "free_space",
 -- "center" or "cascade". A size below 1 on an axis is raised to 1, so the window covers something.
