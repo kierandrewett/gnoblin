@@ -53,19 +53,27 @@ Each has a test in `crates/gnoblin-wayland` or `crates/gnoblin-wlcs`.
 
 ## Result
 
-The popup tests (`XdgPopupPositionerTest`, `XdgPopupStable`, `XdgPopupTest`) pass but for three: 88 more are skipped because the suite's popup of a layer surface and of a `zxdg_shell_v6` surface need globals the compositor does not serve.
+Core subset: 702 tests, 467 pass, 15 fail and 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
 
-Core subset: 702 tests, 363 pass, 117 fail, 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve) and 2 crash (wlcs itself aborts on `wl_touch.frame`). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
-
-- `gnoblin-f3cp`: xdg window geometry.
 - `gnoblin-wrns`: Smithay's zero-size positioner anchor rectangle.
-- `gnoblin-y3yk`: touch.
-- `gnoblin-ve4a`: protocol errors the suite expects.
-- `gnoblin-jpbf`: toplevel configuration, and the interactive move two popup tests need.
-- `gnoblin-v3hw`: subsurfaces and surface events.
+- `gnoblin-ve4a`: protocol errors the suite expects: `xdg_wm_base.get_xdg_surface` is not validated (Smithay raises `role` and `invalid_surface_state` only at `get_toplevel` and at commit), the `wp_viewport` errors and the truncated shm file.
+- `gnoblin-v3hw`: subsurface timing. Smithay applies `wl_subsurface.set_position` at the subsurface's own commit and `place_above` and `place_below` at once; the protocol applies both with the parent's state.
 - `gnoblin-of0d`: later-phase protocols.
 
-The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until those issues are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 363 passing tests, and the list of what is left.
+`gnoblin-f3cp`, `gnoblin-y3yk` and `gnoblin-jpbf` are resolved:
+
+- A floating toplevel's initial configure suggests no size (0 by 0); the record takes the client's window-geometry size at the commit that maps it, so a later maximise returns to the size the client chose.
+- `xdg_surface.set_window_geometry` places the window: the surface is drawn at the window's rectangle less the geometry's offset, so a point inside the geometry is the same point whatever the shadow width, and `xdg_toplevel.show_window_menu` anchors the same way.
+- A window takes hits over the whole surface tree, so a subsurface that reaches past its parent receives pointer and touch input there (`Scene::set_hit_extent`).
+- `xdg_toplevel.move` and `resize` start an interactive gesture when no shell holds the tree (`crates/gnoblin-wayland/src/interactive.rs`): a Smithay pointer or touch grab takes the device from the client, moves or resizes the window by how far the device went, and ends when the last button or the touch point is released. With a shell they stay node requests.
+- The pointer follows the surface under it: a window or subsurface that moves, resizes, maps or closes under a pointer that has been placed gets `enter`, `leave` or `motion`.
+- A touch point on a surface that is destroyed ends with `wl_touch.up`, for that surface's client only. It used to be the protocol's cancel for every client, which wlcs cannot receive (it has no `cancel` listener, so libwayland aborts the test process).
+
+`tests/wlcs/patches/0003-xdg-toplevel-tests-ack-the-initial-configure.patch` changes wlcs tests: the interactive ones attached a buffer before acknowledging the initial configure, and `wm_capabilities_are_sent` waited for an event that xdg-shell sends with the first configure, which follows the initial commit, without committing.
+
+The popup tests (`XdgPopupPositionerTest`, `XdgPopupStable`, `XdgPopupTest`) pass but for one; 88 more are skipped because the suite's popup of a layer surface and of a `zxdg_shell_v6` surface need globals the compositor does not serve.
+
+The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until the issues above are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 467 passing tests, and the list of what is left.
 
 ## CI
 
