@@ -589,6 +589,7 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
             TreeFrameInput::Input(input) => input.name(),
             TreeFrameInput::Request(_) => "request",
             TreeFrameInput::Ready => "ready",
+            TreeFrameInput::Requested => "requested",
             TreeFrameInput::Chord(_) => "chord",
         })
         .collect();

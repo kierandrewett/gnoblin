@@ -3479,6 +3479,9 @@ impl Host for State {
         for node in self.composer.take_tree_ready() {
             self.tree.ready(node);
         }
+        for node in self.composer.take_lock_requested() {
+            self.tree.requested(node);
+        }
         // A window's node is created on the frame after it maps, so the focus is published
         // again here once the node it names exists.
         let focused = self

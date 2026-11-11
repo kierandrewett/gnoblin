@@ -156,6 +156,8 @@ pub enum TreeFrameInput {
     Input(TreeInput),
     /// The node first has content. Sent once per window node, when it is created.
     Ready,
+    /// The session lock went `pending`: the lock node asks the shell to engage its lock screen.
+    Requested,
     /// A claimed chord changed state. The claim is the shell's, named by its `id`.
     Chord(ChordEvent),
 }
@@ -394,6 +396,12 @@ impl TreeFrame {
     /// Records that `node` has content for the first time, delivered to the shell in the next batch.
     pub fn ready(&mut self, node: NodeId) {
         self.push_event(node, TreeFrameInput::Ready);
+    }
+
+    /// Records that the session lock asked for the lock screen on the lock `node`, delivered to
+    /// the shell in the next batch.
+    pub fn requested(&mut self, node: NodeId) {
+        self.push_event(node, TreeFrameInput::Requested);
     }
 
     /// Records a claimed chord changing state on the seat `node`, delivered to the shell in the

@@ -265,6 +265,10 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             kind: "ready".to_owned(),
             ..base
         },
+        TreeFrameInput::Requested => EventPayload {
+            kind: "requested".to_owned(),
+            ..base
+        },
         // A claimed chord is sent as the `chord` signal, see `chord_payload`.
         TreeFrameInput::Chord(_) => EventPayload {
             kind: "chord".to_owned(),

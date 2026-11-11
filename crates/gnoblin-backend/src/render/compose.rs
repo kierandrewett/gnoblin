@@ -272,6 +272,9 @@ pub struct Composer {
     tree_changes: Vec<TreeChange>,
     /// Window nodes created since the last take, announced to the shell as ready.
     tree_ready: Vec<NodeId>,
+    /// Lock nodes whose session lock went `pending` since the last take, announced to the shell
+    /// as `requested`.
+    lock_requested: Vec<NodeId>,
     /// The compositor's seat node for the main wl_seat, once added. It holds the pointer and focus.
     main_seat: Option<NodeId>,
     /// The compositor's lock node, once added. Its `state` is the session lock's state, so a
@@ -330,6 +333,7 @@ impl Composer {
             workspace_slide: None,
             tree_changes: Vec::new(),
             tree_ready: Vec::new(),
+            lock_requested: Vec::new(),
             main_seat: None,
             lock_node: None,
             published_focus: None,
@@ -780,6 +784,12 @@ impl Composer {
     /// when its node first exists with content.
     pub fn take_tree_ready(&mut self) -> Vec<NodeId> {
         std::mem::take(&mut self.tree_ready)
+    }
+
+    /// Takes the lock nodes whose session lock went `pending` since the last take. Each is
+    /// announced to the shell once per transition to `pending`.
+    pub fn take_lock_requested(&mut self) -> Vec<NodeId> {
+        std::mem::take(&mut self.lock_requested)
     }
 
     /// Follows the shell's hold on the tree. When the hold changed since the last check, every
@@ -1575,6 +1585,9 @@ impl Composer {
             key: "state".to_owned(),
             value: TreeValue::Text(state.to_owned()),
         });
+        if state == "pending" {
+            self.lock_requested.push(lock);
+        }
     }
 
     /// Publishes the screen under the main seat's pointer as the seat's `screen`. When the
@@ -3993,6 +4006,28 @@ mod tests {
                 .is_err(),
             "the shell may not destroy the compositor's lock node"
         );
+    }
+
+    /// The lock asks for the lock screen once per transition to `pending`: the shell is told to
+    /// engage, and a second `pending` publish does not ask again.
+    #[test]
+    fn the_lock_node_asks_the_shell_for_its_lock_screen_once_when_the_lock_goes_pending() {
+        let mut composer = Composer::new();
+        let lock = composer.add_lock_node().expect("a lock node");
+        assert!(composer.take_lock_requested().is_empty(), "no lock yet, nothing asked");
+
+        composer.set_lock_state("pending");
+        assert_eq!(composer.take_lock_requested(), vec![lock]);
+        assert!(composer.take_lock_requested().is_empty(), "taken once");
+
+        composer.set_lock_state("pending");
+        assert!(
+            composer.take_lock_requested().is_empty(),
+            "an unchanged state asks nothing"
+        );
+
+        composer.set_lock_state("locked");
+        assert!(composer.take_lock_requested().is_empty(), "locking asks nothing");
     }
 
     /// F22: the lock unlocks while the shell is gone. The lock node follows the session-lock
