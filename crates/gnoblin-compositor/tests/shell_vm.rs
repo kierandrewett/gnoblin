@@ -431,6 +431,60 @@ fn a_syntax_error_in_the_users_shell_file_leaves_the_stock_shell_running() {
     );
 }
 
+/// The workspace the window with `app_id` sits on, `-` when it is on none or there is no such window.
+fn workspace_of(role: &mut ShellRole, app_id: &str) -> String {
+    role.run(
+        "workspace of window",
+        &format!(
+            "for _, w in ipairs(root:all('Window')) do if w.app_id == '{app_id}' then \
+             local ws = w:closest(Workspace) return ws and ws.name or '-' end end return '-'"
+        ),
+    )
+    .expect("the probe runs")
+    .expect("the probe returns text")
+}
+
+/// A workspace rule from the user's file moves the mapped window to the workspace it names, on the real core.
+#[test]
+fn a_workspace_rule_in_the_users_shell_file_places_the_window_on_that_workspace() {
+    let session = Session::start();
+    let config = user_config(&[(
+        "shell/10-rules.lua",
+        "seat.data.window_rules = { { match = { app_id = '^org%.example%.term$' }, workspace = { id = '3' } } }\n",
+    )]);
+    let mut role = connect_session(&session, config.path());
+    assert!(role.user_file_errors().is_empty());
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    let mut client = Client::connect(session.wayland());
+    let _term = client.map_window("org.example.term", "Term");
+    tick_until(&mut role, "the window never reached the tree", |role| {
+        workspace_of(role, "org.example.term") != "-"
+    });
+    for frame in 0..60 {
+        role.tick(1.0 + f64::from(frame) * 0.016).expect("a frame runs");
+    }
+    let after_rule = workspace_of(&mut role, "org.example.term");
+    let moved = role
+        .run(
+            "manual move",
+            "for _, w in ipairs(root:all('Window')) do if w.app_id == 'org.example.term' then \
+             return tostring(w:move_to(desk().space.children[3])) end end",
+        )
+        .expect("the probe runs");
+    for frame in 0..60 {
+        role.tick(3.0 + f64::from(frame) * 0.016).expect("a frame runs");
+    }
+    let after_manual = workspace_of(&mut role, "org.example.term");
+    assert_eq!(
+        after_rule,
+        "3",
+        "the rule did not place the window; a manual move_to gave {moved:?} and left it on {after_manual}; diagnostics {:?}",
+        role.diagnostics()
+    );
+}
+
 /// A workspace set from the user's file activates through `activate_set`: the set's workspace shows on the output.
 #[test]
 fn a_workspace_set_in_the_users_shell_file_activates() {

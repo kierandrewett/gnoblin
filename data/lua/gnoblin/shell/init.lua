@@ -369,7 +369,9 @@ function Window:on_ready()
         p:add(self) -- a dialog moves with its parent
         self.x, self.y = (p.width - self.width) // 2, (p.height - self.height) // 2
     else
-        desk().active:add(self)
+        local d = desk()
+        local target = self:rule_workspace(d) or d.active
+        target:add(self)
     end
     if Focus.opens_focused(focus_settings(), self.from_launcher) then
         seat.focus = self
@@ -448,6 +450,23 @@ function Window:apply_rules()
             )
         elseif self:closest(Workspace) ~= target then
             target:add(self)
+        end
+    end
+end
+-- The workspace of `d` a rule sends this window to, or nil. It is read before the window is placed, so the window is
+-- inserted once: on the real core a second insert of one node in the same frame does not take effect, and the window
+-- would stay where the first put it.
+function Window:rule_workspace(d)
+    if self.parent_window then
+        return nil
+    end
+    local fx = Rules.effects(window_rules(), rule_view(self))
+    if not fx.workspace then
+        return nil
+    end
+    for _, ws in ipairs(d.space.children) do
+        if ws.name == tostring(fx.workspace.id) then
+            return ws
         end
     end
 end
