@@ -21,7 +21,7 @@ end
 -- The Seat exists only in a running shell, so the chord is bound only when one does.
 if seat then
     seat:bind({
-        ["Super+Space"] = function()
+        ["<Super>space"] = function()
             local d = desk()
             local l = d:add(Launcher({
                 x = d.width // 2 - 300,

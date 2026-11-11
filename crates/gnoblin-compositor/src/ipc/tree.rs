@@ -300,7 +300,7 @@ fn walk(
 /// The values of `id` that differ from their schema defaults, in name order. A value with no
 /// schema default is always listed.
 fn props_of(scene: &Scene, classes: &TreeClasses, id: NodeId, class: Option<&str>) -> Vec<(String, TreeValue)> {
-    scene
+    let mut props: Vec<(String, TreeValue)> = scene
         .values(id)
         .filter(
             |(key, value)| match class.and_then(|class| classes.default_of(class, key)) {
@@ -309,7 +309,16 @@ fn props_of(scene: &Scene, classes: &TreeClasses, id: NodeId, class: Option<&str
             },
         )
         .map(|(key, value)| (key.to_owned(), value.clone()))
-        .collect()
+        .collect();
+    // A seat's name lives beside the node's values (it is what the wl_seat global is named from), so a snapshot would
+    // otherwise never carry it and a client that attaches after the seat was made could not find the seat by name.
+    if let Some(name) = scene.seat_name(id)
+        && !props.iter().any(|(key, _)| key == "name")
+    {
+        props.push(("name".to_owned(), TreeValue::Text(name.to_owned())));
+        props.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+    props
 }
 
 /// The schema a connection may list. The owner's connection (`is_owner`) sees the whole

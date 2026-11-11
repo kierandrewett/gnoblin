@@ -57,8 +57,9 @@ const PARENT: NodeId = NodeId::new(0x100);
 /// of its source, so the View's top left is the window's top left wherever the layout put it.
 const PLACE: NodeId = NodeId::new(0x101);
 
-/// The View.
-const VIEW: NodeId = NodeId::new(0x102);
+/// The View. Its id carries an owner epoch in the high half, as every shell node's does, so a capture source that
+/// could name only a 32-bit id could not name it.
+const VIEW: NodeId = NodeId::new((1 << 32) | 0x102);
 
 /// The schema the tree checks the owner's transactions against: the three classes the test
 /// builds with, and the properties it writes. The names are the schema's (`tree/view.toml`).
@@ -501,7 +502,7 @@ impl Viewer {
             .globals
             .bind(&client.qh, 1..=1, ())
             .expect("the view role binds the image copy capture manager");
-        let source = sources.create_source(u32::try_from(VIEW.get()).expect("a small node id"), &client.qh, ());
+        let source = sources.create_source((VIEW.get() >> 32) as u32, VIEW.get() as u32, &client.qh, ());
         let session = copies.create_session(
             &source,
             ext_image_copy_capture_manager_v1::Options::empty(),

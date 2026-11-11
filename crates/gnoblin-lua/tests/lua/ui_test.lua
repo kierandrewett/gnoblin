@@ -171,6 +171,24 @@ return {
         end,
     },
     {
+        "every chord the stock shell binds is in the compositor's angle-bracket form",
+        function()
+            setup()
+            local count = 0
+            for chord in pairs(seat.data.keys) do
+                count = count + 1
+                -- The compositor refuses `Super+Space` and logs `a seat claim's chord does not parse`, so the binding
+                -- never fires: a modifier is `<Super>`, and the key is an XKB keysym name (`space`, `Left`, `3`).
+                local key = chord
+                while key:match("^<%a+>") do
+                    key = key:gsub("^<%a+>", "", 1)
+                end
+                H.check(key ~= "" and key:match("^[%w_]+$") ~= nil, "not a chord the compositor parses: " .. chord)
+            end
+            H.check(count >= 12, "the stock shell binds Super+Left and Right, Super+Space and Super+1 to 9: " .. count)
+        end,
+    },
+    {
         "Super+Space opens the launcher and Escape closes it",
         function()
             sys = {
@@ -180,7 +198,7 @@ return {
                 end,
             }
             setup()
-            seat.data.keys["Super+Space"]()
+            seat.data.keys["<Super>space"]()
             H.check(#desk():all(Launcher) == 1, "Super+Space must open one launcher")
             desk():all(Launcher)[1].key:emit({ key = "Escape" })
             H.check(#desk():all(Launcher) == 0, "Escape must close the launcher")
@@ -199,7 +217,7 @@ return {
                 end,
             }
             setup()
-            seat.data.keys["Super+Space"]()
+            seat.data.keys["<Super>space"]()
             local l = desk():all(Launcher)[1]
             l.text = "foot"
             l.key:emit({ key = "Return" })
@@ -211,7 +229,7 @@ return {
         "Super+3 makes workspace 3 the active one",
         function()
             setup()
-            seat.data.keys["Super+3"]()
+            seat.data.keys["<Super>3"]()
             H.check(desk().active == desk().space.children[3], "Super+3 must show workspace 3")
         end,
     },
@@ -431,7 +449,7 @@ return {
             local d = desk()
             local old, ws3 = d.active, d.space.children[3]
             local ws3_id, old_id = host.ids("Workspace")[3], host.ids("Workspace")[1]
-            seat.data.keys["Super+3"]()
+            seat.data.keys["<Super>3"]()
             H.check(ws3.visible, "the new workspace must be shown as the slide starts")
             H.check(old.visible and old.x == -d.width, "the old workspace must slide out")
             H.frame(host, 1, {})

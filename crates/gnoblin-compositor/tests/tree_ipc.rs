@@ -667,6 +667,31 @@ fn the_owner_creates_a_named_seat_in_one_transaction() {
 }
 
 #[test]
+fn a_seats_name_is_in_the_snapshot_of_a_client_that_attaches_after_the_seat_was_made() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let _: ReplyPayload = reply(&mut wire, "transact");
+
+    let mut later = Wire::connect(session.socket());
+    let (_, nodes) = attach_observer(&mut later, 1);
+    let seat = nodes
+        .iter()
+        .find(|node| node.id == 1000)
+        .expect("the seat is in the snapshot");
+    assert_eq!(seat.class, "seat");
+    assert!(
+        seat.props
+            .iter()
+            .any(|prop| prop.key == "name" && prop.value_text == "xr"),
+        "the snapshot carries the seat's name, or a restarted client cannot find the seat: {seat:?}"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
 fn a_seat_name_is_refused_read_only_once_the_seat_exists() {
     let session = Session::start();
     let mut wire = Wire::connect(session.socket());

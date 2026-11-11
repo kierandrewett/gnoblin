@@ -6,7 +6,8 @@
   connection names a View by its node id and captures the View's picture
   through the standard ext-image-copy-capture path.
 
-  1  Initial version.
+  1  Initial version. A node id is 64 bits and a Wayland argument is 32, so create_source takes the id as its high
+     and low halves.
 -->
 <protocol name="gnoblin_view_source_v1">
   <copyright>Copyright 2026 Gnoblin contributors. MIT license.</copyright>
@@ -33,11 +34,13 @@
     <request name="create_source">
       <description summary="create a capture source for a View node">
         Creates an ext_image_capture_source_v1 that names the View node with the
-        given id. The node must be a View that exists in the tree when the
+        id given as its two halves (the shell's nodes carry their owner's epoch in
+        the high half, so no View id fits 32 bits). The node must be a View that exists in the tree when the
         request arrives; otherwise the client gets an invalid_node protocol error.
       </description>
       <arg name="id" type="new_id" interface="ext_image_capture_source_v1"/>
-      <arg name="node" type="uint" summary="the node id of a View"/>
+      <arg name="node_hi" type="uint" summary="the high 32 bits of the node id of a View"/>
+      <arg name="node_lo" type="uint" summary="the low 32 bits of the node id of a View"/>
     </request>
 
     <request name="destroy" type="destructor">

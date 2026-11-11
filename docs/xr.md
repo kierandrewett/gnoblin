@@ -169,6 +169,39 @@ Not wired: the thumbstick click (`BTN_MIDDLE`), the A, X and Y buttons (`BTN_SID
 switching hands. On a Touch-style controller B is the secondary input, so it sends `BTN_RIGHT`, not `BTN_EXTRA`. The ray
 comes from the right hand only.
 
+## Testing without a headset
+
+`scripts/xr-smoke.sh` runs the whole stack on an Agent37 instance with no GPU, no seat and no headset. It runs as root
+and fakes nothing. The parts are:
+
+- the real compositor on its headless backend, and the stock Lua shell;
+- two solid-colour Wayland clients (`xr-smoke-client`);
+- `gnoblin-xr`, started by the guardian with `GNOBLIN_XR=1`;
+- Monado with the simulated driver, the null compositor and lavapipe.
+
+It prints `PASS` or `FAIL` for each assertion and exits non-zero if any failed.
+
+```sh
+cargo build -p gnoblin
+cargo build --manifest-path extensions/gnoblin-xr/Cargo.toml --bins
+scripts/xr-smoke.sh            # installs the packages and builds Monado once when they are missing
+```
+
+The assertions:
+
+- The `xr` seat exists, and the shell built a `room` with a `head` camera and one View for each window.
+- The extension planned two layers and ended frames with two submitted layers, which Monado's null compositor accepted.
+- The first picture uploaded for each View has the client's colour.
+- The gaze ray gave a client a `wl_pointer.enter` on the `xr` seat.
+- Closing a client removes its layer, and the seat and the room go when the extension stops.
+
+Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
+
+- `GNOBLIN_XR_DUMP_DIR` (test only): the extension writes the first picture uploaded for each View as
+  `view-<node>-first.ppm`, and the most recent as `view-<node>-latest.ppm`. Nothing reads them back.
+- `GNOBLIN_LOG=xr=debug`: the extension logs one line for every frame with the layers planned and submitted.
+- `XR_SMOKE_HANDS=1`: gives the simulated headset a controller on each hand. Without it the pointing ray is the gaze.
+
 ## Limits
 
 - You need an OpenXR runtime such as Monado or WiVRn. WiVRn has not been tried.

@@ -21,7 +21,7 @@ use xr_input::{Controller, ControllerState, PointerEvent};
 use xr_scene::{Layer, NodeId, Ray, pick, project};
 use xr_tree::{PointerInput, TreeClient, TreeError};
 
-/// The seat the OpenXR pointer uses. The owner creates it on first use, unless the snapshot
+/// The seat the OpenXR pointer uses. The extension creates it on the first frame of the session, unless the snapshot
 /// already holds a seat named `xr`, which the pointer reuses.
 pub const SEAT_NAME: &str = "xr";
 
@@ -59,6 +59,8 @@ pub struct Pointer {
     /// The point the ray is at in the window it targets, as of the latest frame that located one.
     at: (f64, f64),
     grab: Option<Grab>,
+    /// Set once the owner's refusal of the seat has been logged, so a refusal that repeats every frame logs once.
+    refusal_logged: bool,
 }
 
 impl Pointer {
@@ -83,6 +85,9 @@ impl Pointer {
         state: &ControllerState,
         time: i64,
     ) -> Result<(), TreeError> {
+        // The seat comes with the session, not with the first hit: the stock shell builds the room, and so the Views
+        // a ray could hit, only once the seat exists.
+        self.ensure_seat(tree)?;
         let dt = self.time.map_or(0.0, |previous| seconds(time.saturating_sub(previous)));
         self.time = Some(time);
         let events = self.controller.update(state, dt);
@@ -273,7 +278,10 @@ impl Pointer {
             None => match tree.create_seat(SEAT_NAME) {
                 Ok(seat) => seat,
                 Err(TreeError::Refused { member, code }) => {
-                    eprintln!("gnoblin-xr: the owner refused the {SEAT_NAME} seat ({member}: {code})");
+                    if !self.refusal_logged {
+                        eprintln!("gnoblin-xr: the owner refused the {SEAT_NAME} seat ({member}: {code})");
+                        self.refusal_logged = true;
+                    }
                     return Ok(None);
                 }
                 Err(error) => return Err(error),

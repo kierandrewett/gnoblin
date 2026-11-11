@@ -5,6 +5,7 @@
 //! submitted as a layer.
 
 mod bridge;
+mod dump;
 mod pointer;
 mod surfaces;
 
@@ -17,6 +18,7 @@ use xr_session::openxr_runtime::OpenxrRuntime;
 use xr_session::runtime::Runtime;
 use xr_tree::TreeClient;
 
+use crate::dump::Dump;
 use crate::surfaces::Fault;
 
 /// What the command line asked for.
@@ -91,7 +93,19 @@ fn run_bridge() -> Result<(), String> {
     }
 }
 
-/// Runs the bridge over one session, logging what changes from frame to frame.
+/// Whether `GNOBLIN_LOG` asks for debug output from the extension: a bare `debug` or `trace`, or one of those for the
+/// target `xr` or `gnoblin-xr`. The extension has no `gnoblin-log` of its own, so this is the one place it reads the
+/// project's filter variable.
+fn debug_enabled(filter: Option<&str>) -> bool {
+    let Some(filter) = filter else { return false };
+    filter.split(',').any(|part| {
+        let (target, level) = part.split_once('=').unwrap_or(("", part));
+        matches!(target.trim(), "" | "xr" | "gnoblin-xr") && matches!(level.trim(), "debug" | "trace")
+    })
+}
+
+/// Runs the bridge over one session, logging what changes from frame to frame. With `GNOBLIN_LOG` at `debug`, every
+/// frame also logs how many layers it planned and submitted.
 fn drive<R: Runtime, P: Presenter>(
     tree: &mut TreeClient,
     mut frames: FrameLoop<R>,
@@ -100,27 +114,53 @@ fn drive<R: Runtime, P: Presenter>(
 ) -> Result<(), String> {
     // Planning runs every frame, but a line is only worth printing when it changes.
     let mut last_summary = None;
+    let mut last_submitted = None;
     let mut last_notices: Vec<Notice> = Vec::new();
     let mut last_faults: Vec<Fault> = Vec::new();
-    let outcome = bridge::run(tree, &mut frames, &Options::default(), captures, presenter, |report| {
-        let summary = (report.plan.layers.len(), report.plan.skipped.len());
-        if last_summary != Some(summary) {
-            eprintln!("gnoblin-xr: plan: {} layers, {} skipped", summary.0, summary.1);
-            last_summary = Some(summary);
-        }
-        if last_notices != report.notices {
-            for notice in report.notices {
-                eprintln!("gnoblin-xr: view {}: {}", notice.view, notice.kind.name());
+    let debug = debug_enabled(std::env::var("GNOBLIN_LOG").ok().as_deref());
+    let dump = Dump::from_value(std::env::var(dump::DUMP_VARIABLE).ok());
+    let mut frame_number = 0_u64;
+    let outcome = bridge::run(
+        tree,
+        &mut frames,
+        &Options::default(),
+        dump,
+        captures,
+        presenter,
+        |report| {
+            frame_number += 1;
+            let summary = (report.plan.layers.len(), report.plan.skipped.len());
+            if last_summary != Some(summary) {
+                eprintln!("gnoblin-xr: plan: {} layers, {} skipped", summary.0, summary.1);
+                last_summary = Some(summary);
             }
-            last_notices = report.notices.to_vec();
-        }
-        if last_faults != report.faults {
-            for fault in report.faults {
-                eprintln!("gnoblin-xr: {fault}");
+            if last_submitted != Some(report.submitted) {
+                eprintln!(
+                    "gnoblin-xr: frame {frame_number}: submitted {} layers",
+                    report.submitted
+                );
+                last_submitted = Some(report.submitted);
             }
-            last_faults = report.faults.to_vec();
-        }
-    })
+            if debug {
+                eprintln!(
+                    "gnoblin-xr: debug: frame {frame_number}: planned {}, submitted {}",
+                    summary.0, report.submitted
+                );
+            }
+            if last_notices != report.notices {
+                for notice in report.notices {
+                    eprintln!("gnoblin-xr: view {}: {}", notice.view, notice.kind.name());
+                }
+                last_notices = report.notices.to_vec();
+            }
+            if last_faults != report.faults {
+                for fault in report.faults {
+                    eprintln!("gnoblin-xr: {fault}");
+                }
+                last_faults = report.faults.to_vec();
+            }
+        },
+    )
     .map_err(|error| error.to_string())?;
     eprintln!("gnoblin-xr: stopped: {outcome:?}");
     Ok(())
@@ -173,6 +213,16 @@ mod tests {
     #[test]
     fn no_arguments_runs_the_bridge() {
         assert_eq!(parse(&[]), Action::Run);
+    }
+
+    #[test]
+    fn debug_is_asked_for_by_a_level_or_by_the_extensions_own_target() {
+        assert!(debug_enabled(Some("debug")));
+        assert!(debug_enabled(Some("warn,xr=debug")));
+        assert!(debug_enabled(Some("gnoblin-xr=trace")));
+        assert!(!debug_enabled(Some("wayland=debug,warn")));
+        assert!(!debug_enabled(Some("info")));
+        assert!(!debug_enabled(None));
     }
 
     #[test]

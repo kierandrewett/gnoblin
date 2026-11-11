@@ -19,6 +19,8 @@ use xr_gpu::{GpuError, Pixels, Presenter, SourceFormat, SwapchainFormat, Target,
 use xr_layers::{SwapchainId, SwapchainRef};
 use xr_session::runtime::{Capabilities, Runtime, RuntimeError};
 
+use crate::dump::Dump;
+
 /// Why a View could not be shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FaultKind {
@@ -76,6 +78,8 @@ struct Surface {
 #[derive(Default)]
 pub struct Surfaces {
     surfaces: BTreeMap<u64, Surface>,
+    /// Where each uploaded picture is also written, for tests (`GNOBLIN_XR_DUMP_DIR`).
+    dump: Option<Dump>,
 }
 
 fn source_format(format: ShmFormat) -> SourceFormat {
@@ -86,8 +90,11 @@ fn source_format(format: ShmFormat) -> SourceFormat {
 }
 
 impl Surfaces {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(dump: Option<Dump>) -> Self {
+        Self {
+            surfaces: BTreeMap::new(),
+            dump,
+        }
     }
 
     /// The ready swapchain of `view`: one with a picture in it.
@@ -181,6 +188,9 @@ impl Surfaces {
                 Ok(()) => {
                     surface.shown = Some(frame.serial);
                     surface.recaptured = false;
+                    if let Some(dump) = &mut self.dump {
+                        dump.record(view, frame);
+                    }
                 }
                 Err(kind) => faults.push(Fault { view: Some(view), kind }),
             }
@@ -330,7 +340,7 @@ pub(crate) mod tests {
                 runtime: FakeRuntime::with_graphics([], 16),
                 presenter: FakePresenter::default(),
                 frames: FakeFrames::default(),
-                surfaces: Surfaces::new(),
+                surfaces: Surfaces::new(None),
             }
         }
 

@@ -1,0 +1,28 @@
+[package]
+name = "xr-smoke"
+description = "Test tools for the whole-stack XR smoke (scripts/xr-smoke.sh): a solid-colour Wayland client that prints its pointer events, and a tree dump over the owner socket."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "xr-smoke-client"
+path = "src/bin/client.rs"
+
+[[bin]]
+name = "xr-smoke-tree"
+path = "src/bin/tree.rs"
+
+[dependencies]
+gnoblin-client = { path = "../../../../crates/gnoblin-client" }
+rustix = { workspace = true, features = ["fs"] }
+wayland-client.workspace = true
+wayland-protocols.workspace = true
+xr-scene = { path = "../xr-scene" }
+xr-tree = { path = "../xr-tree" }
+
+[lints]
+workspace = true

@@ -36,6 +36,16 @@ use crate::{LayoutError, ShmFormat, ShmLayout, shm_layout};
 /// How long opening a capture waits for the session's first `done`.
 const OPEN_WAIT: Duration = Duration::from_secs(2);
 
+/// `Ok` for a result that failed only because the socket would block (`EAGAIN`), which the next call retries. Without
+/// this, a flush into a full buffer or a read on a socket that polled readable and then had nothing ended the
+/// extension's whole capture connection.
+fn retry_later(result: Result<(), WaylandError>) -> Result<(), WaylandError> {
+    match result {
+        Err(WaylandError::Io(error)) if error.kind() == io::ErrorKind::WouldBlock => Ok(()),
+        other => other,
+    }
+}
+
 /// One captured picture of a View: `bytes` is `height` rows of `stride` bytes in `format`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
@@ -60,8 +70,6 @@ pub enum CaptureError {
     Bind(BindError),
     Io(io::Error),
     Layout(LayoutError),
-    /// The node id does not fit the protocol's `uint`.
-    NodeOutOfRange(u64),
     /// The session did not send `done` in time, or sent no buffer size or format.
     SessionNotReady,
     /// The session ended. The compositor stops a View's session when the View leaves the scene,
@@ -82,7 +90,6 @@ impl fmt::Display for CaptureError {
             Self::Bind(error) => write!(f, "binding a view capture global: {error}"),
             Self::Io(error) => write!(f, "view capture I/O: {error}"),
             Self::Layout(error) => write!(f, "view capture buffer: {error}"),
-            Self::NodeOutOfRange(node) => write!(f, "node {node} does not fit the protocol's uint"),
             Self::SessionNotReady => f.write_str("the capture session sent no usable buffer"),
             Self::Stopped => f.write_str("the capture session stopped"),
             Self::FrameFailed(reason) => write!(f, "a capture frame failed: {reason:?}"),
@@ -293,7 +300,8 @@ impl Client {
     /// Flushes requests, then waits up to `timeout` for the socket to become readable and
     /// dispatches what arrived. A zero timeout only dispatches what is already read.
     pub fn dispatch(&mut self, timeout: Duration) -> Result<(), CaptureError> {
-        self.connection.flush()?;
+        // A full socket buffer or an empty socket is not a failure: the next call flushes or reads again.
+        retry_later(self.connection.flush())?;
         self.queue.dispatch_pending(&mut self.state)?;
         if let Some(guard) = self.connection.prepare_read() {
             let fd = guard.connection_fd();
@@ -304,7 +312,7 @@ impl Client {
             };
             poll(&mut fds, Some(&wait)).map_err(io::Error::from)?;
             if !fds[0].revents().is_empty() {
-                guard.read()?;
+                retry_later(guard.read().map(|_| ()))?;
             }
         }
         self.queue.dispatch_pending(&mut self.state)?;
@@ -328,9 +336,11 @@ impl Client {
     /// Opens a capture of the View node `node`. Waits for the session's buffer constraints and
     /// allocates the buffer it will fill.
     pub fn open(&mut self, node: u64) -> Result<Capture, CaptureError> {
-        let node_id = u32::try_from(node).map_err(|_| CaptureError::NodeOutOfRange(node))?;
         let handle = self.queue.handle();
-        let source = self.view_manager.create_source(node_id, &handle, ());
+        // The protocol carries the 64-bit node id as its two halves.
+        let source = self
+            .view_manager
+            .create_source((node >> 32) as u32, node as u32, &handle, ());
         let shared = Arc::new(SessionShared::default());
         let session =
             self.copy_manager
@@ -490,5 +500,19 @@ impl Drop for Capture {
         self.buffer.destroy();
         self.session.destroy();
         self.source.destroy();
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn a_socket_that_would_block_is_retried_and_any_other_failure_is_not() {
+        let blocked = Err(WaylandError::Io(io::Error::from(io::ErrorKind::WouldBlock)));
+        assert!(retry_later(blocked).is_ok());
+        let broken = Err(WaylandError::Io(io::Error::from(io::ErrorKind::BrokenPipe)));
+        assert!(retry_later(broken).is_err());
+        assert!(retry_later(Ok(())).is_ok());
     }
 }

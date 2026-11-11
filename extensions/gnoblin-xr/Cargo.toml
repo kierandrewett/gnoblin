@@ -13,6 +13,7 @@ members = [
     "crates/xr-layers",
     "crates/xr-runtime",
     "crates/xr-scene",
+    "crates/xr-smoke",
     "crates/xr-session",
     "crates/xr-tree",
 ]

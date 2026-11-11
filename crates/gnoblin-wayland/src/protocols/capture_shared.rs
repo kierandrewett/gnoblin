@@ -184,8 +184,8 @@ pub(crate) struct CaptureTables {
     pub(super) tick: Tick,
     /// The `ext-image-capture-source-v1` objects, mapped to what they capture.
     pub(super) sources: BTreeMap<usize, Target>,
-    /// The Views the frame loop published, at the size each is drawn. A view-source
-    /// `create_source` is refused for any node not in this set.
+    /// The Views of the scene, at the size each is drawn: refreshed once per loop iteration, and again by each
+    /// view-source `create_source`, which is refused for any node not in this set.
     pub(super) views: BTreeMap<NodeId, Size>,
     /// The picture each View drew on the frame the loop last published. A View capture
     /// copies from it, and a picture that is not the one held here is new damage.

@@ -18,6 +18,7 @@ use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
 use xr_tree::{TreeClient, TreeError};
 
+use crate::dump::Dump;
 use crate::pointer::Pointer;
 use crate::surfaces::{Fault, Surfaces};
 
@@ -73,9 +74,13 @@ pub struct FrameReport<'a> {
     pub notices: &'a [Notice],
     /// Views that could not be shown because a swapchain or a copy failed.
     pub faults: &'a [Fault],
+    /// How many layers the frame ended with.
+    pub submitted: usize,
 }
 
 /// Runs until the session exits or the owner goes away, calling `on_frame` with the report of every frame.
+///
+/// With a `dump`, each picture copied into a swapchain is also written to its directory.
 ///
 /// The swapchains are destroyed before it returns.
 ///
@@ -86,11 +91,12 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
     tree: &mut TreeClient,
     frames: &mut FrameLoop<R>,
     opts: &Options,
+    dump: Option<Dump>,
     captures: &mut S,
     presenter: &mut P,
     on_frame: impl FnMut(&FrameReport<'_>),
 ) -> Result<Outcome, BridgeError> {
-    let mut surfaces = Surfaces::new();
+    let mut surfaces = Surfaces::new(dump);
     let outcome = run_loop(tree, frames, opts, captures, presenter, &mut surfaces, on_frame);
     // Best effort: the session is ending, and a failure here has nothing left to protect.
     for fault in surfaces.clear(frames.runtime_mut()) {
@@ -163,6 +169,7 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                     plan: &planned,
                     notices: &notices,
                     faults: &faults,
+                    submitted: layers.len(),
                 });
             }
             Tick::Exit => return Ok(Outcome::SessionExited),
@@ -487,6 +494,37 @@ mod tests {
         assert_eq!(name.value_text, "xr", "the pointer's seat is named xr");
         let motion = sent.iter().find(|op| op.input_kind == "motion").expect("a motion op");
         assert_eq!(motion.seat, created.id, "the pointer delivers on the seat it created");
+    }
+
+    #[test]
+    fn the_xr_seat_is_created_on_the_first_frame_with_nothing_to_hit() {
+        // The room, and so every View, exists only once the seat does, so the seat cannot wait for a ray to hit one.
+        let (sink, ops) = std::sync::mpsc::channel();
+        let mut tree = TreeClient::from_stream(serve_with_ops(Vec::new(), false, Some(sink))).expect("attach");
+        let mut pointer = Pointer::default();
+
+        pointer
+            .update(&mut tree, &[], &ControllerState::default(), 0)
+            .expect("a frame with no layers");
+        let sent: Vec<_> = ops.try_iter().flatten().collect();
+        let created = sent
+            .iter()
+            .find(|op| op.kind == "new" && op.class == "seat")
+            .expect("the seat is made with no layer in the plan");
+        assert!(
+            sent.iter()
+                .any(|op| op.kind == "set" && op.node == created.id && op.key == "name" && op.value_text == "xr"),
+            "the seat is named xr: {sent:?}"
+        );
+        assert!(
+            !sent.iter().any(|op| op.kind == "input"),
+            "nothing was hit, so no input"
+        );
+
+        pointer
+            .update(&mut tree, &[], &ControllerState::default(), FRAME)
+            .expect("the next frame");
+        assert!(ops.try_recv().is_err(), "the seat is made once");
     }
 
     #[test]
@@ -929,6 +967,7 @@ mod tests {
             &mut tree,
             &mut frames,
             &Options::default(),
+            None,
             &mut ScriptedFrames::default(),
             &mut FakePresenter::default(),
             |_| {},
@@ -964,6 +1003,7 @@ mod tests {
             &mut tree,
             &mut frames,
             &Options::default(),
+            None,
             &mut ScriptedFrames::default(),
             &mut FakePresenter::default(),
             |report| reports.push(report),
@@ -1094,6 +1134,7 @@ mod tests {
             &mut tree,
             &mut frames,
             &Options::default(),
+            None,
             &mut captures,
             &mut presenter,
             |report| reports.push(report),
@@ -1361,6 +1402,7 @@ mod tests {
             &mut tree,
             &mut frames,
             &Options::default(),
+            None,
             &mut captures,
             &mut presenter,
             |report| reports.push(report),
@@ -1398,6 +1440,7 @@ mod tests {
             &mut tree,
             &mut frames,
             &Options::default(),
+            None,
             &mut captures,
             &mut presenter,
             |report| {

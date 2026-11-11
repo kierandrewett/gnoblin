@@ -101,7 +101,7 @@ fn a_source_for_a_node_that_is_not_a_view_is_a_protocol_error() {
             .bind(&client.qh, 1..=1, ())
             .expect("the owner sees the view source manager");
         // No View has this node id: the tree is empty, so the request must be refused.
-        let _source = manager.create_source(9999, &client.qh, ());
+        let _source = manager.create_source(0, 9999, &client.qh, ());
         client.expect_protocol_error(MANAGER, 0);
     });
 }

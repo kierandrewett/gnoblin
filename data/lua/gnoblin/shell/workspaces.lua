@@ -4,7 +4,7 @@
 if seat then
     for i = 1, 9 do
         seat:bind({
-            ["Super+" .. i] = function()
+            ["<Super>" .. i] = function()
                 go(function()
                     desk():show(desk().space.children[i])
                 end)

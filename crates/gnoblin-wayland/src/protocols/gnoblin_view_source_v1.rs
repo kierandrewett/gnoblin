@@ -8,8 +8,9 @@
 //! trusted service and an application never see it, so neither can read a View's
 //! pixels through it.
 //!
-//! A source is only made for a node the frame loop has published as a View (the capture
-//! tables' `views` set, refreshed once per loop iteration). Any other node is a protocol
+//! A source is only made for a node that is a View in the scene when the request arrives (the capture
+//! tables' `views` set is refreshed from the scene by the request itself, so a View the owner has just heard of is
+//! not refused). Any other node is a protocol
 //! error, `invalid_node`, and no source object is created.
 use std::sync::Arc;
 
@@ -65,8 +66,12 @@ impl Dispatch2<GnoblinViewSourceManagerV1, State> for ViewSourceManager {
         data_init: &mut DataInit<'_, State>,
     ) {
         match request {
-            manager::Request::CreateSource { id, node } => {
-                let node = NodeId::new(u64::from(node));
+            manager::Request::CreateSource { id, node_hi, node_lo } => {
+                let node = NodeId::new((u64::from(node_hi) << 32) | u64::from(node_lo));
+                // The published set is refreshed once per loop iteration, before the frame applies the tree. A View
+                // an observer has just heard of is in the scene and not yet in that set, and refusing it is a
+                // protocol error that ends the client's connection. Read the scene as it is now.
+                state.capture.views = state.composer.views().into_iter().collect();
                 if !state.capture.views.contains_key(&node) {
                     resource.post_error(manager::Error::InvalidNode as u32, "the node is not a View");
                     return;
