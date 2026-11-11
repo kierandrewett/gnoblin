@@ -236,6 +236,9 @@ impl State {
         let dropped = self.keyboard_tables.router.device_removed(id);
         log::debug!(area = "input", device = %id, held = dropped.len(), "a device left the seat");
         self.keyboard_tables.device_keys.forget(id);
+        // The seat lets go of every key that keyboard held, so no other keyboard's press of one is taken for a
+        // key that is still down.
+        self.release_keyboard(id);
         let pending: Vec<(DeviceId, u32)> = self
             .keyboard_tables
             .pressed_claims

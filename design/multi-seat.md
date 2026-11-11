@@ -384,6 +384,22 @@ the agent machine, not in the lane (per the lane rules). Every lane updates
   press and release are consumed. A key from that device with no matching binding
   either reaches the seat or is dropped by the binding-only setting (section 5).
 
+**Note on key ingress, from lane 11D's blocker.** Smithay's keyboard treats every keyboard as one source unless it is
+given a `KeyboardSource`: a second keyboard's press of a key code the first holds was "already held" and never reached
+the filter, so a device-scoped claim did not fire in that corner, and the first keyboard's release of the key released
+it for the second too. `dispatch_key` (`crates/gnoblin-wayland/src/keyboard.rs`) now gives each device its own source
+and calls `input_intercept`, which reports only the seat's transitions: the first press of a key code across keyboards
+and the last release. A transition goes through the router and forwards to the client as before. An edge that is not
+a transition (`None`) is routed on its own, under the seat's modifiers and the key's symbol in the seat's xkb state,
+with `shared` set: a binding scoped to that device fires, a binding for every device does nothing, because its key is
+the seat's and the seat's key was already down. The client is told of seat transitions only, and a key it was told is
+down is released by the seat's last release even when the router gave that release to a claim
+(`forwarded_keys`). A device that leaves has its source released, which forwards the releases it ends. Tests:
+`two_keyboards_holding_one_keycode_are_one_held_key_to_the_client`,
+`a_chord_claimed_for_one_keyboard_fires_while_the_other_holds_its_key`,
+`a_chord_claimed_for_every_keyboard_is_the_seats_and_fires_once` and
+`a_keyboard_that_leaves_lets_go_of_the_keys_it_held` in `crates/gnoblin-wayland/tests/protocols.rs`.
+
 ### Phase 2: seats (option A starts)
 
 **Lane 2.1: seat object and seat table in `State`.**

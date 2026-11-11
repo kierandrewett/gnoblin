@@ -258,6 +258,8 @@ struct App {
     keyboard_leaves: u32,
     /// The key codes the client was delivered.
     keys: Vec<u32>,
+    /// Each key edge the client was delivered: the code, and whether it was a press.
+    key_edges: Vec<(u32, bool)>,
     /// Every keymap the seat sent, in arrival order.
     keymaps: Vec<String>,
     /// The rate and delay of the last `repeat_info` the seat sent a keyboard.
@@ -546,7 +548,14 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
         match event {
             wl_keyboard::Event::Enter { .. } => state.keyboard_enters += 1,
             wl_keyboard::Event::Leave { .. } => state.keyboard_leaves += 1,
-            wl_keyboard::Event::Key { key, .. } => state.keys.push(key),
+            wl_keyboard::Event::Key {
+                key, state: key_state, ..
+            } => {
+                state.keys.push(key);
+                state
+                    .key_edges
+                    .push((key, key_state == WEnum::Value(wl_keyboard::KeyState::Pressed)));
+            }
             wl_keyboard::Event::Keymap { fd, size, .. } => {
                 // The keymap arrives as a sealed file descriptor; reading it is the only
                 // way to see what layout the seat installed. The descriptor shares its
@@ -2375,6 +2384,307 @@ fn a_chord_claimed_for_one_keyboard_is_never_taken_from_the_other() {
             ],
             "only the pad's own Super+Return reaches the shell"
         );
+    });
+}
+
+/// Announces the desk keyboard and the macro pad, and answers their ids in that order.
+fn announce_keyboards(session: &Handle) -> (DeviceId, DeviceId) {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+
+    let desk = DeviceId::new(1);
+    let pad = DeviceId::new(2);
+    for (id, name) in [(desk, "Desk Keyboard"), (pad, "Macro Pad")] {
+        session.control.inject_input(InputEvent::DeviceAdded {
+            device: DeviceInfo::new(id, name, DeviceKind::Keyboard),
+        });
+    }
+    (desk, pad)
+}
+
+/// One key edge from one keyboard.
+fn key_on(session: &Handle, device: DeviceId, keycode: u32, pressed: bool) {
+    session.control.inject_input(InputEvent::Key {
+        device,
+        keycode,
+        pressed,
+    });
+}
+
+/// Waits until the shell's mirror holds `count` chord events, and answers them.
+fn wait_for_chords(
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    count: usize,
+) -> Vec<(NodeId, gnoblin_wayland::ChordEvent)> {
+    let deadline = Instant::now() + TIMEOUT;
+    while chord_events(batches).len() < count {
+        assert!(Instant::now() < deadline, "the shell never heard {count} chord events");
+        thread::sleep(Duration::from_millis(5));
+    }
+    chord_events(batches)
+}
+
+/// The chord event the shell hears for claim 1, `<Super>Return`.
+fn super_return(state: gnoblin_wayland::ChordState) -> (NodeId, gnoblin_wayland::ChordEvent) {
+    (
+        CLAIM_SEAT,
+        gnoblin_wayland::ChordEvent {
+            id: 1,
+            chord: "<Super>Return".to_owned(),
+            state,
+        },
+    )
+}
+
+/// Makes the shell's seat and has it claim `<Super>Return` with `text`, which names a keyboard or not.
+fn claim_super_return(queue: &gnoblin_wayland::TreeQueue, text: &str) {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let claimed = apply_on_shell(
+        queue,
+        &mut 0,
+        TreeTransaction::new(vec![
+            TreeOp::New {
+                class: "seat".to_owned(),
+                id: CLAIM_SEAT,
+            },
+            TreeOp::TreeCall {
+                node: CLAIM_SEAT,
+                method: "claim".to_owned(),
+                args: vec![1],
+                token: 1,
+                text: SecretText::new(text),
+            },
+        ]),
+    );
+    assert!(claimed, "the shell's claim applies");
+}
+
+/// The edges of one key code a client was delivered, in order.
+fn edges_of(state: &App, keycode: u32) -> Vec<bool> {
+    state
+        .key_edges
+        .iter()
+        .filter(|(code, _)| *code == keycode)
+        .map(|(_, pressed)| *pressed)
+        .collect()
+}
+
+#[test]
+fn two_keyboards_holding_one_keycode_are_one_held_key_to_the_client() {
+    let session = Session::with_config(Config::default());
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (desk, pad) = announce_keyboards(session);
+
+        // The desk keyboard goes down, then the pad, on the same key.
+        key_on(session, desk, KEY_B, true);
+        key_on(session, pad, KEY_B, true);
+        // The desk keyboard comes up while the pad still holds the key. The marker after it shows that the
+        // release was routed, so a client that has not been told is not merely slow.
+        key_on(session, desk, KEY_B, false);
+        key_on(session, desk, KEY_A, true);
+        key_on(session, desk, KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_A, true), (KEY_A, false)],
+            "the key is down once for the client, and it is still down while the pad holds it"
+        );
+        key_on(session, pad, KEY_B, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_B).len() == 2);
+        assert_eq!(
+            edges_of(state, KEY_B),
+            vec![true, false],
+            "the last keyboard to let go releases the key"
+        );
+
+        // The other order: the pad lets go first, and the desk keyboard's release is the last.
+        key_on(session, desk, KEY_B, true);
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+        key_on(session, pad, KEY_A, true);
+        key_on(session, pad, KEY_A, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_A).len() == 4);
+        assert_eq!(
+            edges_of(state, KEY_B),
+            vec![true, false, true],
+            "the desk keyboard still holds the key"
+        );
+        key_on(session, desk, KEY_B, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_B).len() == 4);
+        assert_eq!(edges_of(state, KEY_B), vec![true, false, true, false]);
+
+        let stats = session
+            .control
+            .input_stats()
+            .expect("the loop reports the router's counters");
+        assert_eq!(
+            (stats.duplicate_presses, stats.orphan_releases),
+            (0, 0),
+            "the router saw every edge of every keyboard exactly once"
+        );
+    });
+}
+
+#[test]
+fn a_keyboard_that_leaves_lets_go_of_the_keys_it_held() {
+    let session = Session::with_config(Config::default());
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (desk, pad) = announce_keyboards(session);
+
+        // Both hold one key, and the desk keyboard leaves: the pad still holds it, so it is still down.
+        key_on(session, desk, KEY_B, true);
+        key_on(session, pad, KEY_B, true);
+        session.control.inject_input(InputEvent::DeviceRemoved { id: desk });
+        key_on(session, pad, KEY_A, true);
+        key_on(session, pad, KEY_A, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_A).len() == 2);
+        assert_eq!(
+            edges_of(state, KEY_B),
+            vec![true],
+            "the pad holds the key the desk let go of"
+        );
+        key_on(session, pad, KEY_B, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_B).len() == 2);
+        assert_eq!(edges_of(state, KEY_B), vec![true, false]);
+
+        // A keyboard that leaves holding a key alone releases it to the client, which would otherwise keep it
+        // down.
+        key_on(session, pad, KEY_A, true);
+        session.control.inject_input(InputEvent::DeviceRemoved { id: pad });
+        let state = client.wait_for(|state| edges_of(state, KEY_A).len() == 4);
+        assert_eq!(edges_of(state, KEY_A), vec![true, false, true, false]);
+
+        // A later keyboard's press of that key is a press again, and not one the seat took for held.
+        key_on(session, DeviceId::VIRTUAL, KEY_A, true);
+        key_on(session, DeviceId::VIRTUAL, KEY_A, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_A).len() == 6);
+        assert_eq!(edges_of(state, KEY_A), vec![true, false, true, false, true, false]);
+    });
+}
+
+#[test]
+fn a_chord_claimed_for_one_keyboard_fires_while_the_other_holds_its_key() {
+    use gnoblin_wayland::ChordState;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (desk, pad) = announce_keyboards(session);
+        claim_super_return(&queue, "Macro Pad\n<Super>Return");
+
+        // The desk keyboard holds Return, and the client is told. The pad then plays its chord on the same
+        // key code, which the seat already holds.
+        key_on(session, desk, KEY_ENTER, true);
+        key_on(session, pad, KEY_LEFTMETA, true);
+        key_on(session, pad, KEY_ENTER, true);
+        assert_eq!(
+            wait_for_chords(&batches, 1),
+            vec![super_return(ChordState::Press)],
+            "the pad's chord reaches the shell although the seat held Return already"
+        );
+
+        // The desk keyboard lets go of Return. The pad holds it still, so the client hears nothing, and the
+        // pad's chord is not over.
+        key_on(session, desk, KEY_ENTER, false);
+        key_on(session, desk, KEY_B, true);
+        key_on(session, desk, KEY_B, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_B, false)));
+        assert_eq!(
+            edges_of(state, KEY_ENTER),
+            vec![true],
+            "the desk keyboard's release is not the seat's while the pad holds Return"
+        );
+        assert_eq!(chord_events(&batches), vec![super_return(ChordState::Press)]);
+
+        // The pad lets go. The shell hears the chord end, and the client, which was told of the press, is
+        // told of the release too, so its key is not left down.
+        key_on(session, pad, KEY_ENTER, false);
+        key_on(session, pad, KEY_LEFTMETA, false);
+        assert_eq!(
+            wait_for_chords(&batches, 2),
+            vec![super_return(ChordState::Press), super_return(ChordState::Release)],
+        );
+        let state = client.wait_for(|state| edges_of(state, KEY_LEFTMETA).len() == 2);
+        assert_eq!(edges_of(state, KEY_ENTER), vec![true, false]);
+
+        let stats = session
+            .control
+            .input_stats()
+            .expect("the loop reports the router's counters");
+        assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
+    });
+}
+
+#[test]
+fn a_chord_claimed_for_every_keyboard_is_the_seats_and_fires_once() {
+    use gnoblin_wayland::ChordState;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (desk, pad) = announce_keyboards(session);
+        claim_super_return(&queue, "<Super>Return");
+
+        // The same corner, with a claim for every keyboard: the seat already holds Return, so the pad's press
+        // of it is not a new press of the chord.
+        key_on(session, desk, KEY_ENTER, true);
+        key_on(session, pad, KEY_LEFTMETA, true);
+        key_on(session, pad, KEY_ENTER, true);
+        key_on(session, desk, KEY_ENTER, false);
+        key_on(session, pad, KEY_ENTER, false);
+        key_on(session, pad, KEY_LEFTMETA, false);
+        let state = client.wait_for(|state| edges_of(state, KEY_LEFTMETA).len() == 2);
+        assert_eq!(
+            edges_of(state, KEY_ENTER),
+            vec![true, false],
+            "the client saw the desk keyboard's Return, and its release when the last keyboard let go"
+        );
+        assert!(
+            chord_events(&batches).is_empty(),
+            "a press the seat already held is not the chord: {:?}",
+            chord_events(&batches)
+        );
+
+        // A press that is the seat's own still fires it, once, from either keyboard.
+        key_on(session, pad, KEY_LEFTMETA, true);
+        key_on(session, pad, KEY_ENTER, true);
+        key_on(session, pad, KEY_ENTER, false);
+        key_on(session, pad, KEY_LEFTMETA, false);
+        key_on(session, desk, KEY_LEFTMETA, true);
+        key_on(session, desk, KEY_ENTER, true);
+        key_on(session, desk, KEY_ENTER, false);
+        key_on(session, desk, KEY_LEFTMETA, false);
+        let events = wait_for_chords(&batches, 4);
+        assert_eq!(
+            events,
+            vec![
+                super_return(ChordState::Press),
+                super_return(ChordState::Release),
+                super_return(ChordState::Press),
+                super_return(ChordState::Release),
+            ],
+        );
+        let stats = session
+            .control
+            .input_stats()
+            .expect("the loop reports the router's counters");
+        assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
     });
 }
 

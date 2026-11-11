@@ -53,7 +53,12 @@ that report the same name are both matched.
 
 ## Limits
 
-The seat holds one key state for every keyboard, so a key one keyboard holds is already down for the other: a second
-keyboard's press of the same key code while the first is held does not reach a binding.
+A key is down for the seat once any keyboard holds it, and up once none does. That is what a client is told.
+
+- A second keyboard's press of a key the first still holds is not a second press to a client.
+- The first keyboard's release of that key is not a release while the second holds it.
+- A binding for one device sees every edge of that device. The pad's chord fires when it presses a key the desk
+  keyboard still holds.
+- A binding for every device is the seat's, so a press of a held key does not fire it again.
 
 There is one seat. The list names devices and does not put them on different seats.

@@ -670,6 +670,9 @@ impl Server {
                             Command::ModalEvents { reply } => {
                                 let _ = reply.send(state.take_modal_events());
                             }
+                            Command::InputStats { reply } => {
+                                let _ = reply.send(state.keyboard_tables.router.stats());
+                            }
                             Command::Bind { name, chord } => {
                                 if !state.add_binding(&name, &chord) {
                                     log::warn!(area = "input", name, chord, "the binding was refused");
@@ -1250,6 +1253,15 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// The router's counters: how many key and button edges it has routed, and how many it found out of
+    /// order. `None` when the loop did not answer in time.
+    #[must_use]
+    pub fn input_stats(&self) -> Option<gnoblin_input::Stats> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::InputStats { reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Takes a picture of what `output` currently shows.
     ///
     /// The request is answered by the frame hook at the end of the next iteration, so
@@ -1449,6 +1461,10 @@ enum Command {
     /// Every modal event queued since the last take, and the channel its answer goes back on.
     ModalEvents {
         reply: std::sync::mpsc::SyncSender<Vec<ModalEvent>>,
+    },
+    /// The router's counters, and the channel the answer goes back on.
+    InputStats {
+        reply: std::sync::mpsc::SyncSender<gnoblin_input::Stats>,
     },
     /// Starts the PipeWire stream of a screen cast the user approved, and the channel its
     /// answer goes back on; see [`ControlHandle::start_cast`].
