@@ -474,6 +474,8 @@ pub struct TreeFrame {
     window_writes: Vec<NodeId>,
     /// Method calls on window nodes (`close`), in op order, for the compositor to run.
     window_calls: Vec<TreeCall>,
+    /// `capture` calls on View nodes, in op order, for the compositor to answer. The text is the path to write.
+    view_captures: Vec<TreeCall>,
     /// What the shell's writes to animated properties asked of the compositor's tracks, in op
     /// order, for the compositor to play or end. A pending track is not held in the batch: the
     /// compositor decides how it lands, so reduced motion is applied where the tracks are.
@@ -513,6 +515,7 @@ impl TreeFrame {
             authentications: Vec::new(),
             window_writes: Vec::new(),
             window_calls: Vec::new(),
+            view_captures: Vec::new(),
             motion: Vec::new(),
             answers: Vec::new(),
             painter: hooks.painter,
@@ -609,6 +612,11 @@ impl TreeFrame {
     /// Take the method calls made on window nodes since the last take, in op order, for the compositor to run.
     pub fn take_window_calls(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.window_calls)
+    }
+
+    /// Take the `capture` calls made on View nodes since the last take, in op order, for the compositor to answer.
+    pub fn take_view_captures(&mut self) -> Vec<TreeCall> {
+        std::mem::take(&mut self.view_captures)
     }
 
     /// Take the motion the shell asked for since the last take, in the order the writes applied,
@@ -737,6 +745,12 @@ impl TreeFrame {
                     for call in &measures {
                         self.answers.push(measure_answer(&self.painter, call));
                     }
+                    // A `capture` writes the View's picture where the shell names: the compositor checks the path
+                    // and the lock and answers, so the shell is never handed the call back.
+                    let (captures, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
+                        .into_iter()
+                        .partition(|call| scene.class(call.node) == Some("view") && call.method == "capture");
+                    self.view_captures.extend(captures);
                     self.authentications.extend(auths);
                     self.claims.extend(claims);
                     for change in &done.changes {

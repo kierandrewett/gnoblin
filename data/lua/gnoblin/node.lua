@@ -558,6 +558,19 @@ for _, s in ipairs(core.classes()) do
             return setmetatable({ node = n, name = tostring(token) }, Signal)
         end)
     end
+    if s.name == "View" then
+        -- `view:capture(path)` writes a PNG of what the View shows to `path`, which must be an absolute `.png` path inside
+        -- the session's runtime directory. It answers later, so the call returns a signal that fires with the path
+        -- written, and an error if the compositor refused (`locked`, `unavailable`, `bad-value`, `too-large`,
+        -- `io-error`). A View has no cursor, so there is no cursor option.
+        rawset(c, "capture", function(n, path)
+            if type(path) ~= "string" then
+                error("capture: the path must be a string", 2)
+            end
+            local token = core.call(rawget(n, ID), "capture", nil, path)
+            return setmetatable({ node = n, name = tostring(token) }, Signal)
+        end)
+    end
     settle(m)
 end
 local Node = classes.Node

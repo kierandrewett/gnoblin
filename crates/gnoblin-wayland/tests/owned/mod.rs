@@ -143,6 +143,15 @@ impl Drop for StopOnDrop {
     }
 }
 
+/// What a test hands the session beyond its tree.
+#[derive(Default)]
+pub struct Extras {
+    /// Told every time the compositor publishes its state.
+    pub observer: Option<std::sync::Arc<dyn gnoblin_wayland::Observer>>,
+    /// The clock the loop reads; the system's when `None`.
+    pub clock: Option<std::sync::Arc<dyn gnoblin_wayland::Clock>>,
+}
+
 /// A session that has been created but is not running yet.
 pub struct Session {
     /// Kept alive for the session's lifetime: dropping it would unlink the socket.
@@ -165,6 +174,7 @@ impl Session {
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
             TreeHooks::default(),
+            Extras::default(),
         )
     }
 
@@ -178,6 +188,23 @@ impl Session {
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
             tree,
+            Extras::default(),
+        );
+        session.handle.control.set_reduced_motion(true);
+        session
+    }
+
+    /// A session that carries the tree, as [`Session::start_with_tree`] does, with the extras a test can hand it: an
+    /// observer told every time the compositor publishes its state (on the loop's own thread, in order) and a clock the
+    /// loop reads instead of the system's.
+    pub fn start_with_extras(role: Option<ClientRole>, tree: TreeHooks, extras: Extras) -> Self {
+        let session = Self::boot(
+            role,
+            true,
+            gnoblin_wayland::MonitorSettings::default(),
+            WmOptions::default(),
+            tree,
+            extras,
         );
         session.handle.control.set_reduced_motion(true);
         session
@@ -196,12 +223,20 @@ impl Session {
             gnoblin_wayland::MonitorSettings::default(),
             wm,
             TreeHooks::default(),
+            Extras::default(),
         )
     }
 
     /// A session whose `monitors` table sets `monitors`, as the composition root reads it.
     pub fn start_with_monitors(role: Option<ClientRole>, monitors: gnoblin_wayland::MonitorSettings) -> Self {
-        Self::boot(role, true, monitors, WmOptions::default(), TreeHooks::default())
+        Self::boot(
+            role,
+            true,
+            monitors,
+            WmOptions::default(),
+            TreeHooks::default(),
+            Extras::default(),
+        )
     }
 
     /// A session whose backend reports no gamma or power control, so neither protocol
@@ -213,6 +248,7 @@ impl Session {
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
             TreeHooks::default(),
+            Extras::default(),
         )
     }
 
@@ -223,6 +259,7 @@ impl Session {
         monitors: gnoblin_wayland::MonitorSettings,
         wm: WmOptions,
         tree: TreeHooks,
+        extras: Extras,
     ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
@@ -231,6 +268,10 @@ impl Session {
             monitors,
             wm,
             tree,
+            observer: extras.observer,
+            clock: extras
+                .clock
+                .unwrap_or_else(|| std::sync::Arc::new(gnoblin_wayland::SystemClock)),
             ..Config::default()
         };
         let headless = Headless::new();

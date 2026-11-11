@@ -19,7 +19,7 @@ struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "seat" | "lock" | "window" | "canvas")
+        matches!(class, "node" | "seat" | "lock" | "window" | "canvas" | "view")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -41,6 +41,7 @@ impl ClassInfo for Table {
             || (class == "lock" && method == "authenticate")
             || (class == "window" && method == "close")
             || (class == "canvas" && method == "measure")
+            || (class == "view" && method == "capture")
     }
 }
 
@@ -850,6 +851,51 @@ fn a_close_call_on_a_window_is_kept_for_the_compositor() {
     assert_eq!(calls.len(), 1, "the close call is kept");
     assert_eq!((calls[0].node, calls[0].method.as_str()), (window, "close"));
     assert!(frame.take_window_calls().is_empty(), "taking drains the calls");
+}
+
+/// A `capture` call on a View is kept for the compositor, which writes the picture, and never reaches the shell's batch:
+/// the path in its text is the compositor's to validate, and the shell hears the outcome as the answer.
+#[test]
+fn a_capture_call_on_a_view_is_kept_for_the_compositor_and_leaves_the_batch() {
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    let view = NodeId::new(0x500);
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![
+            TreeOp::New {
+                class: "view".to_owned(),
+                id: view,
+            },
+            TreeOp::Insert {
+                node: view,
+                parent: ROOT,
+                index: None,
+            },
+            TreeOp::TreeCall {
+                token: 7,
+                node: view,
+                method: "capture".to_owned(),
+                args: Vec::new(),
+                text: SecretText::new("/run/user/1000/shot.png"),
+            },
+        ]),
+        &replies,
+    );
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    assert!(replies.lock().unwrap()[0].1.is_ok(), "the call applies");
+    let captures = frame.take_view_captures();
+    assert_eq!(captures.len(), 1, "the capture is kept");
+    assert_eq!((captures[0].node, captures[0].token), (view, 7));
+    assert_eq!(captures[0].text.expose(), "/run/user/1000/shot.png");
+    assert!(frame.take_view_captures().is_empty(), "taking drains the captures");
+    assert!(
+        take_batches().iter().all(|batch| batch.calls.is_empty()),
+        "the capture is not handed to the shell"
+    );
 }
 
 /// A `measure` call of `text` in `font` at `size`, as the shell sends it: the size's bits as the one argument, and

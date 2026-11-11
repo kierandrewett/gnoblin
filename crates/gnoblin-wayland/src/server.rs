@@ -437,6 +437,14 @@ impl Server {
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
 
+        // A View still may be written under the directory the socket is in, which is the runtime directory unless a
+        // caller chose another; with no runtime directory the temporary one is shared, and stills go nowhere.
+        let still_root = match (&config.socket_path, std::env::var_os("XDG_RUNTIME_DIR")) {
+            (Some(path), _) => path.parent().map(Path::to_path_buf),
+            (None, Some(runtime)) => Some(PathBuf::from(runtime)),
+            (None, None) => None,
+        };
+        state.capture.set_still_root(still_root);
         let socket_path = config.socket_path.unwrap_or_else(default_socket_path);
         let listener = bind(&socket_path)?;
         log::info!(socket = %socket_path.display(), "listening");

@@ -177,9 +177,10 @@ pub struct ShellVm {
     retry: Vec<LuaOp>,
 }
 
-/// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, and a
-/// `Seat.claim` the chord to grab. Every other call that carries text is treated as carrying a password.
-const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim"];
+/// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, a
+/// `Seat.claim` the chord to grab and a `View.capture` the path to write. Every other call that carries text is
+/// treated as carrying a password.
+const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "capture"];
 
 /// What the sent-log keeps of one op for a stale-base retry. A call that carries a secret is not kept: its text
 /// is not held past the send, so a retry cannot send it again. A call whose text is plain content is kept, so a

@@ -200,6 +200,7 @@ mod server;
 mod state;
 mod touchpad;
 mod tree_frame;
+mod view_capture;
 mod window_request;
 mod x11_root;
 mod xwayland;

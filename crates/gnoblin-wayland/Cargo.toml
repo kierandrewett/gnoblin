@@ -114,6 +114,8 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
 tempfile = "3.23.0"
+# Reads back the PNG a View capture writes.
+png.workspace = true
 # The colours a test's stand-in host describes its frame in. The engine's dependency
 # rule allows this hub edge and it is a dev-dependency of a test only: the crate
 # itself never names the scene.

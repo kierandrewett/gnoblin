@@ -176,7 +176,7 @@ pub(super) struct SessionKey(pub(super) SessionId);
 /// The session's capture state.
 pub(crate) struct CaptureTables {
     /// The session rules and every open session.
-    pub(super) table: Table,
+    pub(crate) table: Table,
     /// The last frame each output drew, replaced once per frame while a session is open.
     pub(super) pixels: BTreeMap<OutputId, Cached>,
     /// The tick the loop is on, so a stream is paced by iterations rather than by a
@@ -215,6 +215,9 @@ pub(crate) struct CaptureTables {
     image_copy_global: GlobalId,
     /// The PipeWire streams of the granted capture sessions.
     pipewire: PipewireExport,
+    /// The directory a View still may be written under: the session's runtime directory, or `None` when the session
+    /// has none of its own and stills have nowhere to go.
+    still_root: Option<std::path::PathBuf>,
 }
 
 impl CaptureTables {
@@ -258,7 +261,23 @@ impl CaptureTables {
             output_source,
             toplevel_source,
             pipewire: PipewireExport::new(),
+            still_root: None,
         }
+    }
+
+    /// Sets the directory a View still may be written under.
+    pub(crate) fn set_still_root(&mut self, root: Option<std::path::PathBuf>) {
+        self.still_root = root;
+    }
+
+    /// The directory a View still may be written under, if the session has one.
+    pub(crate) fn still_root(&self) -> Option<&std::path::Path> {
+        self.still_root.as_deref()
+    }
+
+    /// The tick the loop is on.
+    pub(crate) fn tick(&self) -> Tick {
+        self.tick
     }
 
     /// The screencopy manager's global, so a disabled configuration removes it.

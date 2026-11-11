@@ -19,17 +19,19 @@ use std::fs::File;
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_render::Scene;
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
+use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::{ClientRole, TreeHooks, TreeQueue};
+use gnoblin_wayland::{ClientRole, Clock, ManualClock, Observer, SessionSnapshot, TreeAnswer, TreeHooks, TreeQueue};
 use owned::protocols::gnoblin_view_source_v1::ext_image_capture_source_v1::ExtImageCaptureSourceV1;
 use owned::protocols::gnoblin_view_source_v1::gnoblin_view_source_manager_v1::GnoblinViewSourceManagerV1;
-use owned::{Bare, Connected, Handle, Session, TIMEOUT};
+use owned::{Bare, Connected, Extras, Handle, Session, TIMEOUT};
 use wayland_client::globals::GlobalListContents;
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle, WEnum};
@@ -80,6 +82,7 @@ impl ClassInfo for Classes {
             (_, "visible") => ValueType::Bool,
             ("canvas", "content") => ValueType::Bytes,
             ("view", "source" | "camera") => ValueType::Node("node".to_owned()),
+            ("view", "fps") => ValueType::Uint,
             _ => return None,
         };
         Some(PropertyInfo {
@@ -89,14 +92,18 @@ impl ClassInfo for Classes {
         })
     }
 
-    fn has_method(&self, _class: &str, _method: &str) -> bool {
-        false
+    fn has_method(&self, class: &str, method: &str) -> bool {
+        class == "view" && method == "capture"
     }
 }
 
 /// The owner: it reads and writes the live scene through the tree queue, in-process.
 struct Owner {
     queue: TreeQueue,
+    /// The answers the frames published, in order.
+    answers: Arc<Mutex<Vec<TreeAnswer>>>,
+    /// The next token a call is made under.
+    token: AtomicU64,
 }
 
 impl Owner {
@@ -161,6 +168,35 @@ impl Owner {
                 Err(refusal) if refusal.code == Code::StaleBase && Instant::now() < deadline => {}
                 Err(refusal) => panic!("the owner's transaction was refused: {refusal}"),
             }
+        }
+    }
+
+    /// Calls `capture(path)` on `view` as the shell does and waits for the answer the compositor publishes.
+    fn capture(&self, view: NodeId, path: &str) -> TreeAnswer {
+        let token = self.token.fetch_add(1, Ordering::SeqCst) + 1;
+        self.transact(|| {
+            vec![TreeOp::TreeCall {
+                node: view,
+                method: "capture".to_owned(),
+                args: Vec::new(),
+                text: SecretText::new(path),
+                token,
+            }]
+        });
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some(answer) = self
+                .answers
+                .lock()
+                .expect("the answers lock")
+                .iter()
+                .find(|answer| answer.token == token)
+            {
+                return answer.clone();
+            }
+            assert!(Instant::now() < deadline, "the capture of {path} was never answered");
+            self.frames(1);
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -617,16 +653,42 @@ fn lock(socket: &std::path::Path) -> Locker {
     Locker { client, lock, cover }
 }
 
-/// A session that carries the tree, and the owner's handle on its queue.
-fn start() -> (Session, Owner) {
+/// What a test reads of the answers the frames publish, and the hooks that record them.
+fn hooks() -> (TreeHooks, Arc<Mutex<Vec<TreeAnswer>>>) {
+    let answers: Arc<Mutex<Vec<TreeAnswer>>> = Arc::default();
     let hooks = TreeHooks {
-        classes: std::sync::Arc::new(Classes),
+        classes: Arc::new(Classes),
+        publish: Arc::new({
+            let answers = Arc::clone(&answers);
+            move |batch| answers.lock().expect("the answers lock").extend(batch.answers)
+        }),
         ..TreeHooks::default()
     };
-    let owner = Owner {
+    (hooks, answers)
+}
+
+/// The owner's handle on a session's tree queue.
+fn owner_of(hooks: &TreeHooks, answers: Arc<Mutex<Vec<TreeAnswer>>>) -> Owner {
+    Owner {
         queue: hooks.queue.clone(),
-    };
+        answers,
+        token: AtomicU64::new(0),
+    }
+}
+
+/// A session that carries the tree, and the owner's handle on its queue.
+fn start() -> (Session, Owner) {
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
     (Session::start_with_tree(None, hooks), owner)
+}
+
+/// A session that carries the tree, with an observer and a clock of the test's own.
+fn start_with(observer: Option<Arc<dyn Observer>>, clock: Option<Arc<dyn Clock>>) -> (Session, Owner) {
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras { observer, clock };
+    (Session::start_with_extras(None, hooks, extras), owner)
 }
 
 #[test]
@@ -854,5 +916,232 @@ fn a_canvas_whose_content_is_written_again_is_captured_again() {
             }]
         });
         viewer.capture_until(REPAINTED);
+    });
+}
+
+/// What the session published while a capture ran: how many capture sessions were open at each publish, and whether the
+/// file the capture writes existed then.
+#[derive(Debug, Default)]
+struct Recorder {
+    /// The file the capture writes, once the test knows where the session's runtime directory is.
+    target: OnceLock<std::path::PathBuf>,
+    /// One entry per publish.
+    seen: Mutex<Vec<(usize, bool)>>,
+}
+
+impl Observer for Recorder {
+    fn published(&self, snapshot: &SessionSnapshot) {
+        let written = self.target.get().is_some_and(|target| target.exists());
+        self.seen
+            .lock()
+            .expect("the recorder lock")
+            .push((snapshot.capture_sessions(), written));
+    }
+}
+
+/// The pixel of a PNG at `(x, y)` as `0xRRGGBB`, and the PNG's size.
+fn png_pixel(path: &std::path::Path, x: u32, y: u32) -> ((u32, u32), u32) {
+    let decoder = png::Decoder::new(std::io::BufReader::new(File::open(path).expect("the PNG was written")));
+    let mut reader = decoder.read_info().expect("a PNG header");
+    let mut data = vec![0; reader.output_buffer_size().expect("a PNG buffer size")];
+    let info = reader.next_frame(&mut data).expect("a PNG frame");
+    assert_eq!(info.color_type, png::ColorType::Rgba, "the PNG is RGBA");
+    let at = (y * info.width + x) as usize * 4;
+    (
+        (info.width, info.height),
+        u32::from(data[at]) << 16 | u32::from(data[at + 1]) << 8 | u32::from(data[at + 2]),
+    )
+}
+
+/// A capture call writes the View's picture where the shell names, answers the path, and keeps the privacy
+/// indicator's count of capture sessions up from before the pixels are read to after the file is written.
+#[test]
+fn a_capture_call_writes_a_png_of_the_view_while_the_indicator_is_on() {
+    let recorder = Arc::new(Recorder::default());
+    let (session, owner) = start_with(Some(recorder.clone()), None);
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let runtime = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+        let target = runtime.join("view.png");
+        recorder.target.set(target.clone()).expect("the target is set once");
+
+        let answer = owner.capture(VIEW, target.to_str().expect("a utf-8 path"));
+        assert_eq!(
+            (answer.error.as_str(), answer.result.as_str()),
+            ("", target.to_str().expect("a utf-8 path")),
+            "the shell is answered with the path written"
+        );
+        let (size, colour) = png_pixel(&target, SIDE - 2, SIDE - 2);
+        assert_eq!(size, (SIDE, SIDE), "the PNG is the View's size");
+        assert_eq!(colour, SOURCE & 0x00FF_FFFF, "the PNG holds the View's pixels");
+
+        let seen = recorder.seen.lock().expect("the recorder lock").clone();
+        assert!(
+            seen.contains(&(1, false)),
+            "a publish showed the capture running before the file existed: {seen:?}"
+        );
+        assert!(
+            seen.iter().all(|(sessions, written)| *sessions == 0 || !written),
+            "the capture is shown open until the file is written, never after: {seen:?}"
+        );
+        assert_eq!(
+            seen.last(),
+            Some(&(0, true)),
+            "the capture closes once the file exists: {seen:?}"
+        );
+        let staged: Vec<_> = std::fs::read_dir(&runtime)
+            .expect("the runtime directory")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(".view.png"))
+            .collect();
+        assert!(staged.is_empty(), "no staging file is left behind");
+    });
+}
+
+/// A locked session writes nothing: the capture is refused at the copy and the indicator never shows it.
+#[test]
+fn a_capture_call_while_locked_is_refused_and_writes_nothing() {
+    let recorder = Arc::new(Recorder::default());
+    let (session, owner) = start_with(Some(recorder.clone()), None);
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let target = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory"))
+            .expect("a path")
+            .join("locked.png");
+        recorder.target.set(target.clone()).expect("the target is set once");
+        let _locker = lock(handle.socket());
+        owner.frames(3);
+
+        let answer = owner.capture(VIEW, target.to_str().expect("a utf-8 path"));
+        assert_eq!(answer.error, "locked");
+        assert!(answer.result.is_empty(), "a refusal carries no result");
+        assert!(!target.exists(), "nothing was written under the lock");
+        let seen = recorder.seen.lock().expect("the recorder lock").clone();
+        assert!(
+            seen.iter().all(|(sessions, _)| *sessions == 0),
+            "a refused capture never showed as running: {seen:?}"
+        );
+    });
+}
+
+/// The path is checked: only an absolute `.png` inside the runtime directory is written, and a View with nothing
+/// drawn has nothing to write.
+#[test]
+fn a_capture_call_refuses_a_path_outside_the_runtime_directory_and_a_view_with_no_picture() {
+    let (session, owner) = start();
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let runtime = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+        let elsewhere = tempfile::tempdir().expect("another directory");
+        let outside = elsewhere.path().join("view.png");
+        let climbing = format!("{}/../view.png", runtime.display());
+        for path in [
+            outside.to_str().expect("a utf-8 path"),
+            "view.png",
+            climbing.as_str(),
+            runtime.join("view.txt").to_str().expect("a utf-8 path"),
+            "",
+        ] {
+            let answer = owner.capture(VIEW, path);
+            assert_eq!(answer.error, "bad-value", "{path:?} is refused");
+            assert!(answer.result.is_empty());
+        }
+        assert!(!outside.exists(), "nothing was written outside the runtime directory");
+        assert!(
+            !runtime.join("view.png").exists(),
+            "nothing was written in the runtime directory"
+        );
+
+        // A View with no source draws no picture.
+        let bare = NodeId::new((1 << 32) | 0x103);
+        let (root, _) = owner.read(|scene| scene.root().expect("the scene has a root"));
+        owner.transact(|| {
+            vec![
+                TreeOp::New {
+                    class: "view".to_owned(),
+                    id: bare,
+                },
+                TreeOp::Insert {
+                    node: bare,
+                    parent: root,
+                    index: None,
+                },
+            ]
+        });
+        owner.frames(3);
+        let answer = owner.capture(bare, runtime.join("bare.png").to_str().expect("a utf-8 path"));
+        assert_eq!(answer.error, "unavailable");
+        assert!(!runtime.join("bare.png").exists());
+    });
+}
+
+/// `fps` reaches the composer through the tree: a View with `fps = 2` holds its picture for half a second of the
+/// session's clock however often its source changes, and draws the last state when the slot ends.
+#[test]
+fn a_views_fps_paces_its_picture_on_the_session_clock() {
+    let clock = Arc::new(ManualClock::new());
+    let (session, owner) = start_with(None, Some(clock.clone()));
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let runtime = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+        let still = |name: &str| {
+            let target = runtime.join(name);
+            let answer = owner.capture(VIEW, target.to_str().expect("a utf-8 path"));
+            assert_eq!(answer.error, "", "the View was captured");
+            png_pixel(&target, SIDE - 2, SIDE - 2).1
+        };
+        assert_eq!(still("first.png"), SOURCE & 0x00FF_FFFF);
+
+        owner.transact(|| {
+            vec![TreeOp::Set {
+                node: VIEW,
+                key: "fps".to_owned(),
+                value: TreeValue::Uint(2),
+                timing: None,
+            }]
+        });
+        let repaint = |red: u8| {
+            use gnoblin_paint::{PaintList, PaintOp, Rgba8};
+            let content = gnoblin_paint::encode(&PaintList {
+                ops: vec![PaintOp::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: SIDE as f32,
+                    height: SIDE as f32,
+                    radius: 0.0,
+                    fill: Rgba8::new(red, 0x40, 0x20, 0xFF),
+                    stroke: Rgba8::TRANSPARENT,
+                    stroke_width: 0.0,
+                }],
+            });
+            owner.transact(|| {
+                vec![TreeOp::Set {
+                    node: PLACE,
+                    key: "content".to_owned(),
+                    value: TreeValue::Bytes(content.clone()),
+                    timing: None,
+                }]
+            });
+            owner.frames(3);
+        };
+        repaint(0x70);
+        repaint(0xC0);
+        assert_eq!(
+            still("held.png"),
+            SOURCE & 0x00FF_FFFF,
+            "no time has passed on the session's clock, so the View keeps its picture"
+        );
+
+        clock.advance(Duration::from_millis(499));
+        owner.frames(3);
+        assert_eq!(still("early.png"), SOURCE & 0x00FF_FFFF, "499 ms is inside the slot");
+
+        clock.advance(Duration::from_millis(1));
+        owner.frames(3);
+        assert_eq!(
+            still("late.png"),
+            0xC0_40_20,
+            "the slot's end draws the last state, not the one before it"
+        );
     });
 }

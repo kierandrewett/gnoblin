@@ -186,7 +186,18 @@ There is no shaping, kerning or bidirectional text. The egui painter stays for t
 | `input`  | `string`      | `"none"` |       | `none`, or `source` (the ray passes into the source) |
 | `fps`    | `uint`        | `0`      |       | `0` is on demand                                     |
 
-Method: `capture()` returns an operation id (`operation.toml`).
+Method: `capture(path)` (implemented, lane 9B; default selected, owner may revisit). The design says `capture()` returns an
+operation id and `node-api-refactor.md` names the wire `ext-image-copy-capture` and PipeWire; those streams exist already
+(`gnoblin_view_source_v1` for the `view` role, and the portal after 9D), so the method is the one-shot still: it writes
+a PNG of the View's current picture to `path` and answers the path written, or an error code. `path` is absolute, a
+`.png`, with no `.` or `..`, in an existing directory under the session's runtime directory. The call is a session in
+the capture table while it runs (the privacy indicator's signal precedes the pixels), is refused while the session is
+locked, and is logged. A View has no cursor, so there is no cursor option. The answer is the call's token and not an
+`operation.toml` completion: the Lua `view:capture(path)` returns a signal that fires with the path, or with an error.
+
+`fps` is a cap on redraws per second, not a rate: `0` redraws on every change of the source, the camera or the View;
+`n` redraws at most every `ceil(1000 / n)` ms of the session clock, coalescing the changes inside the slot and drawing
+the last state at its end. A View with no picture or a new size is drawn at once.
 
 **Screen** (base `Node`). An output. Replaces `output.toml`. Created and destroyed by the compositor.
 

@@ -1335,3 +1335,72 @@ fn a_runaway_user_file_is_stopped_by_the_load_budget_and_the_shell_still_runs() 
         desk_probe(role) == "1 1"
     });
 }
+
+/// A shell asks a View for a still with `view:capture(path)`: the compositor writes a PNG of what the View shows and
+/// answers the path, and it answers a path outside the session's runtime directory with an error and writes nothing.
+#[test]
+fn a_view_capture_the_shell_asks_for_writes_a_png_and_answers_its_path() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    role.run(
+        "a view of a canvas",
+        "local canvas = Canvas({ width = 40, height = 30, draw = { { rect = { 0, 0, 40, 30 }, fill = '#2040c0' } } }) \
+         root:add(canvas) \
+         view = View({ width = 40, height = 30, source = canvas }) \
+         root:add(view) \
+         shots = {} \
+         return 'made'",
+    )
+    .expect("the View is made");
+
+    let directory = std::fs::canonicalize(session.directory()).expect("the runtime directory");
+    let target = directory.join("shot.png");
+    let outside = tempfile::tempdir().expect("another directory");
+    let elsewhere = outside.path().join("shot.png");
+    for (name, path) in [("inside", &target), ("outside", &elsewhere)] {
+        let ask = format!(
+            "shots.{name} = nil go(function() local result, err = await(view:capture('{}')) \
+             shots.{name} = {{ result = result, err = err }} end) return 'asked'",
+            path.display()
+        );
+        let probe = format!("local s = shots.{name} return s and (s.err .. '|' .. tostring(s.result)) or ''");
+        let mut asked = false;
+        let mut answer = String::new();
+        // The View draws on a frame of its own, so a first ask may find no picture: ask again until the answer is
+        // not `unavailable`.
+        tick_until(&mut role, "the capture was never answered", |role| {
+            if !asked {
+                role.run("ask", &ask).expect("the ask runs");
+                asked = true;
+            }
+            let outcome = role.run("answer", &probe).expect("the probe runs").unwrap_or_default();
+            if outcome.starts_with("unavailable|") {
+                asked = false;
+            } else if !outcome.is_empty() {
+                answer = outcome;
+            }
+            !answer.is_empty()
+        });
+        if name == "inside" {
+            assert_eq!(
+                answer,
+                format!("|{}", target.display()),
+                "the shell is answered with the path written"
+            );
+        } else {
+            assert_eq!(answer, "bad-value|", "a path outside the runtime directory is refused");
+        }
+    }
+    let png = std::fs::read(&target).expect("the PNG was written");
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "the file is a PNG");
+    assert!(!elsewhere.exists(), "nothing was written outside the runtime directory");
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        role.diagnostics()
+    );
+}

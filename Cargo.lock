@@ -1773,6 +1773,7 @@ dependencies = [
  "gnoblin-render-frame",
  "gnoblin-secret",
  "gnoblin-types",
+ "png",
  "smithay",
  "tempfile",
  "wayland-client",

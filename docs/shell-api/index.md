@@ -12,6 +12,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Find objects](/shell-api/find): select windows, workspaces, outputs and other objects by field or by predicate.
 - [Focus and activation](/shell-api/focus-activation): focus policy, history, activation tokens, and trusted contexts.
 - [Workspaces](/shell-api/workspaces): state and operations.
+- [Views](/shell-api/views): draw a subtree as a picture, pace it with `fps`, and write it to a PNG.
 - [Outputs](/shell-api/outputs): display outputs, modes, and renderer state.
 - [Idle watches](/shell-api/idle): run code when the session has had no input for a set time.
 - [Overrides](/shell-api/overrides): layer a setting or a window effect over the configuration, and take it back.
