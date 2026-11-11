@@ -38,6 +38,18 @@ local function set_focus_options(opts)
     rawset(root:find(Seat), "focus_options", opts)
 end
 
+-- A second window, added after the shell started. The shell places it on its next frame.
+local function second_window(host)
+    root:add(Window({}))
+    host.frame(0, {})
+end
+
+-- Whether `n` is the top of its parent's stack.
+local function is_top(n)
+    local c = n.parent.children
+    return c[#c] == n
+end
+
 return {
     {
         "the stock shell loads through require in a bare VM and reads no global the host does not define",
@@ -452,6 +464,102 @@ return {
                 win.width == 500 and win.height == 768,
                 ("the snapped window must refit, got %dx%d"):format(win.width, win.height)
             )
+        end,
+    },
+    {
+        "a client's activate request is decided by the shell as an activation",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            host.frame(0, { { type = "request", bubbles = true, target = a, request = "activate" } })
+            H.check(root:find(Seat).focus == w, "an activate request must focus")
+        end,
+    },
+    {
+        "an armed auto-raise raises a buried window once its delay passes",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            second_window(host)
+            H.check(not is_top(w), "a starts buried under b")
+            set_focus_options({ focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
+            host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
+            host.frame(0.9, {})
+            H.check(is_top(w), "auto-raise must raise a after 0.5 s")
+        end,
+    },
+    {
+        "a leave cancels an armed auto-raise",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            second_window(host)
+            set_focus_options({ focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
+            host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
+            host.frame(0.2, { { type = "leave", target = a, bubbles = true } })
+            host.frame(0.9, {})
+            H.check(not is_top(w), "a leave must cancel the armed raise")
+        end,
+    },
+    {
+        "closing an armed window cancels its auto-raise",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            second_window(host)
+            set_focus_options({ focus_mode = "hover", auto_raise = true, auto_raise_delay = 500 })
+            host.frame(0.1, { { type = "enter", target = a, bubbles = true } })
+            host.frame(0.2, { { type = "closed", target = a, args = {} } })
+            host.frame(0.9, {})
+            H.check(w.parent == nil, "the closed window must have left the tree, so no raise can fire")
+        end,
+    },
+    {
+        "a closed window cancels its pending rest focus",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            root:find(Seat).focus = nil
+            set_focus_options({ focus_mode = "hover", focus_change_on_pointer_rest = true })
+            host.frame(0, { { type = "enter", target = a, bubbles = true } })
+            host.frame(0.05, { { type = "closed", target = a, args = {} } })
+            host.frame(0.4, {})
+            H.check(root:find(Seat).focus == nil, "a closed window must not take focus on its rest")
+        end,
+    },
+    {
+        "a focus change while a button is held is ignored",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            second_window(host)
+            local b = host.ids("Window")[2]
+            root:find(Seat).focus = nil
+            set_focus_options({ focus_mode = "hover-strict" })
+            host.frame(0, { { type = "press", target = a, bubbles = true } })
+            host.frame(0.05, { { type = "enter", target = b, bubbles = true } })
+            H.check(root:find(Seat).focus == w, "a held button keeps focus on the pressed window")
+        end,
+    },
+    {
+        "activating a window on a hidden workspace is refused and leaves focus alone",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            root:find(Seat).focus = nil
+            desk().space.children[2]:add(w)
+            host.frame(0, { { type = "activate", target = a, args = {} } })
+            H.check(root:find(Seat).focus == nil, "a hidden window must not take focus")
+        end,
+    },
+    {
+        "activating the focused window again changes nothing",
+        function()
+            local host, w = window_setup({})
+            local a = host.ids("Window")[1]
+            host.frame(0, { { type = "activate", target = a, args = {} } })
+            host.frame(0.1, { { type = "activate", target = a, args = {} } })
+            H.check(root:find(Seat).focus == w, "repeat activation keeps the focus on the window")
         end,
     },
 }

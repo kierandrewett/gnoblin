@@ -85,6 +85,7 @@ use gnoblin_wm::ActivationDecision;
 use crate::State;
 use crate::access::ClientRole;
 use crate::observation::ActivationDenial;
+use crate::tree_frame::TreeRequest;
 
 use crate::log;
 
@@ -290,11 +291,13 @@ impl State {
             match window {
                 Some(window) => {
                     log::debug!(area = "activation", %window, "allowed");
-                    let effects = self.wm.apply(gnoblin_wm::Event::ActivationRequested {
-                        window,
-                        decision: ActivationDecision::Allow,
-                    });
-                    self.apply(effects);
+                    if !self.request_to_shell(surface, TreeRequest::Activate) {
+                        let effects = self.wm.apply(gnoblin_wm::Event::ActivationRequested {
+                            window,
+                            decision: ActivationDecision::Allow,
+                        });
+                        self.apply(effects);
+                    }
                 }
                 None => {
                     // A token is about a surface; a surface that is not a managed

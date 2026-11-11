@@ -97,6 +97,8 @@ pub enum TreeRequest {
     Unfullscreen,
     Minimize,
     Menu,
+    /// An activation token the client redeemed for its window; the shell decides whether it focuses.
+    Activate,
 }
 
 impl TreeRequest {
@@ -112,6 +114,7 @@ impl TreeRequest {
             Self::Unfullscreen => "unfullscreen",
             Self::Minimize => "minimize",
             Self::Menu => "menu",
+            Self::Activate => "activate",
         }
     }
 }
@@ -173,6 +176,16 @@ pub enum TreeFrameInput {
     Requested,
     /// A claimed chord changed state. The claim is the shell's, named by its `id`.
     Chord(ChordEvent),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TreeRequest;
+
+    #[test]
+    fn an_activation_request_is_named_for_the_shell() {
+        assert_eq!(TreeRequest::Activate.name(), "activate");
+    }
 }
 
 /// The state a claimed chord changed to.

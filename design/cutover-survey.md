@@ -249,3 +249,28 @@ Old tests in `crates/gnoblin-wm/tests/failure_modes.rs`, mapped to the stock she
 | `raising_keeps_the_fullscreen_layer_on_top`                             | `shell_test.lua`: raising a window keeps a fullscreen sibling above it, and a fullscreen window stays on top when raised   |
 
 Drops: none in this group. The old `OutputReserved` event (gnoblin-wm `event.rs`) has no stock schema counterpart: a bar is the reserved space, and `Desk:arrange` refits maximised and snapped windows when a bar changes the work area.
+
+### Ported: focus, pointer and raise (lane PortFocus)
+
+Old tests in `crates/gnoblin-wm/tests/failure_modes.rs`, mapped to the stock shell (`crates/gnoblin-lua/tests/lua/shell_test.lua`, focus policy in `shell/focus.lua`). Client activation requests reach the shell as `activate` (`tree_frame.rs`, `an_activation_request_is_named_for_the_shell`).
+
+| Old test                                                          | Stock test (`shell_test.lua`) or status                                                                                 |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `focus_never_lands_on_a_closed_window`                            | `a window closed while focused drops focus`; `a closed window cancels its pending rest focus`                           |
+| `minimising_the_focused_window_moves_focus_away`                  | OPEN: the stock shell has no minimise request or minimised property. Needs a compositor event (schema gap). Not ported. |
+| `focus_without_raise_leaves_the_stack_alone`                      | `raise_on_click off: a press focuses but does not raise`                                                                |
+| `a_denied_activation_reports_the_decision_without_changing_focus` | OPEN: the denial is decided in Rust (`xdg_activation_v1.rs`, `refuse_activation`) and has no stock test.                |
+| `activating_a_hidden_window_is_refused`                           | `activating a window on a hidden workspace is refused and leaves focus alone`                                           |
+| `no_op_events_produce_no_effects`                                 | Partial: `activating the focused window again changes nothing`                                                          |
+| `click_mode_ignores_pointer_motion`                               | `click mode: pointer motion does not move focus`                                                                        |
+| `hover_keeps_focus_when_the_pointer_crosses_a_gap`                | `hover: entering a window focuses it and leaving keeps focus`                                                           |
+| `hover_strict_clears_focus_when_the_pointer_crosses_a_gap`        | `hover-strict: leaving the focused window clears focus`                                                                 |
+| `motion_cancels_a_pending_rest_focus`                             | `a motion restarts the rest timer`                                                                                      |
+| `a_pointer_resting_over_a_window_focuses_it_once_settled`         | `a pointer rest focuses the window; a leave before the rest cancels it`                                                 |
+| `a_closed_window_cancels_its_pending_rest_focus`                  | `a closed window cancels its pending rest focus`                                                                        |
+| `a_focus_change_while_a_button_is_held_is_ignored`                | `a focus change while a button is held is ignored`                                                                      |
+| `a_rest_focus_does_not_fire_while_a_button_is_held`               | `a rest does not focus while a button is held`                                                                          |
+| `a_click_on_a_buried_window_raises_it`                            | `a press on a buried window raises it`                                                                                  |
+| `a_click_with_raise_on_click_off_keeps_the_stacking`              | `raise_on_click off: a press focuses but does not raise`                                                                |
+| `auto_raise_is_cancelled_by_leaving_the_window`                   | `a leave cancels an armed auto-raise`                                                                                   |
+| `closing_the_armed_window_cancels_its_auto_raise`                 | `closing an armed window cancels its auto-raise`                                                                        |

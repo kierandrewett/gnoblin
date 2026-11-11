@@ -427,6 +427,8 @@ function Window:on_request(e)
         self:maximise()
     elseif e.request == "unmaximize" then
         self:unmaximise()
+    elseif e.request == "activate" then
+        self:on_activate()
     end
 end
 -- Super+Left and Super+Right move focus between the columns of a Strip; on any other layout they do nothing.
