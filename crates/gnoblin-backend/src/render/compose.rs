@@ -106,12 +106,14 @@ const VIEW_FAR: f64 = 10_000.0;
 /// The vertical field of view of a perspective camera that sets none, in degrees.
 const VIEW_FOV: f64 = 60.0;
 
-/// A View node's rendered picture: the size it was drawn at, and the image of its source
-/// subtree, or `None` when it has no source or the source cannot be drawn.
+/// A View node's rendered picture: the size it was drawn at, the image of its source
+/// subtree (or `None` when it has no source or the source cannot be drawn), and the view
+/// clock's reading when it was drawn, which `fps` paces the next draw from.
 #[derive(Debug)]
 struct ViewPicture {
     size: Size,
     image: Option<Arc<Image>>,
+    drawn_at_ms: u64,
 }
 
 /// A Canvas node's rendered picture: what it was painted from, and the image, or `None` when its content paints
@@ -308,6 +310,12 @@ pub struct Composer {
     /// The pictures of the View nodes, each rendered from its source subtree and kept until
     /// that subtree, its camera or the view itself changes.
     views: BTreeMap<NodeId, ViewPicture>,
+    /// The milliseconds the loop has advanced the composer by ([`Composer::advance_motion`]), which is the clock a
+    /// View's `fps` is paced on. A test moves it the way the loop does.
+    view_clock_ms: u64,
+    /// The Views whose source changed inside their `fps` slot: each is drawn at the slot's end, from the state it is
+    /// in then, so any number of changes in a slot cost one draw.
+    paced_views: BTreeSet<NodeId>,
     /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
     /// changes.
     canvases: BTreeMap<NodeId, CanvasPicture>,
@@ -367,6 +375,8 @@ impl Composer {
             screens: BTreeMap::new(),
             placing: false,
             views: BTreeMap::new(),
+            view_clock_ms: 0,
+            paced_views: BTreeSet::new(),
             canvases: BTreeMap::new(),
             painter,
         }
@@ -569,9 +579,15 @@ impl Composer {
     /// Re-renders the View nodes whose picture is stale and damages the pixels each one
     /// redraws. A view is stale when it has no picture yet, changed size, or when it, or a
     /// node in its source or camera subtree, is in `dirty`.
+    ///
+    /// A View with `fps` set is drawn at most `fps` times a second: a source that changes inside the slot waits,
+    /// however often it changes, and the view is drawn at the slot's end from the state it is in then. A View with
+    /// no picture or one of another size is drawn at once, so a picture of the wrong size is never kept, and `fps`
+    /// zero draws on every change.
     fn render_views(&mut self, dirty: &BTreeSet<NodeId>) {
         let views = self.view_nodes();
         self.views.retain(|view, _| views.contains(view));
+        self.paced_views.retain(|view| views.contains(view));
         for view in views {
             let Some(bounds) = self.scene.bounds(view) else {
                 continue;
@@ -584,14 +600,32 @@ impl Composer {
                 .chain(self.scene.camera(view))
                 .flat_map(|root| self.subtree(root))
                 .collect();
-            let stale = dirty.contains(&view)
+            let picture = self.views.get(&view).filter(|picture| picture.size == size);
+            let stale = picture.is_none()
+                || dirty.contains(&view)
                 || inputs.iter().any(|node| dirty.contains(node))
-                || self.views.get(&view).is_none_or(|picture| picture.size != size);
+                || self.paced_views.contains(&view);
             if !stale {
                 continue;
             }
+            let fps = self.scene.unsigned(view, "fps").unwrap_or(0);
+            if let (Some(picture), 1..) = (picture, fps) {
+                let slot_ms = 1000u64.div_ceil(fps);
+                if self.view_clock_ms.saturating_sub(picture.drawn_at_ms) < slot_ms {
+                    self.paced_views.insert(view);
+                    continue;
+                }
+            }
+            self.paced_views.remove(&view);
             let image = self.draw_view(view, size);
-            self.views.insert(view, ViewPicture { size, image });
+            self.views.insert(
+                view,
+                ViewPicture {
+                    size,
+                    image,
+                    drawn_at_ms: self.view_clock_ms,
+                },
+            );
             if let Some(bounds) = self.scene.absolute_bounds(view) {
                 self.scene.damage_rect(bounds);
             }
@@ -1439,6 +1473,7 @@ impl Composer {
     ///
     /// It also moves a visual bell's flash on, so the next frame shows its fade.
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
+        self.view_clock_ms = self.view_clock_ms.saturating_add(u64::from(elapsed_ms));
         self.motion.advance(&mut self.scene, elapsed_ms);
         for end in self.motion.take_ended() {
             let owner = self
@@ -5262,6 +5297,169 @@ mod tests {
         let pictures = composer.view_pictures();
         assert_eq!(pictures.len(), 1);
         assert_eq!(pictures[0].1.pixel(Point::new(5, 5)), Some([77, 0, 0, 255]));
+    }
+
+    const PACED_CANVAS: NodeId = NodeId::new(2);
+    const PACED_VIEW: NodeId = NodeId::new(1);
+
+    /// A View of a canvas filled with red 1, drawn once, with its `fps` set to `fps`.
+    fn paced_view(fps: u64) -> (Composer, OutputId) {
+        let (mut composer, output) = screen();
+        add_canvas(
+            &mut composer,
+            PACED_CANVAS,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 1)),
+        );
+        add_view(&mut composer, PACED_VIEW, None, Some(PACED_CANVAS));
+        composer.with_scene(|scene| {
+            scene
+                .set_value(PACED_VIEW, "fps", TreeValue::Uint(fps))
+                .expect("the view's fps")
+        });
+        let _ = damage_of(&mut composer, output);
+        (composer, output)
+    }
+
+    /// Repaints the source canvas red `red`, as a live source changing between two frames.
+    fn repaint(composer: &mut Composer, red: u8) {
+        composer.with_scene(|scene| {
+            scene
+                .set_value(PACED_CANVAS, "content", TreeValue::Bytes(fill_list(40.0, 30.0, red)))
+                .expect("the canvas's content")
+        });
+    }
+
+    /// The red of the View's picture, or `None` when it has none.
+    fn view_red(composer: &Composer) -> Option<u8> {
+        let (_, picture) = composer
+            .view_pictures()
+            .into_iter()
+            .find(|(view, _)| *view == PACED_VIEW)?;
+        picture.pixel(Point::new(5, 5)).map(|pixel| pixel[0])
+    }
+
+    #[test]
+    fn a_view_with_fps_redraws_at_most_once_per_slot_though_its_source_changes_every_frame() {
+        let (mut composer, output) = paced_view(10);
+        assert_eq!(view_red(&composer), Some(1), "the first picture is drawn at once");
+        let mut drawn = Vec::new();
+        for step in 1..=25u8 {
+            composer.advance_motion(20);
+            repaint(&mut composer, step + 1);
+            let before = view_red(&composer);
+            let _ = damage_of(&mut composer, output);
+            if view_red(&composer) != before {
+                drawn.push((step, view_red(&composer)));
+            }
+        }
+        // Ten frames a second is a slot every 100 ms: steps 5, 10, 15, 20 and 25 of 20 ms, each drawing the
+        // source as it is then.
+        assert_eq!(
+            drawn,
+            vec![
+                (5, Some(6)),
+                (10, Some(11)),
+                (15, Some(16)),
+                (20, Some(21)),
+                (25, Some(26))
+            ]
+        );
+    }
+
+    #[test]
+    fn damage_in_a_slot_is_coalesced_and_the_last_state_is_drawn_at_the_next() {
+        let (mut composer, output) = paced_view(10);
+        composer.advance_motion(10);
+        repaint(&mut composer, 10);
+        let _ = damage_of(&mut composer, output);
+        composer.advance_motion(40);
+        repaint(&mut composer, 20);
+        let _ = damage_of(&mut composer, output);
+        assert_eq!(view_red(&composer), Some(1), "nothing is redrawn inside the slot");
+        composer.advance_motion(49);
+        let _ = damage_of(&mut composer, output);
+        assert_eq!(view_red(&composer), Some(1), "99 ms is still inside the slot");
+        // No write at the slot itself: the pending redraw still happens, with the last state.
+        composer.advance_motion(1);
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "the redraw damages the View's pixels"
+        );
+        assert_eq!(view_red(&composer), Some(20), "the last state is what the slot draws");
+        // Nothing is pending afterwards.
+        composer.advance_motion(500);
+        assert!(damage_of(&mut composer, output).is_none(), "the slot drew everything");
+    }
+
+    #[test]
+    fn a_view_with_fps_zero_redraws_on_every_change() {
+        let (mut composer, output) = paced_view(0);
+        for red in 2..=6u8 {
+            repaint(&mut composer, red);
+            let _ = damage_of(&mut composer, output);
+            assert_eq!(
+                view_red(&composer),
+                Some(red),
+                "no time has passed and the View followed"
+            );
+        }
+        let _ = damage_of(&mut composer, output);
+        composer.advance_motion(1000);
+        assert!(
+            damage_of(&mut composer, output).is_none(),
+            "an unchanged View draws nothing"
+        );
+    }
+
+    #[test]
+    fn a_view_whose_source_is_idle_is_not_redrawn_at_its_slot() {
+        let (mut composer, output) = paced_view(10);
+        for _ in 0..5 {
+            composer.advance_motion(100);
+            assert!(
+                damage_of(&mut composer, output).is_none(),
+                "fps caps redraws, it does not force them"
+            );
+        }
+    }
+
+    #[test]
+    fn lowering_fps_to_zero_draws_the_pending_state_at_once() {
+        let (mut composer, output) = paced_view(1);
+        composer.advance_motion(10);
+        repaint(&mut composer, 9);
+        let _ = damage_of(&mut composer, output);
+        assert_eq!(view_red(&composer), Some(1), "one frame a second holds the picture");
+        composer.with_scene(|scene| {
+            scene
+                .set_value(PACED_VIEW, "fps", TreeValue::Uint(0))
+                .expect("the view's fps")
+        });
+        let _ = damage_of(&mut composer, output);
+        assert_eq!(view_red(&composer), Some(9), "on demand draws what was waiting");
+    }
+
+    #[test]
+    fn a_view_that_resizes_is_drawn_at_once_whatever_its_fps() {
+        let (mut composer, output) = paced_view(1);
+        composer.with_scene(|scene| {
+            scene
+                .set_bounds(PACED_VIEW, Rect::new(10, 20, 20, 10))
+                .expect("the view resizes")
+        });
+        let _ = damage_of(&mut composer, output);
+        let (_, picture) = composer
+            .view_pictures()
+            .into_iter()
+            .find(|(view, _)| *view == PACED_VIEW)
+            .expect("the view's picture");
+        assert_eq!(
+            picture.size(),
+            Size::new(20, 10),
+            "a picture of the wrong size is never kept"
+        );
     }
 
     #[test]

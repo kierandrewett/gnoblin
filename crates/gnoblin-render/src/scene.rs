@@ -1020,6 +1020,15 @@ impl Scene {
         }
     }
 
+    /// The whole number a property stores on a node (a `uint`), or `None` when it stores none.
+    #[must_use]
+    pub fn unsigned(&self, id: NodeId, key: &str) -> Option<u64> {
+        match self.value(id, key)? {
+            TreeValue::Uint(number) => Some(*number),
+            _ => None,
+        }
+    }
+
     /// Store a number property on a node. Read by the compositor, not drawn, so it damages no
     /// pixels; the node is marked dirty so anything derived from it is refreshed.
     pub fn set_number(&mut self, id: NodeId, key: &str, value: f64) -> Result<(), SceneError> {
