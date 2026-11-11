@@ -1966,6 +1966,8 @@ fn replacing_the_options_changes_the_pointer_focus_mode() {
     );
     assert_eq!(wm.options().focus_mode, FocusMode::Hover);
 
+    // Hover focuses on entering a window, so the pointer leaves window 2 before it returns.
+    pointer_moved(&mut wm, None, 5);
     pointer_moved(&mut wm, Some(2), 10);
     assert_eq!(
         wm.focused(),
@@ -1980,6 +1982,7 @@ fn replacing_the_options_keeps_the_managed_windows() {
     let mut wm = default_wm();
     open(&mut wm, 1);
     let before = wm.window(window(1)).map(|w| w.geometry);
+    let focused = wm.focused();
     wm.apply(Event::OptionsChanged {
         options: WmOptions {
             edge_tiling: true,
@@ -1987,6 +1990,6 @@ fn replacing_the_options_keeps_the_managed_windows() {
         },
     });
     assert_eq!(wm.window(window(1)).map(|w| w.geometry), before);
-    assert_eq!(wm.focused(), Some(window(1)));
+    assert_eq!(wm.focused(), focused, "a reload changes no focus by itself");
     check(&wm);
 }
