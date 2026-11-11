@@ -82,6 +82,7 @@ use gnoblin_wayland::{
     WindowChange, WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
+use super::consent::Consent;
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
@@ -243,6 +244,7 @@ impl IpcServer {
         xwayland: crate::xwayland::XwaylandReconciler,
         power: Option<Box<dyn gnoblin_model::PowerBackend>>,
         tree: TreeHostHandle,
+        eis: crate::eis::EisGate,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -271,6 +273,7 @@ impl IpcServer {
             tree,
             xwayland,
             power,
+            consent: Consent::new(eis),
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
@@ -729,6 +732,8 @@ struct Dispatcher {
     xwayland: crate::xwayland::XwaylandReconciler,
     /// The power backend the power verbs reach; [`None`] refuses them `unavailable`.
     power: Option<Box<dyn gnoblin_model::PowerBackend>>,
+    /// What the portal told the compositor the user answered, and what each answer unlocked.
+    consent: Consent,
 }
 
 impl Dispatcher {
@@ -858,6 +863,13 @@ impl Dispatcher {
             wire::member::PORTAL_CANCEL => self.portal_cancel(client, envelope),
             wire::member::PORTAL_KEY => self.portal_key(client, envelope),
             wire::member::CAPTURE_SCREEN => self.capture_screen(client, envelope),
+            wire::member::REMOTE_GRANT => self.remote_grant(client, envelope),
+            wire::member::REMOTE_REFUSE => self.remote_refuse(client, envelope),
+            wire::member::REMOTE_CONNECT => self.remote_connect(client, envelope),
+            wire::member::REMOTE_END => self.remote_end(client, envelope),
+            wire::member::CAST_GRANT => self.cast_grant(client, envelope),
+            wire::member::CAST_START => self.cast_start(client, envelope),
+            wire::member::CAST_END => self.cast_end(client, envelope),
             _ => self.refuse(
                 client,
                 envelope,
@@ -1552,6 +1564,138 @@ impl Dispatcher {
                 self.refuse(client, envelope, code, message);
             }
         }
+    }
+
+    /// Answers a consent member: the payload when the call succeeded, the refusal when it did not.
+    fn consent_answer(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        outcome: Result<Vec<u8>, super::consent::Refusal>,
+    ) {
+        match outcome {
+            Ok(payload) => {
+                if let Some(connection) = self.connections.get_mut(&client) {
+                    connection.send(&Envelope::reply(
+                        wire::NAMESPACE,
+                        envelope.member.clone(),
+                        envelope.request_id,
+                        payload,
+                    ));
+                }
+            }
+            Err(refused) => self.refuse(client, envelope, refused.code, &refused.message),
+        }
+    }
+
+    /// Reads the one session name a consent member carries, refusing a payload that does not decode.
+    fn consent_session(&mut self, client: ClientId, envelope: &Envelope) -> Option<String> {
+        match wire::read_session(envelope.payload().unwrap_or(&[])) {
+            Ok(session) => Some(session),
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    MALFORMED,
+                    &format!("the session name did not decode: {reason}"),
+                );
+                None
+            }
+        }
+    }
+
+    /// `remote.grant`: the user approved a remote desktop session, so the endpoint lets that
+    /// session's EIS connection inject the devices the approval names.
+    fn remote_grant(&mut self, client: ClientId, envelope: &Envelope) {
+        match wire::read_remote_grant(envelope.payload().unwrap_or(&[])) {
+            Ok((session, devices)) => {
+                let outcome = self.consent.remote_grant(client, &session, devices);
+                self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
+            }
+            Err(reason) => self.refuse(
+                client,
+                envelope,
+                MALFORMED,
+                &format!("the remote grant did not decode: {reason}"),
+            ),
+        }
+    }
+
+    /// `remote.refuse`: the user refused a remote desktop session.
+    fn remote_refuse(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(session) = self.consent_session(client, envelope) else {
+            return;
+        };
+        let outcome = self.consent.remote_refuse(client, &session);
+        self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
+    }
+
+    /// `remote.connect`: the one-shot EIS socket of an approved session. The reply carries its
+    /// path, which the portal connects to and passes on as the app's descriptor.
+    fn remote_connect(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(session) = self.consent_session(client, envelope) else {
+            return;
+        };
+        let snapshot = match self.observation.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let outcome = self
+            .consent
+            .remote_connect(client, &session, &snapshot)
+            .map(|path| wire::remote_socket_payload(&path));
+        self.consent_answer(client, envelope, outcome);
+    }
+
+    /// `remote.end`: a remote desktop session is over.
+    fn remote_end(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(session) = self.consent_session(client, envelope) else {
+            return;
+        };
+        let outcome = self.consent.remote_end(client, &session);
+        self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
+    }
+
+    /// `cast.grant`: the user approved a screen cast of one output.
+    fn cast_grant(&mut self, client: ClientId, envelope: &Envelope) {
+        match wire::read_cast_grant(envelope.payload().unwrap_or(&[])) {
+            Ok((session, output)) => {
+                let outcome = self.consent.cast_grant(client, &session, output);
+                self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
+            }
+            Err(reason) => self.refuse(
+                client,
+                envelope,
+                MALFORMED,
+                &format!("the cast grant did not decode: {reason}"),
+            ),
+        }
+    }
+
+    /// `cast.start`: the PipeWire stream of an approved screen cast. The loop that owns the
+    /// stream answers within its own deadline, so the reply names the node or the reason not.
+    fn cast_start(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(session) = self.consent_session(client, envelope) else {
+            return;
+        };
+        let snapshot = match self.observation.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let outcome = self
+            .consent
+            .cast_start(client, &session, &snapshot, &self.control)
+            .map(|stream| wire::cast_stream_payload(&stream));
+        self.consent_answer(client, envelope, outcome);
+    }
+
+    /// `cast.end`: a screen cast is over, and its stream with it.
+    fn cast_end(&mut self, client: ClientId, envelope: &Envelope) {
+        let Some(session) = self.consent_session(client, envelope) else {
+            return;
+        };
+        let outcome = self.consent.cast_end(client, &session, &self.control);
+        self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
     }
 
     /// Answer a member that succeeded and has nothing to carry.
@@ -2405,6 +2549,7 @@ impl Dispatcher {
         self.deliver(departed);
         let replies = self.portal.departed(client);
         self.deliver_replies(replies);
+        self.consent.departed(client, &self.control);
     }
 
     /// Ends one connection: its subscriptions, its writer and its reader.
@@ -2423,6 +2568,7 @@ impl Dispatcher {
         self.deliver(deliveries);
         let replies = self.portal.departed(client);
         self.deliver_replies(replies);
+        self.consent.departed(client, &self.control);
         // A peer that is gone does not need its socket shut down; a peer that is still
         // there is told, so its reader returns instead of waiting for a next frame.
         let _ = connection.writer.shutdown(if shutdown {
@@ -2465,6 +2611,13 @@ fn requires_owner(member: &str) -> bool {
             | wire::member::PORTAL_CANCEL
             | wire::member::PORTAL_KEY
             | wire::member::CAPTURE_SCREEN
+            | wire::member::REMOTE_GRANT
+            | wire::member::REMOTE_REFUSE
+            | wire::member::REMOTE_CONNECT
+            | wire::member::REMOTE_END
+            | wire::member::CAST_GRANT
+            | wire::member::CAST_START
+            | wire::member::CAST_END
     )
 }
 
@@ -2765,6 +2918,20 @@ mod tests {
         // Failure mode: an ordinary connection must be refused, so the member must be an
         // owner member at all. An omitted arm would serve pixels to any connection.
         assert!(requires_owner(wire::member::CAPTURE_SCREEN));
+        for member in [
+            wire::member::REMOTE_GRANT,
+            wire::member::REMOTE_REFUSE,
+            wire::member::REMOTE_CONNECT,
+            wire::member::REMOTE_END,
+            wire::member::CAST_GRANT,
+            wire::member::CAST_START,
+            wire::member::CAST_END,
+        ] {
+            assert!(
+                requires_owner(member),
+                "`{member}` asserts the user's consent, which only the owner's connection may"
+            );
+        }
     }
 
     #[test]

@@ -88,6 +88,16 @@ The 500 ms arm delay is not it, since that harness waits 5 s before its keys.
 
 FileChooser and the fallback sysroot are unchanged.
 
+## The consent flows, from the dialog to enforcement (lane 10C)
+
+The portal decides, the compositor enforces. Seven owner-only IPC members (`crates/gnoblin-compositor/src/ipc/consent.rs`) carry the answer; both flows follow the same rule, **no recorded consent, nothing opens**. Remote input and capture used to stop at the dialog: `EisGate::grant` and the PipeWire export had no caller. Decision O12 (a) was auto-selected, "default selected, owner may revisit"; (b), the shell answering a `remote` signal, stays open with O3.
+
+**RemoteDesktop.** `Start` asks capture then input injection through `portal.ui` (today the compositor's `Modal` dialog). A yes calls `remote.grant {session, devices}`, which records the approval and lets the EIS endpoint advertise exactly those devices to that session. The user's own no calls `remote.refuse`; an expired prompt or a caller that left decides nothing. `ConnectToEIS` calls `remote.connect`, and the compositor opens a one-shot `0600` socket for that session (`eis-<n>.sock` beside `eis.sock`, removed when the first client connects or the session ends). The portal connects to it and returns the connected stream as the app's descriptor. The IPC transport carries no file descriptors, which is why the path is returned rather than a descriptor. The compositor refuses `remote.connect` with `no-consent` or `consent-refused` for a session it was not told about, whatever the portal believes. `Close`, or the caller leaving the bus, calls `remote.end`: the connection ends after the seat releases every held key, button and contact. The answer for one session never reaches another session or `eis.sock`, which stays default deny (the test harness grants it).
+
+**ScreenCast.** `Start` asks for capture. A yes calls `cast.grant {session, output}` (`output` is `OUTPUT_FIRST` when the user chose none) and `cast.start`, which opens the only `CaptureStream::Granted` session in the capture table and starts its PipeWire stream (`State::start_cast`); the reply carries the node the portal returns. `cast.start` for a session with no recorded consent is refused `no-consent`. A locked session, a missing output and a missing PipeWire daemon are refused by name (`locked`, `no-output`, `unavailable`). The stream ends with `cast.end`, `Close`, or the connection that held the consent.
+
+**What is proven where.** End to end over real sockets: `crates/gnoblin-compositor/tests/eis.rs` (IPC, a real libei client, a real Wayland client: seat capabilities, absolute pointer motion, keys, refusal, end, holder gone) and `tests/cast.rs` (a private PipeWire daemon, `pw-dump`: no node without consent, node after, gone after end or holder loss). At gate level only: the portal's `RemoteDesktop.Start` and `ScreenCast.Start` D-Bus handlers (`eis_relay.rs` unit tests with a fake compositor; no test drives them through a bus into a live compositor), and the frames a stream carries (`gnoblin-pipewire-export` tests). Not served: a window or View as a cast source (9D), `InputCapture` (needs EIS receiver contexts), `position` and `size` stream properties.
+
 ## Next steps
 
 1. Run the consent path once in a session with a person or harness answering the dialog, to prove

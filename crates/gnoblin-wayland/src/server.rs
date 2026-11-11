@@ -49,9 +49,10 @@ use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 use gnoblin_render_frame::image::Image;
 
 use crate::output_config::OutputConfigHost;
+use gnoblin_capture::{SessionId, Target};
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
-use gnoblin_types::{OutputId, Rect, WindowId};
+use gnoblin_types::{ClientId, OutputId, Rect, WindowId};
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
@@ -60,6 +61,7 @@ use crate::observation::{
     WindowVisualRefusal,
 };
 use crate::policy::WmOptions;
+use crate::protocols::capture_shared::{CastRefusal, CastStream};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
@@ -88,6 +90,13 @@ pub const DEFAULT_PRIVILEGED_SOCKET_NAME: &str = "gnoblin-wayland-privileged.soc
 /// delay and not work; the limit exists so a stopped loop answers "no" instead of
 /// hanging the caller.
 pub const FOCUS_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long [`ControlHandle::start_cast`] waits for the loop's answer.
+///
+/// Starting a stream connects to the PipeWire daemon and waits for it to give the stream a node,
+/// which the export bounds at five seconds, so the wait is a little longer than that and no
+/// longer than a caller should hold a consent answer.
+pub const CAST_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// The pointer cursor a session draws: the theme name, its logical size and the
 /// providers searched for it, in order.
@@ -239,6 +248,10 @@ pub struct Config {
     /// with no redirect, which is a working session: no global is advertised and no
     /// adapter's code is linked in.
     pub extensions: Vec<Arc<dyn Extension>>,
+    /// The PipeWire daemon's socket a screen cast connects to, or [`None`] for the daemon the
+    /// environment names (`PIPEWIRE_REMOTE`, then `$XDG_RUNTIME_DIR/pipewire-0`). A test names
+    /// its private daemon here, so it never reaches the user's own.
+    pub pipewire_socket: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -265,6 +278,7 @@ impl Default for Config {
             visual_bell: VisualBellSettings::default(),
             visual_accessibility: VisualAccessibilitySettings::default(),
             window_process_override: None,
+            pipewire_socket: None,
         }
     }
 }
@@ -429,6 +443,7 @@ impl Server {
             state.apply_shortcuts(shortcuts);
         }
         state.workspace_names = workspace_names;
+        state.use_pipewire_socket(config.pipewire_socket);
         state.publish_seat_policy();
         match crate::touchpad::TouchpadGestures::from_config(&config.touchpad_gestures) {
             Ok(gestures) => state.touchpad_gestures = gestures,
@@ -589,6 +604,11 @@ impl Server {
                             Command::AddEffect { window, spec, reply } => {
                                 let _ = reply.send(state.add_effect(window, *spec));
                             }
+                            Command::CastStart { client, target, reply } => {
+                                let _ = reply.send(state.start_cast(client, target));
+                            }
+                            Command::CastStop { session } => state.stop_cast(session),
+                            Command::CastStopAll { client } => state.stop_casts_of(client),
                             Command::Advance(milliseconds) => state.tick_clock(milliseconds),
                             Command::SelectSource(index) => {
                                 if !state.select_input_source(index) {
@@ -930,6 +950,29 @@ impl ControlHandle {
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Starts the PipeWire stream of a screen cast the user approved, for `client`.
+    ///
+    /// `client` is the IPC connection that holds the consent: it owns the stream, and the
+    /// stream ends with it ([`ControlHandle::stop_casts_of`]). The loop refuses a locked
+    /// session and a target it does not have, and answers with the node the app reads.
+    /// [`None`] means the loop did not answer within [`CAST_TIMEOUT`].
+    #[must_use]
+    pub fn start_cast(&self, client: ClientId, target: Target) -> Option<Result<CastStream, CastRefusal>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::CastStart { client, target, reply });
+        answer.recv_timeout(CAST_TIMEOUT).ok()
+    }
+
+    /// Ends the stream of one cast session: its PipeWire node goes away on the loop's next turn.
+    pub fn stop_cast(&self, session: SessionId) {
+        self.control.push(Command::CastStop { session });
+    }
+
+    /// Ends every stream `client` started, as when the connection that held the consent is gone.
+    pub fn stop_casts_of(&self, client: ClientId) {
+        self.control.push(Command::CastStopAll { client });
     }
 
     /// Promises a role to a process the compositor is about to start.
@@ -1319,6 +1362,17 @@ enum Command {
     ModalEvents {
         reply: std::sync::mpsc::SyncSender<Vec<ModalEvent>>,
     },
+    /// Starts the PipeWire stream of a screen cast the user approved, and the channel its
+    /// answer goes back on; see [`ControlHandle::start_cast`].
+    CastStart {
+        client: ClientId,
+        target: Target,
+        reply: std::sync::mpsc::SyncSender<Result<CastStream, CastRefusal>>,
+    },
+    /// Ends one screen cast stream; see [`ControlHandle::stop_cast`].
+    CastStop { session: SessionId },
+    /// Ends every screen cast stream one connection holds; see [`ControlHandle::stop_casts_of`].
+    CastStopAll { client: ClientId },
 }
 
 /// The commands a control handle queued, and the ping that wakes the loop for them.

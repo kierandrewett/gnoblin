@@ -41,7 +41,9 @@ use gnoblin_types::Version;
 use xdg_desktop_portal_gnoblin::backends::Missing;
 use xdg_desktop_portal_gnoblin::capture_relay::CaptureRelay;
 use xdg_desktop_portal_gnoblin::host::NoShell;
-use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, CaptureBackend, Host, IpcHost, IpcLoop, Portal, picture};
+use xdg_desktop_portal_gnoblin::{
+    BUS_NAME, Backends, CaptureBackend, EisBackend, EisRelay, Host, IpcHost, IpcLoop, Portal, picture,
+};
 use zbus::fdo::RequestNameReply;
 
 gnoblin_log::logger!(log = "portal");
@@ -106,11 +108,12 @@ fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptio
 
 /// Connect if a shell is reachable, export, own the name and serve until the bus goes.
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let (host, loop_, capture) = match ipc() {
+    let (host, loop_, capture, eis) = match ipc() {
         Ok((host, loop_)) => {
             let folder = picture::pictures_dir(|name| std::env::var(name).ok());
             let capture = Arc::new(CaptureRelay::new(host.clone(), folder)) as Arc<dyn CaptureBackend>;
-            (Box::new(host) as Box<dyn Host>, Some(loop_), capture)
+            let eis = Arc::new(EisRelay::new(host.clone())) as Arc<dyn EisBackend>;
+            (Box::new(host) as Box<dyn Host>, Some(loop_), capture, eis)
         }
         Err(error) => {
             log::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
@@ -118,6 +121,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Box::new(NoShell) as Box<dyn Host>,
                 None,
                 Arc::new(Missing) as Arc<dyn CaptureBackend>,
+                Arc::new(Missing) as Arc<dyn EisBackend>,
             )
         }
     };
@@ -138,6 +142,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             host,
             Backends {
                 capture,
+                eis,
                 ..Backends::default()
             },
             CONSENT_LIFETIME,

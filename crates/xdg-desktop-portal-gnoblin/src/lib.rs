@@ -85,6 +85,8 @@ pub mod backends;
 pub mod capture_relay;
 /// The consent core: portal sessions, grants and the `portal.ui` offer.
 pub mod consent;
+/// Remote desktop input: the compositor's `remote.*` members, and the descriptor they unlock.
+pub mod eis_relay;
 /// The privileged IPC connection: offers out, answers and graph diffs in.
 pub mod host;
 /// The D-Bus objects, one per served `org.freedesktop.impl.portal.*` interface.
@@ -98,8 +100,10 @@ pub mod settings;
 pub use backends::{Backends, CaptureBackend, ClipboardBackend, EisBackend, InhibitBackend, ShortcutsBackend};
 /// Consent types and the guard, re-exported from [`consent`].
 pub use consent::{Consent, ConsentOutcome, Guard, Host, Interface, PortalCapability, Refusal, Session, State};
+/// The input backend that makes its calls of the compositor, re-exported from [`eis_relay`].
+pub use eis_relay::{ConsentSink, EisRelay};
 /// The IPC host and its read loop, re-exported from [`host`].
-pub use host::{IpcHost, IpcLoop};
+pub use host::{ConsentAnswer, ConsentCall, IpcHost, IpcLoop};
 /// The bus name, object path and object root, re-exported from [`iface`].
 pub use iface::{BUS_NAME, PATH, Portal};
 /// Settings table types, re-exported from [`settings`].

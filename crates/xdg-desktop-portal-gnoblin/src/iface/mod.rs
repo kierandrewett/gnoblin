@@ -53,7 +53,7 @@ use zbus::{Connection, fdo};
 use crate::backends::{
     Backends, CaptureBackend, ClipboardBackend, EisBackend, InhibitBackend, InhibitHandle, ShortcutsBackend,
 };
-use crate::consent::{ConsentOutcome, Guard, Host, Refusal};
+use crate::consent::{ConsentOutcome, Guard, Host, Interface, Refusal, Session};
 use crate::settings::Table;
 
 use crate::log;
@@ -85,7 +85,7 @@ pub struct Shared {
     /// The capture call.
     pub capture: Arc<dyn CaptureBackend>,
     /// The input call.
-    pub eis: Box<dyn EisBackend>,
+    pub eis: Arc<dyn EisBackend>,
     /// The inhibit call.
     pub inhibit: Box<dyn InhibitBackend>,
     /// The shortcut call.
@@ -175,6 +175,19 @@ impl Portal {
     /// one bad request.
     pub fn lock(&self) -> MutexGuard<'_, Shared> {
         self.shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The input backend, cloned out of the shared state so a call to it is made without the
+    /// lock: the compositor's answers are applied by a thread that takes the same lock.
+    #[must_use]
+    pub fn eis(&self) -> Arc<dyn EisBackend> {
+        Arc::clone(&self.lock().eis)
+    }
+
+    /// The capture backend, cloned out for the same reason as [`Portal::eis`].
+    #[must_use]
+    pub fn capture(&self) -> Arc<dyn CaptureBackend> {
+        Arc::clone(&self.lock().capture)
     }
 
     /// Export every interface and own the bus name.
@@ -293,14 +306,14 @@ impl Portal {
             })
             .await;
             if let Some(name) = departed {
-                let mut shared = self.lock();
-                let now = shared.now();
-                let sessions = shared.guard.requester_gone(now, &name);
-                for session in sessions {
-                    let streams = session.streams.clone();
-                    for stream in streams {
-                        shared.capture.close_stream(stream);
-                    }
+                let (sessions, capture, eis) = {
+                    let mut shared = self.lock();
+                    let now = shared.now();
+                    let sessions = shared.guard.requester_gone(now, &name);
+                    (sessions, Arc::clone(&shared.capture), Arc::clone(&shared.eis))
+                };
+                for session in &sessions {
+                    end_session(&*capture, &*eis, session);
                 }
                 log::info!(%name, "a caller left; its grants and sessions ended");
             }
@@ -320,17 +333,19 @@ impl Portal {
         }
     }
 
-    /// Close every stream of a session, then forget it.
+    /// Close every stream of a session and end its EIS connection, then forget it.
     ///
-    /// The two steps are one because a stream that outlives its session is the plan's
-    /// first capture failure mode: the session is the consent, and the stream is what the
-    /// consent allows.
+    /// The steps are one because a stream that outlives its session is the plan's first capture
+    /// failure mode: the session is the consent, and the stream and the connection are what the
+    /// consent allows. The compositor is called with the lock released: its answers are applied
+    /// by a thread that takes the same lock.
     pub fn close_session(&self, bus_name: &str, path: &str) -> Result<(), Refusal> {
-        let mut shared = self.lock();
-        let session = shared.guard.close(bus_name, path)?;
-        for stream in session.streams {
-            shared.capture.close_stream(stream);
-        }
+        let (session, capture, eis) = {
+            let mut shared = self.lock();
+            let session = shared.guard.close(bus_name, path)?;
+            (session, Arc::clone(&shared.capture), Arc::clone(&shared.eis))
+        };
+        end_session(&*capture, &*eis, &session);
         Ok(())
     }
 
@@ -359,6 +374,20 @@ impl Portal {
                 log::warn!(%error, "a settings change could not be announced");
             }
         }
+    }
+}
+
+/// End what a session opened: every stream, and for a remote desktop its EIS connection.
+///
+/// Neither call is made with the portal's lock held, so the caller passes the backends it
+/// cloned out of [`Shared`]. The EIS call is made for a remote desktop only: no other kind of
+/// session was ever told to the compositor as an EIS approval.
+fn end_session(capture: &dyn CaptureBackend, eis: &dyn EisBackend, session: &Session) {
+    for stream in &session.streams {
+        capture.close_stream(*stream);
+    }
+    if session.interface == Interface::RemoteDesktop {
+        eis.end(&session.path);
     }
 }
 

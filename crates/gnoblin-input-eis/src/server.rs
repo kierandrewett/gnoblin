@@ -21,7 +21,7 @@
 //! thread: they queue a request and wake the poll. A context that connects after the
 //! decision is granted its capabilities immediately.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -39,7 +39,7 @@ use reis::request::{Connection, DeviceCapability, EisRequest, EisRequestConverte
 use rustix::event::{PollFd, PollFlags, poll};
 
 use super::service::{
-    Action, Caps, ContextId, ContextType, DeviceId, EiRequest, Ending, Grant, Quota, Region, Service, Violation,
+    Action, Caps, ContextId, ContextType, DeviceId, EiRequest, Ending, Grant, Quota, Region, Scope, Service, Violation,
 };
 
 use crate::log;
@@ -84,12 +84,18 @@ pub struct Endpoint {
 }
 
 /// What the caller thread asks the endpoint's thread to do.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 enum Request {
-    /// Apply a consent decision to every context that is still waiting for one.
+    /// Apply a consent decision to every endpoint context that is still waiting for one.
     Grant(Grant),
     /// Replace the layout new devices are created with.
     Regions(Vec<Region>),
+    /// Accept one connection for a consent scope on this socket.
+    Listen { scope: Scope, listener: eis::Listener },
+    /// Decide a consent scope.
+    Decide { scope: Scope, grant: Grant },
+    /// End a consent scope and everything connected through it.
+    Revoke { scope: Scope },
 }
 
 /// The channel between the caller and the endpoint's thread.
@@ -166,8 +172,9 @@ impl Endpoint {
 
     /// Grants these capabilities to every context that is waiting for a decision.
     ///
-    /// This is the portal path: the user approved the request, so the seat advertises
-    /// what the approval covers and nothing else.
+    /// This is the decision of the endpoint's own listening socket. A session that
+    /// arrived through a scope is decided by [`Endpoint::grant_scope`] and is not
+    /// touched by this.
     pub fn grant(&self, capabilities: Caps) {
         self.request(Request::Grant(Grant::granted(capabilities)));
     }
@@ -175,6 +182,48 @@ impl Endpoint {
     /// Refuses: every waiting context ends, and so does every later one.
     pub fn refuse(&self) {
         self.request(Request::Grant(Grant::refused()));
+    }
+
+    /// Serves one connection for `scope` on a new socket at `path`.
+    ///
+    /// The socket is made `0600` straight after the bind and is removed as soon as the
+    /// first client connects, or when the scope is revoked, whichever comes first. The
+    /// connection starts with no capabilities and gets what the scope is granted: this
+    /// is how a remote desktop session reaches its own EIS connection without the
+    /// endpoint's decision, or any other session's, reaching it.
+    ///
+    /// # Errors
+    ///
+    /// Whatever the bind or the permission change reports; no socket is left behind.
+    pub fn listen_scope(&self, scope: Scope, path: &Path) -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt as _;
+        let listener = eis::Listener::bind(path)?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        self.request(Request::Listen { scope, listener });
+        Ok(())
+    }
+
+    /// The user approved `scope`: the seat advertises these capabilities to its
+    /// connection, and to nothing else.
+    pub fn grant_scope(&self, scope: Scope, capabilities: Caps) {
+        self.request(Request::Decide {
+            scope,
+            grant: Grant::granted(capabilities),
+        });
+    }
+
+    /// The user refused `scope`: its connection ends, and so does any later one.
+    pub fn refuse_scope(&self, scope: Scope) {
+        self.request(Request::Decide {
+            scope,
+            grant: Grant::refused(),
+        });
+    }
+
+    /// The scope's session ended: its connection ends after releasing every key, button
+    /// and contact it held, its socket path is removed, and no later connection is let in.
+    pub fn revoke_scope(&self, scope: Scope) {
+        self.request(Request::Revoke { scope });
     }
 
     /// Replaces the layout for devices created from now on.
@@ -244,6 +293,9 @@ enum Progress {
 struct Peer {
     socket: eis::Context,
     state: Progress,
+    /// The consent scope the connection arrived through, or [`None`] for a client of the
+    /// endpoint's own listening socket.
+    scope: Option<Scope>,
 }
 
 /// A connected client: the protocol objects and the context they belong to.
@@ -294,12 +346,14 @@ enum Next {
 /// The endpoint's thread: accept, read, answer, until told to stop.
 fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared: &Channel, wake_read: &UnixStream) {
     let mut sessions: BTreeMap<u64, Peer> = BTreeMap::new();
+    // The one-shot sockets of the consent scopes that have not been connected to yet.
+    let mut scoped: Vec<(Scope, eis::Listener)> = Vec::new();
     let mut next_session = 0;
     loop {
         if shared.stopped() {
             break;
         }
-        let targets = match wait(&listener, &sessions, wake_read) {
+        let targets = match wait(&listener, &scoped, &sessions, wake_read) {
             Ok(targets) => targets,
             Err(error) => {
                 log::warn!(%error, "the poll failed; the endpoint stops");
@@ -313,7 +367,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
             match target {
                 PollTarget::Wake => {
                     drain(wake_read);
-                    answer(shared.take(), &mut service, &mut sessions, &*sink);
+                    answer(shared.take(), &mut service, &mut sessions, &mut scoped, &*sink);
                 }
                 PollTarget::Listener => {
                     while let Ok(Some(socket)) = listener.accept() {
@@ -324,9 +378,38 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
                             Peer {
                                 socket,
                                 state: Progress::Handshake(handshaker),
+                                scope: None,
                             },
                         );
                         next_session += 1;
+                    }
+                }
+                PollTarget::Scoped(scope) => {
+                    let Some(position) = scoped.iter().position(|(held, _)| *held == scope) else {
+                        continue;
+                    };
+                    match scoped[position].1.accept() {
+                        Ok(Some(socket)) => {
+                            // One connection per scope: the first to arrive is the session's,
+                            // and the socket path is unlinked as soon as it is accepted.
+                            scoped.remove(position);
+                            let handshaker = EisHandshaker::new(&socket, 1);
+                            log::debug!(scope = scope.get(), "a session's client connected");
+                            sessions.insert(
+                                next_session,
+                                Peer {
+                                    socket,
+                                    state: Progress::Handshake(handshaker),
+                                    scope: Some(scope),
+                                },
+                            );
+                            next_session += 1;
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            log::warn!(%error, scope = scope.get(), "a session's socket could not accept; it is closed");
+                            scoped.remove(position);
+                        }
                     }
                 }
                 PollTarget::Peer(key) => {
@@ -377,6 +460,8 @@ enum PollTarget {
     Listener,
     /// The caller asked for something.
     Wake,
+    /// The one-shot socket of a consent scope has its connection waiting.
+    Scoped(Scope),
     /// A client's socket has data.
     Peer(u64),
 }
@@ -384,13 +469,17 @@ enum PollTarget {
 /// Waits for anything, and reports what became ready.
 fn wait(
     listener: &eis::Listener,
+    scoped: &[(Scope, eis::Listener)],
     sessions: &BTreeMap<u64, Peer>,
     wake_read: &UnixStream,
 ) -> io::Result<Vec<PollTarget>> {
     let order: Vec<u64> = sessions.keys().copied().collect();
-    let mut fds = Vec::with_capacity(order.len() + 2);
+    let mut fds = Vec::with_capacity(order.len() + scoped.len() + 2);
     fds.push(PollFd::new(listener, PollFlags::IN));
     fds.push(PollFd::new(wake_read, PollFlags::IN));
+    for (_, scoped_listener) in scoped {
+        fds.push(PollFd::new(scoped_listener, PollFlags::IN));
+    }
     for key in &order {
         if let Some(session) = sessions.get(key) {
             fds.push(PollFd::new(session.watch(), PollFlags::IN));
@@ -414,9 +503,12 @@ fn wait(
         targets.push(match index {
             0 => PollTarget::Listener,
             1 => PollTarget::Wake,
-            _ => match index - 2 < order.len() {
-                true => PollTarget::Peer(order[index - 2]),
-                false => continue,
+            _ => match index - 2 < scoped.len() {
+                true => PollTarget::Scoped(scoped[index - 2].0),
+                false => match index - 2 - scoped.len() < order.len() {
+                    true => PollTarget::Peer(order[index - 2 - scoped.len()]),
+                    false => continue,
+                },
             },
         });
     }
@@ -434,7 +526,13 @@ fn drain(socket: &UnixStream) {
 }
 
 /// Applies the caller's requests and performs what they produce.
-fn answer(requests: Vec<Request>, service: &mut Service, sessions: &mut BTreeMap<u64, Peer>, sink: &Sink) {
+fn answer(
+    requests: Vec<Request>,
+    service: &mut Service,
+    sessions: &mut BTreeMap<u64, Peer>,
+    scoped: &mut Vec<(Scope, eis::Listener)>,
+    sink: &Sink,
+) {
     for request in requests {
         match request {
             Request::Grant(grant) => {
@@ -445,7 +543,68 @@ fn answer(requests: Vec<Request>, service: &mut Service, sessions: &mut BTreeMap
                 }
             }
             Request::Regions(regions) => service.set_regions(regions),
+            Request::Listen { scope, listener } => scoped.push((scope, listener)),
+            Request::Decide { scope, grant } => {
+                let told = service.decide_scope(scope, grant);
+                perform_told(told, service, sessions, sink);
+            }
+            Request::Revoke { scope } => {
+                // No one can connect to a scope that is gone: its listening socket is
+                // dropped, which unlinks the path.
+                scoped.retain(|(held, _)| *held != scope);
+                let told = service.revoke_scope(scope);
+                perform_told(told, service, sessions, sink);
+                // A connection still shaking hands has no context to end, so it is closed
+                // here: left alone it would finish its handshake under a scope that no
+                // longer exists.
+                sessions.retain(|_, peer| !(peer.scope == Some(scope) && matches!(peer.state, Progress::Handshake(_))));
+                service.forget_scope(scope);
+            }
         }
+    }
+}
+
+/// Performs the actions a scope's decision produced, then closes every connection that
+/// decision ended.
+///
+/// The client is told why before the socket closes: the ending is flushed first, so a
+/// client that was refused or revoked reads the disconnect and not a bare end of stream.
+fn perform_told(
+    told: Vec<(ContextId, Action)>,
+    service: &mut Service,
+    sessions: &mut BTreeMap<u64, Peer>,
+    sink: &Sink,
+) {
+    let mut touched = BTreeSet::new();
+    for (context, action) in told {
+        touched.insert(context);
+        if let Some(session) = session_of(sessions, context) {
+            perform_all(session, vec![action], sink);
+        }
+    }
+    for context in touched {
+        let Some(key) = sessions
+            .iter()
+            .find(|(_, peer)| peer.context() == Some(context))
+            .map(|(key, _)| *key)
+        else {
+            continue;
+        };
+        let ended =
+            matches!(sessions.get(&key), Some(Peer { state: Progress::Connected(connected), .. }) if connected.ended);
+        if !ended {
+            continue;
+        }
+        if let Some(Peer {
+            state: Progress::Connected(connected),
+            ..
+        }) = sessions.get(&key)
+            && let Err(error) = connected.connection.flush()
+        {
+            log::debug!(%error, "the ending could not be flushed; the client will see the socket close");
+        }
+        sessions.remove(&key);
+        service.forget(context);
     }
 }
 
@@ -530,7 +689,10 @@ fn handshake(session: &mut Peer, request: eis::Request, service: &mut Service, s
     // the seat and the devices are created through, so they outlive the request loop's
     // borrow of the converter.
     let connection = converter.handle().clone();
-    let (context, actions) = service.connect(response.name.as_deref(), context_type);
+    let (context, actions) = match session.scope {
+        Some(scope) => service.connect_in(scope, response.name.as_deref(), context_type),
+        None => service.connect(response.name.as_deref(), context_type),
+    };
     let mut connected = Connected {
         converter,
         connection,
@@ -639,7 +801,9 @@ fn perform(connected: &mut Connected, action: Action, sink: &Sink) {
 /// could not have avoided.
 fn ending_of(ending: Ending) -> (eis::connection::DisconnectReason, Option<String>) {
     match ending {
-        Ending::Disconnected | Ending::Refused => (eis::connection::DisconnectReason::Disconnected, None),
+        Ending::Disconnected | Ending::Refused | Ending::Revoked => {
+            (eis::connection::DisconnectReason::Disconnected, None)
+        }
         Ending::Violation(violation) => (eis::connection::DisconnectReason::Protocol, Some(violation.to_string())),
     }
 }

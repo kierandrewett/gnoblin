@@ -15,9 +15,11 @@
 //! through [`crate::capture_relay`], which writes the PNG and answers with its URI. Only
 //! full-screen screenshots are served.
 //!
-//! Not real: the screen cast frames. [`crate::backends::CaptureBackend::open_stream`] is
-//! still the default that refuses, so a screen cast fails at `Start` with
-//! `org.freedesktop.portal.Error.NotSupported` after the user has been asked, and the stream
+//! The screen cast frames are the compositor's: [`crate::backends::CaptureBackend::open_stream`]
+//! tells it the user approved a cast of the chosen output (`cast.grant`) and starts the PipeWire
+//! stream (`cast.start`), and the node it answers is the one the app reads. The compositor
+//! refuses a start for a session it was not told the user approved, so a portal that skipped the
+//! question has no node to return. A compositor with no PipeWire daemon refuses, and the stream
 //! list is never fabricated.
 //!
 //! # The narrower option set
@@ -365,31 +367,35 @@ impl ScreenCast {
                         .session(&caller, &path)
                         .ok_or_else(|| refused(crate::consent::Refusal::UnknownSession { path: path.clone() }))?;
                     StreamRequest {
+                        session: path.clone(),
                         // The picker is the provider's, and this backend's prompt answers
                         // allow/deny, so the target is the output the selection named or
                         // the first one. A window selection would need the picker's answer
                         // to carry an identity, which the request layer's answer does not:
                         // stated here rather than guessed at from a monitor number.
-                        target: Target::Output(OutputId::new(u64::from(
-                            recorded_uint(&session.options, "output").unwrap_or(1),
-                        ))),
+                        target: Target::Output(OutputId::new(
+                            recorded_uint(&session.options, "output")
+                                .map_or(gnoblin_client::wire::OUTPUT_FIRST, u64::from),
+                        )),
                         cursor_mode: recorded_uint(&session.options, "cursor_mode").unwrap_or(CURSOR_EMBEDDED),
                         multiple: recorded_flag(&session.options, "multiple"),
                     }
                 };
-                let opened = {
-                    let mut shared = self.portal.lock();
-                    let opened = shared.capture.open_stream(&request);
-                    if let Ok(stream) = &opened {
-                        let _ = shared.guard.record_stream(&path, stream.id);
-                    }
-                    opened
-                };
-                match opened {
+                // The compositor is called with the lock released: the thread that reads its
+                // answers takes the same lock.
+                let capture = self.portal.capture();
+                match capture.open_stream(&request) {
                     Ok(stream) => {
-                        {
+                        let recorded = self.portal.lock().guard.record_stream(&path, stream.id);
+                        let started = recorded.and_then(|()| {
                             let mut shared = self.portal.lock();
-                            shared.guard.start(&caller, &path).map_err(refused)?;
+                            shared.guard.start(&caller, &path).map(|_| ())
+                        });
+                        if let Err(refusal) = started {
+                            // The session went away while the stream was opening, or was
+                            // started twice: nothing holds the stream, so it ends here.
+                            capture.close_stream(stream.id);
+                            return Err(refused(refusal));
                         }
                         let opened = vec![(stream.node, properties(&stream.properties))];
                         let mut results = BTreeMap::new();

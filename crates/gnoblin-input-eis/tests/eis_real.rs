@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::os::fd::AsFd;
+use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -21,7 +22,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{DEFAULT_MODE, Headless};
-use gnoblin_input_eis::{Caps, Endpoint, Grant, Options, Quota, Region};
+use gnoblin_input_eis::{Caps, Endpoint, Grant, Options, Quota, Region, Scope};
 use gnoblin_types::{OutputId, Rect};
 use gnoblin_wayland::{Config, ControlHandle, InputSink, LoopError, Server, SessionSnapshot};
 use reis::{PendingRequestResult, ei};
@@ -1057,5 +1058,191 @@ fn malformed_events_are_refused_and_the_server_keeps_serving() {
         let (pointer, _) = devices_of(pointer_and_keyboard());
         good.motion_absolute(pointer.expect("a pointer device"), centre.x as f32, centre.y as f32);
         wait_for_app(&mut app, "the recovered client's motion", |app| !app.motions.is_empty());
+    });
+}
+
+/// The path of a consent scope's socket, beside the endpoint's own.
+fn scope_path(session: &Handle, name: &str) -> PathBuf {
+    session.eis.with_file_name(format!("eis-{name}.sock"))
+}
+
+impl Handle {
+    /// An endpoint that has decided nothing: only a scope's decision lets a client in.
+    fn undecided_endpoint(&self) -> Endpoint {
+        let output = self.output();
+        let options = Options {
+            path: self.eis.clone(),
+            grant: Grant::pending(),
+            regions: vec![Region {
+                output,
+                rect: Rect::new(0, 0, DEFAULT_MODE.width, DEFAULT_MODE.height),
+            }],
+            quota: Quota::default(),
+        };
+        let sink = self.sink.clone();
+        Endpoint::bind(options, move |event| sink.inject(event)).expect("the EIS endpoint binds")
+    }
+}
+
+/// Binds and starts emulating on a client that is already connected and decided.
+fn emulate_all(eis: &mut EisClient, devices: usize) {
+    eis.bind();
+    eis.wait_for_devices(devices);
+    for index in 0..devices {
+        eis.start_emulating(index, 1);
+    }
+}
+
+#[test]
+fn a_granted_scope_gives_its_client_the_seat_and_its_keys_reach_the_window() {
+    Session::start().run(|session| {
+        let mut app = Client::app(&session.wayland);
+        let _window = app.map_window("org.gnoblin.Eis", "Scoped");
+        session.wait_for(|observation| observation.titled("Scoped").is_some_and(|window| window.focused));
+
+        let endpoint = session.undecided_endpoint();
+        let scope = Scope::new(1);
+        let path = scope_path(session, "granted");
+        endpoint.listen_scope(scope, &path).expect("the scope's socket binds");
+        let mode = std::fs::metadata(&path)
+            .expect("the socket exists")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "the scope's socket is private to its owner");
+
+        let mut eis = EisClient::connect(&path, "remote-app");
+        eis.wait_for("the seat", |client| client.seat_done > 0);
+        assert_eq!(eis.capabilities, 0, "before the decision the seat advertises nothing");
+        assert!(
+            !path.exists(),
+            "the socket is removed as soon as its one client connected"
+        );
+
+        endpoint.grant_scope(scope, pointer_and_keyboard());
+        eis.wait_for("the granted capabilities", |client| {
+            client.capabilities == u64::from(pointer_and_keyboard().bits())
+        });
+        emulate_all(&mut eis, 2);
+        let (_, keyboard) = devices_of(pointer_and_keyboard());
+        let keyboard = keyboard.expect("a keyboard device");
+        eis.key(keyboard, KEY_A, true);
+        eis.key(keyboard, KEY_A, false);
+        wait_for_app(&mut app, "the scope's two key edges", |app| app.keys.len() == 2);
+        assert_eq!(app.state.keys, vec![(KEY_A, 1), (KEY_A, 0)]);
+    });
+}
+
+#[test]
+fn a_scope_decision_does_not_reach_another_scope_or_the_endpoints_clients() {
+    Session::start().run(|session| {
+        let endpoint = session.undecided_endpoint();
+        let granted = Scope::new(1);
+        let waiting = Scope::new(2);
+        let granted_path = scope_path(session, "decided");
+        let waiting_path = scope_path(session, "waiting");
+        endpoint
+            .listen_scope(granted, &granted_path)
+            .expect("the first scope's socket");
+        endpoint
+            .listen_scope(waiting, &waiting_path)
+            .expect("the second scope's socket");
+
+        let mut decided = EisClient::connect(&granted_path, "decided");
+        let mut other = EisClient::connect(&waiting_path, "waiting");
+        let mut plain = EisClient::connect(&session.eis, "endpoint-client");
+        for client in [&mut decided, &mut other, &mut plain] {
+            client.wait_for("the seat", |client| client.seat_done > 0);
+        }
+
+        endpoint.grant_scope(granted, Caps::KEYBOARD);
+        decided.wait_for("the keyboard", |client| {
+            client.capabilities == u64::from(Caps::KEYBOARD.bits())
+        });
+
+        // Give the server every chance to wrongly advertise to the others.
+        for _ in 0..20 {
+            other.pump();
+            plain.pump();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(other.capabilities, 0, "another scope's client got nothing");
+        assert_eq!(plain.capabilities, 0, "the endpoint's client got nothing");
+        assert!(other.disconnected.is_none() && plain.disconnected.is_none());
+    });
+}
+
+#[test]
+fn a_refused_scope_ends_its_client_with_a_disconnect() {
+    Session::start().run(|session| {
+        let endpoint = session.undecided_endpoint();
+        let scope = Scope::new(1);
+        let path = scope_path(session, "refused");
+        endpoint.listen_scope(scope, &path).expect("the scope's socket binds");
+
+        let mut eis = EisClient::connect(&path, "refused-app");
+        eis.wait_for("the seat", |client| client.seat_done > 0);
+        endpoint.refuse_scope(scope);
+        eis.wait_for("the refusal", |client| client.disconnected.is_some());
+        assert_eq!(eis.capabilities, 0, "a refused client never saw a capability");
+        assert!(eis.devices.is_empty(), "a refused client never got a device");
+    });
+}
+
+#[test]
+fn revoking_a_scope_stops_its_events_and_releases_what_it_held() {
+    Session::start().run(|session| {
+        let mut app = Client::app(&session.wayland);
+        let _window = app.map_window("org.gnoblin.Eis", "Revoked");
+        session.wait_for(|observation| observation.titled("Revoked").is_some_and(|window| window.focused));
+
+        let endpoint = session.undecided_endpoint();
+        let scope = Scope::new(1);
+        let path = scope_path(session, "revoked");
+        endpoint.listen_scope(scope, &path).expect("the scope's socket binds");
+        endpoint.grant_scope(scope, pointer_and_keyboard());
+        let mut eis = EisClient::connect(&path, "revoked-app");
+        eis.wait_for("the granted seat", |client| {
+            client.capabilities == u64::from(pointer_and_keyboard().bits())
+        });
+        emulate_all(&mut eis, 2);
+        let (_, keyboard) = devices_of(pointer_and_keyboard());
+        let keyboard = keyboard.expect("a keyboard device");
+        eis.key(keyboard, KEY_A, true);
+        wait_for_app(&mut app, "the press", |app| app.keys.len() == 1);
+
+        // The session ends while the key is held: the server releases it and ends the client.
+        endpoint.revoke_scope(scope);
+        wait_for_app(&mut app, "the release the revocation issued", |app| app.keys.len() == 2);
+        assert_eq!(app.state.keys, vec![(KEY_A, 1), (KEY_A, 0)]);
+        eis.wait_for("the disconnect", |client| client.disconnected.is_some());
+
+        // Whatever the client still sends reaches nobody.
+        eis.key(keyboard, KEY_A, true);
+        for _ in 0..40 {
+            app.roundtrip();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            app.state.keys,
+            vec![(KEY_A, 1), (KEY_A, 0)],
+            "a revoked session's later events stopped at the endpoint"
+        );
+    });
+}
+
+#[test]
+fn revoking_a_scope_before_anyone_connected_removes_its_socket() {
+    Session::start().run(|session| {
+        let endpoint = session.undecided_endpoint();
+        let scope = Scope::new(1);
+        let path = scope_path(session, "unused");
+        endpoint.listen_scope(scope, &path).expect("the scope's socket binds");
+        assert!(path.exists());
+        endpoint.revoke_scope(scope);
+        let deadline = Instant::now() + TIMEOUT;
+        while path.exists() {
+            assert!(Instant::now() < deadline, "the revoked scope's socket is still there");
+            thread::sleep(Duration::from_millis(5));
+        }
     });
 }

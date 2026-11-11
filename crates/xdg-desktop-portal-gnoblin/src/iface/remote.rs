@@ -6,17 +6,36 @@
 //! so the older `Notify*` members are refused with a sentence naming EIS rather than
 //! implemented as a second path that would disagree with the first.
 //!
+//! # The consent flow
+//!
+//! The portal asks and the compositor enforces, and `RemoteDesktop.Start` is where the two
+//! meet:
+//!
+//! 1. Both questions are asked of the `portal.ui` provider, capture first.
+//! 2. A yes is told to the compositor ([`crate::backends::EisBackend::grant`]) as the devices
+//!    the user approved. From then on the compositor lets that session's EIS connection inject
+//!    those devices and nothing else. A compositor that cannot be told fails the start.
+//! 3. The user's own no is told to it too ([`crate::backends::EisBackend::refuse`]), after which
+//!    the session never gets a socket. An expired prompt or a caller that left decides nothing.
+//! 4. `ConnectToEIS` asks the compositor for the session's descriptor. The compositor refuses
+//!    a session whose approval it was not told, whatever this process thinks the grant is.
+//! 5. Closing the session, or the caller leaving the bus, ends the EIS connection
+//!    ([`crate::backends::EisBackend::end`]), which releases every key it held.
+//!
+//! `InputCapture` shares the consent question and nothing after it: capturing input needs
+//! EIS receiver contexts, which the compositor does not serve, so its `Start` answers
+//! `NotSupported` after the question and its `ConnectToEIS` is refused by the compositor, which
+//! was never told an approval for the session.
+//!
 //! # What is real, and what is not
 //!
 //! Real: the session lifecycle (`CreateSession`, `SelectDevices`, `Start`), both consent
-//! questions in order, the EIS enable/disable/release state, `Close` ending the session,
-//! and the refusal of `Notify*` for a session that does not exist or was never started.
+//! questions in order, the compositor's enforcement of the answer, the descriptor, the EIS
+//! enable/disable/release state, `Close` ending the session, and the refusal of `Notify*` for
+//! a session that does not exist or was never started.
 //!
-//! Not real: the descriptor. [`crate::backends::EisBackend`] is the compositor's call, and
-//! the default refuses with a sentence naming the missing member. A remote desktop
-//! therefore asks the user and then answers `NotSupported`, which is the honest order: a
-//! grant nobody can use is not created, because the grant is only recorded when the
-//! question is answered and the call it enables is attempted straight after.
+//! Optional: the screen stream. A session that cannot stream (no PipeWire daemon) still starts
+//! and injects input, and returns no `streams`.
 
 use std::collections::BTreeMap;
 
@@ -151,7 +170,13 @@ impl RemoteDesktop {
         Ok((0, BTreeMap::new()))
     }
 
-    /// Ask the user, then connect the EIS session.
+    /// Ask the user, then tell the compositor what they said.
+    ///
+    /// The two questions come in order, capture first. The answer is then the compositor's to
+    /// enforce: a yes is told to it as the devices the user approved, which is what lets that
+    /// session's EIS connection inject them, and an explicit no is told to it as a refusal,
+    /// after which the session never gets a socket. A compositor that cannot be told fails the
+    /// start, because an approval nothing enforces is not one to report.
     async fn start(
         &self,
         #[zbus(header)] header: Header<'_>,
@@ -190,48 +215,79 @@ impl RemoteDesktop {
             .await?;
         }
         if !outcome.granted() {
+            // Only the user's own no is a refusal the compositor records. A prompt that expired,
+            // or whose caller left, decided nothing, and the session may ask again.
+            if outcome == ConsentOutcome::Refused {
+                self.portal.eis().refuse(&path);
+            }
             let _ = remove(&self.portal.connection, handle.as_str()).await;
             return Ok((outcome.response(), BTreeMap::new()));
         }
-        let request = {
+        let (devices, request) = {
             let shared = self.portal.lock();
             let session = shared
                 .guard
                 .session(&caller, &path)
                 .ok_or_else(|| refused(crate::consent::Refusal::UnknownSession { path: path.clone() }))?;
-            crate::backends::StreamRequest {
-                target: gnoblin_capture::Target::Output(OutputId::new(u64::from(
-                    recorded_uint(&session.options, "output").unwrap_or(1),
-                ))),
-                cursor_mode: CURSOR_EMBEDDED,
-                multiple: false,
+            (
+                recorded_uint(&session.options, "types").unwrap_or(DEVICE_KEYBOARD | DEVICE_POINTER),
+                crate::backends::StreamRequest {
+                    session: path.clone(),
+                    target: gnoblin_capture::Target::Output(OutputId::new(
+                        recorded_uint(&session.options, "output").map_or(gnoblin_client::wire::OUTPUT_FIRST, u64::from),
+                    )),
+                    cursor_mode: CURSOR_EMBEDDED,
+                    multiple: false,
+                },
+            )
+        };
+        // The approval goes to the compositor before anything else is opened: it is what makes
+        // the session's descriptor mean anything. The compositor is called with the lock
+        // released, because the thread that reads its answers takes the same lock.
+        let granted = self.portal.eis().grant(&path, devices);
+        if let Err(missing) = granted {
+            let _ = remove(&self.portal.connection, handle.as_str()).await;
+            return Err(unsupported(missing));
+        }
+        // The screen stream is the optional half of a remote desktop: a session that only
+        // injects input is a session, and a compositor that cannot stream (no PipeWire) must
+        // not take the input away.
+        let capture = self.portal.capture();
+        let stream = match capture.open_stream(&request) {
+            Ok(stream) => {
+                let recorded = self.portal.lock().guard.record_stream(&path, stream.id);
+                if recorded.is_err() {
+                    // The session went away while the stream was opening: nothing holds it.
+                    capture.close_stream(stream.id);
+                    None
+                } else {
+                    Some(stream)
+                }
+            }
+            Err(missing) => {
+                log::warn!(app = %app_id, session = %path, reason = %missing, "a remote desktop session starts without a screen stream");
+                None
             }
         };
-        let opened = {
-            let mut shared = self.portal.lock();
-            let opened = shared.capture.open_stream(&request);
-            if let Ok(stream) = &opened {
-                let _ = shared.guard.record_stream(&path, stream.id);
-            }
-            opened
-        };
-        let stream = opened.map_err(unsupported)?;
-        {
-            let mut shared = self.portal.lock();
-            shared.guard.start(&caller, &path).map_err(refused)?;
+        let started = self.portal.lock().guard.start(&caller, &path);
+        if let Err(refusal) = started {
+            self.portal.eis().end(&path);
+            return Err(refused(refusal));
         }
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        let mut properties = BTreeMap::new();
-        for (name, value) in &stream.properties {
-            if let Some(value) = super::variant(value) {
-                properties.insert(name.clone(), value);
-            }
-        }
         let mut results = BTreeMap::new();
-        results.insert(
-            "streams".to_owned(),
-            super::capture::streams(&[(stream.node, properties)]),
-        );
+        if let Some(stream) = stream {
+            let mut properties = BTreeMap::new();
+            for (name, value) in &stream.properties {
+                if let Some(value) = super::variant(value) {
+                    properties.insert(name.clone(), value);
+                }
+            }
+            results.insert(
+                "streams".to_owned(),
+                super::capture::streams(&[(stream.node, properties)]),
+            );
+        }
         log::info!(app = %app_id, session = %path, "a remote desktop session started");
         Ok((0, results))
     }
@@ -388,11 +444,11 @@ impl RemoteDesktop {
     ) -> fdo::Result<zbus::OwnedFd> {
         let caller = sender(&header)?;
         let path = session_handle.as_str().to_owned();
-        let opened = {
+        {
             let mut shared = self.portal.lock();
             grant_live(&mut shared, &caller, &path)?;
-            shared.eis.connect(&path, &app_id)
-        };
+        }
+        let opened = self.portal.eis().connect(&path, &app_id);
         let fd = opened.map_err(unsupported)?;
         Ok(zbus::OwnedFd::from(fd))
     }
@@ -554,45 +610,12 @@ impl InputCapture {
         .await;
         let reply = match outcome {
             Ok(ConsentOutcome::Granted) => {
-                let request = {
-                    let shared = self.portal.lock();
-                    let session = shared
-                        .guard
-                        .session(&caller, &path)
-                        .ok_or_else(|| refused(crate::consent::Refusal::UnknownSession { path: path.clone() }))?;
-                    crate::backends::StreamRequest {
-                        target: gnoblin_capture::Target::Output(OutputId::new(u64::from(
-                            recorded_uint(&session.options, "output").unwrap_or(1),
-                        ))),
-                        cursor_mode: CURSOR_EMBEDDED,
-                        multiple: false,
-                    }
-                };
-                let opened = {
-                    let mut shared = self.portal.lock();
-                    let opened = shared.capture.open_stream(&request);
-                    if let Ok(stream) = &opened {
-                        let _ = shared.guard.record_stream(&path, stream.id);
-                    }
-                    opened
-                };
-                let stream = opened.map_err(unsupported)?;
-                {
-                    let mut shared = self.portal.lock();
-                    shared.guard.start(&caller, &path).map_err(refused)?;
-                }
-                let mut properties = BTreeMap::new();
-                for (name, value) in &stream.properties {
-                    if let Some(value) = super::variant(value) {
-                        properties.insert(name.clone(), value);
-                    }
-                }
-                let mut results = BTreeMap::new();
-                results.insert(
-                    "streams".to_owned(),
-                    super::capture::streams(&[(stream.node, properties)]),
-                );
-                (0, results)
+                // The answer is asked and kept, and nothing is served after it: capturing input
+                // needs EIS receiver contexts and zones, which the compositor does not offer.
+                // No screen stream is opened here either. The user was asked about input and never
+                // about the screen, so a stream would be a capture nobody consented to.
+                let _ = remove(&self.portal.connection, handle.as_str()).await;
+                return Err(unsupported(crate::backends::Unavailable::missing("input-capture")));
             }
             Ok(outcome) => (outcome.response(), BTreeMap::new()),
             Err(refusal) => return Err(refusal),
@@ -723,11 +746,11 @@ impl InputCapture {
     ) -> fdo::Result<zbus::OwnedFd> {
         let caller = sender(&header)?;
         let path = session_handle.as_str().to_owned();
-        let opened = {
+        {
             let mut shared = self.portal.lock();
             grant_live(&mut shared, &caller, &path)?;
-            shared.eis.connect(&path, &app_id)
-        };
+        }
+        let opened = self.portal.eis().connect(&path, &app_id);
         let fd = opened.map_err(unsupported)?;
         Ok(zbus::OwnedFd::from(fd))
     }

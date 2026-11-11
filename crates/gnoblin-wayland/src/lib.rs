@@ -228,9 +228,9 @@ pub use output_control::{NoOutputControl, OutputControl};
 pub use policy::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
-    Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT,
-    InputSink, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings, VisualBellScope,
-    VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
+    CAST_TIMEOUT, Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME,
+    FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings,
+    VisualBellScope, VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
 };
 /// The dispatch glue a redirect implements.
 ///
@@ -250,6 +250,8 @@ pub use tree_frame::{
 
 /// The identity and the window process a client's surface belongs to.
 pub use process::{ProcessIdentity, WindowProcess};
+/// A screen cast stream the compositor started for a consented session, and why one is refused.
+pub use protocols::capture_shared::{CastRefusal, CastStream};
 /// Protocol extension trait and host traits, with the activation and surface types they use.
 pub use protocols::extension::{
     Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,

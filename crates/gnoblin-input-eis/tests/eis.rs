@@ -8,7 +8,7 @@
 use gnoblin_backend::{InputEvent, TouchPhase};
 use gnoblin_input_eis::{
     Action, Caps, Context, ContextId, ContextType, DeviceId, EiDevice, EiRequest, Ending, Grant, Origin, Quota, Region,
-    Service, Violation,
+    Scope, Service, Violation,
 };
 use gnoblin_types::{OutputId, Point, Rect};
 
@@ -941,4 +941,203 @@ fn a_restart_with_a_larger_sequence_is_accepted_and_reported() {
     let actions = peer.apply(EiRequest::StartEmulating { device, sequence: 2 });
     assert_eq!(ending(&actions), None, "a larger sequence restarts the emulation");
     assert_eq!(peer.device(Some(device)).emulating(), Some(2));
+}
+
+/// A client that arrives through `scope` and the seat actions it was told.
+fn scoped(service: &mut Service, scope: Scope) -> (ContextId, Vec<Action>) {
+    service.connect_in(scope, Some("scoped-client"), ContextType::Sender)
+}
+
+/// The capabilities a `Seat` action advertises, if the list holds one.
+fn advertised(actions: &[Action]) -> Option<Caps> {
+    actions.iter().find_map(|action| match action {
+        Action::Seat { capabilities } => Some(*capabilities),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_scope_decision_reaches_its_own_clients_and_not_the_endpoints() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    let (endpoint_client, _) = service.connect(Some("endpoint-client"), ContextType::Sender);
+    let (first, seat) = scoped(&mut service, Scope::new(1));
+    assert_eq!(
+        advertised(&seat),
+        Some(Caps::NONE),
+        "an undecided scope advertises nothing"
+    );
+    let (second, _) = scoped(&mut service, Scope::new(2));
+
+    let told = service.decide_scope(Scope::new(1), Grant::granted(Caps::KEYBOARD));
+    let contexts: Vec<ContextId> = told.iter().map(|(context, _)| *context).collect();
+    assert_eq!(contexts, vec![first], "only the decided scope's client is told");
+    assert_eq!(
+        service.context(first).expect("the context").capabilities(),
+        Caps::KEYBOARD
+    );
+    for untouched in [endpoint_client, second] {
+        assert_eq!(
+            service.context(untouched).expect("the context").capabilities(),
+            Caps::NONE,
+            "a client outside the scope advertises nothing"
+        );
+    }
+}
+
+#[test]
+fn the_endpoint_decision_never_reaches_a_scoped_client() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    let (client, _) = scoped(&mut service, Scope::new(1));
+    let told = service.set_grant(Grant::granted(all_caps()));
+    assert_eq!(told, Vec::new(), "the endpoint's grant does not decide a scope");
+    assert_eq!(service.context(client).expect("the context").capabilities(), Caps::NONE);
+
+    let told = service.set_grant(Grant::refused());
+    assert_eq!(
+        told,
+        Vec::new(),
+        "the endpoint's refusal does not end a scope's client either"
+    );
+    assert_eq!(service.context(client).expect("the context").ended(), None);
+}
+
+#[test]
+fn a_client_that_arrives_after_its_scope_was_granted_is_advertised_at_once() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    service.decide_scope(Scope::new(1), Grant::granted(Caps::KEYBOARD));
+    let (_, seat) = scoped(&mut service, Scope::new(1));
+    assert_eq!(advertised(&seat), Some(Caps::KEYBOARD));
+}
+
+#[test]
+fn a_refused_scope_ends_its_waiting_client_and_every_later_one() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    let (waiting, _) = scoped(&mut service, Scope::new(1));
+    let told = service.decide_scope(Scope::new(1), Grant::refused());
+    assert!(
+        told.iter().any(|(context, action)| *context == waiting
+            && matches!(
+                action,
+                Action::End {
+                    ending: Ending::Refused
+                }
+            )),
+        "the waiting client is ended as refused: {told:?}"
+    );
+
+    let (_, later) = scoped(&mut service, Scope::new(1));
+    assert_eq!(
+        ending(&later),
+        Some(Ending::Refused),
+        "a later client of the scope is refused"
+    );
+}
+
+#[test]
+fn a_scope_is_decided_once() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    let (client, _) = scoped(&mut service, Scope::new(1));
+    service.decide_scope(Scope::new(1), Grant::granted(Caps::KEYBOARD));
+    let told = service.decide_scope(Scope::new(1), Grant::refused());
+    assert_eq!(told, Vec::new(), "a late refusal does not undo a grant");
+    assert_eq!(service.context(client).expect("the context").ended(), None);
+
+    service.decide_scope(Scope::new(2), Grant::refused());
+    let told = service.decide_scope(Scope::new(2), Grant::granted(all_caps()));
+    assert_eq!(told, Vec::new(), "a late grant does not reopen a refusal");
+    let (_, later) = scoped(&mut service, Scope::new(2));
+    assert_eq!(ending(&later), Some(Ending::Refused));
+}
+
+#[test]
+fn revoking_a_scope_releases_what_its_client_held_and_ends_it() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    service.decide_scope(Scope::new(1), Grant::granted(all_caps()));
+    let (id, _) = scoped(&mut service, Scope::new(1));
+    service.apply(
+        id,
+        EiRequest::Bind {
+            capabilities: all_caps(),
+        },
+    );
+    let keyboard = service
+        .context(id)
+        .expect("the context")
+        .devices()
+        .find(|device| device.capabilities().contains(Caps::KEYBOARD))
+        .expect("a keyboard device")
+        .id();
+    service.apply(
+        id,
+        EiRequest::StartEmulating {
+            device: keyboard,
+            sequence: 1,
+        },
+    );
+    service.apply(
+        id,
+        EiRequest::Key {
+            device: keyboard,
+            key: KEY_A,
+            pressed: true,
+        },
+    );
+
+    let told = service.revoke_scope(Scope::new(1));
+    let actions: Vec<Action> = told.into_iter().map(|(_, action)| action).collect();
+    let released: Vec<_> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::Inject(injection) => Some(injection.event()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(released.len(), 1, "the held key is released once: {actions:?}");
+    assert_eq!(ending(&actions), Some(Ending::Revoked));
+
+    // What the client sends after the revocation is ignored: nothing reaches the seat.
+    let after = service.apply(
+        id,
+        EiRequest::Key {
+            device: keyboard,
+            key: KEY_B,
+            pressed: true,
+        },
+    );
+    assert_eq!(after, Vec::new(), "an ended context's events stop at the state machine");
+
+    let (_, later) = scoped(&mut service, Scope::new(1));
+    assert_eq!(ending(&later), Some(Ending::Refused), "a revoked scope lets no one in");
+}
+
+#[test]
+fn revoking_one_scope_leaves_another_scope_and_the_endpoint_alone() {
+    let mut service = Service::new(Grant::granted(Caps::KEYBOARD), layout(), Quota::default());
+    let (endpoint_client, _) = service.connect(Some("endpoint-client"), ContextType::Sender);
+    service.decide_scope(Scope::new(1), Grant::granted(Caps::KEYBOARD));
+    service.decide_scope(Scope::new(2), Grant::granted(Caps::KEYBOARD));
+    let (first, _) = scoped(&mut service, Scope::new(1));
+    let (second, _) = scoped(&mut service, Scope::new(2));
+
+    let told = service.revoke_scope(Scope::new(1));
+    assert!(
+        told.iter().all(|(context, _)| *context == first),
+        "only the revoked scope is touched: {told:?}"
+    );
+    for alive in [second, endpoint_client] {
+        assert_eq!(service.context(alive).expect("the context").ended(), None);
+    }
+}
+
+#[test]
+fn a_forgotten_scope_is_pending_again() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    service.decide_scope(Scope::new(1), Grant::granted(Caps::KEYBOARD));
+    service.forget_scope(Scope::new(1));
+    let (_, seat) = scoped(&mut service, Scope::new(1));
+    assert_eq!(
+        advertised(&seat),
+        Some(Caps::NONE),
+        "a forgotten decision is not remembered"
+    );
 }

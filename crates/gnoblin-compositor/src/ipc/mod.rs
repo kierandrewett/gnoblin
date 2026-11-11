@@ -24,6 +24,7 @@
 //! code that keeps the promise, and `tests/ipc.rs` drives the same paths through a
 //! real socket.
 
+mod consent;
 mod path;
 mod portal;
 mod privileged;

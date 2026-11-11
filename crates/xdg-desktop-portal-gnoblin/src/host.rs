@@ -41,7 +41,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use futures_channel::{mpsc, oneshot};
-use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
+use gnoblin_client::wire::{CastStream, PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, Event, PortalOutcome, PortalTicket, Transport};
 use gnoblin_model::{Fields, Filter};
 use gnoblin_types::{RequestId, Version};
@@ -89,6 +89,67 @@ enum Command {
     Capture {
         reply: oneshot::Sender<Result<Vec<u8>, ScreenshotError>>,
     },
+    /// Make one consent call of the compositor, and answer with what it said.
+    Consent {
+        call: ConsentCall,
+        reply: oneshot::Sender<Result<ConsentAnswer, Unavailable>>,
+    },
+}
+
+/// One call the portal makes of the compositor about the user's answer. The compositor enforces
+/// the answer; the portal only reports it and asks for what it unlocks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConsentCall {
+    /// The user approved a remote desktop session for these device types.
+    RemoteGrant {
+        /// The portal's session handle, which the compositor holds the answer under.
+        session: String,
+        /// The RemoteDesktop portal's device mask: 1 keyboard, 2 pointer, 4 touch screen.
+        devices: u32,
+    },
+    /// The user refused a remote desktop session.
+    RemoteRefuse {
+        /// The portal's session handle.
+        session: String,
+    },
+    /// Open the EIS socket of an approved remote desktop session.
+    RemoteConnect {
+        /// The portal's session handle.
+        session: String,
+    },
+    /// A remote desktop session ended.
+    RemoteEnd {
+        /// The portal's session handle.
+        session: String,
+    },
+    /// The user approved a screen cast of one output.
+    CastGrant {
+        /// The portal's session handle.
+        session: String,
+        /// The output the user approved.
+        output: u64,
+    },
+    /// Start the stream of an approved screen cast.
+    CastStart {
+        /// The portal's session handle.
+        session: String,
+    },
+    /// A screen cast session ended.
+    CastEnd {
+        /// The portal's session handle.
+        session: String,
+    },
+}
+
+/// What the compositor answered a [`ConsentCall`] with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConsentAnswer {
+    /// It did what was asked and has nothing to report.
+    Done,
+    /// The path of the one-shot EIS socket of an approved remote desktop session.
+    Socket(String),
+    /// The stream it started for an approved screen cast.
+    Stream(CastStream),
 }
 
 /// The `portal.ui` host, as a handler sees it.
@@ -139,6 +200,20 @@ impl IpcHost {
             Ok(outcome) => outcome,
             Err(_) => Err(capture_closed()),
         }
+    }
+
+    /// Tell the compositor what the user answered, or ask it to act on an answer, and wait for
+    /// its reply. The loop's client makes the call, so the connection is still read by one thread.
+    ///
+    /// # Errors
+    ///
+    /// The compositor's refusal, with its code, or a connection that closed before the answer.
+    pub fn consent(&self, call: ConsentCall) -> Result<ConsentAnswer, Unavailable> {
+        let (reply, answer) = oneshot::channel();
+        if self.commands.unbounded_send(Command::Consent { call, reply }).is_err() {
+            return Err(consent_closed());
+        }
+        futures_lite::future::block_on(answer).unwrap_or_else(|_| Err(consent_closed()))
     }
 }
 
@@ -258,6 +333,26 @@ impl<T: Transport> std::fmt::Debug for IpcLoop<T> {
 }
 
 impl<T: Transport> IpcLoop<T> {
+    /// Make one consent call of the compositor. The loop's client makes it, so the connection
+    /// is still read by one thread.
+    fn consent(&mut self, call: ConsentCall) -> Result<ConsentAnswer, Unavailable> {
+        let client = &mut self.client;
+        match call {
+            ConsentCall::RemoteGrant { session, devices } => {
+                client.remote_grant(&session, devices).map(|()| ConsentAnswer::Done)
+            }
+            ConsentCall::RemoteRefuse { session } => client.remote_refuse(&session).map(|()| ConsentAnswer::Done),
+            ConsentCall::RemoteConnect { session } => client.remote_connect(&session).map(ConsentAnswer::Socket),
+            ConsentCall::RemoteEnd { session } => client.remote_end(&session).map(|()| ConsentAnswer::Done),
+            ConsentCall::CastGrant { session, output } => {
+                client.cast_grant(&session, output).map(|()| ConsentAnswer::Done)
+            }
+            ConsentCall::CastStart { session } => client.cast_start(&session).map(ConsentAnswer::Stream),
+            ConsentCall::CastEnd { session } => client.cast_end(&session).map(|()| ConsentAnswer::Done),
+        }
+        .map_err(consent_failure)
+    }
+
     /// The negotiated IPC version.
     #[must_use]
     pub fn version(&self) -> Version {
@@ -358,6 +453,9 @@ impl<T: Transport> IpcLoop<T> {
                     }
                     Command::Capture { reply } => {
                         let _ = reply.send(capture_outcome(self.client.capture_screen()));
+                    }
+                    Command::Consent { call, reply } => {
+                        let _ = reply.send(self.consent(call));
                     }
                 }
             }
@@ -476,6 +574,22 @@ fn capture_closed() -> ScreenshotError {
     ScreenshotError::Unavailable(Unavailable {
         reason: "the compositor connection closed before the capture was answered".to_owned(),
     })
+}
+
+/// What a consent call the compositor refused, or never answered, comes to for the portal: the
+/// reason, with the compositor's code in it so a log says which rule held.
+fn consent_failure(error: ClientError) -> Unavailable {
+    match error {
+        ClientError::Refused { code, message, .. } => {
+            Unavailable::refused(format!("the compositor refused the request ({code}): {message}"))
+        }
+        other => Unavailable::refused(format!("the compositor did not answer: {other}")),
+    }
+}
+
+/// The refusal for a consent call whose connection closed before it was answered.
+fn consent_closed() -> Unavailable {
+    Unavailable::refused("the compositor connection closed before the request was answered")
 }
 
 #[cfg(test)]

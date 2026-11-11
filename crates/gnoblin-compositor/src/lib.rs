@@ -406,6 +406,7 @@ impl Compositor {
             xwayland::XwaylandReconciler::new(applied, xwayland_path, xwayland_factory, Arc::clone(&reporter)),
             config.power.take(),
             tree,
+            eis_gate.clone(),
         )
         .map_err(Error::Ipc)?;
 

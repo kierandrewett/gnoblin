@@ -110,6 +110,27 @@ pub mod member {
     /// Screenshot client to compositor: take one still picture of an output. The reply
     /// payload is the PNG. Privileged.
     pub const CAPTURE_SCREEN: &str = "capture.screen";
+    /// Portal client to compositor: the user approved a remote desktop session for these
+    /// devices, so the compositor lets that session's EIS connection inject them.
+    /// Privileged.
+    pub const REMOTE_GRANT: &str = "remote.grant";
+    /// Portal client to compositor: the user refused a remote desktop session. Privileged.
+    pub const REMOTE_REFUSE: &str = "remote.refuse";
+    /// Portal client to compositor: open the one-shot EIS socket of an approved remote
+    /// desktop session. The reply payload is its path. Privileged.
+    pub const REMOTE_CONNECT: &str = "remote.connect";
+    /// Portal client to compositor: a remote desktop session ended, so its EIS connection
+    /// ends. Privileged.
+    pub const REMOTE_END: &str = "remote.end";
+    /// Portal client to compositor: the user approved a screen cast of one output.
+    /// Privileged.
+    pub const CAST_GRANT: &str = "cast.grant";
+    /// Portal client to compositor: start the PipeWire stream of an approved screen cast.
+    /// The reply payload names the node. Privileged.
+    pub const CAST_START: &str = "cast.start";
+    /// Portal client to compositor: a screen cast session ended, so its stream ends.
+    /// Privileged.
+    pub const CAST_END: &str = "cast.end";
 }
 
 /// The error codes this layer reports in an error frame.
@@ -156,7 +177,22 @@ pub mod code {
     pub const CAPTURE_TOO_LARGE: &str = "too-large";
     /// The frame could not be encoded as PNG.
     pub const CAPTURE_ENCODE_FAILED: &str = "encode-failed";
+    /// The session has no recorded user consent, so nothing is started or connected for it.
+    pub const NO_CONSENT: &str = "no-consent";
+    /// The user refused this session. A refused session stays refused until it ends.
+    pub const CONSENT_REFUSED: &str = "consent-refused";
+    /// The session name is held by another connection, or already decided.
+    pub const SESSION_TAKEN: &str = "session-taken";
+    /// The session name is not one this connection consented.
+    pub const SESSION_UNKNOWN: &str = "session-unknown";
+    /// A consent that approves no device.
+    pub const NO_DEVICES: &str = "no-devices";
 }
+
+/// The output `cast.grant` names when the user chose none: the first output the compositor has
+/// when the stream starts. The portal does not know the compositor's output identities, so it
+/// says "the first one" instead of guessing a number.
+pub const OUTPUT_FIRST: u64 = u64::MAX;
 
 /// One decoded frame from the compositor.
 #[derive(Clone, PartialEq)]
@@ -403,6 +439,56 @@ pub fn portal_cancel(request_id: u64) -> Envelope {
 /// A request for one still picture of an output, answered with the PNG. Privileged.
 pub fn capture_screen(request_id: u64) -> Envelope {
     Envelope::request(NAMESPACE, member::CAPTURE_SCREEN, request_id, Vec::new())
+}
+
+/// The user approved a remote desktop session for these devices. Privileged: the portal
+/// role makes this call after its consent dialog was answered yes.
+pub fn remote_grant(request_id: u64, session: &str, devices: u32) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(session);
+    writer.u32(devices);
+    Envelope::request(NAMESPACE, member::REMOTE_GRANT, request_id, writer.finish())
+}
+
+/// A request that names one session and nothing else, for any member that takes only that.
+fn session_request(member: &str, request_id: u64, session: &str) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(session);
+    Envelope::request(NAMESPACE, member, request_id, writer.finish())
+}
+
+/// The user refused a remote desktop session. Privileged.
+pub fn remote_refuse(request_id: u64, session: &str) -> Envelope {
+    session_request(member::REMOTE_REFUSE, request_id, session)
+}
+
+/// Ask for the one-shot EIS socket of an approved remote desktop session. Privileged.
+pub fn remote_connect(request_id: u64, session: &str) -> Envelope {
+    session_request(member::REMOTE_CONNECT, request_id, session)
+}
+
+/// A remote desktop session ended: its EIS connection ends with it. Privileged.
+pub fn remote_end(request_id: u64, session: &str) -> Envelope {
+    session_request(member::REMOTE_END, request_id, session)
+}
+
+/// The user approved a screen cast of one output. Privileged: the portal role makes this
+/// call after its consent dialog was answered yes.
+pub fn cast_grant(request_id: u64, session: &str, output: u64) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(session);
+    writer.u64(output);
+    Envelope::request(NAMESPACE, member::CAST_GRANT, request_id, writer.finish())
+}
+
+/// Start the PipeWire stream of an approved screen cast. Privileged.
+pub fn cast_start(request_id: u64, session: &str) -> Envelope {
+    session_request(member::CAST_START, request_id, session)
+}
+
+/// A screen cast session ended: its stream ends with it. Privileged.
+pub fn cast_end(request_id: u64, session: &str) -> Envelope {
+    session_request(member::CAST_END, request_id, session)
 }
 
 /// A request routing one key to the open portal dialog. The key is named `escape`,
@@ -719,6 +805,93 @@ pub fn read_portal_outcome(payload: &[u8]) -> Result<(String, String), WireError
     let detail = reader.text()?;
     reader.done()?;
     Ok((kind, detail))
+}
+
+/// What a consented screen cast stream is, as `cast.start` answers it: the PipeWire node
+/// the stream is on and where the output it shows sits in the layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CastStream {
+    /// The PipeWire node id the app reads.
+    pub node: u32,
+    /// The left edge of the captured output, in layout pixels.
+    pub x: i32,
+    /// The top edge of the captured output, in layout pixels.
+    pub y: i32,
+    /// The width of the stream, in pixels.
+    pub width: u32,
+    /// The height of the stream, in pixels.
+    pub height: u32,
+}
+
+/// Encode a `cast.start` reply the way the compositor does.
+#[must_use]
+pub fn cast_stream_payload(stream: &CastStream) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.u32(stream.node);
+    writer.u32(u32::from_be_bytes(stream.x.to_be_bytes()));
+    writer.u32(u32::from_be_bytes(stream.y.to_be_bytes()));
+    writer.u32(stream.width);
+    writer.u32(stream.height);
+    writer.finish()
+}
+
+/// Decode a `cast.start` reply.
+pub fn read_cast_stream(payload: &[u8]) -> Result<CastStream, WireError> {
+    let mut reader = FrameReader::new(payload);
+    let node = reader.u32()?;
+    let x = i32::from_be_bytes(reader.u32()?.to_be_bytes());
+    let y = i32::from_be_bytes(reader.u32()?.to_be_bytes());
+    let width = reader.u32()?;
+    let height = reader.u32()?;
+    reader.done()?;
+    Ok(CastStream {
+        node,
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+/// Decode a request that names one session and nothing else: `remote.refuse`,
+/// `remote.connect`, `remote.end`, `cast.start` and `cast.end`.
+pub fn read_session(payload: &[u8]) -> Result<String, WireError> {
+    let mut reader = FrameReader::new(payload);
+    let session = reader.text()?;
+    reader.done()?;
+    Ok(session)
+}
+
+/// Decode a `remote.grant` request: the session and the device types the user approved,
+/// as the RemoteDesktop portal's own bitmask (1 keyboard, 2 pointer, 4 touch screen).
+pub fn read_remote_grant(payload: &[u8]) -> Result<(String, u32), WireError> {
+    let mut reader = FrameReader::new(payload);
+    let session = reader.text()?;
+    let devices = reader.u32()?;
+    reader.done()?;
+    Ok((session, devices))
+}
+
+/// Decode a `cast.grant` request: the session and the output the user approved.
+pub fn read_cast_grant(payload: &[u8]) -> Result<(String, u64), WireError> {
+    let mut reader = FrameReader::new(payload);
+    let session = reader.text()?;
+    let output = reader.u64()?;
+    reader.done()?;
+    Ok((session, output))
+}
+
+/// Decode the reply to `remote.connect`: the path of the session's one-shot EIS socket.
+pub fn read_remote_socket(payload: &[u8]) -> Result<String, WireError> {
+    read_session(payload)
+}
+
+/// Encode the reply to `remote.connect` the way the compositor does.
+#[must_use]
+pub fn remote_socket_payload(path: &str) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.text(path);
+    writer.finish()
 }
 
 /// Encode a `portal.ui` reply the way the compositor does, for tests of the client's

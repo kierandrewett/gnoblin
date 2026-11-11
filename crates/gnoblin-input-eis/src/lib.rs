@@ -36,6 +36,14 @@
 //! [`Consent`], so a portal prompt and the input it unlocks answer with one vocabulary;
 //! the grant is that answer plus the capabilities it covers.
 //!
+//! There are two places a decision lives. The endpoint's own listening socket has one
+//! decision for every client that connects to it, which is the test harness's path and
+//! stays default deny in a session. A remote desktop session gets a [`Scope`] of its own:
+//! its connection arrives on a one-shot socket ([`Endpoint::listen_scope`]), is decided
+//! by [`Endpoint::grant_scope`] or [`Endpoint::refuse_scope`] and by nothing else, and
+//! ends with [`Endpoint::revoke_scope`]. The answer for one scope never reaches another
+//! scope or the endpoint's clients.
+//!
 //! # Injected input obeys the same gate as hardware input
 //!
 //! Nothing here decides whether an event may reach a client. The events leave this
@@ -111,5 +119,5 @@ pub use gnoblin_authority::Consent;
 pub use server::{Endpoint, Options};
 pub use service::{
     Action, Caps, Context, ContextId, ContextType, DeviceId, EiDevice, EiRequest, Ending, Grant, Injection, Origin,
-    Quota, Region, Service, Violation,
+    Quota, Region, Scope, Service, Violation,
 };

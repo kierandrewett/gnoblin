@@ -74,7 +74,7 @@ use smithay::wayland::image_capture_source::{
 use smithay::wayland::image_copy_capture::{ImageCopyCaptureState, Session as CaptureSession};
 
 use gnoblin_capture::{
-    BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, SessionId, Stop, Table, Target,
+    BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, PixelFormat, SessionId, Stop, Table, Target,
 };
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_render_frame::image::Image;
@@ -84,7 +84,7 @@ use gnoblin_types::{ClientId, NodeId, OutputId, Point, Rect, Size, Tick, WindowI
 use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
-use gnoblin_pipewire_export::{ExportError, PipewireExport, PlaneSource, write_region};
+use gnoblin_pipewire_export::{PipewireExport, PlaneSource, write_region};
 
 use crate::log;
 
@@ -199,6 +199,9 @@ pub(crate) struct CaptureTables {
     /// The identity this session gave each connection, so a session's owner is one value
     /// per connection rather than a token nothing else agrees on.
     owners: HashMap<WaylandClientId, ClientId>,
+    /// The identity this session gave each IPC connection that holds a consent, drawn from the
+    /// same counter as [`Self::owners`] so the two never name one owner.
+    portal_owners: HashMap<ClientId, ClientId>,
     /// The next connection identity.
     next_owner: u64,
     /// The manager global, kept for its identity and for the filter it carries.
@@ -254,6 +257,7 @@ impl CaptureTables {
             sessions: Vec::new(),
             screencopy_frames: Vec::new(),
             owners: HashMap::new(),
+            portal_owners: HashMap::new(),
             next_owner: 0,
             screencopy_global,
             image_copy_global,
@@ -298,6 +302,18 @@ impl CaptureTables {
         self.next_owner = self.next_owner.saturating_add(1);
         let token = ClientId::new(self.next_owner);
         self.owners.insert(client.clone(), token);
+        token
+    }
+
+    /// The identity this session gives an IPC connection that holds a consent, so a stream it
+    /// started is one value per connection and cannot collide with a Wayland client's.
+    pub(super) fn portal_owner(&mut self, client: ClientId) -> ClientId {
+        if let Some(token) = self.portal_owners.get(&client) {
+            return *token;
+        }
+        self.next_owner = self.next_owner.saturating_add(1);
+        let token = ClientId::new(self.next_owner);
+        self.portal_owners.insert(client, token);
         token
     }
 
@@ -490,25 +506,94 @@ impl PlaneSource for PlanePixels<'_> {
     }
 }
 
+/// A screen cast stream the compositor started for a session the user approved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CastStream {
+    /// The capture session behind the stream, which [`ControlHandle::stop_cast`](crate::ControlHandle::stop_cast) ends.
+    pub session: SessionId,
+    /// The PipeWire node the app reads.
+    pub node: u32,
+    /// The top-left corner of what the stream shows, in layout pixels.
+    pub origin: Point,
+    /// The stream's size, in pixels.
+    pub size: Size,
+}
+
+/// Why a screen cast stream was not started.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CastRefusal {
+    /// The session lock covers the desktop, so no new stream may be opened.
+    Locked,
+    /// The target is not one the session has now: no such output, or it has no size.
+    NoTarget,
+    /// The stream could not be made: there is no PipeWire daemon, or it refused the stream.
+    Unavailable(String),
+}
+
 impl State {
     /// The lock's answer for `stream` right now.
     pub(crate) fn lock_capture(&self, stream: CaptureStream) -> Capture {
         self.lock.capture(stream)
     }
 
-    /// Starts the PipeWire stream for `session` and answers its node id, for the connection
-    /// that owns the session. The table decides whether the session may stream at all.
-    #[allow(dead_code)]
-    pub(crate) fn pipewire_start(&mut self, client: &WaylandClientId, session: SessionId) -> Result<u32, ExportError> {
-        let owner = self.capture.owner(client);
-        self.capture.pipewire.start(&self.capture.table, session, owner)
+    /// Starts the PipeWire stream of a screen cast the user approved.
+    ///
+    /// This is the one place a [`CaptureStream::Granted`] session is opened: the caller is the
+    /// IPC connection that holds the user's consent (`cast.start`, which refuses a session no
+    /// consent was recorded for), `client` is that connection, and the session it opens
+    /// belongs to it alone. The session ends with it, with the target, and with the lock.
+    /// A session that is already locked is refused, because a user who consented to a cast
+    /// did not consent to one of a locked desktop.
+    pub(crate) fn start_cast(&mut self, client: ClientId, target: Target) -> Result<CastStream, CastRefusal> {
+        if self.lock_capture(CaptureStream::Granted) != Capture::Desktop || !self.capture_allowed() {
+            return Err(CastRefusal::Locked);
+        }
+        let Some(bounds) = self.capture_bounds(target) else {
+            return Err(CastRefusal::NoTarget);
+        };
+        let Some(format) = Format::new(bounds.size(), bounds.width.saturating_mul(4), PixelFormat::Argb8888) else {
+            return Err(CastRefusal::NoTarget);
+        };
+        let origin = match target {
+            Target::Output(output) => self
+                .output_rect(output)
+                .map_or_else(|| Point::new(0, 0), |rect| Point::new(rect.x, rect.y)),
+            Target::Window(_) | Target::View(_) => Point::new(0, 0),
+        };
+        let owner = self.capture.portal_owner(client);
+        let session = self.capture.table.open(owner, target, CaptureStream::Granted, format);
+        match self.capture.pipewire.start(&self.capture.table, session, owner) {
+            Ok(node) => Ok(CastStream {
+                session,
+                node,
+                origin,
+                size: bounds.size(),
+            }),
+            Err(error) => {
+                self.capture.table.close(session);
+                log::warn!(area = "capture", %error, %target, "a screen cast stream could not be started");
+                Err(CastRefusal::Unavailable(error.to_string()))
+            }
+        }
     }
 
-    /// The node id of `session`, answered only to the connection that opened it.
-    #[allow(dead_code)]
-    pub(crate) fn pipewire_node(&mut self, client: &WaylandClientId, session: SessionId) -> Result<u32, ExportError> {
-        let owner = self.capture.owner(client);
-        self.capture.pipewire.node_id(&self.capture.table, session, owner)
+    /// Ends one cast session. Its PipeWire stream is dropped on the loop's next pump.
+    pub(crate) fn stop_cast(&mut self, session: SessionId) {
+        self.capture.table.close(session);
+    }
+
+    /// Ends every cast session `client` started.
+    pub(crate) fn stop_casts_of(&mut self, client: ClientId) {
+        if let Some(owner) = self.capture.portal_owners.get(&client).copied() {
+            self.capture.table.close_owner(owner);
+        }
+    }
+
+    /// Points screen casts at the PipeWire daemon listening on `socket`, when one is named.
+    pub(crate) fn use_pipewire_socket(&mut self, socket: Option<std::path::PathBuf>) {
+        if let Some(socket) = socket {
+            self.capture.pipewire = PipewireExport::with_socket(socket);
+        }
     }
 
     /// Runs once per loop iteration: advances the capture tick and cuts every session the

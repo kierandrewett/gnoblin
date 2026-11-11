@@ -244,6 +244,30 @@ impl Grant {
     }
 }
 
+/// The identity of one consent decision that covers its own connections.
+///
+/// The listening endpoint has one decision for every client that connects to it. A
+/// remote desktop session is different: the user approved *that* app, so the answer
+/// must not reach any other client, and the end of the session must end exactly that
+/// app's connections. A scope is the name the caller gives such a decision. The state
+/// machine only compares scopes, so what one stands for is the caller's business.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Scope(u64);
+
+impl Scope {
+    /// A scope named by the caller.
+    #[must_use]
+    pub const fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// The number the caller named it by.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 /// What a client wants from the connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextType {
@@ -260,6 +284,9 @@ pub enum Ending {
     Disconnected,
     /// The consent decision was a refusal.
     Refused,
+    /// The consent that allowed the context was withdrawn while it was live: the
+    /// remote desktop session it belonged to ended.
+    Revoked,
     /// The client broke the protocol.
     Violation(Violation),
 }
@@ -754,6 +781,7 @@ pub struct Context {
     id: ContextId,
     name: Option<String>,
     grant: Grant,
+    scope: Option<Scope>,
     capabilities: Caps,
     devices: BTreeMap<DeviceId, EiDevice>,
     next_device: u64,
@@ -762,16 +790,24 @@ pub struct Context {
 
 impl Context {
     /// A context that has been accepted and not yet told anything.
-    fn new(id: ContextId, name: Option<&str>, grant: Grant) -> Self {
+    fn new(id: ContextId, name: Option<&str>, grant: Grant, scope: Option<Scope>) -> Self {
         Self {
             id,
             name: name.map(ToOwned::to_owned),
             grant,
+            scope,
             capabilities: Caps::NONE,
             devices: BTreeMap::new(),
             next_device: 0,
             phase: ContextPhase::AwaitingConsent,
         }
+    }
+
+    /// The consent scope this context belongs to, or [`None`] for a client of the
+    /// listening endpoint, which shares the endpoint's one decision.
+    #[must_use]
+    pub const fn scope(&self) -> Option<Scope> {
+        self.scope
     }
 
     /// The identity the protocol layer knows it by.
@@ -1125,10 +1161,17 @@ impl Context {
     }
 }
 
-/// The set of contexts, the consent decision and the layout they share.
+/// The set of contexts, the consent decisions and the layout they share.
+///
+/// Two kinds of context live here. A client of the listening endpoint runs under the
+/// endpoint's one decision ([`Service::set_grant`]). A client that arrived through a
+/// consent [`Scope`] runs under that scope's decision ([`Service::decide_scope`]) and
+/// under nothing else: the endpoint's decision never reaches it, and its decision never
+/// reaches an endpoint client or another scope.
 #[derive(Clone, Debug)]
 pub struct Service {
     grant: Grant,
+    scopes: BTreeMap<Scope, Grant>,
     regions: Vec<Region>,
     quota: Quota,
     contexts: BTreeMap<ContextId, Context>,
@@ -1144,6 +1187,7 @@ impl Service {
     pub fn new(grant: Grant, regions: Vec<Region>, quota: Quota) -> Self {
         Self {
             grant,
+            scopes: BTreeMap::new(),
             regions,
             quota,
             contexts: BTreeMap::new(),
@@ -1162,11 +1206,34 @@ impl Service {
         self.contexts.get(&id)
     }
 
-    /// Accepts a client, which gets a context and whatever its grant is worth now.
+    /// Accepts a client of the listening endpoint, which gets a context and whatever
+    /// the endpoint's grant is worth now.
     pub fn connect(&mut self, name: Option<&str>, context_type: ContextType) -> (ContextId, Vec<Action>) {
+        self.admit(name, context_type, self.grant, None)
+    }
+
+    /// Accepts a client that arrived through `scope`, which gets a context and whatever
+    /// the scope's decision is worth now: nothing, until the scope is decided.
+    pub fn connect_in(
+        &mut self,
+        scope: Scope,
+        name: Option<&str>,
+        context_type: ContextType,
+    ) -> (ContextId, Vec<Action>) {
+        let grant = self.scopes.get(&scope).copied().unwrap_or_default();
+        self.admit(name, context_type, grant, Some(scope))
+    }
+
+    fn admit(
+        &mut self,
+        name: Option<&str>,
+        context_type: ContextType,
+        grant: Grant,
+        scope: Option<Scope>,
+    ) -> (ContextId, Vec<Action>) {
         let id = ContextId(self.next_context);
         self.next_context += 1;
-        let mut context = Context::new(id, name, self.grant);
+        let mut context = Context::new(id, name, grant, scope);
         let actions = if context_type == ContextType::Sender {
             context.advertise()
         } else {
@@ -1176,7 +1243,8 @@ impl Service {
         (id, actions)
     }
 
-    /// Applies a consent decision to every context that is still waiting for one.
+    /// Applies the endpoint's consent decision to every endpoint context that is still
+    /// waiting for one. A context that arrived through a scope is not touched.
     ///
     /// Returns the actions paired with the context each belongs to, because a decision
     /// is the one command that reaches more than one client.
@@ -1184,7 +1252,7 @@ impl Service {
         self.grant = grant;
         let mut told = Vec::new();
         for context in self.contexts.values_mut() {
-            if context.grant.consent() != Consent::Pending || context.ended().is_some() {
+            if context.scope.is_some() || context.grant.consent() != Consent::Pending || context.ended().is_some() {
                 continue;
             }
             for action in context.decide(grant) {
@@ -1192,6 +1260,57 @@ impl Service {
             }
         }
         told
+    }
+
+    /// Decides `scope`: the answer for every context that arrives through it, and for
+    /// the ones of it that are waiting now.
+    ///
+    /// A scope is decided once. Consent moves from pending to granted or refused, and
+    /// only [`Service::revoke_scope`] takes a granted scope away, so a second decision
+    /// for a scope that already has one changes nothing: a late "refuse" cannot reopen a
+    /// connection that was granted and a late "grant" cannot reopen a refused one.
+    pub fn decide_scope(&mut self, scope: Scope, grant: Grant) -> Vec<(ContextId, Action)> {
+        if self
+            .scopes
+            .get(&scope)
+            .is_some_and(|decided| decided.consent() != Consent::Pending)
+        {
+            return Vec::new();
+        }
+        self.scopes.insert(scope, grant);
+        let mut told = Vec::new();
+        for context in self.contexts.values_mut() {
+            if context.scope != Some(scope) || context.grant.consent() != Consent::Pending || context.ended().is_some()
+            {
+                continue;
+            }
+            for action in context.decide(grant) {
+                told.push((context.id, action));
+            }
+        }
+        told
+    }
+
+    /// Withdraws `scope`: every live context of it ends [`Ending::Revoked`], after
+    /// releasing what it held, and a context that arrives through it later is refused.
+    pub fn revoke_scope(&mut self, scope: Scope) -> Vec<(ContextId, Action)> {
+        self.scopes.insert(scope, Grant::refused());
+        let mut told = Vec::new();
+        for context in self.contexts.values_mut() {
+            if context.scope != Some(scope) {
+                continue;
+            }
+            for action in context.end(Ending::Revoked) {
+                told.push((context.id, action));
+            }
+        }
+        told
+    }
+
+    /// Forgets what `scope` decided. The caller does this once every connection of the
+    /// scope is gone and none can arrive, so the record does not outlive its session.
+    pub fn forget_scope(&mut self, scope: Scope) {
+        self.scopes.remove(&scope);
     }
 
     /// Replaces the layout for devices created from now on.

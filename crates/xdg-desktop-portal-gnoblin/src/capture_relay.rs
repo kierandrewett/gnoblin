@@ -6,23 +6,72 @@
 //! the user to choose an area, which this portal does not offer, so it is refused by name.
 //! Colour picking has no compositor member yet, so [`CaptureBackend::pick_color`] refuses.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Mutex, PoisonError};
+
+use gnoblin_capture::Target;
+use gnoblin_client::wire::CastStream;
+use gnoblin_model::Value;
 
 use crate::backends::{
     CaptureBackend, ScreenshotError, ScreenshotOptions, Stream, StreamId, StreamRequest, Unavailable,
 };
-use crate::host::IpcHost;
+use crate::host::{ConsentAnswer, ConsentCall, IpcHost};
+use crate::iface::capture::SOURCE_MONITOR;
+use crate::log;
 use crate::picture;
 
-/// Where the PNG of the whole output comes from: the compositor connection, or a fake.
+/// Where the compositor's pixels come from: its connection, or a fake.
 pub trait ScreenSource: Send + Sync {
     /// One PNG of the whole output, or the reason the compositor did not give one.
     fn screen_png(&self) -> Result<Vec<u8>, ScreenshotError>;
+
+    /// Tell the compositor the user approved a cast of `output` for `session` and start its
+    /// PipeWire stream. The compositor refuses the start when it holds no such approval.
+    fn open_cast(&self, session: &str, output: u64) -> Result<CastStream, Unavailable>;
+
+    /// The session ended: its stream ends with it.
+    fn close_cast(&self, session: &str);
 }
 
 impl ScreenSource for IpcHost {
     fn screen_png(&self) -> Result<Vec<u8>, ScreenshotError> {
         self.capture_screen()
+    }
+
+    fn open_cast(&self, session: &str, output: u64) -> Result<CastStream, Unavailable> {
+        self.consent(ConsentCall::CastGrant {
+            session: session.to_owned(),
+            output,
+        })?;
+        let started = self.consent(ConsentCall::CastStart {
+            session: session.to_owned(),
+        });
+        match started {
+            Ok(ConsentAnswer::Stream(stream)) => Ok(stream),
+            other => {
+                // A grant with no stream behind it would hold the session's name for nothing, and
+                // the start the app will retry would be refused as already decided.
+                self.close_cast(session);
+                match other {
+                    Err(error) => Err(error),
+                    Ok(answer) => Err(Unavailable::refused(format!(
+                        "the compositor answered the stream start with {answer:?}"
+                    ))),
+                }
+            }
+        }
+    }
+
+    fn close_cast(&self, session: &str) {
+        let ended = self.consent(ConsentCall::CastEnd {
+            session: session.to_owned(),
+        });
+        if let Err(error) = ended {
+            log::debug!(%error, session = %session, "the compositor held no cast to end");
+        }
     }
 }
 
@@ -43,17 +92,26 @@ pub fn screenshot_into(
     Ok(picture::file_uri(&path))
 }
 
-/// The portal's capture backend: full-screen screenshots from a [`ScreenSource`].
+/// The portal's capture backend: full-screen screenshots and screen casts from a [`ScreenSource`].
 pub struct CaptureRelay<S: ScreenSource> {
     source: S,
     /// The folder pictures are written to. `None` when the user has no home to name one in.
     folder: Option<PathBuf>,
+    /// The last stream number handed out.
+    next_stream: AtomicU32,
+    /// The portal session each open stream belongs to, so closing a stream ends its cast.
+    streams: Mutex<BTreeMap<StreamId, String>>,
 }
 
 impl<S: ScreenSource> CaptureRelay<S> {
-    /// A relay that takes its pictures from `source` and stores them in `folder`.
+    /// A relay that takes its pictures and streams from `source` and stores pictures in `folder`.
     pub fn new(source: S, folder: Option<PathBuf>) -> Self {
-        CaptureRelay { source, folder }
+        CaptureRelay {
+            source,
+            folder,
+            next_stream: AtomicU32::new(0),
+            streams: Mutex::new(BTreeMap::new()),
+        }
     }
 }
 
@@ -76,11 +134,37 @@ impl<S: ScreenSource> CaptureBackend for CaptureRelay<S> {
         Err(Unavailable::missing("pick-color"))
     }
 
-    fn open_stream(&self, _request: &StreamRequest) -> Result<Stream, Unavailable> {
-        Err(Unavailable::missing("capture-open-stream"))
+    fn open_stream(&self, request: &StreamRequest) -> Result<Stream, Unavailable> {
+        let Target::Output(output) = request.target else {
+            return Err(Unavailable::refused(
+                "only an output can be shared in this build; a window or a View is not served",
+            ));
+        };
+        let cast = self.source.open_cast(&request.session, output.get())?;
+        let id = StreamId::new(self.next_stream.fetch_add(1, Ordering::Relaxed).saturating_add(1));
+        self.streams
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, request.session.clone());
+        let mut properties = BTreeMap::new();
+        properties.insert("source_type".to_owned(), Value::Uint(u64::from(SOURCE_MONITOR)));
+        Ok(Stream {
+            id,
+            node: cast.node,
+            properties,
+        })
     }
 
-    fn close_stream(&self, _stream: StreamId) {}
+    fn close_stream(&self, stream: StreamId) {
+        let session = self
+            .streams
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&stream);
+        if let Some(session) = session {
+            self.source.close_cast(&session);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -104,6 +188,12 @@ mod tests {
         fn screen_png(&self) -> Result<Vec<u8>, ScreenshotError> {
             Ok(self.0.clone())
         }
+
+        fn open_cast(&self, _session: &str, _output: u64) -> Result<CastStream, Unavailable> {
+            Err(Unavailable::missing("cast.start"))
+        }
+
+        fn close_cast(&self, _session: &str) {}
     }
 
     /// A compositor that must never be asked: an interactive request is refused first.
@@ -113,6 +203,12 @@ mod tests {
         fn screen_png(&self) -> Result<Vec<u8>, ScreenshotError> {
             panic!("an interactive request must be refused before the compositor is asked");
         }
+
+        fn open_cast(&self, _session: &str, _output: u64) -> Result<CastStream, Unavailable> {
+            panic!("a screenshot never opens a cast");
+        }
+
+        fn close_cast(&self, _session: &str) {}
     }
 
     fn full_screen() -> ScreenshotOptions {

@@ -495,6 +495,74 @@ impl<T: Transport> Client<T> {
         self.await_reply(correlation)
     }
 
+    /// Tell the compositor the user approved remote desktop session `session` for
+    /// `devices` (the portal's bitmask: 1 keyboard, 2 pointer, 4 touch screen), so the
+    /// session's EIS connection may inject them. Privileged: the portal role.
+    ///
+    /// A refusal is a [`ClientError::Refused`] carrying the compositor's code: the session
+    /// is held by another connection, was already decided, or names no device.
+    pub fn remote_grant(&mut self, session: &str, devices: u32) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::remote_grant(correlation, session, devices))?;
+        self.await_reply(correlation).map(drop)
+    }
+
+    /// Tell the compositor the user refused remote desktop session `session`. Privileged.
+    pub fn remote_refuse(&mut self, session: &str) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::remote_refuse(correlation, session))?;
+        self.await_reply(correlation).map(drop)
+    }
+
+    /// Open the one-shot EIS socket of approved remote desktop session `session` and
+    /// answer its path. The compositor refuses a session the user did not approve
+    /// ([`crate::code::NO_CONSENT`], [`crate::code::CONSENT_REFUSED`]). Privileged.
+    pub fn remote_connect(&mut self, session: &str) -> Result<String, ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::remote_connect(correlation, session))?;
+        let payload = self.await_reply(correlation)?;
+        wire::read_remote_socket(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::REMOTE_CONNECT.to_owned(),
+            reason,
+        })
+    }
+
+    /// Tell the compositor remote desktop session `session` ended, so its EIS connection
+    /// ends with it. Privileged.
+    pub fn remote_end(&mut self, session: &str) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::remote_end(correlation, session))?;
+        self.await_reply(correlation).map(drop)
+    }
+
+    /// Tell the compositor the user approved screen cast `session` of `output`. Privileged.
+    pub fn cast_grant(&mut self, session: &str, output: u64) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::cast_grant(correlation, session, output))?;
+        self.await_reply(correlation).map(drop)
+    }
+
+    /// Start the PipeWire stream of approved screen cast `session`. The compositor refuses
+    /// a session the user did not approve ([`crate::code::NO_CONSENT`]) and one it cannot
+    /// stream (locked, no such output, no PipeWire). Privileged.
+    pub fn cast_start(&mut self, session: &str) -> Result<wire::CastStream, ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::cast_start(correlation, session))?;
+        let payload = self.await_reply(correlation)?;
+        wire::read_cast_stream(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::CAST_START.to_owned(),
+            reason,
+        })
+    }
+
+    /// Tell the compositor screen cast `session` ended, so its stream ends with it.
+    /// Privileged.
+    pub fn cast_end(&mut self, session: &str) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        self.send(&wire::cast_end(correlation, session))?;
+        self.await_reply(correlation).map(drop)
+    }
+
     /// Ask the transport for a read deadline, where it has one.
     ///
     /// A role pumps on a clock: it wants a read that returns when nothing has arrived yet

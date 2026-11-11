@@ -280,9 +280,10 @@ impl PipewireExport {
         }
     }
 
-    /// An export that connects to the daemon listening on `socket`.
-    #[cfg(test)]
-    pub(crate) fn with_socket(socket: PathBuf) -> Self {
+    /// An export that connects to the daemon listening on `socket`, instead of the one the
+    /// environment names. A session names its daemon this way when it must not reach the
+    /// user's own, and a test names its private one.
+    pub fn with_socket(socket: PathBuf) -> Self {
         Self {
             exports: BTreeMap::new(),
             connection: None,

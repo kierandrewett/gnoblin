@@ -93,6 +93,9 @@ pub struct ScreenshotOptions {
 /// What a screen cast should capture.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StreamRequest {
+    /// The portal session the stream belongs to, which is the name the compositor holds the
+    /// user's consent under.
+    pub session: String,
     /// What to capture: an output or one window, in `gnoblin-capture`'s identities.
     pub target: Target,
     /// Whether the cursor is drawn into the frames (1 hidden, 2 embedded, 4 metadata).
@@ -130,14 +133,37 @@ pub trait CaptureBackend: Send + Sync {
 }
 
 /// The input call the compositor owns.
-pub trait EisBackend: Send {
+///
+/// The user's answer and the descriptor are separate calls, because the frontend separates
+/// them: `Start` asks the user, and `ConnectToEIS` comes later. The compositor is what
+/// enforces the answer, not this process: [`EisBackend::connect`] is refused by the
+/// compositor for a session whose answer it was not told, so a portal that skipped
+/// [`EisBackend::grant`] gets no descriptor that injects anything.
+///
+/// Every method takes `&self` and the backend is shared, like [`CaptureBackend`]: a call is
+/// a round trip to the compositor, and a handler makes it without holding the portal's lock,
+/// because the connection's own thread takes that lock to apply what the compositor sends.
+pub trait EisBackend: Send + Sync {
+    /// The user approved `session` for `devices` (the RemoteDesktop portal's type mask: 1
+    /// keyboard, 2 pointer, 4 touch screen). From here the compositor lets the session's EIS
+    /// connection inject exactly those devices.
+    ///
+    /// A backend that cannot tell the compositor refuses here, before anything is opened, so
+    /// an approval that cannot be enforced is never reported as one.
+    fn grant(&self, session: &str, devices: u32) -> Result<(), Unavailable>;
+
+    /// The user refused `session`. The compositor opens no connection for it.
+    fn refuse(&self, session: &str);
+
     /// Connect an EIS session and return the descriptor the app reads.
     ///
-    /// The descriptor is the sender's half of a socket pair: `ConnectToEIS` hands a file
-    /// descriptor to the caller, and the compositor's EIS server speaks libei on the other
-    /// half. A backend that cannot open one refuses here rather than returning a
-    /// descriptor that never delivers an event.
-    fn connect(&mut self, session: &str, app_id: &str) -> Result<OwnedFd, Unavailable>;
+    /// The descriptor is the sender's half of a connection to the compositor's EIS server,
+    /// which speaks libei on the other half. A backend that cannot open one refuses here
+    /// rather than returning a descriptor that never delivers an event.
+    fn connect(&self, session: &str, app_id: &str) -> Result<OwnedFd, Unavailable>;
+
+    /// `session` ended: its EIS connection ends, whether or not it was ever connected.
+    fn end(&self, session: &str);
 }
 
 /// The inhibit call the compositor owns.
@@ -248,7 +274,7 @@ pub struct Backends {
     /// The capture call.
     pub capture: Arc<dyn CaptureBackend>,
     /// The input call.
-    pub eis: Box<dyn EisBackend>,
+    pub eis: Arc<dyn EisBackend>,
     /// The inhibit call.
     pub inhibit: Box<dyn InhibitBackend>,
     /// The shortcut call.
@@ -263,7 +289,7 @@ impl Default for Backends {
     fn default() -> Self {
         Backends {
             capture: Arc::new(Missing),
-            eis: Box::new(Missing),
+            eis: Arc::new(Missing),
             inhibit: Box::new(Missing),
             shortcuts: Box::new(Missing),
             clipboard: Box::new(Missing),
@@ -301,9 +327,17 @@ impl CaptureBackend for Missing {
 }
 
 impl EisBackend for Missing {
-    fn connect(&mut self, _session: &str, _app_id: &str) -> Result<OwnedFd, Unavailable> {
-        Err(Unavailable::missing("eis-connect"))
+    fn grant(&self, _session: &str, _devices: u32) -> Result<(), Unavailable> {
+        Err(Unavailable::missing("remote.grant"))
     }
+
+    fn refuse(&self, _session: &str) {}
+
+    fn connect(&self, _session: &str, _app_id: &str) -> Result<OwnedFd, Unavailable> {
+        Err(Unavailable::missing("remote.connect"))
+    }
+
+    fn end(&self, _session: &str) {}
 }
 
 impl InhibitBackend for Missing {

@@ -1360,3 +1360,63 @@ right = "gnoblin-render::TreeChange"
 kind = "same-shape"
 reason = "the shell mirror's change tag names one step of a snapshot or change batch, while the render crate's tree change names a scene edit; both are a plain tag enum with no shared behaviour"
 
+
+[[allow]]
+left = "gnoblin-authority::Consent"
+right = "gnoblin-compositor::Consent"
+kind = "same-name"
+reason = "the authority's consent is one prompt's state (pending, granted, refused); the compositor's is the table of sessions the portal recorded answers for"
+
+[[allow]]
+left = "gnoblin-backend-drm::SessionError"
+right = "gnoblin-compositor::SessionError"
+kind = "same-name"
+reason = "one is a seat-session failure of the DRM backend, the other is why the EIS gate refused a remote desktop session's call"
+
+[[allow]]
+left = "gnoblin-capture::Session"
+right = "gnoblin-compositor::Session"
+kind = "same-name"
+reason = "a capture session is a stream of frames; the gate's session is the consent decision held for one remote desktop session"
+
+[[allow]]
+left = "gnoblin-client::CastStream"
+right = "gnoblin-wayland::CastStream"
+kind = "same-name"
+reason = "the wire reply of `cast.start` carries the node and the output's placement as plain integers; the loop's value carries the capture session and typed geometry"
+
+[[allow]]
+left = "gnoblin-client::Inner"
+right = "gnoblin-compositor::Inner"
+kind = "same-name"
+reason = "private state of unrelated types: the loopback server's graph and the EIS gate's endpoint"
+
+[[allow]]
+left = "gnoblin-compositor::Consent"
+right = "gnoblin-portal-core::Consent"
+kind = "same-name"
+reason = "the portal dialog's consent screen state and the compositor's table of recorded answers"
+
+[[allow]]
+left = "gnoblin-compositor::Session"
+right = "xdg-desktop-portal-gnoblin::Session"
+kind = "same-name"
+reason = "the gate's private record of one EIS decision and the portal's session with its streams and options"
+
+[[allow]]
+left = "gnoblin-input-eis::Scope"
+right = "gnoblin-input::Scope"
+kind = "same-name"
+reason = "an EIS consent scope names one remote session's decision; the input router's scope names where a binding applies"
+
+[[allow]]
+left = "gnoblin-client::CastStream"
+right = "gnoblin-types::Rect"
+kind = "near-shape"
+reason = "the cast reply is a node id beside an output's placement, which shares four integer fields with a rectangle and nothing else"
+
+[[allow]]
+left = "gnoblin-client::CastStream"
+right = "gnoblin-wayland::MenuAnchor"
+kind = "near-shape"
+reason = "the cast reply is a node id beside an output's placement, which shares four integer fields with a rectangle and nothing else"

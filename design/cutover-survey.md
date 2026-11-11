@@ -867,6 +867,8 @@ its 13 `design/docs-parity/allow.toml` rows; the `design/rust-compositor.md` D22
 `gnoblin-schema` still parses non-`gnoblin` namespaces and keeps `tests/fixtures/extensions/example-ext.toml` for its own
 parser tests; `gnoblin_compositor::catalog` is now public but unused in-tree. The XR extension is not D22 and is untouched.
 
+**Status, lane 10C (branch `lane10c`).** O12 option (a) was auto-selected, "default selected, owner may revisit". Done: the portal's answer reaches enforcement for both flows through seven owner-only IPC members (`remote.grant|refuse|connect|end`, `cast.grant|start|end`, `ipc/consent.rs`). `EisGate` gains per-session consent (`grant_session`, `refuse_session`, `connect_session`, `revoke_session`) over a new `Scope` in `gnoblin-input-eis`, `eis.sock` stays default deny, and `State::start_cast` is the one place a `Granted` capture session is opened and `pipewire_start`'s replacement is called. The portal's `RemoteDesktop`, `ScreenCast` and session close paths call them (`eis_relay.rs`, `capture_relay.rs`). Proven end to end over real sockets with a real libei client and a private PipeWire daemon: `crates/gnoblin-compositor/tests/{eis,cast}.rs`. Gate level only: the portal's D-Bus handlers. Left: a View or window as a cast source (9D), `InputCapture` (EIS receiver contexts), the `position` and `size` stream properties, and the `Modal` dialog's fate (O3).
+
 ### 16.4 Step 11: seats
 
 #### What exists
