@@ -100,3 +100,19 @@ identity! {
     /// covers and embargoes a connection, so both name the same value.
     ClientId
 }
+
+identity! {
+    /// One input device, as the backend numbers it.
+    ///
+    /// The backend allocates it when the device arrives and never reuses it, so a press
+    /// or a gesture that names a removed device cannot resolve to a later one. Zero is
+    /// [`DeviceId::VIRTUAL`]: input that did not come from a device the backend announced
+    /// (a virtual keyboard, a remote-input client, a nested session, a test).
+    DeviceId
+}
+
+impl DeviceId {
+    /// The identity of input that no announced device produced. A backend starts its own
+    /// numbers at one.
+    pub const VIRTUAL: Self = Self::new(0);
+}

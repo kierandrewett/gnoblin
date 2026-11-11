@@ -41,7 +41,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
-use gnoblin_types::{OutputId, Rect, WindowId};
+use gnoblin_types::{DeviceId, OutputId, Rect, WindowId};
 use gnoblin_wayland::{
     Config, ControlHandle, FrameStats, LoopError, ObservedWindow, Server, SessionSnapshot, VisualAccessibilitySettings,
 };
@@ -344,16 +344,22 @@ impl Client {
         let output = session.output();
         session
             .control
-            .inject_input(gnoblin_backend::InputEvent::PointerMotion { output, position: at });
+            .inject_input(gnoblin_backend::InputEvent::PointerMotion {
+                device: DeviceId::VIRTUAL,
+                output,
+                position: at,
+            });
         session
             .control
             .inject_input(gnoblin_backend::InputEvent::PointerButton {
+                device: DeviceId::VIRTUAL,
                 button: BTN_LEFT,
                 pressed: true,
             });
         session
             .control
             .inject_input(gnoblin_backend::InputEvent::PointerButton {
+                device: DeviceId::VIRTUAL,
                 button: BTN_LEFT,
                 pressed: false,
             });

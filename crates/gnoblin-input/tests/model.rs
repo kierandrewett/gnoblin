@@ -23,8 +23,8 @@ use std::collections::BTreeMap;
 
 use common::{CODE_Q, CODE_W, Q, W, button_event, chord, name, pointer_chord};
 use gnoblin_input::{
-    Activity, ButtonState, Contact, ContactPhase, Event, GestureConfig, GestureEvent, GestureKind, GestureLock,
-    GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
+    Activity, ButtonState, Contact, ContactPhase, DeviceId, Event, GestureConfig, GestureEvent, GestureKind,
+    GestureLock, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
     PinchDirection, Recogniser, Routed, Router, Scope, ShortcutInhibit, Target, Tick, Trigger,
 };
 
@@ -226,9 +226,11 @@ impl Model {
     fn press_key(&mut self, code: KeyCode, symbol: Keysym, modifiers: Modifiers, inhibit: ShortcutInhibit) {
         let routed = self.router.route(
             Event::Key {
+                device: DeviceId::VIRTUAL,
                 key_code: code,
                 symbol,
                 modifiers,
+                own: None,
                 state: KeyState::Pressed,
                 repeat: false,
             },
@@ -249,9 +251,11 @@ impl Model {
     fn release_key(&mut self, code: KeyCode, symbol: Keysym, modifiers: Modifiers, inhibit: ShortcutInhibit) {
         let routed = self.router.route(
             Event::Key {
+                device: DeviceId::VIRTUAL,
                 key_code: code,
                 symbol,
                 modifiers,
+                own: None,
                 state: KeyState::Released,
                 repeat: false,
             },

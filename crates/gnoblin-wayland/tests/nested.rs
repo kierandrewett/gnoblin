@@ -35,7 +35,7 @@ use gnoblin_backend::headless::Headless;
 use gnoblin_backend::nested::{Nested, NestedConfig};
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent, Output, Present};
 use gnoblin_render_frame::frame::OutputFrame;
-use gnoblin_types::{Color, OutputId, Point, Rect, Size};
+use gnoblin_types::{Color, DeviceId, OutputId, Point, Rect, Size};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
 
 /// How long a test waits for a state before failing.
@@ -83,7 +83,7 @@ impl Probe {
         self.inputs
             .iter()
             .filter_map(|event| match event {
-                InputEvent::PointerMotion { output, position } => Some((*output, *position)),
+                InputEvent::PointerMotion { output, position, .. } => Some((*output, *position)),
                 _ => None,
             })
             .collect()
@@ -448,10 +448,12 @@ fn input_injected_on_the_host_seat_arrives_as_input_events() {
         let at = centre(&window);
 
         host.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
             output: host_output,
             position: at,
         });
         host.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: true,
         });
@@ -460,6 +462,7 @@ fn input_injected_on_the_host_seat_arrives_as_input_events() {
         let _ = pump_until(&mut nested, &mut probe, |probe| {
             probe.motions().iter().any(|(_, position)| *position == expected)
                 && probe.inputs.contains(&InputEvent::PointerButton {
+                    device: DeviceId::VIRTUAL,
                     button: BTN_LEFT,
                     pressed: true,
                 })
@@ -475,6 +478,7 @@ fn input_injected_on_the_host_seat_arrives_as_input_events() {
         );
         assert!(
             probe.inputs.contains(&InputEvent::PointerButton {
+                device: DeviceId::VIRTUAL,
                 button: BTN_LEFT,
                 pressed: true,
             }),

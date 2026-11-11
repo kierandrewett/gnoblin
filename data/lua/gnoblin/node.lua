@@ -510,21 +510,39 @@ end
 -- Chord and gesture claims. The Lua side allocates each claim id (per VM, from 1, never reused, one number space for
 -- both) and remembers which seat made it, so a chord or gesture event from the compositor can be routed to that seat.
 local claims, next_claim = {}, 0
+
+-- A claim's text: the chord or gesture kind, behind the name of the device the claim takes it from and a line feed when
+-- it is scoped to one device. The device is a name from `Seat.device`, matched exactly, one line; nil is every device.
+local function claim_text(subject, device)
+    if device == nil then
+        return subject
+    end
+    if type(device) ~= "string" or device == "" or device:find("%c") then
+        error("a device selector is the name of a device, on one line: " .. tostring(device), 3)
+    end
+    return device .. "\n" .. subject
+end
+
 local function install_claims(c)
-    rawset(c, "claim", function(seat, chord, grab)
+    -- Claim a chord, from every device or, with `device` (a name from `Seat.device`), from the devices that report
+    -- that name only.
+    rawset(c, "claim", function(seat, chord, grab, device)
+        local text = claim_text(chord, device)
         next_claim = next_claim + 1
         local id = next_claim
         claims[id] = seat
-        core.call(rawget(seat, ID), "claim", string.pack("<i8i8", id, grab and 1 or 0), chord)
+        core.call(rawget(seat, ID), "claim", string.pack("<i8i8", id, grab and 1 or 0), text)
         return id
     end)
     -- A gesture of `kind` ("swipe" or "pinch") with `fingers` contacts: the compositor sends it to this seat as
-    -- `gesture` events, from its begin to its end, and to no client.
-    rawset(c, "claim_gesture", function(seat, kind, fingers)
+    -- `gesture` events, from its begin to its end, and to no client. With `device` it is the gesture of the touchpads
+    -- that report that name only.
+    rawset(c, "claim_gesture", function(seat, kind, fingers, device)
+        local text = claim_text(kind, device)
         next_claim = next_claim + 1
         local id = next_claim
         claims[id] = seat
-        core.call(rawget(seat, ID), "claim_gesture", string.pack("<i8i8", id, fingers), kind)
+        core.call(rawget(seat, ID), "claim_gesture", string.pack("<i8i8", id, fingers), text)
         return id
     end)
     rawset(c, "unclaim", function(seat, id)

@@ -14,9 +14,10 @@
 //! - **The fraction of a pixel a slow pointer has not travelled yet.** A 400 dpi mouse at a
 //!   slow hand speed reports less than one pixel per frame, and dropping the remainder makes
 //!   the pointer stand still until the hand is fast enough: [`Mapper::event`] accumulates it.
-//! - **Which buttons and touches are held.** A device that is removed mid-drag never reports
-//!   the release, and a seat that keeps the button held leaves a stuck button that eats every
-//!   later click. [`Mapper::cancel`] is what a removal, a pause or a device reset calls.
+//! - **Which buttons and touches are held, and by which device.** A device that is removed
+//!   mid-drag never reports the release, and a seat that keeps the button held leaves a stuck
+//!   button that eats every later click. [`Mapper::cancel_device`] is what a removal calls and
+//!   [`Mapper::cancel`] is what a pause calls.
 //! - **Where the pointer is**, so a pointer that is dragged off an output that is unplugged
 //!   lands on the remaining one instead of vanishing.
 //!
@@ -39,10 +40,14 @@
 //!    layout: `unplugging_an_output_moves_the_pointer_to_one_that_is_left`.
 //! 8. **A key release is reported as a press, or the reverse.** The state is carried through
 //!    unchanged: `a_key_carries_its_own_edge`.
+//! 9. **An event loses its device.** Every event the mapper returns names the device it was
+//!    given: `every_event_names_its_device`.
+//! 10. **One device's removal releases another device's button.** [`Mapper::cancel_device`]
+//!     retires only that device's state: `a_removed_device_does_not_release_anothers_button`.
 
 use std::collections::BTreeSet;
 
-use gnoblin_types::{OutputId, Point, Size};
+use gnoblin_types::{DeviceId, OutputId, Point, Size};
 
 use gnoblin_backend::{InputEvent, TouchPhase};
 
@@ -119,9 +124,11 @@ pub enum DeviceEvent {
 
 /// Turns device events into the events a seat applies.
 ///
-/// It owns the positions, the held buttons and the held touch slots, so one mapper belongs to
-/// one seat and not to one device: a second keyboard's release must find the button its own
-/// press recorded.
+/// It owns the pointer position, the held buttons and the held touch slots. One mapper belongs
+/// to one seat and not to one device, because the seat has one pointer; what it remembers about
+/// a button or a touch point is remembered *with the device that made it*, so a second mouse's
+/// release finds the button its own press recorded and one device's removal releases only its
+/// own.
 #[derive(Clone, Debug, Default)]
 pub struct Mapper {
     /// The outputs, in connection order.
@@ -133,10 +140,10 @@ pub struct Mapper {
     remainder: (f64, f64),
     /// The fraction of a scroll step that has not been reported yet.
     scroll: (f64, f64),
-    /// The buttons currently held, so a cancel can release them.
-    held: BTreeSet<u32>,
-    /// The touch slots currently down, so a cancel can cancel them.
-    touches: BTreeSet<u32>,
+    /// The buttons currently held and the device that holds each, so a cancel can release them.
+    held: BTreeSet<(DeviceId, u32)>,
+    /// The touch slots currently down and the device each belongs to, so a cancel can cancel them.
+    touches: BTreeSet<(DeviceId, u32)>,
     /// Where the pointer is, when it is on an output.
     pointer: Option<(OutputId, Point)>,
 }
@@ -180,28 +187,37 @@ impl Mapper {
         self.pointer
     }
 
-    /// The buttons currently held.
+    /// The buttons currently held, each with the device that holds it.
     #[must_use]
-    pub fn held_buttons(&self) -> &BTreeSet<u32> {
+    pub fn held_buttons(&self) -> &BTreeSet<(DeviceId, u32)> {
         &self.held
     }
 
-    /// Translates one device event.
+    /// Translates one event `device` produced.
     ///
     /// A frame with several events calls this once per event and concatenates the answers, so
-    /// the order the device reported is the order the seat sees.
+    /// the order the device reported is the order the seat sees. Every event it returns names
+    /// `device`.
     #[must_use]
-    pub fn event(&mut self, event: DeviceEvent) -> Vec<InputEvent> {
+    pub fn event(&mut self, device: DeviceId, event: DeviceEvent) -> Vec<InputEvent> {
         let mut events = Vec::new();
         match event {
-            DeviceEvent::Key { code, pressed } => events.push(InputEvent::Key { keycode: code, pressed }),
+            DeviceEvent::Key { code, pressed } => events.push(InputEvent::Key {
+                device,
+                keycode: code,
+                pressed,
+            }),
             DeviceEvent::Button { code, pressed } => {
                 if pressed {
-                    self.held.insert(code);
+                    self.held.insert((device, code));
                 } else {
-                    self.held.remove(&code);
+                    self.held.remove(&(device, code));
                 }
-                events.push(InputEvent::PointerButton { button: code, pressed });
+                events.push(InputEvent::PointerButton {
+                    device,
+                    button: code,
+                    pressed,
+                });
             }
             DeviceEvent::Motion { dx, dy } => {
                 let total = (self.remainder.0 + dx, self.remainder.1 + dy);
@@ -209,6 +225,7 @@ impl Mapper {
                 self.remainder = (total.0 - whole.0, total.1 - whole.1);
                 if whole.0 != 0.0 || whole.1 != 0.0 {
                     events.push(InputEvent::PointerMotionRelative {
+                        device,
                         dx: saturate(whole.0),
                         dy: saturate(whole.1),
                     });
@@ -217,7 +234,11 @@ impl Mapper {
             DeviceEvent::Absolute { x, y } => {
                 if let Some((output, position)) = self.place(x, y) {
                     self.pointer = Some((output, position));
-                    events.push(InputEvent::PointerMotion { output, position });
+                    events.push(InputEvent::PointerMotion {
+                        device,
+                        output,
+                        position,
+                    });
                 }
             }
             DeviceEvent::Scroll { horizontal, vertical } => {
@@ -227,6 +248,7 @@ impl Mapper {
                 self.scroll = (total.0 - whole.0 / STEPS_PER_UNIT, total.1 - whole.1 / STEPS_PER_UNIT);
                 if whole.0 != 0.0 || whole.1 != 0.0 {
                     events.push(InputEvent::PointerAxis {
+                        device,
                         horizontal: saturate(whole.0),
                         vertical: saturate(whole.1),
                     });
@@ -234,12 +256,13 @@ impl Mapper {
             }
             DeviceEvent::Touch { slot, x, y, phase } => {
                 if phase == TouchPhase::Up || phase == TouchPhase::Cancel {
-                    self.touches.remove(&slot);
+                    self.touches.remove(&(device, slot));
                 } else {
-                    self.touches.insert(slot);
+                    self.touches.insert((device, slot));
                 }
                 if let Some((output, position)) = self.place(x, y) {
                     events.push(InputEvent::Touch {
+                        device,
                         output,
                         slot,
                         position,
@@ -251,22 +274,55 @@ impl Mapper {
         events
     }
 
-    /// Everything a seat must be told when the device or the session stops delivering.
+    /// Everything a seat must be told when the session stops delivering.
     ///
-    /// It is the answer to "the device was removed with a button held": a release for every
-    /// button, a cancellation for every touch point, and nothing at all the second time.
+    /// It is the answer to "the session was paused with a button held": a release for every
+    /// button and a cancellation for every touch point of every device, and nothing at all the
+    /// second time.
     #[must_use]
     pub fn cancel(&mut self) -> Vec<InputEvent> {
+        let events = self.release(|_| true);
+        self.remainder = (0.0, 0.0);
+        self.scroll = (0.0, 0.0);
+        events
+    }
+
+    /// Everything a seat must be told when one device is removed.
+    ///
+    /// It is the answer to "the device was removed with a button held": a release for every
+    /// button and a cancellation for every touch point *that device* held, and nothing at all
+    /// the second time. Another device's held buttons and touch points are untouched.
+    #[must_use]
+    pub fn cancel_device(&mut self, device: DeviceId) -> Vec<InputEvent> {
+        self.release(|held| held == device)
+    }
+
+    /// The releases and cancellations for every held button and touch point whose device `takes`.
+    fn release(&mut self, takes: impl Fn(DeviceId) -> bool) -> Vec<InputEvent> {
         let mut events = Vec::new();
-        for button in std::mem::take(&mut self.held) {
-            events.push(InputEvent::PointerButton { button, pressed: false });
+        let buttons: Vec<(DeviceId, u32)> = self.held.iter().copied().filter(|(device, _)| takes(*device)).collect();
+        for (device, button) in buttons {
+            self.held.remove(&(device, button));
+            events.push(InputEvent::PointerButton {
+                device,
+                button,
+                pressed: false,
+            });
         }
         let slot_screen = self
             .absolute
             .and_then(|id| self.screens.iter().find(|screen| screen.id == id).copied());
-        for slot in std::mem::take(&mut self.touches) {
+        let touches: Vec<(DeviceId, u32)> = self
+            .touches
+            .iter()
+            .copied()
+            .filter(|(device, _)| takes(*device))
+            .collect();
+        for (device, slot) in touches {
+            self.touches.remove(&(device, slot));
             if let Some(screen) = slot_screen {
                 events.push(InputEvent::Touch {
+                    device,
                     output: screen.id,
                     slot,
                     position: Point::new(0, 0),
@@ -274,8 +330,6 @@ impl Mapper {
                 });
             }
         }
-        self.remainder = (0.0, 0.0);
-        self.scroll = (0.0, 0.0);
         events
     }
 
@@ -323,6 +377,11 @@ fn saturate(value: f64) -> i32 {
 mod tests {
     use super::*;
 
+    /// The mouse most of these tests move; the keyboard and the second mouse are for the ones that need two.
+    const MOUSE: DeviceId = DeviceId::new(1);
+    const KEYBOARD: DeviceId = DeviceId::new(2);
+    const SECOND_MOUSE: DeviceId = DeviceId::new(3);
+
     fn screen(id: u64, width: u32, height: u32) -> Screen {
         Screen {
             id: OutputId::new(id),
@@ -342,13 +401,17 @@ mod tests {
         let mut mapper = Mapper::new();
         for _ in 0..3 {
             assert!(
-                mapper.event(DeviceEvent::Motion { dx: 0.3, dy: 0.0 }).is_empty(),
+                mapper.event(MOUSE, DeviceEvent::Motion { dx: 0.3, dy: 0.0 }).is_empty(),
                 "less than a pixel has been travelled"
             );
         }
         assert_eq!(
-            mapper.event(DeviceEvent::Motion { dx: 0.3, dy: 0.0 }),
-            vec![InputEvent::PointerMotionRelative { dx: 1, dy: 0 }]
+            mapper.event(MOUSE, DeviceEvent::Motion { dx: 0.3, dy: 0.0 }),
+            vec![InputEvent::PointerMotionRelative {
+                device: MOUSE,
+                dx: 1,
+                dy: 0
+            }]
         );
     }
 
@@ -356,31 +419,43 @@ mod tests {
     fn a_relative_delta_keeps_its_sign() {
         let mut mapper = Mapper::new();
         assert_eq!(
-            mapper.event(DeviceEvent::Motion { dx: -3.0, dy: 4.0 }),
-            vec![InputEvent::PointerMotionRelative { dx: -3, dy: 4 }]
+            mapper.event(MOUSE, DeviceEvent::Motion { dx: -3.0, dy: 4.0 }),
+            vec![InputEvent::PointerMotionRelative {
+                device: MOUSE,
+                dx: -3,
+                dy: 4
+            }]
         );
     }
 
     #[test]
     fn a_removed_device_releases_every_held_button() {
         let mut mapper = Mapper::new();
-        let _ = mapper.event(DeviceEvent::Button {
-            code: 272,
-            pressed: true,
-        });
-        let _ = mapper.event(DeviceEvent::Button {
-            code: 273,
-            pressed: true,
-        });
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Button {
+                code: 272,
+                pressed: true,
+            },
+        );
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Button {
+                code: 273,
+                pressed: true,
+            },
+        );
         let cancelled = mapper.cancel();
         assert_eq!(
             cancelled,
             vec![
                 InputEvent::PointerButton {
+                    device: MOUSE,
                     button: 272,
                     pressed: false
                 },
                 InputEvent::PointerButton {
+                    device: MOUSE,
                     button: 273,
                     pressed: false
                 },
@@ -393,18 +468,24 @@ mod tests {
     fn a_removed_device_cancels_every_held_touch() {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd()]);
-        let _ = mapper.event(DeviceEvent::Touch {
-            slot: 4,
-            x: 0.5,
-            y: 0.5,
-            phase: TouchPhase::Down,
-        });
-        let _ = mapper.event(DeviceEvent::Touch {
-            slot: 5,
-            x: 0.25,
-            y: 0.25,
-            phase: TouchPhase::Down,
-        });
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Touch {
+                slot: 4,
+                x: 0.5,
+                y: 0.5,
+                phase: TouchPhase::Down,
+            },
+        );
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Touch {
+                slot: 5,
+                x: 0.25,
+                y: 0.25,
+                phase: TouchPhase::Down,
+            },
+        );
         let cancelled = mapper.cancel();
         assert_eq!(cancelled.len(), 2);
         for event in &cancelled {
@@ -419,18 +500,24 @@ mod tests {
     fn a_lifted_touch_is_not_cancelled_again() {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd()]);
-        let _ = mapper.event(DeviceEvent::Touch {
-            slot: 0,
-            x: 0.5,
-            y: 0.5,
-            phase: TouchPhase::Down,
-        });
-        let _ = mapper.event(DeviceEvent::Touch {
-            slot: 0,
-            x: 0.5,
-            y: 0.5,
-            phase: TouchPhase::Up,
-        });
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Touch {
+                slot: 0,
+                x: 0.5,
+                y: 0.5,
+                phase: TouchPhase::Down,
+            },
+        );
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Touch {
+                slot: 0,
+                x: 0.5,
+                y: 0.5,
+                phase: TouchPhase::Up,
+            },
+        );
         assert!(mapper.cancel().is_empty());
     }
 
@@ -438,10 +525,13 @@ mod tests {
     fn a_second_cancel_reports_nothing() {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd()]);
-        let _ = mapper.event(DeviceEvent::Button {
-            code: 272,
-            pressed: true,
-        });
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Button {
+                code: 272,
+                pressed: true,
+            },
+        );
         assert_eq!(mapper.cancel().len(), 1);
         assert!(mapper.cancel().is_empty());
     }
@@ -451,8 +541,9 @@ mod tests {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd()]);
         assert_eq!(
-            mapper.event(DeviceEvent::Absolute { x: 1.4, y: -2.0 }),
+            mapper.event(MOUSE, DeviceEvent::Absolute { x: 1.4, y: -2.0 }),
             vec![InputEvent::PointerMotion {
+                device: MOUSE,
                 output: OutputId::new(1),
                 position: Point::new(1919, 0)
             }]
@@ -464,8 +555,9 @@ mod tests {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd()]);
         assert_eq!(
-            mapper.event(DeviceEvent::Absolute { x: 0.5, y: 0.25 }),
+            mapper.event(MOUSE, DeviceEvent::Absolute { x: 0.5, y: 0.25 }),
             vec![InputEvent::PointerMotion {
+                device: MOUSE,
                 output: OutputId::new(1),
                 position: Point::new(960, 270)
             }]
@@ -478,18 +570,25 @@ mod tests {
         let mut mapper = Mapper::new();
         // A touchpad reports 1/128 of a step twice. That is 15/16 of a 1/120 unit, which is not
         // reportable on its own; the second brings the total to 1 7/8 units and reports one.
-        let first = mapper.event(DeviceEvent::Scroll {
-            horizontal: 0.0,
-            vertical: 1.0 / 128.0,
-        });
+        let first = mapper.event(
+            MOUSE,
+            DeviceEvent::Scroll {
+                horizontal: 0.0,
+                vertical: 1.0 / 128.0,
+            },
+        );
         assert!(first.is_empty());
-        let second = mapper.event(DeviceEvent::Scroll {
-            horizontal: 0.0,
-            vertical: 1.0 / 128.0,
-        });
+        let second = mapper.event(
+            MOUSE,
+            DeviceEvent::Scroll {
+                horizontal: 0.0,
+                vertical: 1.0 / 128.0,
+            },
+        );
         assert_eq!(
             second,
             vec![InputEvent::PointerAxis {
+                device: MOUSE,
                 horizontal: 0,
                 vertical: 1
             }]
@@ -500,11 +599,15 @@ mod tests {
     fn a_whole_step_is_reported_as_one_hundred_and_twenty() {
         let mut mapper = Mapper::new();
         assert_eq!(
-            mapper.event(DeviceEvent::Scroll {
-                horizontal: -1.0,
-                vertical: 1.0
-            }),
+            mapper.event(
+                MOUSE,
+                DeviceEvent::Scroll {
+                    horizontal: -1.0,
+                    vertical: 1.0
+                }
+            ),
             vec![InputEvent::PointerAxis {
+                device: MOUSE,
                 horizontal: -120,
                 vertical: 120
             }]
@@ -515,7 +618,7 @@ mod tests {
     fn unplugging_an_output_moves_the_pointer_to_one_that_is_left() {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd(), screen(2, 1280, 720)]);
-        let _ = mapper.event(DeviceEvent::Absolute { x: 0.9, y: 0.9 });
+        let _ = mapper.event(MOUSE, DeviceEvent::Absolute { x: 0.9, y: 0.9 });
         assert_eq!(mapper.pointer().map(|(id, _)| id), Some(OutputId::new(1)));
         mapper.set_screens(vec![screen(2, 1280, 720)]);
         assert_eq!(
@@ -529,7 +632,7 @@ mod tests {
     fn a_shrunk_output_pulls_the_pointer_inside_it() {
         let mut mapper = Mapper::new();
         mapper.set_screens(vec![full_hd()]);
-        let _ = mapper.event(DeviceEvent::Absolute { x: 1.0, y: 1.0 });
+        let _ = mapper.event(MOUSE, DeviceEvent::Absolute { x: 1.0, y: 1.0 });
         mapper.set_screens(vec![screen(1, 800, 600)]);
         assert_eq!(mapper.pointer(), Some((OutputId::new(1), Point::new(799, 599))));
     }
@@ -537,7 +640,7 @@ mod tests {
     #[test]
     fn with_no_output_an_absolute_point_is_dropped() {
         let mut mapper = Mapper::new();
-        assert!(mapper.event(DeviceEvent::Absolute { x: 0.5, y: 0.5 }).is_empty());
+        assert!(mapper.event(MOUSE, DeviceEvent::Absolute { x: 0.5, y: 0.5 }).is_empty());
         assert_eq!(mapper.pointer(), None);
     }
 
@@ -545,21 +648,29 @@ mod tests {
     fn a_key_carries_its_own_edge() {
         let mut mapper = Mapper::new();
         assert_eq!(
-            mapper.event(DeviceEvent::Key {
-                code: 30,
-                pressed: true
-            }),
+            mapper.event(
+                MOUSE,
+                DeviceEvent::Key {
+                    code: 30,
+                    pressed: true
+                }
+            ),
             vec![InputEvent::Key {
+                device: MOUSE,
                 keycode: 30,
                 pressed: true
             }]
         );
         assert_eq!(
-            mapper.event(DeviceEvent::Key {
-                code: 30,
-                pressed: false
-            }),
+            mapper.event(
+                MOUSE,
+                DeviceEvent::Key {
+                    code: 30,
+                    pressed: false
+                }
+            ),
             vec![InputEvent::Key {
+                device: MOUSE,
                 keycode: 30,
                 pressed: false
             }]
@@ -570,11 +681,147 @@ mod tests {
     fn an_enormous_delta_saturates_instead_of_wrapping() {
         let mut mapper = Mapper::new();
         assert_eq!(
-            mapper.event(DeviceEvent::Motion {
-                dx: f64::from(i32::MAX) * 4.0,
-                dy: 0.0
-            }),
-            vec![InputEvent::PointerMotionRelative { dx: i32::MAX, dy: 0 }]
+            mapper.event(
+                MOUSE,
+                DeviceEvent::Motion {
+                    dx: f64::from(i32::MAX) * 4.0,
+                    dy: 0.0
+                }
+            ),
+            vec![InputEvent::PointerMotionRelative {
+                device: MOUSE,
+                dx: i32::MAX,
+                dy: 0
+            }]
+        );
+    }
+
+    #[test]
+    fn every_event_names_its_device() {
+        let mut mapper = Mapper::new();
+        mapper.set_screens(vec![full_hd()]);
+        let events = [
+            mapper.event(
+                KEYBOARD,
+                DeviceEvent::Key {
+                    code: 30,
+                    pressed: true,
+                },
+            ),
+            mapper.event(
+                SECOND_MOUSE,
+                DeviceEvent::Button {
+                    code: 272,
+                    pressed: true,
+                },
+            ),
+            mapper.event(SECOND_MOUSE, DeviceEvent::Motion { dx: 2.0, dy: 0.0 }),
+            mapper.event(
+                SECOND_MOUSE,
+                DeviceEvent::Scroll {
+                    horizontal: 0.0,
+                    vertical: 1.0,
+                },
+            ),
+            mapper.event(MOUSE, DeviceEvent::Absolute { x: 0.5, y: 0.5 }),
+            mapper.event(
+                MOUSE,
+                DeviceEvent::Touch {
+                    slot: 0,
+                    x: 0.5,
+                    y: 0.5,
+                    phase: TouchPhase::Down,
+                },
+            ),
+        ];
+        let named: Vec<DeviceId> = events
+            .iter()
+            .flatten()
+            .map(|event| match event {
+                InputEvent::Key { device, .. }
+                | InputEvent::PointerButton { device, .. }
+                | InputEvent::PointerMotionRelative { device, .. }
+                | InputEvent::PointerAxis { device, .. }
+                | InputEvent::PointerMotion { device, .. }
+                | InputEvent::Touch { device, .. } => *device,
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            named,
+            [KEYBOARD, SECOND_MOUSE, SECOND_MOUSE, SECOND_MOUSE, MOUSE, MOUSE]
+        );
+    }
+
+    #[test]
+    fn a_removed_device_does_not_release_anothers_button() {
+        let mut mapper = Mapper::new();
+        mapper.set_screens(vec![full_hd()]);
+        for device in [MOUSE, SECOND_MOUSE] {
+            let _ = mapper.event(
+                device,
+                DeviceEvent::Button {
+                    code: 272,
+                    pressed: true,
+                },
+            );
+        }
+        let _ = mapper.event(
+            SECOND_MOUSE,
+            DeviceEvent::Touch {
+                slot: 0,
+                x: 0.5,
+                y: 0.5,
+                phase: TouchPhase::Down,
+            },
+        );
+        let cancelled = mapper.cancel_device(MOUSE);
+        assert_eq!(
+            cancelled,
+            vec![InputEvent::PointerButton {
+                device: MOUSE,
+                button: 272,
+                pressed: false
+            }],
+            "only the removed device's button is released, and it names that device"
+        );
+        assert_eq!(
+            mapper.held_buttons().iter().copied().collect::<Vec<_>>(),
+            vec![(SECOND_MOUSE, 272)],
+            "the other mouse still holds its button"
+        );
+        let rest = mapper.cancel_device(SECOND_MOUSE);
+        assert_eq!(
+            rest.len(),
+            2,
+            "the second mouse's button and touch point, released once each"
+        );
+        assert!(mapper.cancel_device(SECOND_MOUSE).is_empty());
+    }
+
+    #[test]
+    fn two_devices_holding_one_button_code_keep_their_own_press() {
+        let mut mapper = Mapper::new();
+        for device in [MOUSE, SECOND_MOUSE] {
+            let _ = mapper.event(
+                device,
+                DeviceEvent::Button {
+                    code: 272,
+                    pressed: true,
+                },
+            );
+        }
+        let _ = mapper.event(
+            MOUSE,
+            DeviceEvent::Button {
+                code: 272,
+                pressed: false,
+            },
+        );
+        assert_eq!(
+            mapper.held_buttons().iter().copied().collect::<Vec<_>>(),
+            vec![(SECOND_MOUSE, 272)],
+            "one mouse's release does not clear the other mouse's press"
         );
     }
 }

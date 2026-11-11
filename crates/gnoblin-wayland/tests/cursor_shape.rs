@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::InputEvent;
 use gnoblin_config::Protocols;
 use gnoblin_cursor::ProviderKind;
-use gnoblin_types::{Point, Rect};
+use gnoblin_types::{DeviceId, Point, Rect};
 use gnoblin_wayland::{Config, ControlHandle, CursorSettings, LoopError, Server, SessionSnapshot};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -89,6 +89,7 @@ impl Handle {
     fn move_pointer(&self, at: Point) {
         let observation = self.wait_for(|observation| !observation.outputs().is_empty());
         self.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
             output: observation.outputs()[0],
             position: at,
         });

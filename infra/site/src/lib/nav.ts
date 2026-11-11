@@ -174,6 +174,7 @@ export const NAV: NavSection[] = [
                     { label: "Window snapping", slug: "shell-api/window-snapping" },
                     { label: "Tablet pad help", slug: "shell-api/tablet-pad-help" },
                     { label: "Keyboard shortcuts", slug: "shell-api/keyboard-shortcuts" },
+                    { label: "Input devices", slug: "shell-api/input-devices" },
                     { label: "Launch feedback", slug: "shell-api/launch-feedback" },
                     { label: "Processes", slug: "shell-api/processes" },
                     { label: "Idle watches", slug: "shell-api/idle" },

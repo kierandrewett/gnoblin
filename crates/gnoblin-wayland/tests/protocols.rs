@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
 use gnoblin_backend::{InputEvent, TouchPhase};
 use gnoblin_lock::State as LockState;
-use gnoblin_types::{NodeId, Point};
+use gnoblin_types::{DeviceId, NodeId, Point};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -123,18 +123,23 @@ impl Handle {
     /// Queues a pointer motion at a global position.
     fn move_pointer(&self, at: Point) {
         let output = self.snapshot().outputs().first().copied().expect("an output");
-        self.control
-            .inject_input(InputEvent::PointerMotion { output, position: at });
+        self.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position: at,
+        });
     }
 
     /// Queues a pointer motion and a click.
     fn click(&self, at: Point) {
         self.move_pointer(at);
         self.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: 0x110,
             pressed: true,
         });
         self.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: 0x110,
             pressed: false,
         });
@@ -142,7 +147,11 @@ impl Handle {
 
     /// Queues a key edge.
     fn key(&self, keycode: u32, pressed: bool) {
-        self.control.inject_input(InputEvent::Key { keycode, pressed });
+        self.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
+            keycode,
+            pressed,
+        });
     }
 
     /// Queues a pointer motion that leaves every output, which is how focus moves away
@@ -153,14 +162,18 @@ impl Handle {
 
     /// Queues a scroll at the pointer, in 1/120 of a step on each axis.
     fn scroll(&self, horizontal: i32, vertical: i32) {
-        self.control
-            .inject_input(InputEvent::PointerAxis { horizontal, vertical });
+        self.control.inject_input(InputEvent::PointerAxis {
+            device: DeviceId::VIRTUAL,
+            horizontal,
+            vertical,
+        });
     }
 
     /// Queues a touch point's change at a global position on the first output.
     fn touch(&self, slot: u32, at: Point, phase: TouchPhase) {
         let output = self.snapshot().outputs().first().copied().expect("an output");
         self.control.inject_input(InputEvent::Touch {
+            device: DeviceId::VIRTUAL,
             output,
             slot,
             position: at,
@@ -1735,10 +1748,12 @@ fn a_key_reaches_the_client_with_its_evdev_code_from_either_source() {
         // sources cannot answer differently.
         let sink = session.control.input_sink();
         sink.inject(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: true,
         });
         sink.inject(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: false,
         });
@@ -2249,6 +2264,120 @@ fn a_claimed_chord_reaches_the_shell_and_never_the_client() {
     });
 }
 
+#[test]
+fn a_chord_claimed_for_one_keyboard_is_never_taken_from_the_other() {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+    use gnoblin_wayland::{ChordEvent, ChordState, TreeHooks, TreeQueue};
+
+    let batches: Arc<Mutex<Vec<gnoblin_wayland::TreeBatch>>> = Arc::default();
+    let queue = TreeQueue::default();
+    let tree = TreeHooks {
+        queue: queue.clone(),
+        classes: Arc::new(ClaimClasses),
+        publish: {
+            let batches = Arc::clone(&batches);
+            Arc::new(move |batch| batches.lock().expect("the batch lock").push(batch))
+        },
+        ..TreeHooks::default()
+    };
+    let session = Session::with_config(Config {
+        tree,
+        ..Config::default()
+    });
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+
+        let desk = DeviceId::new(1);
+        let pad = DeviceId::new(2);
+        for (id, name) in [(desk, "Desk Keyboard"), (pad, "Macro Pad")] {
+            session.control.inject_input(InputEvent::DeviceAdded {
+                device: DeviceInfo::new(id, name, DeviceKind::Keyboard),
+            });
+        }
+        // The shell claims Super+Return for the macro pad only.
+        let claimed = apply_on_shell(
+            &queue,
+            &mut 0,
+            TreeTransaction::new(vec![
+                TreeOp::New {
+                    class: "seat".to_owned(),
+                    id: CLAIM_SEAT,
+                },
+                TreeOp::TreeCall {
+                    node: CLAIM_SEAT,
+                    method: "claim".to_owned(),
+                    args: vec![1],
+                    token: 1,
+                    text: SecretText::new("Macro Pad\n<Super>Return"),
+                },
+            ]),
+        );
+        assert!(claimed, "the shell's claim applies");
+        let key = |device: DeviceId, keycode: u32, pressed: bool| {
+            session.control.inject_input(InputEvent::Key {
+                device,
+                keycode,
+                pressed,
+            });
+        };
+        // The desk keyboard's Super+Return is a client's.
+        key(desk, KEY_LEFTMETA, true);
+        key(desk, KEY_ENTER, true);
+        key(desk, KEY_ENTER, false);
+        key(desk, KEY_LEFTMETA, false);
+        // The pad's is the shell's.
+        key(pad, KEY_LEFTMETA, true);
+        key(pad, KEY_ENTER, true);
+        key(pad, KEY_ENTER, false);
+        key(pad, KEY_LEFTMETA, false);
+        // Super on the desk keyboard is not Super on the pad: the pad's Return alone is a client's.
+        key(desk, KEY_LEFTMETA, true);
+        key(pad, KEY_ENTER, true);
+        key(pad, KEY_ENTER, false);
+        key(desk, KEY_LEFTMETA, false);
+        key(desk, KEY_B, true);
+        key(desk, KEY_B, false);
+        let state = client.wait_for(|state| state.keys.len() >= 12);
+        assert_eq!(
+            state.keys.iter().filter(|code| **code == KEY_ENTER).count(),
+            4,
+            "the desk's Return and the pad's lone Return reach the client, both edges, and the pad's chord does not: {:?}",
+            state.keys
+        );
+        let deadline = Instant::now() + TIMEOUT;
+        while chord_events(&batches).len() < 2 {
+            assert!(Instant::now() < deadline, "the shell hears the pad's chord");
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            chord_events(&batches),
+            vec![
+                (
+                    CLAIM_SEAT,
+                    ChordEvent {
+                        id: 1,
+                        chord: "<Super>Return".to_owned(),
+                        state: ChordState::Press,
+                    },
+                ),
+                (
+                    CLAIM_SEAT,
+                    ChordEvent {
+                        id: 1,
+                        chord: "<Super>Return".to_owned(),
+                        state: ChordState::Release,
+                    },
+                ),
+            ],
+            "only the pad's own Super+Return reaches the shell"
+        );
+    });
+}
+
 /// Presses Super+Return, the chord the claim tests claim, so every edge reaches the router.
 fn press_claimed_chord(session: &Handle) {
     session.key(KEY_LEFTMETA, true);
@@ -2504,7 +2633,7 @@ fn settled_gestures(
 /// One touchpad sample: a swipe of `fingers` fingers that moved `dx` since the last sample.
 fn swipe_sample(fingers: u8, phase: gnoblin_backend::RawTouchpadPhase, dx: f64) -> InputEvent {
     InputEvent::Touchpad(gnoblin_backend::RawTouchpadSample {
-        device: 1,
+        device: DeviceId::new(1),
         phase,
         kind: gnoblin_backend::RawTouchpadKind::Swipe,
         fingers,

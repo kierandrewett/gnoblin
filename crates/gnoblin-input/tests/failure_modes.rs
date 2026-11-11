@@ -4,10 +4,10 @@ mod common;
 
 use common::{CODE_Q, CODE_W, E, Q, W, button_event, chord, key_event, name, pointer_chord, press, release};
 use gnoblin_input::{
-    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Edge, EdgeBand,
-    GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase, GestureRoute, GestureRouter,
-    GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, Recogniser, Routed, Router, Scope,
-    ShortcutInhibit, Target, Tick, Trigger,
+    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, DeviceId, DeviceKey,
+    DeviceSelector, Edge, EdgeBand, GestureConfig, GestureEvent, GestureKind, GestureLock, GesturePath, GesturePhase,
+    GestureRoute, GestureRouter, GestureSpec, HeldEdge, Insertion, KeyState, Keysym, Modifiers, Name, PinchDirection,
+    Recogniser, Routed, Router, Scope, ShortcutInhibit, Target, Tick, Trigger,
 };
 
 fn route(router: &mut Router, event: gnoblin_input::Event) -> Routed {
@@ -583,4 +583,276 @@ fn a_name_is_one_rule_everywhere() {
         ..swipe_spec("x", 2)
     };
     assert!(spec.validate().is_err());
+}
+
+// Failure modes 13 to 15: device identity (multi-seat phase 1, `design/multi-seat.md`, lanes 1.2 and 1.4).
+
+const DESK: DeviceId = DeviceId::new(1);
+const PAD: DeviceId = DeviceId::new(2);
+
+/// A router that knows the two keyboards of these tests by name.
+fn two_keyboards() -> Router {
+    let mut router = Router::new();
+    router.device_added(DESK, "Desk Keyboard");
+    router.device_added(PAD, "Macro Pad");
+    router
+}
+
+fn selector(device: &str) -> DeviceSelector {
+    DeviceSelector::new(device).expect(device)
+}
+
+/// One key edge on `device`, with the seat's modifiers and, when given, the device's own view.
+fn key_on(
+    device: DeviceId,
+    symbol: Keysym,
+    modifiers: Modifiers,
+    own: Option<DeviceKey>,
+    state: KeyState,
+) -> gnoblin_input::Event {
+    gnoblin_input::Event::Key {
+        device,
+        key_code: if symbol == W { CODE_W } else { CODE_Q },
+        symbol,
+        modifiers,
+        own,
+        state,
+        repeat: false,
+    }
+}
+
+#[test]
+fn two_keyboards_holding_one_key_do_not_collide() {
+    let mut router = two_keyboards();
+    // Both keyboards hold the same hardware key: the router keeps the two presses apart.
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Pressed));
+    let pad = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!((desk.target, pad.target), (Target::Client, Target::Client));
+    assert_eq!(router.held(), 2, "two keyboards, two presses of one key code");
+    assert_eq!((router.held_by(DESK), router.held_by(PAD)), (1, 1));
+    // The releases arrive in the other order: each finds its own press.
+    let pad = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Released));
+    assert!(pad.followed_press);
+    assert_eq!(
+        router.held_by(DESK),
+        1,
+        "the pad's release did not take the desk's press"
+    );
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Released));
+    assert!(desk.followed_press);
+    let stats = router.stats();
+    assert_eq!(stats.duplicate_presses, 0, "no press was counted twice");
+    assert_eq!(stats.orphan_releases, 0, "no release lost its press");
+    assert_eq!((stats.presses, stats.releases, stats.followed_press), (2, 2, 2));
+    assert_eq!(router.held(), 0);
+}
+
+#[test]
+fn a_binding_for_one_keyboard_ignores_the_other() {
+    let mut router = two_keyboards();
+    let bound = router
+        .bind_for(
+            &name("pad-q"),
+            chord("q"),
+            Trigger::Press,
+            false,
+            Some(selector("Macro Pad")),
+        )
+        .expect("the chord for the pad")
+        .id();
+    // The same chord on the desk keyboard is a client key.
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!((desk.target, desk.fired), (Target::Client, None));
+    let pad = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!((pad.target, pad.fired), (Target::Binding(bound), Some(bound)));
+    // Each release follows its own press, so the pad's is consumed and the desk's reaches the client.
+    let pad = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Released));
+    assert_eq!((pad.target, pad.followed_press), (Target::Binding(bound), true));
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Released));
+    assert_eq!((desk.target, desk.followed_press), (Target::Client, true));
+    let stats = router.stats();
+    assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
+    assert_eq!(stats.fired, 1, "the binding ran once, for the pad");
+    // A key from a device nobody announced is no pad either.
+    let unknown = route(
+        &mut router,
+        key_on(DeviceId::VIRTUAL, Q, Modifiers::NONE, None, KeyState::Pressed),
+    );
+    assert_eq!(unknown.target, Target::Client);
+    route(
+        &mut router,
+        key_on(DeviceId::VIRTUAL, Q, Modifiers::NONE, None, KeyState::Released),
+    );
+}
+
+#[test]
+fn a_binding_for_a_device_beats_one_for_every_device_on_that_device_only() {
+    let mut router = two_keyboards();
+    let any = router
+        .bind(&name("any-q"), chord("q"), Trigger::Press, false)
+        .expect("the chord for every device")
+        .id();
+    let pad_only = router
+        .bind_for(
+            &name("pad-q"),
+            chord("q"),
+            Trigger::Press,
+            false,
+            Some(selector("Macro Pad")),
+        )
+        .expect("the same chord for the pad is a different binding")
+        .id();
+    let pad = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!(pad.target, Target::Binding(pad_only));
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!(desk.target, Target::Binding(any));
+    // The same chord for the same device twice is still one meaning too many.
+    let conflict = router
+        .bind_for(
+            &name("again"),
+            chord("q"),
+            Trigger::Press,
+            false,
+            Some(selector("Macro Pad")),
+        )
+        .expect_err("pad Q is taken");
+    assert_eq!(conflict.existing_name, name("pad-q"));
+}
+
+#[test]
+fn a_scoped_binding_reads_its_own_keyboards_modifiers() {
+    let mut router = two_keyboards();
+    let scoped = router
+        .bind_for(
+            &name("pad-shift-q"),
+            chord("<Shift>q"),
+            Trigger::Press,
+            false,
+            Some(selector("Macro Pad")),
+        )
+        .expect("Shift+Q for the pad")
+        .id();
+    let unscoped = router
+        .bind(&name("any-shift-w"), chord("<Shift>w"), Trigger::Press, false)
+        .expect("Shift+W for every device")
+        .id();
+    // Shift is held on the desk keyboard, so the seat reports it on the pad's keys too. The pad's own state
+    // holds no Shift: its chord does not match, and the key is a client's.
+    let pad_own = DeviceKey {
+        symbol: Q,
+        modifiers: Modifiers::NONE,
+    };
+    let routed = route(
+        &mut router,
+        key_on(PAD, Q, Modifiers::SHIFT, Some(pad_own), KeyState::Pressed),
+    );
+    assert_eq!(
+        routed.target,
+        Target::Client,
+        "a Shift on another keyboard is not this pad's Shift"
+    );
+    route(
+        &mut router,
+        key_on(PAD, Q, Modifiers::SHIFT, Some(pad_own), KeyState::Released),
+    );
+    // With the Shift on the pad itself, the chord matches.
+    let pad_shifted = DeviceKey {
+        symbol: Q,
+        modifiers: Modifiers::SHIFT,
+    };
+    let routed = route(
+        &mut router,
+        key_on(PAD, Q, Modifiers::SHIFT, Some(pad_shifted), KeyState::Pressed),
+    );
+    assert_eq!((routed.target, routed.fired), (Target::Binding(scoped), Some(scoped)));
+    route(
+        &mut router,
+        key_on(PAD, Q, Modifiers::SHIFT, Some(pad_shifted), KeyState::Released),
+    );
+    // A binding for every device keeps matching what the seat holds, whichever keyboard held the Shift.
+    let routed = route(
+        &mut router,
+        key_on(
+            PAD,
+            W,
+            Modifiers::SHIFT,
+            Some(DeviceKey {
+                symbol: W,
+                modifiers: Modifiers::NONE,
+            }),
+            KeyState::Pressed,
+        ),
+    );
+    assert_eq!(routed.target, Target::Binding(unscoped));
+    let stats = router.stats();
+    assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
+}
+
+#[test]
+fn a_removed_keyboard_forgets_only_its_own_presses() {
+    let mut router = two_keyboards();
+    router
+        .bind_for(
+            &name("pad-q"),
+            chord("q"),
+            Trigger::Press,
+            false,
+            Some(selector("Macro Pad")),
+        )
+        .expect("pad");
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Pressed));
+    let pad = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!(desk.target, Target::Client);
+    let dropped = router.device_removed(PAD);
+    assert_eq!(
+        dropped,
+        vec![(HeldEdge::Key(PAD, CODE_Q), pad.target)],
+        "the pad's press and nothing else"
+    );
+    assert_eq!((router.held(), router.held_by(DESK)), (1, 1));
+    assert_eq!(router.stats().dropped_with_device, 1);
+    assert_eq!(router.device_name(PAD), None);
+    // The desk keyboard's release still finds its press.
+    let desk = route(&mut router, key_on(DESK, Q, Modifiers::NONE, None, KeyState::Released));
+    assert!(desk.followed_press);
+    assert_eq!(router.stats().orphan_releases, 0);
+    // A device that is gone matches no scoped binding, even under its old number.
+    let after = route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Pressed));
+    assert_eq!(after.target, Target::Client);
+    route(&mut router, key_on(PAD, Q, Modifiers::NONE, None, KeyState::Released));
+}
+
+#[test]
+fn a_pointer_chord_scoped_to_one_mouse_ignores_the_other() {
+    let mut router = Router::new();
+    router.device_added(DESK, "Desk Mouse");
+    router.device_added(PAD, "Travel Mouse");
+    let bound = router
+        .bind_for(
+            &name("resize"),
+            pointer_chord("<Super>Button3"),
+            Trigger::Press,
+            false,
+            Some(selector("Travel Mouse")),
+        )
+        .expect("a pointer chord for one mouse")
+        .id();
+    let click = |device: DeviceId, state: ButtonState| gnoblin_input::Event::Button {
+        device,
+        button: 3,
+        modifiers: Modifiers::SUPER,
+        state,
+    };
+    assert_eq!(
+        route(&mut router, click(DESK, ButtonState::Pressed)).target,
+        Target::Client
+    );
+    assert_eq!(
+        route(&mut router, click(PAD, ButtonState::Pressed)).target,
+        Target::Binding(bound)
+    );
+    assert!(route(&mut router, click(PAD, ButtonState::Released)).followed_press);
+    assert!(route(&mut router, click(DESK, ButtonState::Released)).followed_press);
+    let stats = router.stats();
+    assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
 }

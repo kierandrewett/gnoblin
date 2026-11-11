@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::chord::Chord;
+use crate::device::DeviceSelector;
 use crate::name::Name;
 
 /// Which edge of a chord runs a binding.
@@ -68,6 +69,7 @@ pub struct Binding {
     chord: Chord,
     trigger: Trigger,
     allow_when_inhibited: bool,
+    device: Option<DeviceSelector>,
 }
 
 impl Binding {
@@ -94,6 +96,11 @@ impl Binding {
     /// Whether the binding still runs while the focused client inhibits shortcuts.
     pub const fn allows_when_inhibited(&self) -> bool {
         self.allow_when_inhibited
+    }
+
+    /// The device the binding takes its events from, or `None` when it takes them from every device.
+    pub const fn device(&self) -> Option<&DeviceSelector> {
+        self.device.as_ref()
     }
 
     /// Whether this binding runs on a press or a release edge.
@@ -123,11 +130,13 @@ impl Insertion {
     }
 }
 
-/// A refused insertion: another binding already owns this chord.
+/// A refused insertion: another binding already owns this chord for this device selector.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Conflict {
     /// The chord both declarations want.
     pub chord: Chord,
+    /// The device both declarations want it on, or `None` for every device.
+    pub device: Option<DeviceSelector>,
     /// The binding that already had it.
     pub existing: BindingId,
     /// The name of that binding.
@@ -140,8 +149,16 @@ impl fmt::Display for Conflict {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "binding \"{}\" cannot use {}: \"{}\" ({}) already has it",
-            self.incoming_name, self.chord, self.existing_name, self.existing
+            "binding \"{}\" cannot use {}",
+            self.incoming_name, self.chord
+        )?;
+        if let Some(device) = &self.device {
+            write!(formatter, " on \"{device}\"")?;
+        }
+        write!(
+            formatter,
+            ": \"{}\" ({}) already has it",
+            self.existing_name, self.existing
         )
     }
 }
@@ -183,13 +200,15 @@ pub struct Declaration {
     pub trigger: Trigger,
     /// Whether it still runs while the focused client inhibits shortcuts.
     pub allow_when_inhibited: bool,
+    /// The device the binding takes its events from, or `None` for every device.
+    pub device: Option<DeviceSelector>,
 }
 
-/// The bindings a session has declared, keyed by chord and by name.
+/// The bindings a session has declared, keyed by chord and device, and by name.
 #[derive(Clone, Debug, Default)]
 pub struct BindingTable {
     entries: BTreeMap<BindingId, Binding>,
-    by_chord: BTreeMap<Chord, BindingId>,
+    by_chord: BTreeMap<(Chord, Option<DeviceSelector>), BindingId>,
     by_name: BTreeMap<String, BindingId>,
     next_id: u32,
 }
@@ -200,7 +219,7 @@ impl BindingTable {
         Self::default()
     }
 
-    /// Declare a binding, or replace the one with the same name.
+    /// Declare a binding for every device, or replace the one with the same name.
     ///
     /// On conflict the table is left exactly as it was, so a failed reload keeps the
     /// working bindings instead of half-applying a new set.
@@ -211,15 +230,35 @@ impl BindingTable {
         trigger: Trigger,
         allow_when_inhibited: bool,
     ) -> Result<Insertion, Conflict> {
+        self.insert_for(name, chord, trigger, allow_when_inhibited, None)
+    }
+
+    /// Declare a binding that takes its events from `device` (every device for `None`), or replace
+    /// the one with the same name.
+    ///
+    /// A chord is owned once *per device selector*: the same chord may be bound for the macro pad, for
+    /// the other pad and for every device, because they match different events. Two declarations of one
+    /// chord for one selector are a [`Conflict`]. On conflict the table is left exactly as it was.
+    pub fn insert_for(
+        &mut self,
+        name: &Name,
+        chord: Chord,
+        trigger: Trigger,
+        allow_when_inhibited: bool,
+        device: Option<DeviceSelector>,
+    ) -> Result<Insertion, Conflict> {
         let existing = self.by_name.get(name.as_str()).copied();
+        let key = (chord, device);
         // A chord already owned by a different binding is a conflict. Re-declaring the same
         // name with the same chord is not, because the owner is then that name's own row.
-        if let Some(owner) = self.by_chord.get(&chord).copied()
+        if let Some(owner) = self.by_chord.get(&key).copied()
             && Some(owner) != existing
         {
             let owner_binding = self.entries.get(&owner).expect("every chord has a binding");
+            let (chord, device) = key;
             return Err(Conflict {
                 chord,
+                device,
                 existing: owner,
                 existing_name: owner_binding.name.clone(),
                 incoming_name: name.clone(),
@@ -228,16 +267,17 @@ impl BindingTable {
         match existing {
             Some(id) => {
                 let replaced = self.entries.get_mut(&id).expect("a named binding exists");
-                let previous_chord = replaced.chord.clone();
-                replaced.chord = chord.clone();
+                let previous = (replaced.chord.clone(), replaced.device.clone());
+                replaced.chord = key.0.clone();
+                replaced.device = key.1.clone();
                 replaced.trigger = trigger;
                 replaced.allow_when_inhibited = allow_when_inhibited;
                 // Drop the old chord only if this binding still owns it: in a reload that
                 // swaps two chords, the old chord may already belong to a sibling.
-                if self.by_chord.get(&previous_chord) == Some(&id) {
-                    self.by_chord.remove(&previous_chord);
+                if self.by_chord.get(&previous) == Some(&id) {
+                    self.by_chord.remove(&previous);
                 }
-                self.by_chord.insert(chord, id);
+                self.by_chord.insert(key, id);
                 Ok(Insertion::Replaced(id))
             }
             None => {
@@ -250,12 +290,13 @@ impl BindingTable {
                     Binding {
                         id,
                         name: name.clone(),
-                        chord: chord.clone(),
+                        chord: key.0.clone(),
                         trigger,
                         allow_when_inhibited,
+                        device: key.1.clone(),
                     },
                 );
-                self.by_chord.insert(chord, id);
+                self.by_chord.insert(key, id);
                 self.by_name.insert(name.as_str().to_owned(), id);
                 Ok(Insertion::Added(id))
             }
@@ -265,7 +306,8 @@ impl BindingTable {
     /// Remove a binding by id, freeing its chord.
     pub fn remove(&mut self, id: BindingId) -> Option<Binding> {
         let removed = self.entries.remove(&id)?;
-        self.by_chord.remove(removed.chord());
+        self.by_chord
+            .remove(&(removed.chord().clone(), removed.device().cloned()));
         self.by_name.remove(removed.name().as_str());
         Some(removed)
     }
@@ -297,16 +339,18 @@ impl BindingTable {
         }
         for name in &wanted {
             if let Some(id) = next.by_name.get(*name).copied() {
-                let chord = next.entries[&id].chord.clone();
-                next.by_chord.remove(&chord);
+                let binding = &next.entries[&id];
+                let key = (binding.chord.clone(), binding.device.clone());
+                next.by_chord.remove(&key);
             }
         }
         for declaration in declared {
-            next.insert(
+            next.insert_for(
                 &declaration.name,
                 declaration.chord.clone(),
                 declaration.trigger,
                 declaration.allow_when_inhibited,
+                declaration.device.clone(),
             )?;
         }
         Ok(next)
@@ -317,9 +361,15 @@ impl BindingTable {
         self.entries.get(&id)
     }
 
-    /// The binding that owns this chord.
+    /// The binding for every device that owns this chord.
     pub fn lookup(&self, chord: &Chord) -> Option<&Binding> {
-        let id = self.by_chord.get(chord)?;
+        self.lookup_for(chord, None)
+    }
+
+    /// The binding that owns this chord for exactly this selector (`None` is the binding for every
+    /// device, not "any binding").
+    pub fn lookup_for(&self, chord: &Chord, device: Option<&DeviceSelector>) -> Option<&Binding> {
+        let id = self.by_chord.get(&(chord.clone(), device.cloned()))?;
         self.entries.get(id)
     }
 
@@ -349,6 +399,7 @@ impl BindingTable {
 mod tests {
     use super::{BindingTable, Insertion, Trigger};
     use crate::chord::{Chord, ChordKind, Keysym, Keysyms, Symbol};
+    use crate::device::DeviceSelector;
     use crate::name::Name;
 
     struct Table;
@@ -431,6 +482,7 @@ mod tests {
             chord: chord(chord_text),
             trigger: Trigger::Press,
             allow_when_inhibited: false,
+            device: None,
         }
     }
 
@@ -472,5 +524,107 @@ mod tests {
         assert_eq!(conflict.incoming_name, name("c"));
         assert_eq!(table.lookup(&chord("q")).expect("q").name(), &name("a"));
         assert_eq!(table.lookup(&chord("e")), None);
+    }
+
+    fn selector(text: &str) -> DeviceSelector {
+        DeviceSelector::new(text).expect(text)
+    }
+
+    #[test]
+    fn one_chord_is_owned_once_per_device_selector() {
+        let mut table = BindingTable::new();
+        table
+            .insert_for(
+                &name("pad-a"),
+                chord("q"),
+                Trigger::Press,
+                false,
+                Some(selector("Pad A")),
+            )
+            .expect("the chord on pad A");
+        table
+            .insert_for(
+                &name("pad-b"),
+                chord("q"),
+                Trigger::Press,
+                false,
+                Some(selector("Pad B")),
+            )
+            .expect("the same chord on pad B is another row");
+        table
+            .insert(&name("any"), chord("q"), Trigger::Press, false)
+            .expect("and for every device is a third");
+        assert_eq!(table.len(), 3);
+        let conflict = table
+            .insert_for(
+                &name("again"),
+                chord("q"),
+                Trigger::Press,
+                false,
+                Some(selector("Pad A")),
+            )
+            .expect_err("pad A already has it");
+        assert_eq!(conflict.existing_name, name("pad-a"));
+        assert_eq!(conflict.device, Some(selector("Pad A")));
+        assert_eq!(
+            conflict.to_string(),
+            "binding \"again\" cannot use q on \"Pad A\": \"pad-a\" (binding:0) already has it"
+        );
+        assert_eq!(table.len(), 3);
+    }
+
+    #[test]
+    fn lookup_names_its_selector() {
+        let mut table = BindingTable::new();
+        table
+            .insert_for(&name("pad"), chord("q"), Trigger::Press, false, Some(selector("Pad")))
+            .expect("pad");
+        assert_eq!(table.lookup(&chord("q")), None, "no binding for every device");
+        assert_eq!(
+            table
+                .lookup_for(&chord("q"), Some(&selector("Pad")))
+                .expect("pad")
+                .name(),
+            &name("pad")
+        );
+        assert_eq!(table.lookup_for(&chord("q"), Some(&selector("Other"))), None);
+    }
+
+    #[test]
+    fn removing_a_scoped_binding_frees_only_its_own_row() {
+        let mut table = BindingTable::new();
+        table
+            .insert(&name("any"), chord("q"), Trigger::Press, false)
+            .expect("any");
+        table
+            .insert_for(&name("pad"), chord("q"), Trigger::Press, false, Some(selector("Pad")))
+            .expect("pad");
+        table.remove_name(&name("pad")).expect("removed");
+        assert_eq!(
+            table.lookup(&chord("q")).expect("any is still there").name(),
+            &name("any")
+        );
+        table
+            .insert_for(&name("pad2"), chord("q"), Trigger::Press, false, Some(selector("Pad")))
+            .expect("the pad row is free again");
+    }
+
+    #[test]
+    fn a_reload_keeps_the_selector_a_name_declares() {
+        let mut table = BindingTable::new();
+        table
+            .insert_for(&name("pad"), chord("q"), Trigger::Press, false, Some(selector("Pad")))
+            .expect("pad");
+        let mut moved = declaration("pad", "q");
+        moved.device = Some(selector("Other Pad"));
+        let reloaded = table.reconcile(&[moved]).expect("reload");
+        assert_eq!(reloaded.lookup_for(&chord("q"), Some(&selector("Pad"))), None);
+        assert_eq!(
+            reloaded
+                .lookup_for(&chord("q"), Some(&selector("Other Pad")))
+                .expect("moved")
+                .name(),
+            &name("pad")
+        );
     }
 }

@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
-use gnoblin_types::Point;
+use gnoblin_types::{DeviceId, Point};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -113,13 +113,18 @@ impl Handle {
     /// Injects a pointer press and release at a global position, as a device would.
     pub fn click(&self, at: Point) {
         let output = self.windows().outputs().first().copied().expect("an output");
-        self.control
-            .inject_input(InputEvent::PointerMotion { output, position: at });
+        self.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position: at,
+        });
         self.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: true,
         });
         self.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: false,
         });

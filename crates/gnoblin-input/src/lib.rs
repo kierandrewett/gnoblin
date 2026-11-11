@@ -73,6 +73,16 @@
 //! 12. **A policy reply arrives after a reload.** A reload retires every waiting request
 //!     in submission order and the reply that follows cannot act on it. Covered by
 //!     `a_reload_retires_requests_before_their_replies`.
+//! 13. **Two keyboards holding one key collide.** Held edges are recorded per device and key
+//!     code, so each release finds the press of its own keyboard and the duplicate and orphan
+//!     counters stay at zero. Covered by `two_keyboards_holding_one_key_do_not_collide`.
+//! 14. **A binding for one device fires on another.** A binding with a device selector takes
+//!     the events of the devices it names and no others, and matches that device's own
+//!     modifiers rather than the seat's. Covered by
+//!     `a_binding_for_one_keyboard_ignores_the_other` and
+//!     `a_scoped_binding_reads_its_own_keyboards_modifiers`.
+//! 15. **A removed device's presses outlive it.** Removing a device forgets its held edges
+//!     and no other device's. Covered by `a_removed_keyboard_forgets_only_its_own_presses`.
 //!
 //! # Determinism
 //!
@@ -83,6 +93,7 @@
 
 pub mod binding;
 pub mod chord;
+pub mod device;
 pub mod gesture;
 pub mod gesture_claims;
 pub mod gesture_router;
@@ -93,6 +104,7 @@ pub mod touchpad;
 
 pub use binding::{Binding, BindingId, BindingTable, Conflict, ConflictCode, Declaration, Insertion, Trigger};
 pub use chord::{Chord, ChordKind, Key, Keysyms, ParseError, Symbol};
+pub use device::{DeviceKey, DeviceSelector, HeldEdge, SelectorError};
 pub use gesture::{
     CancelReason, Contact, ContactPhase, EdgeBand, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase,
     Recogniser,
@@ -104,7 +116,7 @@ pub use gesture_claims::{
 pub use gesture_router::{
     GestureBinding, GestureError, GestureLock, GestureRoute, GestureRouter, GestureSpec, GestureStats, PinchDirection,
 };
-pub use gnoblin_types::{ButtonState, Edge, KeyCode, KeyState, Keysym, Modifiers, Tick};
+pub use gnoblin_types::{ButtonState, DeviceId, Edge, KeyCode, KeyState, Keysym, Modifiers, Tick};
 pub use idle::Activity;
 pub use name::{Name, NameError};
 pub use router::{Event, GrabId, Routed, Router, Scope, ShortcutInhibit, Stats, Target};

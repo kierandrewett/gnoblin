@@ -1426,3 +1426,9 @@ left = "gnoblin-session::AutostartEntry"
 right = "gnoblin-wayland::Fire"
 kind = "same-shape"
 reason = "a name and an argv, as an autostart entry and a fired touchpad binding both are; they belong to different features"
+
+[[allow]]
+left = "gnoblin-backend::DeviceInfo"
+right = "gnoblin-render-vulkan::DeviceInfo"
+kind = "same-name"
+reason = "an input device the seat announced and a GPU the Vulkan context opened are different things"

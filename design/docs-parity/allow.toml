@@ -1255,3 +1255,15 @@ name = ":capture"
 doc = "docs/shell-api/views.md"
 reason = "View:capture is a tree-class method of the shell VM (schema/tree/view.toml), not a gnoblin.* object member; the gate matches the mention"
 owner-slice = "docs wrong"
+
+[[allow]]
+name = ":bind"
+doc = "docs/shell-api/input-devices.md"
+reason = "implemented by the stock shell (Seat:bind, data/lua/gnoblin/shell/init.lua); a node method, not part of the native runtime this table checks; Shortcuts and keybindings (S8)"
+owner-slice = "S8"
+
+[[allow]]
+name = ":claim_gesture"
+doc = "docs/shell-api/input-devices.md"
+reason = "a method of the seat node (crates/gnoblin-schema/schema/tree/seat.toml), not part of the native runtime this table checks"
+owner-slice = "S8"

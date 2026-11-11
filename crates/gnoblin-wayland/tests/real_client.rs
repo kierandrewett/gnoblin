@@ -28,7 +28,7 @@ use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
-use gnoblin_types::{Point, Rect, WindowId};
+use gnoblin_types::{DeviceId, Point, Rect, WindowId};
 use gnoblin_wayland::{
     Clock, Config, ControlHandle, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot, SystemClock,
 };
@@ -403,14 +403,18 @@ impl Client {
     /// Sends a pointer press at a global position, as the backend would.
     fn click(&mut self, session: &Handle, at: Point) {
         let output = session.windows().outputs().first().copied().expect("an output");
-        session
-            .control
-            .inject_input(InputEvent::PointerMotion { output, position: at });
+        session.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position: at,
+        });
         session.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: true,
         });
         session.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: false,
         });
@@ -421,9 +425,11 @@ impl Client {
     /// Sends a pointer motion to a global position, as the backend would, without waiting.
     fn inject_motion(&self, session: &Handle, at: Point) {
         let output = session.windows().outputs().first().copied().expect("an output");
-        session
-            .control
-            .inject_input(InputEvent::PointerMotion { output, position: at });
+        session.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position: at,
+        });
     }
 
     /// Moves the pointer to `at` and waits until it crosses into or out of a surface, which is
@@ -1331,6 +1337,7 @@ fn a_modal_takes_the_keys_from_the_client_until_it_is_cleared() {
         session.control.set_modal(Some(Modal::new(output, overlay)));
 
         session.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: 30,
             pressed: true,
         });
@@ -1347,6 +1354,7 @@ fn a_modal_takes_the_keys_from_the_client_until_it_is_cleared() {
 
         session.control.set_modal(None);
         session.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: 30,
             pressed: true,
         });

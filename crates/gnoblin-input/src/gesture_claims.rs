@@ -17,6 +17,7 @@
 
 use std::fmt;
 
+use crate::device::DeviceSelector;
 use crate::gesture::{GestureEvent, GestureKind, GesturePhase};
 use crate::gesture_router::GestureLock;
 
@@ -30,7 +31,7 @@ pub const MAX_CLAIM_FINGERS: u8 = 5;
 pub type Holder = u64;
 
 /// One claim: the holder, the id it allocated, and the gesture it takes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GestureClaim {
     /// Who holds it.
     pub holder: Holder,
@@ -40,6 +41,8 @@ pub struct GestureClaim {
     pub kind: GestureKind,
     /// How many contacts the gesture has.
     pub fingers: u8,
+    /// The device the claim takes the gesture from, or `None` for every device.
+    pub device: Option<DeviceSelector>,
 }
 
 /// One event of a claimed gesture, for its holder.
@@ -165,7 +168,7 @@ impl GestureClaims {
         }
     }
 
-    /// Takes a gesture for `holder` under `id`.
+    /// Takes a gesture from every device for `holder` under `id`.
     ///
     /// A claim of an id the holder already has replaces it. A gesture another claim takes is
     /// refused, so two holders never compete for one movement.
@@ -175,15 +178,37 @@ impl GestureClaims {
     /// [`GestureClaimError::Fingers`] for a count outside the accepted range, and [`GestureClaimError::Taken`]
     /// when another claim takes the same kind and count.
     pub fn claim(&mut self, holder: Holder, id: i64, kind: GestureKind, fingers: i64) -> Result<(), GestureClaimError> {
+        self.claim_for(holder, id, kind, fingers, None)
+    }
+
+    /// Takes a gesture from the devices `device` names (every device for `None`) for `holder` under `id`.
+    ///
+    /// A gesture is owned once per device selector: one holder can take the three-finger swipe of one
+    /// touchpad and another the same swipe on every other. Two claims of one gesture for one selector
+    /// are refused.
+    ///
+    /// # Errors
+    ///
+    /// [`GestureClaimError::Fingers`] for a count outside the accepted range, and [`GestureClaimError::Taken`]
+    /// when another claim takes the same kind and count for the same selector.
+    pub fn claim_for(
+        &mut self,
+        holder: Holder,
+        id: i64,
+        kind: GestureKind,
+        fingers: i64,
+        device: Option<DeviceSelector>,
+    ) -> Result<(), GestureClaimError> {
         let fingers = u8::try_from(fingers)
             .ok()
             .filter(|count| (MIN_CLAIM_FINGERS..=MAX_CLAIM_FINGERS).contains(count))
             .ok_or(GestureClaimError::Fingers { fingers })?;
-        if let Some(taken) = self
-            .claims
-            .iter()
-            .find(|claim| claim.kind == kind && claim.fingers == fingers && (claim.holder, claim.id) != (holder, id))
-        {
+        if let Some(taken) = self.claims.iter().find(|claim| {
+            claim.kind == kind
+                && claim.fingers == fingers
+                && claim.device == device
+                && (claim.holder, claim.id) != (holder, id)
+        }) {
             return Err(GestureClaimError::Taken {
                 holder: taken.holder,
                 id: taken.id,
@@ -195,6 +220,7 @@ impl GestureClaims {
             id,
             kind,
             fingers,
+            device,
         });
         Ok(())
     }
@@ -236,8 +262,20 @@ impl GestureClaims {
         self.flight.is_some_and(|flight| flight.live.is_some())
     }
 
-    /// Decides what a recognised gesture event means to the claims.
+    /// Decides what a recognised gesture event means to the claims, for a device that is not named.
+    ///
+    /// Only a claim for every device can take it; see [`GestureClaims::observe_from`].
     pub fn observe(&mut self, event: &GestureEvent, context: GestureLock) -> ClaimRoute {
+        self.observe_from(event, context, None)
+    }
+
+    /// Decides what a recognised gesture event means to the claims, for a gesture a device called
+    /// `device` made.
+    ///
+    /// A claim scoped to that device takes the gesture before a claim for every device does. A device that
+    /// is not named (`None`) matches no scoped claim. Only the begin chooses the claim, so `device` is
+    /// read from the begin's sample alone.
+    pub fn observe_from(&mut self, event: &GestureEvent, context: GestureLock, device: Option<&str>) -> ClaimRoute {
         match *event {
             GestureEvent::Begin { kind, fingers, .. } => {
                 // A begin starts afresh: a gesture whose end was lost does not leak into it.
@@ -245,10 +283,19 @@ impl GestureClaims {
                 if context == GestureLock::Locked {
                     return ClaimRoute::Unclaimed;
                 }
+                let matching = |claim: &&GestureClaim| claim.kind == kind && claim.fingers == fingers;
                 let Some(claim) = self
                     .claims
                     .iter()
-                    .find(|claim| claim.kind == kind && claim.fingers == fingers)
+                    .filter(matching)
+                    .find(|claim| {
+                        claim
+                            .device
+                            .as_ref()
+                            .zip(device)
+                            .is_some_and(|(selector, name)| selector.matches(name))
+                    })
+                    .or_else(|| self.claims.iter().filter(matching).find(|claim| claim.device.is_none()))
                 else {
                     return ClaimRoute::Unclaimed;
                 };
@@ -585,6 +632,7 @@ mod tests {
                 id: 1,
                 kind: GestureKind::Swipe,
                 fingers: 4,
+                device: None,
             }]
         );
         assert_eq!(

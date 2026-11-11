@@ -26,7 +26,7 @@
 
 use std::collections::VecDeque;
 
-use gnoblin_types::{OutputId, Point};
+use gnoblin_types::{DeviceId, OutputId, Point};
 
 use crate::{InputEvent, InputSource, TouchPhase};
 
@@ -81,7 +81,11 @@ impl Seat {
     /// The pointer entered `output` at `position`.
     pub fn enter(&mut self, output: OutputId, position: Point) {
         self.pointer = Some(output);
-        self.queue.push_back(InputEvent::PointerMotion { output, position });
+        self.queue.push_back(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position,
+        });
     }
 
     /// The pointer left every output.
@@ -100,17 +104,26 @@ impl Seat {
             self.dropped = self.dropped.saturating_add(1);
             return;
         };
-        self.queue.push_back(InputEvent::PointerMotion { output, position });
+        self.queue.push_back(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position,
+        });
     }
 
     /// A pointer button changed state.
     pub fn button(&mut self, button: u32, pressed: bool) {
-        self.queue.push_back(InputEvent::PointerButton { button, pressed });
+        self.queue.push_back(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
+            button,
+            pressed,
+        });
     }
 
     /// A key changed state; `key` is the code the parent sent.
     pub fn key(&mut self, key: u32, pressed: bool) {
         self.queue.push_back(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: scan_code(key),
             pressed,
         });
@@ -145,7 +158,11 @@ impl Seat {
             .unwrap_or((0, 0));
         self.axis = (0, 0);
         if horizontal != 0 || vertical != 0 {
-            self.queue.push_back(InputEvent::PointerAxis { horizontal, vertical });
+            self.queue.push_back(InputEvent::PointerAxis {
+                device: DeviceId::VIRTUAL,
+                horizontal,
+                vertical,
+            });
         }
     }
 
@@ -161,6 +178,7 @@ impl Seat {
         self.touches.retain(|(existing, _, _)| *existing != slot);
         self.touches.push((slot, output, position));
         self.queue.push_back(InputEvent::Touch {
+            device: DeviceId::VIRTUAL,
             output,
             slot,
             position,
@@ -180,6 +198,7 @@ impl Seat {
         entry.2 = position;
         let output = entry.1;
         self.queue.push_back(InputEvent::Touch {
+            device: DeviceId::VIRTUAL,
             output,
             slot,
             position,
@@ -195,6 +214,7 @@ impl Seat {
         };
         let (_, output, position) = self.touches.remove(index);
         self.queue.push_back(InputEvent::Touch {
+            device: DeviceId::VIRTUAL,
             output,
             slot,
             position,
@@ -206,6 +226,7 @@ impl Seat {
     pub fn touch_cancel(&mut self) {
         for (slot, output, position) in std::mem::take(&mut self.touches) {
             self.queue.push_back(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output,
                 slot,
                 position,
@@ -287,6 +308,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::PointerMotion {
+                device: DeviceId::VIRTUAL,
                 output: OUTPUT,
                 position: Point::new(1, 2),
             }),
@@ -295,6 +317,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::PointerMotion {
+                device: DeviceId::VIRTUAL,
                 output: OUTPUT,
                 position: Point::new(10, 20),
             }),
@@ -326,6 +349,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Key {
+                device: DeviceId::VIRTUAL,
                 keycode: 28,
                 pressed: true,
             })
@@ -335,6 +359,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Key {
+                device: DeviceId::VIRTUAL,
                 keycode: 0,
                 pressed: true,
             })
@@ -351,6 +376,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::PointerAxis {
+                device: DeviceId::VIRTUAL,
                 horizontal: 0,
                 vertical: 240,
             }),
@@ -368,6 +394,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::PointerAxis {
+                device: DeviceId::VIRTUAL,
                 horizontal: 0,
                 vertical: 180,
             }),
@@ -401,6 +428,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output: OUTPUT,
                 slot: 1,
                 position: Point::new(4, 5),
@@ -410,6 +438,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output: OUTPUT,
                 slot: 1,
                 position: Point::new(6, 7),
@@ -439,6 +468,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output: OUTPUT,
                 slot: 2,
                 position: Point::new(9, 9),
@@ -461,6 +491,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output: OUTPUT,
                 slot: 1,
                 position: Point::new(1, 1),
@@ -470,6 +501,7 @@ mod tests {
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output: OutputId::new(4),
                 slot: 2,
                 position: Point::new(2, 2),

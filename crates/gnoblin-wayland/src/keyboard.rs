@@ -63,16 +63,17 @@ use smithay::input::keyboard::{FilterResult, KeysymHandle, ModifiersState, XkbCo
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Serial;
 
-use gnoblin_backend::InputEvent;
+use gnoblin_backend::{DeviceInfo, InputEvent};
 use gnoblin_input::{
-    Chord, ChordKind, Event as RouterEvent, KeyState as RouterKeyState, Keysyms, Name, Router, ShortcutInhibit, Symbol,
-    Target, Trigger,
+    Chord, ChordKind, DeviceKey, DeviceSelector, Event as RouterEvent, KeyState as RouterKeyState, Keysyms, Name,
+    Router, ShortcutInhibit, Symbol, Target, Trigger,
 };
 use gnoblin_lock::State as LockState;
 use gnoblin_render::transaction::TreeCall;
-use gnoblin_types::{KeyCode, KeyState, Keysym, Modifiers, NodeId, WindowId};
+use gnoblin_types::{DeviceId, KeyCode, KeyState, Keysym, Modifiers, NodeId, WindowId};
 
 use crate::State;
+use crate::devices::{DeviceKeys, LOCKS};
 use crate::observation::{MenuAnchor, MenuSource};
 use crate::tree_frame::{ChordEvent, ChordState, TreeInput};
 
@@ -155,8 +156,16 @@ pub(crate) struct KeyboardTables {
     pub(crate) next_virtual_id: u64,
     /// The seat claims the shell holds, by their router binding's name.
     pub(crate) claims: BTreeMap<String, Claim>,
-    /// The claim whose press the shell was told of, by keycode, until the release is reported.
-    pub(crate) pressed_claims: BTreeMap<u32, Claim>,
+    /// The claim whose press the shell was told of, by the keyboard and keycode that pressed it, until the
+    /// release is reported. Two keyboards holding one keycode are two presses.
+    pub(crate) pressed_claims: BTreeMap<(DeviceId, u32), Claim>,
+    /// The input devices the backend announced, in arrival order. `Seat.device` lists them.
+    pub(crate) devices: Vec<DeviceInfo>,
+    /// Each keyboard's own key state, which a binding scoped to that keyboard matches.
+    pub(crate) device_keys: DeviceKeys,
+    /// Which keymap the seat holds, counted up each time it changes, so a keyboard's own state knows
+    /// when it was built from an older one.
+    pub(crate) keymap_generation: u64,
 }
 
 impl Default for KeyboardTables {
@@ -187,6 +196,9 @@ impl Default for KeyboardTables {
             next_virtual_id: 0,
             claims: BTreeMap::new(),
             pressed_claims: BTreeMap::new(),
+            devices: Vec::new(),
+            device_keys: DeviceKeys::new(),
+            keymap_generation: 0,
         }
     }
 }
@@ -292,6 +304,7 @@ fn declare(name: &str, binding: &str, trigger: Trigger) -> Result<gnoblin_input:
         chord,
         trigger,
         allow_when_inhibited: false,
+        device: None,
     })
 }
 
@@ -426,6 +439,7 @@ impl State {
             // and one with no keymap is not.
             Err(error) => log::warn!(area = "keyboard", ?error, layout = %source.layout, "the keymap was refused"),
         }
+        self.keymap_changed();
     }
 
     /// Selects a source by index for the window that has focus, and rebuilds the keymap.
@@ -485,6 +499,7 @@ impl State {
                 self.release_virtual_keymap(id);
             }
         }
+        self.keymap_changed();
     }
 
     /// Forgets a virtual keyboard's keymap. If it was the seat's, the seat gets its layout
@@ -500,6 +515,7 @@ impl State {
             if let Err(error) = handle.set_xkb_config(self, XkbConfig::default()) {
                 log::warn!(area = "keyboard", ?error, "the default keymap was refused");
             }
+            self.keymap_changed();
         } else {
             self.rebuild_keymap();
         }
@@ -584,7 +600,16 @@ impl State {
             if call.method == "unclaim" {
                 continue;
             }
-            let chord = match Chord::parse(call.text.expose(), ChordKind::Key, &SeatKeysyms) {
+            // The text is the chord, or the device a claim is scoped to, a line feed and then the chord.
+            let (selector, subject) = crate::devices::split_selector(call.text.expose());
+            let device = match selector.map(DeviceSelector::new).transpose() {
+                Ok(device) => device,
+                Err(error) => {
+                    log::warn!(area = "claim", %error, "a seat claim's device selector is refused");
+                    continue;
+                }
+            };
+            let chord = match Chord::parse(subject, ChordKind::Key, &SeatKeysyms) {
                 Ok(chord) => chord,
                 Err(_) => {
                     // The chord is not logged: call text is a generic secret-capable argument.
@@ -593,7 +618,11 @@ impl State {
                 }
             };
             let text = chord.to_string();
-            match self.keyboard_tables.router.bind(&bound, chord, Trigger::Press, false) {
+            match self
+                .keyboard_tables
+                .router
+                .bind_for(&bound, chord, Trigger::Press, false, device)
+            {
                 Ok(_) => {
                     self.keyboard_tables.claims.insert(
                         name,
@@ -604,7 +633,7 @@ impl State {
                         },
                     );
                 }
-                Err(_) => log::warn!(area = "claim", "a seat claim's chord is already bound"),
+                Err(_) => log::warn!(area = "claim", "a seat claim's chord is already bound for that device"),
             }
         }
     }
@@ -651,10 +680,10 @@ impl State {
     /// Reports one edge of a claimed chord to the shell that claimed it, and says whether the client
     /// receives the edge. `None` means the edge is not a claim, so the caller keeps its own answer.
     ///
-    /// A press reported to the shell is remembered by keycode, so its release is reported even when
-    /// the lock came down between the two edges. A press the lock held back went to the client, so
-    /// its release does too.
-    fn route_claim_edge(&mut self, keycode: u32, state: KeyState, target: Target) -> Option<bool> {
+    /// A press reported to the shell is remembered by the keyboard and keycode that made it, so its release is
+    /// reported even when the lock came down between the two edges, and another keyboard's release of the same
+    /// keycode is not taken for it. A press the lock held back went to the client, so its release does too.
+    fn route_claim_edge(&mut self, device: DeviceId, keycode: u32, state: KeyState, target: Target) -> Option<bool> {
         match state {
             KeyState::Pressed => {
                 let claim = self.claim_of(target)?;
@@ -669,11 +698,11 @@ impl State {
                         state: ChordState::Press,
                     },
                 );
-                self.keyboard_tables.pressed_claims.insert(keycode, claim);
+                self.keyboard_tables.pressed_claims.insert((device, keycode), claim);
                 Some(true)
             }
             KeyState::Released => {
-                if let Some(claim) = self.keyboard_tables.pressed_claims.remove(&keycode) {
+                if let Some(claim) = self.keyboard_tables.pressed_claims.remove(&(device, keycode)) {
                     self.tree.chord(
                         claim.node,
                         ChordEvent {
@@ -711,8 +740,20 @@ impl State {
     ///
     /// This is the whole of the delivery rule, and the reason it is here rather than in a
     /// protocol handler: the edge is looked up in the keymap the seat installed, decided by
-    /// the router, and only then handed to `wl_keyboard`.
-    pub(crate) fn dispatch_key(&mut self, keycode: u32, state: KeyState, serial: Serial, time: InputTime) {
+    /// the router, and only then handed to `wl_keyboard`. `device` is the keyboard the key is on, or
+    /// [`DeviceId::VIRTUAL`] for a key no announced keyboard produced.
+    ///
+    /// The seat holds one key state for every keyboard, so a key one keyboard holds is already down for
+    /// another: a second keyboard's press of the same key code is the seat's repeat of a held key and never
+    /// reaches the router. The router's state is keyed by device regardless.
+    pub(crate) fn dispatch_key(
+        &mut self,
+        device: DeviceId,
+        keycode: u32,
+        state: KeyState,
+        serial: Serial,
+        time: InputTime,
+    ) {
         let keyboard = self.keyboard.clone();
         let key_state = match state {
             KeyState::Pressed => SmithayKeyState::Pressed,
@@ -724,6 +765,7 @@ impl State {
         // is told the code the Wayland protocol defines; passing the raw code here would
         // deliver every key eight too low.
         let seat_code = keycode.saturating_add(SEAT_KEYCODE_OFFSET);
+        let own = self.device_key(device, keycode, state);
         keyboard.input::<(), _>(
             self,
             seat_code.into(),
@@ -731,7 +773,7 @@ impl State {
             serial,
             time,
             |data, modifiers, symbol| {
-                if data.route_key_edge(keycode, state, modifiers, &symbol) {
+                if data.route_key_edge(device, own, keycode, state, modifiers, &symbol) {
                     FilterResult::Intercept(())
                 } else {
                     FilterResult::Forward
@@ -740,20 +782,63 @@ impl State {
         );
     }
 
+    /// What the keyboard `device` alone makes of one edge of its own, from its own key state.
+    ///
+    /// `None` for a key no announced keyboard produced, which has no state of its own to read.
+    fn device_key(&mut self, device: DeviceId, keycode: u32, state: KeyState) -> Option<DeviceKey> {
+        if !self.keyboard_tables.devices.iter().any(|known| known.id == device) {
+            return None;
+        }
+        let generation = self.keyboard_tables.keymap_generation;
+        if !self.keyboard_tables.device_keys.is_current(generation) {
+            let keyboard = self.keyboard.clone();
+            let text = keyboard.with_xkb_state(self, |context| {
+                context
+                    .xkb()
+                    .lock()
+                    .map(|xkb| xkb.keymap_as_string())
+                    .unwrap_or_default()
+            });
+            self.keyboard_tables.device_keys.set_keymap(&text, generation);
+        }
+        self.keyboard_tables
+            .device_keys
+            .key(device, keycode, state == KeyState::Pressed)
+    }
+
+    /// Marks the seat's keymap as changed, so each keyboard's own state is rebuilt from the new one the next
+    /// time it reads a key.
+    pub(crate) fn keymap_changed(&mut self) {
+        self.keyboard_tables.keymap_generation = self.keyboard_tables.keymap_generation.wrapping_add(1);
+    }
+
     /// Delivers one key edge from a virtual keyboard. A modal that stands takes it, as it
     /// takes a physical key in `input`; otherwise the edge goes through [`Self::dispatch_key`].
     pub(crate) fn deliver_virtual_key(&mut self, keycode: u32, state: KeyState, serial: Serial, time: InputTime) {
         let pressed = state == KeyState::Pressed;
-        if self.active_modal().is_some() && self.route_to_modal(&InputEvent::Key { keycode, pressed }) {
+        if self.active_modal().is_some()
+            && self.route_to_modal(&InputEvent::Key {
+                device: DeviceId::VIRTUAL,
+                keycode,
+                pressed,
+            })
+        {
             return;
         }
-        self.dispatch_key(keycode, state, serial, time);
+        self.dispatch_key(DeviceId::VIRTUAL, keycode, state, serial, time);
     }
 
     /// The router's half of one edge: a binding or a grab consumes it, a client edge is
     /// forwarded.
+    ///
+    /// `own` is what the keyboard that sent the key says about it, from its own key state: a binding
+    /// scoped to that keyboard matches it, and every other binding matches the seat's `modifiers` and `symbol`.
+    /// A lock another keyboard toggled still applies to a scoped binding, because a lock is the seat's state
+    /// and not a key this keyboard holds.
     fn route_key_edge(
         &mut self,
+        device: DeviceId,
+        own: Option<DeviceKey>,
         keycode: u32,
         state: KeyState,
         modifiers: &ModifiersState,
@@ -764,11 +849,18 @@ impl State {
         } else {
             ShortcutInhibit::Clear
         };
+        let seat_modifiers = modifiers_of(modifiers);
+        let own = own.map(|own| DeviceKey {
+            symbol: own.symbol,
+            modifiers: own.modifiers.remove(LOCKS).union(seat_modifiers.intersect(LOCKS)),
+        });
         let routed = self.keyboard_tables.router.route(
             RouterEvent::Key {
+                device,
                 key_code: KeyCode::new(keycode),
                 symbol: Keysym::new(symbol.modified_sym().raw()),
-                modifiers: modifiers_of(modifiers),
+                modifiers: seat_modifiers,
+                own,
                 state: match state {
                     KeyState::Pressed => RouterKeyState::Pressed,
                     KeyState::Released => RouterKeyState::Released,
@@ -783,7 +875,7 @@ impl State {
         }
         // A claimed chord reports both of its edges to the shell that claimed it, while the session
         // is unlocked. A locked session's cover owns every key, so the client gets the chord instead.
-        if let Some(answer) = self.route_claim_edge(keycode, state, routed.target) {
+        if let Some(answer) = self.route_claim_edge(device, keycode, state, routed.target) {
             consumed = answer;
         }
         // A key the router leaves to the client goes to the shell's node instead, when the shell holds

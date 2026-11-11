@@ -2091,6 +2091,24 @@ impl Composer {
         }
     }
 
+    /// Publishes the input devices the main seat has, one `id:name:caps` item each in the order they
+    /// arrived, on its read-only `device` property. Only a change is published, so a repeated call with the
+    /// same list sends the shell nothing.
+    pub fn publish_main_seat_devices(&mut self, devices: Vec<String>) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        let value = TreeValue::ListText(devices);
+        if self.scene.value(seat, "device") != Some(&value) {
+            let _ = self.scene.set_value(seat, "device", value.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node: seat,
+                key: "device".to_owned(),
+                value,
+            });
+        }
+    }
+
     /// Publishes the window that holds keyboard focus on the main seat, or none. Only a change
     /// is published. What is published is remembered, so a shell write can be told apart.
     pub fn set_main_seat_focus(&mut self, window: Option<WindowId>) {
@@ -5204,6 +5222,28 @@ mod tests {
             composer.take_tree_changes().is_empty(),
             "an unchanged pointer is not republished"
         );
+    }
+
+    #[test]
+    fn the_main_seat_publishes_its_devices_only_when_the_list_changes() {
+        let mut composer = Composer::new();
+        let seat = composer.add_main_seat("seat0").expect("a seat node");
+        composer.take_tree_changes();
+        let list = vec!["1:Desk Keyboard:keyboard".to_owned(), "2:Mouse:pointer".to_owned()];
+        composer.publish_main_seat_devices(list.clone());
+        let changes = composer.take_tree_changes();
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node, key, value: TreeValue::ListText(items) } if *node == seat && key == "device" && *items == list
+        )));
+        composer.with_scene(|scene| assert_eq!(scene.value(seat, "device"), Some(&TreeValue::ListText(list.clone()))));
+        composer.publish_main_seat_devices(list);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged device list is not republished"
+        );
+        composer.publish_main_seat_devices(vec!["2:Mouse:pointer".to_owned()]);
+        assert_eq!(composer.take_tree_changes().len(), 1, "a removal is published");
     }
 
     #[test]

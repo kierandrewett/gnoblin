@@ -597,7 +597,7 @@ object seat since 0.2.0 secret false
   property screen type object:node since 0.2.0 secret false
   property pointer_x type double since 0.2.0 secret false
   property pointer_y type double since 0.2.0 secret false
-  property device type string since 0.2.0 secret false
+  property device type list<string> since 0.2.0 secret false
   property edge_tiling type bool since 0.2.0 secret false
   property drag_constraint type string since 0.2.0 secret false
   property focus_mode type string since 0.2.0 secret false
@@ -617,12 +617,14 @@ object seat since 0.2.0 secret false
     param id type int since 0.2.0 secret false
     param chord type string since 0.2.0 secret false
     param grab type bool since 0.2.0 secret false
+    param device type string since 0.2.0 secret false
   method unclaim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
   method claim_gesture since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
     param kind type string since 0.2.0 secret false
     param fingers type int since 0.2.0 secret false
+    param device type string since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
   signal chord since 0.2.0 secret false
     field id type int since 0.2.0 secret false
@@ -2215,8 +2217,8 @@ message Seat {
     double pointer_x = 21;
     // since 0.2.0
     double pointer_y = 22;
-    // since 0.2.0
-    string device = 23;
+    // since 0.2.0; list
+    repeated string device = 23;
     // since 0.2.0
     bool edge_tiling = 24;
     // since 0.2.0
@@ -2258,6 +2260,8 @@ message Seat {
     string chord = 2;
     // since 0.2.0
     bool grab = 3;
+    // since 0.2.0
+    string device = 4;
   }
 
   // Method `unclaim`, since 0.2.0.
@@ -2274,6 +2278,8 @@ message Seat {
     string kind = 2;
     // since 0.2.0
     int64 fingers = 3;
+    // since 0.2.0
+    string device = 4;
   }
 
   // Signal `destroyed`, since 0.2.0.

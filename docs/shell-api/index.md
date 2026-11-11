@@ -24,6 +24,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Window snapping](/shell-api/window-snapping): arrange a window from a trusted grant.
 - [Tablet-pad help](/shell-api/tablet-pad-help): receive tablet help requests.
 - [Keyboard shortcuts](/shell-api/keyboard-shortcuts): actions, capture, and bindings.
+- [Input devices](/shell-api/input-devices): the device list and bindings that name one device.
 - [Launch feedback](/shell-api/launch-feedback): track application launch feedback.
 - [Session and runtime health](/shell-api/session-runtime): reload, session, and worker state.
 - [Privacy and location](/shell-api/privacy): privacy state and location policy.

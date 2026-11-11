@@ -189,6 +189,7 @@
 
 mod access;
 mod clock;
+mod devices;
 mod dispatch;
 mod fallback;
 mod frame;

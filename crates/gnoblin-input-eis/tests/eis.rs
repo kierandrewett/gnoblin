@@ -192,10 +192,12 @@ fn a_disconnect_releases_every_held_edge_once() {
 
     assert_eq!(released.len(), 2, "one release per held edge: {released:?}");
     assert!(released.contains(&InputEvent::Key {
+        device: gnoblin_types::DeviceId::VIRTUAL,
         keycode: KEY_A,
         pressed: false
     }));
     assert!(released.contains(&InputEvent::PointerButton {
+        device: gnoblin_types::DeviceId::VIRTUAL,
         button: BTN_LEFT,
         pressed: false
     }));
@@ -215,6 +217,7 @@ fn a_stop_emulating_releases_what_the_device_holds() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Key {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: false
         }]
@@ -312,6 +315,7 @@ fn an_absolute_event_lands_in_the_region_it_names() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::PointerMotion {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             output: SECOND,
             position: Point::new(80, 40)
         }],
@@ -416,6 +420,7 @@ fn a_released_device_is_destroyed_after_its_edges() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Key {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: false
         }]
@@ -507,6 +512,7 @@ fn a_touch_down_and_up_reach_the_seat_once_each() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Touch {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             output: OUTPUT,
             slot: 3,
             position: Point::new(1900, 20),
@@ -517,6 +523,7 @@ fn a_touch_down_and_up_reach_the_seat_once_each() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Touch {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             output: OUTPUT,
             slot: 3,
             position: Point::new(1900, 20),
@@ -539,6 +546,7 @@ fn a_disconnect_cancels_the_contacts_it_holds() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::Touch {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             output: OUTPUT,
             slot: 1,
             position: Point::new(5, 5),
@@ -750,6 +758,7 @@ fn an_absolute_event_uses_the_translated_layout() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::PointerMotion {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             output: OUTPUT,
             position: Point::new(20, 10)
         }]
@@ -760,13 +769,14 @@ fn an_absolute_event_uses_the_translated_layout() {
 fn an_injected_event_carries_the_eis_origin() {
     let mut peer = Peer::ready();
     let actions = peer.key(KEY_A, true);
-    let Action::Inject(injection) = actions[0] else {
+    let Action::Inject(injection) = &actions[0] else {
         panic!("an injection was expected, got {:?}", actions[0]);
     };
     assert_eq!(injection.origin(), Origin::Eis);
     assert_eq!(
-        injection.into_event(),
+        injection.event(),
         InputEvent::Key {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: true
         }
@@ -784,7 +794,11 @@ fn a_relative_motion_reaches_the_seat_as_a_delta() {
     });
     assert_eq!(
         injections(&actions),
-        vec![InputEvent::PointerMotionRelative { dx: 5, dy: -3 }]
+        vec![InputEvent::PointerMotionRelative {
+            device: gnoblin_types::DeviceId::VIRTUAL,
+            dx: 5,
+            dy: -3
+        }]
     );
 }
 
@@ -800,6 +814,7 @@ fn a_discrete_scroll_reaches_the_seat_in_wheel_units() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::PointerAxis {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             horizontal: 0,
             vertical: -120
         }]
@@ -814,6 +829,7 @@ fn a_discrete_scroll_reaches_the_seat_in_wheel_units() {
     assert_eq!(
         injections(&actions),
         vec![InputEvent::PointerAxis {
+            device: gnoblin_types::DeviceId::VIRTUAL,
             horizontal: 60,
             vertical: 120
         }]

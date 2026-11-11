@@ -34,6 +34,8 @@
 //! 5. **A gesture reaches the seat as a pointer click.** Gestures are [`InputEvent::Touchpad`]s
 //!    and never pointer events, so the router sees them and no client does.
 
+/// The devices the seat has, and the numbers they were announced under.
+pub mod devices;
 /// The translation rules: libinput device events become seat events, as pure logic over plain values.
 pub mod map;
 /// The configuration rules: what each device is asked to be, and what a refusal costs.
@@ -57,9 +59,12 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
 
 use gnoblin_backend::{
-    DeviceKind, InputEvent, InputSource, RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample, TouchPhase,
+    DeviceCaps, DeviceInfo, DeviceKind, InputEvent, InputSource, RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample,
+    TouchPhase, single_line,
 };
+use gnoblin_types::DeviceId;
 
+pub use devices::{Device, Devices};
 pub use map::{DeviceEvent, Mapper, Screen};
 pub use settings::{Accel, Applier, ButtonMap, Click, DeviceSettings, Scroll, Setting};
 
@@ -88,19 +93,6 @@ impl std::fmt::Display for LibinputError {
 
 impl std::error::Error for LibinputError {}
 
-/// One device the seat knows about.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Device {
-    /// The backend's own number, which a [`RawTouchpadSample`] names.
-    pub id: u64,
-    /// The kernel's name for the device, such as `"event7"`.
-    pub sysname: String,
-    /// The name the device reports, such as `"SynPS/2 Synaptics TouchPad"`.
-    pub name: String,
-    /// The kind of device, which selects the configuration section.
-    pub kind: DeviceKind,
-}
-
 /// The seat's input source: libinput, its devices and the queue the contract drains.
 pub struct Libinput {
     /// The events the loop source has produced and the backend has not translated yet.
@@ -109,17 +101,15 @@ pub struct Libinput {
     mapper: Mapper,
     /// The contract's events, ready for [`InputSource::next_event`].
     ready: VecDeque<InputEvent>,
-    /// The devices the seat has, in the order they arrived.
-    devices: Vec<Device>,
-    /// The number the next device is given.
-    next: u64,
+    /// The devices the seat has, and the numbers they were announced under.
+    devices: Devices,
     /// Whether the seat is suspended, in which case nothing is delivered.
     suspended: bool,
     /// The libinput adapter, which [`Libinput::source`] hands to the loop once.
     context: Option<LibinputInputBackend>,
-    /// Where each touch slot last was. libinput states no position on a release, so a release
-    /// is placed where its slot was last seen.
-    touch_positions: BTreeMap<u32, (f64, f64)>,
+    /// Where each touch slot of each device last was. libinput states no position on a release, so a
+    /// release is placed where its slot was last seen.
+    touch_positions: BTreeMap<(DeviceId, u32), (f64, f64)>,
 }
 
 impl std::fmt::Debug for Libinput {
@@ -161,8 +151,7 @@ impl Libinput {
             queue: Rc::new(RefCell::new(VecDeque::new())),
             mapper: Mapper::new(),
             ready: VecDeque::new(),
-            devices: Vec::new(),
-            next: 1,
+            devices: Devices::new(),
             suspended: false,
             context: Some(adapter),
             touch_positions: BTreeMap::new(),
@@ -201,10 +190,10 @@ impl Libinput {
             .ok_or_else(|| io::Error::other("the libinput context is already registered"))
     }
 
-    /// The devices the seat has.
+    /// The devices the seat has, in the order they arrived.
     #[must_use]
     pub fn devices(&self) -> &[Device] {
-        &self.devices
+        self.devices.all()
     }
 
     /// Tells the mapper which outputs absolute devices report on.
@@ -261,13 +250,12 @@ impl Libinput {
         phase: RawTouchpadPhase,
         step: GestureStep,
     ) {
-        let sysname = device.sysname().to_string();
-        let Some(known) = self.devices.iter().find(|known| known.sysname == sysname) else {
-            log::warn!(area = "input", sysname = %sysname, "a gesture from a device that was never announced");
+        let Some(id) = self.devices.id_of(device.sysname()) else {
+            log::warn!(area = "input", sysname = %device.sysname(), "a gesture from a device that was never announced");
             return;
         };
         self.ready.push_back(InputEvent::Touchpad(RawTouchpadSample {
-            device: known.id,
+            device: id,
             phase,
             kind,
             fingers: step.fingers,
@@ -278,104 +266,138 @@ impl Libinput {
         }));
     }
 
+    /// The number a libinput device was announced under, or [`DeviceId::VIRTUAL`] for a device nobody
+    /// announced. libinput announces every device before its first event, so the fallback is a
+    /// defence and not a path.
+    fn device_id(&self, device: &libinput::Device) -> DeviceId {
+        self.devices.id_or_virtual(device.sysname())
+    }
+
     /// One queued event, as the contract's event and the router's.
     fn translate(&mut self, event: Queued) {
         let mut produced: Vec<InputEvent> = Vec::new();
         match event {
             BackendEvent::DeviceAdded { device } => {
-                let kind = kind_of(&device);
-                let record = Device {
-                    id: self.next,
-                    sysname: device.sysname().to_owned(),
-                    name: device.name().to_string(),
-                    kind,
-                };
-                log::debug!(area = "input", name = %record.name, ?kind, "a device arrived");
-                produced.push(InputEvent::DeviceAdded { id: record.id, kind });
-                self.next = self.next.saturating_add(1);
-                self.devices.push(record);
+                let draft = describe(&device);
+                if let Some(info) = self.devices.announce(device.sysname(), draft) {
+                    log::debug!(area = "input", name = %info.name, id = %info.id, kind = ?info.kind, caps = %info.caps, "a device arrived");
+                    produced.push(InputEvent::DeviceAdded { device: info });
+                }
             }
             BackendEvent::DeviceRemoved { device } => {
                 let sysname = device.sysname().to_owned();
-                let id = self
-                    .devices
-                    .iter()
-                    .find(|known| known.sysname == sysname)
-                    .map(|known| known.id);
-                self.devices.retain(|known| known.sysname != sysname);
                 log::info!(area = "input", sysname = %sysname, "a device went away");
-                produced.extend(self.mapper.cancel());
-                if let Some(id) = id {
+                if let Some(id) = self.devices.remove(&sysname) {
+                    // Only this device's held buttons and touch points end with it.
+                    produced.extend(self.mapper.cancel_device(id));
+                    self.touch_positions.retain(|(held, _), _| *held != id);
                     produced.push(InputEvent::DeviceRemoved { id });
                 }
             }
-            BackendEvent::Keyboard { event } => produced.extend(self.mapper.event(DeviceEvent::Key {
-                code: event.key_code().raw().saturating_sub(8),
-                pressed: event.state() == smithay::backend::input::KeyState::Pressed,
-            })),
+            BackendEvent::Keyboard { event } => {
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Key {
+                        code: event.key_code().raw().saturating_sub(8),
+                        pressed: event.state() == smithay::backend::input::KeyState::Pressed,
+                    },
+                ));
+            }
             BackendEvent::PointerMotion { event } => {
                 let delta = event.delta();
-                produced.extend(self.mapper.event(DeviceEvent::Motion {
-                    dx: delta.x,
-                    dy: delta.y,
-                }));
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Motion {
+                        dx: delta.x,
+                        dy: delta.y,
+                    },
+                ));
             }
             BackendEvent::PointerMotionAbsolute { event } => {
-                produced.extend(self.mapper.event(DeviceEvent::Absolute {
-                    x: event.x(),
-                    y: event.y(),
-                }));
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Absolute {
+                        x: event.x(),
+                        y: event.y(),
+                    },
+                ));
             }
-            BackendEvent::PointerButton { event } => produced.extend(self.mapper.event(DeviceEvent::Button {
-                code: event.button_code(),
-                pressed: event.state() == smithay::backend::input::ButtonState::Pressed,
-            })),
+            BackendEvent::PointerButton { event } => {
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Button {
+                        code: event.button_code(),
+                        pressed: event.state() == smithay::backend::input::ButtonState::Pressed,
+                    },
+                ));
+            }
             BackendEvent::PointerAxis { event } => {
                 let (horizontal, vertical) = axis(&event);
-                produced.extend(self.mapper.event(DeviceEvent::Scroll { horizontal, vertical }));
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(device, DeviceEvent::Scroll { horizontal, vertical }));
             }
             BackendEvent::TouchDown { event } => {
+                let device = self.device_id(&event.device());
                 let (slot, x, y) = (slot_of(&event), event.x(), event.y());
-                self.touch_positions.insert(slot, (x, y));
-                produced.extend(self.mapper.event(DeviceEvent::Touch {
-                    slot,
-                    x,
-                    y,
-                    phase: TouchPhase::Down,
-                }));
+                self.touch_positions.insert((device, slot), (x, y));
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Touch {
+                        slot,
+                        x,
+                        y,
+                        phase: TouchPhase::Down,
+                    },
+                ));
             }
             BackendEvent::TouchMotion { event } => {
+                let device = self.device_id(&event.device());
                 let (slot, x, y) = (slot_of(&event), event.x(), event.y());
-                self.touch_positions.insert(slot, (x, y));
-                produced.extend(self.mapper.event(DeviceEvent::Touch {
-                    slot,
-                    x,
-                    y,
-                    phase: TouchPhase::Motion,
-                }));
+                self.touch_positions.insert((device, slot), (x, y));
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Touch {
+                        slot,
+                        x,
+                        y,
+                        phase: TouchPhase::Motion,
+                    },
+                ));
             }
             // A release and a cancel carry no position, so they are placed where their slot was
             // last seen. A slot with no position was never delivered, so it has nothing to end.
             BackendEvent::TouchUp { event } => {
+                let device = self.device_id(&event.device());
                 let slot = slot_of(&event);
-                if let Some((x, y)) = self.touch_positions.remove(&slot) {
-                    produced.extend(self.mapper.event(DeviceEvent::Touch {
-                        slot,
-                        x,
-                        y,
-                        phase: TouchPhase::Up,
-                    }));
+                if let Some((x, y)) = self.touch_positions.remove(&(device, slot)) {
+                    produced.extend(self.mapper.event(
+                        device,
+                        DeviceEvent::Touch {
+                            slot,
+                            x,
+                            y,
+                            phase: TouchPhase::Up,
+                        },
+                    ));
                 }
             }
             BackendEvent::TouchCancel { event } => {
+                let device = self.device_id(&event.device());
                 let slot = slot_of(&event);
-                if let Some((x, y)) = self.touch_positions.remove(&slot) {
-                    produced.extend(self.mapper.event(DeviceEvent::Touch {
-                        slot,
-                        x,
-                        y,
-                        phase: TouchPhase::Cancel,
-                    }));
+                if let Some((x, y)) = self.touch_positions.remove(&(device, slot)) {
+                    produced.extend(self.mapper.event(
+                        device,
+                        DeviceEvent::Touch {
+                            slot,
+                            x,
+                            y,
+                            phase: TouchPhase::Cancel,
+                        },
+                    ));
                 }
             }
             BackendEvent::GestureSwipeBegin { event } => {
@@ -505,6 +527,36 @@ pub fn kind_of(device: &libinput::Device) -> DeviceKind {
         DeviceKind::Keyboard
     } else {
         DeviceKind::Mouse
+    }
+}
+
+/// What the seat records about a libinput device: its name, ids, kind, capabilities and logical seat.
+///
+/// The number is not assigned here: [`Devices::announce`] numbers the draft, so the numbering
+/// rules stay testable without a device.
+fn describe(device: &libinput::Device) -> DeviceInfo {
+    let mut caps = DeviceCaps::NONE;
+    for (capability, flag) in [
+        (libinput::DeviceCapability::Keyboard, DeviceCaps::KEYBOARD),
+        (libinput::DeviceCapability::Pointer, DeviceCaps::POINTER),
+        (libinput::DeviceCapability::Touch, DeviceCaps::TOUCH),
+        (libinput::DeviceCapability::Gesture, DeviceCaps::GESTURE),
+        (libinput::DeviceCapability::TabletTool, DeviceCaps::TABLET_TOOL),
+        (libinput::DeviceCapability::TabletPad, DeviceCaps::TABLET_PAD),
+        (libinput::DeviceCapability::Switch, DeviceCaps::SWITCH),
+    ] {
+        if device.has_capability(capability) {
+            caps = caps.union(flag);
+        }
+    }
+    DeviceInfo {
+        id: DeviceId::VIRTUAL,
+        name: single_line(&device.name()),
+        vendor: device.id_vendor(),
+        product: device.id_product(),
+        kind: kind_of(device),
+        caps,
+        seat: device.seat().logical_name().into_owned(),
     }
 }
 

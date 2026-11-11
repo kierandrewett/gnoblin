@@ -160,7 +160,7 @@ pub mod x11;
 use std::fmt;
 use std::io;
 
-use gnoblin_types::{OutputId, Point, Rect, Scale, Size};
+use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::{DisplayMode, OutputDescriptor};
@@ -274,10 +274,17 @@ pub trait Target {
 /// button, a key or a scroll axis changed, and whether a touch point did. Tablet and
 /// gesture events arrive with the input slice and extend this enum rather than the
 /// trait.
-#[derive(Clone, Copy, PartialEq, Debug)]
+///
+/// Every event a device produced names that device in `device`: the number its
+/// [`InputEvent::DeviceAdded`] announced, so a binding can name one keyboard and the router can keep
+/// two keyboards' held keys apart. Input that no announced device produced (a virtual
+/// keyboard, a remote-input client, a nested session) carries [`DeviceId::VIRTUAL`].
+#[derive(Clone, PartialEq, Debug)]
 pub enum InputEvent {
     /// The pointer moved to a position in the output's logical space.
     PointerMotion {
+        /// The device that moved.
+        device: DeviceId,
         /// The output the position is relative to.
         output: OutputId,
         /// The position within that output.
@@ -291,6 +298,8 @@ pub enum InputEvent {
     /// reading a finer device accumulates the fraction and reports the whole part,
     /// which is the same rounding the compositor's integer layout does anyway.
     PointerMotionRelative {
+        /// The device that moved.
+        device: DeviceId,
         /// Horizontal movement.
         dx: i32,
         /// Vertical movement.
@@ -300,6 +309,8 @@ pub enum InputEvent {
     PointerLeave,
     /// A pointer button changed state; `button` is the Linux input event code.
     PointerButton {
+        /// The device whose button changed.
+        device: DeviceId,
         /// The button code.
         button: u32,
         /// Whether the button is now held.
@@ -307,6 +318,8 @@ pub enum InputEvent {
     },
     /// A key changed state; `keycode` is the evdev scan code the seat translates.
     Key {
+        /// The keyboard whose key changed.
+        device: DeviceId,
         /// The evdev key code.
         keycode: u32,
         /// Whether the key is now held.
@@ -320,6 +333,8 @@ pub enum InputEvent {
     /// positive to the right, vertical positive downwards: the direction a
     /// document moves, which is what `wl_pointer.axis` already states.
     PointerAxis {
+        /// The device that scrolled.
+        device: DeviceId,
         /// Horizontal movement in 1/120 of a step.
         horizontal: i32,
         /// Vertical movement in 1/120 of a step.
@@ -332,6 +347,8 @@ pub enum InputEvent {
     /// position of the point; a cancelled or lifted point reports the position it
     /// was last at.
     Touch {
+        /// The touch device.
+        device: DeviceId,
         /// The output the touch is on.
         output: OutputId,
         /// The device's touch identity.
@@ -343,13 +360,11 @@ pub enum InputEvent {
     },
     /// A device joined the seat.
     ///
-    /// `id` is the backend's own number for the device; a later [`InputEvent::DeviceRemoved`]
-    /// names the same number. `kind` is the collapsed kind the configuration reads.
+    /// `device.id` is the backend's own number for the device; every later event the device
+    /// produces, and the [`InputEvent::DeviceRemoved`] that ends it, name the same number.
     DeviceAdded {
-        /// The backend's number for the device.
-        id: u64,
-        /// The kind of device.
-        kind: DeviceKind,
+        /// What the backend knows about the device.
+        device: DeviceInfo,
     },
     /// A device left the seat.
     ///
@@ -357,7 +372,7 @@ pub enum InputEvent {
     /// seat holds nothing for it once this arrives.
     DeviceRemoved {
         /// The backend's number for the device, as the matching [`InputEvent::DeviceAdded`] stated.
-        id: u64,
+        id: DeviceId,
     },
     /// A touchpad gesture sample.
     ///
@@ -369,7 +384,7 @@ pub enum InputEvent {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct RawTouchpadSample {
     /// The backend's number for the device that produced it.
-    pub device: u64,
+    pub device: DeviceId,
     /// Where the sample sits in its gesture.
     pub phase: RawTouchpadPhase,
     /// The gesture's kind. A hold has no binding kind and is routed as nothing.
@@ -428,6 +443,150 @@ pub enum DeviceKind {
     Touch,
     /// A keyboard: repeat and delay are the keymap's, not libinput's.
     Keyboard,
+}
+
+impl DeviceKind {
+    /// What a device of this kind can do, when the backend states nothing finer.
+    #[must_use]
+    pub const fn default_caps(self) -> DeviceCaps {
+        match self {
+            Self::Touchpad => DeviceCaps::POINTER.union(DeviceCaps::GESTURE),
+            Self::Mouse | Self::Trackball | Self::PointingStick => DeviceCaps::POINTER,
+            Self::Touch => DeviceCaps::TOUCH,
+            Self::Keyboard => DeviceCaps::KEYBOARD,
+        }
+    }
+}
+
+/// What an input device can do, as libinput's capability set states it.
+///
+/// A device may have several: a keyboard with a built-in trackpoint is a keyboard and a pointer.
+/// The set is what `Seat.device` publishes, so a shell can tell a macro pad from a mouse before
+/// it names one in a binding.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
+pub struct DeviceCaps(u8);
+
+impl DeviceCaps {
+    /// No capability.
+    pub const NONE: Self = Self(0);
+    /// Keys.
+    pub const KEYBOARD: Self = Self(1);
+    /// A pointer: buttons, motion, scroll.
+    pub const POINTER: Self = Self(1 << 1);
+    /// Touch points.
+    pub const TOUCH: Self = Self(1 << 2);
+    /// Touchpad gestures.
+    pub const GESTURE: Self = Self(1 << 3);
+    /// A drawing tablet's tool.
+    pub const TABLET_TOOL: Self = Self(1 << 4);
+    /// A drawing tablet's pad.
+    pub const TABLET_PAD: Self = Self(1 << 5);
+    /// A switch, such as a laptop lid.
+    pub const SWITCH: Self = Self(1 << 6);
+
+    /// The names of every capability, in bit order. They are the words `Seat.device` lists.
+    const NAMED: [(Self, &str); 7] = [
+        (Self::KEYBOARD, "keyboard"),
+        (Self::POINTER, "pointer"),
+        (Self::TOUCH, "touch"),
+        (Self::GESTURE, "gesture"),
+        (Self::TABLET_TOOL, "tablet-tool"),
+        (Self::TABLET_PAD, "tablet-pad"),
+        (Self::SWITCH, "switch"),
+    ];
+
+    /// Both sets together.
+    #[must_use]
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Whether every capability in `other` is in this set.
+    #[must_use]
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Whether the set is empty.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The capabilities' names, in a fixed order.
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
+        Self::NAMED
+            .into_iter()
+            .filter(move |(cap, _)| self.contains(*cap))
+            .map(|(_, name)| name)
+    }
+}
+
+impl fmt::Display for DeviceCaps {
+    /// The names joined by commas, with nothing for an empty set.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, name) in self.names().enumerate() {
+            if index > 0 {
+                formatter.write_str(",")?;
+            }
+            formatter.write_str(name)?;
+        }
+        Ok(())
+    }
+}
+
+/// What a backend knows about one input device, announced by [`InputEvent::DeviceAdded`].
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DeviceInfo {
+    /// The backend's number for the device, which every event it produces names.
+    pub id: DeviceId,
+    /// The name the device reports, such as `"Logitech K400"`, with control characters replaced
+    /// by spaces so it is one line.
+    pub name: String,
+    /// The USB or Bluetooth vendor number; zero when the device states none.
+    pub vendor: u32,
+    /// The product number; zero when the device states none.
+    pub product: u32,
+    /// The collapsed kind the configuration reads.
+    pub kind: DeviceKind,
+    /// What the device can do.
+    pub caps: DeviceCaps,
+    /// The logical seat the device belongs to.
+    pub seat: String,
+}
+
+impl DeviceInfo {
+    /// A device on `seat0` with the capabilities its kind implies and no vendor or product.
+    #[must_use]
+    pub fn new(id: DeviceId, name: &str, kind: DeviceKind) -> Self {
+        Self {
+            id,
+            name: single_line(name),
+            vendor: 0,
+            product: 0,
+            kind,
+            caps: kind.default_caps(),
+            seat: "seat0".to_owned(),
+        }
+    }
+
+    /// The same device with a capability set the backend read instead of the kind's.
+    #[must_use]
+    pub const fn with_caps(mut self, caps: DeviceCaps) -> Self {
+        self.caps = caps;
+        self
+    }
+}
+
+/// A device name as one line: every control character becomes a space.
+///
+/// The name is shown in `Seat.device` and named in a claim's device selector, and both put it on
+/// one line of text.
+#[must_use]
+pub fn single_line(name: &str) -> String {
+    name.chars()
+        .map(|character| if character.is_control() { ' ' } else { character })
+        .collect()
 }
 
 /// What happened to a touch point.

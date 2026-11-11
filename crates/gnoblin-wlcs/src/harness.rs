@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::{InputEvent, TouchPhase};
-use gnoblin_types::{OutputId, Point};
+use gnoblin_types::{DeviceId, OutputId, Point};
 use gnoblin_wayland::{Config, ControlHandle, NewWindowFocus, Server, SessionSnapshot, WmOptions};
 
 /// What the session thread hands back once the compositor is listening.
@@ -231,6 +231,7 @@ impl Injector {
     pub fn pointer_move_to(&self, x: i32, y: i32) {
         if let Some(output) = self.output() {
             self.deliver(InputEvent::PointerMotion {
+                device: DeviceId::VIRTUAL,
                 output,
                 position: Point::new(x, y),
             });
@@ -239,23 +240,36 @@ impl Injector {
 
     /// Moves the pointer by a distance in compositor space.
     pub fn pointer_move_by(&self, dx: i32, dy: i32) {
-        self.deliver(InputEvent::PointerMotionRelative { dx, dy });
+        self.deliver(InputEvent::PointerMotionRelative {
+            device: DeviceId::VIRTUAL,
+            dx,
+            dy,
+        });
     }
 
     /// Presses or releases a pointer button, by its Linux input event code.
     pub fn pointer_button(&self, button: u32, pressed: bool) {
-        self.deliver(InputEvent::PointerButton { button, pressed });
+        self.deliver(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
+            button,
+            pressed,
+        });
     }
 
     /// Presses or releases a key, by its Linux input event code.
     pub fn key(&self, keycode: u32, pressed: bool) {
-        self.deliver(InputEvent::Key { keycode, pressed });
+        self.deliver(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
+            keycode,
+            pressed,
+        });
     }
 
     /// A touch point changing state at a position in compositor space.
     pub fn touch(&self, slot: u32, x: i32, y: i32, phase: TouchPhase) {
         if let Some(output) = self.output() {
             self.deliver(InputEvent::Touch {
+                device: DeviceId::VIRTUAL,
                 output,
                 slot,
                 position: Point::new(x, y),

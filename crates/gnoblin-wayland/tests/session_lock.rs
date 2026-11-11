@@ -22,7 +22,7 @@ use gnoblin_backend::headless::{Headless, HeadlessHandle};
 use gnoblin_lock::State as LockState;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
-use gnoblin_types::{OutputId, Point, Rect, Size};
+use gnoblin_types::{DeviceId, OutputId, Point, Rect, Size};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Modal, Server, SessionSnapshot};
 use wayland_client::backend::ObjectId;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -108,10 +108,12 @@ impl Handle {
     /// Queues a key press and release, as the backend would deliver them.
     fn press_key(&self) {
         self.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: true,
         });
         self.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: KEY_A,
             pressed: false,
         });
@@ -120,13 +122,18 @@ impl Handle {
     /// Queues a pointer motion and a click at a global position.
     fn click(&self, at: Point) {
         let output = self.snapshot().outputs().first().copied().expect("an output");
-        self.control
-            .inject_input(InputEvent::PointerMotion { output, position: at });
+        self.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position: at,
+        });
         self.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: true,
         });
         self.control.inject_input(InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
             button: BTN_LEFT,
             pressed: false,
         });
@@ -135,14 +142,20 @@ impl Handle {
     /// Queues a pointer motion to a global position.
     fn move_pointer(&self, at: Point) {
         let output = self.snapshot().outputs().first().copied().expect("an output");
-        self.control
-            .inject_input(InputEvent::PointerMotion { output, position: at });
+        self.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output,
+            position: at,
+        });
     }
 
     /// Queues a scroll at the pointer, in 1/120 of a step on each axis.
     fn scroll(&self, horizontal: i32, vertical: i32) {
-        self.control
-            .inject_input(InputEvent::PointerAxis { horizontal, vertical });
+        self.control.inject_input(InputEvent::PointerAxis {
+            device: DeviceId::VIRTUAL,
+            horizontal,
+            vertical,
+        });
     }
 }
 

@@ -279,6 +279,96 @@ return {
         end,
     },
 
+    -- `device = "name"` in a Seat:bind map scopes every binding in it to the devices that report that name: the
+    -- claim carries the name, the same chord for every device is another claim, and events run their own fn.
+    {
+        "Seat:bind with a device filter claims the chords for that device and keeps them apart from the unscoped ones",
+        function()
+            local _, host = seat_shell()
+            local s = root:find(Seat)
+            local hits = {}
+            s:bind({
+                device = "Macro Pad",
+                F13 = function()
+                    hits[#hits + 1] = "pad"
+                end,
+                ["<Super>q"] = false,
+            })
+            s:bind({
+                F13 = function()
+                    hits[#hits + 1] = "any"
+                end,
+            })
+            local claims = {}
+            for _, c in ipairs(host.calls) do
+                if
+                    c.method == "claim"
+                    and (c.text == "Macro Pad\nF13" or c.text == "F13" or c.text == "Macro Pad\n<Super>q")
+                then
+                    claims[c.text] = string.unpack("<i8", c.args[1])
+                end
+            end
+            H.check(claims["Macro Pad\nF13"] ~= nil, "no scoped claim for F13")
+            H.check(claims["Macro Pad\n<Super>q"] ~= nil, "a fn of false still claims the chord for the device")
+            H.check(claims["F13"] ~= nil, "no unscoped claim for F13")
+            H.check(claims["Macro Pad\nF13"] ~= claims["F13"], "the two claims share an id")
+            for _, c in ipairs(host.calls) do
+                H.check(
+                    c.text ~= "Macro Pad" and c.text ~= "device",
+                    "the filter was claimed as a chord: " .. tostring(c.text)
+                )
+            end
+            local function press(id, chord)
+                return {
+                    target = 0,
+                    type = "chord",
+                    bubbles = false,
+                    chord = { claim = id, chord = chord, state = "press" },
+                }
+            end
+            host.frame(0, { press(claims["Macro Pad\nF13"], "F13") })
+            host.frame(1, { press(claims["F13"], "F13") })
+            H.check(#hits == 2 and hits[1] == "pad" and hits[2] == "any", "hits " .. table.concat(hits, ","))
+            s:unbind(claims["Macro Pad\nF13"])
+            host.frame(2, { press(claims["Macro Pad\nF13"], "F13") })
+            host.frame(3, { press(claims["F13"], "F13") })
+            H.check(
+                #hits == 3 and hits[3] == "any",
+                "unbinding the pad's chord left the other one: " .. table.concat(hits, ",")
+            )
+        end,
+    },
+    {
+        "a device selector is a non-empty single line",
+        function()
+            local _, host = seat_shell()
+            local s = root:find(Seat)
+            local before = #host.calls
+            for _, bad in ipairs({ "", "two\nlines", 7 }) do
+                local ok = pcall(function()
+                    s:claim("F13", true, bad)
+                end)
+                H.check(not ok, "a device selector " .. tostring(bad) .. " must be refused")
+            end
+            H.check(#host.calls == before, "a refused selector sent a call")
+        end,
+    },
+    {
+        "Seat:claim_gesture scopes a gesture to a device and the seat lists its devices",
+        function()
+            local _, host = seat_shell()
+            local s = root:find(Seat)
+            s:claim_gesture("swipe", 3, "Pad Touchpad")
+            local c = host.calls[#host.calls]
+            H.check(c.method == "claim_gesture" and c.text == "Pad Touchpad\nswipe", "text " .. tostring(c.text))
+            local _, fingers = string.unpack("<i8i8", c.args[1])
+            H.check(fingers == 3, "fingers " .. tostring(fingers))
+            H.check(#s.device == 0, "no device is published yet")
+            H.publish_seat(host, { device = { "1:Desk Keyboard:keyboard", "2:Macro Pad:keyboard" } })
+            H.check(#s.device == 2 and s.device[2] == "2:Macro Pad:keyboard", "the device list reads back")
+        end,
+    },
+
     {
         "click mode: pointer motion does not move focus",
         function()

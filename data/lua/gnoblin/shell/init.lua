@@ -34,24 +34,34 @@ end
 -- every phase, with `e.phase` ("begin", "update", "end" or "cancel"), `e.dx` and `e.dy` (the movement since the
 -- begin), `e.scale` (1 for a swipe; above 1 for a spread) and `e.rotation` (radians, clockwise positive). A fn of
 -- `false` claims the chord or gesture and does nothing with it.
+--
+-- `device = "Macro Pad"` in the map scopes every binding in it to the devices that report that name (see
+-- `seat.device`, one "id:name:caps" item per device): a chord claimed for the pad is withheld from clients only when
+-- the pad sends it, and the same chord on the desk keyboard still types. A chord bound for a device is a different
+-- binding from the same chord bound for every device, and wins on its device. `keys` and `claims` hold the chord
+-- behind the device name and a line feed when it is scoped, so the two bindings do not share a slot.
 local GESTURES = { Swipe = "swipe", Pinch = "pinch" }
-local function claim_key(seat, key, grab)
+local function claim_key(seat, key, grab, device)
     local name, fingers = key:match("^(%a+)(%d+)$")
     if GESTURES[name] then
-        return seat:claim_gesture(GESTURES[name], tonumber(fingers))
+        return seat:claim_gesture(GESTURES[name], tonumber(fingers), device)
     end
-    return seat:claim(key, grab)
+    return seat:claim(key, grab, device)
 end
 function Seat:bind(map)
     local keys, claims = self.data.keys or {}, self.data.claims or {}
+    local device = type(map.device) == "string" and map.device or nil
     local chords = {}
     for chord in pairs(map) do
-        chords[#chords + 1] = chord
+        if not (chord == "device" and device) then
+            chords[#chords + 1] = chord
+        end
     end
     table.sort(chords)
     for _, chord in ipairs(chords) do
-        keys[chord] = map[chord] or nil
-        claims[claim_key(self, chord, map[chord] ~= false)] = chord
+        local slot = device and (device .. "\n" .. chord) or chord
+        keys[slot] = map[chord] or nil
+        claims[claim_key(self, chord, map[chord] ~= false, device)] = slot
     end
     self.data.keys, self.data.claims = keys, claims
 end

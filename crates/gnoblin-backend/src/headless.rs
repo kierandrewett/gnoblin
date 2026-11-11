@@ -795,6 +795,7 @@ mod tests {
 
     use super::*;
     use gnoblin_render_frame::frame::{Layer, Overlay, Solid};
+    use gnoblin_types::DeviceId;
 
     /// A host that describes one red rectangle and records what it was asked.
     #[derive(Default)]
@@ -930,6 +931,7 @@ mod tests {
         let mut backend = Headless::empty();
         backend.push_input(InputEvent::PointerLeave);
         backend.push_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: 30,
             pressed: true,
         });
@@ -940,6 +942,7 @@ mod tests {
             vec![
                 InputEvent::PointerLeave,
                 InputEvent::Key {
+                    device: DeviceId::VIRTUAL,
                     keycode: 30,
                     pressed: true,
                 },
@@ -1204,6 +1207,7 @@ mod tests {
         let mut backend = Headless::new();
         let output = backend.outputs[0].id;
         backend.push_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
             output,
             position: Point::new(10, 20),
         });
@@ -1212,6 +1216,7 @@ mod tests {
         assert_eq!(
             host.inputs,
             vec![InputEvent::PointerMotion {
+                device: DeviceId::VIRTUAL,
                 output,
                 position: Point::new(10, 20),
             }]

@@ -64,7 +64,9 @@ pub use color::Color;
 pub use direction::{Axis, Corner, Direction, Edge};
 pub use error_code::{ErrorCode, InvalidErrorCode, is_error_code};
 pub use geometry::{Insets, Point, PointF, Rect, RectF, Size, Vec3};
-pub use ids::{ClientId, ObjectId, OperationId, OutputId, OwnerId, RequestId, SubscriptionId, WindowId, WorkspaceId};
+pub use ids::{
+    ClientId, DeviceId, ObjectId, OperationId, OutputId, OwnerId, RequestId, SubscriptionId, WindowId, WorkspaceId,
+};
 pub use keyboard::{ButtonState, KeyCode, KeyState, Keysym, Modifiers};
 pub use orientation::Orientation;
 pub use parent_window::{InvalidParentWindow, MAX_HANDLE_BYTES, MAX_XID_DIGITS, ParentWindow};

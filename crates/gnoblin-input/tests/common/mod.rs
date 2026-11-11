@@ -8,7 +8,7 @@
 
 use gnoblin_input::chord::{Chord, ChordKind, Keysym, Keysyms, Symbol};
 use gnoblin_input::name::Name;
-use gnoblin_input::{ButtonState, Event, KeyCode, KeyState, Modifiers};
+use gnoblin_input::{ButtonState, DeviceId, Event, KeyCode, KeyState, Modifiers};
 
 /// The keysyms the tests use.
 pub const Q: Keysym = Keysym::new(0x71);
@@ -60,9 +60,11 @@ pub fn name(text: &str) -> Name {
 /// A key press or release.
 pub fn key_event(code: KeyCode, symbol: Keysym, modifiers: Modifiers, state: KeyState) -> Event {
     Event::Key {
+        device: DeviceId::VIRTUAL,
         key_code: code,
         symbol,
         modifiers,
+        own: None,
         state,
         repeat: false,
     }
@@ -81,6 +83,7 @@ pub fn release(code: KeyCode, symbol: Keysym, modifiers: Modifiers) -> Event {
 /// A button press or release.
 pub fn button_event(button: u8, modifiers: Modifiers, state: ButtonState) -> Event {
     Event::Button {
+        device: DeviceId::VIRTUAL,
         button,
         modifiers,
         state,

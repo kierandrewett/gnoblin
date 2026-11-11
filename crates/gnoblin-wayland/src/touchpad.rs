@@ -13,6 +13,7 @@ use crate::state::State;
 use gnoblin_backend::{RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample};
 use gnoblin_config::{Gesture, GestureDirection, GestureKind as ConfigKind};
 use gnoblin_input::ClaimRoute;
+use gnoblin_input::DeviceSelector;
 use gnoblin_input::GestureClaims;
 use gnoblin_input::GestureDelivery;
 use gnoblin_input::GestureError;
@@ -85,10 +86,24 @@ impl TouchpadGestures {
         &mut self.claims
     }
 
-    /// Routes one libinput sample. A claimed gesture is delivered to its holder and never reaches
-    /// a binding; any other returns the binding it fired, if any, and every other outcome is
-    /// logged here and dropped.
+    /// Routes one libinput sample from a device the compositor has no name for, so no claim scoped to a
+    /// device takes it. See [`TouchpadGestures::route_from`].
+    #[cfg(test)]
     pub(crate) fn route(&mut self, tick: Tick, lock: GestureLock, sample: RawTouchpadSample) -> TouchpadRoute {
+        self.route_from(tick, lock, None, sample)
+    }
+
+    /// Routes one libinput sample from the device that reports `device`. A claimed gesture is delivered to
+    /// its holder and never reaches a binding; any other returns the binding it fired, if any, and every
+    /// other outcome is logged here and dropped. A claim scoped to that device takes the gesture before a
+    /// claim for every device does.
+    pub(crate) fn route_from(
+        &mut self,
+        tick: Tick,
+        lock: GestureLock,
+        device: Option<&str>,
+        sample: RawTouchpadSample,
+    ) -> TouchpadRoute {
         let Some(event) = self.stream.feed(tick, input_sample(sample)) else {
             log::debug!(
                 area = "touchpad",
@@ -98,7 +113,7 @@ impl TouchpadGestures {
             );
             return TouchpadRoute::Dropped;
         };
-        match self.claims.observe(&event, lock) {
+        match self.claims.observe_from(&event, lock, device) {
             ClaimRoute::Deliver(delivery) => return TouchpadRoute::Claimed(delivery),
             ClaimRoute::Withheld => {
                 log::debug!(
@@ -167,11 +182,20 @@ pub(crate) fn run(fire: &Fire) {
 }
 
 impl State {
-    /// Applies one seat `claim_gesture` call: the claim's kind is the call's text and its finger count
-    /// the second argument. A kind or count the table refuses, or a gesture another claim takes, is
-    /// logged and the claim is not made, as a chord that does not parse.
+    /// Applies one seat `claim_gesture` call: the claim's kind is the call's text, behind a device selector and a
+    /// line feed when the claim is scoped to one device, and its finger count the second argument. A kind,
+    /// selector or count the table refuses, or a gesture another claim takes for the same device, is logged and
+    /// the claim is not made, as a chord that does not parse.
     pub(crate) fn claim_gesture(&mut self, call: &TreeCall, id: i64) {
-        let Some(kind) = GestureKind::from_name(call.text.expose()) else {
+        let (selector, subject) = crate::devices::split_selector(call.text.expose());
+        let device = match selector.map(DeviceSelector::new).transpose() {
+            Ok(device) => device,
+            Err(error) => {
+                log::warn!(area = "claim", claim = id, %error, "a seat gesture claim's device selector is refused");
+                return;
+            }
+        };
+        let Some(kind) = GestureKind::from_name(subject) else {
             log::warn!(
                 area = "claim",
                 claim = id,
@@ -183,7 +207,7 @@ impl State {
         if let Err(error) = self
             .touchpad_gestures
             .claims_mut()
-            .claim(call.node.get(), id, kind, fingers)
+            .claim_for(call.node.get(), id, kind, fingers, device)
         {
             log::warn!(area = "claim", claim = id, "a seat gesture claim was refused: {error}");
         }
@@ -274,7 +298,7 @@ mod tests {
 
     fn sample(fingers: u8, phase: RawTouchpadPhase, kind: RawTouchpadKind, dx: f64, scale: f64) -> RawTouchpadSample {
         RawTouchpadSample {
-            device: 1,
+            device: gnoblin_types::DeviceId::new(1),
             phase,
             kind,
             fingers,

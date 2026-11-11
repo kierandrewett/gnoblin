@@ -7,6 +7,7 @@
 
 mod owned;
 
+use gnoblin_types::DeviceId;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -612,10 +613,12 @@ fn a_protected_session_receives_no_input() {
             .client
             .wait_until("the keyboard to leave", |state| state.leaves >= 1);
         handle.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: 30,
             pressed: true,
         });
         handle.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
             keycode: 30,
             pressed: false,
         });

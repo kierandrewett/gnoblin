@@ -83,7 +83,7 @@ local SCHEMA = {
             screen = { type = "node", readonly = true },
             pointer_x = { type = "number", default = 0, readonly = true },
             pointer_y = { type = "number", default = 0, readonly = true },
-            device = { type = "string", default = "", readonly = true },
+            device = { type = "table", default = {}, readonly = true },
             edge_tiling = { type = "boolean", default = false, readonly = true },
             drag_constraint = { type = "string", default = "work_area", readonly = true },
             focus_mode = { type = "string", default = "click", readonly = true },

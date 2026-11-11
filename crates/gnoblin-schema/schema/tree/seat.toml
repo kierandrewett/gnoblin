@@ -41,12 +41,16 @@ since = "0.2.0"
 default = 0.0
 readonly = true
 
-# Device identity for multi-seat.
+# The input devices this seat has, one `id:name:caps` item each, in the order they arrived: `id` is the
+# backend's number for the device (never reused, so a removed device's number is not given to the next one),
+# `name` is the name the device reports and `caps` its capabilities joined by commas (`keyboard`, `pointer`,
+# `touch`, `gesture`, `tablet-tool`, `tablet-pad`, `switch`). The id is up to the first colon and the
+# capabilities after the last, so a name may hold colons. A device that is plugged in or removed changes the
+# list. Read-only: the compositor publishes it. The name is what a claim's `device` selector matches.
 [[object.property]]
 name = "device"
-type = "string"
+type = "list<string>"
 since = "0.2.0"
-default = ""
 readonly = true
 
 # The window management options the compositor was configured with (`window_management`). Read-only:
@@ -175,6 +179,12 @@ since = "0.2.0"
 # to the owner. `id` is allocated by the shell, per connection, and never reused. `chord` is
 # canonicalised by the compositor; an unparsable chord is `invalid-value`. `grab` keeps the
 # chord's release on the same claim. Only the owner may claim (design/node-core.md, section 5).
+# `device` is a device name from `Seat.device`, or empty for every device: the claim then takes the chord
+# only from the devices that report that name (matched exactly), so the same chord can be claimed for a macro
+# pad and left to clients on the desk keyboard. A chord is claimed once per `device`; a claim for a named
+# device is matched against that device's own modifiers, not the seat's, and takes the chord before a claim
+# for every device does. On the call the text is the chord, or, when `device` is not empty, `device`, a line
+# feed and the chord.
 [[object.method]]
 name = "claim"
 since = "0.2.0"
@@ -194,6 +204,11 @@ name = "grab"
 type = "bool"
 since = "0.2.0"
 
+[[object.method.param]]
+name = "device"
+type = "string"
+since = "0.2.0"
+
 # Remove a claim made on this connection. Unknown ids are `unknown-member`.
 [[object.method]]
 name = "unclaim"
@@ -210,6 +225,9 @@ since = "0.2.0"
 # shares its number space with `claim`: `unclaim` removes either. One holder per kind and finger count:
 # a second claim of the same gesture is refused, and a claim of an id already held replaces it. A gesture
 # that began while the session was locked, or before the claim, is not delivered. Only the owner may claim.
+# `device` is a device name from `Seat.device`, or empty for every device: the claim then takes the gesture only
+# from the touchpads that report that name, and is one holder per kind, finger count and `device`. On the call the
+# text is `kind`, or, when `device` is not empty, `device`, a line feed and `kind`.
 [[object.method]]
 name = "claim_gesture"
 since = "0.2.0"
@@ -227,6 +245,11 @@ since = "0.2.0"
 [[object.method.param]]
 name = "fingers"
 type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "device"
+type = "string"
 since = "0.2.0"
 
 # A claimed chord changed state: `state` is `press`, `release` or `repeat`.

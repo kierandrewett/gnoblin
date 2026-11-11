@@ -9,7 +9,7 @@ mod session;
 
 use gnoblin_backend::InputEvent;
 use gnoblin_render::transaction::TreeValue;
-use gnoblin_types::{NodeId, Point};
+use gnoblin_types::{DeviceId, NodeId, Point};
 use gnoblin_wayland::TreeInput;
 use session::shell::Shell;
 use session::{BTN_LEFT, Client, Handle, Session};
@@ -25,14 +25,17 @@ const OUTSIDE: Point = Point { x: 20, y: 20 };
 /// Moves the pointer to a global position, as a device would.
 fn motion(session: &Handle, at: Point) {
     let output = session.windows().outputs().first().copied().expect("an output");
-    session
-        .control
-        .inject_input(InputEvent::PointerMotion { output, position: at });
+    session.control.inject_input(InputEvent::PointerMotion {
+        device: DeviceId::VIRTUAL,
+        output,
+        position: at,
+    });
 }
 
 /// Presses or releases the left button where the pointer is.
 fn button(session: &Handle, pressed: bool) {
     session.control.inject_input(InputEvent::PointerButton {
+        device: DeviceId::VIRTUAL,
         button: BTN_LEFT,
         pressed,
     });

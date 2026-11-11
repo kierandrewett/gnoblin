@@ -406,7 +406,7 @@ pub enum Action {
 /// The field is private and the only constructor is in this module, so a producer
 /// cannot claim to be a device, and a session cannot lose the tag between here and the
 /// seat.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Injection {
     origin: Origin,
     event: InputEvent,
@@ -415,19 +415,19 @@ pub struct Injection {
 impl Injection {
     /// Where the event came from.
     #[must_use]
-    pub const fn origin(self) -> Origin {
+    pub const fn origin(&self) -> Origin {
         self.origin
     }
 
     /// The event itself, in the seat's own vocabulary.
     #[must_use]
-    pub const fn event(self) -> InputEvent {
-        self.event
+    pub fn event(&self) -> InputEvent {
+        self.event.clone()
     }
 
     /// The event, for a caller that only needs to deliver it.
     #[must_use]
-    pub const fn into_event(self) -> InputEvent {
+    pub fn into_event(self) -> InputEvent {
         self.event
     }
 }
@@ -753,15 +753,21 @@ impl EiDevice {
         let mut actions = Vec::new();
         for key in std::mem::take(&mut self.keys) {
             actions.push(inject(InputEvent::Key {
+                device: gnoblin_types::DeviceId::VIRTUAL,
                 keycode: key,
                 pressed: false,
             }));
         }
         for button in std::mem::take(&mut self.buttons) {
-            actions.push(inject(InputEvent::PointerButton { button, pressed: false }));
+            actions.push(inject(InputEvent::PointerButton {
+                device: gnoblin_types::DeviceId::VIRTUAL,
+                button,
+                pressed: false,
+            }));
         }
         for (contact, (output, position)) in std::mem::take(&mut self.contacts) {
             actions.push(inject(InputEvent::Touch {
+                device: gnoblin_types::DeviceId::VIRTUAL,
                 output,
                 slot: contact,
                 position,
@@ -1004,6 +1010,7 @@ impl Context {
                     return Err(Violation::Malformed);
                 }
                 Ok(vec![inject(InputEvent::PointerMotionRelative {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
                     dx: round(f64::from(dx)),
                     dy: round(f64::from(dy)),
                 })])
@@ -1014,7 +1021,11 @@ impl Context {
                     return Err(Violation::Malformed);
                 }
                 let (output, position) = locate(device, x, y)?;
-                Ok(vec![inject(InputEvent::PointerMotion { output, position })])
+                Ok(vec![inject(InputEvent::PointerMotion {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
+                    output,
+                    position,
+                })])
             }
             EiRequest::Button { button, pressed, .. } => {
                 admits(device, Caps::BUTTON, quota)?;
@@ -1032,7 +1043,11 @@ impl Context {
                     device.dropped = device.dropped.saturating_add(1);
                     return Ok(Vec::new());
                 }
-                Ok(vec![inject(InputEvent::PointerButton { button, pressed })])
+                Ok(vec![inject(InputEvent::PointerButton {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
+                    button,
+                    pressed,
+                })])
             }
             EiRequest::Key { key, pressed, .. } => {
                 admits(device, Caps::KEYBOARD, quota)?;
@@ -1050,11 +1065,16 @@ impl Context {
                     device.dropped = device.dropped.saturating_add(1);
                     return Ok(Vec::new());
                 }
-                Ok(vec![inject(InputEvent::Key { keycode: key, pressed })])
+                Ok(vec![inject(InputEvent::Key {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
+                    keycode: key,
+                    pressed,
+                })])
             }
             EiRequest::ScrollDiscrete { dx, dy, .. } => {
                 admits(device, Caps::SCROLL, quota)?;
                 Ok(vec![inject(InputEvent::PointerAxis {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
                     horizontal: dx,
                     vertical: dy,
                 })])
@@ -1065,6 +1085,7 @@ impl Context {
                     return Err(Violation::Malformed);
                 }
                 Ok(vec![inject(InputEvent::PointerAxis {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
                     horizontal: steps(dx),
                     vertical: steps(dy),
                 })])
@@ -1079,6 +1100,7 @@ impl Context {
                     return Err(Violation::ContactAlreadyDown);
                 }
                 Ok(vec![inject(InputEvent::Touch {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
                     output,
                     slot: contact,
                     position,
@@ -1093,6 +1115,7 @@ impl Context {
                 };
                 *slot = (output, position);
                 Ok(vec![inject(InputEvent::Touch {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
                     output,
                     slot: contact,
                     position,
@@ -1110,6 +1133,7 @@ impl Context {
                     TouchPhase::Cancel
                 };
                 Ok(vec![inject(InputEvent::Touch {
+                    device: gnoblin_types::DeviceId::VIRTUAL,
                     output,
                     slot: contact,
                     position,

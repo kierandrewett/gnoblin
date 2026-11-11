@@ -2482,7 +2482,7 @@ impl State {
     /// `false` for an edge that is not a modal event, which then routes as usual.
     pub(crate) fn route_to_modal(&mut self, event: &InputEvent) -> bool {
         match *event {
-            InputEvent::Key { keycode, pressed } => {
+            InputEvent::Key { keycode, pressed, .. } => {
                 let state = if pressed {
                     gnoblin_types::KeyState::Pressed
                 } else {
@@ -2490,7 +2490,7 @@ impl State {
                 };
                 self.modal_events.push(ModalEvent::Key { keycode, state });
             }
-            InputEvent::PointerButton { button, pressed } => {
+            InputEvent::PointerButton { button, pressed, .. } => {
                 let state = if pressed {
                     gnoblin_types::KeyState::Pressed
                 } else {
@@ -3509,7 +3509,7 @@ impl Host for State {
             return;
         }
         match event {
-            InputEvent::PointerMotion { output, position } => {
+            InputEvent::PointerMotion { output, position, .. } => {
                 let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
                     return;
                 };
@@ -3530,7 +3530,7 @@ impl Host for State {
                 // relative motion does not have to difference two positions.
                 self.send_relative_motion(delta, time);
             }
-            InputEvent::PointerMotionRelative { dx, dy } => {
+            InputEvent::PointerMotionRelative { dx, dy, .. } => {
                 // A relative device states a delta rather than a position, which is what
                 // a mouse and an EI client both send. The delta is applied to the
                 // position the seat holds and the result is kept inside the layout, so a
@@ -3557,7 +3557,7 @@ impl Host for State {
                 );
                 pointer.frame(self);
             }
-            InputEvent::PointerButton { button, pressed } => {
+            InputEvent::PointerButton { button, pressed, .. } => {
                 // A press or release over a shell node, or over a window while a shell holds the tree, is an
                 // edge the shell reads: its focus and raise policy follows the window's. Without a shell the
                 // fallback focuses the window a press lands on.
@@ -3600,7 +3600,11 @@ impl Host for State {
                 // later applies nothing of it before the frame that closes the group.
                 pointer.frame(self);
             }
-            InputEvent::Key { keycode, pressed } => {
+            InputEvent::Key {
+                device,
+                keycode,
+                pressed,
+            } => {
                 let serial = SERIAL_COUNTER.next_serial();
                 self.remember_input_serial(u32::from(serial));
                 let state = if pressed {
@@ -3612,13 +3616,15 @@ impl Host for State {
                 // the edge belongs to a grab, a binding or the client, and only a client
                 // edge reaches the seat. The evdev-to-X11 offset is applied there too, so
                 // a client's `wl_keyboard.key` is the code the protocol defines.
-                self.dispatch_key(keycode, state, serial, time);
+                self.dispatch_key(device, keycode, state, serial, time);
             }
             // A scroll goes to the client the pointer is over. The value is in 1/120 of a step, so
             // it is both the discrete `v120` value and, scaled, the pixel distance. The backend
             // cannot tell a wheel from a touchpad finger, so the source is the wheel: a client
             // that smooths scrolling still gets the exact fractional steps.
-            InputEvent::PointerAxis { horizontal, vertical } if horizontal != 0 || vertical != 0 => {
+            InputEvent::PointerAxis {
+                horizontal, vertical, ..
+            } if horizontal != 0 || vertical != 0 => {
                 // A wheel over a shell node is the shell's: the tree gets the pixel distance, and no client does.
                 if let Some((node, local)) = self.shell_pick(self.pointer_position) {
                     let dx = f64::from(horizontal) / 120.0 * AXIS_PIXELS_PER_STEP;
@@ -3657,7 +3663,8 @@ impl Host for State {
                 } else {
                     gnoblin_input::GestureLock::Locked
                 };
-                match self.touchpad_gestures.route(self.clock, lock, sample) {
+                let device = self.keyboard_tables.router.device_name(sample.device);
+                match self.touchpad_gestures.route_from(self.clock, lock, device, sample) {
                     crate::touchpad::TouchpadRoute::Fire(fire) => crate::touchpad::run(&fire),
                     crate::touchpad::TouchpadRoute::Claimed(delivery) => {
                         self.tree.gesture(NodeId::new(delivery.holder), delivery);
@@ -3670,6 +3677,7 @@ impl Host for State {
                 slot,
                 position,
                 phase,
+                ..
             } => {
                 let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
                     return;
@@ -3680,9 +3688,11 @@ impl Host for State {
                 ));
                 self.touch_input(slot, location, phase, time);
             }
-            // A device joining or leaving changes no focus or pointer state; the seat only
-            // needs the release a removal sends for the buttons and touches it held.
-            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
+            // A device joining or leaving changes no focus or pointer state; the seat records it, tells the
+            // router its name and publishes the list. The release a removal sends for the buttons and touches
+            // it held came before this event.
+            InputEvent::DeviceAdded { device } => self.device_added(device),
+            InputEvent::DeviceRemoved { id } => self.device_removed(id),
         }
     }
 }

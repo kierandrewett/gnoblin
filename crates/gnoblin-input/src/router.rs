@@ -35,8 +35,9 @@ use std::fmt;
 
 use crate::binding::{Binding, BindingId, BindingTable, Conflict, Trigger};
 use crate::chord::Chord;
+use crate::device::{DeviceKey, DeviceSelector, HeldEdge};
 use crate::name::Name;
-use gnoblin_types::{ButtonState, KeyCode, KeyState, Keysym, Modifiers};
+use gnoblin_types::{ButtonState, DeviceId, KeyCode, KeyState, Keysym, Modifiers};
 
 /// Which devices a grab takes.
 ///
@@ -100,16 +101,25 @@ impl Grab {
 }
 
 /// The edge to route.
+///
+/// Every edge names the device that produced it. The router keeps each device's held keys and
+/// buttons apart, so two keyboards holding the same key code each find their own press on release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
     /// A key edge.
     Key {
+        /// The keyboard the key is on, or [`DeviceId::VIRTUAL`] for a key no announced keyboard produced.
+        device: DeviceId,
         /// The hardware key code, which does not change with the layout.
         key_code: KeyCode,
-        /// The keysym the layout resolves the code to now.
+        /// The keysym the seat's layout resolves the code to now.
         symbol: Keysym,
-        /// The modifiers held now.
+        /// The modifiers the seat holds now, from every keyboard.
         modifiers: Modifiers,
+        /// What this device's own keys say, when the caller tracks that. A binding scoped to the
+        /// device matches this instead of `symbol` and `modifiers`; `None` means the seat's view is
+        /// the device's.
+        own: Option<DeviceKey>,
         /// Press or release.
         state: KeyState,
         /// Whether this is an autorepeat, which only follows its press.
@@ -117,9 +127,11 @@ pub enum Event {
     },
     /// A pointer button edge.
     Button {
+        /// The pointer the button is on, or [`DeviceId::VIRTUAL`] for a button no announced pointer produced.
+        device: DeviceId,
         /// The button number.
         button: u8,
-        /// The modifiers held now.
+        /// The modifiers the seat holds now.
         modifiers: Modifiers,
         /// Press or release.
         state: ButtonState,
@@ -206,13 +218,17 @@ pub struct Stats {
     pub grabs_started: u64,
     /// Grabs ended.
     pub grabs_ended: u64,
+    /// Presses forgotten because the device that held them was removed before it released them.
+    pub dropped_with_device: u64,
 }
 
-/// A held key or button, as the router remembers it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum Pressed {
-    Key(KeyCode),
-    Button(u8),
+/// What one key edge carries into matching: the device, the seat's view of the key, and the device's own.
+#[derive(Clone, Copy, Debug)]
+struct KeyEdge {
+    device: DeviceId,
+    symbol: Keysym,
+    modifiers: Modifiers,
+    own: Option<DeviceKey>,
 }
 
 /// The binding table plus the grabs and held edges that decide delivery.
@@ -220,7 +236,9 @@ enum Pressed {
 pub struct Router {
     table: BindingTable,
     grabs: Vec<Grab>,
-    owned: BTreeMap<Pressed, Target>,
+    owned: BTreeMap<HeldEdge, Target>,
+    /// The name each announced device reports, which a binding's device selector matches.
+    devices: BTreeMap<DeviceId, String>,
     next_grab: u64,
     stats: Stats,
 }
@@ -245,13 +263,13 @@ impl Router {
         &self.table
     }
 
-    /// The bindings, for a reload. Held presses keep their ids, so a binding that
+    /// The bindings, for a reload. HeldEdge presses keep their ids, so a binding that
     /// survives a reload keeps the releases it already owns.
     pub const fn bindings_mut(&mut self) -> &mut BindingTable {
         &mut self.table
     }
 
-    /// Declare a binding through the router's table.
+    /// Declare a binding for every device through the router's table.
     pub fn bind(
         &mut self,
         name: &Name,
@@ -260,6 +278,20 @@ impl Router {
         allow_when_inhibited: bool,
     ) -> Result<crate::binding::Insertion, Conflict> {
         self.table.insert(name, chord, trigger, allow_when_inhibited)
+    }
+
+    /// Declare a binding that takes its events from the device `device` names (every device for
+    /// `None`) through the router's table.
+    pub fn bind_for(
+        &mut self,
+        name: &Name,
+        chord: Chord,
+        trigger: Trigger,
+        allow_when_inhibited: bool,
+        device: Option<DeviceSelector>,
+    ) -> Result<crate::binding::Insertion, Conflict> {
+        self.table
+            .insert_for(name, chord, trigger, allow_when_inhibited, device)
     }
 
     /// The active grabs, oldest first.
@@ -286,9 +318,51 @@ impl Router {
         true
     }
 
-    /// How many keys and buttons are held.
+    /// How many keys and buttons are held, across every device.
     pub fn held(&self) -> usize {
         self.owned.len()
+    }
+
+    /// How many keys and buttons one device holds.
+    pub fn held_by(&self, device: DeviceId) -> usize {
+        self.owned.keys().filter(|held| held.device() == device).count()
+    }
+
+    /// Tells the router a device arrived and what it calls itself.
+    ///
+    /// A binding with a device selector matches the devices whose name it names, and the router can
+    /// only know a device's name from here. An event from a device that was never announced matches
+    /// no scoped binding, and every binding with no selector.
+    pub fn device_added(&mut self, device: DeviceId, name: &str) {
+        self.devices.insert(device, name.to_owned());
+    }
+
+    /// Tells the router a device left, and returns the presses it still held.
+    ///
+    /// Only that device's held keys and buttons are forgotten: another keyboard that is holding the
+    /// same key keeps its own press, and its release still finds it. Each returned press is the key
+    /// or button and the target that owned it, so the caller can end a claim that was waiting for
+    /// the release the removed device will never send. libinput releases a removed keyboard's held
+    /// keys before it reports the removal, so this is empty in the normal case.
+    pub fn device_removed(&mut self, device: DeviceId) -> Vec<(HeldEdge, Target)> {
+        self.devices.remove(&device);
+        let gone: Vec<HeldEdge> = self
+            .owned
+            .keys()
+            .copied()
+            .filter(|held| held.device() == device)
+            .collect();
+        let dropped: Vec<(HeldEdge, Target)> = gone
+            .into_iter()
+            .filter_map(|held| self.owned.remove(&held).map(|target| (held, target)))
+            .collect();
+        self.stats.dropped_with_device += dropped.len() as u64;
+        dropped
+    }
+
+    /// The name a device announced, if it did.
+    pub fn device_name(&self, device: DeviceId) -> Option<&str> {
+        self.devices.get(&device).map(String::as_str)
     }
 
     /// The counters so far.
@@ -300,30 +374,43 @@ impl Router {
     pub fn route(&mut self, event: Event, inhibit: ShortcutInhibit) -> Routed {
         match event {
             Event::Key {
+                device,
                 key_code,
                 symbol,
                 modifiers,
+                own,
                 state,
                 repeat,
-            } => self.route_key(key_code, symbol, modifiers, state, repeat, inhibit),
+            } => self.route_key(
+                KeyEdge {
+                    device,
+                    symbol,
+                    modifiers,
+                    own,
+                },
+                key_code,
+                state,
+                repeat,
+                inhibit,
+            ),
             Event::Button {
+                device,
                 button,
                 modifiers,
                 state,
-            } => self.route_button(button, modifiers, state, inhibit),
+            } => self.route_button(device, button, modifiers, state, inhibit),
         }
     }
 
     fn route_key(
         &mut self,
+        edge: KeyEdge,
         key_code: KeyCode,
-        symbol: Keysym,
-        modifiers: Modifiers,
         state: KeyState,
         repeat: bool,
         inhibit: ShortcutInhibit,
     ) -> Routed {
-        let pressed = Pressed::Key(key_code);
+        let pressed = HeldEdge::Key(edge.device, key_code);
         // An autorepeat is not a new press, so it must follow the press it repeats. If no
         // press is recorded the key is treated as an orphan and routed by priority.
         if repeat {
@@ -340,7 +427,7 @@ impl Router {
                 }
                 None => {
                     self.stats.orphan_releases += 1;
-                    let target = self.key_priority(symbol, modifiers, inhibit);
+                    let target = self.key_priority(&edge, inhibit);
                     self.count(target);
                     Routed {
                         target,
@@ -354,7 +441,7 @@ impl Router {
         match state {
             KeyState::Pressed => {
                 self.stats.presses += 1;
-                let (target, fired) = self.press_key(symbol, modifiers, inhibit);
+                let (target, fired) = self.press_key(&edge, inhibit);
                 if self.owned.insert(pressed, target).is_some() {
                     self.stats.duplicate_presses += 1;
                 }
@@ -386,7 +473,7 @@ impl Router {
                     }
                     None => {
                         self.stats.orphan_releases += 1;
-                        let target = self.key_priority(symbol, modifiers, inhibit);
+                        let target = self.key_priority(&edge, inhibit);
                         self.count(target);
                         Routed {
                             target,
@@ -401,17 +488,18 @@ impl Router {
 
     fn route_button(
         &mut self,
+        device: DeviceId,
         button: u8,
         modifiers: Modifiers,
         state: ButtonState,
         inhibit: ShortcutInhibit,
     ) -> Routed {
-        let pressed = Pressed::Button(button);
+        let pressed = HeldEdge::Button(device, button);
         // Buttons use the same ownership rule as keys: the release follows its press.
         match state {
             ButtonState::Pressed => {
                 self.stats.presses += 1;
-                let (target, fired) = self.press_button(button, modifiers, inhibit);
+                let (target, fired) = self.press_button(device, button, modifiers, inhibit);
                 if self.owned.insert(pressed, target).is_some() {
                     self.stats.duplicate_presses += 1;
                 }
@@ -443,7 +531,7 @@ impl Router {
                     }
                     None => {
                         self.stats.orphan_releases += 1;
-                        let target = self.button_priority(button, modifiers, inhibit);
+                        let target = self.button_priority(device, button, modifiers, inhibit);
                         self.count(target);
                         Routed {
                             target,
@@ -456,24 +544,23 @@ impl Router {
         }
     }
 
-    /// The target the priority order picks for a key press, used when no press is owned.
-    /// The target the priority order picks for a key press.
-    fn key_priority(&self, symbol: Keysym, modifiers: Modifiers, inhibit: ShortcutInhibit) -> Target {
+    /// The target the priority order picks for a key edge that owns no press.
+    fn key_priority(&self, edge: &KeyEdge, inhibit: ShortcutInhibit) -> Target {
         if let Some(id) = self.top_grab(Scope::Keyboard) {
             return Target::Grab(id);
         }
-        if let Some(binding) = self.binding_for_key(symbol, modifiers, inhibit) {
+        if let Some(binding) = self.binding_for_key(edge, inhibit) {
             return Target::Binding(binding.id());
         }
         Target::Client
     }
 
     /// The target and the binding that fires now, for a key press.
-    fn press_key(&self, symbol: Keysym, modifiers: Modifiers, inhibit: ShortcutInhibit) -> (Target, Option<BindingId>) {
+    fn press_key(&self, edge: &KeyEdge, inhibit: ShortcutInhibit) -> (Target, Option<BindingId>) {
         if let Some(id) = self.top_grab(Scope::Keyboard) {
             return (Target::Grab(id), None);
         }
-        let Some(binding) = self.binding_for_key(symbol, modifiers, inhibit) else {
+        let Some(binding) = self.binding_for_key(edge, inhibit) else {
             return (Target::Client, None);
         };
         let fired = if binding.fires_on(Trigger::Press) {
@@ -484,21 +571,27 @@ impl Router {
         (Target::Binding(binding.id()), fired)
     }
 
-    fn button_priority(&self, button: u8, modifiers: Modifiers, inhibit: ShortcutInhibit) -> Target {
+    fn button_priority(&self, device: DeviceId, button: u8, modifiers: Modifiers, inhibit: ShortcutInhibit) -> Target {
         if let Some(id) = self.top_grab(Scope::Pointer) {
             return Target::Grab(id);
         }
-        if let Some(binding) = self.binding_for_button(button, modifiers, inhibit) {
+        if let Some(binding) = self.binding_for_button(device, button, modifiers, inhibit) {
             return Target::Binding(binding.id());
         }
         Target::Client
     }
 
-    fn press_button(&self, button: u8, modifiers: Modifiers, inhibit: ShortcutInhibit) -> (Target, Option<BindingId>) {
+    fn press_button(
+        &self,
+        device: DeviceId,
+        button: u8,
+        modifiers: Modifiers,
+        inhibit: ShortcutInhibit,
+    ) -> (Target, Option<BindingId>) {
         if let Some(id) = self.top_grab(Scope::Pointer) {
             return (Target::Grab(id), None);
         }
-        let Some(binding) = self.binding_for_button(button, modifiers, inhibit) else {
+        let Some(binding) = self.binding_for_button(device, button, modifiers, inhibit) else {
             return (Target::Client, None);
         };
         let fired = if binding.fires_on(Trigger::Press) {
@@ -509,21 +602,66 @@ impl Router {
         (Target::Binding(binding.id()), fired)
     }
 
-    fn binding_for_key(&self, symbol: Keysym, modifiers: Modifiers, inhibit: ShortcutInhibit) -> Option<&Binding> {
+    /// The binding a key edge runs: one scoped to the device that sent it, else one for every device.
+    ///
+    /// A scoped binding is matched against the device's own symbol and modifiers when the caller
+    /// supplied them (see [`DeviceKey`]); a binding for every device is matched against the seat's.
+    fn binding_for_key(&self, edge: &KeyEdge, inhibit: ShortcutInhibit) -> Option<&Binding> {
+        let (symbol, modifiers) = edge
+            .own
+            .map_or((edge.symbol, edge.modifiers), |own| (own.symbol, own.modifiers));
         self.table
             .iter()
-            .find(|binding| binding.chord().matches_key(symbol, modifiers) && allowed(binding, inhibit))
+            .find(|binding| {
+                self.is_scoped_to(binding, edge.device)
+                    && binding.chord().matches_key(symbol, modifiers)
+                    && allowed(binding, inhibit)
+            })
+            .or_else(|| {
+                self.table.iter().find(|binding| {
+                    binding.device().is_none()
+                        && binding.chord().matches_key(edge.symbol, edge.modifiers)
+                        && allowed(binding, inhibit)
+                })
+            })
     }
 
-    fn binding_for_button(&self, button: u8, modifiers: Modifiers, inhibit: ShortcutInhibit) -> Option<&Binding> {
+    /// The binding a button edge runs: one scoped to the device that sent it, else one for every
+    /// device. A mouse has no keyboard state of its own, so both match the seat's modifiers.
+    fn binding_for_button(
+        &self,
+        device: DeviceId,
+        button: u8,
+        modifiers: Modifiers,
+        inhibit: ShortcutInhibit,
+    ) -> Option<&Binding> {
         self.table
             .iter()
-            .find(|binding| binding.chord().matches_button(button, modifiers) && allowed(binding, inhibit))
+            .find(|binding| {
+                self.is_scoped_to(binding, device)
+                    && binding.chord().matches_button(button, modifiers)
+                    && allowed(binding, inhibit)
+            })
+            .or_else(|| {
+                self.table.iter().find(|binding| {
+                    binding.device().is_none()
+                        && binding.chord().matches_button(button, modifiers)
+                        && allowed(binding, inhibit)
+                })
+            })
+    }
+
+    /// Whether a binding names the device `device`: it has a selector, the device announced a name,
+    /// and the selector matches it.
+    fn is_scoped_to(&self, binding: &Binding, device: DeviceId) -> bool {
+        binding
+            .device()
+            .zip(self.devices.get(&device))
+            .is_some_and(|(selector, name)| selector.matches(name))
     }
 
     /// The binding whose release edge this is, if the binding still exists. A binding
     /// removed by a reload returns `None`, so its release is dropped rather than fired.
-    /// The binding whose release edge this is, if the binding still exists.
     fn release_fire(&self, target: Target) -> Option<BindingId> {
         let Target::Binding(id) = target else {
             return None;
@@ -565,7 +703,7 @@ mod tests {
     use crate::binding::Trigger;
     use crate::chord::{Chord, ChordKind, KeyCode, Keysym, Keysyms, Modifiers, Symbol};
     use crate::name::Name;
-    use gnoblin_types::{ButtonState, KeyState};
+    use gnoblin_types::{ButtonState, DeviceId, KeyState};
 
     const Q: Keysym = Keysym::new(0x71);
     const W: Keysym = Keysym::new(0x77);
@@ -606,9 +744,11 @@ mod tests {
 
     fn press(symbol: Keysym, modifiers: Modifiers) -> Event {
         Event::Key {
+            device: DeviceId::VIRTUAL,
             key_code: code_for(symbol),
             symbol,
             modifiers,
+            own: None,
             state: KeyState::Pressed,
             repeat: false,
         }
@@ -616,9 +756,11 @@ mod tests {
 
     fn release(symbol: Keysym, modifiers: Modifiers) -> Event {
         Event::Key {
+            device: DeviceId::VIRTUAL,
             key_code: code_for(symbol),
             symbol,
             modifiers,
+            own: None,
             state: KeyState::Released,
             repeat: false,
         }
@@ -707,6 +849,7 @@ mod tests {
             .id();
         let routed = router.route(
             Event::Button {
+                device: DeviceId::VIRTUAL,
                 button: 3,
                 modifiers: Modifiers::SUPER,
                 state: ButtonState::Pressed,
@@ -716,6 +859,7 @@ mod tests {
         assert_eq!(routed.target, Target::Binding(id));
         let routed = router.route(
             Event::Button {
+                device: DeviceId::VIRTUAL,
                 button: 1,
                 modifiers: Modifiers::NONE,
                 state: ButtonState::Pressed,
@@ -725,6 +869,7 @@ mod tests {
         assert_eq!(routed.target, Target::Client);
         router.route(
             Event::Button {
+                device: DeviceId::VIRTUAL,
                 button: 1,
                 modifiers: Modifiers::NONE,
                 state: ButtonState::Released,
@@ -777,9 +922,11 @@ mod tests {
             .id();
         assert_eq!(route(&mut router, press(Q, Modifiers::NONE)).fired, Some(id));
         let repeat = Event::Key {
+            device: DeviceId::VIRTUAL,
             key_code: code_for(Q),
             symbol: Q,
             modifiers: Modifiers::NONE,
+            own: None,
             state: KeyState::Pressed,
             repeat: true,
         };
