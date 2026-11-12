@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use gnoblin_client::wire;
 use gnoblin_model::{RequestId, Tick};
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, read_frame, write_frame};
+use gnoblin_services::link::{Host, LinkedAgent, RequestOutcome};
 use gnoblin_services::{Buses, Role};
 
 /// The version this test's peer advertises.
@@ -97,6 +98,11 @@ struct Running {
 
 impl Running {
     fn start(number: i32) -> Running {
+        Running::start_probed(number, None)
+    }
+
+    /// A running role that links in a [`Probe`] reporting on `started`, when there is one.
+    fn start_probed(number: i32, started: Option<std::sync::mpsc::Sender<()>>) -> Running {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&stop);
         let role = Role {
@@ -106,7 +112,13 @@ impl Running {
         };
         let thread = std::thread::Builder::new()
             .name("services-role".to_owned())
-            .spawn(move || role.run(move || flag.load(Ordering::SeqCst), Vec::new()))
+            .spawn(move || {
+                let linked = started
+                    .map(|started| Box::new(Probe(started)) as Box<dyn LinkedAgent>)
+                    .into_iter()
+                    .collect();
+                role.run(move || flag.load(Ordering::SeqCst), linked)
+            })
             .expect("the role thread");
         Running {
             stop,
@@ -255,5 +267,32 @@ fn an_answer_reaches_the_agent_that_offered_the_request() {
     assert_eq!(decline.member, wire::member::DECLINE, "{decline:?}");
     peer.reply(&decline, Vec::new());
 
+    running.finish().expect("the role ends cleanly");
+}
+
+/// An agent that only reports that the role started it.
+struct Probe(std::sync::mpsc::Sender<()>);
+
+impl LinkedAgent for Probe {
+    fn start(&mut self, _host: &Host, _deadline: Tick) -> bool {
+        let _ = self.0.send(());
+        true
+    }
+
+    fn answer(&self, _request: RequestId, _outcome: &RequestOutcome) {}
+}
+
+#[test]
+fn a_linked_agent_the_caller_passes_starts_when_the_built_in_buses_are_off() {
+    // `Buses::None` skips the built-in D-Bus agents only. An agent the caller links in is the caller's own choice, and
+    // the keyring is one: the role that served nothing under `None` would never serve the Secret Service.
+    let (started, started_rx) = std::sync::mpsc::channel();
+    let (role_end, peer_end) = UnixStream::pair().expect("a socket pair");
+    let running = Running::start_probed(role_end.into_raw_fd(), Some(started));
+    let mut peer = Peer::accept(peer_end);
+    claims(&mut peer);
+    started_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the linked agent was started");
     running.finish().expect("the role ends cleanly");
 }

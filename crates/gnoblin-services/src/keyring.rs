@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_model::{CapabilitySlot, DeclineReason};
 use gnoblin_service_keyring::{
-    PasswordOffer, PromptAnswers, PromptId, PromptOutcome, PromptRefusal, Secrets, ServeError,
+    PasswordOffer, PromptAnswers, PromptId, PromptOutcome, PromptRefusal, Secrets, ServeError, serve, serve_on,
 };
 
 use crate::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
@@ -177,6 +177,9 @@ struct Served {
 pub struct KeyringAgent {
     store: PathBuf,
     socket: PathBuf,
+    /// The bus connection to serve on. `None` serves on the session bus the environment names, which is the
+    /// shipped path; a test serves on a private bus it owns.
+    connection: Option<zbus::Connection>,
     /// Set by the decision thread once the store serves. Absent while the decision is pending, when
     /// the keyring is off, and when the name is taken or the store cannot be served.
     served: Arc<Mutex<Option<Served>>>,
@@ -189,8 +192,17 @@ impl KeyringAgent {
         KeyringAgent {
             store,
             socket,
+            connection: None,
             served: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Serves on `connection` instead of connecting to the session bus the environment names. A test uses it to
+    /// serve on a private bus, which the environment cannot name without changing the developer's own.
+    #[must_use]
+    pub fn on_connection(mut self, connection: zbus::Connection) -> KeyringAgent {
+        self.connection = Some(connection);
+        self
     }
 
     /// The served state, with a poisoned lock recovered rather than propagated.
@@ -240,9 +252,19 @@ impl PasswordOffer for HostOffer {
 }
 
 /// Serves `org.freedesktop.secrets` from `store` and `socket`, and keeps what it serves in `served`.
-fn serve_store(host: &Host, store: &Path, socket: &Path, served: &Mutex<Option<Served>>) {
+fn serve_store(
+    host: &Host,
+    store: &Path,
+    socket: &Path,
+    connection: Option<zbus::Connection>,
+    served: &Mutex<Option<Served>>,
+) {
     let offers = Box::new(HostOffer { host: host.clone() });
-    match futures_lite::future::block_on(gnoblin_service_keyring::serve(store, socket, offers)) {
+    let serving = match connection {
+        Some(connection) => futures_lite::future::block_on(serve_on(connection, store, socket, offers)),
+        None => futures_lite::future::block_on(serve(store, socket, offers)),
+    };
+    match serving {
         Ok((connection, secrets, prompt_answers)) => {
             *served.lock().unwrap_or_else(PoisonError::into_inner) = Some(Served {
                 _connection: connection,
@@ -268,7 +290,13 @@ fn serve_store(host: &Host, store: &Path, socket: &Path, served: &Mutex<Option<S
 
 /// The decision thread's body: decide `keyring.enabled` from the accepted configuration, then serve
 /// the store only when it is on. When it is off, nothing is served and the store is not touched.
-fn decide_and_serve(host: &Host, store: &Path, socket: &Path, served: &Mutex<Option<Served>>) {
+fn decide_and_serve(
+    host: &Host,
+    store: &Path,
+    socket: &Path,
+    connection: Option<zbus::Connection>,
+    served: &Mutex<Option<Served>>,
+) {
     let decision = decide(
         || host.configuration().map_err(|error| format!("{error:?}")),
         gnoblin_config::last_good_keyring_enabled_from_environment,
@@ -283,7 +311,7 @@ fn decide_and_serve(host: &Host, store: &Path, socket: &Path, served: &Mutex<Opt
         "keyring.enabled decided"
     );
     if decision.enabled {
-        serve_store(host, store, socket, served);
+        serve_store(host, store, socket, connection, served);
     }
 }
 
@@ -294,10 +322,11 @@ impl LinkedAgent for KeyringAgent {
         let host = host.clone();
         let store = self.store.clone();
         let socket = self.socket.clone();
+        let connection = self.connection.clone();
         let served = Arc::clone(&self.served);
         match thread::Builder::new()
             .name("gnoblin-keyring".to_owned())
-            .spawn(move || decide_and_serve(&host, &store, &socket, &served))
+            .spawn(move || decide_and_serve(&host, &store, &socket, connection, &served))
         {
             Ok(_) => true,
             Err(error) => {

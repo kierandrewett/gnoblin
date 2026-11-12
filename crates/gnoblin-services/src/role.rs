@@ -109,7 +109,8 @@ pub enum Buses {
     /// Serve both agents when their buses and names are available.
     #[default]
     Both,
-    /// Serve neither, which is what a test about the request path asks for.
+    /// Serve neither built-in agent, which is what a test about the request path asks for. The linked agents the
+    /// caller passes to [`Role::run`] still start: they are the caller's own choice, and each one picks its bus.
     None,
 }
 
@@ -211,10 +212,13 @@ struct Agents {
 impl Agents {
     /// Start each agent whose bus and name are available, reporting the ones that are not.
     fn start(host: &Host, deadline: Duration, buses: Buses, linked: Vec<Box<dyn LinkedAgent>>) -> Agents {
-        if buses == Buses::None {
-            return Agents::default();
-        }
         let tick = Tick::new(u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX));
+        if buses == Buses::None {
+            return Agents {
+                linked: start_linked(host, tick, linked),
+                ..Agents::default()
+            };
+        }
         let screensaver = gnoblin_service_screensaver::start(host);
         // The idle object is read once here, which is the subscription that keeps its
         // observations coming on this connection; `dispatch` folds them from then on.
