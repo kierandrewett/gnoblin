@@ -1258,9 +1258,12 @@ mod xr_tests {
         let scratch = Scratch::new("spawn");
         // Answers on the descriptor it was given: a valid connected socket reads what the
         // compositor's end wrote and writes back, and the dev display variable is not in play.
+        // The script runs under bash: dash accepts only a single digit after `<&`, and the
+        // descriptor number is whatever is free in a test process that runs its tests in parallel,
+        // so under dash this failed with "Bad fd number" whenever the number was ten or more.
         let program = scratch.program(
             "stub-xr",
-            "#!/bin/sh\nread line <&\"$WAYLAND_SOCKET\"\necho \"fd=$WAYLAND_SOCKET got=$line view=${GNOBLIN_VIEW_DISPLAY-unset}\" >&\"$WAYLAND_SOCKET\"\n",
+            "#!/usr/bin/env bash\nread line <&\"$WAYLAND_SOCKET\"\necho \"fd=$WAYLAND_SOCKET got=$line view=${GNOBLIN_VIEW_DISPLAY-unset}\" >&\"$WAYLAND_SOCKET\"\n",
         );
         let (mut supervisor, _lines) = supervisor(program);
         // The compositor's end of the control socket, which the test plays.
