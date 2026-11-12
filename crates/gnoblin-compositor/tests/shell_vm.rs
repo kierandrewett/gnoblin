@@ -13,7 +13,8 @@ use std::time::{Duration, Instant};
 use gnoblin_lua::Limits;
 use gnoblin_lua::shell_role::{ShellRole, connect_owner_socket_with_limits, connect_session_shell_with_limits};
 use gnoblin_lua::shell_vm::ShellLimits;
-use support::{Client, Locker, Session};
+use support::{Client, Configure, Locker, Session, Window, wait_for_listed_id};
+use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
 /// How long a test waits for the session or the VM to reach a state before it fails. A passing run never waits this
 /// long; it is the margin a busy machine gets, so a failure is a state that never came and not a slow turn.
@@ -1402,6 +1403,157 @@ fn a_view_capture_the_shell_asks_for_writes_a_png_and_answers_its_path() {
         role.diagnostics().is_empty(),
         "no handler failed and no transaction was refused: {:?}",
         role.diagnostics()
+    );
+}
+
+// ---- Maximise: the stock shell's answer to a control request (`gnoblin-2jv2`) --------------------------------------
+//
+// A toolkit window is maximised with `gnoblinctl window call ID set_maximized value=true`. The request is an event on
+// the window's node, the stock shell answers it with `Window:maximise` (the flag and the work area's rectangle, in one
+// transaction), and the compositor turns that into the client's configure. The client draws at every size it is told,
+// as GTK does, and the compositor must not configure it back to the size it had.
+
+/// The size a toolkit's window draws at before anyone asks it for another.
+const OWN_SIZE: (i32, i32) = (800, 600);
+
+/// The size of the stock shell's work area, which `Window:maximise` fills.
+fn work_area(role: &mut ShellRole) -> (i32, i32) {
+    let text = role
+        .run(
+            "work area",
+            "local a = work_area() return tostring(math.floor(a.w)) .. ' ' .. tostring(math.floor(a.h))",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    let mut parts = text.split(' ').map(|n| n.parse::<i32>().expect("a size"));
+    (parts.next().expect("a width"), parts.next().expect("a height"))
+}
+
+/// How long the shell and the client run together after the last thing the test waited for, so a configure the
+/// compositor sends late has time to arrive.
+const SETTLE: Duration = Duration::from_millis(500);
+
+/// The shell VM and a toolkit client, run together: the VM reads what the compositor published, and the client reads
+/// what the session sent and answers every new configure by drawing at its size, as a toolkit does.
+struct Together<'a> {
+    role: &'a mut ShellRole,
+    client: &'a mut Client,
+    window: &'a Window,
+    clock: Instant,
+    /// How many configures the client has answered with a draw; one that arrives while it draws is answered next.
+    answered: usize,
+}
+
+impl Together<'_> {
+    /// Runs both until `done` holds, or fails with `what` after the patience a busy machine gets.
+    fn until(&mut self, what: &str, mut done: impl FnMut(&Client) -> bool) {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            self.role
+                .tick(self.clock.elapsed().as_secs_f64())
+                .expect("a frame runs");
+            self.client.roundtrip();
+            // What the client knows when it decides to draw: a configure the commit itself provokes is a new one.
+            let known = self.client.configure_log().len();
+            if known > self.answered {
+                self.answered = known;
+                self.client.draw_configured(self.window, OWN_SIZE);
+            }
+            if done(self.client) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "{what}: the client was configured {:#?}; VM diagnostics {:?}",
+                self.client.configure_log(),
+                self.role.diagnostics()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Runs both for [`SETTLE`] with nothing to wait for.
+    fn settle(&mut self) {
+        let until = Instant::now() + SETTLE;
+        self.until("the settle never ended", |_| Instant::now() >= until);
+    }
+}
+
+/// Whether a configure is the window maximised at `size`.
+fn is_maximised_at(configure: &Configure, size: (i32, i32)) -> bool {
+    configure.states.contains(&ToplevelState::Maximized) && (configure.width, configure.height) == size
+}
+
+/// Fails unless the client was configured to `size`, maximised or not as `maximised` says, by the configures in `log`,
+/// and was never configured to anything else after that: a later configure with another size or state is the window
+/// snapping back.
+#[track_caller]
+fn assert_configured_for_good(log: &[Configure], maximised: bool, size: (i32, i32)) {
+    let is_maximised = |configure: &Configure| configure.states.contains(&ToplevelState::Maximized);
+    let arrived = log
+        .iter()
+        .position(|configure| (configure.width, configure.height) == size && is_maximised(configure) == maximised)
+        .unwrap_or_else(|| panic!("the client was never configured to {size:?} (maximised {maximised}): {log:#?}"));
+    for later in &log[arrived..] {
+        assert_eq!(
+            ((later.width, later.height), is_maximised(later)),
+            (size, maximised),
+            "the window was configured again after it reached {size:?} (maximised {maximised}): {:#?}",
+            &log[arrived..]
+        );
+    }
+}
+
+#[test]
+fn a_window_the_stock_shell_maximises_is_not_configured_back_to_its_old_size() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    wait_for_sized_workspace(&mut role);
+    let mut client = Client::connect(session.wayland());
+    let window = client.toolkit_window("org.example.toolkit", "Toolkit", OWN_SIZE);
+    tick_until(&mut role, "the shell never placed the window", |role| {
+        window_placements(role).iter().any(|(_, _, placed)| *placed)
+    });
+    let id = wait_for_listed_id(&session, "Toolkit").to_string();
+    let area = work_area(&mut role);
+    let mut together = Together {
+        answered: client.configure_log().len(),
+        role: &mut role,
+        client: &mut client,
+        window: &window,
+        clock: Instant::now(),
+    };
+
+    let asked = together.client.configure_log().len();
+    let maximise = |value: &str| session.ctl(&["window", "call", &id, "set_maximized", value]).ok();
+    maximise("value=true");
+    together.until("the window was never maximised to the work area", |client| {
+        client
+            .configure_log()
+            .last()
+            .is_some_and(|last| is_maximised_at(last, area))
+    });
+    together.settle();
+    assert_configured_for_good(&together.client.configure_log()[asked..], true, area);
+
+    let asked = together.client.configure_log().len();
+    maximise("value=false");
+    together.until("the window never left maximise", |client| {
+        client
+            .configure_log()
+            .last()
+            .is_some_and(|last| !last.states.contains(&ToplevelState::Maximized))
+    });
+    together.settle();
+    assert_configured_for_good(&together.client.configure_log()[asked..], false, OWN_SIZE);
+    assert!(
+        together.role.diagnostics().is_empty(),
+        "no refused transaction: {:?}",
+        together.role.diagnostics()
     );
 }
 

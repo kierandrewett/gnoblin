@@ -12,6 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_render::transaction::TreeValue;
+use gnoblin_wayland::WindowChange;
 use session::shell::Shell;
 use session::{Client, Session, TIMEOUT};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1;
@@ -335,5 +336,178 @@ fn a_shell_that_lets_go_of_the_tree_gives_requests_back_to_the_window_manager() 
         client.wait_until("the window manager's fullscreen configure", |state| {
             state.states.contains(&FULLSCREEN)
         });
+    });
+}
+
+/// The size a toolkit's window draws at before anyone asks it for another.
+const OWN_SIZE: (i32, i32) = (800, 600);
+
+/// The window a toolkit client makes: its size limits first, then a buffer at its own size with the window geometry
+/// set to it, which is what Ghostty sent in `gnoblin-2jv2`'s trace.
+fn toolkit_window(client: &mut Client, title: &str) -> session::Window {
+    let window = client.create_window("org.gnoblin.Toolkit", title);
+    window.toplevel.set_min_size(139, 126);
+    window.toplevel.set_max_size(0, 0);
+    client.draw_configured(&window, OWN_SIZE);
+    window
+}
+
+/// Runs the session for a while with a client that answers every configure after `since` (an index into its log) by
+/// drawing at its size, as a toolkit does, so a configure the compositor sends late has the time to arrive and is
+/// answered like the first.
+fn settle_drawing(client: &mut Client, window: &session::Window, since: usize) {
+    let mut answered = since;
+    for _ in 0..40 {
+        client.roundtrip();
+        // What the client knows when it decides to draw: a configure the commit itself provokes is a new one.
+        let known = client.state.configure_log.len();
+        if known > answered {
+            answered = known;
+            client.draw_configured(window, OWN_SIZE);
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Fails unless the client was configured to `size`, maximised or not as `maximised` says, by the configures it got
+/// after `since` (an index into its log), and was never configured to anything else after that: a later configure with
+/// another size or state is the window snapping back.
+#[track_caller]
+fn assert_configured_for_good(client: &Client, since: usize, maximised: bool, size: (i32, i32)) {
+    let log = &client.state.configure_log[since..];
+    let arrived = log
+        .iter()
+        .position(|configure| {
+            (configure.width, configure.height) == size && configure.states.contains(&MAXIMIZED) == maximised
+        })
+        .unwrap_or_else(|| panic!("the client was never configured to {size:?} (maximised {maximised}): {log:#?}"));
+    for later in &log[arrived..] {
+        assert_eq!(
+            ((later.width, later.height), later.states.contains(&MAXIMIZED)),
+            (size, maximised),
+            "the window was configured again after it reached {size:?} (maximised {maximised}): {:#?}",
+            &log[arrived..]
+        );
+    }
+}
+
+/// The window manager maximises on a control request, as `gnoblinctl window maximize` makes, and un-maximises on the
+/// next. Neither configure is followed by one that takes the window back to the size it had: `gnoblin-2jv2` saw a
+/// maximised toolkit window configured to its old size 40 ms after the client had drawn the maximised one.
+#[test]
+fn a_window_maximised_by_a_control_request_is_not_configured_back_to_its_old_size() {
+    let session = Session::start_allowing_focus();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = toolkit_window(&mut client, "Max");
+        let id = session
+            .wait_for(|observation| observation.titled("Max").is_some_and(|window| window.mapped))
+            .titled("Max")
+            .expect("the window")
+            .id;
+
+        let asked = client.state.configure_log.len();
+        assert!(matches!(
+            session.control.window_control(id, WindowChange::Maximised(true)),
+            Some(Ok(()))
+        ));
+        client.wait_until("the maximised configure", |state| state.states.contains(&MAXIMIZED));
+        settle_drawing(&mut client, &window, asked);
+        assert_configured_for_good(&client, asked, true, session.screen());
+
+        let asked = client.state.configure_log.len();
+        assert!(matches!(
+            session.control.window_control(id, WindowChange::Maximised(false)),
+            Some(Ok(()))
+        ));
+        client.wait_until("the configure that leaves maximise", |state| {
+            !state.states.contains(&MAXIMIZED)
+        });
+        settle_drawing(&mut client, &window, asked);
+        assert_configured_for_good(&client, asked, false, OWN_SIZE);
+    });
+}
+
+/// A toolkit that asks to be maximised itself (`xdg_toplevel.set_maximized`, as a titlebar double click does) is
+/// maximised once and stays at the work area, and asking to leave maximise restores the size it had.
+#[test]
+fn a_window_that_asks_to_be_maximised_is_not_configured_back_to_its_old_size() {
+    let session = Session::start_allowing_focus();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = toolkit_window(&mut client, "Ask");
+        session.wait_for(|observation| observation.titled("Ask").is_some_and(|window| window.mapped));
+
+        let asked = client.state.configure_log.len();
+        window.toplevel.set_maximized();
+        client.wait_until("the maximised configure", |state| state.states.contains(&MAXIMIZED));
+        settle_drawing(&mut client, &window, asked);
+        assert_configured_for_good(&client, asked, true, session.screen());
+
+        let asked = client.state.configure_log.len();
+        window.toplevel.unset_maximized();
+        client.wait_until("the configure that leaves maximise", |state| {
+            !state.states.contains(&MAXIMIZED)
+        });
+        settle_drawing(&mut client, &window, asked);
+        assert_configured_for_good(&client, asked, false, OWN_SIZE);
+    });
+}
+
+/// With a shell holding the tree the same control request is the shell's to answer. It answers as the stock shell does,
+/// with the flag and the work area's size in one write, and the window is configured once, to that size.
+#[test]
+fn a_window_the_shell_maximises_is_not_configured_back_to_its_old_size() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.socket());
+        let window = toolkit_window(&mut client, "Shelled");
+        let node = shell.wait_window_node();
+        let id = session
+            .wait_for(|observation| observation.titled("Shelled").is_some_and(|window| window.mapped))
+            .titled("Shelled")
+            .expect("the window")
+            .id;
+        let (width, height) = session.screen();
+
+        let asked = client.state.configure_log.len();
+        assert!(matches!(
+            session.control.window_control(id, WindowChange::Maximised(true)),
+            Some(Ok(()))
+        ));
+        shell.wait_request(node, "maximize", 1);
+        shell.write(
+            node,
+            &[
+                ("maximised", TreeValue::Bool(true)),
+                ("width", TreeValue::Double(f64::from(width))),
+                ("height", TreeValue::Double(f64::from(height))),
+            ],
+        );
+        client.wait_until("the maximised configure", |state| state.states.contains(&MAXIMIZED));
+        settle_drawing(&mut client, &window, asked);
+        assert_configured_for_good(&client, asked, true, (width, height));
+
+        let asked = client.state.configure_log.len();
+        assert!(matches!(
+            session.control.window_control(id, WindowChange::Maximised(false)),
+            Some(Ok(()))
+        ));
+        shell.wait_request(node, "unmaximize", 1);
+        shell.write(
+            node,
+            &[
+                ("maximised", TreeValue::Bool(false)),
+                ("width", TreeValue::Double(f64::from(OWN_SIZE.0))),
+                ("height", TreeValue::Double(f64::from(OWN_SIZE.1))),
+            ],
+        );
+        client.wait_until("the configure that leaves maximise", |state| {
+            !state.states.contains(&MAXIMIZED)
+        });
+        settle_drawing(&mut client, &window, asked);
+        assert_configured_for_good(&client, asked, false, OWN_SIZE);
     });
 }

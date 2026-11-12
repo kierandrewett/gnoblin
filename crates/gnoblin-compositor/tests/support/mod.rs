@@ -512,6 +512,15 @@ pub struct Window {
     toplevel: xdg_toplevel::XdgToplevel,
 }
 
+/// One configure a toplevel received: its size and states, and the serial the client acknowledged it with.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Configure {
+    pub serial: u32,
+    pub width: i32,
+    pub height: i32,
+    pub states: Vec<xdg_toplevel::State>,
+}
+
 /// One keyboard focus change the client received. A surface is its protocol id.
 #[derive(Clone, Debug, PartialEq)]
 pub enum KeyboardFocus {
@@ -529,6 +538,10 @@ pub struct App {
     pub sizes: std::collections::HashMap<u32, (i32, i32)>,
     /// The states of the last `xdg_toplevel.configure` each toplevel received, keyed by its protocol id.
     pub states: std::collections::HashMap<u32, Vec<xdg_toplevel::State>>,
+    /// Every toplevel configure that reached the client, in the order it arrived.
+    pub configure_log: Vec<Configure>,
+    /// The size and states of the `xdg_toplevel.configure` whose `xdg_surface.configure` has not arrived yet.
+    toplevel_configure: Option<(i32, i32, Vec<xdg_toplevel::State>)>,
     /// The bounds of the last `xdg_toplevel.configure_bounds` each toplevel received, keyed by its protocol id.
     pub bounds: std::collections::HashMap<u32, (i32, i32)>,
     /// How many times the keyboard entered one of this client's surfaces.
@@ -685,6 +698,33 @@ impl Client {
         self.roundtrip();
     }
 
+    /// Makes the window a toolkit makes: its size limits first, then a buffer at `own` with the window geometry set to
+    /// it, which is what Ghostty sent in `gnoblin-2jv2`'s trace. The window is mapped when this returns.
+    pub fn toolkit_window(&mut self, app_id: &str, title: &str, own: (i32, i32)) -> Window {
+        let window = self.create_window(app_id, title);
+        window.toplevel.set_min_size(139, 126);
+        window.toplevel.set_max_size(0, 0);
+        self.draw_configured(&window, own);
+        window
+    }
+
+    /// Draws a toplevel the way a toolkit answers a configure: a buffer at the size it was told, with the window
+    /// geometry set to that size, committed. `own` is the size the client draws at when the compositor named none.
+    pub fn draw_configured(&mut self, window: &Window, own: (i32, i32)) {
+        self.roundtrip();
+        let (width, height) = self
+            .configured_size(window)
+            .filter(|&(w, h)| w > 0 && h > 0)
+            .unwrap_or(own);
+        window.xdg_surface.set_window_geometry(0, 0, width, height);
+        self.attach_buffer(window, width, height);
+    }
+
+    /// Every toplevel configure the client has received, in the order it arrived.
+    pub fn configure_log(&self) -> &[Configure] {
+        &self.app.configure_log
+    }
+
     /// Creates a toplevel and maps it with a buffer.
     pub fn map_window(&mut self, app_id: &str, title: &str) -> Window {
         let window = self.create_window(app_id, title);
@@ -820,6 +860,14 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
             state.configures += 1;
+            if let Some((width, height, states)) = state.toplevel_configure.take() {
+                state.configure_log.push(Configure {
+                    serial,
+                    width,
+                    height,
+                    states,
+                });
+            }
             xdg_surface.ack_configure(serial);
             state.acks += 1;
         }
@@ -840,12 +888,13 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
                 let id = toplevel.id().protocol_id();
                 state.sizes.insert(id, (width, height));
                 // The states arrive as an array of native-endian `u32`s, one per state.
-                let states = states
+                let states: Vec<xdg_toplevel::State> = states
                     .as_chunks::<4>()
                     .0
                     .iter()
                     .filter_map(|bytes| xdg_toplevel::State::try_from(u32::from_ne_bytes(*bytes)).ok())
                     .collect();
+                state.toplevel_configure = Some((width, height, states.clone()));
                 state.states.insert(id, states);
             }
             xdg_toplevel::Event::ConfigureBounds { width, height } => {

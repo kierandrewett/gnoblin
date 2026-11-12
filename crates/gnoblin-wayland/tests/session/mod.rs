@@ -252,6 +252,16 @@ impl Session {
     }
 }
 
+/// One configure a toplevel received: its size and states, and the serial the client acknowledged it with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Configure {
+    pub serial: u32,
+    pub width: i32,
+    pub height: i32,
+    /// The `xdg_toplevel.state` values it carried.
+    pub states: Vec<u32>,
+}
+
 /// One published foreign toplevel, as a taskbar saw it.
 #[derive(Clone, Debug, Default)]
 pub struct Toplevel {
@@ -307,6 +317,8 @@ pub struct App {
     pub closed: bool,
     /// The `xdg_toplevel` state values of the last configure a toplevel received.
     pub states: Vec<u32>,
+    /// Every toplevel configure that reached the client, in the order it arrived, each with the serial that closed it.
+    pub configure_log: Vec<Configure>,
     /// The size a layer surface was last configured with.
     pub layer_size: Option<(u32, u32)>,
     /// The last layer surface configure serial.
@@ -484,6 +496,23 @@ impl Client {
         window
     }
 
+    /// Draws a toplevel the way a toolkit answers a configure: a buffer at the size it was told, with the window
+    /// geometry set to that size, committed. `own` is the size the client draws at when the compositor named none.
+    pub fn draw_configured(&mut self, window: &Window, own: (i32, i32)) {
+        self.roundtrip();
+        let (width, height) = if self.state.width > 0 && self.state.height > 0 {
+            (self.state.width, self.state.height)
+        } else {
+            own
+        };
+        let buffer = self.buffer(width, height);
+        window.xdg_surface.set_window_geometry(0, 0, width, height);
+        window.surface.attach(Some(&buffer), 0, 0);
+        window.surface.damage(0, 0, width, height);
+        window.surface.commit();
+        self.roundtrip();
+    }
+
     /// Destroys a toplevel the way a well-behaved client does.
     pub fn destroy(&mut self, window: Window) {
         window.toplevel.destroy();
@@ -631,6 +660,12 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
         if let xdg_surface::Event::Configure { serial } = event {
             state.configures += 1;
             state.last_serial = serial;
+            state.configure_log.push(Configure {
+                serial,
+                width: state.width,
+                height: state.height,
+                states: state.states.clone(),
+            });
             xdg_surface.ack_configure(serial);
         }
     }
