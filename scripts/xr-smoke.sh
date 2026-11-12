@@ -281,20 +281,27 @@ fi
 
 # ---- (f) input: the gaze ray reaches the front panel -------------------------------------------------------------
 
-# The simulated head looks straight ahead and the ring puts the focused panel front and centre, so the ray hits it.
-entered() { grep -h "^pointer-enter seat=xr" "$LOG_DIR"/client-red.log "$LOG_DIR"/client-blue.log | grep -q .; }
-wait_for 30 entered
-check "(f) a client got wl_pointer.enter on the xr seat from the gaze ray" entered
-# The ring turns when a window maps and takes the focus, so the front panel changes while the clients start: the
-# early enter can belong to the first client and a later one to the second.
+# The simulated head looks straight ahead and the ring puts the focused panel front and centre, so the ray hits it. The
+# window mapped last takes the focus, so it is the front panel and the gaze must enter it on the xr seat; the first
+# client was in front until then, so it hears an enter too.
+entered_by() { grep -q '^pointer-enter seat=xr' "$LOG_DIR/client-$1.log"; }
+wait_for 30 entered_by blue
+check "(f) the front client (the last window mapped, the focused one) got wl_pointer.enter on the xr seat from the gaze ray" \
+    entered_by blue
 for name in red blue; do
-    if grep -q '^pointer-enter seat=xr' "$LOG_DIR/client-$name.log"; then
+    if entered_by "$name"; then
         echo "      client $name got the xr pointer: $(grep -c '^pointer-enter seat=xr' "$LOG_DIR/client-$name.log") enter(s)"
     fi
 done
-check "(f) the enter is at a point inside the window" bash -c \
-    "grep -h '^pointer-enter seat=xr' '$LOG_DIR'/client-red.log '$LOG_DIR'/client-blue.log | head -1 \
-     | sed -E 's/.* x=([0-9.]+) y=([0-9.]+)/\1 \2/' | awk 'NF == 2 { ok = (\$1 >= 0 && \$1 <= 800 && \$2 >= 0 && \$2 <= 600) } END { exit !ok }'"
+# Every enter is at a point in the window's own 400 by 300 pixels.
+enters_inside() {
+    local log
+    for log in "$LOG_DIR"/client-red.log "$LOG_DIR"/client-blue.log; do
+        grep '^pointer-enter seat=xr' "$log" | sed -E 's/.* x=(-?[0-9.]+) y=(-?[0-9.]+)/\1 \2/' |
+            awk 'NF != 2 || $1 < 0 || $1 > 400 || $2 < 0 || $2 > 300 { bad = 1 } END { exit bad }' || return 1
+    done
+}
+check "(f) every xr enter is at a point inside its 400x300 window" enters_inside
 
 # ---- (e) closing one client removes a layer ----------------------------------------------------------------------
 

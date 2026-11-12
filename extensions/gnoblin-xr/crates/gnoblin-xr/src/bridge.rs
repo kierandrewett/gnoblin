@@ -468,6 +468,109 @@ mod tests {
         assert_eq!(leave.node, 3);
     }
 
+    fn list(node: u64, key: &str, value: &[f64]) -> change::Properties {
+        change::Properties {
+            value_kind: "list_double".into(),
+            value_list: value.to_vec(),
+            ..set(node, key)
+        }
+    }
+
+    /// The room the stock shell builds (`data/lua/gnoblin/shell/xr.lua`) for two 400 by 300 windows: millimetres, the
+    /// room's floor 1.4 m under the head, the focused window's View (id 2, window 3) at the front 1.5 m ahead and
+    /// 1.15 times larger, and the other's (id 5, window 6) 0.6 rad round the ring to the right, facing the viewer.
+    fn stock_ring() -> Vec<snapshot_node::Properties> {
+        let view = |id: u64, source: u64, index: i64, at: [f64; 3], yaw: f64, scale: f64| {
+            snapshot_node(
+                id,
+                1,
+                index,
+                "view",
+                vec![
+                    double(id, "width", 400.0),
+                    double(id, "height", 300.0),
+                    node_ref(id, "source", source),
+                    double(id, "x", at[0]),
+                    double(id, "y", at[1]),
+                    double(id, "z", at[2]),
+                    list(id, "rotation", &[0.0, yaw, 0.0]),
+                    list(id, "scale", &[scale, scale, scale]),
+                ],
+            )
+        };
+        let side = 0.6_f64;
+        vec![
+            snapshot_node(1, 0, 0, "node", vec![text(1, "name", "room"), double(1, "y", -1400.0)]),
+            snapshot_node(
+                4,
+                1,
+                0,
+                "camera",
+                vec![
+                    text(4, "name", "head"),
+                    text(4, "projection", "stereo"),
+                    double(4, "metres", 0.001),
+                ],
+            ),
+            // Back to front, as the stock shell lists them: the focused View last.
+            view(
+                5,
+                6,
+                1,
+                [1600.0 * side.sin(), 1400.0, -1600.0 * side.cos()],
+                -side,
+                0.75,
+            ),
+            view(2, 3, 2, [0.0, 1400.0, -1500.0], 0.0, 0.75 * 1.15),
+            snapshot_node(3, 1, 3, "node", vec![]),
+            snapshot_node(6, 1, 4, "node", vec![]),
+        ]
+    }
+
+    #[test]
+    fn the_gaze_through_the_stock_ring_enters_the_front_window_on_the_xr_seat() {
+        // The whole path of one frame, from the head's pose to the owner's op: the planner places the stock shell's
+        // Views, the head's forward axis is the ray when no controller is tracked, the pick finds the front panel
+        // and the pointer sends motion for its window on the seat it made.
+        let (sink, ops) = std::sync::mpsc::channel();
+        let mut tree = TreeClient::from_stream(serve_with_ops(stock_ring(), false, Some(sink))).expect("attach");
+        let head = Pose {
+            position: [0.0; 3],
+            orientation: IDENTITY,
+        };
+        let planned = plan(tree.model(), &head, &Options::default());
+        assert_eq!(planned.layers.len(), 2, "both Views are planned: {planned:?}");
+        assert!(planned.skipped.is_empty(), "{:?}", planned.skipped);
+        let gaze = xr_input::pointing_ray(None, Some(&head)).expect("the head's forward axis is a ray");
+        let mut pointer = Pointer::default();
+
+        pointer
+            .update(&mut tree, &planned.layers, &aiming(gaze), 0)
+            .expect("the first frame");
+
+        let sent: Vec<_> = ops.try_iter().flatten().collect();
+        let seat = sent
+            .iter()
+            .find(|op| op.kind == "new" && op.class == "seat")
+            .expect("the xr seat is made");
+        let motion = sent
+            .iter()
+            .find(|op| op.kind == "input" && op.input_kind == "motion")
+            .expect("the gaze gives the front window motion");
+        assert_eq!(motion.seat, seat.id, "on the xr seat");
+        assert_eq!(
+            motion.node, 3,
+            "to the window of the focused front View, not the one at the side"
+        );
+        // 400 px at 0.75 mm per pixel scaled by 1.15, 1.5 m ahead on the gaze axis: the centre of the window.
+        assert!(
+            (motion.x - 200.0).abs() < 1e-6 && (motion.y - 150.0).abs() < 1e-6,
+            "the gaze hits the window's centre: ({}, {})",
+            motion.x,
+            motion.y
+        );
+    }
+
     #[test]
     fn pointer_creates_the_xr_seat_when_the_snapshot_has_none() {
         let (sink, ops) = std::sync::mpsc::channel();

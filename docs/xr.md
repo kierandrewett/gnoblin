@@ -201,7 +201,8 @@ The assertions:
 - The `xr` seat exists, and the shell built a `room` with a `head` camera and one View for each window.
 - The extension planned two layers and ended frames with two submitted layers, which Monado's null compositor accepted.
 - The first picture uploaded for each View has the client's colour.
-- The gaze ray gave a client a `wl_pointer.enter` on the `xr` seat.
+- The gaze ray gave the front client (the last window mapped, which holds the focus) a `wl_pointer.enter` on the `xr`
+  seat, and every enter is at a point inside the window.
 - Closing a client removes its layer, and the seat and the room go when the extension stops.
 
 Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
