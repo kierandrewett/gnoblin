@@ -960,8 +960,11 @@ fn a_canvas_measure_is_answered_in_the_same_batch_with_the_painters_extent() {
     ]);
     let painter = gnoblin_paint::SharedPainter::embedded();
     let expect = |text: &str, size: f32| {
-        let extent = painter.get().measure(text, size, "sans");
-        format!("{} {}", extent.width, extent.height)
+        let metrics = painter
+            .get()
+            .measure_checked(text, size, "sans")
+            .expect("a size in range");
+        format!("{} {} {}", metrics.width, metrics.height, metrics.ascent)
     };
     assert_eq!(answers.len(), 2);
     assert_eq!(

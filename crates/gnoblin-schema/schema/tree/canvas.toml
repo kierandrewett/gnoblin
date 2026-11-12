@@ -18,8 +18,9 @@ since = "0.2.0"
 # Measure text at a size. Answered through `tree.answer`.
 #
 # The call's one argument is the size in pixels as the little-endian bits of an `f64`; its text is the font name, a
-# newline, and the string to measure. The answer's result is `<width> <height>` in whole pixels: the extent the
-# painter lays that string out in, so a canvas of that size holds it exactly. An answer with an error and no result is
+# newline, and the string to measure. The answer's result is `<width> <height> <ascent>` in whole pixels: the extent
+# the painter lays that string out in, so a canvas of that size holds it exactly, and the distance from the top of the
+# first line to its baseline. An answer with an error and no result is
 # `bad-value` (a size that is not a finite number in (0, 1024], or no newline in the text), `too-large` (a string over
 # 16 KiB or a font name over 128 bytes) or `unavailable` (no fonts).
 [[object.method]]

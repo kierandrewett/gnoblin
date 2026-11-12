@@ -84,7 +84,7 @@ use gnoblin_render::transaction::{Animation, Motion, TreeChange, TreeValue, land
 use gnoblin_render::{
     Damage, Effects, Mat4, NodeKind, NodeSpec, Pass, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
 };
-use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Size, TrackId, Vec3, WindowId};
+use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Scale, Size, TrackId, Vec3, WindowId};
 
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
@@ -148,15 +148,21 @@ struct ViewPicture {
 }
 
 /// A Canvas node's rendered picture: what it was painted from, and the image, or `None` when its content paints
-/// nothing (empty, or too large to draw).
+/// nothing (empty, a zero-size node, or too large to draw).
 ///
-/// The picture is kept until the node's `content` is written again or its size changes. `revision` is the scene's
-/// count of byte writes to the node, so a rewrite of equal bytes repaints too: comparing bytes every frame would cost
-/// more than the rare repeated write.
+/// The picture is kept until the node's `content` is written again, its size changes, or the scale of the output it
+/// is on does. `revision` is the scene's count of byte writes to the node, so a rewrite of equal bytes repaints too:
+/// comparing bytes every frame would cost more than the rare repeated write.
 #[derive(Debug)]
 struct CanvasPicture {
     revision: u64,
+    /// The node's size in logical pixels when it was painted.
     size: Size,
+    /// Physical pixels per logical pixel the picture was painted at. The image is `size * scale` pixels, and the
+    /// renderer draws it over the node's logical rectangle.
+    scale: Scale,
+    /// Whether the node was secure (its own `secure` value or an ancestor's) when the frame was last composed.
+    secure: bool,
     image: Option<Arc<Image>>,
 }
 
@@ -430,6 +436,8 @@ pub struct Composer {
     /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
     /// changes.
     canvases: BTreeMap<NodeId, CanvasPicture>,
+    /// The scale each output composes at, which a canvas on it is painted at so its text and strokes are sharp.
+    output_scales: BTreeMap<OutputId, Scale>,
     /// Paints the canvases. The tree answers `measure` from the same painter, so a measured string is drawn in the
     /// extent it was measured at.
     painter: SharedPainter,
@@ -492,6 +500,7 @@ impl Composer {
             secure_treatment: SecureTreatment::default(),
             effect_kinds: Pass::NAMES,
             canvases: BTreeMap::new(),
+            output_scales: BTreeMap::new(),
             painter,
         }
     }
@@ -528,9 +537,17 @@ impl Composer {
         self.sync_screen(output, rect);
     }
 
+    /// Declares the scale an output composes at. A canvas on it is painted at this scale on the next frame.
+    pub fn set_output_scale(&mut self, output: OutputId, scale: Scale) {
+        if self.output_scales.insert(output, scale) != Some(scale) {
+            self.scene.damage_output(output);
+        }
+    }
+
     /// Removes an output, its damage and its screen node.
     pub fn remove_output(&mut self, output: OutputId) {
         self.scene.remove_output(output);
+        self.output_scales.remove(&output);
         if let Some(node) = self.screens.remove(&output) {
             self.drop_node(node);
         }
@@ -644,26 +661,69 @@ impl Composer {
     fn render_canvases(&mut self) {
         let canvases = self.canvas_nodes();
         self.canvases.retain(|canvas, _| canvases.contains(canvas));
+        if canvases.is_empty() {
+            return;
+        }
+        let nodes: Vec<NodeId> = self.scene.node_ids().collect();
+        let secure = self.secure_nodes(nodes);
         for canvas in canvases {
             let (Some(bounds), Some(revision)) = (self.scene.bounds(canvas), self.scene.content_revision(canvas))
             else {
                 continue;
             };
             let size = Size::new(bounds.width, bounds.height);
-            if self
-                .canvases
-                .get(&canvas)
-                .is_some_and(|picture| picture.revision == revision && picture.size == size)
+            let scale = self.canvas_scale(canvas);
+            let is_secure = secure.contains(&canvas);
+            if let Some(picture) = self.canvases.get_mut(&canvas)
+                && picture.revision == revision
+                && picture.size == size
+                && picture.scale == scale
             {
+                // A mark changes what a capture shows and not the pixels on screen, so the node is damaged and the
+                // frame a capture reads is drawn again with the new mark.
+                if picture.secure != is_secure {
+                    picture.secure = is_secure;
+                    if let Some(placed) = self.scene.absolute_bounds(canvas) {
+                        self.scene.damage_rect(placed);
+                    }
+                }
                 continue;
             }
-            let image = self.paint_canvas(canvas, size);
-            self.canvases.insert(canvas, CanvasPicture { revision, size, image });
+            let image = self.paint_canvas(canvas, size, scale);
+            self.canvases.insert(
+                canvas,
+                CanvasPicture {
+                    revision,
+                    size,
+                    scale,
+                    secure: is_secure,
+                    image,
+                },
+            );
         }
     }
 
-    /// The image of a canvas's `content` at `size`, or `None` when it has no content or draws nothing.
-    fn paint_canvas(&self, canvas: NodeId, size: Size) -> Option<Arc<Image>> {
+    /// The scale a canvas is painted at: the largest among the outputs it is on, so it is sharp on each and only
+    /// shrunk on a lower-density neighbour. A canvas on no output is painted at one.
+    fn canvas_scale(&self, canvas: NodeId) -> Scale {
+        let placed = self.scene.absolute_bounds(canvas);
+        let mut best: Option<Scale> = None;
+        for (output, rect) in self.scene.outputs() {
+            if placed.is_some_and(|placed| placed.intersection(*rect).is_none()) {
+                continue;
+            }
+            let scale = self.output_scales.get(output).copied().unwrap_or(Scale::IDENTITY);
+            if best.is_none_or(|best| scale.as_f64() > best.as_f64()) {
+                best = Some(scale);
+            }
+        }
+        best.unwrap_or(Scale::IDENTITY)
+    }
+
+    /// The image of a canvas's `content` at `size` logical pixels drawn at `scale`, or `None` when it has no content
+    /// or draws nothing. A scale whose picture would be too large is painted at one, and a canvas too large even then
+    /// draws nothing.
+    fn paint_canvas(&self, canvas: NodeId, size: Size, scale: Scale) -> Option<Arc<Image>> {
         let bytes = self.scene.bytes(canvas, "content").filter(|bytes| !bytes.is_empty())?;
         let list = match decode(bytes) {
             Ok(list) => list,
@@ -673,7 +733,10 @@ impl Composer {
                 return None;
             }
         };
-        let rendered = self.painter.get().paint(&list, size.width, size.height)?;
+        let painter = self.painter.get();
+        let rendered = painter
+            .paint_scaled(&list, size.width, size.height, scale.as_f64())
+            .or_else(|| painter.paint_scaled(&list, size.width, size.height, 1.0))?;
         for name in &rendered.missing_icons {
             log::debug!(area = "render", %canvas, icon = %name, "a canvas names an icon that is not built in");
         }
@@ -2801,7 +2864,7 @@ impl Composer {
             corner_radius: transform.corner_radius,
             effects: self.scene.effects(canvas).cloned().unwrap_or_else(Effects::new),
             model,
-            secure: false,
+            secure: self.canvases.get(&canvas).is_some_and(|picture| picture.secure),
         }));
     }
 
@@ -6441,6 +6504,163 @@ mod tests {
             Some(fill_list(10.0, 10.0, 1)),
         );
         assert!(canvas_layers(&mut composer, output).is_empty());
+    }
+
+    #[test]
+    fn a_zero_size_canvas_draws_nothing_and_one_pixel_is_enough() {
+        let (mut composer, output) = screen();
+        add_canvas(
+            &mut composer,
+            NodeId::new(1),
+            None,
+            Rect::new(4, 4, 0, 0),
+            Some(fill_list(10.0, 10.0, 1)),
+        );
+        add_canvas(
+            &mut composer,
+            NodeId::new(2),
+            None,
+            Rect::new(4, 4, 10, 0),
+            Some(fill_list(10.0, 10.0, 1)),
+        );
+        assert!(canvas_layers(&mut composer, output).is_empty(), "no area, no picture");
+        composer.with_scene(|scene| {
+            scene
+                .set_bounds(NodeId::new(2), Rect::new(4, 4, 1, 1))
+                .expect("the canvas resizes")
+        });
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0].2.size(), Size::new(1, 1));
+    }
+
+    #[test]
+    fn a_canvas_is_painted_at_the_scale_of_the_output_it_is_on_and_drawn_over_its_logical_rectangle() {
+        let (mut composer, output) = screen();
+        composer.set_output_scale(output, Scale::integral(2));
+        add_canvas(
+            &mut composer,
+            NodeId::new(1),
+            None,
+            Rect::new(5, 6, 20, 10),
+            Some(fill_list(20.0, 10.0, 200)),
+        );
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(layers.len(), 1);
+        let (dst, _, image) = &layers[0];
+        assert_eq!(*dst, Rect::new(5, 6, 20, 10), "the rectangle is logical");
+        assert_eq!(
+            image.size(),
+            Size::new(40, 20),
+            "the picture has two pixels per logical pixel"
+        );
+        assert_eq!(
+            image.pixel(Point::new(39, 19)),
+            Some([200, 0, 0, 255]),
+            "the fill covers it all"
+        );
+
+        composer.set_output_scale(output, Scale::new(3, 2));
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(
+            layers[0].2.size(),
+            Size::new(30, 15),
+            "a fractional scale repaints at its own size"
+        );
+
+        composer.set_output_scale(output, Scale::IDENTITY);
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(layers[0].2.size(), Size::new(20, 10), "and one scale repaints at one");
+    }
+
+    #[test]
+    fn a_canvas_whose_scaled_picture_is_too_large_is_painted_at_one() {
+        let (mut composer, output) = screen();
+        composer.set_output_scale(output, Scale::integral(2));
+        add_canvas(
+            &mut composer,
+            NodeId::new(1),
+            None,
+            Rect::new(0, 0, 3000, 3000),
+            Some(fill_list(3000.0, 3000.0, 9)),
+        );
+        let layers = canvas_layers(&mut composer, output);
+        assert_eq!(layers.len(), 1, "nine million pixels still draw");
+        assert_eq!(layers[0].2.size(), Size::new(3000, 3000));
+    }
+
+    /// Whether each canvas layer the next frame carries is secure, in paint order.
+    fn canvas_layers_secure(composer: &mut Composer, output: OutputId) -> Vec<bool> {
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Surface(Surface {
+                    source: SurfaceSource::Snapshot(_),
+                    secure,
+                    ..
+                }) => Some(*secure),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_secure_canvas_and_its_children_are_secure_layers_and_a_mark_redraws_them() {
+        let (mut composer, output) = screen();
+        let parent = NodeId::new(1);
+        let child = NodeId::new(2);
+        add_canvas(
+            &mut composer,
+            parent,
+            None,
+            Rect::new(0, 0, 30, 30),
+            Some(fill_list(30.0, 30.0, 1)),
+        );
+        add_canvas(
+            &mut composer,
+            child,
+            Some(parent),
+            Rect::new(5, 5, 10, 10),
+            Some(fill_list(10.0, 10.0, 2)),
+        );
+        assert_eq!(canvas_layers_secure(&mut composer, output), vec![false, false]);
+        assert_eq!(damage_of(&mut composer, output), None, "nothing changed");
+
+        mark_secure(&mut composer, parent, true);
+        assert_eq!(
+            canvas_layers_secure(&mut composer, output),
+            vec![true, true],
+            "a secure canvas's children are secure with it"
+        );
+        mark_secure(&mut composer, parent, false);
+        mark_secure(&mut composer, child, true);
+        assert_eq!(
+            canvas_layers_secure(&mut composer, output),
+            vec![false, true],
+            "a secure child leaves its parent as it was"
+        );
+        mark_secure(&mut composer, child, false);
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        assert!(
+            composer.compose(output, &mut frame),
+            "clearing the mark redraws the frame a capture reads"
+        );
+        composer.end_frame();
+        let secure: Vec<bool> = frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Surface(surface) => Some(surface.secure),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(secure, vec![false, false]);
     }
 
     /// The `skipped` texts the composer queued for `node`, last first, or `None` when it queued none.

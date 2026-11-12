@@ -93,8 +93,8 @@ pub struct TreeAnswer {
 /// The answer to a `Canvas`'s `measure(text, size, font)`.
 ///
 /// The call's one argument is the size as the little-endian bits of an `f64`; its text is the font, a newline, and
-/// the string to measure. The result is `"<width> <height>"` in whole pixels, the extent the painter lays the string
-/// out in. A malformed call, or one the measurer refuses (a size or text out of range, or no fonts to measure with),
+/// the string to measure. The result is `"<width> <height> <ascent>"` in whole pixels: the extent the painter lays
+/// the string out in, and the distance from the top of its first line to the baseline. A malformed call, or one the measurer refuses (a size or text out of range, or no fonts to measure with),
 /// is answered with an error and an empty result.
 fn measure_answer(painter: &SharedPainter, call: &TreeCall) -> TreeAnswer {
     let refused = |error: &str| TreeAnswer {
@@ -113,9 +113,9 @@ fn measure_answer(painter: &SharedPainter, call: &TreeCall) -> TreeAnswer {
         return refused("bad-value");
     };
     match painter.get().measure_checked(text, size as f32, font) {
-        Ok(extent) => TreeAnswer {
+        Ok(metrics) => TreeAnswer {
             token: call.token,
-            result: format!("{} {}", extent.width, extent.height),
+            result: format!("{} {} {}", metrics.width, metrics.height, metrics.ascent),
             error: String::new(),
         },
         Err(error) => refused(error),

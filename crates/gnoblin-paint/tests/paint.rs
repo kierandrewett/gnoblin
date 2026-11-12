@@ -549,3 +549,205 @@ fn an_encoded_list_paints_as_the_list_does() {
     let painter = painter();
     assert_eq!(painter.paint(&list, 16, 18), painter.paint(&decoded, 16, 18));
 }
+
+// ---- Scale, huge text, metrics -------------------------------------------------------------------------------------
+
+fn ink_box(picture: &Picture) -> (u32, u32, u32, u32) {
+    let (mut left, mut top, mut right, mut bottom) = (u32::MAX, u32::MAX, 0, 0);
+    for y in 0..picture.height {
+        for x in 0..picture.width {
+            if picture.pixel(x, y).expect("inside")[3] != 0 {
+                left = left.min(x);
+                top = top.min(y);
+                right = right.max(x + 1);
+                bottom = bottom.max(y + 1);
+            }
+        }
+    }
+    (left, top, right, bottom)
+}
+
+#[test]
+fn a_scaled_paint_draws_the_same_list_at_the_scaled_size() {
+    let painter = painter();
+    let list = PaintList {
+        ops: vec![
+            fill(2.0, 2.0, 6.0, 4.0, 0.0, RED),
+            PaintOp::TextLine {
+                x1: 0.0,
+                y1: 9.5,
+                x2: 10.0,
+                y2: 9.5,
+                width: 1.0,
+                colour: BLUE,
+            },
+        ],
+    };
+    let one = painter.paint_scaled(&list, 10, 10, 1.0).expect("one").picture;
+    assert_eq!(
+        Some(one.clone()),
+        painter.paint(&list, 10, 10).map(|rendered| rendered.picture)
+    );
+    let two = painter.paint_scaled(&list, 10, 10, 2.0).expect("two").picture;
+    assert_eq!((two.width, two.height), (20, 20));
+    assert_pixel(&two, 4, 4, [255, 0, 0, 255]);
+    assert_pixel(&two, 11, 7, [255, 0, 0, 255]);
+    assert_pixel(&two, 3, 4, CLEAR);
+    assert_pixel(&two, 15, 4, [255, 0, 0, 255]);
+    assert_pixel(&two, 16, 4, CLEAR);
+    assert_pixel(&two, 10, 18, [0, 0, 255, 255]);
+    assert_pixel(&two, 10, 19, [0, 0, 255, 255]);
+    assert_pixel(&two, 10, 17, CLEAR);
+
+    let fractional = painter
+        .paint_scaled(&list, 10, 10, 1.5)
+        .expect("one and a half")
+        .picture;
+    assert_eq!((fractional.width, fractional.height), (15, 15));
+    assert_pixel(&fractional, 4, 4, [255, 0, 0, 255]);
+    let tiny = painter
+        .paint_scaled(&list, 10, 10, 0.01)
+        .expect("at least one pixel")
+        .picture;
+    assert_eq!((tiny.width, tiny.height), (1, 1));
+}
+
+#[test]
+fn a_scaled_paint_refuses_a_scale_it_cannot_draw_and_a_picture_over_the_cap() {
+    let painter = painter();
+    let list = PaintList::default();
+    for scale in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert!(painter.paint_scaled(&list, 10, 10, scale).is_none(), "scale {scale}");
+    }
+    assert!(painter.paint_scaled(&list, 0, 10, 2.0).is_none());
+    assert!(
+        painter.paint_scaled(&list, 3000, 3000, 2.0).is_none(),
+        "36 million pixels"
+    );
+    assert!(
+        painter.paint_scaled(&list, 2048, 2048, 2.0).is_some(),
+        "exactly the cap"
+    );
+}
+
+#[test]
+fn scaled_text_is_sharper_not_stretched() {
+    let painter = painter();
+    let list = PaintList {
+        ops: vec![text(2.0, 2.0, 14.0, "Hello")],
+    };
+    let one = painter.paint_scaled(&list, 60, 26, 1.0).expect("one").picture;
+    let two = painter.paint_scaled(&list, 60, 26, 2.0).expect("two").picture;
+    let (l1, t1, r1, b1) = ink_box(&one);
+    let (l2, t2, r2, b2) = ink_box(&two);
+    for (small, large) in [(l1, l2), (t1, t2), (r1, r2), (b1, b2)] {
+        assert!(
+            large.abs_diff(small * 2) <= 2,
+            "the ink of the 2x picture lies where twice the 1x ink does: {small} vs {large}"
+        );
+    }
+    let covered = |picture: &Picture| {
+        picture
+            .data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| pixel[3] != 0)
+            .count()
+    };
+    assert!(
+        covered(&two) > covered(&one) * 3,
+        "four times the pixels carry about four times the ink: {} vs {}",
+        covered(&two),
+        covered(&one)
+    );
+}
+
+#[test]
+fn a_huge_text_draws_only_what_is_on_the_canvas() {
+    let painter = painter();
+    let all = "x".repeat(16 * 1024);
+    let few = "x".repeat(64);
+    for size in [12.0, 200.0, 1024.0] {
+        let long = painter
+            .paint(
+                &PaintList {
+                    ops: vec![text(0.0, 0.0, size, &all)],
+                },
+                80,
+                40,
+            )
+            .expect("a small picture")
+            .picture;
+        let short = painter
+            .paint(
+                &PaintList {
+                    ops: vec![text(0.0, 0.0, size, &few)],
+                },
+                80,
+                40,
+            )
+            .expect("a small picture")
+            .picture;
+        assert_eq!(long, short, "size {size}: the characters past the edge change nothing");
+    }
+    // Lines far below the canvas are not drawn either, and a line far above it neither.
+    let lines = format!("{}\nbottom", "\n".repeat(8000));
+    let below = painter
+        .paint(
+            &PaintList {
+                ops: vec![text(0.0, 0.0, 14.0, &lines)],
+            },
+            40,
+            40,
+        )
+        .expect("a small picture")
+        .picture;
+    assert!(below.data.iter().all(|byte| *byte == 0));
+    let above = painter
+        .paint(
+            &PaintList {
+                ops: vec![text(0.0, -300_000.0, 14.0, &lines)],
+            },
+            40,
+            40,
+        )
+        .expect("a small picture")
+        .picture;
+    assert!(above.data.iter().all(|byte| *byte == 0));
+}
+
+#[test]
+fn text_metrics_give_the_extent_and_a_baseline_the_glyphs_rest_on() {
+    let painter = painter();
+    for size in [12.0_f32, 16.0, 24.0] {
+        let metrics = painter.measure_checked("HEH", size, "sans").expect("in range");
+        let extent = painter.measure("HEH", size, "sans");
+        assert_eq!((metrics.width, metrics.height), (extent.width, extent.height));
+        assert!(
+            metrics.ascent > 0 && metrics.ascent < metrics.height,
+            "{size}: {metrics:?}"
+        );
+        // Capitals sit on the baseline, so the lowest ink row ends where the ascent says.
+        let picture = painter
+            .paint(
+                &PaintList {
+                    ops: vec![text(0.0, 0.0, size, "HEH")],
+                },
+                metrics.width + 4,
+                metrics.height,
+            )
+            .expect("a small picture")
+            .picture;
+        let (_, _, _, bottom) = ink_box(&picture);
+        assert!(
+            bottom.abs_diff(metrics.ascent) <= 1,
+            "{size}: ink ends at {bottom}, the ascent is {}",
+            metrics.ascent
+        );
+    }
+    let two = painter.measure_checked("a\nb", 16.0, "sans").expect("in range");
+    let one = painter.measure_checked("a", 16.0, "sans").expect("in range");
+    assert_eq!(two.height, one.height * 2);
+    assert_eq!(two.ascent, one.ascent, "the baseline is the first line's");
+}

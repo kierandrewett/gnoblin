@@ -46,7 +46,7 @@ gnoblin_log::logger!(log = "paint");
 pub use font::{FaceId, FontSet};
 pub use list::{DecodeError, PaintList, PaintOp, Rgba8, decode, encode};
 pub use raster::{CanvasPainter, Picture, Rendered, SharedPainter};
-pub use text::{TextLayout, line_height};
+pub use text::{TextLayout, TextMetrics, line_height};
 
 #[cfg(test)]
 mod tests {

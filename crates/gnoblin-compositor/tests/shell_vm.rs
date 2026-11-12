@@ -1175,7 +1175,8 @@ fn a_mapped_window_gets_a_titlebar_that_paints_its_fill_title_and_close_icon() {
         .collect();
     assert!(
         colours.iter().all(|pixel| pixel[..3] == [0xc6, 0xd0, 0xf5]),
-        "a fully covered pixel of the title is the title colour #c6d0f5"
+        "a fully covered pixel of the title is the title colour #c6d0f5, got {:?}",
+        colours.iter().find(|pixel| pixel[..3] != [0xc6, 0xd0, 0xf5])
     );
 
     // The close icon: a 16 pixel square of strokes.
@@ -1228,6 +1229,255 @@ fn a_text_node_takes_the_width_the_compositor_measures() {
         width, guess,
         "the answer is the painter's layout, not the estimate ({guess})"
     );
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        role.diagnostics()
+    );
+}
+
+// ---- The stock titlebar on screen: pixels the compositor composed -------------------------------------------------
+
+/// A PNG the compositor wrote: RGBA8, rows packed.
+struct Shot {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+impl Shot {
+    fn pixel(&self, x: u32, y: u32) -> [u8; 4] {
+        let at = ((y * self.width + x) * 4) as usize;
+        self.rgba[at..at + 4].try_into().expect("a pixel inside the shot")
+    }
+
+    /// The pixels of the rectangle `x0..x1` by `y0..y1` that are not `fill`, clipped to the shot.
+    fn ink(&self, x0: u32, x1: u32, y0: u32, y1: u32, fill: [u8; 4]) -> usize {
+        (y0..y1.min(self.height))
+            .flat_map(|y| (x0..x1.min(self.width)).map(move |x| (x, y)))
+            .filter(|&(x, y)| self.pixel(x, y) != fill)
+            .count()
+    }
+
+    /// Whether some pixel of the rectangle is within `tolerance` of `colour` on every channel.
+    fn has_colour(&self, x0: u32, x1: u32, y0: u32, y1: u32, colour: [u8; 3], tolerance: u8) -> bool {
+        (y0..y1.min(self.height))
+            .flat_map(|y| (x0..x1.min(self.width)).map(move |x| (x, y)))
+            .any(|(x, y)| {
+                let pixel = self.pixel(x, y);
+                pixel[..3].iter().zip(colour).all(|(a, b)| a.abs_diff(b) <= tolerance)
+            })
+    }
+}
+
+/// What `View:capture(path)` writes for `view`, read back. The View draws on a frame of its own, so an ask that finds
+/// no picture (`unavailable`) is made again.
+fn capture_view(session: &Session, role: &mut ShellRole, view: &str, name: &str) -> Shot {
+    let path = std::fs::canonicalize(session.directory())
+        .expect("the runtime directory")
+        .join(name);
+    let key = name.replace(['.', '-'], "_");
+    let ask = format!(
+        "shots = shots or {{}} shots.{key} = nil \
+         go(function() local result, err = await({view}:capture('{path}')) \
+         shots.{key} = {{ result = result, err = err }} end) return 'asked'",
+        path = path.display(),
+    );
+    let probe = format!("local s = shots.{key} return s and (s.err .. '|' .. tostring(s.result)) or ''");
+    let mut asked = false;
+    let mut answer = String::new();
+    tick_until(role, "the capture was never answered", |role| {
+        if !asked {
+            role.run("ask", &ask).expect("the ask runs");
+            asked = true;
+        }
+        let outcome = role.run("answer", &probe).expect("the probe runs").unwrap_or_default();
+        if outcome.starts_with("unavailable|") {
+            asked = false;
+        } else if !outcome.is_empty() {
+            answer = outcome;
+        }
+        !answer.is_empty()
+    });
+    assert_eq!(
+        answer,
+        format!("|{}", path.display()),
+        "the capture is answered with its path"
+    );
+    let decoder = png::Decoder::new(std::io::Cursor::new(std::fs::read(&path).expect("the PNG was written")));
+    let mut reader = decoder.read_info().expect("a PNG");
+    let mut rgba = vec![0; reader.output_buffer_size().expect("a sized PNG")];
+    let info = reader.next_frame(&mut rgba).expect("a frame");
+    assert_eq!(info.color_type, png::ColorType::Rgba, "the capture is RGBA");
+    rgba.truncate(info.buffer_size());
+    Shot {
+        width: info.width,
+        height: info.height,
+        rgba,
+    }
+}
+
+fn parse_numbers(text: &str) -> Vec<f64> {
+    text.split(',')
+        .map(|field| field.parse().unwrap_or_else(|_| panic!("a number in {text:?}")))
+        .collect()
+}
+
+/// A mapped window's stock `Titlebar` is on screen: a View of the window, captured to a PNG, holds the bar's fill, the
+/// title's glyphs inside the extent the compositor measured for them and nowhere else along the bar, and the close
+/// button's strokes at the button's place. This is the end to end of `Canvas`: the shell's draw lists, the tree's
+/// `bad-paint` check, the painter, the composer's picture and the software view renderer.
+#[test]
+fn the_stock_titlebar_paints_title_glyphs_and_a_close_button_where_the_shell_put_them() {
+    let session = Session::start();
+    let mut role = connect(&session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    wait_for_sized_workspace(&mut role);
+    let mut client = Client::connect(session.wayland());
+    let _window = client.map_window("org.example.titled", "A Title");
+
+    // The title's measure has come back: the painter's width, height and ascent, and not the estimate.
+    tick_until(&mut role, "the title was never measured", |role| {
+        role.run(
+            "measured",
+            "local w = root:all('Window')[1] local tb = w and w:all(Titlebar)[1] \
+             local t = tb and tb:all(Text)[1] return tostring(t ~= nil and t.measured.key ~= nil)",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text")
+            == "true"
+    });
+    let geometry = role
+        .run(
+            "geometry",
+            "local w = root:all('Window')[1] local tb = w:all(Titlebar)[1] local t = tb:all(Text)[1] \
+             local i = tb:all(Icon)[1] \
+             return table.concat({ w.x, w.y, w.width, w.height, tb.x, tb.y, tb.width, tb.height, \
+             t.x, t.y, t.width, t.height, t.measured.width, t.measured.height, t.measured.ascent, \
+             i.x, i.y, i.width, i.height }, ',') .. '|' .. tb.fill .. '|' .. t.text .. '|' .. i.color",
+        )
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    let mut parts = geometry.split('|');
+    let numbers = parse_numbers(parts.next().expect("the numbers"));
+    let fill_text = parts.next().expect("the fill");
+    assert_eq!(parts.next(), Some("A Title"), "the title is the window's");
+    let icon_colour = parts.next().expect("the icon colour");
+    let [
+        window_x,
+        window_y,
+        window_width,
+        window_height,
+        bar_x,
+        bar_y,
+        bar_width,
+        bar_height,
+        title_x,
+        title_y,
+        title_width,
+        title_height,
+        measured_width,
+        measured_height,
+        measured_ascent,
+        icon_x,
+        icon_y,
+        icon_width,
+        icon_height,
+    ] = numbers[..]
+    else {
+        panic!("nineteen numbers, got {numbers:?}");
+    };
+    // The measure round trip: the line box is the painter's (`floor(13 * 1.5)`), the baseline lies inside it, and the
+    // width is a real text's width, not the `13 * 7 / 2` estimate of seven characters.
+    assert_eq!(measured_height, 19.0, "a 13 pixel line box is 19 pixels tall");
+    assert!(
+        measured_ascent > 9.0 && measured_ascent < measured_height,
+        "the baseline lies in the lower half of the line box: {measured_ascent}"
+    );
+    assert!(
+        measured_width > 20.0 && measured_width < title_width,
+        "'A Title' at 13 pixels is some tens of pixels: {measured_width}"
+    );
+    assert_ne!(measured_width, 45.0, "the width is not the estimate");
+    assert_eq!(bar_height, 28.0, "the stock titlebar is 28 pixels tall");
+    assert_eq!(bar_width, window_width, "the bar is as wide as its window");
+
+    // A View of the window, large enough to hold it where the shell put it, shows what the compositor composed.
+    let (view_width, view_height) = (
+        (window_x + window_width).ceil() as u32,
+        (window_y + window_height).ceil() as u32,
+    );
+    role.run(
+        "a view of the window",
+        &format!(
+            "local w = root:all('Window')[1] \
+             titled = View({{ width = {view_width}, height = {view_height}, source = w }}) root:add(titled) return 'made'"
+        ),
+    )
+    .expect("the View is made");
+    let hex = |text: &str| -> [u8; 3] {
+        let digits = text.trim_start_matches('#');
+        [0, 2, 4].map(|at| u8::from_str_radix(&digits[at..at + 2], 16).expect("a hex colour"))
+    };
+    let fill = {
+        let [r, g, b] = hex(fill_text);
+        [r, g, b, 255]
+    };
+    let (ox, oy) = ((window_x + bar_x) as u32, (window_y + bar_y) as u32);
+    // The shot is taken again until the bar has been painted into the View, which draws on a frame of its own.
+    let mut shot = capture_view(&session, &mut role, "titled", "titlebar-0.png");
+    for attempt in 1..40 {
+        if shot.pixel(ox + 2, oy + 2) == fill {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+        shot = capture_view(&session, &mut role, "titled", &format!("titlebar-{attempt}.png"));
+    }
+    assert_eq!((shot.width, shot.height), (view_width, view_height));
+
+    // The bar: opaque fill at both corners, and the window's transparent buffer (black in a View) below it.
+    let far = (ox + bar_width as u32 - 2, oy + bar_height as u32 - 2);
+    assert_eq!(shot.pixel(ox + 2, oy + 2), fill, "the bar's near corner is its fill");
+    assert_eq!(shot.pixel(far.0, far.1), fill, "the bar's far corner is its fill");
+    assert_ne!(
+        shot.pixel(ox + 100, oy + bar_height as u32 + 20),
+        fill,
+        "below the bar the window shows no fill"
+    );
+
+    // The title: glyph strokes inside the measured extent, in the title colour at full cover somewhere, and nothing
+    // between the end of the measured text and the close button.
+    let (tx, ty) = (ox + title_x as u32, oy + title_y as u32);
+    let title_end = tx + measured_width as u32 + 2;
+    let ink = shot.ink(tx, title_end, ty, ty + title_height as u32, fill);
+    assert!(ink >= 20, "the title paints glyph strokes, got {ink} pixels");
+    assert!(
+        shot.has_colour(tx, title_end, ty, ty + title_height as u32, [0xc6, 0xd0, 0xf5], 24),
+        "some stroke of the title is its colour #c6d0f5"
+    );
+    assert_eq!(
+        shot.ink(title_end + 1, ox + icon_x as u32, oy, oy + bar_height as u32, fill),
+        0,
+        "the bar is plain fill between the end of the title and the close button"
+    );
+
+    // The close button: strokes in the icon's colour inside its square, its corners clear.
+    let (ix, iy) = (ox + icon_x as u32, oy + icon_y as u32);
+    let (iw, ih) = (icon_width as u32, icon_height as u32);
+    assert_eq!((iw, ih), (16, 16), "the stock icon is 16 pixels");
+    assert!(
+        shot.ink(ix, ix + iw, iy, iy + ih, fill) >= 10,
+        "the close button paints strokes"
+    );
+    assert!(
+        shot.has_colour(ix, ix + iw, iy, iy + ih, hex(icon_colour), 24),
+        "some stroke of the button is its colour {icon_colour}"
+    );
+    assert_eq!(shot.pixel(ix, iy), fill, "the button's corner is clear");
+    assert_eq!(shot.pixel(ix + iw - 1, iy + ih - 1), fill, "and so is its far corner");
     assert!(
         role.diagnostics().is_empty(),
         "no handler failed and no transaction was refused: {:?}",

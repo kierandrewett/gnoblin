@@ -71,6 +71,31 @@ impl TextLayout {
     }
 }
 
+/// What the shell is told about a string: the extent the painter lays it out in, and where its first baseline is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextMetrics {
+    /// The widest line's advance, rounded up, in pixels.
+    pub width: u32,
+    /// The lines' total height in pixels.
+    pub height: u32,
+    /// The distance from the top of the first line box to its baseline, in whole pixels: where a glyph's bottom edge
+    /// sits, so a shell aligns two texts of different sizes or a text and an icon by this and not by their tops.
+    pub ascent: u32,
+}
+
+impl TextLayout {
+    /// The layout's [`TextMetrics`].
+    #[must_use]
+    pub fn metrics(&self) -> TextMetrics {
+        let extent = self.extent();
+        TextMetrics {
+            width: extent.width,
+            height: extent.height,
+            ascent: self.baseline.max(0.0) as u32,
+        }
+    }
+}
+
 impl FontSet {
     /// Lay out `text` in the face `font` names at `size` pixels.
     #[must_use]
@@ -96,6 +121,12 @@ impl FontSet {
     #[must_use]
     pub fn measure(&self, text: &str, size: f32, font: &str) -> Size {
         self.layout(text, size, font).extent()
+    }
+
+    /// The [`TextMetrics`] of `text` at `size` in `font`.
+    #[must_use]
+    pub fn text_metrics(&self, text: &str, size: f32, font: &str) -> TextMetrics {
+        self.layout(text, size, font).metrics()
     }
 
     fn layout_line(&self, line: &str, size: f32, face: FaceId) -> TextLine {

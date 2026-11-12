@@ -1057,6 +1057,41 @@ mod tests {
     }
 
     #[test]
+    fn a_snapshot_painted_at_the_output_scale_lands_pixel_for_pixel() {
+        // A Canvas's picture is painted at its output's scale and placed over the node's logical rectangle: at scale
+        // two, a 4 by 4 picture over a 2 by 2 logical rectangle must reach the 4 by 4 output unresampled, or the
+        // text painted for it would be blurred again by the draw.
+        let mut data = Vec::new();
+        for y in 0..4u8 {
+            for x in 0..4u8 {
+                data.extend_from_slice(&[x * 60 + 10, y * 60 + 10, 100, 255]);
+            }
+        }
+        let image = Image::new(Size::new(4, 4), 16, data).expect("a valid image");
+        let mut frame = frame_with(Color::BLACK, Rect::new(0, 0, 2, 2), Color::TRANSPARENT);
+        frame.push_layer(Layer::Surface(Surface {
+            source: SurfaceSource::Snapshot(std::sync::Arc::new(image.clone())),
+            src: gnoblin_types::RectF::new(0.0, 0.0, 4.0, 4.0),
+            dst: Rect::new(0, 0, 2, 2),
+            transform: smithay::utils::Transform::Normal,
+            opacity: 1.0,
+            tint: Color::WHITE,
+            corner_radius: 0.0,
+            effects: Effects::new(),
+            model: None,
+            secure: false,
+        }));
+        let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
+        software.draw(&frame, Scale::integral(2)).expect("drawn");
+        let drawn = software.screenshot().expect("a readback");
+        for y in 0..4 {
+            for x in 0..4 {
+                assert_eq!(drawn.colour_at(x, y), image.colour_at(x, y), "pixel ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
     fn damage_limits_what_is_repainted() {
         let mut software = Software::new(Size::new(16, 16)).expect("a software renderer");
         let whole = Rect::new(0, 0, 16, 16);

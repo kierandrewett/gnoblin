@@ -139,6 +139,49 @@ fn f42_content_that_does_not_decode_is_bad_paint_and_the_canvas_keeps_its_conten
     }
 }
 
+/// Lists that are well formed op by op and still too much. Over the op count or nested too deep is `bad-paint`; over
+/// the 1 MiB every bytes value is capped at is `too-large`. Each is refused before the compositor stores it, so no
+/// frame ever paints one.
+#[test]
+fn f42_an_oversized_list_is_bad_paint_and_the_canvas_keeps_its_content() {
+    let text = |length: usize| PaintOp::Text {
+        x: 0.0,
+        y: 0.0,
+        size: 14.0,
+        colour: Rgba8::new(255, 255, 255, 255),
+        font: "sans".to_owned(),
+        text: "x".repeat(length),
+    };
+    let lists = [
+        ("too many ops", Code::BadPaint, vec![PaintOp::PopClip; 5000]),
+        (
+            "over a mebibyte",
+            Code::TooLarge,
+            (0..70).map(|_| text(16 * 1024)).collect(),
+        ),
+        (
+            "nested too deep",
+            Code::BadPaint,
+            [vec![PaintOp::PushOpacity(0.5); 40], vec![PaintOp::PopOpacity; 40]].concat(),
+        ),
+    ];
+    let mut scene = scene();
+    let mut ops = make("canvas", 10);
+    ops.push(set_bytes(10, "content", a_list()));
+    validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(ops)).expect("applies");
+    for (what, code, ops) in lists {
+        let refusal = validate_and_apply(
+            &mut scene,
+            &Table,
+            Actor::Shell,
+            TreeTransaction::new(vec![set_bytes(10, "content", encode(&PaintList { ops }))]),
+        )
+        .expect_err("an oversized list is refused");
+        assert_eq!(refusal.code, code, "{what}");
+        assert_eq!(scene.bytes(id(10), "content"), Some(a_list().as_slice()), "{what}");
+    }
+}
+
 #[test]
 fn a_bad_paint_refuses_the_whole_transaction() {
     let mut scene = scene();

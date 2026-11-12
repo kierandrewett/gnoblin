@@ -26,8 +26,20 @@ root:add(label)
 property it read changes). The runtime encodes the array into the node's `content`, a byte string the compositor
 decodes, and writes it when it changes. A script does not write `content` by hand.
 
-The compositor paints the list into a picture the size of the node when `content` or the size changes, not every
+The compositor paints the list into a picture of the node's size when `content` or the size changes, not every
 frame, and draws that picture where the node sits, with the node's opacity, transform and effects.
+
+The picture is painted at the scale of the output the canvas is on, so text and strokes are sharp on a HiDPI screen. A
+canvas 200 by 28 pixels on an output at scale 2 is a 400 by 56 pixel picture drawn over the same 200 by 28 rectangle.
+
+- A canvas on two outputs is painted at the larger scale. It is painted again when it moves to an output of another
+  scale.
+- A node with no area (width or height 0) draws nothing.
+- A picture over 4096 by 4096 pixels is not drawn. A canvas whose picture at the output's scale would pass that limit
+  is painted at scale 1.
+
+A canvas whose `secure` is true, or one under a secure node, is a secure layer: it is drawn on the screen as usual and
+masked in a screen capture or a View's capture, as a secure window is.
 
 The effects are the node's `effects` list, and the renderer may not draw all of them. An effect it skips is named in
 the node's read-only `skipped` list (`blur: unsupported-by-renderer`), and `seat.effect_kinds` lists the kinds it does
@@ -55,6 +67,12 @@ that omits `fill` or `stroke` has none.
 
 A list has at most 4096 ops, groups nest at most 32 deep, a text op carries at most 16 KiB of text, and the encoded
 list is at most 1 MiB.
+
+- A list over the op or depth limit, or one that is not a paint list at all, is refused whole with `bad-paint`.
+- One over 1 MiB is refused `too-large`, as any bytes value is.
+
+Everything is clipped to the canvas: text far wider or taller than the node, at any size, draws only the part on it,
+and the glyphs and lines wholly past its edges are skipped rather than drawn.
 
 ## Fonts
 
@@ -87,19 +105,31 @@ draws nothing.
 ## Measuring text
 
 `canvas:measure(text, size, font)` asks the compositor how much room a string takes. It answers in a later frame, so the
-call returns a signal that fires with `"<width> <height>"` in whole pixels, then an error string (empty on success):
+call returns a signal that fires with `"<width> <height> <ascent>"` in whole pixels, then an error string (empty on
+success):
 
 ```lua
 go(function()
     local answer, err = await(label:measure("Hello", 16, "sans"))
-    local width, height = answer:match("^(%d+) (%d+)$")
+    local width, height, ascent = answer:match("^(%d+) (%d+) (%d+)$")
 end)
 ```
 
-The answer is the extent the painter lays the same string out in, so a canvas of that size holds it exactly. The error
-is `bad-value` for a size that is not a finite number in `(0, 1024]`, `too-large` for text over 16 KiB or a font name
-over 128 bytes, and `unavailable` when there are no fonts.
+The answer is the extent the painter lays the same string out in, so a canvas of that size holds it exactly.
 
-`Text.width` is this answer. Until it arrives, and when the compositor refuses the question, the width is an estimate of
-half the size per character. The answer is kept with the text, size and font it was for, so changing any of them falls
-back to the estimate and asks again.
+- `width` and `height` are whole pixels. `height` is a line box per line.
+- `ascent` is the distance from the top of the first line to its baseline, where the bottom of a capital letter sits.
+  Align two texts of different sizes, or a text and an icon, by it.
+
+The error is `bad-value` for a size that is not a finite number in `(0, 1024]`, `too-large` for text over 16 KiB or a
+font name over 128 bytes, and `unavailable` when there are no fonts.
+
+`Text.width`, `Text.height` and `Text.ascent` are this answer. Until it arrives, and when the compositor refuses the
+question, they are estimates: half the size per character of the widest line, one and a half sizes per line, and 1.1
+sizes.
+
+The answer is kept with the text, size and font it was for. Changing any of them falls back to the estimates and asks
+again.
+
+A `Text` made with `ellipsize = true` that a row gives less room than it measured draws the share of the text that fits
+and an ellipsis. The stock titlebar's title does, so a long window title never runs under the close button.

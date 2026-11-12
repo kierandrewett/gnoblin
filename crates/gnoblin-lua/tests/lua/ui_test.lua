@@ -546,6 +546,7 @@ return {
             H.load_shell()
             local t = root:add(Text({ text = "Hello", size = 10 }))
             H.check(t.width == 25, "before the answer the width is the estimate, got " .. tostring(t.width))
+            H.check(t.height == 15 and t.ascent == 11, "so are the height and the ascent")
             local call = host.calls[#host.calls]
             H.check(call and call.method == "measure", "a new Text must ask the compositor to measure it")
             H.check(call.text == "sans\nHello", "the call carries the font and the text, got " .. tostring(call.text))
@@ -553,9 +554,10 @@ return {
             H.frame(
                 host,
                 1,
-                { { type = tostring(call.result), target = host.ids("Canvas")[1], args = { "31 15", "" } } }
+                { { type = tostring(call.result), target = host.ids("Canvas")[1], args = { "31 15 12", "" } } }
             )
             H.check(t.width == 31, "the answered width must replace the estimate, got " .. tostring(t.width))
+            H.check(t.height == 15 and t.ascent == 12, "the answered height and ascent land too")
         end,
     },
     {
@@ -567,16 +569,16 @@ return {
             local t = root:add(Text({ text = "Hello", size = 10 }))
             local id = host.ids("Canvas")[1]
             local first = host.calls[#host.calls]
-            H.frame(host, 1, { { type = tostring(first.result), target = id, args = { "31 15", "" } } })
+            H.frame(host, 1, { { type = tostring(first.result), target = id, args = { "31 15 12", "" } } })
             H.check(t.width == 31, "the first answer must land")
             t.text = "Hello, world"
             H.check(t.width == 60, "while the new answer is out the width is the estimate, got " .. tostring(t.width))
             local second = host.calls[#host.calls]
             H.check(second ~= first and second.method == "measure", "new text must ask again")
             -- The old question's answer arrives late: it must not be taken for the new text.
-            H.frame(host, 2, { { type = tostring(first.result), target = id, args = { "99 15", "" } } })
+            H.frame(host, 2, { { type = tostring(first.result), target = id, args = { "99 15 12", "" } } })
             H.check(t.width == 60, "a stale answer must be ignored, got " .. tostring(t.width))
-            H.frame(host, 3, { { type = tostring(second.result), target = id, args = { "74 15", "" } } })
+            H.frame(host, 3, { { type = tostring(second.result), target = id, args = { "74 15 12", "" } } })
             H.check(t.width == 74, "the new answer must land, got " .. tostring(t.width))
         end,
     },
@@ -602,6 +604,41 @@ return {
             local calls = #host.calls
             H.frame(host, 2, {})
             H.check(#host.calls == calls, "a refusal must not be asked again for the same text")
+        end,
+    },
+    {
+        "a multi-line Text is as tall as its lines and as wide as its widest",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local t = root:add(Text({ text = "a\nbbbb\ncc", size = 10 }))
+            H.check(t.width == 20, "the widest line sets the width, got " .. tostring(t.width))
+            H.check(t.height == 45, "three line boxes of fifteen, got " .. tostring(t.height))
+        end,
+    },
+    {
+        "a Text that ellipsizes ends in an ellipsis when its row gives it less room than it measured",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            H.load_shell()
+            local function newest()
+                local ids = host.ids("Canvas")
+                return core.get(ids[#ids], "content")
+            end
+            local roomy = root:add(Text({ text = "A long window title", size = 10, ellipsize = true }))
+            H.check(newest():find("A long window title", 1, true), "with room enough the whole text is painted")
+            root:add(Text({ text = "A long window title", size = 10, ellipsize = true, width = 50 }))
+            local content = newest()
+            H.check(content:find("A long wi\u{2026}", 1, true), "a text over its room is cut and ends in an ellipsis")
+            H.check(not content:find("A long win", 1, true), "none of the cut text is painted")
+            local plain = root:add(Text({ text = "A long window title", size = 10, width = 50 }))
+            H.check(
+                newest():find("A long window title", 1, true),
+                "a text that does not ellipsize paints all of it, and the node's size clips it"
+            )
+            H.check(roomy.ascent > 0 and plain.ascent > 0, "every text knows its ascent")
         end,
     },
     {

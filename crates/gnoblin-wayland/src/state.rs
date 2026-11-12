@@ -1348,6 +1348,7 @@ impl State {
         );
         let global = smithay_output.create_global::<Self>(&self.display_handle);
 
+        self.composer.set_output_scale(output.id, output.scale);
         self.composer.set_output(output.id, rect);
         log::debug!(area = "output", connector = %output.connector, ?rect, "connected");
         self.outputs.push(OutputEntry {
@@ -1372,12 +1373,14 @@ impl State {
         };
         entry.mode = output.mode;
         entry.scale = output.scale;
+        let backend = entry.backend;
         entry.output.change_current_state(
             Some(smithay_mode(output)),
             None,
             Some(Self::smithay_scale(output.scale)),
             None,
         );
+        self.composer.set_output_scale(backend, output.scale);
         self.move_output(index, rect);
     }
 

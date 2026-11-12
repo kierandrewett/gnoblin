@@ -687,6 +687,20 @@ property (`node-api-refactor.md` O6 keeps the slot registry as the way a shell c
 shell holds the claim, a failing or silent handler and a killed shell fall back to the built-in dialog) and `tests/portal_provider.rs` (a deny and
 an early allow are terminal; a non-owner connection is refused every slot and request member).
 
+**Status, lane 8A: done.** `Canvas` is painted: `gnoblin-paint` decodes `Canvas.content` (`bad-paint`, F42, also over the
+op, depth and 1 MiB caps), rasterises rectangles, rounded rectangles, lines, text (embedded Droid Sans subset, Apache-2.0,
+`crates/gnoblin-paint/fonts/README.md`, with system fonts found first), built-in icons, clips and opacity groups on the CPU
+with `tiny-skia` and `skrifa`, at the scale of the output the canvas is on. The composer draws the picture as a
+`SurfaceSource::Snapshot` layer, so the software, GLES and Vulkan renderers consume the same CPU pixels as every other CPU
+surface; a `secure` canvas or one under a secure node is a secure layer. The tree answers `Canvas.measure` with
+`<width> <height> <ascent>` from the layout the painter draws, and the stock `Text` takes its width, height and ascent from
+it (the `utf8.len * size // 2` guess is only the estimate until the answer arrives); the stock `Titlebar` ellipsizes a long
+title by the measured width. Proven by `crates/gnoblin-paint/tests/paint.rs` (golden pixels per op, scale, huge text,
+metrics), `crates/gnoblin-render/tests/canvas.rs` (F42), `compose.rs` (draw order, zero size, scale, secure) and
+`crates/gnoblin-compositor/tests/shell_vm.rs`
+`the_stock_titlebar_paints_title_glyphs_and_a_close_button_where_the_shell_put_them`: a mapped window's titlebar, captured
+to a PNG through a View, holds the bar's fill, the title's glyphs inside the measured extent and the close button's strokes.
+
 **Status, lane 8B: done** (owner decision O1 default selected, owner may revisit). `gnoblin_window_frame_v1` and its XML,
 `Global::GnoblinWindowFrameV1Frame`, `ClientRole::FrameRenderer`, `State::window_frame` and the `frame-renderers` section
 are deleted, with the `bitflags` dependency, the `text-list-map` schema kind and `IdShape::Renderer`. `promise_role`,

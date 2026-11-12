@@ -728,7 +728,7 @@ for _, s in ipairs(core.classes()) do
     end
     if s.name == "Canvas" then
         -- `canvas:measure(text, size, font)` asks the compositor how much room `text` takes. It answers later, so the
-        -- call returns a signal that fires with "<width> <height>" in whole pixels, and an error if there is one.
+        -- call returns a signal that fires with "<width> <height> <ascent>" in whole pixels, and an error if there is one.
         rawset(c, "measure", function(n, text, size, font)
             local token = core.call(
                 rawget(n, ID),

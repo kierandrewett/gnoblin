@@ -13,11 +13,20 @@
 //!   pixel baseline, so stems are sharp vertically and not snapped horizontally.
 //! - A clip is a coverage mask (anti-aliased at rounded edges); nested clips intersect. An opacity group is drawn
 //!   on a transparent layer the size of the picture and composited with its alpha when the group ends.
+//! - Glyphs and lines that lie wholly past the canvas's edge are not drawn, so a text of thousands of characters at a
+//!   large size costs what is on the canvas and not what is in the string.
+//!
+//! # Scale
+//!
+//! [`CanvasPainter::paint_scaled`] draws the same list at a physical-per-logical `scale`: the picture is that much
+//! larger and every op is drawn through the scale, so strokes and glyphs are rasterised at the output's resolution
+//! and not stretched from a 1x picture.
 //!
 //! # Limits
 //!
-//! A picture is at most [`MAX_PIXELS`] pixels; a larger or empty size has no picture. A paint list cannot make an
-//! op fail: an op the rasteriser cannot draw (a path with no area, an icon that is not built in) draws nothing.
+//! A picture is at most [`MAX_PIXELS`] pixels; a larger or empty size, or a scale that is not a finite positive
+//! number, has no picture. A paint list cannot make an op fail: an op the rasteriser cannot draw (a path with no
+//! area, an icon that is not built in) draws nothing.
 
 use std::sync::{Arc, OnceLock};
 
@@ -30,6 +39,7 @@ use tiny_skia::{FillRule, LineCap, Mask, Paint, Path, PathBuilder, Pixmap, Pixma
 use crate::font::FontSet;
 use crate::icon;
 use crate::list::{MAX_NAME_BYTES, MAX_SIZE, MAX_TEXT_BYTES, PaintList, PaintOp, Rgba8};
+use crate::text::TextMetrics;
 
 /// The most pixels one picture may have: a 4096 by 4096 canvas.
 pub const MAX_PIXELS: u64 = 4096 * 4096;
@@ -116,23 +126,39 @@ impl CanvasPainter {
     /// # Errors
     ///
     /// `bad-value` for a size out of range, `too-large` for text or a name over its cap.
-    pub fn measure_checked(&self, text: &str, size: f32, font: &str) -> Result<Size, &'static str> {
+    pub fn measure_checked(&self, text: &str, size: f32, font: &str) -> Result<TextMetrics, &'static str> {
         if !(size.is_finite() && size > 0.0 && size <= MAX_SIZE) {
             return Err("bad-value");
         }
         if text.len() > MAX_TEXT_BYTES || font.len() > MAX_NAME_BYTES {
             return Err("too-large");
         }
-        Ok(self.measure(text, size, font))
+        Ok(self.fonts.text_metrics(text, size, font))
     }
 
     /// Draw `list` into a `width` by `height` picture, or `None` when the size is empty or over [`MAX_PIXELS`].
     #[must_use]
     pub fn paint(&self, list: &PaintList, width: u32, height: u32) -> Option<Rendered> {
-        if u64::from(width) * u64::from(height) > MAX_PIXELS {
+        self.paint_scaled(list, width, height, 1.0)
+    }
+
+    /// Draw `list`, whose coordinates are in a `width` by `height` logical canvas, at `scale` physical pixels per
+    /// logical pixel: the picture is `round(width * scale)` by `round(height * scale)` pixels (at least one each) and
+    /// every op is drawn scaled, so a HiDPI output shows crisp text and strokes instead of a stretched 1x picture.
+    /// `None` when the logical size is empty, `scale` is not a finite positive number, or the picture would hold more
+    /// than [`MAX_PIXELS`] pixels.
+    #[must_use]
+    pub fn paint_scaled(&self, list: &PaintList, width: u32, height: u32, scale: f64) -> Option<Rendered> {
+        if width == 0 || height == 0 || !(scale.is_finite() && scale > 0.0) {
             return None;
         }
-        let base = Pixmap::new(width, height)?;
+        let pixel_width = ((f64::from(width) * scale).round() as u64).max(1);
+        let pixel_height = ((f64::from(height) * scale).round() as u64).max(1);
+        if pixel_width * pixel_height > MAX_PIXELS {
+            return None;
+        }
+        let (pixel_width, pixel_height) = (pixel_width as u32, pixel_height as u32);
+        let base = Pixmap::new(pixel_width, pixel_height)?;
         let mut canvas = Canvas {
             fonts: &self.fonts,
             layers: vec![OpacityLayer {
@@ -140,8 +166,10 @@ impl CanvasPainter {
                 alpha: 1.0,
             }],
             clips: Vec::new(),
-            width,
-            height,
+            width: pixel_width,
+            height: pixel_height,
+            logical: (width as f32, height as f32),
+            transform: Transform::from_scale(pixel_width as f32 / width as f32, pixel_height as f32 / height as f32),
             missing: Vec::new(),
         };
         for op in &list.ops {
@@ -154,8 +182,8 @@ impl CanvasPainter {
         let pixmap = canvas.layers.pop()?.pixmap;
         Some(Rendered {
             picture: Picture {
-                width,
-                height,
+                width: pixel_width,
+                height: pixel_height,
                 data: pixmap.take(),
             },
             missing_icons: canvas.missing,
@@ -219,8 +247,13 @@ struct Canvas<'a> {
     layers: Vec<OpacityLayer>,
     /// The open clips, each already intersected with the ones outside it.
     clips: Vec<Mask>,
+    /// The picture's size in pixels.
     width: u32,
     height: u32,
+    /// The canvas's size in logical pixels, the units the ops are in.
+    logical: (f32, f32),
+    /// Logical to picture pixels.
+    transform: Transform,
     missing: Vec<String>,
 }
 
@@ -282,18 +315,19 @@ impl Canvas<'_> {
 
     #[allow(clippy::too_many_arguments)]
     fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba8, stroke: Rgba8, stroke_width: f32) {
+        let transform = self.transform;
         if !fill.is_transparent()
             && let Some(path) = rounded_rect(x, y, w, h, radius)
         {
             let (pixmap, mask) = self.target();
-            pixmap.fill_path(&path, &paint(fill), FillRule::Winding, Transform::identity(), mask);
+            pixmap.fill_path(&path, &paint(fill), FillRule::Winding, transform, mask);
         }
         if !stroke.is_transparent()
             && stroke_width > 0.0
             && let Some(path) = ring(x, y, w, h, radius, stroke_width)
         {
             let (pixmap, mask) = self.target();
-            pixmap.fill_path(&path, &paint(stroke), FillRule::EvenOdd, Transform::identity(), mask);
+            pixmap.fill_path(&path, &paint(stroke), FillRule::EvenOdd, transform, mask);
         }
     }
 
@@ -312,8 +346,9 @@ impl Canvas<'_> {
             line_cap: LineCap::Butt,
             ..Stroke::default()
         };
+        let transform = self.transform;
         let (pixmap, mask) = self.target();
-        pixmap.stroke_path(&path, &paint(colour), &line, Transform::identity(), mask);
+        pixmap.stroke_path(&path, &paint(colour), &line, transform, mask);
     }
 
     fn text(&mut self, x: f32, y: f32, size: f32, colour: Rgba8, font: &str, text: &str) {
@@ -323,27 +358,46 @@ impl Canvas<'_> {
         let layout = self.fonts.layout(text, size, font);
         let line_height = crate::text::line_height(size);
         let paint = paint(colour);
+        let transform = self.transform;
+        let (logical_width, logical_height) = self.logical;
+        // A glyph's ink lies within about a font size of its pen position, so a glyph or a line that begins that far
+        // past the canvas cannot show: a text of thousands of characters at a large size draws only what is on it.
+        let reach = size * 2.0;
         for (index, line) in layout.lines.iter().enumerate() {
-            let baseline = y + line_height * index as f32 + layout.baseline;
+            let top = y + line_height * index as f32;
+            if top > logical_height + reach {
+                break;
+            }
+            if top + line_height < -reach {
+                continue;
+            }
+            let baseline = top + layout.baseline;
             for placed in &line.glyphs {
+                let pen = x + placed.x;
+                if pen > logical_width + reach {
+                    break;
+                }
+                if pen < -reach {
+                    continue;
+                }
                 let path = self.fonts.with_font(placed.face, |font| {
                     let glyph = font.outline_glyphs().get(placed.glyph)?;
-                    let mut pen = PathPen {
+                    let mut outline = PathPen {
                         builder: PathBuilder::new(),
-                        x: x + placed.x,
+                        x: pen,
                         y: baseline,
                     };
                     glyph
                         .draw(
                             DrawSettings::unhinted(Ppem::new(size), LocationRef::default()),
-                            &mut pen,
+                            &mut outline,
                         )
                         .ok()?;
-                    pen.builder.finish()
+                    outline.builder.finish()
                 });
                 if let Some(Some(path)) = path {
                     let (pixmap, mask) = self.target();
-                    pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), mask);
+                    pixmap.fill_path(&path, &paint, FillRule::Winding, transform, mask);
                 }
             }
         }
@@ -360,7 +414,7 @@ impl Canvas<'_> {
             return;
         }
         let scale = size / icon::GRID;
-        let transform = Transform::from_row(scale, 0.0, 0.0, scale, x, y);
+        let transform = Transform::from_row(scale, 0.0, 0.0, scale, x, y).post_concat(self.transform);
         let paint = paint(colour);
         for piece in pieces {
             let (pixmap, mask) = self.target();
@@ -379,7 +433,7 @@ impl Canvas<'_> {
             }
         };
         match rounded_rect(x, y, w, h, radius) {
-            Some(path) => mask.intersect_path(&path, FillRule::Winding, true, Transform::identity()),
+            Some(path) => mask.intersect_path(&path, FillRule::Winding, true, self.transform),
             None => mask.clear(),
         }
         self.clips.push(mask);

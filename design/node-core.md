@@ -161,7 +161,7 @@ is rasterised when it changes, not every frame (unverified: plan risk table, sec
 
 Method: `measure(text, size, font)`. It runs on the compositor and answers through `tree.answer` like any call: the
 call's argument is the size as the bits of an `f64`, its text is the font, a newline and the string, and the result is
-`<width> <height>` in whole pixels, the extent the painter lays the same string out in. The size is a finite number in
+`<width> <height> <ascent>` in whole pixels: the extent the painter lays the same string out in, and the distance from the top of the first line to its baseline. The size is a finite number in
 `(0, 1024]`; a refusal is an error string (`bad-value`, `too-large`, `unavailable`) with an empty result.
 
 **Painting (implemented).** `content` is the binary paint list of `crates/gnoblin-paint/src/list.rs`: rectangles, lines,

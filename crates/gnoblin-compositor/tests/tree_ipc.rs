@@ -574,9 +574,18 @@ fn a_canvas_measure_is_answered_with_the_size_of_the_text() {
     assert_eq!(answer.token, 77);
     assert_eq!(answer.error, "");
     let result = String::from_utf8(answer.result).expect("the result is text");
-    let (width, height) = result.split_once(' ').expect("`<width> <height>`");
-    let (width, height): (u32, u32) = (width.parse().expect("a width"), height.parse().expect("a height"));
+    let fields: Vec<u32> = result
+        .split(' ')
+        .map(|field| field.parse().expect("whole pixels"))
+        .collect();
+    let [width, height, ascent] = fields[..] else {
+        panic!("`<width> <height> <ascent>`, got {result:?}");
+    };
     assert_eq!(height, 24, "a 16 pixel line box is 24 pixels tall");
+    assert!(
+        ascent > 12 && ascent < 24,
+        "the baseline of a 24 pixel line box lies in its lower half: {ascent}"
+    );
     assert!(
         width > 20 && width < 80,
         "five letters at 16 pixels are some tens of pixels wide: {width}"

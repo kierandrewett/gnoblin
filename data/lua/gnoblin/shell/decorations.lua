@@ -20,6 +20,7 @@ function Titlebar:build()
         Text({
             grow = 1,
             size = 13,
+            ellipsize = true,
             color = "#c6d0f5",
             text = function()
                 return w.title

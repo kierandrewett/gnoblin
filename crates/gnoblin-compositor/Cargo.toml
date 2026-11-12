@@ -92,6 +92,8 @@ xdg-desktop-portal-gnoblin = { path = "../xdg-desktop-portal-gnoblin" }
 # shell through the compositor, so the keyring's `prompt.secret` path is tested as the session runs it.
 gnoblin-services = { path = "../gnoblin-services" }
 zbus.workspace = true
+# Decodes the PNG a View capture writes, so a test reads the pixels the compositor composed.
+png.workspace = true
 # The portal test's request bodies are serialised D-Bus tuples, and its stress test bounds a
 # D-Bus call with a timer.
 serde.workspace = true

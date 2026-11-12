@@ -1261,6 +1261,7 @@ dependencies = [
  "gnoblin-wayland",
  "gnoblin-xwayland",
  "gnoblinctl",
+ "png",
  "prost",
  "reis",
  "rustix 1.1.6",
