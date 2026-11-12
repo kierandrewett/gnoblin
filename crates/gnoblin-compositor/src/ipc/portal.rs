@@ -208,7 +208,14 @@ impl PortalService {
             .ui
             .submit(id, request.caller.app_id(), interface, dialog, request.timeout_ms, now)
         {
-            Ok(_) => {
+            Ok(outcome) => {
+                log::debug!(
+                    area = "portal",
+                    request = envelope_id,
+                    interface = %request.interface,
+                    ?outcome,
+                    "the built-in dialog admitted a portal request"
+                );
                 self.owners.push(HeldRequest {
                     request: id,
                     client,
@@ -253,6 +260,13 @@ impl PortalService {
         interface: Interface,
         now: Tick,
     ) {
+        log::debug!(
+            area = "portal",
+            request = envelope_id,
+            offer = offer.get(),
+            interface = %request.interface,
+            "a portal request was offered to the portal.ui claimant"
+        );
         self.routed.push(ClaimantOffer {
             offer,
             client,
@@ -276,6 +290,14 @@ impl PortalService {
             return Vec::new();
         };
         let routed = self.routed.remove(index);
+        log::debug!(
+            area = "portal",
+            request = routed.envelope_id,
+            offer = offer.get(),
+            waited_ms = now.since(routed.started),
+            outcome = claimant_outcome(outcome),
+            "the portal.ui claimant settled an offer"
+        );
         let verdict = match outcome {
             RequestOutcome::Answered(answer) if answer.as_slice() == ANSWER_ALLOW => {
                 if now.since(routed.started) < ARMING_MS {
@@ -351,6 +373,11 @@ impl PortalService {
                 message: format!("`{name}` is not a key the portal dialog takes"),
             });
         };
+        if self.ui.active_request().is_none() {
+            // The key is dropped and its caller is acknowledged as for any key, so a key that finds no
+            // dialog is otherwise silent: its dialog is not admitted yet, or already settled.
+            log::debug!(area = "portal", "a portal key reached no open dialog and was dropped");
+        }
         self.ui.tick(now);
         self.ui.key(key, repeat);
         Ok(self.settle())
@@ -489,9 +516,28 @@ impl PortalService {
             if owner.interface == Interface::Secret && verdict == Verdict::Handled(Grant::Allowed) {
                 self.granted.insert(owner.app_id.clone());
             }
+            log::debug!(
+                area = "portal",
+                request = owner.envelope_id,
+                ?verdict,
+                "the built-in dialog settled a portal request"
+            );
             replies.push(outcome_reply(owner.client, owner.envelope_id, verdict));
         }
         replies
+    }
+}
+
+/// How a claimant's offer ended, named for the log. The answer's bytes are never logged: only
+/// whether it was `allow`, `deny` or something else.
+fn claimant_outcome(outcome: &RequestOutcome) -> &'static str {
+    match outcome {
+        RequestOutcome::Answered(answer) if answer.as_slice() == ANSWER_ALLOW => "allow",
+        RequestOutcome::Answered(answer) if answer.as_slice() == ANSWER_DENY => "deny",
+        RequestOutcome::Answered(_) => "an answer the compositor does not understand",
+        RequestOutcome::Ended => "the claimant left or the offer ended",
+        RequestOutcome::Refused(_) => "the claimant declined",
+        RequestOutcome::TimedOut => "the offer timed out",
     }
 }
 

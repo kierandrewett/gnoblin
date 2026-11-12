@@ -57,10 +57,15 @@ const POINTER: u32 = 2;
 const KEY_A: u32 = 30;
 const KEY_B: u32 = 48;
 
-/// The wait after a dialog opens before Enter can release Allow.
+/// The wait after the compositor holds a dialog before Enter can release Allow. The dialog arms
+/// 500 ms after it opens, and it opened before the compositor answered the barrier this wait
+/// starts from, so the margin holds however late the offer was.
 const ARM_DELAY: Duration = Duration::from_millis(700);
-/// How long a dialog may take to open after the call that asks for it.
+/// How long the compositor may take to hold a dialog after the portal offers it.
 const DIALOG_WAIT: Duration = Duration::from_secs(20);
+/// How long [`Tap`] holds an offer back in the test about a late offer: longer than the time the rig
+/// once gave the compositor to read an offer before it pressed a key.
+const LATE_OFFER: Duration = Duration::from_millis(1500);
 /// How long a state may take to arrive.
 const TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the portal may take to answer one D-Bus call, consent dialogs included.
@@ -85,38 +90,76 @@ enum Answer {
 /// What the portal's IPC connection has done with the consent dialog.
 ///
 /// The compositor accepts a key with no dialog open and does nothing with it, so a key cannot
-/// tell the test whether the dialog it is for has opened. The portal's own connection can: it
-/// writes one `portal.ui` request per dialog and reads one reply when the dialog settles, and
-/// [`Tap`] counts both.
+/// tell the test whether the dialog it is for has opened, and the offer and this test's keys
+/// reach the compositor on different sockets that nothing orders. The portal's own connection
+/// can say: it writes one `portal.ui` request per dialog and reads one reply when the dialog
+/// settles, and [`Tap`] counts both. It also writes a barrier right behind each offer and counts
+/// the compositor's answers to those. The compositor reads one connection in order, so the
+/// answer to a barrier proves that the offer before it was read, and its dialog is open.
 #[derive(Clone, Default)]
 struct Dialogs {
     offered: Arc<AtomicUsize>,
+    admitted: Arc<AtomicUsize>,
     settled: Arc<AtomicUsize>,
+    /// The keys the compositor has acknowledged.
+    pressed: Arc<AtomicUsize>,
 }
+
+impl Dialogs {
+    /// How far the dialogs got, for a panic message: a call that never answers is a hung portal
+    /// or a slow machine, and the counts say which phase it stopped in.
+    fn describe(&self) -> String {
+        format!(
+            "the portal offered {} dialogs, the compositor held {}, {} settled, and it acknowledged {} keys",
+            self.offered.load(Ordering::SeqCst),
+            self.admitted.load(Ordering::SeqCst),
+            self.settled.load(Ordering::SeqCst),
+            self.pressed.load(Ordering::SeqCst)
+        )
+    }
+}
+
+/// The request id of the first barrier. The portal's client numbers its own requests from one, so
+/// none of them comes near this, and a reply with an id from here up is a barrier's.
+const BARRIER: u64 = 1 << 62;
 
 /// The portal's transport, with its dialogs counted.
 struct Tap {
     inner: UnixTransport,
     dialogs: Dialogs,
+    /// How long the tap holds each offer back after counting it: a thread the machine did not
+    /// schedule for a while. Zero in every test but the one that is about a late offer.
+    late: Duration,
 }
 
 impl gnoblin_proto::Transport for Tap {
     fn send(&mut self, envelope: &gnoblin_proto::Envelope, fds: &[BorrowedFd<'_>]) -> Result<(), CodecError> {
-        if envelope.member == wire::member::PORTAL_UI {
-            self.dialogs.offered.fetch_add(1, Ordering::SeqCst);
+        if envelope.member != wire::member::PORTAL_UI {
+            return gnoblin_proto::Transport::send(&mut self.inner, envelope, fds);
         }
-        gnoblin_proto::Transport::send(&mut self.inner, envelope, fds)
+        let number = self.dialogs.offered.fetch_add(1, Ordering::SeqCst) + 1;
+        thread::sleep(self.late);
+        gnoblin_proto::Transport::send(&mut self.inner, envelope, fds)?;
+        // A key the dialog does not know is refused by name and reaches no dialog, so the barrier
+        // changes nothing in the compositor. It is answered once the compositor reads it.
+        let barrier = portal_key(BARRIER + u64::try_from(number).expect("a count fits"), "barrier", false);
+        gnoblin_proto::Transport::send(&mut self.inner, &barrier, &[])
     }
 
     fn receive(&mut self, fds: &mut Vec<OwnedFd>) -> Result<Option<gnoblin_proto::Envelope>, CodecError> {
-        let received = gnoblin_proto::Transport::receive(&mut self.inner, fds)?;
-        if received
-            .as_ref()
-            .is_some_and(|envelope| envelope.member == wire::member::PORTAL_UI)
-        {
-            self.dialogs.settled.fetch_add(1, Ordering::SeqCst);
+        loop {
+            let Some(envelope) = gnoblin_proto::Transport::receive(&mut self.inner, fds)? else {
+                return Ok(None);
+            };
+            if envelope.request_id >= BARRIER {
+                self.dialogs.admitted.fetch_add(1, Ordering::SeqCst);
+                continue;
+            }
+            if envelope.member == wire::member::PORTAL_UI {
+                self.dialogs.settled.fetch_add(1, Ordering::SeqCst);
+            }
+            return Ok(Some(envelope));
         }
-        Ok(received)
     }
 }
 
@@ -134,7 +177,8 @@ impl gnoblin_client::Transport for Tap {
     }
 }
 
-/// The keys a person presses: the input role's connection, and what the portal has offered.
+/// The keys a person presses: the input role's connection, and what the portal and the compositor
+/// have done with the dialogs.
 struct Keyboard {
     wire: Wire,
     dialogs: Dialogs,
@@ -152,21 +196,28 @@ impl Keyboard {
         self.wire.send(&portal_key(next_key_id(), key, false));
         let reply = self.wire.receive().expect("the compositor answers a key");
         assert_eq!(reply.error_code(), None, "the compositor refused the key `{key}`");
+        self.dialogs.pressed.fetch_add(1, Ordering::SeqCst);
     }
 
-    /// Waits until `count` dialogs have been offered, and a moment longer for the compositor to
-    /// open the last one: the offer and this connection's keys reach it on different sockets.
+    /// Waits until the compositor holds dialog number `count`.
+    ///
+    /// The portal's count of offers is not enough: it counts an offer as it writes it, and the
+    /// compositor reads that on one thread and this connection's keys on another, so a key can
+    /// reach the compositor before the dialog it is for exists, and a key that finds no dialog
+    /// is acknowledged and dropped. The barrier behind the offer is answered only after the
+    /// compositor has read the offer, which is what this waits for.
     #[track_caller]
-    fn wait_for_offer(&self, count: usize) {
+    fn wait_until_held(&self, count: usize) {
         let deadline = Instant::now() + DIALOG_WAIT;
-        while self.dialogs.offered.load(Ordering::SeqCst) < count {
+        while self.dialogs.admitted.load(Ordering::SeqCst) < count {
             assert!(
                 Instant::now() < deadline,
-                "the portal never offered consent dialog {count}"
+                "the compositor never held consent dialog {count}: the portal offered {}, and the compositor answered {} barriers",
+                self.dialogs.offered.load(Ordering::SeqCst),
+                self.dialogs.admitted.load(Ordering::SeqCst)
             );
             thread::sleep(Duration::from_millis(10));
         }
-        thread::sleep(Duration::from_millis(150));
     }
 
     /// Waits until `count` dialogs have settled.
@@ -183,7 +234,7 @@ impl Keyboard {
     /// it, and Tab then Enter, once the dialog is armed, allows it.
     #[track_caller]
     fn answer(&mut self, number: usize, answer: Answer) {
-        self.wait_for_offer(number);
+        self.wait_until_held(number);
         match answer {
             Answer::Deny => self.press("escape"),
             Answer::Allow => {
@@ -222,15 +273,17 @@ struct Caller {
     connection: Connection,
     app_id: String,
     next: AtomicU32,
+    dialogs: Dialogs,
 }
 
 impl Caller {
-    fn connect(bus: &Bus, app_id: &str) -> Caller {
+    fn connect(bus: &Bus, app_id: &str, dialogs: Dialogs) -> Caller {
         let connection = zbus::block_on(Builder::address(bus.address()).build()).expect("a caller on the private bus");
         Caller {
             connection,
             app_id: app_id.to_owned(),
             next: AtomicU32::new(0),
+            dialogs,
         }
     }
 
@@ -268,7 +321,12 @@ impl Caller {
             None
         })
         .await;
-        answered.unwrap_or_else(|| panic!("{interface}.{member} did not answer within {CALL_LIMIT:?}"))
+        answered.unwrap_or_else(|| {
+            panic!(
+                "{interface}.{member} did not answer within {CALL_LIMIT:?}: {}",
+                self.dialogs.describe()
+            )
+        })
     }
 
     /// `CreateSession`, answering the new session's path.
@@ -460,6 +518,11 @@ impl Rig {
     /// Starts everything. `daemon` is the PipeWire daemon the compositor's casts go to; without
     /// one they go to a socket nothing listens on, so a stream is refused by name.
     fn start(daemon: Option<&Daemon>) -> Rig {
+        Rig::start_late(daemon, Duration::ZERO)
+    }
+
+    /// [`Rig::start`], with every consent offer held back for `late` after the portal counts it.
+    fn start_late(daemon: Option<&Daemon>, late: Duration) -> Rig {
         let no_daemon = tempfile::tempdir().expect("a directory with no daemon in it");
         let socket = daemon.map_or_else(|| no_daemon.path().join("pipewire-0"), Daemon::socket);
         let bus = Bus::start();
@@ -479,6 +542,7 @@ impl Rig {
         let transport = Tap {
             inner: UnixTransport::connect(session.socket()).expect("the session is listening"),
             dialogs,
+            late,
         };
         let ipc = IpcClient::connect(transport, gnoblin_compositor::version()).expect("the session accepts this build");
         let shell = IpcHost::pair(ipc);
@@ -512,7 +576,7 @@ impl Rig {
     }
 
     fn caller(&self, app_id: &str) -> Caller {
-        Caller::connect(&self.bus, app_id)
+        Caller::connect(&self.bus, app_id, self.input.dialogs.clone())
     }
 
     /// Whether the compositor holds an approved EIS session under `path`.
@@ -558,6 +622,31 @@ fn bind_devices(remote: &mut EiClient) {
                 .iter()
                 .all(|device| device.done && device.resumed.is_some())
     });
+}
+
+/// A portal thread that the machine does not schedule for a second leaves the offer counted and
+/// not yet written, so the compositor reads a person's keys before the dialog they are for.
+/// A key sent to no dialog is acknowledged and dropped, so the dialog that opens afterwards is
+/// never answered. The rig must wait for the compositor to hold the dialog, not for the clock.
+#[test]
+fn an_offer_that_reaches_the_compositor_late_is_still_answered() {
+    let mut rig = Rig::start_late(None, LATE_OFFER);
+    let caller = rig.caller(APP_ID);
+    let path = zbus::block_on(caller.remote_session());
+    let (response, _) = with_dialogs(&mut rig.input, &[Answer::Allow, Answer::Deny], || {
+        zbus::block_on(caller.start(REMOTE_DESKTOP, &path))
+    })
+    .expect("Start answers");
+    assert_eq!(
+        response, RESPONSE_CANCELLED,
+        "the user allowed the first question and denied the second"
+    );
+    let gate = rig
+        .session
+        .eis()
+        .connect_session(&path, Vec::new())
+        .expect_err("the compositor opened a socket for a refused session");
+    assert_eq!(gate.to_string(), "the user refused the session");
 }
 
 #[test]
