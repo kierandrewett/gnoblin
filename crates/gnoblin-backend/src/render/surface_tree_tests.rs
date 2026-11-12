@@ -781,15 +781,57 @@ fn a_dmabuf_window_is_composed_as_a_dmabuf_layer() {
 }
 
 #[test]
-fn a_window_that_shows_a_dmabuf_leaves_without_a_fade() {
+fn a_window_that_shows_a_dmabuf_fades_out_drawing_the_dmabuf_itself() {
+    let (mut composer, output, window) = drawing();
+    composer.set_reduced_motion(false);
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    composer.advance_motion(MOTION_MS);
+    composer.close_window(window);
+    assert!(
+        composer.windows.contains_key(&window),
+        "a GPU buffer is kept for the fade, so the window outlives its close"
+    );
+
+    composer.advance_motion(MOTION_MS / 2);
+    let frame = frame_of(&mut composer, output);
+    let layers = surface_layers(&frame);
+    assert_eq!(layers.len(), 1, "the closing window draws one layer");
+    assert!(
+        matches!(layers[0].source, SurfaceSource::Dmabuf(_)),
+        "the fade draws the GPU buffer the window showed, not a copy"
+    );
+    assert!(
+        layers[0].opacity > 0.0 && layers[0].opacity < 1.0,
+        "halfway through the fade the window is part transparent: {}",
+        layers[0].opacity
+    );
+
+    composer.advance_motion(MOTION_MS);
+    assert!(
+        !composer.windows.contains_key(&window),
+        "the window is forgotten when the fade ends, and the handle is dropped with it"
+    );
+}
+
+#[test]
+fn an_unmapped_window_that_shows_a_dmabuf_fades_and_stays_known() {
     let (mut composer, _output, window) = drawing();
     composer.set_reduced_motion(false);
     composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    composer.advance_motion(MOTION_MS);
+    composer.unmap_window(window);
+    assert!(composer.is_fading(window));
+    composer.advance_motion(MOTION_MS * 2);
+    assert!(composer.windows.contains_key(&window), "an unmapped window stays known");
+    assert!(!composer.is_fading(window));
+}
+
+#[test]
+fn a_window_that_shows_a_dmabuf_leaves_at_once_when_motion_is_reduced() {
+    let (mut composer, _output, window) = drawing();
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
     composer.close_window(window);
-    assert!(
-        !composer.windows.contains_key(&window),
-        "a GPU buffer has no CPU picture to fade, so the window is removed at once"
-    );
+    assert!(!composer.windows.contains_key(&window));
 }
 
 #[test]

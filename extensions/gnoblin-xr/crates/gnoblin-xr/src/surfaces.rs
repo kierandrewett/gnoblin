@@ -109,7 +109,8 @@ impl Surfaces {
 
     /// Brings the swapchains to the Views in `wanted`: destroys the swapchains of Views no longer wanted, makes or
     /// remakes the swapchain of each wanted View that has a picture, and copies each picture that changed. Returns
-    /// what failed. A failure leaves the View without a ready swapchain for this frame and is tried again next time.
+    /// what failed. A failure leaves the View without a ready swapchain for this frame and is tried again next time: a
+    /// swapchain whose runtime calls fail is destroyed and made again.
     pub fn sync(
         &mut self,
         runtime: &mut impl Runtime,
@@ -191,6 +192,16 @@ impl Surfaces {
                     if let Some(dump) = &mut self.dump {
                         dump.record(view, frame);
                     }
+                }
+                Err(FaultKind::Runtime(error)) => {
+                    // The runtime refused the swapchain's own calls, as it does for one it has lost. The swapchain
+                    // is not worth keeping: it is destroyed here, and the next pass makes a new one and copies the
+                    // picture again. A copy the GPU refused leaves the swapchain alone.
+                    self.destroy(runtime, view, &mut faults);
+                    faults.push(Fault {
+                        view: Some(view),
+                        kind: FaultKind::Runtime(error),
+                    });
                 }
                 Err(kind) => faults.push(Fault { view: Some(view), kind }),
             }
@@ -441,6 +452,47 @@ pub(crate) mod tests {
         assert!(!rig.runtime.swapchains.contains_key(&first.0));
         assert_eq!(rig.presenter.uploads.len(), 2);
         assert_eq!(rig.presenter.uploads[1].target.width, 16);
+    }
+
+    #[test]
+    fn a_swapchain_the_runtime_has_lost_is_destroyed_and_made_again() {
+        let mut rig = Rig::new();
+        rig.frames.frames.insert(2, frame(8, 4, 1, 7));
+        rig.sync(&[2]);
+        let lost = rig.surfaces.swapchain(2).expect("ready").id;
+        rig.runtime.lost.insert(lost.0);
+
+        // A new picture needs the lost swapchain, which the runtime refuses.
+        rig.frames.frames.insert(2, frame(8, 4, 2, 9));
+        let faults = rig.sync(&[2]);
+        assert!(
+            matches!(
+                faults.as_slice(),
+                [Fault {
+                    view: Some(2),
+                    kind: FaultKind::Runtime(_)
+                }]
+            ),
+            "the refusal is reported: {faults:?}"
+        );
+        assert_eq!(
+            rig.surfaces.swapchain(2),
+            None,
+            "the View has no ready swapchain this frame"
+        );
+        assert_eq!(
+            rig.runtime.count(Call::DestroySwapchain(lost)),
+            1,
+            "the lost swapchain is destroyed"
+        );
+
+        // The next pass makes a new swapchain and shows the picture in it.
+        assert!(rig.sync(&[2]).is_empty());
+        let remade = rig.surfaces.swapchain(2).expect("a new swapchain is ready");
+        assert_ne!(remade.id, lost);
+        assert_eq!(rig.creates(), 2);
+        assert_eq!(rig.presenter.uploads.last().map(|upload| upload.bytes[0]), Some(9));
+        assert_eq!(rig.runtime.swapchains.len(), 1, "no swapchain leaks");
     }
 
     #[test]

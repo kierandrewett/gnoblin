@@ -7,6 +7,7 @@
 mod bridge;
 mod dump;
 mod pointer;
+mod supervise;
 mod surfaces;
 
 use xr_capture::views::ViewCaptures;
@@ -18,7 +19,9 @@ use xr_session::openxr_runtime::OpenxrRuntime;
 use xr_session::runtime::Runtime;
 use xr_tree::TreeClient;
 
+use crate::bridge::{BridgeError, Outcome};
 use crate::dump::Dump;
+use crate::supervise::Failure;
 use crate::surfaces::Fault;
 
 /// What the command line asked for.
@@ -62,10 +65,11 @@ impl Presenter for NoPresenter {
     }
 }
 
-/// Connects to the owner and the OpenXR runtime, then runs the bridge until it ends.
+/// Connects to the owner, then runs one OpenXR session after another until the owner goes.
 ///
-/// The session is a Vulkan one, so Views are shown. When the runtime cannot give one, the reason is printed and the
-/// bridge falls back to a headless session, which plans and drives the pointer but shows nothing.
+/// The runtime may be absent, refuse the session, lose it or be restarted under it: each of those ends the session
+/// and a new one is tried after a wait (see [`supervise`]), over the same owner connection. Only the owner ends the
+/// program.
 fn run_bridge() -> Result<(), String> {
     let socket = gnoblin_client::unix::socket_path(|name| std::env::var(name).ok())?;
     let mut tree = TreeClient::connect(&socket).map_err(|error| format!("owner socket: {error}"))?;
@@ -78,17 +82,31 @@ fn run_bridge() -> Result<(), String> {
         }
     };
     let mut captures = ViewCaptures::new(client);
+    supervise::supervise(
+        &mut tree,
+        &mut supervise::Backoff::default(),
+        &mut |tree| session(tree, &mut captures),
+        &mut supervise::wait,
+        &mut |line| eprintln!("gnoblin-xr: {line}"),
+    )
+}
 
+/// One OpenXR session, from connecting to the runtime to its end.
+///
+/// The session is a Vulkan one, so Views are shown. When the runtime cannot give one, the reason is printed and the
+/// bridge falls back to a headless session, which plans and drives the pointer but shows nothing.
+fn session(tree: &mut TreeClient, captures: &mut ViewCaptures) -> Result<Outcome, Failure> {
     match OpenxrRuntime::connect_vulkan("gnoblin-xr") {
         Ok((runtime, device)) => {
-            let mut presenter = VulkanPresenter::new(device).map_err(|error| error.to_string())?;
-            drive(&mut tree, FrameLoop::new(runtime), &mut captures, &mut presenter)
+            let mut presenter = VulkanPresenter::new(device).map_err(|error| Failure::Runtime(error.to_string()))?;
+            drive(tree, FrameLoop::new(runtime), captures, &mut presenter)
         }
-        Err(error) => {
-            eprintln!("gnoblin-xr: no graphics session: {error}");
+        Err(graphics) => {
+            let runtime = OpenxrRuntime::connect("gnoblin-xr")
+                .map_err(|headless| Failure::Runtime(format!("no OpenXR session: {graphics}; headless: {headless}")))?;
+            eprintln!("gnoblin-xr: no graphics session: {graphics}");
             eprintln!("gnoblin-xr: running a headless session: layers are planned and no picture is shown");
-            let runtime = OpenxrRuntime::connect("gnoblin-xr").map_err(|error| error.to_string())?;
-            drive(&mut tree, FrameLoop::new(runtime), &mut captures, &mut NoPresenter)
+            drive(tree, FrameLoop::new(runtime), captures, &mut NoPresenter)
         }
     }
 }
@@ -111,7 +129,7 @@ fn drive<R: Runtime, P: Presenter>(
     mut frames: FrameLoop<R>,
     captures: &mut ViewCaptures,
     presenter: &mut P,
-) -> Result<(), String> {
+) -> Result<Outcome, Failure> {
     // Planning runs every frame, but a line is only worth printing when it changes.
     let mut last_summary = None;
     let mut last_submitted = None;
@@ -161,9 +179,12 @@ fn drive<R: Runtime, P: Presenter>(
             }
         },
     )
-    .map_err(|error| error.to_string())?;
-    eprintln!("gnoblin-xr: stopped: {outcome:?}");
-    Ok(())
+    .map_err(|error| match error {
+        BridgeError::Tree(error) => Failure::Owner(format!("owner socket: {error}")),
+        BridgeError::Runtime(error) => Failure::Runtime(error.to_string()),
+    })?;
+    eprintln!("gnoblin-xr: session stopped: {outcome:?}");
+    Ok(outcome)
 }
 
 fn main() -> std::process::ExitCode {

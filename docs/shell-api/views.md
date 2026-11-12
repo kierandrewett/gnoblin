@@ -15,6 +15,40 @@ local preview = View({ width = 320, height = 200, source = window, fps = 10 })
 root:add(preview)
 ```
 
+## Cameras
+
+A View draws its source through the `Camera` its `camera` names. The camera's own position and rotation are its pose, and
+it looks down negative `z`. Scene `y` grows down.
+
+| `projection`   | The picture                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `orthographic` | Flat. This is the default, and the View's drawing without a camera. Any other text also draws flat.                   |
+| `perspective`  | Perspective with the vertical field `fov` in degrees (60 by default), or an off-axis frustum from the `fov_*` angles. |
+| `stereo`       | Two perspective eyes side by side, the left eye in the left half, `ipd` metres apart (see `metres` below).            |
+
+- `near` and `far` are the nearest and farthest depths drawn, in the camera's units.
+- `fov_left`, `fov_right`, `fov_up` and `fov_down` are four angles in degrees for an off-axis frustum, as OpenXR states a
+  field of view: `fov_left` and `fov_down` are negative for a symmetric view. All four zero, the default, means the
+  symmetric frustum from `fov`. For `stereo` they describe the left eye, and the right eye uses the mirror image.
+- `ipd` is the distance between a stereo camera's eyes in metres, 0.063 by default. `metres` is the camera's unit in
+  metres, 0.001 by default, so the eyes are `ipd / metres` units apart.
+- A frustum that is not one (`fov_left` not below `fov_right`, `fov_down` not below `fov_up`, an angle of 90 degrees or
+  more), an `ipd` below zero, or a `metres` of zero or less draws a blank picture of the View's size. Nothing is
+  refused: each property takes any number, and the picture is blank when the combination cannot be drawn.
+
+A stereo picture is drawn on the CPU like any other, one eye after the other, each into half the width.
+
+Redraw time of one full-size window seen from a window's height away, with a headset's field of view (median of 15,
+release build, the same shared virtual machine as the table below):
+
+- 320x200: 0.9 ms. 640x360: 4.3 ms. 1280x720: 17 ms.
+- 1920x1080: 65 ms. 3840x2160: 141 ms.
+
+A stereo View of headset size needs an `fps` cap, as a large flat one does.
+
+The XR extension shows a View with a stereo camera as an OpenXR projection layer; see
+[XR mode](../xr.md#stereo-views).
+
 ## `fps`
 
 `fps` caps how often the compositor redraws the View's picture. It is a cap, not a rate. A View whose source does not

@@ -72,7 +72,9 @@ use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
 
+mod stereo;
 mod view;
+pub use stereo::{Frustum, StereoRig, ViewRig, eye_sizes, render_rig};
 pub use view::{ViewCamera, ViewImage, ViewProjection, render_view};
 
 gnoblin_log::logger!(log = "render");

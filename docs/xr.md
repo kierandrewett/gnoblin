@@ -44,6 +44,25 @@ nothing does today.
 That seat is the headset's pointer. The stock shell builds the room when this seat appears and removes it when
 the seat goes. Nothing in your configuration needs to name the room.
 
+### When the headset runtime goes
+
+The OpenXR runtime is not part of Gnoblin, and it can be missing, refuse the session, lose it or restart under the
+program. None of that stops `gnoblin-xr`, because a program that exits is restarted only five times:
+
+- **No runtime, or a refused session.** The program logs the reason once and tries again after 250 ms. Each failed
+  try doubles the wait, up to 4 s. The wait starts again from 250 ms after a session that stayed up for 30 s.
+- **A lost session, or a runtime that asks the program to exit.** The session ends and a new one is tried in the same
+  way. The program keeps its connection to the compositor throughout, so nothing in the tree has to be built again.
+- **While there is no session.** The headset's pointer is gone, so the program destroys the `xr` seat it made and the
+  stock shell takes the room down. The windows are untouched. The seat comes back, and the room with it, when the next
+  session starts. A seat named `xr` that was already there when the program started is not the program's, so it is
+  left alone.
+- **A swapchain the runtime refuses.** The View loses its layer for that frame, the program destroys the swapchain and
+  makes a new one on the next frame, and the picture is copied into it again.
+
+The compositor is a separate process and never waits for any of this. The program exits only when the compositor closes
+its socket (status 0), or when the socket fails (status 1, and the guardian restarts the program).
+
 ### When it stops
 
 The guardian starts the program after the front and before the autostart applications, and does not wait for it to
@@ -129,6 +148,40 @@ The extension draws the Views in tree order and nothing depth-tests, so the shel
 farthest to nearest: stacked panels first, then the ring, then the focused panel last.
 
 The shell writes a pose only when it changes, so a window that does not change costs no writes.
+
+### Stereo Views
+
+A View is flat unless its `camera` names a camera whose `projection` is `stereo`. The compositor then draws the View's
+source twice, as two eyes side by side in the View's picture: the left eye in the left half, and the right eye in the
+right half (an odd width gives the extra column to the right eye).
+
+The extension shows such a View as an OpenXR
+projection layer instead of a quad, with the two eyes the camera states.
+
+| Camera property                               | Meaning                                                                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `x`, `y`, `z`, `rotation`                     | The point between the eyes, in the source's own units, and the way it looks. The camera looks down negative `z`. |
+| `ipd`                                         | The distance between the eyes, in metres. 0.063 by default.                                                      |
+| `metres`                                      | Metres per unit, which turns `ipd` into units. 0.001 by default.                                                 |
+| `fov`                                         | The vertical field of view in degrees, 60 by default. The horizontal field follows one eye's half of the View.   |
+| `fov_left`, `fov_right`, `fov_up`, `fov_down` | An off-axis frustum in degrees, for the left eye. All four zero means the symmetric frustum from `fov`.          |
+| `near`, `far`                                 | The clip distances, in units.                                                                                    |
+
+- The left eye sits half of `ipd` to the camera's left and the right eye half to its right, along the camera's own x
+  axis, so turning the camera turns the pair.
+- `fov_left` and `fov_down` are negative for a symmetric view, as OpenXR states a field of view. The right eye uses the
+  mirror image of the left eye's frustum, which is how a headset's two eyes differ: the nose side sees less.
+- A frustum that is not one (`fov_left` not below `fov_right`, `fov_down` not below `fov_up`, an angle of 90 degrees or
+  more), an `ipd` below zero or a `metres` of zero or less draws a blank picture, and the extension skips the View.
+- The scene's y axis grows down and OpenXR's grows up, so the extension states the camera's position as `(x, -y, z)`
+  metres and a turn about x or z reversed. The planner's `rig` module writes the rule down and tests it.
+
+The eyes come from the tree, so the picture and the layer cannot disagree, and the same tree always gives the same
+layer.
+
+The head pose does not move them: a stereo View is a stereoscopic picture fixed in the room (or in front of the
+head, under the `head` camera), seen from the vantage point its camera states. It is not a window that follows your
+head. The stock shell makes no stereo View.
 
 ### Pointer and focus
 
@@ -217,8 +270,13 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 - You need an OpenXR runtime such as Monado or WiVRn. WiVRn has not been tried.
 - The extension needs a Vulkan device and `XR_KHR_vulkan_enable2`. Without them it runs a headless session, which plans
   and drives the pointer and shows nothing.
-- It has been tested only against Monado's null compositor. No headset has shown it.
-- The pictures are `wl_shm` bytes copied through a staging buffer. There is no DMA-BUF path yet.
+- No headset has shown it: it has run only against Monado's null compositor, which accepts the layers and shows
+  nothing. WiVRn, real controllers and a runtime that loses a session are untried.
+- The pictures are `wl_shm` bytes copied through a staging buffer. There is no DMA-BUF path in the extension: the
+  compositor imports a client's DMA-BUF and draws it, and a View of it is read back through the GPU, but the
+  extension's capture asks for shared memory only.
+- A stereo View is a fixed stereoscopic picture. Nothing writes the head pose into the tree, so a View does not follow
+  the head, and a layer drawn from a pose that is later than its picture is not handled.
 - Windows from every workspace are in the room, not only the active one.
 - The layer budget of the runtime is not read by the shell. A runtime that cannot show every panel drops the ones past
   its limit, head-locked panels first.

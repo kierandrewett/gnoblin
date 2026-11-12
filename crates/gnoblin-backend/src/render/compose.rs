@@ -89,7 +89,7 @@ use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Scale, 
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
-use gnoblin_render_software::{ViewCamera, ViewProjection, render_view};
+use gnoblin_render_software::{Frustum, StereoRig, ViewCamera, ViewProjection, ViewRig, eye_sizes, render_rig};
 
 use crate::log;
 
@@ -126,6 +126,10 @@ const VIEW_NEAR: f64 = 0.1;
 const VIEW_FAR: f64 = 10_000.0;
 /// The vertical field of view of a perspective camera that sets none, in degrees.
 const VIEW_FOV: f64 = 60.0;
+/// The scene unit of a camera that sets no `metres`, in metres: a millimetre, as the schema's default.
+const VIEW_METRES: f64 = 0.001;
+/// The distance between a stereo camera's eyes when it sets none, in metres.
+const VIEW_IPD: f64 = 0.063;
 
 /// A View node's rendered picture: the size it was drawn at, the image of its source
 /// subtree (or `None` when it has no source or the source cannot be drawn), and the view
@@ -278,8 +282,10 @@ enum CloseEnd {
 /// A window that is closing: the picture it kept and the crop it was drawn with.
 #[derive(Clone, Debug)]
 struct Closing {
-    /// The buffer's pixels, read back when the window was closed.
-    image: Arc<Image>,
+    /// The pixels the window keeps: a copy of its buffer, read back when the window was closed, or a client's GPU
+    /// buffer, which the handle keeps alive with its own plane descriptors and a GPU renderer draws as it drew the
+    /// window.
+    source: SurfaceSource,
     /// The crop and transform the window was drawn with, so the picture matches it.
     content: Content,
     /// What the window becomes when the fade ends.
@@ -874,9 +880,9 @@ impl Composer {
             log::debug!(area = "render", %view, "a view inside its own source draws nothing");
             return (None, None);
         }
-        let camera = self.view_camera(view, size);
+        let rig = self.view_rig(view, size);
         let mut pictures = self.window_pictures(&nodes, reader);
-        let image = render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image();
+        let image = render_rig(&self.scene, source, &rig, size, |node| pictures.get(&node)).into_image();
         if secure.is_empty() {
             return (Some(image), None);
         }
@@ -894,7 +900,7 @@ impl Composer {
                 }
             }
         }
-        let redacted = render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image();
+        let redacted = render_rig(&self.scene, source, &rig, size, |node| pictures.get(&node)).into_image();
         (Some(image), Some(redacted))
     }
 
@@ -938,17 +944,20 @@ impl Composer {
         pictures
     }
 
-    /// The camera a View draws through. Without a camera node the view is orthographic, with
-    /// its origin at the top left and its image centred on the camera's axis. A camera node's
-    /// own transform is its pose; its `projection` text and `fov`, `near` and `far` numbers
-    /// choose the projection and clip planes.
-    fn view_camera(&self, view: NodeId, size: Size) -> ViewCamera {
+    /// How a View draws its source: through the camera node its `camera` names, or flat without one. Without a camera
+    /// node the view is orthographic, with its origin at the top left and its image centred on the camera's axis. A
+    /// camera node's own transform is its pose; its `projection` text and `fov`, `near` and `far` numbers choose the
+    /// projection and clip planes. Four `fov_*` angles that are not all zero make an off-axis frustum of a
+    /// `perspective` camera. A `stereo` camera is two eyes side by side, `ipd` metres apart (in the camera's own
+    /// `metres`), the frustum being the left eye's. A frustum or an eye separation that cannot be drawn is
+    /// [`ViewRig::Blank`].
+    fn view_rig(&self, view: NodeId, size: Size) -> ViewRig {
         let camera = self
             .scene
             .camera(view)
             .filter(|camera| self.scene.node(*camera).is_some());
         let Some(camera) = camera else {
-            return ViewCamera {
+            return ViewRig::Mono(ViewCamera {
                 position: Vec3 {
                     x: f64::from(size.width) / 2.0,
                     y: f64::from(size.height) / 2.0,
@@ -958,7 +967,7 @@ impl Composer {
                 projection: ViewProjection::Orthographic,
                 near: VIEW_NEAR,
                 far: VIEW_FAR,
-            };
+            });
         };
         let (position, rotation_degrees) = self
             .scene
@@ -966,18 +975,49 @@ impl Composer {
             .map_or((Vec3::default(), Vec3::default()), |transform| {
                 (transform.base.offset, transform.base.rotation_degrees)
             });
-        let projection = match self.scene.text(camera, "projection") {
-            Some("perspective") => ViewProjection::Perspective {
-                vertical_fov_degrees: self.scene.number(camera, "fov").unwrap_or(VIEW_FOV),
-            },
-            _ => ViewProjection::Orthographic,
+        let near = self.scene.number(camera, "near").unwrap_or(VIEW_NEAR);
+        let far = self.scene.number(camera, "far").unwrap_or(VIEW_FAR);
+        let vertical = self.scene.number(camera, "fov").unwrap_or(VIEW_FOV);
+        let [left, right, up, down] =
+            ["fov_left", "fov_right", "fov_up", "fov_down"].map(|key| self.scene.number(camera, key).unwrap_or(0.0));
+        let off_axis = [left, right, up, down].iter().any(|angle| *angle != 0.0);
+        let mono = |projection| {
+            ViewRig::Mono(ViewCamera {
+                position,
+                rotation_degrees,
+                projection,
+                near,
+                far,
+            })
         };
-        ViewCamera {
-            position,
-            rotation_degrees,
-            projection,
-            near: self.scene.number(camera, "near").unwrap_or(VIEW_NEAR),
-            far: self.scene.number(camera, "far").unwrap_or(VIEW_FAR),
+        match self.scene.text(camera, "projection") {
+            Some("perspective") if off_axis => Frustum::from_degrees(left, right, up, down)
+                .map_or(ViewRig::Blank, |frustum| mono(frustum.projection())),
+            Some("perspective") => mono(ViewProjection::Perspective {
+                vertical_fov_degrees: vertical,
+            }),
+            Some("stereo") => {
+                let [eye, _] = eye_sizes(size);
+                let frustum = if off_axis {
+                    Frustum::from_degrees(left, right, up, down)
+                } else {
+                    Frustum::symmetric(vertical, f64::from(eye.width) / f64::from(eye.height))
+                };
+                let metres = self.scene.number(camera, "metres").unwrap_or(VIEW_METRES);
+                let ipd = self.scene.number(camera, "ipd").unwrap_or(VIEW_IPD);
+                match frustum {
+                    Some(left) if metres.is_finite() && metres > 0.0 => ViewRig::Stereo(StereoRig {
+                        position,
+                        rotation_degrees,
+                        eye_separation: ipd / metres,
+                        left,
+                        near,
+                        far,
+                    }),
+                    _ => ViewRig::Blank,
+                }
+            }
+            _ => mono(ViewProjection::Orthographic),
         }
     }
 
@@ -1319,13 +1359,18 @@ impl Composer {
         let entry = self.windows.get(&window)?;
         let source = entry.buffer.as_ref()?;
         let content = entry.content?;
-        let image = match source {
-            SurfaceSource::Buffer(buffer) => Arc::new(shm::readback(buffer).ok()?),
-            SurfaceSource::Snapshot(image) => Arc::clone(image),
-            // A GPU buffer has no CPU picture to keep, so a window that shows one leaves without a fade.
-            SurfaceSource::Dmabuf(_) => return None,
+        let source = match source {
+            SurfaceSource::Buffer(buffer) => SurfaceSource::Snapshot(Arc::new(shm::readback(buffer).ok()?)),
+            SurfaceSource::Snapshot(image) => SurfaceSource::Snapshot(Arc::clone(image)),
+            // A GPU buffer has no CPU picture to copy, and needs none: the handle owns the plane descriptors, so it
+            // outlives the client's `wl_buffer`, and the renderer that imported it draws it again for the fade.
+            SurfaceSource::Dmabuf(dmabuf) => SurfaceSource::Dmabuf(dmabuf.clone()),
         };
-        Some(Closing { image, content, on_end })
+        Some(Closing {
+            source,
+            content,
+            on_end,
+        })
     }
 
     /// The body of [`Composer::close_window`]: fades the picture `closing` keeps, or removes
@@ -3244,7 +3289,7 @@ impl Composer {
         };
         self.push_children(&paint, node, true, frame, spatial);
         let own = match &entry.closing {
-            Some(closing) => Some((SurfaceSource::Snapshot(Arc::clone(&closing.image)), closing.content)),
+            Some(closing) => Some((closing.source.clone(), closing.content)),
             // A window whose client has committed content but no buffer has no pixels to draw.
             None => entry
                 .content
@@ -3815,7 +3860,7 @@ mod tests {
         composer.close_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Remove,
             }),
@@ -3850,7 +3895,7 @@ mod tests {
         composer.close_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Remove,
             }),
@@ -3874,7 +3919,7 @@ mod tests {
         composer.close_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Remove,
             }),
@@ -3900,7 +3945,7 @@ mod tests {
         composer.unmap_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -3941,7 +3986,7 @@ mod tests {
         composer.unmap_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4001,7 +4046,7 @@ mod tests {
         composer.hide_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4038,7 +4083,7 @@ mod tests {
         composer.hide_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4087,7 +4132,7 @@ mod tests {
         composer.hide_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4110,7 +4155,7 @@ mod tests {
         composer.hide_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4134,7 +4179,7 @@ mod tests {
         composer.hide_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4168,7 +4213,7 @@ mod tests {
         composer.unmap_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4203,7 +4248,7 @@ mod tests {
         composer.unmap_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4244,7 +4289,7 @@ mod tests {
         composer.unmap_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Hide,
             }),
@@ -4288,7 +4333,7 @@ mod tests {
         composer.close_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Remove,
             }),
@@ -4318,7 +4363,7 @@ mod tests {
         composer.close_with_snapshot(
             window,
             Some(Closing {
-                image: picture(),
+                source: SurfaceSource::Snapshot(picture()),
                 content: content(),
                 on_end: CloseEnd::Remove,
             }),
@@ -6146,6 +6191,154 @@ mod tests {
         let pictures = composer.view_pictures();
         assert_eq!(pictures.len(), 1);
         assert_eq!(pictures[0].1.pixel(Point::new(5, 5)), Some([77, 0, 0, 255]));
+    }
+
+    /// A camera node (3) that the View (1) of a 40 by 30 canvas draws through: `projection`, positioned at
+    /// (20, 15, 100) in front of the canvas, with `numbers` set on top of the schema's defaults.
+    fn view_through_camera(projection: &str, numbers: &[(&str, f64)]) -> Composer {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(2);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        add_view(&mut composer, NodeId::new(1), None, Some(canvas));
+        let camera = NodeId::new(3);
+        composer.with_scene(|scene| {
+            scene
+                .insert(camera, NodeSpec::new(Rect::new(0, 0, 0, 0)))
+                .expect("a camera node");
+            scene
+                .set_class(camera, Some("camera".to_owned()))
+                .expect("the camera's class");
+            scene
+                .set_text(camera, "projection", projection.to_owned())
+                .expect("the camera's projection");
+            for (key, value) in numbers {
+                scene.set_number(camera, key, *value).expect("a camera number");
+            }
+            let mut transform = *scene.transform(camera).expect("the camera's transform");
+            transform.base.offset = Vec3 {
+                x: 20.0,
+                y: 15.0,
+                z: 100.0,
+            };
+            scene.set_transform(camera, transform).expect("the camera's pose");
+            scene
+                .set_camera(NodeId::new(1), Some(camera))
+                .expect("the view's camera");
+        });
+        let _ = view_layers(&mut composer, output);
+        composer
+    }
+
+    /// The pixel of the picture a View draws at `(x, y)`, or `None` when it has none.
+    fn view_pixel(composer: &Composer, view: NodeId, x: i32, y: i32) -> Option<[u8; 4]> {
+        let (_, picture) = composer.view_pictures().into_iter().find(|(node, _)| *node == view)?;
+        picture.pixel(Point::new(x, y))
+    }
+
+    #[test]
+    fn a_view_through_a_stereo_camera_draws_each_eye_in_its_half_from_its_side() {
+        // The eyes are 63 units apart (0.063 m at 1 mm a unit), 100 units from the canvas. The left eye, at x = -11.5,
+        // sees the canvas at the right of its half; the right eye, at x = 51.5, sees it at the left of its half.
+        let composer = view_through_camera("stereo", &[]);
+        let view = NodeId::new(1);
+        assert_eq!(
+            view_pixel(&composer, view, 19, 15),
+            Some(CANVAS_PIXEL),
+            "left eye, right edge of its half"
+        );
+        assert_eq!(
+            view_pixel(&composer, view, 0, 15),
+            Some(BACKGROUND_PIXEL),
+            "left eye, left edge of its half"
+        );
+        assert_eq!(
+            view_pixel(&composer, view, 20, 15),
+            Some(CANVAS_PIXEL),
+            "right eye, left edge of its half"
+        );
+        assert_eq!(
+            view_pixel(&composer, view, 39, 15),
+            Some(BACKGROUND_PIXEL),
+            "right eye, right edge of its half"
+        );
+    }
+
+    #[test]
+    fn the_eye_separation_follows_ipd_and_metres() {
+        // No separation: both eyes are at x = 20, and see the canvas centred in their half.
+        let composer = view_through_camera("stereo", &[("ipd", 0.0)]);
+        let view = NodeId::new(1);
+        assert_eq!(view_pixel(&composer, view, 10, 15), Some(CANVAS_PIXEL));
+        assert_eq!(view_pixel(&composer, view, 30, 15), Some(CANVAS_PIXEL));
+        assert_eq!(view_pixel(&composer, view, 0, 15), view_pixel(&composer, view, 20, 15));
+        // The same 0.063 m in metres of 0.002 is 31.5 units: half the displacement, so the canvas fills more of
+        // each half than at 63 units.
+        let wide = view_through_camera("stereo", &[]);
+        let narrow = view_through_camera("stereo", &[("metres", 0.002)]);
+        let red = |composer: &Composer| {
+            (0..20)
+                .filter(|x| view_pixel(composer, view, *x, 15) == Some(CANVAS_PIXEL))
+                .count()
+        };
+        assert!(red(&narrow) > red(&wide), "{} vs {}", red(&narrow), red(&wide));
+    }
+
+    #[test]
+    fn a_stereo_camera_with_an_unusable_frustum_or_scale_draws_a_blank_picture() {
+        let view = NodeId::new(1);
+        for numbers in [
+            vec![
+                ("fov_left", 30.0),
+                ("fov_right", -30.0),
+                ("fov_up", 30.0),
+                ("fov_down", -30.0),
+            ],
+            vec![("fov", 0.0)],
+            vec![("metres", 0.0)],
+            vec![("ipd", -1.0)],
+        ] {
+            let composer = view_through_camera("stereo", &numbers);
+            for x in [0, 10, 19, 20, 30, 39] {
+                assert_eq!(
+                    view_pixel(&composer, view, x, 15),
+                    Some(BACKGROUND_PIXEL),
+                    "{numbers:?} at {x}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_off_axis_perspective_camera_shifts_the_view_and_a_bad_frustum_blanks_it() {
+        let view = NodeId::new(1);
+        // A frustum that reaches 50 degrees left and 5 right puts the canvas (straight ahead) at the picture's right.
+        let shifted = view_through_camera(
+            "perspective",
+            &[
+                ("fov_left", -50.0),
+                ("fov_right", 5.0),
+                ("fov_up", 30.0),
+                ("fov_down", -30.0),
+            ],
+        );
+        assert_eq!(view_pixel(&shifted, view, 39, 15), Some(CANVAS_PIXEL));
+        assert_eq!(view_pixel(&shifted, view, 0, 15), Some(BACKGROUND_PIXEL));
+        let blank = view_through_camera(
+            "perspective",
+            &[
+                ("fov_left", 5.0),
+                ("fov_right", -50.0),
+                ("fov_up", 30.0),
+                ("fov_down", -30.0),
+            ],
+        );
+        assert_eq!(view_pixel(&blank, view, 39, 15), Some(BACKGROUND_PIXEL));
     }
 
     /// What a canvas filled with red 77 looks like under a View, and what the neutral grey of a secure node is.

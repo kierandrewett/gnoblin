@@ -2,8 +2,20 @@
 
 > **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
-Status: proposal (D34), revised 2026-11-08 after Kieran's second review. Nothing is built. This document replaces the
-plan in the Doop frames XR 1 to XR 4 (three levels, portals, parked questions).
+Status: proposal (D34), revised 2026-11-08 after Kieran's second review; D35 folded the extension into a program on the
+owner socket. This document replaces the plan in the Doop frames XR 1 to XR 4 (three levels, portals, parked
+questions). See "Step 12 status" at the end of this section for what is built.
+
+**Step 12 status (2026-11-12, branch `step12`).** Built and tested without a headset: quad layers per View with the pose
+and size from the tree; stereo and off-axis `Camera` (the compositor draws a View through a `stereo` camera as two
+eyes side by side, from `ipd`, `metres` and four `fov_*` angles; the extension submits it as a projection layer whose
+eyes it states from the same camera, `xr-scene/src/rig.rs`); the gaze and controller ray as pointer input on the `xr`
+seat; a runtime that is missing, refuses the session, loses it or exits is retried with backoff over the same owner
+connection and the `xr` seat is destroyed when a session ends; a recorded tree (`xr-tree/tests/recorded/`) replayed
+through the planner with a moving head pose. Not built, or built and unproven: head-tracked stereo (nothing writes the
+head pose into the tree, and the picture-to-pose pairing it needs is not designed), the head camera's `layer_budget`,
+DMA-BUF into the headset's swapchain, WiVRn, and anything on a headset: the null compositor accepts the layers and
+shows nothing. `docs/xr.md` lists what is proven and what is not.
 
 Labels: a claim with a file and line was read in this tree at `0becb6ae5`. A claim marked (unverified) was not read
 in source, in a specification or in a test.
@@ -470,7 +482,12 @@ Code today:
 ### G8: off-axis projection
 
 - **What:** a projection from four angles (left, right, up, down), as OpenXR reports them. Projection panels only.
-- **Code today:** `Mat4::perspective` is symmetric about a centre (`crates/gnoblin-render/src/matrix.rs:151-162`).
+- **Status:** done, 2026-11-12. `Camera` has `fov_left`, `fov_right`, `fov_up` and `fov_down` in degrees (all zero
+  means the symmetric frustum from `fov`), `ipd` and `metres`. The CPU View renderer draws them
+  (`crates/gnoblin-render-software/src/stereo.rs`: `Frustum`, `StereoRig`, `render_rig`), with unit tests for the
+  frustum edges, the lens shift, the mirror for the right eye, the eye positions and the disparity.
+- **Code before:** `Mat4::perspective` is symmetric about a centre (`crates/gnoblin-render/src/matrix.rs:151-162`). It
+  still is: the View renderer has its own projection.
 
 ### G9: frame callbacks for content only a view shows
 

@@ -7,7 +7,10 @@ name = "camera"
 since = "0.2.0"
 base = "node"
 
-# `orthographic`, `perspective`, or `stereo` (stereo in step 12).
+# `orthographic`, `perspective`, or `stereo`. A View draws its source through the camera it names:
+# `orthographic` is the flat default, `perspective` projects with `fov` (or the four `fov_*` angles), and
+# `stereo` draws two eyes side by side in the View's picture, the left eye in the left half, from the
+# camera's pose, `ipd` and the frustum. Any other text draws as orthographic.
 [[object.property]]
 name = "projection"
 type = "string"
@@ -32,9 +35,50 @@ type = "double"
 since = "0.2.0"
 default = 1000.0
 
+# The vertical field of view in degrees, for a `perspective` camera or a `stereo` camera whose four `fov_*`
+# angles are all zero. The horizontal field follows the picture's aspect ratio (one eye's, for `stereo`).
 [[object.property]]
 name = "fov"
 type = "double"
 since = "0.2.0"
 default = 60.0
 animated = true
+
+# The distance between a `stereo` camera's eyes, in metres. The left eye sits half of it to the camera's left,
+# the right eye half to its right, along the camera's own x axis. It is converted to the camera's own units
+# with `metres`.
+[[object.property]]
+name = "ipd"
+type = "double"
+since = "0.2.0"
+default = 0.063
+
+# An off-axis frustum, in degrees, as OpenXR states a field of view: `fov_left` and `fov_down` are negative
+# for a symmetric view, a point on the left edge of the frustum lands on the left edge of the picture. All four
+# zero (the default) means the symmetric frustum from `fov`. For a `stereo` camera they describe the left eye
+# and the right eye uses the mirror image (`fov_left` and `fov_right` swapped and negated), as a headset's two
+# eyes do. A set that is not a frustum (`fov_left` not below `fov_right`, `fov_down` not below `fov_up`, or an
+# angle of 90 degrees or more) draws a blank picture.
+[[object.property]]
+name = "fov_left"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+[[object.property]]
+name = "fov_right"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+[[object.property]]
+name = "fov_up"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+[[object.property]]
+name = "fov_down"
+type = "double"
+since = "0.2.0"
+default = 0.0

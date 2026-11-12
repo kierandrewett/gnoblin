@@ -20,11 +20,15 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
       child and no real process is started. `status` reports `no-runtime` when no manifest is found.
 - **`xr-scene`** (library, no dependencies): the pure translation from the `room` subtree to layer placements, and the
   ray pick against them. `plan` walks the `room` Views in tree order and returns the `Quad` and `Projection` layers to
-  submit, with the skipped Views and their reasons. `pick` tests a ray against the quads in reverse submission order and
+  submit, with the skipped Views and their reasons. A View whose `camera` names a stereo camera is a `Projection`
+  layer whose two eyes `rig::eyes` states from the camera's pose, `ipd`, `metres` and frustum (the same eyes the
+  compositor draws, `gnoblin-render-software` `stereo.rs`); a camera that cannot be drawn skips the View as
+  `InvalidCamera`. `pick` tests a ray against the quads in reverse submission order and
   returns the View's pixel coordinates. It has no OpenXR or socket code, so its rules are tested without a headset. See
   `crates/xr-scene/README.md`.
 - **`xr-layers`** (library, no OpenXR types): `compose` turns the planned layers and the ready swapchain of each View into
-  the layers to submit: a quad per flat View, a projection per stereo View, in plan order. Opacity below 1 becomes a
+  the layers to submit: a quad per flat View, a projection per stereo View (with the eyes the plan carries, left eye in
+  the left half of the picture), in plan order. Opacity below 1 becomes a
   colour scale when `XR_KHR_composition_layer_color_scale_bias` is enabled. Layers beyond `maxLayerCount` are dropped,
   head-locked ones first, and reported `layer-budget`. See `crates/xr-layers/README.md`.
 - **`xr-input`** (library, no OpenXR types): the controller input model. A `ControllerState` (the pointing ray, the
@@ -39,25 +43,33 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
 - **`xr-session`**: `OpenxrRuntime::connect_vulkan` opens a session on that Vulkan device, with swapchains and layer
   submission. `OpenxrRuntime::connect` is still the headless session. A runtime without `XR_KHR_vulkan_enable2` is
   refused with a message that names the extension.
+- **`xr-tree`** (library): the owner-socket tree client. `TreeClient::connect_recording` also writes every frame it
+  receives to a file, and `replay` serves such a file back to a client one change batch at a time. The recording in
+  `crates/xr-tree/tests/recorded/` is what the owner sent while the stock shell built a room, moved the focus, closed a
+  window and tore the room down; `tests/recorded.rs` replays it and checks the planner against it as the head moves.
 - **`gnoblin-xr`** `surfaces.rs`: one swapchain per planned View. It is made when the View first has a picture, remade when
   the picture's size changes, filled only when the capture's `serial` changes, and destroyed when the View leaves the plan
-  or the bridge ends. A swapchain is submitted only after a picture is in it.
+  or the bridge ends. A swapchain is submitted only after a picture is in it. A swapchain whose runtime calls fail (one
+  the runtime lost) is destroyed and made again on the next pass.
 - **`gnoblin-xr`** pointer (`src/pointer.rs`): each frame the runtime's controller is read (`Runtime::locate_controller`) and the pointing ray is cast against the planned quads with `xr_scene::pick`. A hit sends `motion` to the owner over the window the View shows, on a seat named `xr`: the bridge reuses a seat of that name from the owner snapshot and creates one on first use. A miss sends `leave` for the window last hovered, unless a button is held. Select is `BTN_LEFT`, secondary is `BTN_RIGHT` and the stick scrolls. A press grabs the window under the ray until the last button is up; the coordinates keep following the ray on the grabbed window's plane. The owner refusing an op is logged, not fatal.
 - **`gnoblin-xr`** (binary): connects to the owner socket (`$GNOBLIN_IPC_SOCKET`, else `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`),
   attaches to the `tree` namespace, opens a Vulkan OpenXR session and runs `bridge::run`. When the runtime cannot give a
   Vulkan session it prints why and runs a headless session, which plans and drives the pointer and shows nothing. The
   bridge polls the owner socket and runs one frame per pass. Each frame plans the `room` subtree against the located head
   pose, pumps the captures, copies changed pictures into swapchains, and ends the frame with the composed layers. It logs
-  the layer and skipped counts, the dropped or degraded Views and the failures when they change. It exits when the runtime asks the session to exit or the owner
-  closes the socket. `--help` and `--version` print and exit without connecting.
+  the layer and skipped counts, the dropped or degraded Views and the failures when they change. A session that cannot
+  start, fails or ends (`supervise.rs`) is followed by a new one after a wait of 250 ms that doubles to 4 s, over the same
+  owner connection; the `xr` seat the pointer made is destroyed when a session ends, so the shell takes the room down. It
+  exits only when the owner closes the socket (status 0) or fails it (status 1). `--help` and `--version` print and exit
+  without connecting.
 
 ## What does not exist
 
-- No projection picture: a View under a stereo camera is submitted as a projection layer whose eyes read the left and
-  right halves of the View's one picture. That is the extension's convention, and the owner does not yet draw stereo
-  pictures.
+- No head-tracked stereo: a stereo View's eyes come from its camera in the tree, and nothing writes the head pose
+  into the tree, so the picture is fixed in the room and does not follow the head.
 - No DMA-BUF path: pictures are `wl_shm` bytes, copied through a staging buffer.
-- No environment, no layers of the extension's own. Buttons and scroll are not wired: the runtime has no button source yet.
+- No environment, no layers of the extension's own.
+- Nothing here has run on a headset. The null compositor of Monado accepts the layers and draws nothing.
 
 ## Starting
 

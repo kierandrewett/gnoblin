@@ -6,9 +6,9 @@ turns each `SubmittedLayer` into the `openxr` structs.
 
 ## API
 
-- `compose(layers, swapchain, eyes, limits) -> Submission`: `layers` is `Plan::layers` in submission order. `swapchain`
-  finds the ready swapchain of a View. `eyes` are the frame's two eye views, which only projection layers need. The result
-  holds the layers to submit, in plan order, and the `notices`.
+- `compose(layers, swapchain, limits) -> Submission`: `layers` is `Plan::layers` in submission order. `swapchain`
+  finds the ready swapchain of a View. A projection layer carries its two eyes in the plan. The result holds the layers
+  to submit, in plan order, and the `notices`.
 - `QuadLayer`: swapchain, space (`World` is the local reference space, `View` the head-locked one), pose, size in metres,
   `EyeVisibility::Both`, the image sub-rectangle, and an optional colour scale.
 - `ProjectionLayer`: swapchain, space, and one `ProjectionEye` (pose, field of view, image rectangle) per eye.
@@ -23,9 +23,9 @@ turns each `SubmittedLayer` into the `openxr` structs.
   (captures are premultiplied). Without it the layer is submitted opaque and reported `opacity-ignored`.
 - The budget is `max_layer_count - reserved`. World layers keep it before head-locked ones. Layers that do not fit are
   dropped and reported `layer-budget`.
-- A projection layer reads the left half of the View's image with the left eye and the right half with the right eye. The
-  owner does not yet draw stereo pictures, so this is the extension's convention. Without eye views a projection layer is
-  reported `no-eyes`.
+- A projection layer reads the left half of the View's image with the left eye and the right half with the right eye,
+  which is how the compositor draws a View whose camera is `stereo`. The eyes are the plan's: they come from the camera
+  in the tree, not from the runtime.
 
 ```sh
 cd extensions/gnoblin-xr

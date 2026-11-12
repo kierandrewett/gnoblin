@@ -10,11 +10,16 @@
 //! `xr-scene` reads. The protocol's `stereo` becomes [`CameraProjection::Stereo`].
 //! A projection of `perspective` becomes [`CameraProjection::Orthographic`]: it is not
 //! `stereo`, and `xr-scene` has no perspective projection of its own.
-//! A camera's `metres` defaults to `0.001`, as the schema does.
+//! [`TreeClient::connect_recording`] writes every frame it receives to a file, and [`replay`] serves such a file back
+//! to a client one change batch at a time: a recorded stream is a test input that no compositor has to produce again.
+//! A camera's `metres` defaults to `0.001`, as the schema does, and its stereo rig (`ipd`, `fov` and the four `fov_*`
+//! angles) to the schema's defaults. A View's `camera` reference is kept: a View that names a stereo camera is a
+//! projection layer.
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::io::{self, Read};
+use std::fs::File;
+use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -25,7 +30,9 @@ use gnoblin_proto::tree::tree::{
 };
 use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, IPC_VERSION, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, Version, read_frame, write_frame};
-use xr_scene::{CameraProjection, Class, NodeId, TreeNode, TreeView};
+use xr_scene::{CameraProjection, Class, NodeId, Rig, TreeNode, TreeView};
+
+pub mod replay;
 
 /// The owner socket namespace the tree lives in.
 pub const NAMESPACE: &str = "tree";
@@ -198,6 +205,8 @@ pub struct TreeClient {
     tx_serial: u64,
     /// The low 32 bits of the next node id this client allocates, after the epoch.
     next_node: u64,
+    /// Where every frame received is also written, as it arrived, for [`replay`].
+    recording: Option<File>,
 }
 
 impl TreeClient {
@@ -209,6 +218,21 @@ impl TreeClient {
     /// compositor refuses the attach, such as `not-owner` or `shell-already-attached`
     /// ([`TreeError::Refused`]); or the snapshot does not complete in time.
     pub fn connect(path: &Path) -> Result<Self, TreeError> {
+        Self::connect_with(path, None)
+    }
+
+    /// As [`TreeClient::connect`], and writes every frame the owner sends, from the attach reply on, to `recording`
+    /// in the order it arrived. The file is what [`replay`] reads.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`TreeClient::connect`], and the file cannot be created ([`TreeError::Io`]).
+    pub fn connect_recording(path: &Path, recording: &Path) -> Result<Self, TreeError> {
+        let file = File::create(recording).map_err(TreeError::Io)?;
+        Self::connect_with(path, Some(file))
+    }
+
+    fn connect_with(path: &Path, recording: Option<File>) -> Result<Self, TreeError> {
         let transport =
             UnixTransport::connect(path).map_err(|error| TreeError::Connect(format!("{}: {error}", path.display())))?;
         let client = Client::connect(transport, Version::new(IPC_VERSION.0, IPC_VERSION.1, IPC_VERSION.2))
@@ -217,7 +241,7 @@ impl TreeClient {
             .into_inner()
             .into_stream()
             .map_err(|error| TreeError::Connect(error.to_string()))?;
-        Self::from_stream(stream)
+        Self::attach(stream, recording)
     }
 
     /// Attaches over a socket whose handshake is already done, and reads the snapshot.
@@ -226,6 +250,10 @@ impl TreeClient {
     ///
     /// The same as [`TreeClient::connect`], without the connect step.
     pub fn from_stream(stream: UnixStream) -> Result<Self, TreeError> {
+        Self::attach(stream, None)
+    }
+
+    fn attach(stream: UnixStream, recording: Option<File>) -> Result<Self, TreeError> {
         stream.set_read_timeout(Some(READ_WAIT)).map_err(TreeError::Io)?;
         stream.set_write_timeout(Some(WRITE_WAIT)).map_err(TreeError::Io)?;
         let mut client = Self {
@@ -241,6 +269,7 @@ impl TreeClient {
             next_request_id: FIRST_REQUEST_ID + 1,
             tx_serial: 0,
             next_node: 0,
+            recording,
         };
         client.send(&Envelope::request_message(
             NAMESPACE,
@@ -328,6 +357,24 @@ impl TreeClient {
             },
         ])?;
         Ok(seat)
+    }
+
+    /// Destroys the seat `seat` in one owner transaction, and drops it from the model, so a seat made again by the
+    /// same name is a new one. The owner lets a connection destroy the seats it made.
+    ///
+    /// # Errors
+    ///
+    /// The owner refuses the transaction ([`TreeError::Refused`]), or the socket fails.
+    pub fn destroy_seat(&mut self, seat: NodeId) -> Result<(), TreeError> {
+        self.transact(vec![op::Properties {
+            kind: "destroy".to_owned(),
+            node: seat,
+            ..Default::default()
+        }])?;
+        self.detach(seat);
+        self.model.nodes.remove(&seat);
+        self.parents.remove(&seat);
+        Ok(())
     }
 
     /// Sends one pointer input to the owner, which delivers it on the named seat.
@@ -432,6 +479,9 @@ impl TreeClient {
             return Ok(None);
         }
         let frame: Vec<u8> = self.inbox.drain(..total).collect();
+        if let Some(recording) = &mut self.recording {
+            recording.write_all(&frame).map_err(TreeError::Io)?;
+        }
         match read_frame(&mut frame.as_slice()) {
             Ok(Some(envelope)) => Ok(Some(envelope)),
             Ok(None) => Err(TreeError::Protocol("an empty tree frame".to_owned())),
@@ -649,6 +699,7 @@ fn new_node(id: NodeId, class: &str) -> TreeNode {
             id,
             Class::View {
                 source: None,
+                camera: None,
                 width: 0.0,
                 height: 0.0,
             },
@@ -659,6 +710,7 @@ fn new_node(id: NodeId, class: &str) -> TreeNode {
                 id,
                 Class::Camera {
                     projection: CameraProjection::Orthographic,
+                    rig: Rig::default(),
                 },
             );
             node.metres = Some(CAMERA_METRES);
@@ -743,9 +795,28 @@ fn set_prop(node: &mut TreeNode, prop: &change::Properties) -> Result<(), TreeEr
                 *source = (prop.value_node != NIL).then_some(prop.value_node);
             }
         }
+        "camera" => {
+            expect_kind(prop, "node")?;
+            if let Class::View { camera, .. } = &mut node.class {
+                *camera = (prop.value_node != NIL).then_some(prop.value_node);
+            }
+        }
+        "ipd" | "fov" | "fov_left" | "fov_right" | "fov_up" | "fov_down" => {
+            expect_kind(prop, "double")?;
+            if let Class::Camera { rig, .. } = &mut node.class {
+                match prop.key.as_str() {
+                    "ipd" => rig.ipd = prop.value_double,
+                    "fov" => rig.fov_degrees = prop.value_double,
+                    "fov_left" => rig.angles_degrees[0] = prop.value_double,
+                    "fov_right" => rig.angles_degrees[1] = prop.value_double,
+                    "fov_up" => rig.angles_degrees[2] = prop.value_double,
+                    _ => rig.angles_degrees[3] = prop.value_double,
+                }
+            }
+        }
         "projection" => {
             expect_kind(prop, "text")?;
-            if let Class::Camera { projection } = &mut node.class {
+            if let Class::Camera { projection, .. } = &mut node.class {
                 *projection = match prop.value_text.as_str() {
                     "stereo" => CameraProjection::Stereo,
                     "orthographic" | "perspective" => CameraProjection::Orthographic,

@@ -13,7 +13,7 @@ use std::time::Duration;
 use xr_capture::views::FrameSource;
 use xr_gpu::Presenter;
 use xr_layers::{Limits, Notice, compose};
-use xr_scene::{IDENTITY, Layer, Options, Plan, Pose, plan};
+use xr_scene::{IDENTITY, Layer, Options, Plan, Pose, Projected, plan};
 use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
 use xr_tree::{TreeClient, TreeError};
@@ -82,7 +82,9 @@ pub struct FrameReport<'a> {
 ///
 /// With a `dump`, each picture copied into a swapchain is also written to its directory.
 ///
-/// The swapchains are destroyed before it returns.
+/// The swapchains are destroyed and the captures closed before it returns. When the session ends but the owner is
+/// still there, the `xr` seat the pointer made is destroyed too, so the stock shell takes the room down: a headset that
+/// is gone leaves no room behind.
 ///
 /// # Errors
 ///
@@ -96,13 +98,35 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
     presenter: &mut P,
     on_frame: impl FnMut(&FrameReport<'_>),
 ) -> Result<Outcome, BridgeError> {
-    let mut surfaces = Surfaces::new(dump);
-    let outcome = run_loop(tree, frames, opts, captures, presenter, &mut surfaces, on_frame);
+    let mut parts = Parts {
+        surfaces: Surfaces::new(dump),
+        pointer: Pointer::default(),
+    };
+    let outcome = run_loop(tree, frames, opts, captures, presenter, &mut parts, on_frame);
     // Best effort: the session is ending, and a failure here has nothing left to protect.
-    for fault in surfaces.clear(frames.runtime_mut()) {
+    for fault in parts.surfaces.clear(frames.runtime_mut()) {
         eprintln!("gnoblin-xr: {fault}");
     }
+    for (node, error) in captures.sync(&BTreeSet::new()) {
+        eprintln!("gnoblin-xr: view capture {node:?} failed: {error}");
+    }
+    // A socket that closed under a request is the owner going, as a poll that finds it closed is.
+    let outcome = match outcome {
+        Err(BridgeError::Tree(TreeError::Closed)) => Ok(Outcome::OwnerClosed),
+        other => other,
+    };
+    if !matches!(outcome, Ok(Outcome::OwnerClosed) | Err(BridgeError::Tree(_)))
+        && let Err(error) = parts.pointer.end(tree)
+    {
+        eprintln!("gnoblin-xr: the xr seat could not be released: {error}");
+    }
     outcome
+}
+
+/// What a run keeps from frame to frame, and what its end releases.
+struct Parts {
+    surfaces: Surfaces,
+    pointer: Pointer,
 }
 
 fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
@@ -111,10 +135,9 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
     opts: &Options,
     captures: &mut S,
     presenter: &mut P,
-    surfaces: &mut Surfaces,
+    parts: &mut Parts,
     mut on_frame: impl FnMut(&FrameReport<'_>),
 ) -> Result<Outcome, BridgeError> {
-    let mut pointer = Pointer::default();
     let capabilities = frames.runtime().capabilities();
     let limits = Limits {
         max_layer_count: capabilities.max_layer_count,
@@ -139,7 +162,9 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                 });
                 let planned = plan(tree.model(), &head, opts);
                 let controller = frames.locate_controller(frame.display_time)?;
-                pointer.update(tree, &planned.layers, &controller, frame.display_time)?;
+                parts
+                    .pointer
+                    .update(tree, &planned.layers, &controller, frame.display_time)?;
                 let wanted = view_nodes(&planned.layers);
                 for (node, error) in captures.sync(&wanted) {
                     eprintln!("gnoblin-xr: capture of view {node:?} failed: {error}");
@@ -149,18 +174,10 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                 let mut notices = Vec::new();
                 let mut faults = Vec::new();
                 if frame.should_render {
-                    faults = surfaces.sync(frames.runtime_mut(), presenter, &capabilities, &wanted, captures);
-                    let eyes = if planned.layers.iter().any(|layer| matches!(layer, Layer::Projection(_))) {
-                        frames.runtime_mut().locate_views(frame.display_time)?
-                    } else {
-                        None
-                    };
-                    let submission = compose(
-                        &planned.layers,
-                        &|view| surfaces.swapchain(view),
-                        eyes.as_ref(),
-                        &limits,
-                    );
+                    faults = parts
+                        .surfaces
+                        .sync(frames.runtime_mut(), presenter, &capabilities, &wanted, captures);
+                    let submission = compose(&planned.layers, &|view| parts.surfaces.swapchain(view), &limits);
                     layers = submission.layers;
                     notices = submission.notices;
                 }
@@ -182,10 +199,13 @@ fn view_nodes(layers: &[Layer]) -> BTreeSet<u64> {
     layers
         .iter()
         .map(|layer| match layer {
-            Layer::Quad(placement) | Layer::Projection(placement) => placement.id,
+            Layer::Quad(placement) | Layer::Projection(Projected { placement, .. }) => placement.id,
         })
         .collect()
 }
+
+#[cfg(test)]
+mod failure_modes;
 
 #[cfg(test)]
 mod tests {
@@ -210,9 +230,9 @@ mod tests {
     use super::*;
 
     /// The request id the client uses for its attach request.
-    const ATTACH_REQUEST_ID: u64 = 1;
+    pub(super) const ATTACH_REQUEST_ID: u64 = 1;
 
-    fn set(node: u64, key: &str) -> change::Properties {
+    pub(super) fn set(node: u64, key: &str) -> change::Properties {
         change::Properties {
             kind: "set".into(),
             node,
@@ -221,7 +241,7 @@ mod tests {
         }
     }
 
-    fn text(node: u64, key: &str, value: &str) -> change::Properties {
+    pub(super) fn text(node: u64, key: &str, value: &str) -> change::Properties {
         change::Properties {
             value_kind: "text".into(),
             value_text: value.into(),
@@ -229,7 +249,7 @@ mod tests {
         }
     }
 
-    fn double(node: u64, key: &str, value: f64) -> change::Properties {
+    pub(super) fn double(node: u64, key: &str, value: f64) -> change::Properties {
         change::Properties {
             value_kind: "double".into(),
             value_double: value,
@@ -237,7 +257,7 @@ mod tests {
         }
     }
 
-    fn node_ref(node: u64, key: &str, value: u64) -> change::Properties {
+    pub(super) fn node_ref(node: u64, key: &str, value: u64) -> change::Properties {
         change::Properties {
             value_kind: "node".into(),
             value_node: value,
@@ -245,7 +265,7 @@ mod tests {
         }
     }
 
-    fn snapshot_node(
+    pub(super) fn snapshot_node(
         id: u64,
         parent: u64,
         index: i64,
@@ -288,7 +308,7 @@ mod tests {
     }
 
     /// As [`serve`], and sends each transaction's ops to `ops_sink` when one is given.
-    fn serve_with_ops(
+    pub(super) fn serve_with_ops(
         nodes: Vec<snapshot_node::Properties>,
         hang_up: bool,
         ops_sink: Option<std::sync::mpsc::Sender<Vec<gnoblin_proto::tree::op::Properties>>>,
@@ -658,7 +678,7 @@ mod tests {
     const FRAME: i64 = 16_000_000;
 
     /// A controller whose ray is `ray` and that holds nothing.
-    fn aiming(ray: Ray) -> ControllerState {
+    pub(super) fn aiming(ray: Ray) -> ControllerState {
         ControllerState {
             ray: Some(ray),
             ..ControllerState::default()
@@ -666,7 +686,7 @@ mod tests {
     }
 
     /// The ray from `(x, 0, 0)` straight ahead.
-    fn ahead(x: f64) -> Ray {
+    pub(super) fn ahead(x: f64) -> Ray {
         Ray {
             origin: [x, 0.0, 0.0],
             direction: [0.0, 0.0, -1.0],
@@ -714,14 +734,14 @@ mod tests {
     }
 
     /// The input ops received since the last call, as `(kind, node, button, state)` for the kinds the tests compare.
-    fn received(
+    pub(super) fn received(
         ops: &std::sync::mpsc::Receiver<Vec<gnoblin_proto::tree::op::Properties>>,
     ) -> Vec<gnoblin_proto::tree::op::Properties> {
         ops.try_iter().flatten().filter(|op| op.kind == "input").collect()
     }
 
     /// `(input kind, node)` for each op.
-    fn kinds(sent: &[gnoblin_proto::tree::op::Properties]) -> Vec<(&str, u64)> {
+    pub(super) fn kinds(sent: &[gnoblin_proto::tree::op::Properties]) -> Vec<(&str, u64)> {
         sent.iter().map(|op| (op.input_kind.as_str(), op.node)).collect()
     }
 
@@ -1079,7 +1099,11 @@ mod tests {
         assert_eq!(outcome, Outcome::SessionExited);
 
         let sent = received(&ops);
-        assert_eq!(kinds(&sent), [("motion", 3), ("button", 3), ("button", 3)]);
+        assert_eq!(
+            kinds(&sent),
+            [("motion", 3), ("button", 3), ("button", 3), ("leave", 3)],
+            "the session's end leaves the window the ray was over"
+        );
         assert_eq!((sent[1].button, sent[1].state), (u64::from(BTN_LEFT), 1));
         assert_eq!((sent[2].button, sent[2].state), (u64::from(BTN_LEFT), 0));
     }
@@ -1117,11 +1141,11 @@ mod tests {
         assert!(!received(&ops).is_empty(), "the bridge kept trying");
     }
 
-    fn state(state: SessionState) -> Step {
+    pub(super) fn state(state: SessionState) -> Step {
         Step::Event(SessionEvent::StateChanged(state))
     }
 
-    fn timing(display_time: i64) -> Step {
+    pub(super) fn timing(display_time: i64) -> Step {
         Step::Frame(FrameTiming {
             predicted_display_time: display_time,
             should_render: true,
@@ -1131,14 +1155,14 @@ mod tests {
     /// Plays pictures for the Views. Each `pump` applies the next step: a View's new picture, or `None` to take it
     /// away. The bridge pumps once per pass, and a pass runs at most one frame, so step `n` is what frame `n` sees.
     #[derive(Default)]
-    struct ScriptedFrames {
+    pub(super) struct ScriptedFrames {
         steps: VecDeque<Vec<(u64, Option<Picture>)>>,
         current: BTreeMap<u64, Picture>,
-        wanted: Vec<BTreeSet<u64>>,
+        pub(super) wanted: Vec<BTreeSet<u64>>,
     }
 
     impl ScriptedFrames {
-        fn new(steps: Vec<Vec<(u64, Option<Picture>)>>) -> Self {
+        pub(super) fn new(steps: Vec<Vec<(u64, Option<Picture>)>>) -> Self {
             Self {
                 steps: steps.into(),
                 ..Self::default()
@@ -1167,7 +1191,7 @@ mod tests {
         }
     }
 
-    fn picture(width: u32, height: u32, serial: u64, fill: u8) -> Picture {
+    pub(super) fn picture(width: u32, height: u32, serial: u64, fill: u8) -> Picture {
         Picture {
             width,
             height,
@@ -1180,7 +1204,7 @@ mod tests {
 
     /// A `room` of one metre per thousand units, holding a View per `(id, x, z)` of 1920x1080 units. View `id`
     /// shows the window `id + 1`.
-    fn room_of(views: &[(u64, f64, f64)]) -> Vec<snapshot_node::Properties> {
+    pub(super) fn room_of(views: &[(u64, f64, f64)]) -> Vec<snapshot_node::Properties> {
         let mut nodes = vec![snapshot_node(
             1,
             0,
@@ -1208,14 +1232,14 @@ mod tests {
 
     /// The summary of what a run reported for each frame.
     #[derive(Default)]
-    struct Reports {
-        plans: Vec<Plan>,
-        notices: Vec<Vec<Notice>>,
-        faults: Vec<Vec<Fault>>,
+    pub(super) struct Reports {
+        pub(super) plans: Vec<Plan>,
+        pub(super) notices: Vec<Vec<Notice>>,
+        pub(super) faults: Vec<Vec<Fault>>,
     }
 
     impl Reports {
-        fn push(&mut self, report: &FrameReport<'_>) {
+        pub(super) fn push(&mut self, report: &FrameReport<'_>) {
             self.plans.push(report.plan.clone());
             self.notices.push(report.notices.to_vec());
             self.faults.push(report.faults.to_vec());
@@ -1223,7 +1247,7 @@ mod tests {
     }
 
     /// Runs the bridge over `nodes` with a graphics runtime that ends after `frames` frames.
-    fn run_frames(
+    pub(super) fn run_frames(
         nodes: Vec<snapshot_node::Properties>,
         runtime: FakeRuntime,
         steps: Vec<Vec<(u64, Option<Picture>)>>,
@@ -1247,14 +1271,14 @@ mod tests {
         (frames, presenter, captures, reports)
     }
 
-    fn script(frames: u32) -> Vec<Step> {
+    pub(super) fn script(frames: u32) -> Vec<Step> {
         let mut steps = vec![state(SessionState::Ready)];
         steps.extend((1..=frames).map(|n| timing(i64::from(n))));
         steps.push(state(SessionState::Exiting));
         steps
     }
 
-    fn quads(layers: &[SubmittedLayer]) -> Vec<&xr_layers::QuadLayer> {
+    pub(super) fn quads(layers: &[SubmittedLayer]) -> Vec<&xr_layers::QuadLayer> {
         layers
             .iter()
             .map(|layer| match layer {
@@ -1480,7 +1504,11 @@ mod tests {
         let runtime = FakeRuntime::with_graphics(script(1), 16);
         let views = [(2, -500.0, -1000.0), (4, 500.0, -1000.0)];
         let (_, _, captures, _) = run_frames(room_of(&views), runtime, vec![]);
-        assert_eq!(captures.wanted, vec![BTreeSet::from([2, 4])]);
+        assert_eq!(
+            captures.wanted,
+            vec![BTreeSet::from([2, 4]), BTreeSet::new()],
+            "the frame wants both Views, and the end of the session closes every capture"
+        );
     }
 
     #[test]

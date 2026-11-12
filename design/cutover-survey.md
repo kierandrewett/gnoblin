@@ -801,7 +801,8 @@ the same effects and is unaffected.
 - Shader effects from the tree. Either the tree gains `shader` (it carries `source` and `entry` properties already,
   `tree/effect.toml` bottom) or user shaders go (O7).
 - A GPU path for Views and for `Camera` projection (needed by XR at step 12). The CPU path redraws and re-uploads on every
-  stale View (`compose.rs:477-503`); the cost is unmeasured here.
+  stale View (`compose.rs:477-503`); the cost is unmeasured here. Step 12 measured the stereo View on the CPU path (section
+  16.7): 65 ms at 1920x1080, so a live stereo View of headset size still wants a GPU path or an `fps` cap.
 - ~~A PipeWire stream from any target: wiring `pipewire_start` into the portal ScreenCast request, plus `View` in `PlanePixels`.~~ Done in lane 9D for outputs (10C) and Views.
 
 #### (d) Lane sequence
@@ -1098,3 +1099,29 @@ Lane order across all four steps, by file overlap: **start now, disjoint:** 8A, 
 9B and 9D beside them; 11B and 11D after 11A. **After a decision:** 9A (O7), 10C and 11E (O12). 8D is the replacement-path work and needs no decision.
 Files shared by more than one lane: `gnoblin-wayland/src/state.rs` and `server.rs` (8B, 8C, 8D, 9A), `ipc/server.rs` (8C, 9A,
 10A), `config.toml` (8B, 8C, 10A, 11B), `design/docs-parity/allow.toml` and the generated `docs/public/gnoblin.d.lua` (all).
+
+### 16.7 Step 12: XR (status, lane Step12, 2026-11-12)
+
+Green line, `node-api-refactor.md` 7.2 row 12: "translational test on recorded trees". Row text: stereo and off-axis `Camera`, ray
+input, linux-dmabuf, `gnoblin-xr` per section 9. Everything below ran on Agent37, which has no GPU, no render node, no
+`/dev/dri`, no headset and no OpenXR hardware runtime; the whole stack ran against Monado's simulated headset, its null
+compositor and lavapipe.
+
+| Item                                          | State                   | Evidence                                                                                                                                                                                                                                                       |
+| --------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stereo and off-axis `Camera` (tree class)     | done                    | `tree/camera.toml` gains `ipd` and `fov_left`, `fov_right`, `fov_up`, `fov_down` (no IPC version change, O5). `compose.rs` `view_rig` reads them; the golden catalog is regenerated.                                                                           |
+| Projection maths, frustum, IPD                | done                    | `gnoblin-render-software/src/stereo.rs`: `Frustum`, `StereoRig`, `render_rig`, 14 unit tests (frustum edges, lens shift, mirror, eye positions, turning pair, disparity vs separation and depth, odd width, blank rigs). 4 composer tests through a real View. |
+| Stereo View cost (O8)                         | measured                | `tests/view_cost.rs`, release: 1 ms at 320x200, 4 ms at 640x360, 17 ms at 1280x720, 65 ms at 1920x1080, 141 ms at 3840x2160. O8 (b) stands for the stock shell (it makes no stereo View); a live stereo View at headset size wants the GPU path.               |
+| Ray input on the `xr` seat                    | done                    | Existed (`pointer.rs`, closed `gnoblin-l8kv`). Smoke checks (f): the gaze ray enters the focused client's window on the `xr` seat. Step 12 adds the session-end release: leave, held buttons up, seat destroyed.                                               |
+| Translational test on recorded trees          | done                    | `xr-tree/tests/recorded.rs` replays `recorded/stock-ring.frames` (the real stream from the compositor and stock shell, 41 states) through the planner for a walking, turning head: 6 tests.                                                                    |
+| `gnoblin-xr`: session, layers, input, restart | done*                   | Quad layers, stereo projection layers, swapchains, pointer and controller existed. New: reconnect with backoff, seat release, swapchain remake; 28 failure-mode tests. *Unproven on a headset (below).                                                         |
+| dmabuf: client buffers, capture constraints   | done, unproven on a GPU | Existed (`ad61dd8b1`, `f261f4eba`, `05bed9c7b`). Stand-in tests only: Agent37's EGL reports no dmabuf formats and no render node (`gnoblin-lubw`).                                                                                                             |
+| dmabuf close fade (`gnoblin-fxp4` item 1)     | done, stand-in only     | `Closing.source` keeps the `Dmabuf`; 3 composer tests. A fade drawn by a GPU renderer is unproven.                                                                                                                                                             |
+| dmabuf as a PipeWire stream buffer            | not done                | Needs a consumer that allocates DMA-BUFs and a GPU to render into them. The stream is memfd-only (`docs/shell-api/views.md`). Cannot be built and proven on Agent37.                                                                                           |
+| View and window cast sources (`gnoblin-z7ze`) | View done, window not   | A View is a cast source (`62f69acd1`). A window source needs a picker answer that carries a window identity, and the `position` and `size` stream properties need a tuple `Value`. Not started.                                                                |
+| Head-tracked stereo View                      | not done                | Nothing writes the head pose into the tree, and a layer submitted with a pose later than its picture needs the pairing the design never specified. A stereo View is fixed in the room.                                                                         |
+| `head.layer_budget`                           | not done                | Needs a narrow observer permission to write one read-only property. The shell does not read the budget.                                                                                                                                                        |
+
+Left open on purpose: `gnoblin-lubw` (everything that needs a render node), `gnoblin-e4a0` (implemented, hardware-unverified),
+`gnoblin-fxp4` (items 3 to 6: per-surface feedback, Vulkan import, nested dmabuf, explicit sync), `gnoblin-z7ze`, `gnoblin-ncam`.
+Not proven without a headset: that a headset shows the layers, WiVRn, real controllers, session loss on a real runtime.

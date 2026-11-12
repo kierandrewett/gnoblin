@@ -96,6 +96,11 @@ pub struct ViewImage {
 }
 
 impl ViewImage {
+    /// A picture made elsewhere in this crate, as a rendered view.
+    pub(crate) fn from_image(image: Image) -> Self {
+        Self { image }
+    }
+
     /// The image's size in pixels.
     #[must_use]
     pub fn size(&self) -> Size {
@@ -489,7 +494,7 @@ fn projection_rows(projection: ViewProjection, size: Size) -> Option<[[f64; 4]; 
 }
 
 /// The camera rotation `Rz · Ry · Rx`, in degrees about each axis.
-fn rotation_matrix(degrees: Vec3) -> [[f64; 3]; 3] {
+pub(crate) fn rotation_matrix(degrees: Vec3) -> [[f64; 3]; 3] {
     let (sin_x, cos_x) = degrees.x.to_radians().sin_cos();
     let (sin_y, cos_y) = degrees.y.to_radians().sin_cos();
     let (sin_z, cos_z) = degrees.z.to_radians().sin_cos();

@@ -1,9 +1,9 @@
 //! A scripted [`Runtime`] for the frame loop and bridge tests.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use xr_input::ControllerState;
-use xr_layers::{Eye, SubmittedLayer, SwapchainId};
+use xr_layers::{SubmittedLayer, SwapchainId};
 use xr_scene::Pose;
 
 use crate::runtime::{Capabilities, FrameTiming, Result, Runtime, RuntimeError, SessionEvent};
@@ -25,7 +25,6 @@ pub enum Call {
     EndFrame(i64),
     LocateHead(i64),
     LocateController(i64),
-    LocateViews(i64),
     CreateSwapchain { width: u32, height: u32, format: i64 },
     AcquireImage(SwapchainId),
     ReleaseImage(SwapchainId),
@@ -67,13 +66,14 @@ pub struct FakeRuntime {
     pub controller: ControllerState,
     /// One sample per `locate_controller` call, consumed from the front before `controller` applies.
     pub controller_script: VecDeque<ControllerState>,
-    pub eyes: Option<[Eye; 2]>,
     pub capabilities: Capabilities,
     pub calls: Vec<Call>,
     /// The layers of each `end_frame`, with its display time.
     pub submitted: Vec<(i64, Vec<SubmittedLayer>)>,
     /// The swapchains that exist now, by id.
     pub swapchains: BTreeMap<u64, FakeSwapchain>,
+    /// The swapchains the runtime has lost: acquiring an image of one fails, and destroying it still works.
+    pub lost: BTreeSet<u64>,
     next_swapchain: u64,
     /// Makes the call that is this many (1-based) calls in fail with
     /// `RuntimeError("injected failure")`. The failing call is still recorded.
@@ -173,11 +173,6 @@ impl Runtime for FakeRuntime {
         Ok(self.controller_script.pop_front().unwrap_or(self.controller))
     }
 
-    fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {
-        self.record(Call::LocateViews(display_time))?;
-        Ok(self.eyes)
-    }
-
     fn capabilities(&self) -> Capabilities {
         self.capabilities.clone()
     }
@@ -209,6 +204,9 @@ impl Runtime for FakeRuntime {
 
     fn acquire_image(&mut self, id: SwapchainId) -> Result<u32> {
         self.record(Call::AcquireImage(id))?;
+        if self.lost.contains(&id.0) {
+            return Err(RuntimeError(format!("swapchain {} is lost", id.0)));
+        }
         let chain = self.swapchain(id)?;
         if chain.acquired.is_some() {
             return Err(RuntimeError(format!(

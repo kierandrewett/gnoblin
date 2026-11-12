@@ -3,9 +3,9 @@
 use std::collections::BTreeMap;
 
 use xr_layers::{
-    Eye, EyeVisibility, Fov, ImageRect, Limits, Notice, NoticeKind, SubmittedLayer, SwapchainId, SwapchainRef, compose,
+    EyeVisibility, ImageRect, Limits, Notice, NoticeKind, SubmittedLayer, SwapchainId, SwapchainRef, compose,
 };
-use xr_scene::{IDENTITY, Layer, NodeId, Placement, Pose, Space};
+use xr_scene::{Eye, Fov, IDENTITY, Layer, NodeId, Placement, Pose, Projected, Space};
 
 const LIMITS: Limits = Limits {
     max_layer_count: 16,
@@ -75,6 +75,14 @@ fn eyes() -> [Eye; 2] {
     ]
 }
 
+/// A projection layer for View `id`, with the two eyes of [`eyes`].
+fn projection(id: NodeId, space: Space) -> Layer {
+    Layer::Projection(Projected {
+        placement: placement(id, space, 0.0, 1.0),
+        eyes: eyes(),
+    })
+}
+
 fn views(submitted: &[SubmittedLayer]) -> Vec<NodeId> {
     submitted
         .iter()
@@ -89,7 +97,7 @@ fn views(submitted: &[SubmittedLayer]) -> Vec<NodeId> {
 fn a_world_quad_keeps_the_planned_pose_size_and_swapchain() {
     let layers = [quad(2, Space::World)];
     let chains = swapchains(&[2]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
 
     assert!(out.notices.is_empty());
     let [SubmittedLayer::Quad(submitted)] = out.layers.as_slice() else {
@@ -118,7 +126,7 @@ fn a_world_quad_keeps_the_planned_pose_size_and_swapchain() {
 fn a_head_locked_quad_is_in_view_space() {
     let layers = [quad(2, Space::View)];
     let chains = swapchains(&[2]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
     let [SubmittedLayer::Quad(submitted)] = out.layers.as_slice() else {
         panic!("one quad layer");
     };
@@ -129,7 +137,7 @@ fn a_head_locked_quad_is_in_view_space() {
 fn layers_keep_the_plan_order() {
     let layers = [quad(5, Space::World), quad(3, Space::World), quad(9, Space::View)];
     let chains = swapchains(&[3, 5, 9]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
     assert_eq!(views(&out.layers), vec![5, 3, 9]);
 }
 
@@ -137,7 +145,7 @@ fn layers_keep_the_plan_order() {
 fn opacity_becomes_a_colour_scale_when_the_extension_is_enabled() {
     let layers = [Layer::Quad(placement(2, Space::World, -1.0, 0.25))];
     let chains = swapchains(&[2]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
     let [SubmittedLayer::Quad(submitted)] = out.layers.as_slice() else {
         panic!("one quad layer");
     };
@@ -153,7 +161,7 @@ fn opacity_is_reported_and_ignored_without_the_extension() {
     };
     let layers = [Layer::Quad(placement(2, Space::World, -1.0, 0.5))];
     let chains = swapchains(&[2]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     let [SubmittedLayer::Quad(submitted)] = out.layers.as_slice() else {
         panic!("the layer is still submitted");
     };
@@ -171,7 +179,7 @@ fn opacity_is_reported_and_ignored_without_the_extension() {
 fn a_view_without_a_swapchain_is_skipped_and_reported() {
     let layers = [quad(2, Space::World), quad(3, Space::World)];
     let chains = swapchains(&[3]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
     assert_eq!(views(&out.layers), vec![3]);
     assert_eq!(
         out.notices,
@@ -184,10 +192,10 @@ fn a_view_without_a_swapchain_is_skipped_and_reported() {
 
 #[test]
 fn a_projection_layer_has_one_eye_per_half_of_the_image() {
-    let layers = [Layer::Projection(placement(4, Space::World, 0.0, 1.0))];
+    let layers = [projection(4, Space::World)];
     let chains = swapchains(&[4]);
     let eyes = eyes();
-    let out = compose(&layers, &|view| chains.get(&view).copied(), Some(&eyes), &LIMITS);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
     let [SubmittedLayer::Projection(projection)] = out.layers.as_slice() else {
         panic!("one projection layer, got {:?}", out.layers);
     };
@@ -218,35 +226,19 @@ fn a_projection_layer_has_one_eye_per_half_of_the_image() {
 
 #[test]
 fn an_odd_width_gives_the_spare_column_to_the_right_eye() {
-    let layers = [Layer::Projection(placement(4, Space::World, 0.0, 1.0))];
+    let layers = [projection(4, Space::World)];
     let odd = SwapchainRef {
         id: SwapchainId(1),
         width: 1921,
         height: 10,
     };
-    let eyes = eyes();
-    let out = compose(&layers, &|_| Some(odd), Some(&eyes), &LIMITS);
+    let out = compose(&layers, &|_| Some(odd), &LIMITS);
     let [SubmittedLayer::Projection(projection)] = out.layers.as_slice() else {
         panic!("one projection layer");
     };
     let [left, right] = &projection.eyes;
     assert_eq!((left.rect.x, left.rect.width), (0, 960));
     assert_eq!((right.rect.x, right.rect.width), (960, 961));
-}
-
-#[test]
-fn a_projection_layer_without_eye_poses_is_reported() {
-    let layers = [Layer::Projection(placement(4, Space::World, 0.0, 1.0))];
-    let chains = swapchains(&[4]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
-    assert!(out.layers.is_empty());
-    assert_eq!(
-        out.notices,
-        vec![Notice {
-            view: 4,
-            kind: NoticeKind::NoEyes
-        }]
-    );
 }
 
 #[test]
@@ -263,7 +255,7 @@ fn view_layers_beyond_the_budget_are_dropped_and_reported() {
         quad(4, Space::View),
     ];
     let chains = swapchains(&[1, 2, 3, 4]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert_eq!(views(&out.layers), vec![1, 2, 3]);
     assert_eq!(
         out.notices,
@@ -283,7 +275,7 @@ fn world_layers_take_the_budget_before_head_locked_ones() {
     };
     let layers = [quad(9, Space::View), quad(1, Space::World), quad(2, Space::World)];
     let chains = swapchains(&[1, 2, 9]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert_eq!(views(&out.layers), vec![1, 2]);
     assert_eq!(
         out.notices,
@@ -302,7 +294,7 @@ fn world_layers_beyond_the_budget_are_dropped_last_first() {
     };
     let layers = [quad(1, Space::World), quad(2, Space::World), quad(3, Space::World)];
     let chains = swapchains(&[1, 2, 3]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert_eq!(views(&out.layers), vec![1, 2]);
     assert_eq!(
         out.notices,
@@ -322,7 +314,7 @@ fn the_reserved_layers_come_off_the_budget() {
     };
     let layers = [quad(1, Space::World), quad(2, Space::World)];
     let chains = swapchains(&[1, 2]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert_eq!(views(&out.layers), vec![1]);
 }
 
@@ -334,7 +326,7 @@ fn a_budget_of_zero_submits_nothing() {
     };
     let layers = [quad(1, Space::World)];
     let chains = swapchains(&[1]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert!(out.layers.is_empty());
     assert_eq!(out.notices.len(), 1);
 }
@@ -347,7 +339,7 @@ fn views_without_swapchains_do_not_use_the_budget() {
     };
     let layers = [quad(1, Space::World), quad(2, Space::World)];
     let chains = swapchains(&[2]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), None, &limits);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert_eq!(views(&out.layers), vec![2]);
     assert_eq!(out.notices.len(), 1);
     assert_eq!(out.notices[0].kind, NoticeKind::NoSwapchain);
@@ -357,7 +349,6 @@ fn views_without_swapchains_do_not_use_the_budget() {
 fn notice_names_are_the_reported_strings() {
     assert_eq!(NoticeKind::LayerBudget.name(), "layer-budget");
     assert_eq!(NoticeKind::NoSwapchain.name(), "no-swapchain");
-    assert_eq!(NoticeKind::NoEyes.name(), "no-eyes");
     assert_eq!(NoticeKind::OpacityIgnored.name(), "opacity-ignored");
 }
 
@@ -365,7 +356,7 @@ fn notice_names_are_the_reported_strings() {
 fn the_same_input_gives_the_same_output() {
     let layers = [quad(1, Space::World), quad(2, Space::View)];
     let chains = swapchains(&[1, 2]);
-    let first = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
-    let second = compose(&layers, &|view| chains.get(&view).copied(), None, &LIMITS);
+    let first = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
+    let second = compose(&layers, &|view| chains.get(&view).copied(), &LIMITS);
     assert_eq!(first, second);
 }

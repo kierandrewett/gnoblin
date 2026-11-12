@@ -49,6 +49,8 @@ struct Target {
 #[derive(Debug, Default)]
 pub struct Pointer {
     seat: Option<NodeId>,
+    /// Whether this pointer made the seat. A seat that was already there belongs to whoever made it.
+    made_seat: bool,
     controller: Controller,
     /// The display time of the previous frame, for the scroll step.
     time: Option<i64>,
@@ -111,6 +113,34 @@ impl Pointer {
             let target = self.locate(layers, state.ray);
             self.move_to(tree, target)?;
         }
+        Ok(())
+    }
+
+    /// Ends the pointer's part in the session: releases the buttons a grab still holds, leaves the window the ray was
+    /// over, and destroys the seat if this pointer made it, so the stock shell takes the room down. A pointer that never
+    /// got a seat sends nothing. The pointer is ready to start again afterwards, with a new seat.
+    ///
+    /// # Errors
+    ///
+    /// The socket fails or closes. A refusal is not an error.
+    pub fn end(&mut self, tree: &mut TreeClient) -> Result<(), TreeError> {
+        if let (Some(grab), Some(seat)) = (self.grab.take(), self.seat) {
+            for button in grab.buttons {
+                let input = self.button(seat, grab.window, button, false);
+                send(tree, &input)?;
+            }
+        }
+        self.leave(tree)?;
+        if let Some(seat) = self.seat.take()
+            && std::mem::take(&mut self.made_seat)
+        {
+            match tree.destroy_seat(seat) {
+                Ok(()) | Err(TreeError::Refused { .. }) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        self.time = None;
+        self.refusal_logged = false;
         Ok(())
     }
 
@@ -273,10 +303,14 @@ impl Pointer {
         if let Some(seat) = self.seat {
             return Ok(Some(seat));
         }
-        let seat = match tree.seat_named(SEAT_NAME) {
+        let existing = tree.seat_named(SEAT_NAME);
+        let seat = match existing {
             Some(seat) => seat,
             None => match tree.create_seat(SEAT_NAME) {
-                Ok(seat) => seat,
+                Ok(seat) => {
+                    self.made_seat = true;
+                    seat
+                }
                 Err(TreeError::Refused { member, code }) => {
                     if !self.refusal_logged {
                         eprintln!("gnoblin-xr: the owner refused the {SEAT_NAME} seat ({member}: {code})");

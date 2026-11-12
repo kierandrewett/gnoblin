@@ -1,6 +1,6 @@
 //! What one redraw of a View costs on the CPU path.
 //!
-//! A View is drawn by `render_view` whenever its source changes, at most `fps` times a second. The owner kept the CPU
+//! A View is drawn by `render_rig` (`render_view` for a flat one) whenever its source changes, at most `fps` times a second. The owner kept the CPU
 //! path (decision O8, option (b)) until a profile says otherwise, so this is the profile: the time of one redraw for
 //! the View sizes and sources a shell is likely to make. It is a measurement, not a check, so it is ignored by default;
 //! its numbers are in `design/cutover-survey.md` (section 16.2) and `docs/shell-api/views.md`.
@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_render::{NodeSpec, Scene};
 use gnoblin_render_frame::image::Image;
-use gnoblin_render_software::{ViewCamera, ViewProjection, render_view};
+use gnoblin_render_software::{Frustum, StereoRig, ViewCamera, ViewProjection, ViewRig, render_rig};
 use gnoblin_types::{NodeId, Rect, Size, Vec3};
 
 const WARM_UP: usize = 3;
@@ -81,8 +81,26 @@ fn perspective(size: Size) -> ViewCamera {
     }
 }
 
+/// A stereo pair 63 units apart, a headset's field of view, looking at the middle of the plane from its own height.
+fn stereo(size: Size) -> ViewRig {
+    let (centre_x, centre_y) = (f64::from(size.width) / 2.0, f64::from(size.height) / 2.0);
+    ViewRig::Stereo(StereoRig {
+        position: Vec3::new(centre_x, centre_y, f64::from(size.height)),
+        rotation_degrees: Vec3::ZERO,
+        eye_separation: 63.0,
+        left: Frustum::from_degrees(-52.0, 42.0, 43.0, -47.0).expect("a usable frustum"),
+        near: 1.0,
+        far: 100_000.0,
+    })
+}
+
 /// The median time of one redraw, in milliseconds.
 fn median_ms(scene: &Scene, pictures: &[(NodeId, Image)], camera: &ViewCamera, size: Size) -> f64 {
+    median_rig_ms(scene, pictures, &ViewRig::Mono(*camera), size)
+}
+
+/// The median time of one redraw through `rig`, in milliseconds.
+fn median_rig_ms(scene: &Scene, pictures: &[(NodeId, Image)], rig: &ViewRig, size: Size) -> f64 {
     let lookup = |node: NodeId| {
         pictures
             .iter()
@@ -92,7 +110,7 @@ fn median_ms(scene: &Scene, pictures: &[(NodeId, Image)], camera: &ViewCamera, s
     let mut times: Vec<Duration> = Vec::with_capacity(RUNS);
     for run in 0..WARM_UP + RUNS {
         let started = Instant::now();
-        let image = render_view(scene, id(1), camera, size, lookup);
+        let image = render_rig(scene, id(1), rig, size, lookup);
         let elapsed = started.elapsed();
         // Keep the picture alive past the clock, so a redraw nobody reads is not optimised away.
         assert_eq!(image.size(), size);
@@ -107,8 +125,12 @@ fn median_ms(scene: &Scene, pictures: &[(NodeId, Image)], camera: &ViewCamera, s
 #[test]
 #[ignore = "a measurement, not a check: run it in release with --ignored --nocapture"]
 fn the_cost_of_one_view_redraw_on_the_cpu_path() {
-    println!("| View size | 1 window, full size | 1 window, quarter area | 10 windows, 90% | 1 window, perspective |");
-    println!("| --------- | ------------------- | ---------------------- | --------------- | --------------------- |");
+    println!(
+        "| View size | 1 window, full size | 1 window, quarter area | 10 windows, 90% | 1 window, perspective | 1 window, stereo |"
+    );
+    println!(
+        "| --------- | ------------------- | ---------------------- | --------------- | --------------------- | ---------------- |"
+    );
     for (width, height) in SIZES {
         let size = Size::new(width, height);
         let (full, full_pictures) = scene_of(size, 1, 1.0, 1);
@@ -118,8 +140,9 @@ fn the_cost_of_one_view_redraw_on_the_cpu_path() {
         let flat_quarter = median_ms(&quarter, &quarter_pictures, &orthographic(size), size);
         let flat_ten = median_ms(&ten, &ten_pictures, &orthographic(size), size);
         let deep_quarter = median_ms(&quarter, &quarter_pictures, &perspective(size), size);
+        let stereo_full = median_rig_ms(&full, &full_pictures, &stereo(size), size);
         println!(
-            "| {width}x{height} | {flat_full:.2} ms | {flat_quarter:.2} ms | {flat_ten:.2} ms | {deep_quarter:.2} ms |"
+            "| {width}x{height} | {flat_full:.2} ms | {flat_quarter:.2} ms | {flat_ten:.2} ms | {deep_quarter:.2} ms | {stereo_full:.2} ms |"
         );
     }
 }

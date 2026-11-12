@@ -11,8 +11,10 @@
 //! - A visible View with a source becomes a [`Layer::Quad`] in world space at
 //!   its global transform, scaled to metres. A View beneath the head camera
 //!   becomes a head-locked quad in view space: the head camera's own transform
-//!   and everything above it are excluded. A View beneath a stereo camera
-//!   becomes a [`Layer::Projection`].
+//!   and everything above it are excluded. A View whose `camera` names a stereo
+//!   camera holds two eyes side by side and becomes a [`Layer::Projection`]
+//!   whose eyes the camera states (see [`rig`](crate::rig)); a stereo camera
+//!   that cannot be drawn skips the View as [`SkipReason::InvalidCamera`].
 //! - Opacity multiplies down the tree. Invisible nodes hide their subtrees.
 //!   `input` is true only when the View and every ancestor accept input.
 //!
@@ -23,10 +25,13 @@
 use std::collections::BTreeSet;
 
 use crate::math::{HeadPose, Pose, Transform, euler_degrees};
+use crate::rig;
 use crate::tree::{CameraProjection, Class, NodeId, TreeNode, TreeView};
 
 const ROOM_NAME: &str = "room";
 const HEAD_NAME: &str = "head";
+/// The schema's default `metres` of a camera, used when the model holds none.
+const CAMERA_METRES: f64 = 0.001;
 
 /// Settings the translation needs beyond the tree.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,13 +77,39 @@ pub struct Placement {
     pub input: bool,
 }
 
+/// A field of view in radians, as OpenXR states it: `left` and `down` are negative for a symmetric view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fov {
+    pub left: f32,
+    pub right: f32,
+    pub up: f32,
+    pub down: f32,
+}
+
+/// One eye's view for a projection layer: a pose in the layer's space, in metres, and a field of view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Eye {
+    pub pose: Pose,
+    pub fov: Fov,
+}
+
+/// A stereo projection layer: the View's placement and the two eyes its camera states, left first.
+///
+/// The placement's pose and size are not what a projection layer submits, since it has no quad to place: its `space`,
+/// `opacity`, `id` and `source` apply, and the eyes carry the geometry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Projected {
+    pub placement: Placement,
+    pub eyes: [Eye; 2],
+}
+
 /// One OpenXR layer to submit.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Layer {
     /// A flat quad.
     Quad(Placement),
     /// A stereo projection layer.
-    Projection(Placement),
+    Projection(Projected),
 }
 
 /// Why a View produced no layer.
@@ -92,6 +123,9 @@ pub enum SkipReason {
     InvalidSize,
     /// The metres value is not finite and positive. Every View is skipped.
     InvalidMetres,
+    /// The View names a stereo camera that cannot be drawn: an unusable frustum, an eye separation or a scale. The
+    /// compositor draws a blank picture for it.
+    InvalidCamera,
 }
 
 /// A visible View with a source that could not be placed.
@@ -196,8 +230,6 @@ struct Frame {
     opacity: f64,
     /// View once the walk has passed the head camera.
     space: Space,
-    /// Set by the nearest enclosing camera: true for a stereo camera.
-    stereo: bool,
     /// False once any ancestor or the node itself refuses input.
     input: bool,
 }
@@ -207,7 +239,6 @@ impl Frame {
         transform: Transform::IDENTITY,
         opacity: 1.0,
         space: Space::World,
-        stereo: false,
         input: true,
     };
 }
@@ -229,11 +260,16 @@ fn frame_for(node: &TreeNode, parent: Frame, head: Option<NodeId>) -> Frame {
             scale: node.scale,
         };
         frame.transform = parent.transform.compose(local);
-        if let Class::Camera { projection } = node.class {
-            frame.stereo = projection == CameraProjection::Stereo;
-        }
     }
     frame
+}
+
+/// A stereo camera's pose and rig, as the tree holds them.
+struct StereoCamera {
+    position: [f64; 3],
+    rotation: [f64; 3],
+    metres: f64,
+    rig: crate::tree::Rig,
 }
 
 struct Walker<'a> {
@@ -261,18 +297,19 @@ impl Walker<'_> {
         let frame = frame_for(node, parent, self.head);
         if let Class::View {
             source: Some(source),
+            camera,
             width,
             height,
         } = node.class
         {
-            self.emit(node.id, source, frame, width, height);
+            self.emit(node.id, source, camera, frame, width, height);
         }
         for &child in &node.children {
             self.visit(child, frame);
         }
     }
 
-    fn emit(&mut self, id: NodeId, source: NodeId, frame: Frame, width: f64, height: f64) {
+    fn emit(&mut self, id: NodeId, source: NodeId, camera: Option<NodeId>, frame: Frame, width: f64, height: f64) {
         let metres = self.metres;
         if !(metres.is_finite() && metres > 0.0) {
             self.skip(id, SkipReason::InvalidMetres);
@@ -308,12 +345,35 @@ impl Walker<'_> {
             space: frame.space,
             input: frame.input,
         };
-        let layer = if frame.space == Space::View || !frame.stereo {
-            Layer::Quad(placement)
-        } else {
-            Layer::Projection(placement)
+        let Some(stereo) = self.stereo_camera(camera) else {
+            self.plan.layers.push(Layer::Quad(placement));
+            return;
         };
-        self.plan.layers.push(layer);
+        let (position, rotation) = (stereo.position, stereo.rotation);
+        let eyes = rig::eyes(position, rotation, stereo.metres, &stereo.rig, [width, height]);
+        match eyes {
+            Some(eyes) => self.plan.layers.push(Layer::Projection(Projected { placement, eyes })),
+            None => self.skip(id, SkipReason::InvalidCamera),
+        }
+    }
+
+    /// The stereo camera a View names, or `None` when it names none, a node that is missing, or a camera of another
+    /// projection: the View is then a flat quad.
+    fn stereo_camera(&self, camera: Option<NodeId>) -> Option<StereoCamera> {
+        let node = self.tree.nodes.get(&camera?)?;
+        let Class::Camera {
+            projection: CameraProjection::Stereo,
+            rig,
+        } = node.class
+        else {
+            return None;
+        };
+        Some(StereoCamera {
+            position: node.position,
+            rotation: node.rotation,
+            metres: node.metres.unwrap_or(CAMERA_METRES),
+            rig,
+        })
     }
 
     fn skip(&mut self, id: NodeId, reason: SkipReason) {

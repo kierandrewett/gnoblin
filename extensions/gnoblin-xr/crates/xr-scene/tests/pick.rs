@@ -1,6 +1,6 @@
 //! Tests for `pick`: ray against layers, last-drawn wins.
 
-use xr_scene::{Hit, IDENTITY, Layer, Placement, Pose, Ray, Space, pick, project};
+use xr_scene::{Eye, Fov, Hit, IDENTITY, Layer, Placement, Pose, Projected, Ray, Space, pick, project};
 
 fn quad(id: u64, z: f64, input: bool) -> Layer {
     Layer::Quad(Placement {
@@ -97,18 +97,33 @@ fn quad_behind_the_origin_is_not_hit() {
 
 #[test]
 fn projection_layers_are_not_picked() {
-    let layers = [Layer::Projection(Placement {
-        id: 9,
-        source: 109,
-        pose: xr_scene::Pose {
-            position: [0.0, 0.0, -2.0],
+    let eye = Eye {
+        pose: Pose {
+            position: [0.0, 0.0, 0.0],
             orientation: IDENTITY,
         },
-        size: [1.0, 0.5],
-        extent: [1000.0, 500.0],
-        opacity: 1.0,
-        space: Space::World,
-        input: true,
+        fov: Fov {
+            left: -0.5,
+            right: 0.5,
+            up: 0.5,
+            down: -0.5,
+        },
+    };
+    let layers = [Layer::Projection(Projected {
+        placement: Placement {
+            id: 9,
+            source: 109,
+            pose: xr_scene::Pose {
+                position: [0.0, 0.0, -2.0],
+                orientation: IDENTITY,
+            },
+            size: [1.0, 0.5],
+            extent: [1000.0, 500.0],
+            opacity: 1.0,
+            space: Space::World,
+            input: true,
+        },
+        eyes: [eye, eye],
     })];
     assert!(pick(&layers, &ray([0.0, 0.0, 0.0], [0.0, 0.0, -1.0])).is_none());
 }

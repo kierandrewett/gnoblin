@@ -17,6 +17,10 @@
 #   KEEP=1       leave the runtime directory and logs in place at the end (default: logs are kept in LOG_DIR, the
 #                runtime directory is removed)
 #   LOG_DIR      where the logs and dumps go (default /tmp/xr-smoke)
+#   XR_SMOKE_RECORD=FILE
+#                also record the owner's tree stream (the attach reply, the snapshot and every change batch) to FILE,
+#                from before the extension starts until the run ends. extensions/gnoblin-xr/crates/xr-tree/tests/recorded/
+#                holds such a recording, which the replay tests read; see docs/xr.md, "Recorded trees".
 #
 # Build on the instance first:
 #   cargo build -p gnoblin
@@ -113,12 +117,14 @@ done
 
 # Stop what an earlier run left. Matching on the exact program names keeps this to our own processes.
 stop_all() {
-    for name in xr-smoke-client gnoblin-xr monado-service; do
+    # The recorder's retry loop first, or it would start the recorder again over the recording.
+    [ -n "${RECORD_LOOP:-}" ] && kill "$RECORD_LOOP" 2>/dev/null
+    for name in xr-smoke-client xr-smoke-tree gnoblin-xr monado-service; do
         pkill -x "$name" 2>/dev/null
     done
     pkill -x gnoblin 2>/dev/null
     sleep 0.5
-    for name in xr-smoke-client gnoblin-xr monado-service gnoblin; do
+    for name in xr-smoke-client xr-smoke-tree gnoblin-xr monado-service gnoblin; do
         pkill -9 -x "$name" 2>/dev/null
     done
     pkill -f "dbus-daemon --session --nofork --nopidfile --address=unix:path=$RUN/bus" 2>/dev/null
@@ -177,6 +183,12 @@ export WAYLAND_DISPLAY="$RUN/gnoblin-wayland.sock"
 
 SESSION="$LOG_DIR/session.log"
 setsid "$TARGET_DIR/gnoblin" >"$SESSION" 2>&1 &
+if [ -n "${XR_SMOKE_RECORD:-}" ]; then
+    # Attach as soon as the owner socket takes a client, so the recording holds the room being built. A failed attach
+    # (the socket is not serving yet) is tried again; a recorder that attached runs until the run ends.
+    setsid bash -c "until '$TARGET_DIR/xr-smoke-tree' --settle-ms 600000 --record '$XR_SMOKE_RECORD' >/dev/null 2>'$LOG_DIR/record.err'; do sleep 0.1; done" &
+    RECORD_LOOP=$!
+fi
 wait_for 60 in_file "session ready" "$SESSION"
 check "the guardian reports the session ready (compositor, services, runtime)" in_file "session ready" "$SESSION"
 check "the compositor serves a headless output" in_file 'backend="headless"' "$SESSION"

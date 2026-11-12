@@ -11,8 +11,13 @@
 //! ```
 //!
 //! Then one `node` line per node under each root, indented by depth.
+//!
+//! With `--record FILE` it also writes every frame the owner sends to FILE as it arrives, which
+//! `xr_tree::replay` serves back to a test. Run it for as long as the stream should be, and stop it with a signal:
+//! each frame is in the file when it has been read.
 
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use xr_scene::{CameraProjection, Class, NodeId, TreeView};
@@ -20,6 +25,7 @@ use xr_tree::TreeClient;
 
 fn main() -> std::process::ExitCode {
     let mut settle = Duration::from_millis(500);
+    let mut record = None;
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -27,10 +33,14 @@ fn main() -> std::process::ExitCode {
                 Some(ms) => settle = Duration::from_millis(ms),
                 None => return usage(),
             },
+            "--record" => match args.next() {
+                Some(path) => record = Some(PathBuf::from(path)),
+                None => return usage(),
+            },
             _ => return usage(),
         }
     }
-    match run(settle) {
+    match run(settle, record.as_deref()) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("xr-smoke-tree: {message}");
@@ -40,13 +50,17 @@ fn main() -> std::process::ExitCode {
 }
 
 fn usage() -> std::process::ExitCode {
-    eprintln!("usage: xr-smoke-tree [--settle-ms N]");
+    eprintln!("usage: xr-smoke-tree [--settle-ms N] [--record FILE]");
     std::process::ExitCode::from(2)
 }
 
-fn run(settle: Duration) -> Result<(), String> {
+fn run(settle: Duration, record: Option<&Path>) -> Result<(), String> {
     let socket = gnoblin_client::unix::socket_path(|name| std::env::var(name).ok())?;
-    let mut tree = TreeClient::connect(&socket).map_err(|error| format!("owner socket: {error}"))?;
+    let mut tree = match record {
+        Some(file) => TreeClient::connect_recording(&socket, file),
+        None => TreeClient::connect(&socket),
+    }
+    .map_err(|error| format!("owner socket: {error}"))?;
     let deadline = Instant::now() + settle;
     while Instant::now() < deadline {
         tree.poll().map_err(|error| error.to_string())?;
@@ -59,11 +73,17 @@ fn run(settle: Duration) -> Result<(), String> {
 fn class_name(class: &Class) -> String {
     match class {
         Class::Node => "node".to_owned(),
-        Class::View { source, width, height } => format!(
-            "view {width}x{height} source={}",
-            source.map_or_else(|| "none".to_owned(), |id| id.to_string())
+        Class::View {
+            source,
+            camera,
+            width,
+            height,
+        } => format!(
+            "view {width}x{height} source={} camera={}",
+            source.map_or_else(|| "none".to_owned(), |id| id.to_string()),
+            camera.map_or_else(|| "none".to_owned(), |id| id.to_string())
         ),
-        Class::Camera { projection } => format!(
+        Class::Camera { projection, .. } => format!(
             "camera {}",
             match projection {
                 CameraProjection::Stereo => "stereo",

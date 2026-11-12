@@ -10,7 +10,7 @@ which rule each function implements.
 ## API
 
 - `TreeView`: the nodes the extension mirrors, keyed by `NodeId`, with the ordered list of roots. Each `TreeNode` has
-  its `class` (`Class::View { source, width, height }`, `Class::Camera { projection }`, `Class::Node` or `Class::Other`),
+  its `class` (`Class::View { source, camera, width, height }`, `Class::Camera { projection, rig }`, `Class::Node` or `Class::Other`),
   an optional `name` (the room and the head camera are found by name), ordered `children`, `position`, `rotation` (Euler
   degrees), `scale`, `metres`, `opacity`, `visible` and `input`.
 - `plan(tree, head, options) -> Plan`: returns the `layers` to submit, in submission order, and the `skipped` list, each
@@ -31,7 +31,9 @@ which rule each function implements.
   metres value is the head camera's `metres` if set, else the room's, else `Options::default_metres`.
 - A View under the head camera becomes a head-locked `Quad` in `Space::View`. The head camera's own transform and
   everything above it are left out, so the layer moves with the head.
-- A View under a stereo camera becomes a `Projection` layer.
+- A View whose `camera` names a stereo camera becomes a `Projection` layer carrying the two eyes `rig::eyes` states from
+  the camera's pose, `ipd`, `metres` and frustum (`Rig`); a camera that cannot be drawn skips the View as
+  `InvalidCamera`. A View under a stereo camera node that it does not name is a quad.
 - Opacity multiplies down the tree. An invisible node hides its whole subtree.
 - `input` is true only when the View and every ancestor accept input. Pick ignores layers with `input` false, so the
   layer underneath can take the ray.

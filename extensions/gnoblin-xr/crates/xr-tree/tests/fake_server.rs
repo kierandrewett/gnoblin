@@ -8,7 +8,7 @@ use gnoblin_proto::tree::change;
 use gnoblin_proto::tree::snapshot_node;
 use gnoblin_proto::tree::tree::{AttachedPayload, ChangesPayload, SnapshotPayload};
 use gnoblin_proto::{Envelope, read_frame, write_frame};
-use xr_scene::{CameraProjection, Class};
+use xr_scene::{CameraProjection, Class, Rig};
 use xr_tree::TreeClient;
 
 /// The request id the client uses for its attach request.
@@ -153,8 +153,9 @@ fn snapshot_builds_the_model() {
     assert!(matches!(
         model.nodes[&3].class,
         Class::Camera {
-            projection: CameraProjection::Orthographic
-        }
+            projection: CameraProjection::Orthographic,
+            rig
+        } if rig == Rig::default()
     ));
     assert_eq!(model.nodes[&3].metres, Some(0.001), "a camera's metres default");
 }

@@ -9,9 +9,9 @@
 //!
 //! - Layers are submitted in plan order. Nothing here reorders them, and nothing edits a pose or a size.
 //! - A View with no ready swapchain is not submitted and is reported [`NoticeKind::NoSwapchain`]. It takes no budget.
-//! - A quad is shown to both eyes. A projection layer needs the two eye views of the frame: without them it is
-//!   reported [`NoticeKind::NoEyes`]. The two eyes read the left and right halves of the View's one image: that is the
-//!   extension's convention, since a View has one capture and the owner does not yet draw stereo pictures.
+//! - A quad is shown to both eyes. A projection layer carries the two eyes its stereo camera states (the planner
+//!   copies them from the tree: they are not measured). The two eyes read the left and right halves of the View's one
+//!   image, which is how the compositor draws a View whose camera is stereo: left eye on the left.
 //! - Opacity below 1 becomes a colour scale `[o, o, o, o]` on the layer (`XR_KHR_composition_layer_color_scale_bias`) when
 //!   the runtime offers it. The captured pictures are premultiplied, as `wl_shm` ARGB is, and OpenXR's default
 //!   blend treats a layer as premultiplied, so scaling all four channels is the right fade. Without the extension the
@@ -21,7 +21,7 @@
 //!   dropped layer is reported [`NoticeKind::LayerBudget`]. A frame that went over the budget would be refused whole by
 //!   `xrEndFrame`.
 
-use xr_scene::{Layer, NodeId, Placement, Pose, Space};
+use xr_scene::{Eye, Fov, Layer, NodeId, Placement, Pose, Projected, Space};
 
 /// The runtime's handle to one swapchain. Opaque to this crate: the runtime that created it maps it back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -51,22 +51,6 @@ impl Limits {
     pub const fn budget(&self) -> usize {
         self.max_layer_count.saturating_sub(self.reserved) as usize
     }
-}
-
-/// A field of view in radians, as OpenXR states it: `left` and `down` are negative for a symmetric view.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Fov {
-    pub left: f32,
-    pub right: f32,
-    pub up: f32,
-    pub down: f32,
-}
-
-/// One eye's view for the frame, in the local space.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Eye {
-    pub pose: Pose,
-    pub fov: Fov,
 }
 
 /// Which eyes see a quad.
@@ -136,8 +120,6 @@ pub enum NoticeKind {
     LayerBudget,
     /// The View has no ready swapchain yet, so it was not submitted.
     NoSwapchain,
-    /// A projection layer needs the eye views, and the runtime gave none for this frame.
-    NoEyes,
     /// The opacity is below 1 and the runtime lacks the colour scale extension, so the layer is submitted opaque.
     OpacityIgnored,
 }
@@ -148,7 +130,6 @@ impl NoticeKind {
         match self {
             Self::LayerBudget => "layer-budget",
             Self::NoSwapchain => "no-swapchain",
-            Self::NoEyes => "no-eyes",
             Self::OpacityIgnored => "opacity-ignored",
         }
     }
@@ -172,18 +153,12 @@ pub struct Submission {
 
 /// Turns the planned `layers` into the layers to submit.
 ///
-/// `swapchain` finds the ready swapchain of a View. `eyes` are the two views of the frame, needed only by projection
-/// layers.
-pub fn compose(
-    layers: &[Layer],
-    swapchain: &dyn Fn(NodeId) -> Option<SwapchainRef>,
-    eyes: Option<&[Eye; 2]>,
-    limits: &Limits,
-) -> Submission {
+/// `swapchain` finds the ready swapchain of a View.
+pub fn compose(layers: &[Layer], swapchain: &dyn Fn(NodeId) -> Option<SwapchainRef>, limits: &Limits) -> Submission {
     let mut notices = Vec::new();
     let mut candidates: Vec<(SubmittedLayer, f64)> = Vec::with_capacity(layers.len());
     for layer in layers {
-        let (Layer::Quad(placement) | Layer::Projection(placement)) = layer;
+        let (Layer::Quad(placement) | Layer::Projection(Projected { placement, .. })) = layer;
         let Some(chain) = swapchain(placement.id) else {
             notices.push(Notice {
                 view: placement.id,
@@ -193,16 +168,7 @@ pub fn compose(
         };
         let submitted = match layer {
             Layer::Quad(_) => quad(placement, chain),
-            Layer::Projection(_) => {
-                let Some(eyes) = eyes else {
-                    notices.push(Notice {
-                        view: placement.id,
-                        kind: NoticeKind::NoEyes,
-                    });
-                    continue;
-                };
-                projection(placement, chain, eyes)
-            }
+            Layer::Projection(projected) => projection(placement, chain, &projected.eyes),
         };
         candidates.push((submitted, placement.opacity));
     }

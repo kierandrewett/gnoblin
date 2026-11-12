@@ -7,7 +7,7 @@
 use std::fmt;
 
 use xr_input::ControllerState;
-use xr_layers::{Eye, SubmittedLayer, SwapchainId};
+use xr_layers::{SubmittedLayer, SwapchainId};
 use xr_scene::Pose;
 
 /// The OpenXR session states, as `XrSessionState` reports them.
@@ -113,11 +113,6 @@ pub trait Runtime {
     fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
         let _ = display_time;
         Ok(ControllerState::default())
-    }
-    /// The two eye views in the local reference space at `display_time`, left first, if the runtime locates them.
-    fn locate_views(&mut self, display_time: i64) -> Result<Option<[Eye; 2]>> {
-        let _ = display_time;
-        Ok(None)
     }
     /// What the session offers. The default is nothing.
     fn capabilities(&self) -> Capabilities {

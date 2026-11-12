@@ -8,6 +8,7 @@
 //! - [`tree`]: the mirrored node model ([`TreeView`], [`TreeNode`], [`Class`]).
 //! - [`plan`]: [`plan`] turns the `room` subtree into a [`Plan`] of [`Layer`]s.
 //! - [`pick`]: [`pick`] finds the layer and the pixel a ray lands on; [`project`] finds the pixel on a chosen layer's plane.
+//! - [`rig`]: the eyes of a stereo camera, as OpenXR poses and fields of view.
 //! - [`math`]: [`Pose`] and the quaternion arithmetic both of them use.
 //!
 //! Everything here is deterministic: the same tree, head pose and options give
@@ -16,9 +17,10 @@
 pub mod math;
 pub mod pick;
 pub mod plan;
+pub mod rig;
 pub mod tree;
 
 pub use math::{HeadPose, IDENTITY, Pose};
 pub use pick::{Hit, Ray, pick, project};
-pub use plan::{Layer, Options, Placement, Plan, SkipReason, Skipped, Space, plan};
-pub use tree::{CameraProjection, Class, NodeId, TreeNode, TreeView};
+pub use plan::{Eye, Fov, Layer, Options, Placement, Plan, Projected, SkipReason, Skipped, Space, plan};
+pub use tree::{CameraProjection, Class, NodeId, Rig, TreeNode, TreeView};

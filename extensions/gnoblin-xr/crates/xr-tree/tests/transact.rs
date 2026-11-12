@@ -136,6 +136,36 @@ fn create_seat_sends_new_and_name_in_one_transaction() {
 }
 
 #[test]
+fn destroy_seat_sends_one_destroy_and_forgets_the_seat() {
+    let (mut client, received) = connect(vec![seat_node(7, "xr")], Answer::Applied);
+    assert_eq!(client.seat_named("xr"), Some(7));
+
+    client.destroy_seat(7).expect("destroy the seat");
+
+    let args = received.recv().expect("the transaction arrived");
+    assert_eq!(args.ops.len(), 1);
+    assert_eq!((args.ops[0].kind.as_str(), args.ops[0].node), ("destroy", 7));
+    assert_eq!(
+        client.seat_named("xr"),
+        None,
+        "a seat made again by that name is a new one"
+    );
+}
+
+#[test]
+fn a_refused_destroy_keeps_the_seat_in_the_model() {
+    let (mut client, _received) = connect(vec![seat_node(7, "xr")], Answer::Refused("not-owner"));
+
+    let error = client.destroy_seat(7).expect_err("the owner refuses");
+
+    assert!(
+        matches!(&error, TreeError::Refused { code, .. } if code == "not-owner"),
+        "got {error:?}"
+    );
+    assert_eq!(client.seat_named("xr"), Some(7));
+}
+
+#[test]
 fn a_refused_request_surfaces_as_refused_with_its_code() {
     let (mut client, _received) = connect(vec![], Answer::Refused("not-owner"));
 

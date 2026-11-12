@@ -10,13 +10,38 @@ use std::collections::BTreeMap;
 /// A node id, as the owner socket assigns it.
 pub type NodeId = u64;
 
-/// How a camera projects the Views beneath it.
+/// How a camera projects the View that names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CameraProjection {
-    /// A stereo camera: Views beneath it are drawn as OpenXR projection layers.
+    /// A stereo camera: a View that names it holds two eyes side by side, and is shown as an OpenXR projection layer.
     Stereo,
-    /// An orthographic camera: Views beneath it are flat quads.
+    /// Any other projection: a View that names it holds one flat picture, and is shown as a quad.
     Orthographic,
+}
+
+/// What a stereo camera says about its eyes, as the schema states it.
+///
+/// The defaults are the schema's: an eye separation of 0.063 m, a vertical field of view of 60 degrees, and no
+/// off-axis angles.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rig {
+    /// The distance between the eyes, in metres (`ipd`).
+    pub ipd: f64,
+    /// The vertical field of view in degrees (`fov`), used when the four angles are all zero.
+    pub fov_degrees: f64,
+    /// The off-axis frustum of the left eye in degrees: left, right, up and down (`fov_left`, `fov_right`, `fov_up`,
+    /// `fov_down`). All zero means the symmetric frustum from `fov_degrees`.
+    pub angles_degrees: [f64; 4],
+}
+
+impl Default for Rig {
+    fn default() -> Self {
+        Self {
+            ipd: 0.063,
+            fov_degrees: 60.0,
+            angles_degrees: [0.0; 4],
+        }
+    }
 }
 
 /// What a node is. Only `View` produces a layer.
@@ -24,15 +49,17 @@ pub enum CameraProjection {
 pub enum Class {
     /// A grouping node: a transform and no content of its own.
     Node,
-    /// A surface drawn from `source`, `width` by `height` in node units.
+    /// A surface drawn from `source`, `width` by `height` in node units, through `camera` when it names one.
     /// A View with no source has nothing to show and produces no layer.
     View {
         source: Option<NodeId>,
+        camera: Option<NodeId>,
         width: f64,
         height: f64,
     },
-    /// A camera. A camera named `head` makes the Views beneath it head-locked.
-    Camera { projection: CameraProjection },
+    /// A camera. A camera named `head` makes the Views beneath it head-locked. A View that names a stereo camera is
+    /// drawn with its eyes.
+    Camera { projection: CameraProjection, rig: Rig },
     /// A seat: the input device group the owner delivers pointer input on. It draws nothing.
     Seat,
     /// Any other class. It draws nothing, but its transform and opacity still
@@ -122,6 +149,22 @@ impl TreeNode {
 
     pub fn opacity(mut self, opacity: f64) -> Self {
         self.opacity = opacity;
+        self
+    }
+
+    /// Makes a View draw through `camera`. Other classes are unchanged.
+    pub fn through(mut self, camera: NodeId) -> Self {
+        if let Class::View { camera: slot, .. } = &mut self.class {
+            *slot = Some(camera);
+        }
+        self
+    }
+
+    /// Sets a camera's stereo rig. Other classes are unchanged.
+    pub fn rig(mut self, rig: Rig) -> Self {
+        if let Class::Camera { rig: slot, .. } = &mut self.class {
+            *slot = rig;
+        }
         self
     }
 

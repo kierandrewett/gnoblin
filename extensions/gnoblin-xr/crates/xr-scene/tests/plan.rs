@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use xr_scene::{
-    CameraProjection, Class, HeadPose, IDENTITY, Layer, NodeId, Options, Plan, Pose, SkipReason, Space, TreeNode,
-    TreeView, plan,
+    CameraProjection, Class, Eye, HeadPose, IDENTITY, Layer, NodeId, Options, Plan, Pose, Projected, Rig, SkipReason,
+    Space, TreeNode, TreeView, plan,
 };
 
 const ROOM: NodeId = 1;
@@ -31,6 +31,7 @@ fn view(id: NodeId, width: f64, height: f64) -> TreeNode {
         id,
         Class::View {
             source: Some(100 + id),
+            camera: None,
             width,
             height,
         },
@@ -42,7 +43,13 @@ fn group(id: NodeId) -> TreeNode {
 }
 
 fn camera(id: NodeId, projection: CameraProjection) -> TreeNode {
-    TreeNode::new(id, Class::Camera { projection })
+    TreeNode::new(
+        id,
+        Class::Camera {
+            projection,
+            rig: Rig::default(),
+        },
+    )
 }
 
 fn head_pose(x: f64, y: f64, z: f64) -> HeadPose {
@@ -62,14 +69,14 @@ fn ids(plan: &Plan) -> Vec<NodeId> {
 
 fn layer_id(layer: &Layer) -> NodeId {
     match layer {
-        Layer::Quad(p) | Layer::Projection(p) => p.id,
+        Layer::Quad(p) | Layer::Projection(Projected { placement: p, .. }) => p.id,
     }
 }
 
 fn quad(layer: &Layer) -> &xr_scene::Placement {
     match layer {
         Layer::Quad(p) => p,
-        Layer::Projection(p) => panic!("expected a quad, got a projection for {}", p.id),
+        Layer::Projection(p) => panic!("expected a quad, got a projection for {}", p.placement.id),
     }
 }
 
@@ -295,22 +302,8 @@ fn opacity_is_clamped_to_unit_range() {
 }
 
 #[test]
-fn stereo_camera_view_becomes_projection() {
-    let tree = scene(
-        vec![
-            room(&[90]),
-            camera(90, CameraProjection::Stereo).children(&[91]),
-            view(91, 1.0, 1.0),
-        ],
-        &[ROOM],
-    );
-    let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
-    assert!(matches!(p.layers.as_slice(), [Layer::Projection(q)] if q.id == 91 && q.space == Space::World));
-}
-
-#[test]
 fn head_locked_view_under_stereo_head_is_quad() {
-    // The head camera is stereo, but head-locked wins: the View is a quad in the View space.
+    // The head camera is stereo, but no View names it: the View is a head-locked quad.
     let tree = scene(
         vec![
             room(&[HEAD]),
@@ -444,4 +437,310 @@ fn input_flag_is_carried_to_the_layer() {
     let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
     assert!(quad(&p.layers[0]).input);
     assert!(!quad(&p.layers[1]).input);
+}
+
+// ---- Stereo cameras ----
+
+const RIG: NodeId = 50;
+
+/// A room with a 1920x1080 View (id 51) that names the stereo camera 50, and the camera in the room.
+fn stereo_room(rig_node: TreeNode) -> TreeView {
+    scene(
+        vec![room(&[RIG, 51]), rig_node, view(51, 1920.0, 1080.0).through(RIG)],
+        &[ROOM],
+    )
+}
+
+fn stereo_camera() -> TreeNode {
+    camera(RIG, CameraProjection::Stereo).at(0.0, 0.0, 600.0)
+}
+
+fn projection(plan: &Plan) -> &Projected {
+    match plan.layers.as_slice() {
+        [Layer::Projection(projected)] => projected,
+        other => panic!("one projection layer, got {other:?} (skipped {:?})", plan.skipped),
+    }
+}
+
+fn close(actual: f64, expected: f64) {
+    assert!((actual - expected).abs() < EPS, "{actual} != {expected}");
+}
+
+fn close3(actual: [f64; 3], expected: [f64; 3]) {
+    for (a, e) in actual.into_iter().zip(expected) {
+        close(a, e);
+    }
+}
+
+fn close_fov(eye: &Eye, left: f64, right: f64, up: f64, down: f64) {
+    let got = [eye.fov.left, eye.fov.right, eye.fov.up, eye.fov.down].map(f64::from);
+    for (g, e) in got.into_iter().zip([left, right, up, down]) {
+        assert!((g - e).abs() < 1e-6, "{g} != {e}");
+    }
+}
+
+#[test]
+fn a_view_that_names_a_stereo_camera_is_a_projection_layer_with_the_cameras_eyes() {
+    let p = plan(&stereo_room(stereo_camera()), &head_pose(0.0, 0.0, 0.0), &opts());
+    let projected = projection(&p);
+    assert_eq!(projected.placement.id, 51);
+    assert_eq!(projected.placement.space, Space::World);
+    // 0.063 m at 0.001 m a unit is 63 units: each eye is 31.5 units (0.0315 m) from the camera's x = 0, and the
+    // camera is 600 units (0.6 m) from the plane.
+    let [left, right] = &projected.eyes;
+    close3(left.pose.position, [-0.0315, 0.0, 0.6]);
+    close3(right.pose.position, [0.0315, 0.0, 0.6]);
+    assert_eq!(left.pose.orientation, IDENTITY);
+    assert_eq!(right.pose.orientation, IDENTITY);
+}
+
+#[test]
+fn the_default_frustum_is_symmetric_with_the_eyes_aspect() {
+    let p = plan(&stereo_room(stereo_camera()), &head_pose(0.0, 0.0, 0.0), &opts());
+    let [left, right] = &projection(&p).eyes;
+    // The default vertical field is 60 degrees; one eye is 960 by 1080.
+    let up = (30.0_f64).to_radians();
+    let across = ((960.0 / 1080.0) * up.tan()).atan();
+    close_fov(left, -across, across, up, -up);
+    close_fov(right, -across, across, up, -up);
+}
+
+#[test]
+fn the_right_eye_has_the_mirror_of_the_left_eyes_off_axis_frustum() {
+    let rig = Rig {
+        angles_degrees: [-52.0, 42.0, 43.0, -47.0],
+        ..Rig::default()
+    };
+    let p = plan(
+        &stereo_room(stereo_camera().rig(rig)),
+        &head_pose(0.0, 0.0, 0.0),
+        &opts(),
+    );
+    let [left, right] = &projection(&p).eyes;
+    close_fov(
+        left,
+        (-52.0_f64).to_radians(),
+        42.0_f64.to_radians(),
+        43.0_f64.to_radians(),
+        (-47.0_f64).to_radians(),
+    );
+    close_fov(
+        right,
+        (-42.0_f64).to_radians(),
+        52.0_f64.to_radians(),
+        43.0_f64.to_radians(),
+        (-47.0_f64).to_radians(),
+    );
+}
+
+#[test]
+fn the_eye_separation_follows_ipd_and_the_cameras_metres() {
+    let rig = Rig {
+        ipd: 0.1,
+        ..Rig::default()
+    };
+    // 0.1 m at 0.002 m a unit is 50 units, so each eye is 25 units, or 0.05 m, from the camera.
+    let camera = stereo_camera().rig(rig).metres(0.002).at(0.0, 0.0, 300.0);
+    let p = plan(&stereo_room(camera), &head_pose(0.0, 0.0, 0.0), &opts());
+    let [left, right] = &projection(&p).eyes;
+    close3(left.pose.position, [-0.05, 0.0, 0.6]);
+    close3(right.pose.position, [0.05, 0.0, 0.6]);
+    close(right.pose.position[0] - left.pose.position[0], 0.1);
+}
+
+#[test]
+fn a_cameras_y_grows_down_in_the_scene_and_up_in_the_headset() {
+    let camera = stereo_camera().at(0.0, 250.0, 600.0);
+    let p = plan(&stereo_room(camera), &head_pose(0.0, 0.0, 0.0), &opts());
+    let [left, _] = &projection(&p).eyes;
+    close(left.pose.position[1], -0.25);
+}
+
+#[test]
+fn turning_the_camera_about_y_turns_the_eye_pair_and_its_orientation() {
+    // A quarter turn about y takes the camera's x axis to the scene's -z, so the left eye is the one nearer the
+    // plane's far side: z = 600 + 31.5 units for the left eye, 600 - 31.5 for the right.
+    let camera = stereo_camera().rotated(0.0, 90.0, 0.0);
+    let p = plan(&stereo_room(camera), &head_pose(0.0, 0.0, 0.0), &opts());
+    let [left, right] = &projection(&p).eyes;
+    close3(left.pose.position, [0.0, 0.0, 0.6315]);
+    close3(right.pose.position, [0.0, 0.0, 0.5685]);
+    let quarter = std::f64::consts::FRAC_PI_4;
+    for eye in [left, right] {
+        close(eye.pose.orientation[1], quarter.sin());
+        close(eye.pose.orientation[3], quarter.cos());
+    }
+}
+
+#[test]
+fn a_turn_about_x_or_z_reverses_when_y_is_mirrored() {
+    for (rotated, mirrored) in [
+        ((30.0, 0.0, 0.0), (-30.0, 0.0, 0.0)),
+        ((0.0, 0.0, 20.0), (0.0, 0.0, -20.0)),
+    ] {
+        let camera = stereo_camera().rotated(rotated.0, rotated.1, rotated.2);
+        let p = plan(&stereo_room(camera), &head_pose(0.0, 0.0, 0.0), &opts());
+        let [left, _] = &projection(&p).eyes;
+        let half = |degrees: f64| (degrees.to_radians() / 2.0, (degrees.to_radians() / 2.0).sin());
+        let (_, x) = half(mirrored.0);
+        let (_, z) = half(mirrored.2);
+        close(left.pose.orientation[0], x);
+        close(left.pose.orientation[2], z);
+    }
+}
+
+#[test]
+fn a_view_under_a_stereo_camera_is_still_a_quad_unless_it_names_the_camera() {
+    let tree = scene(
+        vec![room(&[RIG]), stereo_camera().children(&[51]), view(51, 1920.0, 1080.0)],
+        &[ROOM],
+    );
+    let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
+    assert!(matches!(p.layers.as_slice(), [Layer::Quad(q)] if q.id == 51));
+}
+
+#[test]
+fn a_view_that_names_a_missing_or_flat_camera_is_a_quad() {
+    for tree in [
+        scene(vec![room(&[51]), view(51, 1920.0, 1080.0).through(999)], &[ROOM]),
+        stereo_room(camera(RIG, CameraProjection::Orthographic)),
+        scene(
+            vec![room(&[RIG, 51]), group(RIG), view(51, 1920.0, 1080.0).through(RIG)],
+            &[ROOM],
+        ),
+    ] {
+        let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
+        assert!(matches!(p.layers.as_slice(), [Layer::Quad(q)] if q.id == 51), "{p:?}");
+    }
+}
+
+#[test]
+fn a_projection_layer_under_the_head_camera_is_head_locked() {
+    let tree = scene(
+        vec![
+            room(&[HEAD]),
+            camera(HEAD, CameraProjection::Stereo)
+                .named("head")
+                .children(&[RIG, 51]),
+            stereo_camera(),
+            view(51, 1920.0, 1080.0).through(RIG),
+        ],
+        &[ROOM],
+    );
+    let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
+    assert_eq!(projection(&p).placement.space, Space::View);
+}
+
+#[test]
+fn a_stereo_camera_that_cannot_be_drawn_skips_its_view() {
+    let cases: Vec<(&str, TreeNode)> = vec![
+        (
+            "negative ipd",
+            stereo_camera().rig(Rig {
+                ipd: -0.01,
+                ..Rig::default()
+            }),
+        ),
+        (
+            "nan ipd",
+            stereo_camera().rig(Rig {
+                ipd: f64::NAN,
+                ..Rig::default()
+            }),
+        ),
+        (
+            "no field of view",
+            stereo_camera().rig(Rig {
+                fov_degrees: 0.0,
+                ..Rig::default()
+            }),
+        ),
+        (
+            "a flat field of view",
+            stereo_camera().rig(Rig {
+                fov_degrees: 180.0,
+                ..Rig::default()
+            }),
+        ),
+        (
+            "left past right",
+            stereo_camera().rig(Rig {
+                angles_degrees: [30.0, -30.0, 30.0, -30.0],
+                ..Rig::default()
+            }),
+        ),
+        (
+            "an angle of 90 degrees",
+            stereo_camera().rig(Rig {
+                angles_degrees: [-90.0, 30.0, 30.0, -30.0],
+                ..Rig::default()
+            }),
+        ),
+        ("zero metres", stereo_camera().metres(0.0)),
+        ("a position at infinity", stereo_camera().at(f64::INFINITY, 0.0, 0.0)),
+    ];
+    for (name, camera) in cases {
+        let p = plan(&stereo_room(camera), &head_pose(0.0, 0.0, 0.0), &opts());
+        assert!(p.layers.is_empty(), "{name}: {p:?}");
+        assert_eq!(
+            p.skipped.iter().map(|s| (s.id, s.reason)).collect::<Vec<_>>(),
+            vec![(51, SkipReason::InvalidCamera)],
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn a_zero_size_stereo_view_is_skipped_as_an_invalid_size_not_a_bad_camera() {
+    let tree = scene(
+        vec![room(&[RIG, 51]), stereo_camera(), view(51, 0.0, 1080.0).through(RIG)],
+        &[ROOM],
+    );
+    let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
+    assert_eq!(
+        p.skipped.iter().map(|s| s.reason).collect::<Vec<_>>(),
+        vec![SkipReason::InvalidSize]
+    );
+}
+
+#[test]
+fn a_one_pixel_wide_stereo_view_gives_its_eyes_no_area() {
+    // Half of one column is no column: the compositor draws a blank picture and the planner skips the layer.
+    let tree = scene(
+        vec![room(&[RIG, 51]), stereo_camera(), view(51, 1.0, 1080.0).through(RIG)],
+        &[ROOM],
+    );
+    let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
+    assert_eq!(
+        p.skipped.iter().map(|s| s.reason).collect::<Vec<_>>(),
+        vec![SkipReason::InvalidCamera]
+    );
+}
+
+#[test]
+fn the_head_pose_does_not_move_a_projection_layers_eyes() {
+    let tree = stereo_room(stereo_camera());
+    let first = plan(&tree, &head_pose(0.0, 1.6, 0.0), &opts());
+    let moved = plan(&tree, &head_pose(3.0, 1.2, -2.0), &opts());
+    assert_eq!(first, moved);
+}
+
+#[test]
+fn two_views_that_name_the_same_camera_are_both_projection_layers_in_tree_order() {
+    let tree = scene(
+        vec![
+            room(&[RIG, 51, 52]),
+            stereo_camera(),
+            view(51, 1920.0, 1080.0).through(RIG),
+            view(52, 1920.0, 1080.0).through(RIG),
+        ],
+        &[ROOM],
+    );
+    let p = plan(&tree, &head_pose(0.0, 0.0, 0.0), &opts());
+    assert_eq!(ids(&p), vec![51, 52]);
+    assert!(p.layers.iter().all(|layer| matches!(layer, Layer::Projection(_))));
+    let (Layer::Projection(first), Layer::Projection(second)) = (&p.layers[0], &p.layers[1]) else {
+        unreachable!("both are projection layers");
+    };
+    assert_eq!(first.eyes, second.eyes, "the same camera gives the same eyes");
 }

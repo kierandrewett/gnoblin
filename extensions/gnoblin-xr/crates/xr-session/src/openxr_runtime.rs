@@ -18,8 +18,8 @@ use std::sync::Arc;
 use openxr as xr;
 use xr_gpu::VulkanDevice;
 use xr_input::{ControllerState, pointing_ray};
-use xr_layers::{Eye, EyeVisibility, Fov, ImageRect, SubmittedLayer, SwapchainId};
-use xr_scene::{Pose, Space};
+use xr_layers::{EyeVisibility, ImageRect, SubmittedLayer, SwapchainId};
+use xr_scene::{Fov, Pose, Space};
 
 use crate::openxr_input::Input;
 use crate::runtime::{Capabilities, FrameTiming, Runtime, RuntimeError, SessionEvent, SessionState};
@@ -407,34 +407,6 @@ impl<G: Binding> Runtime for OpenxrRuntime<G> {
             secondary: sample.secondary,
             scroll: sample.scroll,
         })
-    }
-
-    fn locate_views(&mut self, display_time: i64) -> crate::runtime::Result<Option<[Eye; 2]>> {
-        let (flags, views) = self
-            .session
-            .locate_views(
-                xr::ViewConfigurationType::PRIMARY_STEREO,
-                xr::Time::from_nanos(display_time),
-                &self.local,
-            )
-            .map_err(|e| err("xrLocateViews", e))?;
-        let valid = xr::ViewStateFlags::POSITION_VALID | xr::ViewStateFlags::ORIENTATION_VALID;
-        let [left, right] = views.as_slice() else {
-            return Ok(None);
-        };
-        if !flags.contains(valid) {
-            return Ok(None);
-        }
-        let eye = |view: &xr::View| Eye {
-            pose: from_posef(&view.pose),
-            fov: Fov {
-                left: view.fov.angle_left,
-                right: view.fov.angle_right,
-                up: view.fov.angle_up,
-                down: view.fov.angle_down,
-            },
-        };
-        Ok(Some([eye(left), eye(right)]))
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -887,7 +859,6 @@ mod tests {
             let submission = compose(
                 &[Layer::Quad(placement)],
                 &|_| Some(xr_layers::SwapchainRef { id, width, height }),
-                None,
                 &limits,
             );
             assert_eq!(submission.layers.len(), 1);

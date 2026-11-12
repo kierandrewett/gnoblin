@@ -165,8 +165,11 @@ A window that closes fades out the same way, over the same 200 ms, from the last
 fade plays when the client destroys the window, when it frees its buffers first and when it exits: the compositor
 keeps the picture it read, not the client's buffer.
 
-A window that shows a GPU buffer (`zwp_linux_dmabuf_v1`) has no picture the compositor can keep, so it is hidden and
-closed without a fade.
+A window that shows a GPU buffer (`zwp_linux_dmabuf_v1`) fades out the same way. The compositor has no CPU picture of
+it to copy, so it keeps the buffer itself (the handle owns the buffer's file descriptors, so it outlives the client's
+`wl_buffer`) and the fade draws that.
+
+A client that reuses the buffer for its next frame while the fade runs can show through it. The fade of a GPU buffer has been run only against a stand-in for the GPU, not on one.
 
 The Rust compositor (`gnoblin-backend`) does not read `gnoblin.animation` declarations for its fades and its workspace
 slide yet. They use the built-in timing described here, and the selected animation's `progress` does not change them.
