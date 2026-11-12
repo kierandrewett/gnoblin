@@ -29,7 +29,9 @@ table disagrees with the rules.
   document, keeps the old behaviour and reports the setting as `restart required`. The
   process named in the row is the one that has to restart; restarting it alone is enough.
 - **unused**: nothing reads the setting. The reload reports a change to it as `no effect`
-  rather than letting it pass as applied.
+  rather than letting it pass as applied. The input device settings (`input.mouse`, `touchpad`, and the other device
+  sections) are unused until libinput applies them; that work needs a device to test on and is
+  tracked in `gnoblin-v09s`.
 
 ## Which document a process started with
 
@@ -120,11 +122,27 @@ reload, so a setting changed and changed back is not pending.
 | `portals.*`                                      | unused  | A carried section: nothing reads it.                                                                                                                                                                                                                                                                                                                                                               |
 | `shortcuts.*`                                    | live    | `Server::commit` calls `ControlHandle::set_shortcuts`, which reconciles the router (`State::apply_shortcuts`); a refused table keeps the previous one, a shell's seat claims in the same table survive (`BindingTable::reconcile_keeping`), and a document with no section removes the old shortcuts. Test `a_committed_shortcut_table_takes_effect_in_a_running_session_and_its_removal_ends_it`. |
 
-## Why the restart rows are not made live here
+## Why the remaining restart rows are not made live
 
-`compositor.renderer` and `capture.secure-treatment` choose the backend's renderer; replacing it
-means recreating every GPU resource and capture in flight. `protocols` and `workspaces` change
-what clients and the shell have already seen. `logging.*` and the services rows belong to
-processes that read their settings before any document exists. Each of those would have to
-restart the owning process, which is a guardian feature (restart one child with its effects
-stated) and not a property of the reload; until it exists the reload says `restart required`.
+Each row below was looked at for a cheap, safe live path and does not have one.
+
+- `compositor.renderer`, `capture.secure-treatment`: the backend builds its renderer with them.
+  Replacing a renderer means recreating every GPU resource and capture in flight, and the
+  `Backend` trait has no setter for either.
+- `protocols.*`: `State::new` creates every global and removes the disabled ones. Removing a
+  global later is possible; advertising a removed one again needs the protocol's state created
+  again, and clients that already hold the registry never see a global added after their
+  `get_registry` unless they listen for it. Switching only off would make a reload half-live.
+- `workspaces.*`: the compositor could republish the list, but the stock shell builds each
+  Desk's workspaces once (`Desk:build` in `data/lua/gnoblin/shell/init.lua`), and workspace
+  sets, the Super+N bindings and the slide gestures all address workspaces by name or
+  position. A reload that renames, adds or removes one needs a diff that moves the windows of a
+  removed workspace and re-validates the sets; that is a shell feature, not a reload.
+- `logging.*`: `gnoblin_log::filter::set_spec` can change the compositor's level, but the
+  runtime, services and portal are separate processes that each read the section at start, so a
+  live compositor alone would leave the same setting half applied.
+- `keyring.enabled`, `location.*`, `compat.capture`: owned by the services role and the
+  compatibility host, which read them when they start. Applying them live means restarting
+  that one child with its effects stated, which is a guardian feature (restart one child on a
+  configuration change) and not a property of the reload.
+  Until it exists the reload says `restart required`.
