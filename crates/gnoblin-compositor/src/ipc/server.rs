@@ -51,13 +51,19 @@
 //!    covers.
 //! 7. **A client that is not privileged calls a privileged member.** The owner gate
 //!    answers `denied` before the member is looked at, so a plain socket connection
-//!    can neither offer a request nor commit a configuration. The session owner's connection
-//!    may read the configuration and ask for a reload, which the runtime still performs:
-//!    `tests/privilege.rs::a_socket_client_cannot_use_a_privileged_member`.
+//!    can neither offer a request, nor claim a slot, nor answer a prompt, nor commit a
+//!    configuration. The session owner's connection may read the configuration and ask for a
+//!    reload, which the runtime still performs:
+//!    `slots_and_the_request_exchange_are_gated_on_the_owner_connection`.
 //! 8. **An offer is routed to a connection that never answers.** The slot decides, a
 //!    slot with no provider is refused with `no-provider`, and both sides of a request
 //!    always learn its one completion:
 //!    `src/ipc/requests.rs`'s own tests.
+//! 9. **A shell replaces the built-in portal dialog and its answer is trusted.** The claimant's
+//!    `allow` settles a request only after the arming window and only if it is exactly `allow`;
+//!    every other outcome (a decline, a bad answer, a deadline, a claimant that left) hands the
+//!    request to the built-in dialog, and a requester that left or a lock ends the offer:
+//!    `tests/portal_provider.rs`.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -908,10 +914,52 @@ impl Dispatcher {
                 log::warn!(area = "ipc", %reason, "a portal dialog opens on its output scope; the parent window is not used");
             }
         }
+        if self.route_to_portal_claimant(client, envelope.request_id, &request, now) {
+            return;
+        }
         match self.portal.submit(client, envelope.request_id, &request, now) {
             Ok(replies) => self.deliver_replies(replies),
             Err(refused) => self.refuse(client, envelope, refused.code, &refused.message),
         }
+    }
+
+    /// Offer a `portal.ui` request to the shell that claimed the slot, in place of the built-in
+    /// dialog. Returns whether it was offered.
+    ///
+    /// Nothing is offered, and the built-in dialog serves the request, when no shell holds the
+    /// slot, the claimant is the requester itself or is gone, the session is locked (the built-in
+    /// path refuses it as locked), or the request cannot be routed (an interface the compositor
+    /// does not know, an id already held, a timeout too short to leave the built-in a window).
+    fn route_to_portal_claimant(
+        &mut self,
+        client: ClientId,
+        envelope_id: u64,
+        request: &wire::PortalRequest,
+        now: Tick,
+    ) -> bool {
+        let Some(provider) = self.requests.portal_ui_claimant() else {
+            return false;
+        };
+        if provider == client || !self.connections.contains_key(&provider) || self.session_locked() {
+            return false;
+        }
+        let Some((interface, window)) = self.portal.routable(envelope_id, request) else {
+            return false;
+        };
+        // The subject is the app id the relay verified from the bus, the same identity the
+        // built-in dialog shows. The request body never supplies it.
+        let (offer, deliveries) = self.requests.offer_portal(
+            client,
+            provider,
+            &request.interface,
+            &request.prompt,
+            request.caller.app_id().as_bytes(),
+            now.saturating_add(window),
+        );
+        self.portal
+            .offered_to_claimant(client, envelope_id, offer, request, interface, now);
+        self.deliver(deliveries);
+        true
     }
 
     /// `portal.cancel`: the connection withdraws the portal requests it holds. Each
@@ -956,6 +1004,38 @@ impl Dispatcher {
                 connection.send(&envelope);
             }
         }
+        self.end_abandoned_portal_offers();
+    }
+
+    /// End the `portal.ui` offers whose requester left, cancelled, or was locked out, so the claimant
+    /// stops drawing a dialog nobody waits for.
+    fn end_abandoned_portal_offers(&mut self) {
+        for offer in self.portal.take_abandoned() {
+            let deliveries = self.requests.abandon_portal(offer);
+            self.deliver(deliveries);
+        }
+    }
+
+    /// Turn how the claimant's `portal.ui` offers ended into the replies their requesters wait
+    /// for, or into the built-in dialog when the claimant could not settle them.
+    fn settle_portal_offers(&mut self) {
+        let outcomes = self.requests.take_portal_outcomes();
+        if outcomes.is_empty() {
+            return;
+        }
+        let now = self.now();
+        for (offer, outcome) in outcomes {
+            let replies = self.portal.provider_settled(offer, &outcome, now);
+            self.deliver_replies(replies);
+        }
+    }
+
+    /// Whether the session is locked, as the lock's own observation says.
+    fn session_locked(&self) -> bool {
+        match self.observation.lock() {
+            Ok(guard) => guard.lock_active(),
+            Err(poisoned) => poisoned.into_inner().lock_active(),
+        }
     }
 
     /// Whether this connection is the session owner's.
@@ -975,6 +1055,7 @@ impl Dispatcher {
                 connection.send(&delivery.envelope);
             }
         }
+        self.settle_portal_offers();
     }
 
     /// Publish the slot registry when a claim changed it.
@@ -1075,17 +1156,8 @@ impl Dispatcher {
                 return;
             }
         };
-        // Every owner connection may offer a slot. The relay's `secret.derive` offer is still
-        // gated on the compositor's own consent below.
-        if !self.is_owner(client) {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::DENIED,
-                &format!("offering `{slot}` needs the session owner's connection, which this connection is not"),
-            );
-            return;
-        }
+        // The gate has already shown this is the session owner's connection. The relay's
+        // `secret.derive` offer is still gated on the compositor's own consent below.
         // The relay asks for an app's secret, but only the compositor, which showed the
         // consent dialog, may say the user allowed it. Without a grant the offer never leaves.
         if slot == gnoblin_model::CapabilitySlot::SecretDerive.name() {
@@ -2418,6 +2490,9 @@ impl Dispatcher {
     /// Routes the modal events the session queued and shows or clears the dialog
     /// modal. The dialog sits on the primary output and follows the session lock.
     fn pump_portal(&mut self) {
+        let locked = self.session_locked();
+        let replies = self.portal.follow_lock(locked);
+        self.deliver_replies(replies);
         if !self.portal.wants_pump() {
             return;
         }
@@ -2554,6 +2629,12 @@ fn requires_owner(member: &str) -> bool {
             | wire::member::CONFIG_REJECT
             | wire::member::CONFIG_CURRENT
             | wire::member::CONFIG_RELOAD
+            | wire::member::OFFER
+            | wire::member::CLAIM
+            | wire::member::ANSWER
+            | wire::member::DECLINE
+            | wire::member::SLOT_CLAIM
+            | wire::member::SLOT_RELEASE
             | wire::member::PORTAL_UI
             | wire::member::PORTAL_CANCEL
             | wire::member::PORTAL_KEY
@@ -2830,6 +2911,33 @@ mod tests {
                 "`{member}` asserts the user's consent, which only the owner's connection may"
             );
         }
+    }
+
+    #[test]
+    fn slots_and_the_request_exchange_are_gated_on_the_owner_connection() {
+        // Failure mode: the capability set that used to gate `slot.claim` was deleted and the gate
+        // went with it, so a connection that is not the owner's could claim `portal.ui` or
+        // `prompt.secret` and answer every consent and passphrase prompt. A member missing from
+        // this table is served to any connection.
+        for member in [
+            wire::member::SLOT_CLAIM,
+            wire::member::SLOT_RELEASE,
+            wire::member::OFFER,
+            wire::member::CLAIM,
+            wire::member::ANSWER,
+            wire::member::DECLINE,
+            wire::member::PORTAL_UI,
+            wire::member::PORTAL_CANCEL,
+            wire::member::PORTAL_KEY,
+        ] {
+            assert!(
+                requires_owner(member),
+                "`{member}` decides or draws a prompt, so only the owner's connection may call it"
+            );
+        }
+        // Reading the graph and calling its objects stay open to any connection of the session.
+        assert!(!requires_owner(wire::member::SUBSCRIBE));
+        assert!(!requires_owner(wire::member::CALL));
     }
 
     #[test]

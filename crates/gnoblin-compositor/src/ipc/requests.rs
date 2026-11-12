@@ -82,6 +82,11 @@ struct Offer {
     provider: ClientId,
     /// The connection that offered it, which is the only one that reads the answer.
     offered_by: ClientId,
+    /// Whether the offer is the compositor's own `portal.ui` routing. Its outcome goes to the
+    /// portal service, which turns it into the reply the relay is waiting for, never to
+    /// `offered_by` as an answer frame: the relay asked a question of the compositor, not of the
+    /// provider.
+    portal: bool,
 }
 
 /// One frame the dispatcher has to write, and the connection to write it to.
@@ -126,6 +131,8 @@ pub(crate) struct Requests {
     claims: BTreeMap<CapabilitySlot, ClientId>,
     published: Fields,
     configuration: Configuration,
+    /// How the compositor's own `portal.ui` offers ended, for the portal service to settle.
+    portal_outcomes: Vec<(RequestId, RequestOutcome)>,
 }
 
 impl Requests {
@@ -142,6 +149,7 @@ impl Requests {
             published: Slots::new().fields(),
             slots,
             configuration: Configuration::default(),
+            portal_outcomes: Vec::new(),
         }
     }
 
@@ -172,9 +180,61 @@ impl Requests {
                 subject: subject.to_vec(),
                 provider,
                 offered_by,
+                portal: false,
             },
         );
         Ok((request, self.drain()))
+    }
+
+    /// Offer a `portal.ui` request to the shell that claimed the slot, on behalf of the relay
+    /// connection that asked the compositor for it.
+    ///
+    /// The offer is the compositor's own, so the answer never travels to `requested_by` as an
+    /// answer frame: [`Requests::take_portal_outcomes`] returns how it ended, and the portal
+    /// service turns that into the one reply the relay waits for.
+    pub(crate) fn offer_portal(
+        &mut self,
+        requested_by: ClientId,
+        provider: ClientId,
+        title: &str,
+        message: &str,
+        subject: &[u8],
+        deadline: Tick,
+    ) -> (RequestId, Vec<FrameDelivery>) {
+        let request = self.broker.offer(deadline);
+        self.offers.insert(
+            request,
+            Offer {
+                slot: CapabilitySlot::PortalUi,
+                title: title.to_owned(),
+                message: message.to_owned(),
+                subject: subject.to_vec(),
+                provider,
+                offered_by: requested_by,
+                portal: true,
+            },
+        );
+        (request, self.drain())
+    }
+
+    /// The connection that claimed `portal.ui`, when a shell holds it.
+    pub(crate) fn portal_ui_claimant(&self) -> Option<ClientId> {
+        if self.slots.provider(CapabilitySlot::PortalUi) != Provider::Shell {
+            return None;
+        }
+        self.claims.get(&CapabilitySlot::PortalUi).copied()
+    }
+
+    /// How the compositor's own `portal.ui` offers ended since the last call.
+    pub(crate) fn take_portal_outcomes(&mut self) -> Vec<(RequestId, RequestOutcome)> {
+        std::mem::take(&mut self.portal_outcomes)
+    }
+
+    /// End a `portal.ui` offer nobody will answer: its requester left, cancelled, or the session
+    /// locked. The provider is told it ended.
+    pub(crate) fn abandon_portal(&mut self, request: RequestId) -> Vec<FrameDelivery> {
+        let _ = self.broker.abandon(request);
+        self.drain()
     }
 
     /// The connection an offer for `slot` goes to.
@@ -217,6 +277,22 @@ impl Requests {
                 message: "`secret.derive` is internal: only the session owner's connection may claim it".to_owned(),
             });
         }
+        // `portal.ui` is a shell's to claim: the services role has no UI to draw, and the built-in
+        // dialog is the default, not a claimant.
+        if slot == CapabilitySlot::PortalUi && provider != Provider::Shell {
+            return Err(RequestRefusal {
+                code: wire::code::DENIED,
+                message: "`portal.ui` is claimed by a shell, which draws the dialog itself".to_owned(),
+            });
+        }
+        // A claim names who draws or answers. Claiming `none` would clear another holder's claim
+        // without being its holder; giving a slot back is `slot.release`, which only the holder may do.
+        if provider == Provider::None {
+            return Err(RequestRefusal {
+                code: wire::code::DENIED,
+                message: "a claim names a provider; give a slot back with `slot.release`".to_owned(),
+            });
+        }
         self.slots
             .claim(slot, provider, Some(OwnerId::new(owner.get())))
             .map_err(|error| RequestRefusal {
@@ -225,11 +301,7 @@ impl Requests {
             })?;
         // Both providers that answer on a connection are recorded: the shell slot and the
         // secret slot each route to the connection that claimed them.
-        if matches!(provider, Provider::Shell | Provider::Services) {
-            self.claims.insert(slot, owner);
-        } else {
-            self.claims.remove(&slot);
-        }
+        self.claims.insert(slot, owner);
         Ok(Vec::new())
     }
 
@@ -444,6 +516,16 @@ impl Requests {
                         wipe(&mut outcome);
                         continue;
                     };
+                    if offer.portal {
+                        // The relay asked the compositor, not the provider: the provider learns how
+                        // its request ended, and the portal service reads the outcome and replies.
+                        deliveries.push(FrameDelivery {
+                            client: offer.provider,
+                            envelope: wire::finished(request, RequestCompletion::from(&outcome)),
+                        });
+                        self.portal_outcomes.push((request, outcome));
+                        continue;
+                    }
                     // Only the host that offered the request reads the answer, and the
                     // frame that carries it is flagged sensitive by the schema.
                     if let RequestOutcome::Answered(answer) = &outcome {
@@ -884,5 +966,144 @@ mod tests {
             deliveries.iter().any(|delivery| delivery.client == HOST),
             "the host learns its request timed out"
         );
+    }
+
+    #[test]
+    fn portal_ui_has_no_claimant_until_a_shell_claims_it() {
+        let mut requests = Requests::new();
+        assert_eq!(
+            requests.portal_ui_claimant(),
+            None,
+            "the built-in dialog is the default"
+        );
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect("a shell claims portal.ui");
+        assert_eq!(requests.portal_ui_claimant(), Some(SHELL));
+        requests
+            .release_slot(SHELL, CapabilitySlot::PortalUi)
+            .expect("the holder releases it");
+        assert_eq!(
+            requests.portal_ui_claimant(),
+            None,
+            "releasing restores the built-in dialog"
+        );
+    }
+
+    #[test]
+    fn the_services_role_cannot_claim_portal_ui() {
+        let mut requests = Requests::new();
+        let refusal = requests
+            .claim_slot(SERVICES, CapabilitySlot::PortalUi, Provider::Services, true)
+            .expect_err("the services role draws nothing");
+        assert_eq!(refusal.code, wire::code::DENIED);
+        assert_eq!(requests.portal_ui_claimant(), None);
+    }
+
+    #[test]
+    fn a_second_shell_cannot_take_portal_ui_from_the_first() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect("the first claim wins");
+        let refusal = requests
+            .claim_slot(HOST, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect_err("a second claim is refused");
+        assert_eq!(refusal.code, wire::code::DENIED);
+        assert_eq!(requests.portal_ui_claimant(), Some(SHELL));
+        assert!(
+            requests.release_slot(HOST, CapabilitySlot::PortalUi).is_err(),
+            "a connection that does not hold the slot cannot release it"
+        );
+        assert_eq!(requests.portal_ui_claimant(), Some(SHELL));
+    }
+
+    #[test]
+    fn a_none_claim_does_not_clear_another_connections_slot() {
+        // The failure this prevents: any connection claiming `none` cleared a slot another
+        // connection held, bypassing the holder-only release.
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PromptSecret, Provider::Shell, true)
+            .expect("the shell claims the prompt slot");
+        let refusal = requests
+            .claim_slot(HOST, CapabilitySlot::PromptSecret, Provider::None, true)
+            .expect_err("a none claim is refused");
+        assert_eq!(refusal.code, wire::code::DENIED);
+        assert!(
+            requests
+                .offer(HOST, "prompt.secret", "Unlock", "Passphrase", b"", Tick::new(1_000))
+                .is_ok(),
+            "the shell still provides the slot"
+        );
+    }
+
+    #[test]
+    fn a_portal_offer_is_answered_to_the_portal_service_and_never_to_the_relay() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect("a shell claims portal.ui");
+        let (request, offered) =
+            requests.offer_portal(HOST, SHELL, "Screenshot", "Share?", b"org.example", Tick::new(1_000));
+        assert!(
+            offered.iter().all(|delivery| delivery.client == SHELL),
+            "only the claimant is offered the request"
+        );
+        requests.claim_request(SHELL, request).expect("the claimant claims it");
+        let deliveries = requests
+            .answer(SHELL, request, b"allow".to_vec())
+            .expect("the claimant answers");
+        assert!(
+            deliveries.iter().all(|delivery| delivery.client == SHELL),
+            "the relay is told nothing by the request layer: the portal service replies to it"
+        );
+        let outcomes = requests.take_portal_outcomes();
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].0, request);
+        assert!(matches!(&outcomes[0].1, RequestOutcome::Answered(answer) if answer.as_slice() == b"allow"));
+        assert!(requests.take_portal_outcomes().is_empty(), "an outcome is taken once");
+    }
+
+    #[test]
+    fn a_departed_portal_claimant_ends_the_offer_for_the_portal_service() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect("a shell claims portal.ui");
+        let (request, _) = requests.offer_portal(HOST, SHELL, "Screenshot", "Share?", b"org.example", Tick::new(1_000));
+        requests.claim_request(SHELL, request).expect("the claimant claims it");
+        let _ = requests.departed(SHELL);
+        let outcomes = requests.take_portal_outcomes();
+        assert_eq!(outcomes.len(), 1, "the offer ended once");
+        assert!(matches!(outcomes[0].1, RequestOutcome::Ended));
+        assert_eq!(requests.portal_ui_claimant(), None, "its claim went with it");
+    }
+
+    #[test]
+    fn a_portal_offer_past_its_deadline_times_out_for_the_portal_service() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect("a shell claims portal.ui");
+        let (request, _) = requests.offer_portal(HOST, SHELL, "Screenshot", "Share?", b"org.example", Tick::new(1_000));
+        let _ = requests.tick(Tick::new(1_000));
+        let outcomes = requests.take_portal_outcomes();
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].0, request);
+        assert!(matches!(outcomes[0].1, RequestOutcome::TimedOut));
+    }
+
+    #[test]
+    fn only_the_claimant_may_claim_or_answer_a_portal_offer() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::PortalUi, Provider::Shell, true)
+            .expect("a shell claims portal.ui");
+        let (request, _) = requests.offer_portal(HOST, SHELL, "Screenshot", "Share?", b"org.example", Tick::new(1_000));
+        // The relay that asked is neither the provider nor allowed to answer its own question.
+        assert!(requests.claim_request(HOST, request).is_err());
+        assert!(requests.answer(HOST, request, b"allow".to_vec()).is_err());
+        assert!(requests.take_portal_outcomes().is_empty(), "nothing settled");
     }
 }

@@ -262,12 +262,13 @@ impl<T: Transport> Client<T> {
         }
     }
 
-    /// Ask the built-in portal UI for a decision without waiting for it.
+    /// Ask for a portal consent decision without waiting for it.
     ///
-    /// The compositor settles the request later, under the same ticket. Collect the
-    /// outcome with [`Client::portal_outcome`] (blocking) or
-    /// [`Client::take_portal_outcome`] (only if it already arrived). Privileged: the
-    /// compositor refuses unless this connection holds `portal.ui`.
+    /// The compositor serves the request with the shell that claimed `portal.ui`, or with its
+    /// built-in dialog when none did or the claimant could not settle it. It settles the request
+    /// later, under the same ticket. Collect the outcome with [`Client::portal_outcome`]
+    /// (blocking) or [`Client::take_portal_outcome`] (only if it already arrived). Privileged:
+    /// the compositor refuses unless this is the session owner's connection.
     pub fn portal_ui(&mut self, request: &wire::PortalRequest) -> Result<PortalTicket, ClientError> {
         let correlation = self.next_id();
         let frame = wire::portal_ui(correlation, request);
@@ -394,11 +395,16 @@ impl<T: Transport> Client<T> {
         Ok(RequestId::new(request))
     }
 
-    /// Claim a slot, so offers for it are sent to this connection.
+    /// Claim a slot, so offers for it are sent to this connection. Privileged: the session
+    /// owner's connection only.
     ///
     /// A shell claims the slots it draws; the services role claims the ones it
     /// provides by default. A second shell is refused with the holder named, and the
-    /// services role cannot take a slot back while a shell holds it.
+    /// services role cannot take a slot back while a shell holds it. `portal.ui` is the
+    /// slot of the portal consent dialog: a shell that claims it is offered every consent
+    /// request the built-in dialog would have drawn, and answers `allow` or `deny`. Only
+    /// [`Provider::Shell`] claims it, and only the holder gives a slot back with
+    /// [`Client::release_slot`].
     pub fn claim_slot(&mut self, slot: &str, provider: Provider) -> Result<(), ClientError> {
         let correlation = self.next_id();
         let frame = wire::slot_claim(correlation, slot, provider);

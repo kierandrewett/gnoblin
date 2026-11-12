@@ -54,8 +54,8 @@ use gnoblin_types::OwnerId;
 
 use crate::value::{Fields, Value};
 
-/// How many slots the registry tracks: the published four and `secret.derive`.
-const COUNT: usize = 5;
+/// How many slots the registry tracks: the published four, `secret.derive` and `portal.ui`.
+const COUNT: usize = 6;
 
 /// How many of those slots are published in the session object and the schema.
 const PUBLISHED: usize = 4;
@@ -79,11 +79,18 @@ pub enum CapabilitySlot {
     /// Internal: the consent-gated secret derivation behind `portal.secret`. Only the
     /// services role may claim it, it is not published, and no config or shell names it.
     SecretDerive,
+    /// The UI step of a portal request: the consent dialog an app's capture, input or secret
+    /// request raises. Its default is the compositor's built-in dialog, which is not a provider
+    /// in this registry, so the slot's default provider is `none` and a request for it never fails
+    /// closed: with no claimant the built-in dialog serves it. A shell claims it to draw the
+    /// dialog itself, and the built-in dialog stays the fallback whenever the claimant cannot
+    /// answer. Not published: nothing reads who holds it, because a claim's reply says.
+    PortalUi,
 }
 
 impl CapabilitySlot {
-    /// The published slots, in publication order. `secret.derive` is absent on purpose:
-    /// it is internal, so no schema, config or user doc names it.
+    /// The published slots, in publication order. `secret.derive` and `portal.ui` are absent on
+    /// purpose: they are internal, so no schema or session property names them.
     pub const ALL: [CapabilitySlot; PUBLISHED] = [
         CapabilitySlot::AuthPolkit,
         CapabilitySlot::PromptSecret,
@@ -98,6 +105,7 @@ impl CapabilitySlot {
         CapabilitySlot::LocationAgent,
         CapabilitySlot::IdlePolicy,
         CapabilitySlot::SecretDerive,
+        CapabilitySlot::PortalUi,
     ];
 
     /// The slot name from the plan's table, which is also the configuration and
@@ -109,6 +117,7 @@ impl CapabilitySlot {
             CapabilitySlot::LocationAgent => "location.agent",
             CapabilitySlot::IdlePolicy => "idle.policy",
             CapabilitySlot::SecretDerive => "secret.derive",
+            CapabilitySlot::PortalUi => "portal.ui",
         }
     }
 
@@ -124,13 +133,14 @@ impl CapabilitySlot {
             CapabilitySlot::LocationAgent => "slot_location_agent",
             CapabilitySlot::IdlePolicy => "slot_idle_policy",
             CapabilitySlot::SecretDerive => "slot_secret_derive",
+            CapabilitySlot::PortalUi => "slot_portal_ui",
         }
     }
 
     /// The provider the plan's table gives this slot when nobody claimed it.
     pub const fn default_provider(self) -> Provider {
         match self {
-            CapabilitySlot::PromptSecret => Provider::None,
+            CapabilitySlot::PromptSecret | CapabilitySlot::PortalUi => Provider::None,
             CapabilitySlot::AuthPolkit
             | CapabilitySlot::LocationAgent
             | CapabilitySlot::IdlePolicy
@@ -146,6 +156,7 @@ impl CapabilitySlot {
             CapabilitySlot::LocationAgent => 2,
             CapabilitySlot::IdlePolicy => 3,
             CapabilitySlot::SecretDerive => 4,
+            CapabilitySlot::PortalUi => 5,
         }
     }
 }

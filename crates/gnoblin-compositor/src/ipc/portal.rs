@@ -31,6 +31,7 @@
 use std::collections::BTreeSet;
 
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
+use gnoblin_model::RequestOutcome;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_portal_ui::ui::DialogScheme;
 use gnoblin_proto::Envelope;
@@ -39,6 +40,7 @@ use gnoblin_render_frame::image::Image;
 use gnoblin_types::{ClientId, KeyState, OutputId, ParentWindow, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent, WindowProcess};
 
+use crate::log;
 use crate::portal::{CancelReason, PortalError, PortalUi, Verdict};
 
 /// The built-in dialog's frame size, in pixels.
@@ -63,6 +65,38 @@ pub struct PortalRefusal {
     pub message: String,
 }
 
+/// How long after a request is offered to a `portal.ui` claimant an `allow` answer is not believed.
+///
+/// The built-in dialog ignores input for the same 500 ms after it appears, so a click already in
+/// progress cannot accept it (D19, "One gesture to allow"). The compositor cannot see the
+/// claimant's dialog, so it applies the rule to the one thing it can see: an `allow` that arrives
+/// sooner than a person could have read the request settles as a refusal.
+const ARMING_MS: u64 = 500;
+
+/// The wire answer a `portal.ui` claimant gives to allow the request. Anything else it sends is
+/// not understood and the built-in dialog serves the request instead; `deny` refuses it.
+const ANSWER_ALLOW: &[u8] = b"allow";
+
+/// The wire answer a `portal.ui` claimant gives to refuse the request.
+const ANSWER_DENY: &[u8] = b"deny";
+
+/// A request offered to the shell that claimed `portal.ui`, kept until the claimant settles it or
+/// the compositor falls back to the built-in dialog.
+struct ClaimantOffer {
+    /// The broker request the claimant was offered.
+    offer: RequestId,
+    /// The connection that submitted the request, and the only one its outcome goes to.
+    client: ClientId,
+    /// The envelope id the outcome is sent under.
+    envelope_id: u64,
+    /// The request as the relay sent it, so the built-in dialog can serve it if the claimant cannot.
+    request: PortalRequest,
+    /// The interface the request asked for.
+    interface: Interface,
+    /// When the claimant was offered the request.
+    started: Tick,
+}
+
 /// The connection that submitted an admitted request, and the envelope id its
 /// outcome is sent under.
 struct HeldRequest {
@@ -84,6 +118,10 @@ pub struct PortalService {
     ui: PortalUi,
     /// Admitted requests still waiting for an outcome, in admission order.
     owners: Vec<HeldRequest>,
+    /// Requests offered to a `portal.ui` claimant and not yet settled.
+    routed: Vec<ClaimantOffer>,
+    /// Offers whose requester is gone, cancelled or locked out, for the dispatcher to end.
+    abandoned: Vec<RequestId>,
     /// The output the dialog modal is shown on, while one is shown.
     shown: Option<OutputId>,
     /// Apps whose secret the user allowed this session. Held in memory only, so a new
@@ -109,6 +147,8 @@ impl PortalService {
         Self {
             ui: PortalUi::new(FRAME_WIDTH, FRAME_HEIGHT),
             owners: Vec::new(),
+            routed: Vec::new(),
+            abandoned: Vec::new(),
             shown: None,
             granted: BTreeSet::new(),
             locked: false,
@@ -142,14 +182,16 @@ impl PortalService {
         now: Tick,
     ) -> Result<Vec<Reply>, PortalRefusal> {
         let id = RequestId::new(envelope_id);
-        if self.owners.iter().any(|owner| owner.request == id) {
+        if self.owners.iter().any(|owner| owner.request == id)
+            || self.routed.iter().any(|routed| routed.envelope_id == envelope_id)
+        {
             return Err(PortalRefusal {
                 code: wire::code::REQUEST_TAKEN,
                 message: format!("portal request {envelope_id} is already held"),
             });
         }
         let Ok(interface) = Interface::from_name(&request.interface) else {
-            return Ok(vec![outcome(
+            return Ok(vec![outcome_reply(
                 client,
                 envelope_id,
                 Verdict::Error(PortalError::UnsupportedUi),
@@ -176,8 +218,127 @@ impl PortalService {
                 });
                 Ok(Vec::new())
             }
-            Err(error) => Ok(vec![outcome(client, envelope_id, Verdict::Error(error))]),
+            Err(error) => Ok(vec![outcome_reply(client, envelope_id, Verdict::Error(error))]),
         }
+    }
+
+    /// Whether `request` can be offered to a `portal.ui` claimant, and the part of the requester's
+    /// patience the claimant gets: the interface is one the compositor knows, the envelope id is
+    /// free, and the request leaves a window for the built-in dialog to serve it afterwards.
+    ///
+    /// The claimant gets half of the requester's timeout. The built-in dialog gets what is left,
+    /// so a claimant that never answers costs the requester no more than its own timeout.
+    #[must_use]
+    pub fn routable(&self, envelope_id: u64, request: &PortalRequest) -> Option<(Interface, u64)> {
+        let id = RequestId::new(envelope_id);
+        let window = request.timeout_ms / 2;
+        if window == 0
+            || self.owners.iter().any(|owner| owner.request == id)
+            || self.routed.iter().any(|routed| routed.envelope_id == envelope_id)
+        {
+            return None;
+        }
+        Interface::from_name(&request.interface)
+            .ok()
+            .map(|interface| (interface, window))
+    }
+
+    /// Record that `request` was offered to the `portal.ui` claimant as broker request `offer`.
+    pub fn offered_to_claimant(
+        &mut self,
+        client: ClientId,
+        envelope_id: u64,
+        offer: RequestId,
+        request: &PortalRequest,
+        interface: Interface,
+        now: Tick,
+    ) {
+        self.routed.push(ClaimantOffer {
+            offer,
+            client,
+            envelope_id,
+            request: request.clone(),
+            interface,
+            started: now,
+        });
+    }
+
+    /// The claimant's offer `offer` ended as `outcome`: settle the requester, or fall back.
+    ///
+    /// Only an exact `allow` or `deny` answer settles it, and an `allow` that comes sooner than
+    /// [`ARMING_MS`] after the offer settles as a refusal. Everything else, an answer the
+    /// compositor does not understand, a decline, a claimant that left or a deadline that passed,
+    /// hands the request to the built-in dialog, which asks the user with Deny focused. No path
+    /// here turns a failure into consent.
+    pub fn provider_settled(&mut self, offer: RequestId, outcome: &RequestOutcome, now: Tick) -> Vec<Reply> {
+        let Some(index) = self.routed.iter().position(|routed| routed.offer == offer) else {
+            // Its requester left or cancelled first, so nobody waits for it.
+            return Vec::new();
+        };
+        let routed = self.routed.remove(index);
+        let verdict = match outcome {
+            RequestOutcome::Answered(answer) if answer.as_slice() == ANSWER_ALLOW => {
+                if now.since(routed.started) < ARMING_MS {
+                    Some(Verdict::Cancelled(CancelReason::User))
+                } else {
+                    Some(Verdict::Handled(Grant::Allowed))
+                }
+            }
+            RequestOutcome::Answered(answer) if answer.as_slice() == ANSWER_DENY => {
+                Some(Verdict::Cancelled(CancelReason::User))
+            }
+            RequestOutcome::Answered(_)
+            | RequestOutcome::Ended
+            | RequestOutcome::Refused(_)
+            | RequestOutcome::TimedOut => None,
+        };
+        match verdict {
+            Some(verdict) => {
+                if routed.interface == Interface::Secret && verdict == Verdict::Handled(Grant::Allowed) {
+                    self.granted.insert(routed.request.caller.app_id().to_owned());
+                }
+                vec![outcome_reply(routed.client, routed.envelope_id, verdict)]
+            }
+            None => self.fall_back(routed, now),
+        }
+    }
+
+    /// Serve a routed request with the built-in dialog, for the time the requester has left.
+    fn fall_back(&mut self, routed: ClaimantOffer, now: Tick) -> Vec<Reply> {
+        let ClaimantOffer {
+            client,
+            envelope_id,
+            mut request,
+            started,
+            ..
+        } = routed;
+        request.timeout_ms = request.timeout_ms.saturating_sub(now.since(started));
+        if request.timeout_ms == 0 {
+            return vec![outcome_reply(
+                client,
+                envelope_id,
+                Verdict::Cancelled(CancelReason::Timeout),
+            )];
+        }
+        log::warn!(
+            area = "portal",
+            interface = %request.interface,
+            "the portal.ui claimant did not settle the request; the built-in dialog serves it"
+        );
+        match self.submit(client, envelope_id, &request, now) {
+            Ok(replies) => replies,
+            Err(_) => vec![outcome_reply(
+                client,
+                envelope_id,
+                Verdict::Error(PortalError::ProviderFailed),
+            )],
+        }
+    }
+
+    /// The broker offers whose requester is gone, cancelled or locked out since the last call.
+    /// The dispatcher ends them so the claimant stops drawing a dialog nobody waits for.
+    pub fn take_abandoned(&mut self) -> Vec<RequestId> {
+        std::mem::take(&mut self.abandoned)
     }
 
     /// `portal.key`: route one key to the open dialog at `now`. The clock is advanced
@@ -202,7 +363,11 @@ impl PortalService {
             .into_iter()
             .partition(|owner| owner.client == client);
         self.owners = kept;
-        if held.is_empty() {
+        let (sent, kept): (Vec<ClaimantOffer>, Vec<ClaimantOffer>) = std::mem::take(&mut self.routed)
+            .into_iter()
+            .partition(|routed| routed.client == client);
+        self.routed = kept;
+        if held.is_empty() && sent.is_empty() {
             return Err(PortalRefusal {
                 code: wire::code::REQUEST_UNKNOWN,
                 message: "this connection holds no portal request".to_owned(),
@@ -211,9 +376,17 @@ impl PortalService {
         let mut replies = Vec::new();
         for owner in held {
             self.ui.cancel(owner.request);
-            replies.push(outcome(
+            replies.push(outcome_reply(
                 owner.client,
                 owner.envelope_id,
+                Verdict::Cancelled(CancelReason::User),
+            ));
+        }
+        for routed in sent {
+            self.abandoned.push(routed.offer);
+            replies.push(outcome_reply(
+                routed.client,
+                routed.envelope_id,
                 Verdict::Cancelled(CancelReason::User),
             ));
         }
@@ -225,6 +398,11 @@ impl PortalService {
     /// dropped because the owner is gone.
     pub fn departed(&mut self, client: ClientId) -> Vec<Reply> {
         self.withdraw(client);
+        let (sent, kept): (Vec<ClaimantOffer>, Vec<ClaimantOffer>) = std::mem::take(&mut self.routed)
+            .into_iter()
+            .partition(|routed| routed.client == client);
+        self.routed = kept;
+        self.abandoned.extend(sent.into_iter().map(|routed| routed.offer));
         self.settle()
     }
 
@@ -238,12 +416,36 @@ impl PortalService {
     /// `pump` feeds it from the lock state each tick.
     pub fn set_locked(&mut self, locked: bool) -> Vec<Reply> {
         self.locked = locked;
+        let mut replies = Vec::new();
         if locked {
             // A lock ends every secret grant: the next request after unlock asks again.
             self.granted.clear();
+            // A request a claimant is drawing a dialog for is refused as the built-in's are.
+            for routed in std::mem::take(&mut self.routed) {
+                self.abandoned.push(routed.offer);
+                replies.push(outcome_reply(
+                    routed.client,
+                    routed.envelope_id,
+                    Verdict::Error(PortalError::Locked),
+                ));
+            }
         }
         self.ui.set_locked(locked);
-        self.settle()
+        replies.extend(self.settle());
+        replies
+    }
+
+    /// Follow the session's lock as the observation reports it: settle what a new lock refuses, and
+    /// let requests in again once it lifts. Nothing changes while the state is the one already known.
+    ///
+    /// The portal is told on every sweep, not only while a dialog is open: a request that arrives
+    /// while the session is locked must be refused, and the first request after an unlock must not
+    /// find the portal still locked.
+    pub fn follow_lock(&mut self, locked: bool) -> Vec<Reply> {
+        if locked == self.locked {
+            return Vec::new();
+        }
+        self.set_locked(locked)
     }
 
     /// Whether `app_id` may be offered its secret: the user allowed it this session
@@ -257,7 +459,7 @@ impl PortalService {
     /// shown and must be cleared. Otherwise the compositor need not drain events.
     #[must_use]
     pub fn wants_pump(&self) -> bool {
-        self.shown.is_some() || self.ui.active_request().is_some()
+        self.shown.is_some() || self.ui.active_request().is_some() || !self.routed.is_empty()
     }
 
     /// Withdraws every request `client` holds from the UI. Returns whether it held any.
@@ -287,14 +489,14 @@ impl PortalService {
             if owner.interface == Interface::Secret && verdict == Verdict::Handled(Grant::Allowed) {
                 self.granted.insert(owner.app_id.clone());
             }
-            replies.push(outcome(owner.client, owner.envelope_id, verdict));
+            replies.push(outcome_reply(owner.client, owner.envelope_id, verdict));
         }
         replies
     }
 }
 
 /// The `portal.ui` reply for one verdict.
-fn outcome(client: ClientId, envelope_id: u64, verdict: Verdict) -> Reply {
+fn outcome_reply(client: ClientId, envelope_id: u64, verdict: Verdict) -> Reply {
     let envelope = match verdict {
         Verdict::Error(error) => Envelope::error(
             wire::NAMESPACE,
@@ -867,5 +1069,240 @@ mod tests {
                 reason: "an X11 parent window cannot be checked yet".to_owned()
             }
         );
+    }
+
+    /// The broker request a test offers to the claimant.
+    const OFFER: u64 = 40;
+
+    /// A service that has offered `request` (envelope id 7, from client 1) to a claimant at tick 0.
+    fn offered(request: &PortalRequest) -> PortalService {
+        let mut service = PortalService::new();
+        let (interface, _) = service.routable(7, request).expect("the request can be routed");
+        service.offered_to_claimant(
+            ClientId::new(1),
+            7,
+            RequestId::new(OFFER),
+            request,
+            interface,
+            Tick::ZERO,
+        );
+        service
+    }
+
+    /// The `(kind, detail)` a reply carries, or `("error", code)` for an error reply.
+    fn settled(replies: &[Reply]) -> (String, String) {
+        assert_eq!(replies.len(), 1, "exactly one reply settles the request");
+        assert_eq!(replies[0].0, ClientId::new(1), "the reply goes to the requester");
+        match replies[0].1.error_code() {
+            Some(code) => ("error".to_owned(), code.to_owned()),
+            None => wire::read_portal_outcome(replies[0].1.payload().unwrap_or(&[])).expect("a portal outcome"),
+        }
+    }
+
+    #[test]
+    fn the_claimant_gets_half_the_timeout_and_the_built_in_the_rest() {
+        let service = PortalService::new();
+        let (_, window) = service.routable(7, &screenshot()).expect("routable");
+        assert_eq!(window, 15_000, "half of 30 s");
+        let mut short = screenshot();
+        short.timeout_ms = 1;
+        assert!(
+            service.routable(7, &short).is_none(),
+            "a timeout too short to leave the built-in dialog a window is not routed"
+        );
+        let mut unknown = screenshot();
+        unknown.interface = "NotAnInterface".to_owned();
+        assert!(
+            service.routable(7, &unknown).is_none(),
+            "an interface the compositor does not know is the built-in path's refusal"
+        );
+    }
+
+    #[test]
+    fn an_allow_after_the_arming_window_grants() {
+        let mut service = offered(&screenshot());
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"allow".to_vec()),
+            Tick::new(ARMING_MS),
+        );
+        assert_eq!(settled(&replies), ("handled".to_owned(), "allowed".to_owned()));
+    }
+
+    #[test]
+    fn an_allow_before_the_arming_window_is_a_refusal() {
+        // The failure this prevents: a click already in progress, or a script, accepts consent
+        // before a person could have read it. The built-in dialog ignores input for the same time.
+        let mut service = offered(&screenshot());
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"allow".to_vec()),
+            Tick::new(ARMING_MS - 1),
+        );
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+    }
+
+    #[test]
+    fn a_deny_refuses() {
+        let mut service = offered(&screenshot());
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"deny".to_vec()),
+            Tick::new(5_000),
+        );
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+    }
+
+    #[test]
+    fn an_allowed_secret_through_the_claimant_grants_that_app() {
+        let mut service = offered(&secret_from("org.example.Requester"));
+        assert!(!service.secret_granted("org.example.Requester"));
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"allow".to_vec()),
+            Tick::new(2_000),
+        );
+        assert_eq!(settled(&replies), ("handled".to_owned(), "allowed".to_owned()));
+        assert!(
+            service.secret_granted("org.example.Requester"),
+            "the compositor records the grant, whoever drew the dialog"
+        );
+    }
+
+    #[test]
+    fn an_answer_that_is_neither_allow_nor_deny_is_never_consent() {
+        // Anything the compositor does not understand, however close to `allow`, hands the request
+        // to the built-in dialog, which opens with Deny focused. It settles nothing by itself.
+        for answer in [&b"Allow"[..], b"allow\n", b"yes", b"", b"allowed"] {
+            let mut service = offered(&screenshot());
+            let replies = service.provider_settled(
+                RequestId::new(OFFER),
+                &RequestOutcome::answered(answer.to_vec()),
+                Tick::new(2_000),
+            );
+            assert!(replies.is_empty(), "{answer:?} settles nothing");
+            assert!(
+                service.wants_pump(),
+                "{answer:?}: the built-in dialog opened for the request"
+            );
+        }
+    }
+
+    #[test]
+    fn a_claimant_that_cannot_answer_hands_the_request_to_the_built_in_dialog() {
+        let failures = [
+            RequestOutcome::Refused(gnoblin_model::DeclineReason::Unavailable),
+            RequestOutcome::Ended,
+            RequestOutcome::TimedOut,
+        ];
+        for failure in failures {
+            let mut service = offered(&screenshot());
+            let replies = service.provider_settled(RequestId::new(OFFER), &failure, Tick::new(15_000));
+            assert!(replies.is_empty(), "{failure:?} settles nothing by itself");
+            assert!(
+                service.wants_pump(),
+                "{failure:?}: the built-in dialog serves the request"
+            );
+            // The built-in dialog never auto-accepts: Enter on the default focus refuses.
+            let replies = service.key("enter", false, Tick::new(16_000)).expect("a dialog key");
+            assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+        }
+    }
+
+    #[test]
+    fn the_built_in_dialog_gets_only_the_time_the_claimant_left() {
+        let mut service = offered(&screenshot());
+        // The claimant held the request for the whole of its window, so the built-in dialog serves
+        // the remaining 15 s and then cancels it as timed out.
+        let replies = service.provider_settled(RequestId::new(OFFER), &RequestOutcome::TimedOut, Tick::new(15_000));
+        assert!(replies.is_empty());
+        let replies = service.tick(Tick::new(15_000 + 15_000 + 1));
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "timeout".to_owned()));
+    }
+
+    #[test]
+    fn a_claimant_that_used_the_whole_timeout_leaves_nothing_to_serve() {
+        let mut service = offered(&screenshot());
+        let replies = service.provider_settled(RequestId::new(OFFER), &RequestOutcome::Ended, Tick::new(30_000));
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "timeout".to_owned()));
+        assert!(
+            !service.wants_pump(),
+            "no dialog opens for a request that has no time left"
+        );
+    }
+
+    #[test]
+    fn the_requester_cancelling_ends_the_offer_and_a_late_answer_does_nothing() {
+        let mut service = offered(&screenshot());
+        let replies = service
+            .cancel(ClientId::new(1))
+            .expect("the connection holds a request");
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+        assert_eq!(service.take_abandoned(), vec![RequestId::new(OFFER)]);
+        let late = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"allow".to_vec()),
+            Tick::new(2_000),
+        );
+        assert!(late.is_empty(), "nobody waits for the answer");
+        assert!(!service.wants_pump(), "and no dialog opens for it");
+    }
+
+    #[test]
+    fn a_requester_that_leaves_ends_the_offer_and_opens_no_dialog() {
+        let mut service = offered(&screenshot());
+        assert!(
+            service.departed(ClientId::new(1)).is_empty(),
+            "no reply: its owner is gone"
+        );
+        assert_eq!(service.take_abandoned(), vec![RequestId::new(OFFER)]);
+        // The broker reports the abandoned offer as ended; that must not fall back to the dialog.
+        let replies = service.provider_settled(RequestId::new(OFFER), &RequestOutcome::Ended, Tick::new(100));
+        assert!(replies.is_empty());
+        assert!(
+            !service.wants_pump(),
+            "a request whose requester left never opens a dialog"
+        );
+    }
+
+    #[test]
+    fn locking_refuses_a_request_the_claimant_is_drawing() {
+        let mut service = offered(&screenshot());
+        let replies = service.set_locked(true);
+        assert_eq!(settled(&replies), ("error".to_owned(), "locked".to_owned()));
+        assert_eq!(service.take_abandoned(), vec![RequestId::new(OFFER)]);
+    }
+
+    #[test]
+    fn a_routed_envelope_id_cannot_be_reused() {
+        let mut service = offered(&screenshot());
+        assert!(service.routable(7, &screenshot()).is_none(), "the id is held");
+        let refused = service
+            .submit(ClientId::new(1), 7, &screenshot(), Tick::ZERO)
+            .expect_err("the built-in path refuses it too");
+        assert_eq!(refused.code, wire::code::REQUEST_TAKEN);
+    }
+
+    #[test]
+    fn the_portal_follows_the_lock_and_serves_again_after_it_lifts() {
+        // The failure this prevents: the portal only learned of a lock while a dialog was open and
+        // never learned the unlock, so a request after the first lock was refused for good, and a
+        // request that arrived while locked with no dialog open was not refused at all.
+        let mut service = PortalService::new();
+        assert!(service.follow_lock(true).is_empty(), "nothing is held to refuse");
+        let refused = service
+            .submit(ClientId::new(1), 7, &screenshot(), Tick::ZERO)
+            .expect("the refusal is a reply, not a refusal of the frame");
+        assert_eq!(settled(&refused), ("error".to_owned(), "locked".to_owned()));
+        assert!(
+            service.follow_lock(true).is_empty(),
+            "a lock already known changes nothing"
+        );
+        assert!(service.follow_lock(false).is_empty());
+        let admitted = service
+            .submit(ClientId::new(1), 8, &screenshot(), Tick::new(10))
+            .expect("the request is admitted once the lock lifts");
+        assert!(admitted.is_empty(), "the dialog opened instead of refusing");
+        assert!(service.wants_pump());
     }
 }
