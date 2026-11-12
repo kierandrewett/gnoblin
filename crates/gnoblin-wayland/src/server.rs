@@ -457,6 +457,8 @@ impl Server {
         state.composer.set_secure_treatment(backend.secure_treatment());
         // A node asks for effects the renderer may not draw: the composer names those in its `skipped` list.
         state.composer.set_effect_kinds(backend.effect_kinds());
+        // A renderer that draws a View's subtree into a texture takes the View's description instead of its pixels.
+        state.composer.set_gpu_views(backend.gpu_views());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
         let clock = config.clock.clone();
         // A worker's answer lands here, so the lock settles on the loop that owns the state.

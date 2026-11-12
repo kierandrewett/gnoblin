@@ -74,6 +74,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use smithay::backend::allocator::Buffer as _;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
@@ -89,7 +90,10 @@ use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Scale, 
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
-use gnoblin_render_software::{Frustum, StereoRig, ViewCamera, ViewProjection, ViewRig, eye_sizes, render_rig};
+use gnoblin_render_frame::view_scene::{ClipPlane, ViewEye, ViewOp, ViewScene, ViewTexture, size_fits};
+use gnoblin_render_software::{
+    Frustum, StereoRig, ViewCamera, ViewProjection, ViewRig, eye_pixel_matrix, eye_sizes, render_rig,
+};
 
 use crate::log;
 
@@ -142,10 +146,15 @@ const VIEW_IPD: f64 = 0.063;
 #[derive(Debug)]
 struct ViewPicture {
     size: Size,
+    /// The picture on the CPU, when the composer drew it there.
     image: Option<Arc<Image>>,
     /// The picture a capture reads when the source holds a secure node, or `None` when it holds none and `image` is
     /// the capture's picture too.
     redacted: Option<Arc<Image>>,
+    /// The scene the GPU draws the picture from, when the active renderer draws a View's subtree itself. Then
+    /// `image` and `redacted` are `None`: the picture is a texture, and the pixels reach the CPU only when a capture
+    /// reads them (`Backend::read_view`).
+    scene: Option<Arc<ViewScene>>,
     /// The nodes of the source subtree a capture may not show: each node marked secure, and everything below it.
     secure: BTreeSet<NodeId>,
     drawn_at_ms: u64,
@@ -426,6 +435,13 @@ pub struct Composer {
     /// The pictures of the View nodes, each rendered from its source subtree and kept until
     /// that subtree, its camera or the view itself changes.
     views: BTreeMap<NodeId, ViewPicture>,
+    /// Whether the active renderer draws a View's subtree into a texture on the GPU. When it does, a View is drawn
+    /// as a [`ViewScene`] the renderer draws; when it does not, the composer draws the picture on the CPU. The
+    /// compositor sets it once from the backend before any frame.
+    gpu_views: bool,
+    /// The count of View draws, which numbers each [`ViewScene`] so a renderer that holds the texture of a revision
+    /// draws nothing for it.
+    view_revision: u64,
     /// The milliseconds the loop has advanced the composer by ([`Composer::advance_motion`]), which is the clock a
     /// View's `fps` is paced on. A test moves it the way the loop does.
     view_clock_ms: u64,
@@ -501,6 +517,8 @@ impl Composer {
             screens: BTreeMap::new(),
             placing: false,
             views: BTreeMap::new(),
+            gpu_views: false,
+            view_revision: 0,
             view_clock_ms: 0,
             paced_views: BTreeSet::new(),
             secure_treatment: SecureTreatment::default(),
@@ -815,13 +833,24 @@ impl Composer {
                 }
             }
             self.paced_views.remove(&view);
-            let (image, redacted) = self.draw_view(view, size, &secure, reader);
+            if !size_fits(size) && picture.is_none() {
+                log::warn!(
+                    area = "render",
+                    %view,
+                    width = size.width,
+                    height = size.height,
+                    "a View of this size has no picture: its sides must be at least one pixel and its size within the cap (`view_scene::size_fits`)"
+                );
+            }
+            self.view_revision = self.view_revision.saturating_add(1);
+            let drawn = self.draw_view(view, size, &secure, self.view_revision, reader);
             self.views.insert(
                 view,
                 ViewPicture {
                     size,
-                    image,
-                    redacted,
+                    image: drawn.image,
+                    redacted: drawn.redacted,
+                    scene: drawn.scene,
                     secure,
                     drawn_at_ms: self.view_clock_ms,
                 },
@@ -855,36 +884,56 @@ impl Composer {
         secure
     }
 
-    /// The image of a View's source subtree through its camera, or `None` when the view has no
-    /// source, the source is missing, or the source contains the view itself.
+    /// How a View's source subtree is drawn: the picture itself on the CPU, or the scene the renderer draws it from.
+    ///
+    /// The first picture is the image of the View's source subtree through its camera. It, the scene and the second
+    /// picture are all `None` when the view has no source, the source is missing, the source contains the view
+    /// itself, or the View's size is not one a picture can have ([`size_fits`]).
     ///
     /// The second picture is the one a capture reads when `secure` is not empty: the same subtree with every secure
     /// node's pixels replaced as an output capture replaces a secure layer. `Mask` draws a neutral grey in the node's
-    /// place, `Omit` draws nothing there, so whatever lies beneath it in the source shows. Both pictures are `None`
-    /// when the view draws nothing, and the second is `None` when no node is secure.
+    /// place, `Omit` draws nothing there, so whatever lies beneath it in the source shows. It is `None` when no node
+    /// is secure.
+    ///
+    /// When the active renderer draws a View on the GPU ([`Composer::set_gpu_views`]) the pictures stay `None` and
+    /// the scene, which carries the same two variants, is what the renderer draws.
     fn draw_view(
         &self,
         view: NodeId,
         size: Size,
         secure: &BTreeSet<NodeId>,
+        revision: u64,
         reader: &mut ReadDmabuf<'_>,
-    ) -> (Option<Arc<Image>>, Option<Arc<Image>>) {
+    ) -> DrawnView {
+        if !size_fits(size) {
+            return DrawnView::default();
+        }
         let Some(source) = self.scene.source(view) else {
-            return (None, None);
+            return DrawnView::default();
         };
         if self.scene.node(source).is_none() {
-            return (None, None);
+            return DrawnView::default();
         }
         let nodes: BTreeSet<NodeId> = self.subtree(source).into_iter().collect();
         if nodes.contains(&view) {
             log::debug!(area = "render", %view, "a view inside its own source draws nothing");
-            return (None, None);
+            return DrawnView::default();
         }
         let rig = self.view_rig(view, size);
+        if self.gpu_views {
+            let scene = self.view_scene(view, source, size, &rig, &nodes, secure, revision);
+            return DrawnView {
+                scene: Some(Arc::new(scene)),
+                ..DrawnView::default()
+            };
+        }
         let mut pictures = self.window_pictures(&nodes, reader);
         let image = render_rig(&self.scene, source, &rig, size, |node| pictures.get(&node)).into_image();
         if secure.is_empty() {
-            return (Some(image), None);
+            return DrawnView {
+                image: Some(image),
+                ..DrawnView::default()
+            };
         }
         // A nested View is drawn as a plain node and has no pixels of its own here, so it can never carry a secure
         // node's pixels into this picture: only a window or a canvas below the source does, and those are replaced.
@@ -901,7 +950,140 @@ impl Composer {
             }
         }
         let redacted = render_rig(&self.scene, source, &rig, size, |node| pictures.get(&node)).into_image();
-        (Some(image), Some(redacted))
+        DrawnView {
+            image: Some(image),
+            redacted: Some(redacted),
+            scene: None,
+        }
+    }
+
+    /// The scene a GPU renderer draws a View from: the source subtree through each eye of the rig, as the CPU rig
+    /// draws it, and the same subtree again with the secure nodes replaced when there are any.
+    ///
+    /// The layers follow `render_view` rule for rule: a node draws before its children, a child that paints `behind`
+    /// before the node, an invisible node or one whose composed opacity is zero takes its subtree with it, a plane that
+    /// projects to nothing too, and a clipping ancestor keeps its children to its own rectangle as it projects. The
+    /// nodes that have pixels are the windows' surfaces and the canvases.
+    #[allow(clippy::too_many_arguments)]
+    fn view_scene(
+        &self,
+        view: NodeId,
+        source: NodeId,
+        size: Size,
+        rig: &ViewRig,
+        nodes: &BTreeSet<NodeId>,
+        secure: &BTreeSet<NodeId>,
+        revision: u64,
+    ) -> ViewScene {
+        let pictures = self.view_sources(nodes);
+        let mask = Arc::new(secure_mask());
+        let eyes_of = |redacted: bool| -> Vec<ViewEye> {
+            rig.eyes(size)
+                .into_iter()
+                .filter_map(|(viewport, camera)| {
+                    // An eye that cannot project draws nothing: its part of the picture stays black.
+                    let projection = eye_pixel_matrix(&camera, viewport.size())?;
+                    let mut ops = Vec::new();
+                    let emit = ViewEmit {
+                        root: source,
+                        projection: &projection,
+                        pictures: &pictures,
+                        secure: redacted.then_some(secure),
+                        treatment: self.secure_treatment,
+                        mask: &mask,
+                    };
+                    self.emit_view_node(&emit, source, 1.0, &mut ops);
+                    Some(ViewEye { viewport, ops })
+                })
+                .collect()
+        };
+        let display = eyes_of(false);
+        let capture = (!secure.is_empty()).then(|| eyes_of(true));
+        ViewScene::new(view.get(), revision, size, display, capture)
+    }
+
+    /// The steps that draw `id` and its children into one eye: see [`Composer::view_scene`].
+    fn emit_view_node(&self, emit: &ViewEmit<'_>, id: NodeId, parent_opacity: f64, ops: &mut Vec<ViewOp>) {
+        if self.scene.visible(id) != Some(true) {
+            return;
+        }
+        let Some(transform) = self.scene.transform(id) else {
+            return;
+        };
+        let opacity = parent_opacity * f64::from(transform.opacity);
+        if !opacity.is_finite() || opacity <= 0.0 {
+            return;
+        }
+        let (Some(bounds), Some(world)) = (self.scene.bounds(id), self.scene.subtree_matrix(emit.root, id)) else {
+            return;
+        };
+        // The node's own plane starts at its top-left corner, which is the origin a layer's model maps from.
+        let matrix = emit
+            .projection
+            .mul(&world)
+            .mul(&Mat4::translation(f64::from(bounds.x), f64::from(bounds.y), 0.0));
+        if !projects_to_a_plane(&matrix) {
+            return;
+        }
+        let model = Model { matrix, opaque: false };
+        let plane = ClipPlane {
+            dst: Rect::new(0, 0, bounds.width, bounds.height),
+            model,
+        };
+        let clipping = self.scene.clip(id) == Some(true);
+        let children = self.scene.children(id).unwrap_or(&[]);
+        for child in children.iter().filter(|child| self.scene.behind(**child) == Some(true)) {
+            self.emit_view_node(emit, *child, opacity, ops);
+        }
+        if let Some(layer) = emit.layer(id, bounds, opacity, model) {
+            ops.push(ViewOp::Draw(layer));
+        }
+        if clipping {
+            ops.push(ViewOp::PushClip(plane));
+        }
+        for child in children.iter().filter(|child| self.scene.behind(**child) != Some(true)) {
+            self.emit_view_node(emit, *child, opacity, ops);
+        }
+        if clipping {
+            ops.push(ViewOp::PopClip(plane));
+        }
+    }
+
+    /// The pixels each node of `nodes` draws from, with their size: a window's surface or a canvas. A window's buffer
+    /// is shared, not read, so a GPU renderer samples the client's own memory and a GPU buffer needs no readback.
+    fn view_sources(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, ViewPixels> {
+        let mut pictures = BTreeMap::new();
+        for entry in self.windows.values() {
+            let own = entry.node.zip(entry.buffer.as_ref());
+            let below = entry
+                .tree
+                .iter()
+                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source)));
+            for (node, source) in own.into_iter().chain(below) {
+                if let (true, Some(size)) = (nodes.contains(&node), source_size(source)) {
+                    pictures.insert(
+                        node,
+                        ViewPixels {
+                            source: source.clone(),
+                            size,
+                        },
+                    );
+                }
+            }
+        }
+        for (node, picture) in &self.canvases {
+            if let (true, Some(image)) = (nodes.contains(node), picture.image.as_ref()) {
+                // A canvas picture is premultiplied, which is what a snapshot is.
+                pictures.insert(
+                    *node,
+                    ViewPixels {
+                        source: SurfaceSource::Snapshot(Arc::clone(image)),
+                        size: image.size(),
+                    },
+                );
+            }
+        }
+        pictures
     }
 
     /// The pixels of each window in `nodes` with a readable buffer, keyed by its node. A GPU buffer (a DMA-BUF) is read
@@ -1365,6 +1547,8 @@ impl Composer {
             // A GPU buffer has no CPU picture to copy, and needs none: the handle owns the plane descriptors, so it
             // outlives the client's `wl_buffer`, and the renderer that imported it draws it again for the fade.
             SurfaceSource::Dmabuf(dmabuf) => SurfaceSource::Dmabuf(dmabuf.clone()),
+            // A window is never drawn from a View's texture.
+            SurfaceSource::View(_) => return None,
         };
         Some(Closing {
             source,
@@ -2029,6 +2213,35 @@ impl Composer {
                 Some((*view, Arc::clone(capture)))
             })
             .collect()
+    }
+
+    /// Whether `view` is a View the renderer draws on the GPU and the composer has a scene for: its picture is a
+    /// texture, and a consumer that needs bytes reads it back.
+    #[must_use]
+    pub fn has_view_scene(&self, view: NodeId) -> bool {
+        self.views.get(&view).is_some_and(|picture| picture.scene.is_some())
+    }
+
+    /// The scene each View on the GPU path was last drawn from, keyed by its node. A renderer that draws a View's
+    /// subtree draws the scene into a texture, and a consumer that needs the pixels reads that texture back
+    /// (`Backend::read_view`). Empty unless [`Composer::set_gpu_views`] turned the path on.
+    #[must_use]
+    pub fn view_scenes(&self) -> Vec<(NodeId, Arc<ViewScene>)> {
+        self.views
+            .iter()
+            .filter_map(|(view, picture)| Some((*view, Arc::clone(picture.scene.as_ref()?))))
+            .collect()
+    }
+
+    /// Tells the composer whether the active renderer draws a View's subtree into a texture on the GPU. The compositor
+    /// sets it once, from the backend, before any frame; a View drawn the other way is drawn again.
+    pub fn set_gpu_views(&mut self, on: bool) {
+        if self.gpu_views == on {
+            return;
+        }
+        self.gpu_views = on;
+        // A picture made the other way would keep a form the renderer cannot show.
+        self.views.clear();
     }
 
     /// Sets what a View's capture picture draws in place of a secure node. It is the same choice an output capture
@@ -2806,12 +3019,25 @@ impl Composer {
         }
         // A View draws its source's picture at its own rectangle, above the windows it is
         // painted over and below the visual bell.
+        //
+        // On the GPU path the picture is a texture the renderer draws from the View's scene, so the frame carries the
+        // scene and a layer that samples its texture. Every GPU View is named alive, shown here or not, so the
+        // renderer keeps the texture of one that is off this output and gives back the texture of one that is gone.
+        frame.set_live_views(
+            self.views
+                .iter()
+                .filter(|(_, picture)| picture.scene.is_some())
+                .map(|(view, _)| view.get())
+                .collect(),
+        );
         for view in self.view_nodes() {
             let Some(picture) = self.views.get(&view) else {
                 continue;
             };
-            let Some(image) = picture.image.as_ref() else {
-                continue;
+            let source = match (picture.image.as_ref(), picture.scene.as_ref()) {
+                (Some(image), _) => SurfaceSource::Snapshot(Arc::clone(image)),
+                (None, Some(_)) => SurfaceSource::View(ViewTexture { id: view.get() }),
+                (None, None) => continue,
             };
             let Some(bounds) = self.scene.absolute_bounds(view) else {
                 continue;
@@ -2820,8 +3046,11 @@ impl Composer {
             if placed.intersection(rect).is_none() {
                 continue;
             }
+            if let Some(scene) = &picture.scene {
+                frame.push_view_scene(Arc::clone(scene));
+            }
             frame.push_layer(Layer::Surface(Surface {
-                source: SurfaceSource::Snapshot(Arc::clone(image)),
+                source,
                 src: RectF {
                     x: 0.0,
                     y: 0.0,
@@ -3420,6 +3649,102 @@ fn secure_mask() -> Image {
     Image::new(Size::new(1, 1), 4, vec![128, 128, 128, 255]).expect("a one-pixel image is valid")
 }
 
+/// What [`Composer::draw_view`] made of a View: its picture on the CPU, the capture's picture when a node is secure,
+/// or the scene a GPU renderer draws it from. All three are `None` for a View that draws nothing.
+#[derive(Default)]
+struct DrawnView {
+    image: Option<Arc<Image>>,
+    redacted: Option<Arc<Image>>,
+    scene: Option<Arc<ViewScene>>,
+}
+
+/// The pixels of one node of a View's source, in the form a GPU renderer samples.
+struct ViewPixels {
+    source: SurfaceSource,
+    size: Size,
+}
+
+/// What one eye's walk of the source subtree draws with.
+struct ViewEmit<'a> {
+    /// The root of the source subtree, the world the camera sits in.
+    root: NodeId,
+    /// The camera: the subtree's world to the eye's pixels and clip depth.
+    projection: &'a Mat4,
+    /// The pixels of each node that has any.
+    pictures: &'a BTreeMap<NodeId, ViewPixels>,
+    /// The nodes to replace with `treatment`, for the capture variant; `None` for the display's.
+    secure: Option<&'a BTreeSet<NodeId>>,
+    treatment: SecureTreatment,
+    /// The picture a masked node draws.
+    mask: &'a Arc<Image>,
+}
+
+impl ViewEmit<'_> {
+    /// The layer that draws `node`'s pixels over `bounds`, placed by `model` at `opacity`, or `None` for a node with
+    /// no pixels, no extent, or one the capture omits.
+    fn layer(&self, node: NodeId, bounds: Rect, opacity: f64, model: Model) -> Option<Layer> {
+        if bounds.width == 0 || bounds.height == 0 {
+            return None;
+        }
+        let pixels = self.pictures.get(&node)?;
+        let (source, size) = if self.secure.is_some_and(|secure| secure.contains(&node)) {
+            match self.treatment {
+                SecureTreatment::Mask => (SurfaceSource::Snapshot(Arc::clone(self.mask)), Size::new(1, 1)),
+                SecureTreatment::Omit => return None,
+            }
+        } else {
+            (pixels.source.clone(), pixels.size)
+        };
+        Some(Layer::Surface(Surface {
+            source,
+            src: RectF {
+                x: 0.0,
+                y: 0.0,
+                width: f64::from(size.width),
+                height: f64::from(size.height),
+            },
+            dst: Rect::new(0, 0, bounds.width, bounds.height),
+            transform: Transform::Normal,
+            opacity: opacity.min(1.0) as f32,
+            tint: Color::WHITE,
+            corner_radius: 0.0,
+            effects: Effects::new(),
+            model: Some(model),
+            secure: false,
+        }))
+    }
+}
+
+/// Whether a node's plane, through a camera, lands as a plane a picture can show: the matrix's columns for `u`, `v`
+/// and the origin, over the rows for the two pixel coordinates and the divisor, are finite and not singular. The CPU
+/// rig drops a node whose homography is not invertible together with its whole subtree, and so does the scene.
+fn projects_to_a_plane(matrix: &Mat4) -> bool {
+    let m = &matrix.m;
+    let at = |row: usize, column: usize| m[[0, 1, 3][row]][[0, 1, 3][column]];
+    let det = at(0, 0) * (at(1, 1) * at(2, 2) - at(1, 2) * at(2, 1))
+        - at(0, 1) * (at(1, 0) * at(2, 2) - at(1, 2) * at(2, 0))
+        + at(0, 2) * (at(1, 0) * at(2, 1) - at(1, 1) * at(2, 0));
+    matrix.is_finite() && det.is_finite() && det != 0.0
+}
+
+/// The size of the picture a surface's source holds, or `None` for one with no extent or no pixels a GPU samples: a
+/// buffer that is not a packed 32-bit shared-memory buffer is not one, as the CPU view cannot read it either.
+fn source_size(source: &SurfaceSource) -> Option<Size> {
+    let size = match source {
+        SurfaceSource::Buffer(buffer) => {
+            let shape = shm::shape(buffer).ok()?;
+            Size::new(shape.width, shape.height)
+        }
+        SurfaceSource::Snapshot(image) => image.size(),
+        SurfaceSource::Dmabuf(dmabuf) => {
+            let size = dmabuf.size();
+            Size::new(u32::try_from(size.w).ok()?, u32::try_from(size.h).ok()?)
+        }
+        SurfaceSource::View(_) => return None,
+    };
+    (size.width > 0 && size.height > 0).then_some(size)
+}
+
 /// The pixels of a surface's source as the view renderer reads them.
 ///
 /// A GPU buffer (a DMA-BUF) has no CPU pixels, so `reader` reads it back where the buffer lives (a GL readback of the
@@ -3441,6 +3766,8 @@ fn source_picture(source: &SurfaceSource, reader: &mut ReadDmabuf<'_>) -> Option
             });
             Some(secure_mask())
         }),
+        // A window's buffer is never a View's picture: only the composer's own layer for a View names one.
+        SurfaceSource::View(_) => None,
     }
 }
 
@@ -6006,7 +6333,7 @@ mod tests {
             .filter_map(|layer| match layer {
                 Layer::Surface(surface) => match &surface.source {
                     SurfaceSource::Snapshot(image) => Some((surface.dst, surface.opacity, Arc::clone(image))),
-                    SurfaceSource::Buffer(_) | SurfaceSource::Dmabuf(_) => None,
+                    SurfaceSource::Buffer(_) | SurfaceSource::Dmabuf(_) | SurfaceSource::View(_) => None,
                 },
                 _ => None,
             })
@@ -7159,3 +7486,7 @@ mod tests {
 #[cfg(test)]
 #[path = "surface_tree_tests.rs"]
 mod surface_tree_tests;
+
+#[cfg(test)]
+#[path = "view_gpu_tests.rs"]
+mod view_gpu_tests;

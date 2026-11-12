@@ -3496,6 +3496,8 @@ impl Host for State {
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame_reading(reader);
+        // A View the composer drew again has no read-back of its old picture left for a consumer to find.
+        self.sync_view_readbacks();
         // A View's picture is final for this frame, so a shell's `capture` writes what the View shows now.
         let view_captures = self.tree.take_view_captures();
         self.run_view_captures(view_captures);

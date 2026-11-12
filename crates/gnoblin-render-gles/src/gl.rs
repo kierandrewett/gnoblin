@@ -78,6 +78,21 @@ pub(crate) enum Depth {
     Transparent,
 }
 
+/// How a quad takes part in the stencil test a View's clipping ancestors use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Stencil {
+    /// No stencil test: the quad is drawn wherever it lands.
+    Off,
+    /// Drawn only where the stencil holds this clip depth, which is where every clip of the chain covers.
+    Test(u8),
+    /// The rectangle of a clip that begins at this depth: it raises the stencil by one where the chain before it
+    /// covered, and draws no colour.
+    Push(u8),
+    /// The rectangle of the clip that ends at this depth: it lowers the stencil by one where the chain covers, and
+    /// draws no colour.
+    Pop(u8),
+}
+
 /// Where a quad sits in a frame.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct QuadPlacement {
@@ -88,6 +103,8 @@ pub(crate) struct QuadPlacement {
     pub(crate) depth_value: f32,
     /// How the quad takes part in the depth test.
     pub(crate) depth: Depth,
+    /// How the quad takes part in the stencil test of a View's clipping ancestors.
+    pub(crate) stencil: Stencil,
 }
 
 impl QuadPlacement {
@@ -96,6 +113,7 @@ impl QuadPlacement {
         clip: None,
         depth_value: 0.0,
         depth: Depth::Off,
+        stencil: Stencil::Off,
     };
 
     /// A quad drawn through `columns`, the clip matrix's columns 0, 1 and 3, with the given depth
@@ -105,6 +123,7 @@ impl QuadPlacement {
             clip: Some(columns),
             depth_value: 0.0,
             depth,
+            stencil: Stencil::Off,
         }
     }
 }
@@ -377,9 +396,150 @@ impl GlContext {
                         handle: texture,
                         size: (width, height),
                     },
+                    renderbuffer: depth,
                 })
             })
             .map_err(context_lost)?
+    }
+
+    /// A target for a View's subtree: an `RGBA8` texture the renderer owns, cleared to opaque black, with a stencil
+    /// buffer for the clipping ancestors and no depth buffer, because a View is drawn in painter's order.
+    ///
+    /// Unlike the output's target it is given back with [`Self::release`] when its View goes away, because Views come
+    /// and go for as long as the session runs and the context outlives all of them.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Degenerate`] for a size with no pixels, [`RenderError::Unavailable`] when the driver refuses the
+    /// texture, the stencil buffer or the framebuffer (a size past the driver's limit is such a refusal), and
+    /// [`RenderError::Failed`] when the context is not current.
+    pub(crate) fn subtree_target(&mut self, size: Size) -> Result<Framebuffer, RenderError> {
+        let (width, height) = (size.width as i32, size.height as i32);
+        if width <= 0 || height <= 0 {
+            return Err(RenderError::Degenerate {
+                width: size.width,
+                height: size.height,
+            });
+        }
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: every name created here belongs to this context. A name made before a failure is deleted
+                // before returning, so a refused target leaks nothing; a name that is kept is stored in the returned
+                // `Framebuffer`, which `release` deletes.
+                let texture = gl.create_texture().map_err(|error| {
+                    log::debug!(area = "render", %error, "no subtree texture");
+                    RenderError::Unavailable
+                })?;
+                gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+                gl.tex_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    glow::RGBA8 as i32,
+                    width,
+                    height,
+                    0,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelUnpackData::Slice(None),
+                );
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+                gl.bind_texture(glow::TEXTURE_2D, None);
+                let framebuffer = gl.create_framebuffer().ok();
+                let stencil = gl.create_renderbuffer().ok();
+                let (Some(framebuffer), Some(stencil)) = (framebuffer, stencil) else {
+                    gl.delete_texture(texture);
+                    if let Some(framebuffer) = framebuffer {
+                        gl.delete_framebuffer(framebuffer);
+                    }
+                    if let Some(stencil) = stencil {
+                        gl.delete_renderbuffer(stencil);
+                    }
+                    log::debug!(area = "render", "no subtree framebuffer");
+                    return Err(RenderError::Unavailable);
+                };
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+                gl.framebuffer_texture_2d(
+                    glow::FRAMEBUFFER,
+                    glow::COLOR_ATTACHMENT0,
+                    glow::TEXTURE_2D,
+                    Some(texture),
+                    0,
+                );
+                gl.bind_renderbuffer(glow::RENDERBUFFER, Some(stencil));
+                gl.renderbuffer_storage(glow::RENDERBUFFER, glow::STENCIL_INDEX8, width, height);
+                gl.framebuffer_renderbuffer(
+                    glow::FRAMEBUFFER,
+                    glow::STENCIL_ATTACHMENT,
+                    glow::RENDERBUFFER,
+                    Some(stencil),
+                );
+                gl.bind_renderbuffer(glow::RENDERBUFFER, None);
+                let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                if status != glow::FRAMEBUFFER_COMPLETE {
+                    gl.delete_framebuffer(framebuffer);
+                    gl.delete_renderbuffer(stencil);
+                    gl.delete_texture(texture);
+                    log::debug!(area = "render", width, height, "the subtree framebuffer is incomplete");
+                    return Err(RenderError::Unavailable);
+                }
+                Ok(Framebuffer {
+                    framebuffer,
+                    texture: Texture {
+                        handle: texture,
+                        size: (width, height),
+                    },
+                    renderbuffer: stencil,
+                })
+            })
+            .map_err(context_lost)?
+    }
+
+    /// Deletes a target made by [`Self::subtree_target`]: its framebuffer, texture and stencil buffer.
+    ///
+    /// When the context is not current the names are dropped without a GL call, which is what a lost context has done
+    /// to them already: the driver freed every object the context made.
+    pub(crate) fn release(&mut self, target: Framebuffer) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: the three names belong to this context and are not used again, because `target` is consumed.
+            gl.delete_framebuffer(target.framebuffer);
+            gl.delete_renderbuffer(target.renderbuffer);
+            gl.delete_texture(target.texture.handle);
+        });
+    }
+
+    /// Binds `target` and clears it to opaque black and its stencil to zero, the picture a View starts from.
+    pub(crate) fn clear_subtree(&mut self, target: &Framebuffer) -> Result<(), RenderError> {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: the framebuffer belongs to this context. The scissor is lifted first so the clear covers
+                // the whole target.
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(target.framebuffer));
+                gl.disable(glow::SCISSOR_TEST);
+                gl.color_mask(true, true, true, true);
+                gl.stencil_mask(0xff);
+                gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                gl.clear_stencil(0);
+                gl.clear(glow::COLOR_BUFFER_BIT | glow::STENCIL_BUFFER_BIT);
+            })
+            .map_err(context_lost)
+    }
+
+    /// Draws into `rect` of the bound target from now on, top-left first: the viewport maps the clip volume onto
+    /// the rectangle and the scissor keeps every pass inside it. [`Self::begin`] sets the whole target again.
+    pub(crate) fn eye(&mut self, rect: Rect) {
+        let (_, height) = self.viewport;
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: both calls only set rasteriser state of the current context, in framebuffer coordinates, which
+            // is why the y axis is flipped here exactly as `scissor` flips it.
+            let y = (height - (rect.y + rect.height as i32)).max(0);
+            gl.viewport(rect.x, y, rect.width as i32, rect.height as i32);
+            gl.enable(glow::SCISSOR_TEST);
+            gl.scissor(rect.x, y, rect.width as i32, rect.height as i32);
+        });
     }
 
     /// Binds a target and sets the state a frame starts from.
@@ -777,6 +937,26 @@ impl GlContext {
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+                match placement.stencil {
+                    Stencil::Off => gl.disable(glow::STENCIL_TEST),
+                    Stencil::Test(depth) => {
+                        gl.enable(glow::STENCIL_TEST);
+                        gl.stencil_func(glow::EQUAL, i32::from(depth), 0xff);
+                        gl.stencil_op(glow::KEEP, glow::KEEP, glow::KEEP);
+                    }
+                    Stencil::Push(depth) => {
+                        gl.enable(glow::STENCIL_TEST);
+                        gl.stencil_func(glow::EQUAL, i32::from(depth) - 1, 0xff);
+                        gl.stencil_op(glow::KEEP, glow::KEEP, glow::INCR);
+                        gl.color_mask(false, false, false, false);
+                    }
+                    Stencil::Pop(depth) => {
+                        gl.enable(glow::STENCIL_TEST);
+                        gl.stencil_func(glow::EQUAL, i32::from(depth), 0xff);
+                        gl.stencil_op(glow::KEEP, glow::KEEP, glow::DECR);
+                        gl.color_mask(false, false, false, false);
+                    }
+                }
                 match placement.depth {
                     Depth::Off => gl.disable(glow::DEPTH_TEST),
                     Depth::Opaque => {
@@ -791,6 +971,7 @@ impl GlContext {
                     }
                 }
                 gl.draw_arrays(glow::TRIANGLES, 0, 6);
+                gl.color_mask(true, true, true, true);
 
                 gl.bind_texture(glow::TEXTURE_2D, None);
                 gl.bind_buffer(glow::ARRAY_BUFFER, None);
@@ -1000,10 +1181,12 @@ impl Texture {
     }
 }
 
-/// An offscreen target: a colour texture, a depth buffer and the framebuffer that draws into them.
+/// An offscreen target: a colour texture, a depth or stencil buffer and the framebuffer that draws into them.
 pub(crate) struct Framebuffer {
     framebuffer: glow::Framebuffer,
     texture: Texture,
+    /// The depth buffer of an output's target, or the stencil buffer of a View's.
+    renderbuffer: glow::Renderbuffer,
 }
 
 impl Framebuffer {

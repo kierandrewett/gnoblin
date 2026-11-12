@@ -119,6 +119,14 @@ impl State {
             self.queue_image_copy(id, claim, frame, dmabuf);
             return;
         }
+        if let Target::View(view) = target
+            && self.view_awaits_readback(view)
+        {
+            // A View drawn on the GPU has no picture on the CPU yet: the loop reads it back at the end of this turn
+            // and answers the frame then.
+            self.queue_view_copy(id, claim, frame);
+            return;
+        }
         let capture = self.lock_capture(stream);
         let targets = self.capture_targets();
         let mut source = Pixels {
@@ -165,7 +173,9 @@ impl State {
 
     /// A client destroyed a frame object: a copy still queued for it is dropped.
     pub(crate) fn image_copy_frame_aborted(&mut self, frame: &FrameRef) {
-        self.abort_image_copy(frame);
+        if !self.abort_view_copy(frame) {
+            self.abort_image_copy(frame);
+        }
     }
 
     /// A client destroyed a session object.

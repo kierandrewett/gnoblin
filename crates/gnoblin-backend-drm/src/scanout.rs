@@ -109,6 +109,18 @@ impl Device {
         Ok(self.probe()?.read_dmabuf(dmabuf)?)
     }
 
+    /// Reads a View's picture back, on the probe context: the scene is drawn there when the probe holds no texture of
+    /// its current revision, so a View that no output shows is still read. The outputs' own contexts draw the View
+    /// they show from the scene their frame carries, and none of them is read back.
+    pub(crate) fn read_view(
+        &mut self,
+        scene: &gnoblin_render_frame::view_scene::ViewScene,
+        capture: bool,
+        live: &[u64],
+    ) -> Result<Image, RenderError> {
+        self.probe()?.read_view(scene, capture, live)
+    }
+
     /// Writes a picture the CPU holds into a client's GPU buffer, on the probe context.
     ///
     /// The frame an output last drew is not copied: a scan-out buffer is the frame, and it is handed to the display,

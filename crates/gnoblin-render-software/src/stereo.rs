@@ -160,6 +160,34 @@ pub enum ViewRig {
     Blank,
 }
 
+impl ViewRig {
+    /// The cameras the rig draws through and the rectangle of a picture of `size` each one fills, left first. A mono
+    /// rig is one camera over the whole picture; a stereo rig is two, each over its half; a blank rig, a picture too
+    /// narrow to give each eye a column and an eye separation that is not usable have none, which is the blank
+    /// picture [`render_rig`] draws. A GPU renderer draws from this list, so it cannot place an eye anywhere the CPU
+    /// rig does not.
+    #[must_use]
+    pub fn eyes(&self, size: Size) -> Vec<(gnoblin_types::Rect, ViewCamera)> {
+        match self {
+            Self::Mono(camera) => vec![(gnoblin_types::Rect::from_size(size), *camera)],
+            Self::Blank => Vec::new(),
+            Self::Stereo(stereo) => {
+                let [left_size, right_size] = eye_sizes(size);
+                match (stereo.eyes(), left_size.width > 0) {
+                    (Some([left, right]), true) => vec![
+                        (gnoblin_types::Rect::from_size(left_size), left),
+                        (
+                            gnoblin_types::Rect::new(left_size.width as i32, 0, right_size.width, right_size.height),
+                            right,
+                        ),
+                    ],
+                    _ => Vec::new(),
+                }
+            }
+        }
+    }
+}
+
 /// The sizes of the two halves of a stereo picture of `size`, left first. The spare column of an odd width belongs to
 /// the right eye.
 #[must_use]

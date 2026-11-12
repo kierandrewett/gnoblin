@@ -470,6 +470,20 @@ impl<S: Host + 'static> Backend<S> for Drm {
         self.scanout.read_dmabuf(dmabuf)
     }
 
+    fn gpu_views(&self) -> bool {
+        // The scan-out path draws with the GLES renderer, which draws a View's subtree into a texture.
+        gnoblin_backend::render::renderer::RendererKind::Gles.draws_views()
+    }
+
+    fn read_view(
+        &mut self,
+        scene: &gnoblin_render_frame::view_scene::ViewScene,
+        capture: bool,
+        live: &[u64],
+    ) -> Result<Image, gnoblin_render_frame::error::RenderError> {
+        self.scanout.read_view(scene, capture, live)
+    }
+
     fn output_controls(&self) -> gnoblin_backend::OutputControls {
         gnoblin_backend::OutputControls {
             gamma: true,

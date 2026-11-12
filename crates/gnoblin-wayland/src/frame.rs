@@ -234,6 +234,10 @@ pub fn render(
             }
         }
     }
+    // A View the renderer drew into a texture has no picture on the CPU: the ones a consumer reads are read back now,
+    // from the draws just made, and the frames and stills that waited for them are answered. This comes before the
+    // copies into a GPU buffer, which read the same pictures.
+    state.read_gpu_views(backend);
     // The captures into a client's GPU buffer are answered from the frames just drawn: a copy is made where the
     // renderer is, which a protocol handler is not.
     state.apply_dmabuf_captures(backend);

@@ -12,6 +12,7 @@
 //! | [`frame`]    | what an output draws, in numbers and client buffers, no renderer        |
 //! | [`geometry`] | the one rule that turns a logical rectangle into pixels                 |
 //! | [`shader`]   | the WGSL passes and the uniform block: written once, no GPU API         |
+//! | [`view_scene`] | a View's source subtree, for a renderer that draws it into a texture    |
 //! | [`image`]    | the RGBA8 readback a screenshot, capture and the parity probes use      |
 //! | [`error`]    | [`error::RenderError`], the small `Copy` reason a renderer could not draw |
 //! | [`shm`]      | the one writer of a client's `wl_shm` pool                              |
@@ -38,3 +39,5 @@ pub mod image;
 pub mod shader;
 /// Writes rendered pixels into a client's `wl_shm` buffer.
 pub mod shm;
+/// A View's source subtree, described for a renderer that draws it on the GPU.
+pub mod view_scene;

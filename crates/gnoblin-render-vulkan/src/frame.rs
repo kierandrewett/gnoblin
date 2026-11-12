@@ -870,6 +870,12 @@ fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
                     "a GPU buffer reached the Vulkan renderer, which cannot import it; the layer is skipped"
                 );
             }
+            SurfaceSource::View(_) => {
+                log::warn!(
+                    area = "render",
+                    "a View's GPU texture reached the Vulkan renderer, which draws a View on the CPU; the layer is skipped"
+                );
+            }
         }
     }
     if let Some(overlay) = overlay_of(frame) {

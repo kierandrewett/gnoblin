@@ -282,6 +282,17 @@ impl HeadlessTarget {
         self.renderer.read_dmabuf(dmabuf)
     }
 
+    /// Reads a View's picture back through this target's renderer, drawing the scene first when the renderer holds
+    /// none of its current revision.
+    fn read_view(
+        &mut self,
+        scene: &gnoblin_render_frame::view_scene::ViewScene,
+        capture: bool,
+        live: &[u64],
+    ) -> Result<Image, RenderError> {
+        self.renderer.view_pixels(scene, capture, live)
+    }
+
     /// How many frames the target was asked to present.
     #[must_use]
     pub fn presents(&self) -> u64 {
@@ -950,6 +961,22 @@ impl<S: Host + 'static> Backend<S> for Headless {
 
     fn read_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, DmabufCopyError> {
         self.read_from_dmabuf(dmabuf)
+    }
+
+    fn gpu_views(&self) -> bool {
+        self.renderer.draws_views()
+    }
+
+    fn read_view(
+        &mut self,
+        scene: &gnoblin_render_frame::view_scene::ViewScene,
+        capture: bool,
+        live: &[u64],
+    ) -> Result<Image, RenderError> {
+        self.targets
+            .first_mut()
+            .ok_or(RenderError::Unsupported)?
+            .read_view(scene, capture, live)
     }
 
     fn output_controls(&self) -> OutputControls {

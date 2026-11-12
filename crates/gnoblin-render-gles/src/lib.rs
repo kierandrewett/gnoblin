@@ -146,6 +146,8 @@ pub struct Gles {
     cursor_under_rect: Option<Rectangle<i32, Physical>>,
     /// Whether the last frame left magnified or tinted pixels in the target.
     filtered: bool,
+    /// The textures of the Views this renderer draws on the GPU.
+    subtrees: subtree::Subtrees,
 }
 
 impl std::fmt::Debug for Gles {
@@ -217,6 +219,7 @@ impl Gles {
             cursor_under: Vec::new(),
             cursor_under_rect: None,
             filtered: false,
+            subtrees: subtree::Subtrees::default(),
         })
     }
 
@@ -333,6 +336,7 @@ impl Gles {
             damage.clear();
             damage.push(Rect::new(0, 0, self.physical.width, self.physical.height));
         }
+        self.prepare_subtrees(frame);
         let outcome = self.paint(frame, scale, &damage, None);
         self.damage = damage;
         self.filtered = filtering;
@@ -380,6 +384,7 @@ impl Gles {
     ) -> Result<(), RenderError> {
         let full = [Rect::new(0, 0, self.physical.width, self.physical.height)];
         std::mem::swap(&mut self.target, &mut buffer.framebuffer);
+        self.prepare_subtrees(frame);
         let outcome = self.paint(frame, scale, &full, None);
         std::mem::swap(&mut self.target, &mut buffer.framebuffer);
         outcome?;
@@ -594,6 +599,8 @@ impl Gles {
                 owned.push(texture);
                 return handle;
             }
+            // The picture of a View is the texture this renderer drew from the scene the frame carries.
+            SurfaceSource::View(_) => return self.view_source(surface),
             // The GPU buffer is sampled where it is: the texture is the driver's view of the client's
             // memory, so nothing is copied, and Smithay's cache on the buffer keeps it across frames.
             SurfaceSource::Dmabuf(dmabuf) => {
@@ -718,6 +725,11 @@ impl Painter<'_> {
             // The overlay has its own pass, so no layer loop draws it.
             Layer::Overlay(_) => return Ok(()),
         };
+        // A surface whose pixels could not be imported draws nothing: the rest of the frame still appears, and a
+        // pass that sampled no texture would paint a flat colour over the layer's place.
+        if matches!(layer, Layer::Surface(_)) && texture.is_none() {
+            return Ok(());
+        }
         let dst = physical_rect(dst, self.scale);
         let quad = Rect::new(dst.loc.x, dst.loc.y, dst.size.w.max(0) as u32, dst.size.h.max(0) as u32);
         if quad.is_empty() {
@@ -1190,6 +1202,12 @@ fn intersects(layer: &Layer, damage: Rect, scale: Scale) -> bool {
 /// coordinate also starts at the top, so the mapping is the source rectangle divided by the
 /// texture's size with no flip.
 fn texture_mapping(surface: &Surface, texture: Texture) -> [f32; 4] {
+    if let SurfaceSource::View(_) = &surface.source {
+        return subtree::picture_mapping(
+            [surface.src.x, surface.src.y, surface.src.width, surface.src.height],
+            texture,
+        );
+    }
     let y_inverted = matches!(&surface.source, SurfaceSource::Dmabuf(dmabuf) if dmabuf.y_inverted());
     dmabuf::mapping(
         [surface.src.x, surface.src.y, surface.src.width, surface.src.height],
@@ -1233,6 +1251,7 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
 
 mod capture;
 mod dmabuf;
+mod subtree;
 mod view;
 
 #[cfg(test)]

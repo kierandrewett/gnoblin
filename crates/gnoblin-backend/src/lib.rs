@@ -753,6 +753,37 @@ pub trait Backend<S: Host + 'static> {
         &[]
     }
 
+    /// Whether this backend's renderer draws a View's source subtree into a texture on the GPU, so the composer
+    /// describes a View as a [`gnoblin_render_frame::view_scene::ViewScene`] instead of drawing its picture on the
+    /// CPU. The default is `false`: a View is drawn on the CPU, which is the reference path and the only one the
+    /// software and Vulkan renderers have.
+    ///
+    /// Asked once, before any frame.
+    fn gpu_views(&self) -> bool {
+        false
+    }
+
+    /// Reads a View's picture back to the CPU: the scene's capture variant when `capture` is set and the scene has
+    /// one, the display's otherwise. The scene is drawn first when the renderer holds no texture of its current
+    /// revision. `live` names every View alive on the GPU path, and the renderer drops the textures of the others,
+    /// so a View that is destroyed gives its texture back even when no output frame is drawn.
+    ///
+    /// This is the only place a GPU View's pixels reach the CPU. The host asks for it only for a View a consumer is
+    /// reading (a capture session, a PipeWire stream, a still), and once per revision.
+    ///
+    /// # Errors
+    ///
+    /// [`gnoblin_render_frame::error::RenderError::Unsupported`] by default, matching [`Backend::gpu_views`], and the
+    /// renderer's own error when the driver refuses the texture or the read.
+    fn read_view(
+        &mut self,
+        _scene: &gnoblin_render_frame::view_scene::ViewScene,
+        _capture: bool,
+        _live: &[u64],
+    ) -> Result<gnoblin_render_frame::image::Image, gnoblin_render_frame::error::RenderError> {
+        Err(gnoblin_render_frame::error::RenderError::Unsupported)
+    }
+
     /// What this backend can import of a client's GPU buffers, or `None` when it cannot import
     /// any: the host then never serves `zwp_linux_dmabuf_v1`, and a client shares memory instead.
     ///

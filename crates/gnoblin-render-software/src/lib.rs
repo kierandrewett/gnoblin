@@ -75,7 +75,7 @@ use gnoblin_render_frame::image::READBACK_FORMAT;
 mod stereo;
 mod view;
 pub use stereo::{Frustum, StereoRig, ViewRig, eye_sizes, render_rig};
-pub use view::{ViewCamera, ViewImage, ViewProjection, render_view};
+pub use view::{ViewCamera, ViewImage, ViewProjection, eye_pixel_matrix, render_view};
 
 gnoblin_log::logger!(log = "render");
 
@@ -254,7 +254,7 @@ impl Software {
             SurfaceSource::Snapshot(image) => return Ok(image.as_ref().clone()),
             SurfaceSource::Buffer(buffer) => buffer,
             // Pixman reads CPU memory only: a GPU buffer has no picture here.
-            SurfaceSource::Dmabuf(_) => return Err(RenderError::Unsupported),
+            SurfaceSource::Dmabuf(_) | SurfaceSource::View(_) => return Err(RenderError::Unsupported),
         };
         let texture = self.renderer.import_shm_buffer(buffer, None, &[]).map_err(failed)?;
         read_texture(&mut self.renderer, &texture)
@@ -820,6 +820,13 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
             log::warn!(
                 area = "render",
                 "a GPU buffer reached the software renderer, which cannot read it; the layer is skipped"
+            );
+            return None;
+        }
+        SurfaceSource::View(_) => {
+            log::warn!(
+                area = "render",
+                "a View's GPU texture reached the software renderer, which draws a View on the CPU; the layer is skipped"
             );
             return None;
         }

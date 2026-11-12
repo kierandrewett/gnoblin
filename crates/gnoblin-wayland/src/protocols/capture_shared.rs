@@ -100,6 +100,11 @@ use crate::log;
 mod dmabuf;
 pub(super) use dmabuf::ScreencopyPending;
 
+/// The pictures of the Views a renderer draws on the GPU, read back for the consumers that need bytes.
+#[path = "capture_views.rs"]
+mod views;
+pub(crate) use views::PendingViewCopy;
+
 /// The last frame an output presented, which is what a capture copies out of.
 #[derive(Clone, Debug)]
 pub(super) struct Cached {
@@ -202,6 +207,13 @@ pub(crate) struct CaptureTables {
     /// The picture each View drew on the frame the loop last published. A View capture
     /// copies from it, and a picture that is not the one held here is new damage.
     pub(super) view_pictures: BTreeMap<NodeId, Arc<Image>>,
+    /// The picture of each View drawn on the GPU that a consumer read back, with the revision of the scene it was
+    /// read from. It is dropped when the composer draws the View again.
+    pub(crate) view_readbacks: BTreeMap<NodeId, (u64, Arc<Image>)>,
+    /// The shell's `capture` calls on Views drawn on the GPU, which wait for the loop to read the picture back.
+    pub(crate) view_stills: Vec<gnoblin_render::transaction::TreeCall>,
+    /// The frames of sessions of Views drawn on the GPU that were asked for before the View had a picture.
+    pub(crate) view_copies: Vec<PendingViewCopy>,
     /// The sessions `ext-image-copy-capture` created, kept alive so their clients keep
     /// their constraints and hear `stopped` when they end.
     pub(super) sessions: Vec<ImageCopySession>,
@@ -265,6 +277,9 @@ impl CaptureTables {
             sources: BTreeMap::new(),
             views: BTreeMap::new(),
             view_pictures: BTreeMap::new(),
+            view_readbacks: BTreeMap::new(),
+            view_stills: Vec::new(),
+            view_copies: Vec::new(),
             sessions: Vec::new(),
             screencopy_frames: Vec::new(),
             owners: HashMap::new(),
@@ -703,7 +718,14 @@ impl State {
     /// of it. The picture is compared by identity: the composer hands back the same
     /// `Arc` for as long as a View is not redrawn.
     fn publish_view_pictures(&mut self) {
-        let pictures: BTreeMap<NodeId, Arc<Image>> = self.composer.view_pictures().into_iter().collect();
+        let mut pictures: BTreeMap<NodeId, Arc<Image>> = self.composer.view_pictures().into_iter().collect();
+        // A View drawn on the GPU has no picture on the CPU until a consumer reads it back.
+        pictures.extend(
+            self.capture
+                .view_readbacks
+                .iter()
+                .map(|(view, (_, picture))| (*view, Arc::clone(picture))),
+        );
         if !self.capture.table.is_empty() {
             for (view, picture) in &pictures {
                 let unchanged = self

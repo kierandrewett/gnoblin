@@ -55,6 +55,7 @@ use gnoblin_render::{Effects, Mat4};
 use gnoblin_types::{Color, Rect, RectF};
 
 use super::image::Image;
+use super::view_scene::{SharedScene, ViewTexture};
 
 /// One thing a frame paints.
 #[derive(Clone, Debug)]
@@ -143,6 +144,14 @@ pub enum SurfaceSource {
     /// capture that has to read the pixels on the CPU (a View's) cannot read it and leaves the
     /// window out.
     Dmabuf(Dmabuf),
+    /// The picture of a View, drawn by the renderer itself from the [`ViewScene`] the frame carries: a texture on the
+    /// GPU, never copied to the CPU for the frame that shows it.
+    ///
+    /// `src` of the layer is in the picture's own pixels, top-left first. Only the GLES renderer draws one; the
+    /// software and Vulkan renderers skip the layer with a log line, and the composer never offers one to them,
+    /// because it asks the backend whether its renderer draws a View's subtree before it emits anything of the kind
+    /// (`Backend::gpu_views`).
+    View(ViewTexture),
 }
 
 impl SurfaceSource {
@@ -420,6 +429,10 @@ pub struct OutputFrame {
     view: Option<View>,
     /// The colour matrix applied to the whole frame, `None` for the colours as drawn.
     colour_matrix: Option<ColourMatrix>,
+    /// The View scenes a layer of the frame samples.
+    view_scenes: Vec<SharedScene>,
+    /// Every View alive on the GPU path.
+    live_views: Vec<u64>,
 }
 
 impl OutputFrame {
@@ -437,6 +450,8 @@ impl OutputFrame {
             cursor: None,
             view: None,
             colour_matrix: None,
+            view_scenes: Vec::new(),
+            live_views: Vec::new(),
         }
     }
 
@@ -448,6 +463,8 @@ impl OutputFrame {
         self.cursor = None;
         self.view = None;
         self.colour_matrix = None;
+        self.view_scenes.clear();
+        self.live_views.clear();
     }
 
     /// The colour behind every layer.
@@ -493,6 +510,31 @@ impl OutputFrame {
     #[must_use]
     pub fn layers(&self) -> &[Layer] {
         &self.layers
+    }
+
+    /// The View scenes this frame shows, drawn into their textures before any layer is.
+    #[must_use]
+    pub fn view_scenes(&self) -> &[SharedScene] {
+        &self.view_scenes
+    }
+
+    /// Adds the scene of a View a layer of this frame samples ([`SurfaceSource::View`]). The scene is shared, so a
+    /// frame per output holds a pointer.
+    pub fn push_view_scene(&mut self, scene: SharedScene) {
+        self.view_scenes.push(scene);
+    }
+
+    /// Every View the scene holds on the GPU path, whether this frame shows it or not: the renderer keeps the
+    /// texture of each of these and drops the textures of the Views that are not in the list, so a View that is
+    /// destroyed gives its texture back on the next frame drawn.
+    #[must_use]
+    pub fn live_views(&self) -> &[u64] {
+        &self.live_views
+    }
+
+    /// States the Views that are alive on the GPU path, replacing the list.
+    pub fn set_live_views(&mut self, views: Vec<u64>) {
+        self.live_views = views;
     }
 
     /// Adds a layer on top of the ones already described.

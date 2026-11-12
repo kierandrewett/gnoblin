@@ -137,9 +137,36 @@ fn write_still(target: &Path, png: &[u8]) -> std::io::Result<()> {
 }
 
 impl State {
-    /// Answers the shell's `capture` calls on View nodes, in op order: each writes a PNG and answers its path, or answers
-    /// the reason it did not.
+    /// The capture picture of `view`: the one the composer drew on the CPU, or the one read back from the GPU.
+    fn view_capture_picture(&self, view: NodeId) -> Option<Arc<Image>> {
+        self.composer
+            .view_pictures()
+            .into_iter()
+            .find_map(|(node, picture)| (node == view).then_some(picture))
+            .or_else(|| {
+                self.capture
+                    .view_readbacks
+                    .get(&view)
+                    .map(|(_, picture)| Arc::clone(picture))
+            })
+    }
+
+    /// Answers the shell's `capture` calls on View nodes, in op order: each writes a PNG and answers its path, or
+    /// answers the reason it did not.
+    ///
+    /// A View drawn on the GPU has no picture on the CPU yet: its calls wait for the loop to read the picture back at
+    /// the end of the turn ([`State::read_gpu_views`]) and are answered there, from the same draw they would have
+    /// been answered from here.
     pub(crate) fn run_view_captures(&mut self, calls: Vec<TreeCall>) {
+        let (gpu, cpu): (Vec<TreeCall>, Vec<TreeCall>) = calls
+            .into_iter()
+            .partition(|call| self.composer.has_view_scene(call.node));
+        self.capture.view_stills.extend(gpu);
+        self.run_view_captures_now(cpu);
+    }
+
+    /// Answers `calls` from the pictures held now, in op order.
+    pub(crate) fn run_view_captures_now(&mut self, calls: Vec<TreeCall>) {
         for call in calls {
             let requested = call.text.expose().to_owned();
             match self.capture_view_still(call.node, &requested) {
@@ -165,12 +192,7 @@ impl State {
         }
         let root = self.capture.still_root().ok_or(code::UNAVAILABLE)?.to_owned();
         let target = still_path(&root, requested)?;
-        let picture: Arc<Image> = self
-            .composer
-            .view_pictures()
-            .into_iter()
-            .find_map(|(node, picture)| (node == view).then_some(picture))
-            .ok_or(code::UNAVAILABLE)?;
+        let picture: Arc<Image> = self.view_capture_picture(view).ok_or(code::UNAVAILABLE)?;
         let size = picture.size();
         let stride = u32::try_from(picture.stride()).map_err(|_| code::TOO_LARGE)?;
         let format = Format::new(size, stride, PixelFormat::Argb8888).ok_or(code::UNAVAILABLE)?;

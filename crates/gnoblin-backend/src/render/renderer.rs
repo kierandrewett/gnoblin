@@ -80,6 +80,13 @@ impl RendererKind {
             Self::Software | Self::Vulkan => &[],
         }
     }
+
+    /// Whether this renderer draws a View's source subtree into a texture on the GPU. Only GLES does: the software
+    /// renderer is the CPU reference, and the Vulkan renderer has no pass for one yet.
+    #[must_use]
+    pub const fn draws_views(self) -> bool {
+        matches!(self, Self::Gles)
+    }
 }
 
 impl Default for RendererKind {
@@ -281,6 +288,23 @@ impl AnyRenderer {
     /// [`RenderError::Unsupported`] for a renderer that imports none, and the GLES renderer's own error otherwise.
     pub fn read_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, RenderError> {
         self.gles_mut().ok_or(RenderError::Unsupported)?.read_dmabuf(dmabuf)
+    }
+
+    /// Reads a View's picture back, drawing the scene into a texture first when the renderer holds none of its
+    /// current revision. `live` names every View alive on the GPU path; the textures of the others are dropped.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`] for a renderer that draws a View on the CPU, and the GLES renderer's own error
+    /// otherwise.
+    pub fn view_pixels(
+        &mut self,
+        scene: &gnoblin_render_frame::view_scene::ViewScene,
+        capture: bool,
+        live: &[u64],
+    ) -> Result<Image, RenderError> {
+        let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
+        gles.read_view(scene, capture, live)
     }
 }
 

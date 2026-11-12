@@ -138,6 +138,39 @@ impl ViewImage {
     }
 }
 
+/// The matrix that carries a point of the subtree's world to the image of `size` through `camera`, for a renderer that
+/// draws on the GPU: the image's pixel coordinates times the homogeneous divisor in `x` and `y` (pixel `(x, y)` is
+/// `(X, Y) / W`, top-left first, as [`render_view`] counts them), the clip depth in `z` and the divisor in `w`.
+///
+/// The clip depth maps the eye depths `near..far` onto `-1..1` the way OpenGL does, so a point nearer than `near` or
+/// farther than `far` is outside the volume a GPU clips to, which is the depth range [`render_view`] draws. The
+/// matrix is the same one the per-pixel rule uses, so the two renderers cannot disagree about where a node lands.
+///
+/// `None` where [`render_view`] draws a blank image: a size with no pixels, depths that are not finite with
+/// `0 < near < far`, or a projection that cannot draw.
+#[must_use]
+pub fn eye_pixel_matrix(camera: &ViewCamera, size: Size) -> Option<gnoblin_render::Mat4> {
+    let depths_valid =
+        camera.near.is_finite() && camera.far.is_finite() && camera.near > 0.0 && camera.far > camera.near;
+    if size.width == 0 || size.height == 0 || !depths_valid {
+        return None;
+    }
+    let rows = projection_rows(camera.projection, size)?;
+    let (near, far) = (camera.near, camera.far);
+    // A flat projection's divisor is the homogeneous coordinate itself; a perspective one divides by the eye depth.
+    let flat = rows[2] == [0.0, 0.0, 0.0, 1.0];
+    let depth_row = if flat {
+        [0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near)]
+    } else {
+        [0.0, 0.0, -(far + near) / (far - near), -2.0 * far * near / (far - near)]
+    };
+    let projection = [rows[0], rows[1], depth_row, rows[2]];
+    let matrix = gnoblin_render::Mat4 {
+        m: mul4(&projection, &eye_matrix(camera)),
+    };
+    matrix.is_finite().then_some(matrix)
+}
+
 /// Draws the subtree rooted at `root` through `camera` into an image of `size`.
 ///
 /// `buffers` supplies a node's pixels by its id, in RGBA8 straight alpha. A node the
