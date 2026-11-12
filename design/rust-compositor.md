@@ -1382,23 +1382,23 @@ Three kinds of software sit outside the compositor core. Each has its own rule:
 Every optional capability is a named slot with one contract. The services role
 holds the default provider for most slots. `portal.ui` is the exception: its default is the built-in UI in the compositor, and the portal relay is not a slot provider. A shell claims a slot through the IPC, using the
 same `Request` claim as the script API. When no provider claims a request, it
-fails closed with an error that names the slot.
+fails closed with an error that names the slot, except `portal.ui`, which the built-in dialog serves.
 
 A provider only presents the choice and returns a typed answer. It never holds
 trusted caller identity or permission authority: the portal backend and the
 compositor keep those, validate every answer against its request, and cancel the
 request when the caller goes away.
 
-| Slot             | Contract                                   | Default provider                                          | Taken over by        |
-| ---------------- | ------------------------------------------ | --------------------------------------------------------- | -------------------- |
-| `auth.polkit`    | polkit agent, answered as a `Request`      | services role                                             | shell                |
-| `prompt.secret`  | passphrase or confirm `Request`            | none; prompts fail closed                                 | shell                |
-| `location.agent` | `org.freedesktop.GeoClue2.Agent`           | services role                                             | shell                |
-| `lock.locker`    | `ext-session-lock-v1` client, lock request | none; lock fails closed                                   | shell or locker      |
-| `idle.policy`    | idle watches, ScreenSaver names            | services role                                             | shell or config      |
-| `portal.ui`      | UI step for portal requests (handler, D19) | egui fallback if unset; else a claimant; else fail closed | shell or built in    |
-| `notifications`  | `org.freedesktop.Notifications`            | none                                                      | shell                |
-| `a11y.keyboard`  | `org.freedesktop.a11y.KeyboardMonitor`     | compositor, built in                                      | none; always Gnoblin |
+| Slot             | Contract                                   | Default provider                                                                                                      | Taken over by        |
+| ---------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `auth.polkit`    | polkit agent, answered as a `Request`      | services role                                                                                                         | shell                |
+| `prompt.secret`  | passphrase or confirm `Request`            | none; prompts fail closed                                                                                             | shell                |
+| `location.agent` | `org.freedesktop.GeoClue2.Agent`           | services role                                                                                                         | shell                |
+| `lock.locker`    | `ext-session-lock-v1` client, lock request | none; lock fails closed                                                                                               | shell or locker      |
+| `idle.policy`    | idle watches, ScreenSaver names            | services role                                                                                                         | shell or config      |
+| `portal.ui`      | UI step for portal requests (D19)          | the built-in egui dialog; a claimant serves first, and the built-in dialog serves whenever the claimant cannot answer | shell or built in    |
+| `notifications`  | `org.freedesktop.Notifications`            | none                                                                                                                  | shell                |
+| `a11y.keyboard`  | `org.freedesktop.a11y.KeyboardMonitor`     | compositor, built in                                                                                                  | none; always Gnoblin |
 
 The session object lists each slot with its provider and state, so a shell,
 `gnoblinctl` and the recovery overlay can show what is missing. This replaces
@@ -2457,6 +2457,14 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 - `portals.conf` routes only interfaces `gnoblin.portal` serves. The rest fall through to `gtk;kde`.
 - `Access.AccessDialog` is served through the `portal.ui` consent path.
 - Live evidence and the headless consent limit are in `design/e2e-portals.md`.
+
+**Restated 2026-11-12 (owner, Kieran): the built-in UI is removable and replaceable.**
+
+- The built-in UI (portal consent dialogs, the secret and passphrase prompts, the egui `Modal` path) is the default and the fallback. It is not slated for deletion, and the cutover steps delete neither `Modal`, `gnoblin-portal-ui` nor the slot and provider machinery (survey 16.6, O3 and O6).
+- A user's shell replaces it by claiming the `portal.ui` slot, or the `prompt.secret` slot, over the session owner's IPC connection. The shell's program is launched with the session through `autostart`.
+- Implemented: the `portal.ui` claimant path. The claimant is offered the request, answers `allow` or `deny`, and the compositor applies the safety rules below to the answer (Deny default, the 500 ms arming window, identity from the compositor's attribution). A decline, an answer it does not understand, a deadline (the claimant gets half of the requester's timeout) or a claimant that leaves hands the request to the built-in dialog. A requester that left, a cancel or a lock ends the offer with no dialog.
+- Not implemented: the one-shot process provider (`command = {...}` with the stdin and stdout protocol below) and the per-interface `gnoblin.configure.portals.<Interface>` handler. The claimant is a long-lived program that connects over the IPC, and `autostart` is how the compositor launches it. There is no switch that turns the built-in dialog off, because it is also the fail-safe: with it, every failure of a replacement ends in a dialog that opens with Deny focused.
+- How to replace it: `docs/guides/replace-built-in-dialogs.md`. Tests: `crates/gnoblin-compositor/tests/portal_provider.rs`.
 
 #### Layers
 

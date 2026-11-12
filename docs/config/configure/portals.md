@@ -44,7 +44,8 @@ Screenshot takes one picture of the whole output. The compositor sends the PNG, 
 portal writes it to your Pictures folder. The response carries its `file://` URI.
 
 The Gnoblin consent dialog asks first. Deny has focus; Tab moves to Allow and Return
-presses it. Escape or Deny returns response 1.
+presses it. Escape or Deny returns response 1. A shell can draw this dialog itself
+instead: see [replace the built-in dialogs](/guides/replace-built-in-dialogs).
 
 A request with `interactive` set to true asks you to choose an area. The portal refuses
 it by name after consent.

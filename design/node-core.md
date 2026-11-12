@@ -267,7 +267,7 @@ Methods: `engage()`, `release()`. Both are privileged: the owner connection deci
 | `workspace`                                                     | `Workspace`                      | replaced                                 | 7                   |
 | `layers`                                                        | `Surface` (role layer)           | replaced                                 | 8                   |
 | `lock`                                                          | `Lock`                           | replaced                                 | 8                   |
-| `portal_ui`                                                     | `Canvas`, `Surface`              | replaced                                 | 8                   |
+| `portal_ui`                                                     | none                             | kept: the built-in dialog stays (O3)     | -                   |
 | `capture`                                                       | `View`                           | replaced                                 | 9                   |
 | `effect`                                                        | value type behind `Node.effects` | kept as an element type                  | 9                   |
 | `eis`                                                           | `Seat`                           | replaced                                 | 11                  |
@@ -710,7 +710,7 @@ Each step writes its failure-mode tests first, cuts one area over completely, an
 | `schema/workspace.toml`, `crates/gnoblin-lua/src/layout/`, `data/lua/gnoblin/layouts/`               | `Workspace`; `shell/tiling.lua`, `shell/strip.lua` | 7    | wm failure modes on the stock shell |
 | `crates/gnoblin-layers/`, `schema/layers.toml`                                                       | `Surface` (role layer), `Canvas`                   | 8    | portal, alert and menu tests        |
 | `schema/lock.toml`                                                                                   | `Lock`                                             | 8    | lock scenarios                      |
-| `schema/portal_ui.toml`                                                                              | `Canvas`, `Surface`                                | 8    | portal goldens                      |
+| `schema/portal_ui.toml`                                                                              | kept: the built-in dialog stays (O3)               | -    | portal tests and `portal_provider`  |
 | `schema/capture.toml`, GLES capture                                                                  | `View`                                             | 9    | capture goldens                     |
 | `schema/effect.toml`                                                                                 | element type of `Node.effects`                     | 9    | effect goldens                      |
 | `schema/eis.toml`, gesture action names                                                              | `Seat`                                             | 11   | input failure modes                 |

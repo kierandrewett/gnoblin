@@ -113,6 +113,7 @@ export const NAV: NavSection[] = [
                     { label: "Editor support", slug: "guides/editor_support" },
                     { label: "Shortcuts", slug: "guides/shortcuts" },
                     { label: "Autostart", slug: "guides/autostart" },
+                    { label: "Replace built-in dialogs", slug: "guides/replace-built-in-dialogs" },
                     { label: "Logging", slug: "guides/logging" },
                     { label: "Appearance", slug: "guides/theming" },
                     { label: "Wallpapers", slug: "guides/wallpapers" },
