@@ -13,6 +13,7 @@
 //! those are the only globals the role is shown. A capture that passes here passes with the
 //! restricted role, not with a role that merely sits beside the globals it uses.
 
+mod mock_gpu;
 mod owned;
 
 use std::fs::File;
@@ -41,6 +42,9 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
 };
 use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
+};
+use wayland_protocols::wp::linux_dmabuf::zv1::client::{
+    zwp_linux_buffer_params_v1 as params, zwp_linux_dmabuf_v1 as dmabuf_global,
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
@@ -2027,3 +2031,303 @@ fn a_cast_of_a_view_carries_a_new_picture_no_more_often_than_the_views_fps() {
         consumer.wait_for_frame("of the repainted colour", |frame| frame.is_solid(rgb(REPAINTED)));
     });
 }
+
+// A View of a window whose buffer is a GPU buffer (a dmabuf). The GPU is the stand-in of `tests/mock_gpu`, which reads
+// the client's plane back when the compositor asks for the picture, so what is asserted is the compositor's handling of
+// the pixels it gets back: they are drawn, and a secure window's are masked. That a real GPU buffer reads back the
+// right way up is the renderer's tests and `tests/dmabuf_capture_gpu.rs`.
+
+/// The GPU-backed window's colour: opaque, as an `argb8888` word, and unlike the background, the mask and the shm
+/// window's.
+const GPU_COLOUR: u32 = 0xFF30_90D0;
+
+/// A `side` x `side` GPU buffer of `word`, made with `create_immed`, with the plane file behind it.
+fn gpu_buffer(
+    qh: &QueueHandle<App>,
+    global: &dmabuf_global::ZwpLinuxDmabufV1,
+    side: u32,
+    word: u32,
+) -> (File, wl_buffer::WlBuffer) {
+    let stride = side * 4;
+    let file = tempfile::tempfile().expect("a plane file");
+    file.set_len(u64::from(stride) * u64::from(side))
+        .expect("a file that long");
+    file.write_all_at(&word.to_ne_bytes().repeat((side * side) as usize), 0)
+        .expect("pixels");
+    let fd = std::os::fd::OwnedFd::from(file.try_clone().expect("a second handle"));
+    let params = global.create_params(qh, ());
+    params.add(fd.as_fd(), 0, 0, stride, 0, 0);
+    let buffer = params.create_immed(
+        side as i32,
+        side as i32,
+        smithay::backend::allocator::Fourcc::Argb8888 as u32,
+        params::Flags::empty(),
+        qh,
+        (),
+    );
+    params.destroy();
+    (file, buffer)
+}
+
+/// Maps a toplevel whose buffer is a GPU buffer of `word`, and returns what keeps it alive.
+fn map_gpu_window(client: &mut Connected<App>, word: u32) -> (Window, File, wl_buffer::WlBuffer) {
+    let wm_base: xdg_wm_base::XdgWmBase = client
+        .globals
+        .bind(&client.qh, 1..=1, ())
+        .expect("the session advertises xdg_wm_base");
+    let surface = client.compositor.create_surface(&client.qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &client.qh, ());
+    let toplevel = xdg_surface.get_toplevel(&client.qh, ());
+    toplevel.set_title("gpu view source".to_owned());
+    surface.commit();
+    client.roundtrip();
+    let window = Window {
+        surface,
+        objects: (xdg_surface, toplevel),
+        buffers: Vec::new(),
+    };
+    let global: dmabuf_global::ZwpLinuxDmabufV1 = client
+        .globals
+        .bind(&client.qh, 3..=3, ())
+        .expect("the session advertises zwp_linux_dmabuf_v1");
+    let (plane, buffer) = gpu_buffer(&client.qh, &global, SIDE, word);
+    window.surface.attach(Some(&buffer), 0, 0);
+    window.surface.damage(0, 0, SIDE as i32, SIDE as i32);
+    window.surface.commit();
+    client.roundtrip();
+    (window, plane, buffer)
+}
+
+/// A session whose GPU is the stand-in, with the PipeWire daemon casts go to when there is one.
+fn start_gpu(daemon: Option<&Daemon>, mock: mock_gpu::Mock) -> (Session, Owner) {
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras {
+        pipewire_socket: daemon.map(Daemon::socket),
+        dmabuf_provider: Some(Box::new(mock)),
+        ..Extras::default()
+    };
+    (Session::start_with_extras(None, hooks, extras), owner)
+}
+
+/// A client that reads the View into a GPU buffer: the privileged role, which sees the GPU and the view source both.
+struct GpuViewer {
+    client: Bare<App>,
+    session: ext_image_copy_capture_session_v1::ExtImageCopyCaptureSessionV1,
+    plane: File,
+    buffer: wl_buffer::WlBuffer,
+    #[allow(dead_code)]
+    keep: (ExtImageCaptureSourceV1, dmabuf_global::ZwpLinuxDmabufV1),
+}
+
+impl GpuViewer {
+    fn open(handle: &Handle) -> Self {
+        let mut client = handle.connect_bare(ClientRole::Privileged, App::default());
+        let sources: GnoblinViewSourceManagerV1 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the owner's role binds the view source manager");
+        let copies: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 =
+            client.globals.bind(&client.qh, 1..=1, ()).expect("the copy manager");
+        let global: dmabuf_global::ZwpLinuxDmabufV1 = client.globals.bind(&client.qh, 3..=3, ()).expect("dmabuf");
+        let source = sources.create_source((VIEW.get() >> 32) as u32, VIEW.get() as u32, &client.qh, ());
+        let session = copies.create_session(
+            &source,
+            ext_image_copy_capture_manager_v1::Options::empty(),
+            &client.qh,
+            (),
+        );
+        client.wait_until("the capture session's constraints", |state| state.session_done >= 1);
+        let (plane, buffer) = gpu_buffer(&client.qh, &global, SIDE, 0);
+        Self {
+            client,
+            session,
+            plane,
+            buffer,
+            keep: (source, global),
+        }
+    }
+
+    /// Asks for one frame into the GPU buffer; `true` when it was delivered.
+    fn capture(&mut self) -> bool {
+        let (ready, failed) = (self.client.state.frame_ready, self.client.state.frame_failed);
+        let frame = self.session.create_frame(&self.client.qh, ());
+        frame.attach_buffer(&self.buffer);
+        frame.capture();
+        self.client.wait_until("an answer to the frame request", |state| {
+            state.frame_ready > ready || state.frame_failed > failed
+        });
+        let delivered = self.client.state.frame_ready > ready;
+        frame.destroy();
+        delivered
+    }
+
+    /// How many pixels of the buffer are `word`.
+    fn count_of(&self, word: u32) -> usize {
+        let mut bytes = vec![0u8; (SIDE * SIDE * 4) as usize];
+        self.plane.read_exact_at(&mut bytes, 0).expect("the plane");
+        bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| u32::from_ne_bytes(**pixel) == word)
+            .count()
+    }
+
+    /// Captures until every pixel of the buffer is `word`.
+    fn capture_until(&mut self, word: u32) {
+        let deadline = Instant::now() + TIMEOUT;
+        while Instant::now() < deadline {
+            if self.capture() && self.count_of(word) == (SIDE * SIDE) as usize {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the GPU capture never showed {word:#010x}");
+    }
+}
+
+/// The View's PNG at the shell's request, and its pixel at `(x, y)`.
+fn png_of_view(handle: &Handle, owner: &Owner, name: &str, x: u32, y: u32) -> u32 {
+    let runtime = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+    let target = runtime.join(name);
+    let answer = owner.capture(VIEW, target.to_str().expect("a utf-8 path"));
+    assert_eq!(
+        answer.error.as_str(),
+        "",
+        "the capture call is answered with the path written"
+    );
+    png_pixel(&target, x, y).1
+}
+
+/// A View of a GPU-backed window that nobody marked secure shows the window's real pixels everywhere a View is read:
+/// to a view-role session into shared memory, to a session into a GPU buffer, and in the PNG the shell asks for.
+#[test]
+fn a_view_of_a_gpu_window_shows_its_real_pixels_to_every_reader() {
+    let (mock, gpu) = mock_gpu::Mock::capable();
+    let (session, owner) = start_gpu(None, mock);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = map_gpu_window(&mut app, GPU_COLOUR);
+        arrange(&owner);
+
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until(GPU_COLOUR);
+        let mut gpu_viewer = GpuViewer::open(handle);
+        gpu_viewer.capture_until(GPU_COLOUR);
+        assert_eq!(
+            png_of_view(handle, &owner, "gpu-view.png", SIDE / 2, SIDE / 2),
+            GPU_COLOUR & 0x00FF_FFFF,
+            "the PNG holds the GPU window's pixels, not a mask"
+        );
+        assert!(
+            gpu.reads() > 0,
+            "the pixels were read back from the client's GPU buffer"
+        );
+        assert!(
+            !gpu.written().is_empty(),
+            "the View's picture was written into the client's GPU buffer by the GPU"
+        );
+    });
+}
+
+/// A secure GPU-backed window is never in a View's capture, whatever reads it: the readback happens for the View's own
+/// display, but the capture picture holds the mask.
+#[test]
+fn a_secure_gpu_window_never_reaches_a_capture_of_a_view() {
+    let (mock, gpu) = mock_gpu::Mock::capable();
+    let (session, owner) = start_gpu(None, mock);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = map_gpu_window(&mut app, GPU_COLOUR);
+        arrange(&owner);
+        let (window, ..) = owner.window();
+        mark_secure(&owner, window, true);
+
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until(MASKED);
+        assert_eq!(
+            viewer.target.count_of(GPU_COLOUR),
+            0,
+            "no pixel of the window in the shm capture"
+        );
+        let mut gpu_viewer = GpuViewer::open(handle);
+        gpu_viewer.capture_until(MASKED);
+        assert_eq!(
+            gpu_viewer.count_of(GPU_COLOUR),
+            0,
+            "no pixel of the window in the GPU capture"
+        );
+        let png = png_of_view(handle, &owner, "gpu-secure.png", SIDE / 2, SIDE / 2);
+        assert_ne!(
+            png,
+            GPU_COLOUR & 0x00FF_FFFF,
+            "the PNG does not hold the window's pixels"
+        );
+        assert_eq!(png, MASKED & 0x00FF_FFFF, "it holds the mask");
+        assert!(
+            gpu.reads() > 0,
+            "the window was read for the View's own display, and still masked in the capture"
+        );
+    });
+}
+
+/// A cast of a View of a GPU-backed window delivers the window's pixels.
+#[test]
+fn a_cast_of_a_view_of_a_gpu_window_delivers_its_pixels() {
+    let daemon = Daemon::start();
+    let (mock, _gpu) = mock_gpu::Mock::capable();
+    let (session, owner) = start_gpu(Some(&daemon), mock);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = map_gpu_window(&mut app, GPU_COLOUR);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the GPU window's colour", |frame| frame.is_solid(rgb(GPU_COLOUR)));
+    });
+}
+
+/// A cast of a View of a secure GPU-backed window delivers the mask and never a pixel of the window.
+#[test]
+fn a_cast_of_a_view_masks_a_secure_gpu_window() {
+    let daemon = Daemon::start();
+    let (mock, _gpu) = mock_gpu::Mock::capable();
+    let (session, owner) = start_gpu(Some(&daemon), mock);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = map_gpu_window(&mut app, GPU_COLOUR);
+        arrange(&owner);
+        let (window, ..) = owner.window();
+        mark_secure(&owner, window, true);
+        let stream = cast(handle, VIEW);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
+        consumer.forget();
+        consumer.listen(Duration::from_millis(600));
+        let frames = consumer.frames();
+        assert!(!frames.is_empty(), "the stream keeps delivering frames while masked");
+        assert!(
+            frames.iter().all(|frame| frame.count_of(rgb(GPU_COLOUR)) == 0),
+            "no frame holds a pixel of the secure GPU window"
+        );
+    });
+}
+
+macro_rules! ignore_gpu_events {
+    ($($interface:ty),* $(,)?) => {$(
+        impl Dispatch<$interface, ()> for App {
+            fn event(
+                _: &mut Self,
+                _: &$interface,
+                _: <$interface as wayland_client::Proxy>::Event,
+                _: &(),
+                _: &Connection,
+                _: &QueueHandle<Self>,
+            ) {
+            }
+        }
+    )*};
+}
+
+ignore_gpu_events!(dmabuf_global::ZwpLinuxDmabufV1, params::ZwpLinuxBufferParamsV1);

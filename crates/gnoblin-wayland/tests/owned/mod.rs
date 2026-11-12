@@ -154,6 +154,8 @@ pub struct Extras {
     pub lock_check: Option<gnoblin_wayland::LockCheck>,
     /// The PipeWire daemon screen casts go to; the environment's when `None`.
     pub pipewire_socket: Option<std::path::PathBuf>,
+    /// A stand-in GPU for the session's renderer to ask about client buffers; none when `None`.
+    pub dmabuf_provider: Option<Box<dyn gnoblin_backend::DmabufProvider>>,
 }
 
 /// A session that has been created but is not running yet.
@@ -280,7 +282,10 @@ impl Session {
             pipewire_socket: extras.pipewire_socket,
             ..Config::default()
         };
-        let headless = Headless::new();
+        let mut headless = Headless::new();
+        if let Some(provider) = extras.dmabuf_provider {
+            headless = headless.with_dmabuf_provider(provider);
+        }
         let outputs = headless.handle();
         let started = if controls {
             Server::new(Box::new(headless), config)
