@@ -15,6 +15,7 @@ on:
       - "crates/gnoblin-model/**"
       - "Cargo.lock"
       - "scripts/wlcs.sh"
+      - "scripts/ci-install-system-libraries.sh"
       - "scripts/wlcs-run.py"
       - "tests/wlcs/**"
       - ".github/workflows/wlcs.yml"
@@ -28,6 +29,7 @@ on:
       - "crates/gnoblin-model/**"
       - "Cargo.lock"
       - "scripts/wlcs.sh"
+      - "scripts/ci-install-system-libraries.sh"
       - "scripts/wlcs-run.py"
       - "tests/wlcs/**"
       - ".github/workflows/wlcs.yml"
@@ -53,14 +55,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
-      # What the compositor's crates link (PipeWire, xkbcommon, libinput, udev, seat, GBM) and what wlcs needs.
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake g++ pkg-config libwayland-dev libgtest-dev libgmock-dev libboost-dev \
-            libpipewire-0.3-dev libspa-0.2-dev libclang-dev libxkbcommon-dev libinput-dev libudev-dev \
-            libseat-dev libgbm-dev libdrm-dev libdbus-1-dev libpam0g-dev
+      # What the compositor's crates link and what wlcs builds with, from the one list.
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh wlcs
       - name: Show the pinned toolchain
         run: rustup show active-toolchain
       - name: Run wlcs

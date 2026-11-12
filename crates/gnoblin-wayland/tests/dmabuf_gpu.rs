@@ -200,7 +200,18 @@ fn a_gpu_buffer_is_drawn_from_the_texture_the_compositor_imports() {
             let qh = queue.handle();
             let mut app = App::default();
 
-            let global: dmabuf_global::ZwpLinuxDmabufV1 = globals.bind(&qh, 4..=4, ()).expect("zwp_linux_dmabuf_v1 v4");
+            // Version 4 (default feedback) is served only with a DRM render node to name as the main device. A software
+            // rasteriser that does import dmabufs (Mesa's llvmpipe on a machine with no `/dev/dri`) passes the gate above
+            // and still serves version 3 only, which is a skip, not a failure.
+            let global: dmabuf_global::ZwpLinuxDmabufV1 = match globals.bind(&qh, 4..=4, ()) {
+                Ok(global) => global,
+                Err(error) => {
+                    *skipped.lock().expect("the skip note") = Some(format!(
+                        "the compositor serves no zwp_linux_dmabuf_v1 version 4 ({error}): no render node"
+                    ));
+                    return;
+                }
+            };
             let _feedback = global.get_default_feedback(&qh, ());
             let deadline = Instant::now() + TIMEOUT;
             while !app.feedback_done {

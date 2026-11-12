@@ -24,8 +24,9 @@ cmd_deps() {
     "${dnf[@]}" install dnf-plugins-core git meson ninja-build gcc gcc-c++ pkgconf-pkg-config python3 dbus-daemon \
         mesa-dri-drivers mesa-libEGL gsettings-desktop-schemas
     "${dnf[@]}" builddep mutter
-    "${dnf[@]}" install gstreamer1 clang clang-devel pipewire-devel wayland-devel libxkbcommon-devel libinput-devel \
-        systemd-devel libseat-devel mesa-libgbm-devel libdrm-devel dbus-devel pam-devel curl
+    "${dnf[@]}" install gstreamer1 clang curl
+    # The libraries the workspace links, from the one list the other CI jobs install from.
+    DNF_OPTIONS="--setopt=tsflags=nocaps" "$root/scripts/ci-install-system-libraries.sh"
     # `rust-toolchain.toml` names the compiler; rustup installs it on first use. A machine that already has a cargo
     # on PATH keeps it.
     if ! command -v cargo >/dev/null 2>&1 && [ ! -x "$HOME/.cargo/bin/cargo" ]; then

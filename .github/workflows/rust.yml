@@ -17,6 +17,7 @@ on:
       - "deny.toml"
       - ".cargo/**"
       - "tests/parity/**"
+      - "scripts/ci-install-system-libraries.sh"
       - ".github/workflows/rust.yml"
   pull_request:
     paths:
@@ -34,6 +35,7 @@ on:
       - "deny.toml"
       - ".cargo/**"
       - "tests/parity/**"
+      - "scripts/ci-install-system-libraries.sh"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
 
@@ -55,6 +57,10 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-deny
+      # A bare ubuntu-latest runner has none of the system libraries the crates link or probe (libudev, libinput, libseat,
+      # libpipewire and others), so the build fails without this step. The list lives in the script and nowhere else.
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
       # rust-toolchain.toml selects the compiler and installs rustfmt and
       # clippy, so every runner builds with the same toolchain as a developer.
       - name: Show the pinned toolchain
@@ -63,7 +69,9 @@ jobs:
         run: just workspace-ci
 
   # The XR extension is a workspace of its own (`extensions/gnoblin-xr`, own lockfile), so the job above does not
-  # build, lint, test or check its licences. `just ci` runs both gates.
+  # build, lint, test or check its licences. `just ci` runs both gates. It links no system library (its only native
+  # crates load `libwayland` and the OpenXR and Vulkan loaders at run time, and its tests use none), so unlike the
+  # jobs around it this one installs nothing: it built and its tests ran in a bare Ubuntu 24.04 root file system.
   extensions:
     name: Extension workspace format, lint, test, licences
     runs-on: ubuntu-latest
@@ -84,8 +92,9 @@ jobs:
 
   # The PipeWire export (`gnoblin-pipewire-export`) and the capture end-to-end tests start a private `pipewire` daemon
   # in a runtime directory of their own, link a producer to a consumer the way a session manager would, and read the
-  # frames that arrive (design/pipewire-capture-spike.md). They need the daemon binary, which the other jobs do not
-  # install, so they run here and fail when it is missing.
+  # frames that arrive (design/pipewire-capture-spike.md). The workspace job runs them too, among everything else; this
+  # job runs only them, so a PipeWire failure is named by the job and shows within minutes. They fail, never skip,
+  # when the daemon is missing.
   pipewire:
     name: PipeWire export against a private daemon
     runs-on: ubuntu-latest
@@ -99,13 +108,10 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just
-      # The daemon and its modules, the PipeWire and SPA headers the crate binds, and what the compositor crates link.
-      - name: Install PipeWire and the build dependencies
+      # The libraries the crates link and the `pipewire` daemon, from the one list.
+      - name: Install system libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            pipewire libpipewire-0.3-dev libspa-0.2-dev libclang-dev pkg-config libwayland-dev libxkbcommon-dev \
-            libinput-dev libudev-dev libseat-dev libgbm-dev libdrm-dev libdbus-1-dev libpam0g-dev
+          scripts/ci-install-system-libraries.sh
           pipewire --version
       - name: Show the pinned toolchain
         run: rustup show active-toolchain
@@ -128,6 +134,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just
+      # Rust links the system libraries `scripts/ci-install-system-libraries.sh` installs; a bare runner has none of them.
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
       - name: Install the minimum supported toolchain
         run: rustup toolchain install 1.97.0 --profile minimal
       - name: Check the workspace with the minimum supported toolchain

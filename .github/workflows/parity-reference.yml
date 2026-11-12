@@ -15,6 +15,7 @@ on:
       - "tests/parity/**"
       - "scripts/parity-mutter51"
       - "scripts/parity-reference.sh"
+      - "scripts/ci-install-system-libraries.sh"
       - "Cargo.lock"
       - ".github/workflows/parity-reference.yml"
   pull_request:
@@ -26,6 +27,7 @@ on:
       - "tests/parity/**"
       - "scripts/parity-mutter51"
       - "scripts/parity-reference.sh"
+      - "scripts/ci-install-system-libraries.sh"
       - "Cargo.lock"
       - ".github/workflows/parity-reference.yml"
   schedule:

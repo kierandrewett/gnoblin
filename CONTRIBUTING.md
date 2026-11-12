@@ -76,6 +76,40 @@ runtime identity before and after the change. External priority rules can
 override both the observer and the helper. This check proves command priority
 isolation, not responsiveness under load.
 
+## Rust workspace prerequisites
+
+The Rust workspaces (the root workspace and `extensions/gnoblin-xr`) need the compiler that `rust-toolchain.toml` pins
+(rustup installs it on first use), `just` and `cargo-deny`, and some system libraries. A bare Ubuntu 24.04 machine has
+none of the libraries, and the build stops on the first missing one (`libudev` is the first). Install them with
+
+```sh
+scripts/ci-install-system-libraries.sh            # Ubuntu or Debian (apt-get) and Fedora (dnf); uses sudo when not root
+scripts/ci-install-system-libraries.sh wlcs       # also what `scripts/wlcs.sh` builds wlcs with
+scripts/ci-install-system-libraries.sh list       # print the package names and install nothing
+```
+
+The script is the only list of packages: the jobs in `rust.yml`, `wlcs.yml` and `parity-reference.yml` run it too. The
+Ubuntu names, the first column, are what `cargo build` and `cargo test --workspace` need, found by building both
+workspaces in a root file system that held only `build-essential`, `pkg-config`, `git`, `curl`, `python3` and `nodejs`:
+
+| Package                                                             | Needed because                                                                                                         |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `libudev-dev`, `libseat-dev`, `libpipewire-0.3-dev`                 | `libudev-sys`, `libseat-sys` and `libspa-sys` run `pkg-config` for them in their build scripts                         |
+| `libclang-dev`                                                      | `libspa-sys` runs bindgen, which opens `libclang.so`                                                                   |
+| `libssl-dev`                                                        | `libsqlite3-sys` compiles SQLCipher, which includes `openssl/crypto.h`                                                 |
+| `libxkbcommon-dev`, `libpixman-1-dev`, `libinput-dev`, `libgbm-dev` | the linker asks for `-lxkbcommon`, `-lpixman-1`, `-linput` and `-lgbm`; `cargo check` passes without them              |
+| `dbus-daemon`                                                       | the compat adapters' and the services' tests start a private bus with it and fail when it is missing                   |
+| `pipewire`, `pipewire-bin`                                          | `gnoblin-pipewire-export`, `gnoblin-capture` and the cast tests start a private daemon and `pw-dump`, and fail without |
+| `xwayland`                                                          | three `gnoblin-xwayland` unit tests fail without an `Xwayland` on `PATH`; with it the real X11 tests run               |
+| `libegl1`                                                           | smithay opens `libEGL.so.1` at run time and panics when it is missing; it pulls in Mesa's software EGL                 |
+| `libvulkan1`, `mesa-vulkan-drivers`                                 | the Vulkan renderer's tests skip, silently, without a loader and a device; with lavapipe 38 of them run                |
+
+The tests need no X server and no GPU. Tests that need a render node (`gnoblin-wayland`, `tests/dmabuf_gpu.rs`) print
+`skipping` and pass on a machine without one, and so does a driver that takes a dmabuf that is not GPU memory (Mesa's
+llvmpipe). The extension workspace needs none of these packages to build. The `wlcs` group is needed only by
+`scripts/wlcs.sh`. The XR smoke test (`scripts/xr-smoke.sh`) installs its own packages and is not part of CI on a
+hosted runner.
+
 ## Boundaries
 
 Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
