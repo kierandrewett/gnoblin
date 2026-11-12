@@ -1171,3 +1171,9 @@ name = ":claim_device"
 doc = "docs/shell-api/input-devices.md"
 reason = "a method of the seat node (crates/gnoblin-schema/schema/tree/seat.toml), not part of the native runtime this table checks"
 owner-slice = "S8"
+
+[[allow]]
+name = ":unclaim"
+doc = "docs/shell-api/input-devices.md"
+reason = "a method of the seat node (crates/gnoblin-schema/schema/tree/seat.toml), not part of the native runtime this table checks"
+owner-slice = "S8"
