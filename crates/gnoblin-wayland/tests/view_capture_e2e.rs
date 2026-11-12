@@ -2676,25 +2676,7 @@ fn a_node_above_the_views_source_that_is_secure_masks_every_reader_of_the_view()
             let _window = Window::map(&mut app, SOURCE);
             arrange(&owner);
             let (_, _, root) = owner.window();
-            owner.transact(|| {
-                vec![
-                    TreeOp::New {
-                        class: "node".to_owned(),
-                        id: ABOVE,
-                    },
-                    TreeOp::Insert {
-                        node: ABOVE,
-                        parent: root,
-                        index: None,
-                    },
-                    TreeOp::Insert {
-                        node: PARENT,
-                        parent: ABOVE,
-                        index: None,
-                    },
-                ]
-            });
-            owner.frames(3);
+            put_above(&owner, root);
             let mut viewer = Viewer::open(handle);
             viewer.capture_until(SOURCE);
             let stream = cast(handle, VIEW);
@@ -2802,5 +2784,195 @@ fn the_lock_cuts_every_reader_of_a_view_and_none_is_served_a_picture_from_before
                 "gles: {gles}: a still after the unlock is the window as it is now"
             );
         });
+    }
+}
+
+/// Puts the shell node `ABOVE` between the root and the View's source, and waits for the frames that apply it.
+fn put_above(owner: &Owner, root: NodeId) {
+    owner.transact(|| {
+        vec![
+            TreeOp::New {
+                class: "node".to_owned(),
+                id: ABOVE,
+            },
+            TreeOp::Insert {
+                node: ABOVE,
+                parent: root,
+                index: None,
+            },
+            TreeOp::Insert {
+                node: PARENT,
+                parent: ABOVE,
+                index: None,
+            },
+        ]
+    });
+    owner.frames(3);
+}
+
+// The PipeWire transition, on the real daemon. A consumer that reads slowly leaves the buffers the producer filled
+// waiting for it. The rule the tests state:
+//
+// * A buffer is filled from the picture published at the end of the frame that last applied a mark, never before it.
+// * The producer runs the stream's cycle in the pump that fills a buffer, so no buffer it filled waits on its side
+//   across a mark or the lock. Before this, the last buffer filled waited for the next pump, and a consumer that took
+//   nothing in between was handed the picture from before the mark (1 of 8 buffers in the first run of the test).
+// * What a consumer already took before the acknowledgement is the consumer's own, and the producer cannot recall it.
+// * The lock ends the stream, which takes its queue with it.
+//
+// The consumer below takes nothing between its first frame and the acknowledgement, so every buffer it takes
+// afterwards was filled before the acknowledgement and not yet taken, or after it.
+
+/// Where the secure mark goes.
+#[derive(Clone, Copy, Debug)]
+enum Mark {
+    /// The window's own node.
+    Source,
+    /// A shell node above the View's source.
+    Ancestor,
+}
+
+/// What the cast carries.
+#[derive(Clone, Copy, Debug)]
+enum Cast {
+    View,
+    Output,
+}
+
+/// Whether a frame holds a pixel of the window, which is the colour only the window draws.
+fn shows_window(frame: &gnoblin_pipewire_export::testing::ReceivedFrame) -> bool {
+    frame.count_of(rgb(SOURCE)) > 0
+}
+
+/// A cast of `cast` whose consumer is slow, a mark of `mark` acknowledged while buffers are queued: no buffer the consumer
+/// takes afterwards holds a pixel of the window.
+#[test]
+fn no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast() {
+    for gles in [false, true] {
+        for cast in [Cast::View, Cast::Output] {
+            for mark in [Mark::Source, Mark::Ancestor] {
+                let daemon = Daemon::start();
+                let Some((session, owner)) = start_for(gles, Some(&daemon), false) else {
+                    continue;
+                };
+                session.run(move |handle| {
+                    let label = format!("gles: {gles}, {cast:?}, {mark:?}");
+                    let mut app = Connected::connect(handle.socket(), App::default());
+                    let _window = Window::map(&mut app, SOURCE);
+                    arrange(&owner);
+                    let (window, _, root) = owner.window();
+                    let marked = match mark {
+                        Mark::Source => window,
+                        Mark::Ancestor => {
+                            put_above(&owner, root);
+                            ABOVE
+                        }
+                    };
+                    let target = match cast {
+                        Cast::View => gnoblin_capture::Target::View(VIEW),
+                        Cast::Output => gnoblin_capture::Target::Output(gnoblin_types::OutputId::new(0)),
+                    };
+                    let stream = handle
+                        .control
+                        .start_cast(PORTAL, target)
+                        .expect("the loop answers a stream start")
+                        .expect("the target is cast");
+                    let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+                    consumer.wait_for_frame("of the window", shows_window);
+
+                    // The consumer reads nothing now, and the producer goes on filling buffers: they queue.
+                    thread::sleep(Duration::from_millis(600));
+                    mark_secure_acknowledged(&owner, marked, true);
+                    // From here on, whatever the consumer takes was queued before the acknowledgement or filled after it.
+                    consumer.forget();
+                    owner.frames(3);
+                    consumer.listen(Duration::from_millis(900));
+                    let frames = consumer.frames();
+                    let leaked = frames.iter().filter(|frame| shows_window(frame)).count();
+                    assert_eq!(
+                        leaked,
+                        0,
+                        "{label}: {leaked} of {} buffers delivered after the acknowledged mark hold a pixel of the window",
+                        frames.len()
+                    );
+                    assert!(
+                        frames.iter().any(|frame| frame.count_of(rgb(MASKED)) > 0),
+                        "{label}: the stream goes on, with the mask in the window's place"
+                    );
+                });
+            }
+        }
+    }
+}
+
+/// A mark cleared again shows the window in the stream, so the discard cost nothing but the frames it dropped.
+#[test]
+fn a_cast_shows_the_window_again_when_the_mark_is_cleared() {
+    let daemon = Daemon::start();
+    let Some((session, owner)) = start_for(false, Some(&daemon), false) else {
+        return;
+    };
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let (window, ..) = owner.window();
+        let stream = cast(handle, VIEW);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window", shows_window);
+        mark_secure_acknowledged(&owner, window, true);
+        consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
+        mark_secure_acknowledged(&owner, window, false);
+        consumer.wait_for_frame("of the window again", |frame| frame.is_solid(rgb(SOURCE)));
+    });
+}
+
+/// The lock with buffers queued: nothing the producer filled before the lock reaches a consumer after it, and the
+/// stream's node is gone.
+#[test]
+fn no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast() {
+    for gles in [false, true] {
+        for cast in [Cast::View, Cast::Output] {
+            let daemon = Daemon::start();
+            let Some((session, owner)) = start_for(gles, Some(&daemon), true) else {
+                continue;
+            };
+            session.run(move |handle| {
+                let label = format!("gles: {gles}, {cast:?}");
+                let mut app = Connected::connect(handle.socket(), App::default());
+                let _window = Window::map(&mut app, SOURCE);
+                arrange(&owner);
+                let target = match cast {
+                    Cast::View => gnoblin_capture::Target::View(VIEW),
+                    Cast::Output => gnoblin_capture::Target::Output(gnoblin_types::OutputId::new(0)),
+                };
+                let stream = handle
+                    .control
+                    .start_cast(PORTAL, target)
+                    .expect("the loop answers a stream start")
+                    .expect("the target is cast");
+                let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+                consumer.wait_for_frame("of the window", shows_window);
+                thread::sleep(Duration::from_millis(600));
+
+                let _locker = lock(handle.socket());
+                let node = lock_node(&owner);
+                wait_lock_state(&owner, node, "locked");
+                consumer.forget();
+                assert!(
+                    consumer.observer.wait_gone(&node_name(&stream)),
+                    "{label}: the lock ends the stream: its node is gone"
+                );
+                consumer.listen(Duration::from_millis(600));
+                let frames = consumer.frames();
+                let leaked = frames.iter().filter(|frame| shows_window(frame)).count();
+                assert_eq!(
+                    leaked,
+                    0,
+                    "{label}: {leaked} of {} buffers delivered after the lock hold a pixel of the window",
+                    frames.len()
+                );
+            });
+        }
     }
 }

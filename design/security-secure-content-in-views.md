@@ -118,6 +118,24 @@ Each is a test that runs on both paths unless it says otherwise (`view_secure_te
 - **The XR extension.** It reads a View over `gnoblin_view_source_v1` and `ext_image_copy_capture` into shared memory, so
   it is the same reader as a `view`-role session. It has no path to a window's buffer or a texture of its own.
 
+## The PipeWire transition
+
+A stream queues buffers the daemon holds until the consumer takes them, so the question is which buffers a consumer can
+be handed after the compositor acknowledged a `secure` mark, or the lock.
+
+- **Found:** the producer filled a buffer, queued it, and ran the stream's cycle only in the next pump. The last buffer
+  filled before the mark therefore waited in the daemon across it. On a real daemon, with a consumer that took nothing
+  for 600 ms before the acknowledgement, 1 of 8 buffers taken afterwards held the window (`pw1.log`).
+- **Fix:** the cycle runs in the pump that fills the buffer, so nothing the producer filled waits on its side. A buffer is
+  filled from the picture published at the end of the frame that applied the mark (the fix of leak 2 above).
+- **The rule:** a consumer that took nothing since before the acknowledgement is never handed a buffer filled before it.
+  What a consumer already took is its own, and the producer cannot recall it. The lock ends the stream and its node.
+- **Tried and dropped:** flushing the stream's queue at the mark (`pw_stream_flush`, then `set_active`) stopped the
+  stream, so no later frame arrived.
+- **Tests:** `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` (View and output, both renderers,
+  mark on the window and on an ancestor), `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast`,
+  `a_cast_shows_the_window_again_when_the_mark_is_cleared`. Six repeats of the first passed (`pw5.log`).
+
 ## What was not proved
 
 - **A real GPU DMA-BUF imported by GLES.** llvmpipe on Agent37 cannot import a client's DMA-BUF, so the display texture of

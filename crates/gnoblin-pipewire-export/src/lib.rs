@@ -16,6 +16,14 @@
 //! Frames are pulled from the same [`Table`] rules the capture protocols use, so a stream is
 //! paced and refused by the same code, and a refused frame carries no pixels.
 //!
+//! - **A buffer is delivered in the pump that fills it.** The producer fills a buffer from the picture the compositor
+//!   holds, queues it and runs the stream's cycle at once, so no buffer the producer filled waits on its side across
+//!   a `secure` mark or the lock. A consumer that took nothing since before the mark is not handed a buffer filled
+//!   before it. What a consumer had already taken is the consumer's own. The tests are
+//!   `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` and
+//!   `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast` in `gnoblin-wayland`'s
+//!   `tests/view_capture_e2e.rs`, on a real daemon.
+//!
 //! A stream of a [`Target::View`] is the View at the size it is drawn at: when the View's size changes
 //! the format is offered again at the new size, the table's session takes the new shape, and the consumer
 //! is renegotiated. An output's or a window's stream keeps the shape it started with.
@@ -267,10 +275,23 @@ impl PipewireExportStream {
         self.follow_view_size(table, source);
         // A DRIVER stream is its own graph driver, so nothing else schedules it: tick it even while
         // Paused, because a Paused stream never reaches Streaming on its own.
-        let _ = self.stream.trigger_process();
         if self.stream.state() != StreamState::Streaming {
-            return;
+            let _ = self.stream.trigger_process();
+            if self.stream.state() != StreamState::Streaming {
+                return;
+            }
         }
+        self.fill(table, tick, capture, source);
+        // The cycle of this pump runs after the fill, so the buffer just queued is delivered now and not in the next
+        // pump: a buffer the producer filled would otherwise wait in the daemon across whatever the compositor does in
+        // between (a `secure` mark, the lock), and a consumer would be handed the picture from before it. It is the
+        // pump's one cycle: it also gives the consumer's buffers back, so a stalled consumer cannot hold the stream.
+        let _ = self.stream.trigger_process();
+    }
+
+    /// Fills one buffer if the table allows a frame and the stream has a free one. The buffer is queued to the stream
+    /// when this returns.
+    fn fill(&mut self, table: &mut Table, tick: Tick, capture: Capture, source: &mut dyn PlaneSource) {
         let Ok(claim) = table.request(self.session, BufferId::new(BUFFER), tick) else {
             return;
         };
@@ -309,7 +330,7 @@ impl PipewireExportStream {
                 *chunk.size_mut() = 0;
             }
         }
-        // Dropping the buffer queues it back to the stream.
+        // Dropping the buffer queues it to the stream.
     }
 }
 
