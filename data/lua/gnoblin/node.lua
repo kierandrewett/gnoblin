@@ -188,7 +188,8 @@ end
 --
 --   offer:answer(text)       settle it. `portal.ui` takes exactly "allow" or "deny"; `prompt.secret` takes the
 --                            passphrase. An answer is never logged or kept: it goes to the compositor and no further.
---   offer:decline()          this shell will not answer; the compositor's own dialog serves the request
+--   offer:decline([reason]) this shell will not answer; the compositor's own dialog serves the request. `reason` is
+--                            "locked", "denied" or "unavailable", what the requester is told; none is a plain decline
 --   offer:on_finished(fn)    `fn(offer, completion)` when the request ends without this shell: "ended" (its
 --                            requester left), "timed-out", "refused", or "lost" (the connection went)
 --   offer.finished           true once it has ended or been settled
@@ -221,11 +222,16 @@ function Offer:answer(text)
     end
     finish(self, "answered")
 end
-function Offer:decline()
+local DECLINE_REASONS = { locked = true, denied = true, unavailable = true }
+function Offer:decline(reason)
     if self.finished then
         return
     end
-    local ok, err = pcall(core.request_decline, self.request)
+    -- A typo is refused before anything is sent, so the offer stays open and a plain decline still reaches the compositor.
+    if reason ~= nil and not DECLINE_REASONS[reason] then
+        error(("a decline reason is `locked`, `denied` or `unavailable`, found `%s`"):format(tostring(reason)), 2)
+    end
+    local ok, err = pcall(core.request_decline, self.request, reason)
     finish(self, "declined")
     if not ok then
         error(err, 2)

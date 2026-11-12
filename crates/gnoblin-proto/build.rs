@@ -100,12 +100,14 @@ fn run() -> Result<(), String> {
         .map_err(|error| format!("cannot write {}: {error}", descriptor_path.display()))?;
     // The envelope gets a hand-written `Debug` that redacts, so prost's derived one,
     // which would print the payload bytes, is switched off for it alone. The same goes for
-    // the tree op and the transaction that carries it: an op's `text` may be a password.
+    // the tree op and the transaction that carries it: an op's `text` may be a password. A key event's
+    // `key` and `text` are what was typed, which in a passphrase entry is the passphrase.
     let mut config = prost_build::Config::new();
     config.skip_debug([
         ".gnoblin.ipc.Envelope",
         ".tree.Op.Properties",
         ".tree.Tree.TransactArgs",
+        ".tree.Tree.EventPayload",
     ]);
     config
         .compile_fds(descriptors)

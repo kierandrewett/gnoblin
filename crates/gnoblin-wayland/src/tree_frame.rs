@@ -170,7 +170,7 @@ impl TreeRequest {
 
 /// A pointer event for a shell node, in that node's local space. The shell decides what a press
 /// or a scroll means; the compositor only reports where the ray landed.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum TreeInput {
     /// A button went down on the node.
     Press { x: f64, y: f64, button: u32 },
@@ -187,6 +187,43 @@ pub enum TreeInput {
     /// A key went down or up while the node holds seat keyboard focus. The keysym is the
     /// layout-resolved symbol; the shell reads it as `keysym` and `pressed` as the edge.
     Key { pressed: bool, keysym: Keysym },
+}
+
+/// `Debug` by hand because a key's keysym is what was typed, which in a passphrase entry is the passphrase: a
+/// `{:?}` of an input, of the [`TreeFrameInput`] or [`FrameTreeEvent`] that holds it, or of a queue of them must
+/// not print it. The edge is shown, the symbol is not.
+impl std::fmt::Debug for TreeInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Press { x, y, button } => f
+                .debug_struct("Press")
+                .field("x", &x)
+                .field("y", &y)
+                .field("button", &button)
+                .finish(),
+            Self::Release { x, y, button } => f
+                .debug_struct("Release")
+                .field("x", &x)
+                .field("y", &y)
+                .field("button", &button)
+                .finish(),
+            Self::Motion { x, y } => f.debug_struct("Motion").field("x", &x).field("y", &y).finish(),
+            Self::Scroll { x, y, dx, dy } => f
+                .debug_struct("Scroll")
+                .field("x", &x)
+                .field("y", &y)
+                .field("dx", &dx)
+                .field("dy", &dy)
+                .finish(),
+            Self::Enter { x, y } => f.debug_struct("Enter").field("x", &x).field("y", &y).finish(),
+            Self::Leave => f.write_str("Leave"),
+            Self::Key { pressed, .. } => f
+                .debug_struct("Key")
+                .field("pressed", &pressed)
+                .field("keysym", &format_args!("<redacted>"))
+                .finish(),
+        }
+    }
 }
 
 impl TreeInput {
@@ -246,8 +283,52 @@ pub enum TreeFrameInput {
 
 #[cfg(test)]
 mod tests {
-    use super::{TreeRequest, keysym_name, keysym_text};
-    use gnoblin_types::Keysym;
+    use super::{FrameTreeEvent, TreeFrameInput, TreeInput, TreeRequest, keysym_name, keysym_text};
+    use gnoblin_types::{Keysym, NodeId};
+
+    #[test]
+    fn debug_of_a_key_input_and_what_holds_it_never_shows_the_keysym() {
+        // 0x1234 is 4660 in decimal and `1234` in hex, whichever way a derived `Debug` would have spelled it.
+        let input = TreeInput::Key {
+            pressed: true,
+            keysym: Keysym::new(0x1234),
+        };
+        let held = TreeFrameInput::Input(input);
+        let event = FrameTreeEvent {
+            frame: 1,
+            seq: 2,
+            node: NodeId::new(5),
+            event: held.clone(),
+        };
+        for shown in [
+            format!("{input:?}"),
+            format!("{input:#?}"),
+            format!("{held:?}"),
+            format!("{held:#?}"),
+            format!("{event:?}"),
+            format!("{event:#?}"),
+            format!("{:?}", vec![event.clone()]),
+        ] {
+            assert!(!shown.contains("4660") && !shown.contains("1234"), "{shown}");
+            assert!(!shown.contains("Keysym"), "{shown}");
+            assert!(shown.contains("Key") && shown.contains("<redacted>"), "{shown}");
+            assert!(shown.contains("pressed: true"), "{shown}");
+        }
+    }
+
+    #[test]
+    fn debug_of_a_pointer_input_still_shows_where_the_ray_landed() {
+        let shown = format!(
+            "{:?}",
+            TreeInput::Scroll {
+                x: 1.5,
+                y: 2.5,
+                dx: 3.0,
+                dy: 4.0
+            }
+        );
+        assert_eq!(shown, "Scroll { x: 1.5, y: 2.5, dx: 3.0, dy: 4.0 }");
+    }
 
     #[test]
     fn a_key_that_types_a_character_reads_as_that_text_and_the_others_as_none() {

@@ -382,6 +382,7 @@ return function()
     -- by setting `host.refuse` to the error text the next slot claim raises, and ends a request with `host.finish`.
     local offers_pending, finished_requests = {}, {}
     host.claimed, host.answers, host.declines, host.request_claims = {}, {}, {}, {}
+    host.decline_reasons = {}
     function core.slot_claim(name)
         if host.refuse then
             error(host.refuse, 2)
@@ -404,11 +405,15 @@ return function()
         host.answers[#host.answers + 1] = { request = request, text = text }
         finished_requests[request] = true
     end
-    function core.request_decline(request)
+    function core.request_decline(request, reason)
         if finished_requests[request] then
             error("request-finished: the request already ended", 2)
         end
+        if reason ~= nil and reason ~= "locked" and reason ~= "denied" and reason ~= "unavailable" then
+            error("a decline reason is `locked`, `denied` or `unavailable`, found `" .. tostring(reason) .. "`", 2)
+        end
         host.declines[#host.declines + 1] = request
+        host.decline_reasons[request] = reason or false
         finished_requests[request] = true
     end
     -- The compositor offers a request to the slot, on the next frame.

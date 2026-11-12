@@ -194,6 +194,27 @@ return {
         end,
     },
     {
+        "a decline carries its reason to the compositor, and a plain one carries none",
+        function()
+            local host = fresh()
+            local held = {}
+            slots.claim("portal.ui", function(o)
+                held[o.request] = o
+            end)
+            offer(host, 14)
+            offer(host, 15)
+            held[14]:decline("locked")
+            held[15]:decline()
+            H.check(host.decline_reasons[14] == "locked", "the named reason reaches the link")
+            H.check(host.decline_reasons[15] == false, "no reason is none")
+            offer(host, 16)
+            H.check(not pcall(held[16].decline, held[16], "polite"), "an unknown reason is refused, not sent as none")
+            H.check(not held[16].finished and #host.declines == 2, "and the offer stays open")
+            held[16]:decline()
+            H.check(host.decline_reasons[16] == false and #host.declines == 3, "so a plain decline still goes out")
+        end,
+    },
+    {
         "a handler may await, and answers later",
         function()
             local host = fresh()

@@ -129,7 +129,7 @@ fn reason_name(reason: DeclineReason) -> &'static str {
 
 /// Read a decline reason a script named. An unknown name is refused, not treated as no
 /// reason, so a typo cannot silently turn a locked refusal into a plain one.
-fn parse_reason(name: &str) -> mlua::Result<DeclineReason> {
+pub(crate) fn parse_reason(name: &str) -> mlua::Result<DeclineReason> {
     match name {
         "locked" => Ok(DeclineReason::Locked),
         "denied" => Ok(DeclineReason::Denied),

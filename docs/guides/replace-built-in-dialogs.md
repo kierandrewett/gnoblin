@@ -51,7 +51,8 @@ slots.claim("portal.ui", function(offer)
 end)
 ```
 
-`offer:decline()` hands the request to the built-in dialog. `offer:on_finished(fn)`
+`offer:decline()` hands the request to the built-in dialog; `offer:decline("locked")`,
+`"denied"` or `"unavailable"` also tells the requester why. `offer:on_finished(fn)`
 tells you when the request ended without you. `slots.release("portal.ui")` gives
 the slot back.
 

@@ -17,11 +17,12 @@ use std::time::Duration;
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Event, Transport};
-use gnoblin_model::{Provider, RequestCompletion};
+use gnoblin_model::{DeclineReason, Provider, RequestCompletion};
 use gnoblin_secret::SecretText;
 use gnoblin_types::RequestId;
 use mlua::{Lua, Table};
 
+use crate::requests::parse_reason;
 use crate::tree_mirror::LinkError;
 
 /// How long a poll waits for bytes that have not arrived. Short, so a frame never stalls on it.
@@ -68,8 +69,9 @@ pub trait SlotLink {
     /// Answer a claimed request. `answer` is the slot's own encoding: `allow` or `deny` for `portal.ui`, the
     /// passphrase for `prompt.secret`.
     fn answer(&mut self, request: u64, answer: &[u8]) -> Result<(), LinkError>;
-    /// Decline a claimed request: this shell will not answer it, so the compositor serves it another way.
-    fn decline(&mut self, request: u64) -> Result<(), LinkError>;
+    /// Decline a claimed request: this shell will not answer it, so the compositor serves it another way. `reason`
+    /// says why, as the requester sees it; `None` is a plain decline.
+    fn decline(&mut self, request: u64, reason: Option<DeclineReason>) -> Result<(), LinkError>;
     /// Everything that has arrived, oldest first. An error is the loss of the connection.
     fn poll(&mut self) -> Result<Vec<SlotEvent>, LinkError>;
 }
@@ -138,8 +140,8 @@ impl<T: Transport> SlotLink for ClientSlotLink<T> {
         self.replying(|client| client.answer(RequestId::new(request), answer))
     }
 
-    fn decline(&mut self, request: u64) -> Result<(), LinkError> {
-        self.replying(|client| client.decline(RequestId::new(request)))
+    fn decline(&mut self, request: u64, reason: Option<DeclineReason>) -> Result<(), LinkError> {
+        self.replying(|client| client.decline_with(RequestId::new(request), reason))
     }
 
     fn poll(&mut self) -> Result<Vec<SlotEvent>, LinkError> {
@@ -251,10 +253,14 @@ pub(crate) fn install(lua: &Lua, core: &Table, slots: &SharedSlots) -> mlua::Res
     let shared = Rc::clone(slots);
     core.set(
         "request_decline",
-        lua.create_function(move |_, id: i64| {
+        lua.create_function(move |_, (id, reason): (i64, Option<String>)| {
             let id = request_id(id)?;
+            let reason = reason.as_deref().map(parse_reason).transpose()?;
             let mut link = shared.borrow_mut();
-            link.as_mut().ok_or_else(no_link)?.decline(id).map_err(lua_error)
+            link.as_mut()
+                .ok_or_else(no_link)?
+                .decline(id, reason)
+                .map_err(lua_error)
         })?,
     )?;
     Ok(())

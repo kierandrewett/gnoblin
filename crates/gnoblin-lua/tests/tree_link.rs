@@ -5,6 +5,7 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 
+use gnoblin_lua::shell_vm::LuaEvent;
 use gnoblin_lua::tree_link::SocketTreeLink;
 use gnoblin_lua::tree_mirror::{
     Attached, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
@@ -12,7 +13,7 @@ use gnoblin_lua::tree_mirror::{
 };
 use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
 use gnoblin_proto::tree::tree::{
-    AttachArgs, AttachedPayload, ChangesPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
 use gnoblin_proto::tree::{change, snapshot_node};
 use gnoblin_proto::{Envelope, read_frame, write_frame};
@@ -75,6 +76,55 @@ fn a_chord_event_arrives_as_a_chord_not_a_node_event() {
             state: "press".to_owned(),
         })]
     );
+}
+
+#[test]
+fn a_key_event_decodes_with_its_text_and_shows_none_of_it_in_any_debug() {
+    // The characters of a passphrase typed into a shell entry: the wire event carries them as `key` and `text`, and
+    // every type they pass through on the way to Lua must keep them out of `{:?}` and `{:#?}`.
+    let payload = EventPayload {
+        frame: 1,
+        seq: 2,
+        node: 9,
+        kind: "key".to_owned(),
+        key: "Zq9".to_owned(),
+        text: "Z".to_owned(),
+        pressed: true,
+        ..Default::default()
+    };
+    let envelope = Envelope::event_message("tree", "event", &payload);
+    let (mut link, mut server) = pair();
+    send(&mut server, &envelope);
+    let incoming = drain(&mut link);
+    let [LuaIncoming::Event(event)] = incoming.as_slice() else {
+        panic!("one node event: {incoming:?}");
+    };
+    assert_eq!(event.fields.key, "Zq9", "the shell still reads the key");
+    assert_eq!(event.fields.text, "Z", "and the text");
+    let lua_event = LuaEvent {
+        target: 9,
+        kind: "key".to_owned(),
+        bubbles: true,
+        chord: None,
+        gesture: None,
+        args: Vec::new(),
+        fields: Some(event.fields.clone()),
+    };
+    for shown in [
+        format!("{payload:?}"),
+        format!("{payload:#?}"),
+        format!("{envelope:?}"),
+        format!("{envelope:#?}"),
+        format!("{incoming:?}"),
+        format!("{incoming:#?}"),
+        format!("{event:?}"),
+        format!("{:?}", event.fields),
+        format!("{lua_event:?}"),
+        format!("{lua_event:#?}"),
+    ] {
+        assert!(!shown.contains("Zq9"), "{shown}");
+        assert!(!shown.contains('Z'), "{shown}");
+    }
 }
 
 #[test]
