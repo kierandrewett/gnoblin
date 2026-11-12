@@ -775,7 +775,7 @@ fn the_cost_of_one_view_redraw_on_each_path() {
     // Toggling the source's opacity marks the View stale without repainting the canvas.
     let dirty = |composer: &mut Composer, step: usize| {
         transform(composer, 101, |transform| {
-            transform.opacity = if step % 2 == 0 { 1.0 } else { 0.99 }
+            transform.opacity = if step.is_multiple_of(2) { 1.0 } else { 0.99 }
         });
     };
     let Some(mut gles) = Gles::new(Size::new(800, 600)).ok() else {
