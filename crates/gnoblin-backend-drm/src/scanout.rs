@@ -21,9 +21,10 @@ use smithay::utils::{Physical, Size as PhysicalSize};
 use crate::frame::Scanout;
 use crate::gpu::Gpu;
 use crate::present::SLOTS;
-use gnoblin_backend::{DmabufImportError, DmabufSupport};
+use gnoblin_backend::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufSupport};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::image::Image;
 use gnoblin_render_gles::egl;
 use gnoblin_render_gles::{Gles, ScanBuffer};
 
@@ -79,20 +80,52 @@ impl Device {
         Some(support)
     }
 
+    /// The probe context, made on first use.
+    fn probe(&mut self) -> Result<&mut Gles, RenderError> {
+        if self.probe.is_none() {
+            self.probe = Some(Gles::on_display(&self.display, Size::new(1, 1))?);
+        }
+        self.probe.as_mut().ok_or(RenderError::Unavailable)
+    }
+
     /// Imports a client's GPU buffer on the device's own display, after the checks that need no driver.
     pub(crate) fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> Result<(), DmabufImportError> {
         self.support
             .as_ref()
             .ok_or(DmabufImportError::Unsupported)?
             .check(dmabuf)?;
-        if self.probe.is_none() {
-            self.probe = Some(Gles::on_display(&self.display, Size::new(1, 1)).map_err(DmabufImportError::Refused)?);
-        }
-        self.probe
-            .as_mut()
-            .ok_or(DmabufImportError::Unsupported)?
-            .import_dmabuf(dmabuf)
+        self.probe()
+            .and_then(|probe| probe.import_dmabuf(dmabuf))
             .map_err(DmabufImportError::Refused)
+    }
+
+    /// Reads a client's GPU buffer back as a picture, on the probe context, so a View of a window that shows it has
+    /// pixels. The buffer must be one [`Device::dmabuf_support`] offered.
+    pub(crate) fn read_dmabuf(&mut self, dmabuf: &Dmabuf) -> Result<Image, DmabufCopyError> {
+        self.support
+            .as_ref()
+            .ok_or(DmabufCopyError::Unsupported)?
+            .check(dmabuf)?;
+        Ok(self.probe()?.read_dmabuf(dmabuf)?)
+    }
+
+    /// Writes a picture the CPU holds into a client's GPU buffer, on the probe context.
+    ///
+    /// The frame an output last drew is not copied: a scan-out buffer is the frame, and it is handed to the display,
+    /// so there is no readable frame of an output here (see `Backend::capture` of this backend).
+    pub(crate) fn copy_picture(
+        &mut self,
+        dmabuf: &Dmabuf,
+        picture: &Image,
+        copy: DmabufCopy,
+    ) -> Result<(), DmabufCopyError> {
+        self.support
+            .as_ref()
+            .ok_or(DmabufCopyError::Unsupported)?
+            .check(dmabuf)?;
+        Ok(self
+            .probe()?
+            .copy_image_into_dmabuf(dmabuf, picture, copy.region, copy.from)?)
     }
 }
 

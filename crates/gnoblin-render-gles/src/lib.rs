@@ -808,6 +808,8 @@ impl Painter<'_> {
         let stride = self.physical.width as usize * 4;
         let rows = self.physical.height as usize;
         let full = self.device.read(self.target)?;
+        // The read leaves the default framebuffer bound; the cursor is drawn next, into the target.
+        self.device.bind(self.target)?;
         if full.len() < stride * rows {
             return Err(RenderError::Failed);
         }
@@ -1229,6 +1231,7 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
     }
 }
 
+mod capture;
 mod dmabuf;
 mod view;
 

@@ -93,9 +93,11 @@
 //!   none. Every buffer is imported before the client may use it. Tested against a stand-in
 //!   importer in `tests/dmabuf.rs`, and against a real GBM buffer in `tests/dmabuf_gpu.rs`,
 //!   which skips on a machine with no render node. A capture of a window that shows a GPU
-//!   buffer reads the composed output, so it shows the window; a View, which reads CPU
-//!   pictures, shows a grey mask in its place. A closing window that shows one leaves without
-//!   a fade. The capture protocols still offer shared memory only.
+//!   buffer reads the composed output, so it shows the window; a View of one draws its real
+//!   pixels when the backend can read the buffer back and a grey mask otherwise. A closing
+//!   window that shows one leaves without a fade. The capture protocols offer a GPU buffer
+//!   (`dma_buf`, `linux_dmabuf`) only when the backend can render into one
+//!   (`tests/dmabuf_capture.rs`, against a stand-in GPU; `tests/dmabuf_capture_gpu.rs` on a device).
 //! - **`wp_tearing_control_v1`** — the hint is kept per surface and read back through
 //!   [`State::tearing_hint`]. A headless output presents nothing, so there is no vsync for
 //!   it to lift and the hint has no visible effect.

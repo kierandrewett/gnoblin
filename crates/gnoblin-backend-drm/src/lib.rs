@@ -445,6 +445,31 @@ impl<S: Host + 'static> Backend<S> for Drm {
         self.scanout.import_dmabuf(dmabuf)
     }
 
+    // `dmabuf_capture_support` stays the default (`None`): this backend keeps no readable frame of an output (see
+    // `capture`), so there is none to copy into a client's buffer. A View's picture is on the CPU and is.
+    fn dmabuf_picture_support(&mut self) -> Option<DmabufSupport> {
+        self.scanout.dmabuf_support()
+    }
+
+    fn copy_to_dmabuf(
+        &mut self,
+        source: gnoblin_backend::DmabufSource<'_>,
+        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        copy: gnoblin_backend::DmabufCopy,
+    ) -> Result<(), gnoblin_backend::DmabufCopyError> {
+        match source {
+            gnoblin_backend::DmabufSource::Picture(picture) => self.scanout.copy_picture(dmabuf, picture, copy),
+            gnoblin_backend::DmabufSource::Frame { .. } => Err(gnoblin_backend::DmabufCopyError::Unsupported),
+        }
+    }
+
+    fn read_dmabuf(
+        &mut self,
+        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<Image, gnoblin_backend::DmabufCopyError> {
+        self.scanout.read_dmabuf(dmabuf)
+    }
+
     fn output_controls(&self) -> gnoblin_backend::OutputControls {
         gnoblin_backend::OutputControls {
             gamma: true,

@@ -166,7 +166,7 @@ use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::{DisplayMode, OutputDescriptor};
 
-pub use dmabuf::{DmabufImportError, DmabufProvider, DmabufSupport};
+pub use dmabuf::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource, DmabufSupport};
 
 gnoblin_log::logger!(log = "backend");
 
@@ -660,6 +660,13 @@ pub trait Host {
     /// outputs' damage and leave them stale.
     fn begin_frame(&mut self);
 
+    /// [`Host::begin_frame`] for a backend that can read a client's GPU buffer: a View of a window that shows one
+    /// draws the pixels `reader` returns for it. The default ignores `reader`, so a host that draws no View, or a
+    /// backend that cannot read a buffer, behaves as it did.
+    fn begin_frame_reading(&mut self, _reader: &mut render::compose::ReadDmabuf<'_>) {
+        self.begin_frame();
+    }
+
     /// Describe what `output` shows now, and answer whether anything changed.
     ///
     /// The frame is cleared by [`gnoblin_render_frame::frame::OutputFrame::clear`] at the start of every call, so
@@ -765,6 +772,54 @@ pub trait Backend<S: Host + 'static> {
         _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
     ) -> Result<(), DmabufImportError> {
         Err(DmabufImportError::Unsupported)
+    }
+
+    /// What a capture of `output` may be written into on the GPU, or `None` when this backend cannot render the
+    /// output's frame into a client's buffer: the capture protocols then offer shared memory only.
+    ///
+    /// The formats are the ones the renderer can render into, and the device is the render node a client allocates
+    /// on. Asked while the session runs, not once, because the answer is per output and outputs come and go. See
+    /// [`crate::dmabuf`].
+    fn dmabuf_capture_support(&mut self, _output: OutputId) -> Option<DmabufSupport> {
+        None
+    }
+
+    /// What a capture of a picture the compositor holds on the CPU (a View's) may be written into, or `None` when
+    /// this backend cannot upload one into a client's buffer.
+    fn dmabuf_picture_support(&mut self) -> Option<DmabufSupport> {
+        None
+    }
+
+    /// Copies `source` into a client's GPU buffer as `copy` says, and returns once the buffer holds the pixels.
+    ///
+    /// A [`DmabufSource::Frame`] is the frame the output last drew, read where it is (on the GPU) with every secure
+    /// layer drawn as [`Backend::secure_treatment`] says, exactly as [`Backend::capture`] does. The buffer must be
+    /// one the matching support query offered.
+    ///
+    /// # Errors
+    ///
+    /// [`DmabufCopyError`] naming why nothing was written. The default cannot copy into any buffer, matching the
+    /// default of [`Backend::dmabuf_capture_support`].
+    fn copy_to_dmabuf(
+        &mut self,
+        _source: DmabufSource<'_>,
+        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        _copy: DmabufCopy,
+    ) -> Result<(), DmabufCopyError> {
+        Err(DmabufCopyError::Unsupported)
+    }
+
+    /// Reads a client's GPU buffer back as a picture, top row first, so a View of a window that shows one has real
+    /// pixels to draw.
+    ///
+    /// # Errors
+    ///
+    /// [`DmabufCopyError`] naming why nothing was read. The default reads none: the View then masks the window.
+    fn read_dmabuf(
+        &mut self,
+        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<gnoblin_render_frame::image::Image, DmabufCopyError> {
+        Err(DmabufCopyError::Unsupported)
     }
 
     /// What this backend can control on its outputs: gamma tables and power state.

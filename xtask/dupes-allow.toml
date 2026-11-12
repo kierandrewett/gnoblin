@@ -1432,3 +1432,63 @@ left = "gnoblin-backend::DeviceInfo"
 right = "gnoblin-render-vulkan::DeviceInfo"
 kind = "same-name"
 reason = "an input device the seat announced and a GPU the Vulkan context opened are different things"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "gnoblin-wayland::Pending"
+kind = "same-name"
+reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Pending"
+right = "gnoblin-wayland::Pending"
+kind = "same-name"
+reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lua::Pending"
+right = "gnoblin-wayland::Pending"
+kind = "same-name"
+reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-service-core::Pending"
+right = "gnoblin-wayland::Pending"
+kind = "same-name"
+reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-wayland::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-capture::Session"
+right = "gnoblin-wayland::Session"
+kind = "same-name"
+reason = "the capture table's session record and the protocol's owned ext_image_copy_capture session object (which stops the client's session when dropped) are different things"
+
+[[allow]]
+left = "gnoblin-compositor::Session"
+right = "gnoblin-wayland::Session"
+kind = "same-name"
+reason = "an EIS client session and the protocol's owned ext_image_copy_capture session object are different things"
+
+[[allow]]
+left = "gnoblin-wayland::Session"
+right = "xdg-desktop-portal-gnoblin::Session"
+kind = "same-name"
+reason = "the protocol's owned ext_image_copy_capture session object and a portal session are different things"
+
+[[allow]]
+left = "gnoblin-portal-ui::Frame"
+right = "gnoblin-wayland::Frame"
+kind = "same-name"
+reason = "a painted portal frame and one ext_image_copy_capture frame request the compositor must answer are different things"
+
+[[allow]]
+left = "gnoblin-render-gles::Plan"
+right = "gnoblin-session::Plan"
+kind = "same-name"
+reason = "the clipped source and destination rectangles of a GPU copy and a session's startup plan are different things"

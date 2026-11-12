@@ -3394,6 +3394,10 @@ impl State {
 
 impl Host for State {
     fn begin_frame(&mut self) {
+        self.begin_frame_reading(&mut |_| None);
+    }
+
+    fn begin_frame_reading(&mut self, reader: &mut gnoblin_backend::render::compose::ReadDmabuf<'_>) {
         // The surface trees of the windows that changed reach the composer before it reports its own changes and
         // takes its damage, so a popup that committed since the last frame is drawn in this one.
         self.flush_surface_trees();
@@ -3457,7 +3461,7 @@ impl Host for State {
         self.composer.publish_skipped_effects();
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
-        self.composer.begin_frame();
+        self.composer.begin_frame_reading(reader);
         // A View's picture is final for this frame, so a shell's `capture` writes what the View shows now.
         let view_captures = self.tree.take_view_captures();
         self.run_view_captures(view_captures);

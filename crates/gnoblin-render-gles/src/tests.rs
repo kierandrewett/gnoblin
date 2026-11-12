@@ -12,6 +12,7 @@ use super::*;
 use gnoblin_render::{BlurParams, Effects, Mat4, Shadow, Vec3};
 use gnoblin_render_frame::frame::{Model, Solid};
 use gnoblin_render_software::Software;
+use gnoblin_types::Point;
 
 /// A blur with the given radius and one pass, which is one horizontal and one vertical sweep.
 /// The reference formulas in these tests describe that single sweep, so the schema's default
@@ -1236,5 +1237,240 @@ fn an_inverted_dmabuf_reverses_the_v_axis() {
     assert_eq!(
         crate::dmabuf::mapping([0.0, 0.0, 64.0, 32.0], (64, 32), true),
         [0.0, 1.0, 1.0, -1.0]
+    );
+}
+
+/// A texture of `size` the context made, standing in for a client's buffer.
+///
+/// An imported dmabuf is a GL texture whose first storage row is the buffer's first memory row, and so is this. That
+/// one property is all the copies rely on, so the orientation of every case is checked here, where a context
+/// exists; that an *imported* texture has the property is what `tests/dmabuf_gpu.rs` checks on a GPU.
+fn stand_in(renderer: &mut Gles, size: Size) -> Option<crate::gl::Texture> {
+    match renderer.device.target(size) {
+        Ok(framebuffer) => Some(framebuffer.texture()),
+        Err(error) => {
+            println!("skipping the GLES test: {error} (no texture to stand in for a buffer)");
+            None
+        }
+    }
+}
+
+/// The colour of storage pixel `(x, row)` of a texture read back raw, row 0 first.
+fn stored(raw: &[u8], width: u32, x: u32, row: u32) -> [u8; 4] {
+    let at = (row as usize * width as usize + x as usize) * 4;
+    [raw[at], raw[at + 1], raw[at + 2], raw[at + 3]]
+}
+
+const RED: [u8; 4] = [255, 0, 0, 255];
+const BLUE: [u8; 4] = [0, 0, 255, 255];
+
+/// A 64x48 frame drawn with red at the top left and blue at the bottom left, the shape that shows an upside-down
+/// copy.
+fn striped(renderer: &mut Gles) {
+    let size = Size::new(64, 48);
+    let mut frame = frame_with(
+        Color::BLACK,
+        size,
+        Rect::new(0, 0, 8, 8),
+        Color::from_rgba8(255, 0, 0, 255),
+    );
+    frame.push_layer(Layer::Solid(Solid::new(
+        Rect::new(0, 40, 8, 8),
+        Color::from_rgba8(0, 0, 255, 255),
+    )));
+    renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
+}
+
+#[test]
+fn a_frame_copied_into_a_buffer_is_top_first() {
+    let Some(mut renderer) = gles(Size::new(64, 48)) else {
+        return;
+    };
+    striped(&mut renderer);
+    let Some(buffer) = stand_in(&mut renderer, Size::new(64, 48)) else {
+        return;
+    };
+    renderer
+        .frame_into_texture(buffer, false, Rect::new(0, 0, 64, 48), Point::new(0, 0), true)
+        .expect("copied");
+    let raw = renderer.device.read_texture(buffer).expect("a raw readback");
+    assert_eq!(stored(&raw, 64, 0, 0), RED, "storage row 0 is the picture's top row");
+    assert_eq!(
+        stored(&raw, 64, 0, 47),
+        BLUE,
+        "and the last storage row is its bottom row"
+    );
+    let copied = renderer.picture_of_texture(buffer, false, true).expect("read back");
+    let shown = renderer.screenshot().expect("a readback");
+    assert_eq!(
+        copied.data(),
+        shown.data(),
+        "the buffer holds the picture a screenshot reads, pixel for pixel"
+    );
+}
+
+#[test]
+fn a_frame_copied_into_an_inverted_buffer_is_bottom_first() {
+    let Some(mut renderer) = gles(Size::new(64, 48)) else {
+        return;
+    };
+    striped(&mut renderer);
+    let Some(buffer) = stand_in(&mut renderer, Size::new(64, 48)) else {
+        return;
+    };
+    renderer
+        .frame_into_texture(buffer, true, Rect::new(0, 0, 64, 48), Point::new(0, 0), true)
+        .expect("copied");
+    let raw = renderer.device.read_texture(buffer).expect("a raw readback");
+    assert_eq!(
+        stored(&raw, 64, 0, 0),
+        BLUE,
+        "storage row 0 is the picture's bottom row"
+    );
+    assert_eq!(stored(&raw, 64, 0, 47), RED, "and the last storage row is its top row");
+    let copied = renderer.picture_of_texture(buffer, true, true).expect("read back");
+    let shown = renderer.screenshot().expect("a readback");
+    assert_eq!(
+        copied.data(),
+        shown.data(),
+        "read back with the flag it is the same picture"
+    );
+}
+
+#[test]
+fn a_region_is_copied_from_where_it_starts() {
+    let Some(mut renderer) = gles(Size::new(64, 48)) else {
+        return;
+    };
+    striped(&mut renderer);
+    let Some(buffer) = stand_in(&mut renderer, Size::new(16, 16)) else {
+        return;
+    };
+    // The buffer is smaller than the frame: its pixel (0, 0) is the frame's (0, 40), where the blue stripe starts.
+    renderer
+        .frame_into_texture(buffer, false, Rect::new(0, 0, 8, 8), Point::new(0, 40), true)
+        .expect("copied");
+    let copied = renderer.picture_of_texture(buffer, false, true).expect("read back");
+    for (x, y) in [(0, 0), (7, 0), (0, 7), (7, 7)] {
+        assert_eq!(probe(&copied, x, y), BLUE, "buffer pixel {x},{y} is the stripe");
+    }
+}
+
+#[test]
+fn a_capture_without_the_cursor_puts_back_what_it_covers() {
+    let Some(mut renderer) = gles(Size::new(32, 32)) else {
+        return;
+    };
+    let size = Size::new(32, 32);
+    let mut frame = frame_with(
+        Color::from_rgba8(0, 255, 0, 255),
+        size,
+        Rect::new(0, 0, 1, 1),
+        Color::from_rgba8(0, 255, 0, 255),
+    );
+    let white = Image::new(Size::new(4, 4), 16, vec![255; 64]).expect("a white 4x4");
+    frame.set_cursor_image(Overlay::new(Rect::new(2, 2, 4, 4), &white));
+    renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
+    let Some(buffer) = stand_in(&mut renderer, size) else {
+        return;
+    };
+    let green = [0, 255, 0, 255];
+    let white_pixel = [255, 255, 255, 255];
+    // The cursor is drawn into the target (a read of the pixels under it must not leave the passes drawing into the
+    // default framebuffer, which is where it was lost): `capture(true)` shows it.
+    let direct = renderer.capture(true).expect("a readback with the cursor");
+    assert_eq!(probe(&direct, 3, 3), white_pixel, "the renderer draws the cursor");
+
+    renderer
+        .frame_into_texture(buffer, false, Rect::from_size(size), Point::new(0, 0), true)
+        .expect("copied with the cursor");
+    let with = renderer.picture_of_texture(buffer, false, true).expect("read back");
+    assert_eq!(
+        probe(&with, 3, 3),
+        white_pixel,
+        "the cursor is in a copy that asked for it"
+    );
+
+    renderer
+        .frame_into_texture(buffer, false, Rect::from_size(size), Point::new(0, 0), false)
+        .expect("copied without the cursor");
+    let without = renderer.picture_of_texture(buffer, false, true).expect("read back");
+    assert_eq!(probe(&without, 3, 3), green, "what lay under the cursor is back");
+    assert_eq!(probe(&without, 20, 20), green, "and nothing else changed");
+    let plain = renderer.capture(false).expect("a readback without the cursor");
+    assert_eq!(
+        without.data(),
+        plain.data(),
+        "the copy without the cursor is the readback without it"
+    );
+}
+
+#[test]
+fn an_image_copied_into_a_buffer_is_top_first() {
+    let Some(mut renderer) = gles(Size::new(8, 8)) else {
+        return;
+    };
+    // Four rows: red on top, blue below it.
+    let mut bytes = Vec::new();
+    for row in 0..4 {
+        for _ in 0..4 {
+            bytes.extend_from_slice(if row == 0 { &RED } else { &BLUE });
+        }
+    }
+    let image = Image::new(Size::new(4, 4), 16, bytes).expect("a 4x4 picture");
+    let Some(buffer) = stand_in(&mut renderer, Size::new(4, 4)) else {
+        return;
+    };
+    renderer
+        .image_into_texture(buffer, false, &image, Rect::new(0, 0, 4, 4), Point::new(0, 0))
+        .expect("written");
+    let raw = renderer.device.read_texture(buffer).expect("a raw readback");
+    assert_eq!(stored(&raw, 4, 0, 0), RED, "storage row 0 is the picture's top row");
+    assert_eq!(stored(&raw, 4, 0, 3), BLUE);
+    renderer
+        .image_into_texture(buffer, true, &image, Rect::new(0, 0, 4, 4), Point::new(0, 0))
+        .expect("written");
+    let raw = renderer.device.read_texture(buffer).expect("a raw readback");
+    assert_eq!(
+        stored(&raw, 4, 0, 0),
+        BLUE,
+        "an inverted buffer's row 0 is the picture's bottom row"
+    );
+    assert_eq!(stored(&raw, 4, 0, 3), RED);
+    let back = renderer.picture_of_texture(buffer, true, true).expect("read back");
+    assert_eq!(back.data(), image.data(), "and reads back as the picture it was given");
+}
+
+#[test]
+fn a_buffer_without_alpha_reads_back_opaque() {
+    let Some(mut renderer) = gles(Size::new(8, 8)) else {
+        return;
+    };
+    let Some(buffer) = stand_in(&mut renderer, Size::new(2, 2)) else {
+        return;
+    };
+    renderer
+        .device
+        .upload_into(buffer, Rect::new(0, 0, 2, 2), &[10, 20, 30, 0].repeat(4))
+        .expect("uploaded");
+    let kept = renderer.picture_of_texture(buffer, false, true).expect("read back");
+    assert_eq!(probe(&kept, 1, 1), [10, 20, 30, 0], "a buffer with alpha keeps it");
+    let opaque = renderer.picture_of_texture(buffer, false, false).expect("read back");
+    assert_eq!(probe(&opaque, 1, 1), [10, 20, 30, 255], "one without it is opaque");
+}
+
+#[test]
+fn a_region_with_nothing_in_the_frame_is_refused() {
+    let Some(mut renderer) = gles(Size::new(64, 48)) else {
+        return;
+    };
+    striped(&mut renderer);
+    let Some(buffer) = stand_in(&mut renderer, Size::new(16, 16)) else {
+        return;
+    };
+    assert_eq!(
+        renderer.frame_into_texture(buffer, false, Rect::new(0, 0, 8, 8), Point::new(500, 0), true),
+        Err(RenderError::Failed),
+        "no pixel of the region is in the frame"
     );
 }

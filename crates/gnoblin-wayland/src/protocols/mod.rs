@@ -9,10 +9,11 @@
 //! |---|---|---|
 //! | [`xdg_activation_v1`] | `xdg_activation_v1` | mints and redeems one-shot activation tokens |
 //! | [`gnoblin_session_host_v1`] | `gnoblin_session_host_v1` | the host's channel to one hosted session: readiness, protection, logout and power requests |
-//! | [`ext_image_copy_capture_v1`] | `ext_image_copy_capture_v1` | frames of an output or a window, streamed under the lock embargo and the access roster |
+//! | [`ext_image_copy_capture_v1`] | `ext_image_copy_capture_v1` | frames of an output, a window or a View, streamed under the lock embargo and the access roster, into shared memory or into a GPU buffer |
 //! | [`ext_image_capture_source_v1`] | `ext_image_capture_source_v1` | names what an image-copy session captures: an output or a toplevel |
 //! | [`zwlr_screencopy_v1`] | `zwlr_screencopy_manager_v1` | one-shot screencopy of an output or a region, under the same embargo and roster |
-//! | [`capture_shared`] | none of its own | the pixel path, lock embargo and session table the three capture protocols share |
+//! | [`capture_shared`] | none of its own | the pixel path, lock embargo and session table the three capture protocols share; its `capture_dmabuf` part queues the copies into a client's GPU buffer and answers them from the loop |
+//! | [`image_copy_session`] | `ext_image_copy_capture_manager_v1`, `ext_image_copy_capture_session_v1`, `ext_image_copy_capture_frame_v1` | the protocol's own objects, and the check that a client's shared-memory or GPU buffer meets the constraints a session announced |
 //! | [`wl_compositor`] | `wl_compositor`, `wl_subcompositor` | surfaces, subsurfaces and buffer commits |
 //! | [`wl_shm`] | `wl_shm`, `wl_shm_pool` | shared-memory buffer pools |
 //! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
@@ -83,6 +84,8 @@ pub mod foreign_toplevel_shared;
 pub mod gnoblin_session_host_v1;
 /// `gnoblin_view_source_v1`: the owner-only capture source of a View node.
 pub mod gnoblin_view_source_v1;
+/// The session and frame objects of `ext_image_copy_capture_v1`, with the device stated as the wire carries it.
+pub mod image_copy_session;
 /// The generated halves of the Gnoblin-owned protocols; see the module for why the
 /// generated code carries the one `unsafe_code` allow in this crate.
 mod wire;

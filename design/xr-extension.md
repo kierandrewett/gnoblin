@@ -200,21 +200,21 @@ flowchart LR
 
 ### What is built where
 
-| Part                                    | Where                      | Kind                                                       |
-| --------------------------------------- | -------------------------- | ---------------------------------------------------------- |
-| Window placement in 3D                  | Gnoblin layouts (D17, D25) | Exists                                                     |
-| One global scene for every output       | `gnoblin-backend` composer | Exists                                                     |
-| Output frames, output capture           | Gnoblin                    | Exists (SHM only)                                          |
-| Depth pass on GLES                      | `gnoblin-render-gles`      | Exists (tested)                                            |
-| Hit test, ray pointer, views, room      | Gnoblin                    | New general features (G1, G2, G3, G5)                      |
-| Panel drawing, head-locked outputs      | Gnoblin                    | New general features (G11, G12)                            |
-| Layout `depth` key, off-axis projection | Gnoblin                    | New (G13, G8)                                              |
-| Client DMA-BUF, DMA-BUF capture         | Gnoblin                    | Client half built (G4); capture half open (`gnoblin-e4a0`) |
-| Virtual outputs, removal policy         | Gnoblin                    | Approved; policy is new (G6)                               |
-| Extension process and grants            | Gnoblin (D22)              | Decided; process tier proposed (G7)                        |
-| DRM lease (wired headsets only)         | Gnoblin                    | Planned protocol coverage (G10)                            |
-| OpenXR session, engine, environment     | `extensions/gnoblin-xr`    | The extension                                              |
-| Composition, reprojection, display      | Monado or WiVRn            | OpenXR standard                                            |
+| Part                                    | Where                      | Kind                                                                                                       |
+| --------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Window placement in 3D                  | Gnoblin layouts (D17, D25) | Exists                                                                                                     |
+| One global scene for every output       | `gnoblin-backend` composer | Exists                                                                                                     |
+| Output frames, output capture           | Gnoblin                    | Exists (SHM only)                                                                                          |
+| Depth pass on GLES                      | `gnoblin-render-gles`      | Exists (tested)                                                                                            |
+| Hit test, ray pointer, views, room      | Gnoblin                    | New general features (G1, G2, G3, G5)                                                                      |
+| Panel drawing, head-locked outputs      | Gnoblin                    | New general features (G11, G12)                                                                            |
+| Layout `depth` key, off-axis projection | Gnoblin                    | New (G13, G8)                                                                                              |
+| Client DMA-BUF, DMA-BUF capture         | Gnoblin                    | Built (G4); real-GPU proof pending (`gnoblin-lubw`), PipeWire DMA-BUF stream buffers open (`gnoblin-fxp4`) |
+| Virtual outputs, removal policy         | Gnoblin                    | Approved; policy is new (G6)                                                                               |
+| Extension process and grants            | Gnoblin (D22)              | Decided; process tier proposed (G7)                                                                        |
+| DRM lease (wired headsets only)         | Gnoblin                    | Planned protocol coverage (G10)                                                                            |
+| OpenXR session, engine, environment     | `extensions/gnoblin-xr`    | The extension                                                                                              |
+| Composition, reprojection, display      | Monado or WiVRn            | OpenXR standard                                                                                            |
 
 ### First frame: from a window to the headset
 
@@ -385,17 +385,32 @@ Code today:
   for a surface whose buffer is a dmabuf. GLES samples the imported texture in place (the `y-invert` flag reverses the v
   axis); the DRM backend imports on its own display (`crates/gnoblin-backend-drm/src/scanout.rs`). Damage, release,
   frame callbacks and unmap are the surface machinery's. An output capture reads the composed frame, so it shows a
-  dmabuf window. A View reads CPU pictures and shows a grey mask (and logs once); a window that shows a dmabuf leaves
-  without a close fade (`gnoblin-fxp4`).
-- **Capture, not built:** the capture protocols advertise shared memory only
-  (`crates/gnoblin-wayland/src/protocols/ext_image_copy_capture_v1.rs:44`). Offering `dma_buf` constraints needs a
-  backend method that blits the output's last frame into a client dmabuf, which cannot be verified without a GPU;
-  `gnoblin-e4a0` records the design. The GLES renderer can already import a dmabuf as a render target
-  (`Gles::import_scanout`).
-- **Tested where:** the protocol against a stand-in importer (`crates/gnoblin-wayland/tests/dmabuf.rs`); the GLES
-  refusal path and mapping (`crates/gnoblin-render-gles/src/tests.rs`); the composer (`surface_tree_tests.rs`). A real GBM
-  buffer round trip is `crates/gnoblin-wayland/tests/dmabuf_gpu.rs`: it skips where there is no render node, as on the
-  Agent37 instances (gVisor, no `/dev/dri`, llvmpipe reports no dmabuf formats), and has not run.
+  dmabuf window. A View of a window that shows a dmabuf draws the window's real pixels when the backend can read the
+  buffer back (`Backend::read_dmabuf`: `Gles::read_dmabuf` on the headless GLES renderer and, through its probe context,
+  on the DRM backend), and masks it grey (logging once) when it cannot; a secure window stays masked either way. A
+  window that shows a dmabuf leaves without a close fade (`gnoblin-fxp4`).
+- **Capture:** `ext-image-copy-capture` and `zwlr_screencopy` (v3, `linux_dmabuf`) offer a GPU buffer, and only when
+  the backend can render into one: `Backend::dmabuf_capture_support(output)` for an output or a window and
+  `dmabuf_picture_support()` for a View answer the render node and the formats, and the software and Vulkan renderers
+  and a session with no GPU answer `None` (shared memory only, as before). A GPU frame is queued by the protocol handler
+  and made by the loop with the backend in hand (`State::apply_dmabuf_captures`), through `Backend::copy_to_dmabuf`: on
+  the GLES renderer a GL blit of the renderer's target into the imported buffer (crop, vertical flip, the pixels under
+  the cursor put back when the capture asked for none, every secure layer drawn as the session's treatment says), or an
+  upload of a View's picture. The lock, pacing and damage rules are the table's, applied when the copy is made. The DRM
+  backend keeps no readable frame of an output, so it offers no output capture into a GPU buffer; a View's picture it
+  can write. The extension's own `xr-capture` path (PipeWire/portal DMA-BUF stream buffers, `gnoblin-pipewire-export`)
+  is **not** built: the stream still carries CPU frames (`gnoblin-fxp4`).
+- **Own session objects:** `ext_image_copy_capture_v1`'s objects are Gnoblin's
+  (`crates/gnoblin-wayland/src/protocols/image_copy_session.rs`), not Smithay's, because Smithay states the render node
+  as a `DrmNode`, which can only be made for a device with a sysfs DRM entry, and the Agent37 instances have none.
+- **Tested where:** the protocol against a stand-in GPU (`crates/gnoblin-wayland/tests/dmabuf.rs`,
+  `tests/dmabuf_capture.rs`, with `tests/mock_gpu`): the offer is present only with the capability, a valid GPU frame is
+  ready with the expected bytes, a wrong format, modifier or size is refused `failed`. **Mock-only:** the GPU copy itself
+  (the stand-in writes bytes into a file). The GL side is tested on a texture of the renderer's
+  (`crates/gnoblin-render-gles/src/capture.rs`, `tests.rs`: orientation, crop, cursor, alpha) and by the composer
+  (`surface_tree_tests.rs`: a View draws what the reader returns, a secure window stays masked). The real GBM round
+  trips are `tests/dmabuf_gpu.rs` and `tests/dmabuf_capture_gpu.rs`: they skip where there is no render node, as on the
+  Agent37 instances (gVisor, no `/dev/dri`, llvmpipe reports no dmabuf formats), and have not run (`gnoblin-lubw`).
 
 ### G5: the room
 

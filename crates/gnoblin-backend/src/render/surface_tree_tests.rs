@@ -793,15 +793,111 @@ fn a_window_that_shows_a_dmabuf_leaves_without_a_fade() {
 }
 
 #[test]
-fn a_view_masks_a_window_that_shows_a_dmabuf() {
+fn a_view_masks_a_window_that_shows_a_dmabuf_when_nothing_can_read_it() {
     let (mut composer, _output, window) = drawing();
     composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
     let node = node_of(&composer, window);
-    let pictures = composer.window_pictures(&BTreeSet::from([node]));
+    let pictures = composer.window_pictures(&BTreeSet::from([node]), &mut |_| None);
     let picture = pictures.get(&node).expect("a masked window has a picture, not a hole");
     assert_eq!(
         picture.colour_at(0, 0),
         Some([128, 128, 128, 255]),
         "the neutral grey a secure node is masked with"
     );
+}
+
+/// A View (node 1) of `window`'s node, drawn `300` by `300` at the origin.
+fn view_of(composer: &mut Composer, window: WindowId) -> NodeId {
+    let node = node_of(composer, window);
+    let view = NodeId::new(1);
+    composer.with_scene(|scene| {
+        scene
+            .insert(view, NodeSpec::new(Rect::new(0, 0, 300, 300)))
+            .expect("a view node");
+        scene
+            .set_class(view, Some("view".to_owned()))
+            .expect("the view's class");
+        scene.set_source(view, Some(node)).expect("the view's source");
+    });
+    view
+}
+
+/// [`frame_of`], with a reader for the GPU buffers a View shows.
+fn frame_reading(composer: &mut Composer, output: OutputId, reader: &mut ReadDmabuf<'_>) -> OutputFrame {
+    composer.damage_output(output);
+    composer.begin_frame_reading(reader);
+    let mut frame = OutputFrame::new();
+    composer.compose(output, &mut frame);
+    composer.end_frame();
+    frame
+}
+
+/// The picture a capture of `view` reads.
+fn captured(composer: &Composer, view: NodeId) -> Arc<Image> {
+    composer
+        .view_pictures()
+        .into_iter()
+        .find(|(candidate, _)| *candidate == view)
+        .expect("the view was drawn")
+        .1
+}
+
+#[test]
+fn a_view_of_a_window_that_shows_a_dmabuf_draws_the_pixels_the_reader_returns() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    let view = view_of(&mut composer, window);
+    let reads = std::cell::Cell::new(0);
+    let mut reader = |_: &smithay::backend::allocator::dmabuf::Dmabuf| {
+        reads.set(reads.get() + 1);
+        // Green on top, blue below: an upside-down read would swap them.
+        let size = Size::new(100, 100);
+        let mut pixels = Vec::new();
+        for row in 0..100 {
+            let colour = if row < 50 { GREEN } else { BLUE };
+            pixels.extend(colour.repeat(100));
+        }
+        Image::new(size, 400, pixels)
+    };
+    frame_reading(&mut composer, output, &mut reader);
+    let picture = captured(&composer, view);
+    assert_eq!(probe(&picture, 50, 25), GREEN, "the window's top is the buffer's top");
+    assert_eq!(probe(&picture, 50, 75), BLUE, "and its bottom is the buffer's bottom");
+    assert_eq!(reads.get(), 1, "the buffer is read once for the picture");
+
+    // Nothing changed, so the View is not redrawn and the buffer is not read again.
+    frame_reading(&mut composer, output, &mut reader);
+    assert_eq!(reads.get(), 1, "an unchanged View costs no readback");
+
+    // A commit marks the window's node dirty, which redraws the View from the buffer's new pixels.
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    frame_reading(&mut composer, output, &mut reader);
+    assert_eq!(reads.get(), 2, "a new commit is read again");
+}
+
+#[test]
+fn a_secure_window_that_shows_a_dmabuf_is_masked_in_the_capture_picture_though_it_was_read() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    composer.set_window_secure(window, true);
+    let view = view_of(&mut composer, window);
+    let mut reader =
+        |_: &smithay::backend::allocator::dmabuf::Dmabuf| Image::new(Size::new(100, 100), 400, GREEN.repeat(100 * 100));
+    frame_reading(&mut composer, output, &mut reader);
+    let picture = captured(&composer, view);
+    assert_eq!(
+        probe(&picture, 50, 50),
+        [128, 128, 128, 255],
+        "what a capture reads is the mask, whatever the reader returned"
+    );
+}
+
+#[test]
+fn a_reader_that_cannot_read_leaves_the_view_masked() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
+    let view = view_of(&mut composer, window);
+    frame_reading(&mut composer, output, &mut |_| None);
+    let picture = captured(&composer, view);
+    assert_eq!(probe(&picture, 50, 50), [128, 128, 128, 255]);
 }

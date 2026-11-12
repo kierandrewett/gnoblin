@@ -242,6 +242,46 @@ impl AnyRenderer {
         let gles = self.gles_mut().ok_or(crate::DmabufImportError::Unsupported)?;
         gles.import_dmabuf(dmabuf).map_err(crate::DmabufImportError::Refused)
     }
+
+    /// Copies the frame last drawn into a client's GPU buffer, with the cursor composed in when `with_cursor` is set.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`] for a renderer that draws into no client buffer (the software and Vulkan
+    /// renderers), and the GLES renderer's own error otherwise.
+    pub fn copy_frame_into_dmabuf(
+        &mut self,
+        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        copy: crate::DmabufCopy,
+        with_cursor: bool,
+    ) -> Result<(), RenderError> {
+        let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
+        gles.copy_frame_into_dmabuf(dmabuf, copy.region, copy.from, with_cursor)
+    }
+
+    /// Writes a picture the CPU holds into a client's GPU buffer.
+    ///
+    /// # Errors
+    ///
+    /// As [`AnyRenderer::copy_frame_into_dmabuf`].
+    pub fn copy_image_into_dmabuf(
+        &mut self,
+        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        image: &Image,
+        copy: crate::DmabufCopy,
+    ) -> Result<(), RenderError> {
+        let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
+        gles.copy_image_into_dmabuf(dmabuf, image, copy.region, copy.from)
+    }
+
+    /// Reads a client's GPU buffer back as a picture.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`] for a renderer that imports none, and the GLES renderer's own error otherwise.
+    pub fn read_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, RenderError> {
+        self.gles_mut().ok_or(RenderError::Unsupported)?.read_dmabuf(dmabuf)
+    }
 }
 
 /// What a redacted capture reads: the frame last drawn, where the capture covers, and how
@@ -263,14 +303,17 @@ pub(crate) struct CaptureRequest<'a> {
 /// Reads a renderer back for a capture, with the secure layers of the frame it last drew
 /// replaced by the request's treatment.
 ///
+/// `read` takes what a capture produces from the renderer: a picture on the CPU, or nothing at all when it writes
+/// into a client's buffer on the GPU. Either way the replacement is in place while it runs.
+///
 /// The display is drawn again with full damage so the next present shows the real layers.
 /// It is restored even when the read fails.
-pub(crate) fn capture_redacted<R>(
+pub(crate) fn capture_redacted<R, T>(
     renderer: &mut R,
     request: CaptureRequest<'_>,
     draw: fn(&mut R, &OutputFrame, Scale) -> Result<(), RenderError>,
-    read: fn(&mut R, bool) -> Result<Image, RenderError>,
-) -> Result<Image, RenderError> {
+    read: impl FnOnce(&mut R, bool) -> Result<T, RenderError>,
+) -> Result<T, RenderError> {
     let CaptureRequest {
         display,
         bounds,
@@ -282,11 +325,11 @@ pub(crate) fn capture_redacted<R>(
         return read(renderer, with_cursor);
     };
     let replaced = display.redacted(treatment, bounds);
-    let image = draw(renderer, &replaced, scale).and_then(|()| read(renderer, with_cursor));
+    let taken = draw(renderer, &replaced, scale).and_then(|()| read(renderer, with_cursor));
     let restored = draw(renderer, &display.fully_damaged(bounds), scale);
-    let image = image?;
+    let taken = taken?;
     restored?;
-    Ok(image)
+    Ok(taken)
 }
 
 #[cfg(test)]

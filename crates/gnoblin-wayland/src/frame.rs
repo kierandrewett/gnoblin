@@ -194,7 +194,13 @@ pub fn render(
     // Capture hears the turn before anything is drawn: a session the lock covers is
     // stopped here, so no frame of it is produced for the iteration that follows.
     state.poll_capture();
-    state.begin_frame();
+    // A View of a window that shows a GPU buffer reads its pixels back through the backend, where the buffer lives.
+    state.begin_frame_reading(&mut |dmabuf| {
+        backend
+            .read_dmabuf(dmabuf)
+            .map_err(|error| log::debug!(area = "frame", %error, "a client's GPU buffer was not read for a View"))
+            .ok()
+    });
     let outputs: Vec<OutputId> = backend.outputs().iter().map(|output| output.id).collect();
     let mut drew = false;
     let mut damage: Vec<Rect> = Vec::new();
@@ -228,6 +234,9 @@ pub fn render(
             }
         }
     }
+    // The captures into a client's GPU buffer are answered from the frames just drawn: a copy is made where the
+    // renderer is, which a protocol handler is not.
+    state.apply_dmabuf_captures(backend);
     state.end_frame();
     // A popup that hangs wholly off every output is drawn nowhere, so its commit damages nothing and no frame
     // follows it; its client is answered all the same, because there is no frame of it to wait for.

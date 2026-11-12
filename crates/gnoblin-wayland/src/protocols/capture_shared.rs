@@ -67,6 +67,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
+use super::image_copy_session::{Session as ImageCopySession, create_image_copy_global};
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
 use smithay::reexports::wayland_server::Resource;
@@ -77,10 +78,10 @@ use smithay::utils::user_data::UserDataMap;
 use smithay::wayland::image_capture_source::{
     ImageCaptureSource, OutputCaptureSourceState, ToplevelCaptureSourceState,
 };
-use smithay::wayland::image_copy_capture::{ImageCopyCaptureState, Session as CaptureSession};
 
 use gnoblin_capture::{
-    BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, PixelFormat, SessionId, Stop, Table, Target,
+    BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, FrameClaim, PixelFormat, SessionId, Stop,
+    Table, Target,
 };
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_render_frame::image::Image;
@@ -93,6 +94,11 @@ use crate::access::{Access, AccessPolicy, Global};
 use gnoblin_pipewire_export::{PipewireExport, PlaneSource, write_region};
 
 use crate::log;
+
+/// Captures into a client's GPU buffer: what is offered, and the copies the loop answers.
+#[path = "capture_dmabuf.rs"]
+mod dmabuf;
+pub(super) use dmabuf::ScreencopyPending;
 
 /// The last frame an output presented, which is what a capture copies out of.
 #[derive(Clone, Debug)]
@@ -198,7 +204,7 @@ pub(crate) struct CaptureTables {
     pub(super) view_pictures: BTreeMap<NodeId, Arc<Image>>,
     /// The sessions `ext-image-copy-capture` created, kept alive so their clients keep
     /// their constraints and hear `stopped` when they end.
-    pub(super) sessions: Vec<CaptureSession>,
+    pub(super) sessions: Vec<ImageCopySession>,
     /// The screencopy frame objects that have not been resolved, so the lock can fail
     /// them.
     pub(super) screencopy_frames: Vec<ZwlrScreencopyFrameV1>,
@@ -213,8 +219,8 @@ pub(crate) struct CaptureTables {
     /// The manager global, kept for its identity and for the filter it carries.
     #[allow(dead_code)]
     screencopy_global: GlobalId,
-    /// The image-copy-capture globals and their sessions.
-    pub(super) image_copy: ImageCopyCaptureState,
+    /// What the backend can write a capture into, and the copies of GPU buffers waiting for the loop.
+    dmabuf: dmabuf::DmabufCapture,
     /// The output capture sources.
     pub(super) output_source: OutputCaptureSourceState,
     /// The toplevel capture sources.
@@ -240,12 +246,11 @@ impl CaptureTables {
             let access = Arc::clone(access);
             move |client: &Client| AccessPolicy::allows(&*access, &client.id(), global)
         };
-        let image_copy = ImageCopyCaptureState::new_with_filter::<State, _>(display, filter(Global::ImageCopyCapture));
         let output_source =
             OutputCaptureSourceState::new_with_filter::<State, _>(display, filter(Global::ImageCopyCapture));
         let toplevel_source =
             ToplevelCaptureSourceState::new_with_filter::<State, _>(display, filter(Global::ImageCopyCapture));
-        let image_copy_global = image_copy.global();
+        let image_copy_global = create_image_copy_global(display, filter(Global::ImageCopyCapture));
         let screencopy_global = display.create_global::<State, ZwlrScreencopyManagerV1, _>(
             3,
             ZwlrScreencopyV1Global {
@@ -267,7 +272,7 @@ impl CaptureTables {
             next_owner: 0,
             screencopy_global,
             image_copy_global,
-            image_copy,
+            dmabuf: dmabuf::DmabufCapture::default(),
             output_source,
             toplevel_source,
             pipewire: PipewireExport::new(),
@@ -793,6 +798,50 @@ impl State {
         targets
     }
 
+    /// Opens the one-frame session a screencopy frame is and takes its claim, or `None` when the session refuses it.
+    fn open_screencopy(
+        &mut self,
+        owner: ClientId,
+        output: OutputId,
+        format: Format,
+        tick: Tick,
+    ) -> Option<(SessionId, FrameClaim)> {
+        let session = self
+            .capture
+            .table
+            .open(owner, Target::Output(output), CaptureStream::Requested, format);
+        match self.capture.table.request(session, BufferId::new(1), tick) {
+            Ok(claim) => Some((session, claim)),
+            Err(refusal) => {
+                self.capture.table.close(session);
+                log::debug!(
+                    area = "capture",
+                    reason = refusal.as_str(),
+                    "the frame could not be claimed"
+                );
+                None
+            }
+        }
+    }
+
+    /// Closes a screencopy frame's session and answers what was copied and when it was presented, or `None` when the
+    /// frame was refused.
+    fn close_screencopy(
+        &mut self,
+        session: SessionId,
+        outcome: CaptureOutcome,
+        presented: Tick,
+    ) -> Option<(Rect, Tick)> {
+        self.capture.table.close(session);
+        match outcome {
+            CaptureOutcome::Copied(report) => Some((report.region, presented)),
+            CaptureOutcome::Refused(refusal) => {
+                log::debug!(area = "capture", reason = refusal.as_str(), "the frame was refused");
+                None
+            }
+        }
+    }
+
     /// Copies `region` of an output into `buffer` through the session rules.
     ///
     /// One screencopy object is one frame, so the session lasts exactly this copy; the
@@ -810,22 +859,7 @@ impl State {
         capture: Capture,
         tick: Tick,
     ) -> Option<(Rect, Tick)> {
-        let session = self
-            .capture
-            .table
-            .open(owner, Target::Output(output), CaptureStream::Requested, format);
-        let frame = match self.capture.table.request(session, BufferId::new(1), tick) {
-            Ok(frame) => frame,
-            Err(refusal) => {
-                self.capture.table.close(session);
-                log::debug!(
-                    area = "capture",
-                    reason = refusal.as_str(),
-                    "the frame could not be claimed"
-                );
-                return None;
-            }
-        };
+        let (session, claim) = self.open_screencopy(owner, output, format, tick)?;
         let targets = self.capture_targets();
         let mut source = Pixels {
             targets,
@@ -834,17 +868,9 @@ impl State {
             offset,
             with_cursor,
         };
-        let target = Target::Output(output);
-        let presented = source.presented(target).unwrap_or(tick);
-        let outcome = self.capture.table.capture(frame, tick, capture, &mut source);
-        self.capture.table.close(session);
-        match outcome {
-            CaptureOutcome::Copied(report) => Some((report.region, presented)),
-            CaptureOutcome::Refused(refusal) => {
-                log::debug!(area = "capture", reason = refusal.as_str(), "the frame was refused");
-                None
-            }
-        }
+        let presented = source.presented(Target::Output(output)).unwrap_or(tick);
+        let outcome = self.capture.table.capture(claim, tick, capture, &mut source);
+        self.close_screencopy(session, outcome, presented)
     }
 }
 

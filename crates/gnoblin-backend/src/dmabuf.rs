@@ -26,6 +26,8 @@ use smithay::backend::allocator::format::FormatSet;
 use smithay::backend::allocator::{Format, Modifier};
 
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::image::Image;
+use gnoblin_types::{OutputId, Point, Rect};
 
 /// What a backend can import: the format and modifier pairs, and the device they live on.
 #[derive(Clone, Debug)]
@@ -119,11 +121,14 @@ impl std::fmt::Display for DmabufImportError {
 
 impl std::error::Error for DmabufImportError {}
 
-/// Something that answers the two dmabuf questions for a backend.
+/// Something that answers the dmabuf questions for a backend.
 ///
 /// The GLES renderers answer them for real. The trait is public so a session without a GPU can be
 /// handed another device's answers, which is how the protocol is tested where no device exists:
-/// the protocol layer is the same code, and only the importer is a stand-in.
+/// the protocol layer is the same code, and only the importer and the copy are a stand-in.
+///
+/// The capture methods default to "cannot", so a provider that only imports (the first half of this
+/// trait) serves clients' buffers and offers no capture into one.
 pub trait DmabufProvider: Send {
     /// What this provider can import, or `None` when it cannot import at all.
     fn support(&mut self) -> Option<DmabufSupport>;
@@ -134,7 +139,108 @@ pub trait DmabufProvider: Send {
     ///
     /// [`DmabufImportError::Refused`] when the driver refuses the buffer.
     fn import(&mut self, dmabuf: &Dmabuf) -> Result<(), DmabufImportError>;
+
+    /// What a capture may be written into, or `None` when this provider cannot write into a client's buffer. The
+    /// formats are the ones it can render into, and the device is the one they live on.
+    fn capture_support(&mut self) -> Option<DmabufSupport> {
+        None
+    }
+
+    /// Writes `picture` into `dmabuf` as `copy` says, the way a GPU copy would. The frame an output last drew is
+    /// handed over as a picture here, because a stand-in has no frame of its own.
+    ///
+    /// # Errors
+    ///
+    /// [`DmabufCopyError`] naming why nothing was written.
+    fn write(&mut self, _dmabuf: &Dmabuf, _picture: &Image, _copy: DmabufCopy) -> Result<(), DmabufCopyError> {
+        Err(DmabufCopyError::Unsupported)
+    }
+
+    /// Reads `dmabuf` back as a picture, top row first.
+    ///
+    /// # Errors
+    ///
+    /// [`DmabufCopyError`] naming why nothing was read.
+    fn read(&mut self, _dmabuf: &Dmabuf) -> Result<Image, DmabufCopyError> {
+        Err(DmabufCopyError::Unsupported)
+    }
 }
+
+/// Where the pixels of a capture into a client's buffer come from.
+#[derive(Clone, Copy, Debug)]
+pub enum DmabufSource<'a> {
+    /// The frame an output last drew.
+    Frame {
+        /// The output.
+        output: OutputId,
+        /// Whether the cursor is in the copy. Without it, what lay under the cursor is.
+        with_cursor: bool,
+    },
+    /// A picture the compositor holds on the CPU, such as a View's.
+    Picture(&'a Image),
+}
+
+/// Which pixels of the source go where in the client's buffer.
+///
+/// Buffer pixel `(x, y)` of `region` is read from source pixel `(from.x + x, from.y + y)`. A region that does not fit
+/// the buffer or the source writes the part that does, which is the meaning `gnoblin_render_frame::shm::copy_into`
+/// gives the same two numbers for shared memory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DmabufCopy {
+    /// The pixels written, in the buffer's.
+    pub region: Rect,
+    /// Where the region starts in the source.
+    pub from: Point,
+}
+
+/// Why nothing was copied into, or read from, a client's buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DmabufCopyError {
+    /// The backend cannot copy into, or read, a client's GPU buffer at all.
+    Unsupported,
+    /// The buffer's format and modifier are not among those a capture offered.
+    NotOffered,
+    /// The buffer's plane count does not fit its modifier.
+    BadPlanes,
+    /// There is no frame to copy: the output has not drawn one, or is gone.
+    NoFrame,
+    /// The driver refused the copy.
+    Refused(RenderError),
+}
+
+impl From<DmabufImportError> for DmabufCopyError {
+    fn from(error: DmabufImportError) -> Self {
+        match error {
+            DmabufImportError::Unsupported => Self::Unsupported,
+            DmabufImportError::NotOffered => Self::NotOffered,
+            DmabufImportError::BadPlanes => Self::BadPlanes,
+            DmabufImportError::Refused(error) => Self::from(error),
+        }
+    }
+}
+
+impl From<RenderError> for DmabufCopyError {
+    fn from(error: RenderError) -> Self {
+        match error {
+            RenderError::Unsupported => Self::Unsupported,
+            other => Self::Refused(other),
+        }
+    }
+}
+
+impl std::fmt::Display for DmabufCopyError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported => formatter.write_str("the backend copies into no client GPU buffer"),
+            Self::NotOffered => formatter.write_str("the buffer's format and modifier were not offered for capture"),
+            Self::BadPlanes => formatter.write_str("the buffer's plane count does not fit its modifier"),
+            Self::NoFrame => formatter.write_str("there is no frame to copy"),
+            Self::Refused(error) => write!(formatter, "the driver refused the copy: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for DmabufCopyError {}
 
 #[cfg(test)]
 mod tests {

@@ -23,9 +23,12 @@
 //! `a_screencopy_with_overlay_cursor_draws_the_cursor_and_one_without_does_not`,
 //! `a_capture_during_the_lock_is_refused`.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use smithay::backend::allocator::Buffer as _;
+use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -36,14 +39,15 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
+use smithay::wayland::dmabuf::get_dmabuf;
 use smithay::wayland::shm;
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use gnoblin_capture::{Format, PixelFormat, Target};
 use gnoblin_lock::CaptureStream;
-use gnoblin_types::{ClientId, OutputId, Point, Rect, Size};
+use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick};
 
-use super::capture_shared::timestamp;
+use super::capture_shared::{ScreencopyPending, timestamp};
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
 
@@ -193,17 +197,38 @@ impl ZwlrScreencopyV1ScreencopyFrame {
             state.flush();
             return;
         }
-        if !self.buffer_matches(buffer) {
+        if !self.buffer_matches(buffer) && get_dmabuf(buffer).is_err() {
             resource.post_error(
                 zwlr_screencopy_frame_v1::Error::InvalidBuffer,
                 "the buffer does not match the advertised geometry",
             );
             return;
         }
+        if let Ok(dmabuf) = get_dmabuf(buffer) {
+            if !self.dmabuf_matches(state, dmabuf) {
+                resource.post_error(
+                    zwlr_screencopy_frame_v1::Error::InvalidBuffer,
+                    "the buffer does not match the advertised geometry or format",
+                );
+                return;
+            }
+            // The copy is made where the renderer is, which is not here: the loop makes it and answers.
+            state.queue_screencopy(ScreencopyPending {
+                resource: resource.clone(),
+                owner: self.owner,
+                output: self.output,
+                region: self.region,
+                format: self.format,
+                with_cursor: self.with_cursor,
+                with_damage,
+                dmabuf: dmabuf.clone(),
+            });
+            return;
+        }
         let capture = state.lock_capture(CaptureStream::Requested);
         let tick = state.capture.tick;
         let offset = Point::new(self.region.x, self.region.y);
-        match state.copy_into_buffer(
+        let copied = state.copy_into_buffer(
             self.owner,
             self.output,
             buffer,
@@ -212,19 +237,8 @@ impl ZwlrScreencopyV1ScreencopyFrame {
             self.with_cursor,
             capture,
             tick,
-        ) {
-            Some((copied, presented)) => {
-                if with_damage {
-                    // One rectangle for the whole frame: the whole buffer was written,
-                    // so the copy that happened is the damage, not the scene's.
-                    resource.damage(0, 0, copied.width, copied.height);
-                }
-                resource.flags(zwlr_screencopy_frame_v1::Flags::empty());
-                let (high, low, nanos) = timestamp(presented);
-                resource.ready(high, low, nanos);
-            }
-            None => resource.failed(),
-        }
+        );
+        answer_copy(resource, with_damage, copied);
         state.flush();
     }
 
@@ -244,6 +258,37 @@ impl ZwlrScreencopyV1ScreencopyFrame {
             ) == (expected.0, expected.1, expected.2, wl_shm::Format::Argb8888)
         })
         .unwrap_or(false)
+    }
+
+    /// Whether a GPU buffer is one the frame offered: exactly the advertised size, in a format and modifier the
+    /// backend can render into, with a plane count its modifier allows.
+    fn dmabuf_matches(&self, state: &State, dmabuf: &Dmabuf) -> bool {
+        let Some(support) = state.screencopy_dmabuf_support(self.output) else {
+            return false;
+        };
+        let size = dmabuf.size();
+        let advertised = self.format.size();
+        u32::try_from(size.w) == Ok(advertised.width)
+            && u32::try_from(size.h) == Ok(advertised.height)
+            && support.check(dmabuf).is_ok()
+    }
+}
+
+/// Tells a screencopy client how its copy ended: the damage when it asked, the flags and the time the frame was
+/// presented, or `failed` when nothing was copied.
+pub(super) fn answer_copy(resource: &ZwlrScreencopyFrameV1, with_damage: bool, copied: Option<(Rect, Tick)>) {
+    match copied {
+        Some((copied, presented)) => {
+            if with_damage {
+                // One rectangle for the whole frame: the whole buffer was written,
+                // so the copy that happened is the damage, not the scene's.
+                resource.damage(0, 0, copied.width, copied.height);
+            }
+            resource.flags(zwlr_screencopy_frame_v1::Flags::empty());
+            let (high, low, nanos) = timestamp(presented);
+            resource.ready(high, low, nanos);
+        }
+        None => resource.failed(),
     }
 }
 
@@ -333,6 +378,16 @@ fn create_screencopy_frame(
         format.stride(),
     );
     if resource.version() >= 3 {
+        // A GPU buffer is offered only for an output the backend can write a capture into, and then in each format
+        // it can render into: this protocol names the format and no modifier, and the check at the copy takes the
+        // buffer's own.
+        let codes: BTreeSet<u32> = state
+            .screencopy_dmabuf_support(output)
+            .map(|support| support.formats.iter().map(|format| format.code as u32).collect())
+            .unwrap_or_default();
+        for code in codes {
+            resource.linux_dmabuf(code, format.size().width, format.size().height);
+        }
         resource.buffer_done();
     }
     state.capture.screencopy_frames.push(resource);

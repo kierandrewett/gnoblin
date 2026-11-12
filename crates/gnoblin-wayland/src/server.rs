@@ -450,6 +450,9 @@ impl Server {
         let dmabuf = backend.dmabuf();
         let display_handle = state.display_handle.clone();
         state.start_dmabuf(dmabuf.as_ref(), &display_handle);
+        // The same for a capture: a session offers `dma_buf` only when the backend can write into a client's GPU
+        // buffer, which only the backend knows.
+        state.refresh_dmabuf_capture(backend.as_mut());
         // A View's capture picture replaces a secure node the way the backend replaces a secure layer of an output.
         state.composer.set_secure_treatment(backend.secure_treatment());
         // A node asks for effects the renderer may not draw: the composer names those in its `skipped` list.
@@ -826,6 +829,9 @@ impl Server {
                 sync_output_manager(state, backend.as_mut(), outputs_changed);
                 state.apply_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
                 state.apply_dmabuf_imports(backend.as_mut());
+                // What a capture may be written into on the GPU is learnt as outputs appear, so a session made in
+                // the next turn offers `dma_buf` exactly when the backend can fill one.
+                state.refresh_dmabuf_capture(backend.as_mut());
                 crate::frame::render(backend.as_mut(), state, &frames, &control.screenshots);
                 // The frame just drawn produced buffer releases and frame callbacks;
                 // flushing them now rather than on the next wake is the difference

@@ -121,6 +121,10 @@ pub(crate) struct GlContext {
     white: Texture,
     /// The size of the target last bound, which the vertex stage needs as an attribute.
     viewport: (i32, i32),
+    /// The one framebuffer a copy into, or a read of, a client's texture attaches that texture to, made on
+    /// first use. Framebuffers are not freed one by one (see the module docs), so a copy cannot make one per
+    /// call.
+    scratch: Option<glow::Framebuffer>,
 }
 
 impl GlContext {
@@ -165,6 +169,7 @@ impl GlContext {
             renderer,
             white,
             viewport: (0, 0),
+            scratch: None,
         })
     }
 
@@ -405,6 +410,18 @@ impl GlContext {
             .map_err(context_lost)
     }
 
+    /// Binds `target` again after a call that read it, which leaves the default framebuffer bound, so the passes that
+    /// follow draw into the target and not into nothing.
+    pub(crate) fn bind(&mut self, target: &Framebuffer) -> Result<(), RenderError> {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: the framebuffer belongs to this context and outlives the frame; binding changes no other
+                // state, so the scissor and the blend the frame set are kept.
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(target.framebuffer));
+            })
+            .map_err(context_lost)
+    }
+
     /// Ends the frame: sends the passes to the driver so a readback sees them.
     pub(crate) fn end(&mut self) -> Result<(), RenderError> {
         self.renderer
@@ -538,6 +555,138 @@ impl GlContext {
                 gl.bind_framebuffer(glow::FRAMEBUFFER, None);
             })
             .map_err(context_lost)
+    }
+
+    /// Copies `src` of `from` into `dst` of `to`, a texture the caller owns, and waits for the copy.
+    ///
+    /// `src` is in the pixels of `from` as an output is described, top-left first. `dst` is in the rows of
+    /// `to` as GL counts them: row 0 is the first row of the texture's storage, which for a client's dmabuf is its
+    /// first memory row. `reverse` flips the copy vertically, which is what turns the top-first rows of a frame into
+    /// the top-first memory rows of a buffer, because a framebuffer's own row 0 is the bottom of the picture it holds.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unavailable`] when `to` cannot be a framebuffer's colour attachment, and
+    /// [`RenderError::Failed`] when the context is lost.
+    pub(crate) fn blit_into(
+        &mut self,
+        from: &Framebuffer,
+        to: Texture,
+        src: Rect,
+        dst: Rect,
+        reverse: bool,
+    ) -> Result<(), RenderError> {
+        let (_, source_height) = from.texture.size;
+        let Self { renderer, scratch, .. } = self;
+        renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: `from` and `to` belong to this context, `to` is kept alive by the caller for the whole
+                // call, and the scratch framebuffer is made here and kept. The scissor test is disabled because
+                // it limits a blit as it limits a draw; the framebuffer bindings are restored before returning.
+                let framebuffer = scratch_over(gl, scratch, to)?;
+                gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(from.framebuffer));
+                gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(framebuffer));
+                gl.disable(glow::SCISSOR_TEST);
+                let source_top = source_height - src.y;
+                let source_bottom = source_top - src.height as i32;
+                let (first, last) = (dst.y, dst.y + dst.height as i32);
+                let (destination_start, destination_end) = if reverse { (last, first) } else { (first, last) };
+                gl.blit_framebuffer(
+                    src.x,
+                    source_bottom,
+                    src.x + src.width as i32,
+                    source_top,
+                    dst.x,
+                    destination_start,
+                    dst.x + dst.width as i32,
+                    destination_end,
+                    glow::COLOR_BUFFER_BIT,
+                    glow::NEAREST,
+                );
+                gl.framebuffer_texture_2d(
+                    glow::DRAW_FRAMEBUFFER,
+                    glow::COLOR_ATTACHMENT0,
+                    glow::TEXTURE_2D,
+                    None,
+                    0,
+                );
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                // The consumer of a client's buffer may read it as soon as it hears `ready`.
+                gl.finish();
+                Ok(())
+            })
+            .map_err(context_lost)?
+    }
+
+    /// Writes `bytes`, `rect.height` rows of `rect.width` RGBA pixels, into `rect` of `to`, and waits for the write.
+    ///
+    /// `rect` is in the rows of `to` as GL counts them, and the first row of `bytes` is written to `rect.y`.
+    pub(crate) fn upload_into(&mut self, to: Texture, rect: Rect, bytes: &[u8]) -> Result<(), RenderError> {
+        let wanted = rect.width as usize * rect.height as usize * 4;
+        if bytes.len() < wanted {
+            return Err(RenderError::Failed);
+        }
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: `to` belongs to this context and is kept alive by the caller; `bytes` holds at least the
+                // `width * height * 4` bytes the upload reads, which is checked above, and the unpack alignment
+                // (four bytes by default) is what an RGBA8 row satisfies.
+                gl.bind_texture(glow::TEXTURE_2D, Some(to.handle));
+                gl.tex_sub_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    rect.x,
+                    rect.y,
+                    rect.width as i32,
+                    rect.height as i32,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelUnpackData::Slice(Some(&bytes[..wanted])),
+                );
+                gl.bind_texture(glow::TEXTURE_2D, None);
+                gl.finish();
+            })
+            .map_err(context_lost)
+    }
+
+    /// Reads a whole texture back as RGBA8, first storage row first.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unavailable`] when `from` cannot be a framebuffer's colour attachment, and
+    /// [`RenderError::Failed`] when the context is lost.
+    pub(crate) fn read_texture(&mut self, from: Texture) -> Result<Vec<u8>, RenderError> {
+        let (width, height) = from.size;
+        let mut bytes = vec![0u8; width.max(0) as usize * 4 * height.max(0) as usize];
+        let Self { renderer, scratch, .. } = self;
+        renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: `from` belongs to this context and is kept alive by the caller; the buffer is exactly
+                // the size the read needs, and the pack alignment is what an RGBA8 row satisfies. The texture is
+                // detached again, so the scratch framebuffer holds no reference to a client's buffer.
+                let framebuffer = scratch_over(gl, scratch, from)?;
+                gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(framebuffer));
+                gl.read_pixels(
+                    0,
+                    0,
+                    width,
+                    height,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelPackData::Slice(Some(bytes.as_mut_slice())),
+                );
+                gl.framebuffer_texture_2d(
+                    glow::READ_FRAMEBUFFER,
+                    glow::COLOR_ATTACHMENT0,
+                    glow::TEXTURE_2D,
+                    None,
+                    0,
+                );
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                Ok(())
+            })
+            .map_err(context_lost)??;
+        Ok(bytes)
     }
 
     /// Draws one quad with `program`.
@@ -713,6 +862,53 @@ impl GlContext {
             })
             .map_err(context_lost)?
     }
+}
+
+/// Attaches `texture` to the scratch framebuffer, making the framebuffer first when there is none yet, and answers
+/// it bound as both the read and the draw target.
+///
+/// # Safety
+///
+/// `gl` is the current context and `texture` is one of its textures.
+unsafe fn scratch_over(
+    gl: &glow::Context,
+    scratch: &mut Option<glow::Framebuffer>,
+    texture: Texture,
+) -> Result<glow::Framebuffer, RenderError> {
+    let framebuffer = match *scratch {
+        Some(framebuffer) => framebuffer,
+        None => {
+            // SAFETY: the name belongs to the current context, which frees it with the context.
+            let created = unsafe { gl.create_framebuffer() }.map_err(|error| {
+                log::debug!(area = "render", %error, "no scratch framebuffer");
+                RenderError::Unavailable
+            })?;
+            *scratch = Some(created);
+            created
+        }
+    };
+    // SAFETY: both names belong to the current context, as the caller promises.
+    let status = unsafe {
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+        gl.framebuffer_texture_2d(
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(texture.handle),
+            0,
+        );
+        gl.check_framebuffer_status(glow::FRAMEBUFFER)
+    };
+    if status != glow::FRAMEBUFFER_COMPLETE {
+        log::debug!(area = "render", "a client's texture cannot be a framebuffer attachment");
+        // SAFETY: as above.
+        unsafe {
+            gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, None, 0);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+        }
+        return Err(RenderError::Unavailable);
+    }
+    Ok(framebuffer)
 }
 
 /// One GLSL stage, compiled.

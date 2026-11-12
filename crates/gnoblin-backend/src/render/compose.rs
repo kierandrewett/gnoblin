@@ -93,6 +93,10 @@ use gnoblin_render_software::{ViewCamera, ViewProjection, render_view};
 
 use crate::log;
 
+/// Reads a client's GPU buffer into a picture, or answers `None` when the backend cannot. A View of a window that
+/// shows a GPU buffer draws what this returns: see [`Composer::begin_frame_reading`].
+pub type ReadDmabuf<'a> = dyn FnMut(&smithay::backend::allocator::dmabuf::Dmabuf) -> Option<Image> + 'a;
+
 /// How long a placement, move or other visual change takes to reach its target.
 const MOTION_MS: u32 = 200;
 
@@ -617,10 +621,20 @@ impl Composer {
     /// It is taken once, not per output: the backend renders outputs one call at a
     /// time, and a second `take_damage` would find an empty scene and leave every
     /// output after the first stale.
+    ///
+    /// A window that shows a GPU buffer has no pixels a View can read, so a View of one is masked; see
+    /// [`Composer::begin_frame_reading`].
     pub fn begin_frame(&mut self) {
+        self.begin_frame_reading(&mut |_| None);
+    }
+
+    /// [`Composer::begin_frame`] for a session whose backend can read a client's GPU buffer: a View that is redrawn
+    /// this frame shows the pixels `reader` returns for each window that shows one. The read happens only for a View
+    /// that is stale, and a buffer `reader` answers `None` for is masked.
+    pub fn begin_frame_reading(&mut self, reader: &mut ReadDmabuf<'_>) {
         let dirty = self.scene.take_dirty();
         self.render_canvases();
-        self.render_views(&dirty);
+        self.render_views(&dirty, reader);
         self.damage = Some(self.scene.take_damage());
     }
 
@@ -696,7 +710,7 @@ impl Composer {
     /// no picture or one of another size is drawn at once, so a picture of the wrong size is never kept, and `fps`
     /// zero draws on every change. A change in what is secure is drawn at once as well, whatever `fps` says: a
     /// capture must not wait out a slot with pixels the user has since marked secure.
-    fn render_views(&mut self, dirty: &BTreeSet<NodeId>) {
+    fn render_views(&mut self, dirty: &BTreeSet<NodeId>, reader: &mut ReadDmabuf<'_>) {
         let views = self.view_nodes();
         self.views.retain(|view, _| views.contains(view));
         self.paced_views.retain(|view| views.contains(view));
@@ -732,7 +746,7 @@ impl Composer {
                 }
             }
             self.paced_views.remove(&view);
-            let (image, redacted) = self.draw_view(view, size, &secure);
+            let (image, redacted) = self.draw_view(view, size, &secure, reader);
             self.views.insert(
                 view,
                 ViewPicture {
@@ -784,6 +798,7 @@ impl Composer {
         view: NodeId,
         size: Size,
         secure: &BTreeSet<NodeId>,
+        reader: &mut ReadDmabuf<'_>,
     ) -> (Option<Arc<Image>>, Option<Arc<Image>>) {
         let Some(source) = self.scene.source(view) else {
             return (None, None);
@@ -797,7 +812,7 @@ impl Composer {
             return (None, None);
         }
         let camera = self.view_camera(view, size);
-        let mut pictures = self.window_pictures(&nodes);
+        let mut pictures = self.window_pictures(&nodes, reader);
         let image = render_view(&self.scene, source, &camera, size, |node| pictures.get(&node)).into_image();
         if secure.is_empty() {
             return (Some(image), None);
@@ -820,10 +835,10 @@ impl Composer {
         (Some(image), Some(redacted))
     }
 
-    /// The pixels of each window in `nodes` with a readable shm buffer, keyed by its node. A GPU buffer (a
-    /// DMA-BUF) cannot be read on the CPU, so its window is drawn as the neutral grey a secure node is masked with,
+    /// The pixels of each window in `nodes` with a readable buffer, keyed by its node. A GPU buffer (a DMA-BUF) is read
+    /// by `reader`, and when it cannot be read its window is drawn as the neutral grey a secure node is masked with,
     /// and the first one is logged: see [`source_picture`].
-    fn window_pictures(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, Image> {
+    fn window_pictures(&self, nodes: &BTreeSet<NodeId>, reader: &mut ReadDmabuf<'_>) -> BTreeMap<NodeId, Image> {
         let mut pictures: BTreeMap<NodeId, Image> = BTreeMap::new();
         for entry in self.windows.values() {
             let own = entry.node.zip(entry.buffer.as_ref());
@@ -832,7 +847,7 @@ impl Composer {
                 .iter()
                 .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source)));
             for (node, source) in own.into_iter().chain(below) {
-                if let Some(image) = nodes.contains(&node).then(|| source_picture(source)).flatten() {
+                if let Some(image) = nodes.contains(&node).then(|| source_picture(source, reader)).flatten() {
                     pictures.insert(node, image);
                 }
             }
@@ -3287,24 +3302,25 @@ fn secure_mask() -> Image {
 
 /// The pixels of a surface's source as the view renderer reads them.
 ///
-/// A GPU buffer (a DMA-BUF) cannot be read without a GL readback this renderer does not have, so it is masked as a
-/// secure node is, rather than dropped: a View shows a grey rectangle where the window is and not a hole through
-/// which whatever lies behind it shows. The first such window is logged; the rest are not, because a View redraws on
-/// every change.
-fn source_picture(source: &SurfaceSource) -> Option<Image> {
+/// A GPU buffer (a DMA-BUF) has no CPU pixels, so `reader` reads it back where the buffer lives (a GL readback of the
+/// imported texture). A backend that cannot, or a buffer the driver will not read, leaves the window masked as a
+/// secure node is, rather than dropped: a View shows a grey rectangle where the window is and not a hole through which
+/// whatever lies behind it shows. The first window that is masked is logged; the rest are not, because a View
+/// redraws on every change.
+fn source_picture(source: &SurfaceSource, reader: &mut ReadDmabuf<'_>) -> Option<Image> {
     static LOGGED: std::sync::Once = std::sync::Once::new();
     match source {
         SurfaceSource::Buffer(buffer) => shm::readback(buffer).ok(),
         SurfaceSource::Snapshot(image) => Some(Image::clone(image)),
-        SurfaceSource::Dmabuf(_) => {
+        SurfaceSource::Dmabuf(dmabuf) => reader(dmabuf).or_else(|| {
             LOGGED.call_once(|| {
                 log::error!(
                     area = "render",
-                    "a View captured a window that shows a GPU buffer, which it cannot read; the window is masked"
+                    "a View captured a window that shows a GPU buffer, which the renderer cannot read; the window is masked"
                 );
             });
             Some(secure_mask())
-        }
+        }),
     }
 }
 
