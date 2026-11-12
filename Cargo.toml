@@ -310,7 +310,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # The SQLite library behind the log and keyring databases. `bundled-sqlcipher` compiles SQLCipher
 # (SQLite 3.53.4, see design/keyring.md "Phased implementation") into the binary. Without a key set,
 # SQLCipher opens a file exactly as SQLite does, so the store's plain files are unchanged.
-rusqlite = { version = "0.41.1", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.42.0", features = ["bundled-sqlcipher"] }
 
 # The primitives of the keyring's `dh-ietf1024-sha256-aes128-cbc-pkcs7` session (see
 # gnoblin-service-keyring/src/dh.rs): DH over the 1024-bit IETF group with HKDF-SHA256 and

@@ -54,8 +54,9 @@
 //! 7. **A readback is upside down.** The shared vertex stage maps pixel row 0 to the top and
 //!    the writer must not flip it: `tests::a_readback_is_top_left_first`.
 //! 8. **A client's buffer is read after it was destroyed or shrunk.** The pool is read through
-//!    Smithay's guarded mapping and an unreadable buffer skips its layer:
-//!    `tests::a_destroyed_buffer_skips_its_layer`.
+//!    Smithay's guarded mapping. A destroyed buffer is still read, so a closing window fades out
+//!    with its last picture (`tests::a_destroyed_buffer_still_draws_its_last_picture`); a buffer
+//!    that cannot be read skips its layer.
 //!
 //! # Byte order
 //!

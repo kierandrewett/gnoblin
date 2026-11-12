@@ -719,7 +719,7 @@ fn a_texture_that_cannot_be_allocated_skips_its_layer() {
 }
 
 #[test]
-fn a_destroyed_buffer_skips_its_layer() {
+fn a_destroyed_buffer_still_draws_its_last_picture() {
     let mut client = ShmClient::new(vec![
         BufferSpec::argb(8, 8, |_, _| [255, 0, 0, 255]),
         BufferSpec::argb(8, 8, |_, _| [0, 255, 0, 255]),
@@ -739,12 +739,12 @@ fn a_destroyed_buffer_skips_its_layer() {
     client.destroy(0);
     vulkan
         .draw(&frame, Scale::IDENTITY)
-        .expect("the frame is drawn without the destroyed buffer");
+        .expect("the frame is drawn with the destroyed buffer's last picture");
     let image = vulkan.screenshot().expect("a readback");
     assert_eq!(
         image.colour_at(2, 2),
-        Some([0, 0, 0, 255]),
-        "the destroyed buffer's layer is skipped"
+        Some([255, 0, 0, 255]),
+        "a destroyed buffer's layer shows its last picture, so a closing window can fade out"
     );
     assert_eq!(
         image.colour_at(18, 2),
