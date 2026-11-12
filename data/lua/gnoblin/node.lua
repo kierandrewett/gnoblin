@@ -699,6 +699,19 @@ local function install_claims(c)
         core.call(rawget(seat, ID), "claim_gesture", string.pack("<i8i8", id, fingers), text)
         return id
     end)
+    -- Make the devices that report `device` (a name from `Seat.device`) binding-only: their keys reach no client and
+    -- fire only the chords claimed for them or for every device. `seat:unclaim(id)` ends it.
+    rawset(c, "claim_device", function(seat, device)
+        if device == nil then
+            error("Seat:claim_device(device): the name of a device from seat.device", 2)
+        end
+        claim_text("", device) -- refuses a name that is not one line
+        next_claim = next_claim + 1
+        local id = next_claim
+        claims[id] = seat
+        core.call(rawget(seat, ID), "claim_device", string.pack("<i8", id), device)
+        return id
+    end)
     rawset(c, "unclaim", function(seat, id)
         claims[id] = nil
         core.call(rawget(seat, ID), "unclaim", string.pack("<i8", id))

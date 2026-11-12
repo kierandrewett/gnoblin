@@ -214,9 +214,25 @@ pub(crate) fn split_selector(text: &str) -> (Option<&str>, &str) {
 }
 
 impl State {
-    /// Records a device the backend announced: it joins the list, the router learns its name, and the list is
-    /// published. A device announced twice replaces its first entry.
-    pub(crate) fn device_added(&mut self, info: DeviceInfo) {
+    /// Records a device the backend announced: it attaches to the default seat, joins the list, the router learns
+    /// its name, and the list is published. A device announced twice replaces its first entry.
+    ///
+    /// There is one input seat, the default seat (`seat0` unless the session names another), and every device
+    /// attaches to it whatever logical seat the system tagged it with: a plugged-in device that names a seat this
+    /// session does not have (libinput's `default`, a udev `WL_SEAT` of another machine's) is not left without
+    /// one. A device that was already announced, or one announced while a binding-only claim names it, takes the
+    /// same path, so a hot-plugged pad is binding-only from its first key.
+    pub(crate) fn device_added(&mut self, mut info: DeviceInfo) {
+        if info.seat != self.seat_name {
+            log::debug!(
+                area = "input",
+                device = %info.id,
+                tagged = %info.seat,
+                seat = %self.seat_name,
+                "a device tagged for a seat this session does not have attached to the default seat"
+            );
+            info.seat = self.seat_name.clone();
+        }
         log::debug!(area = "input", device = %info.id, name = %info.name, caps = %info.caps, "a device joined the seat");
         self.keyboard_tables.router.device_added(info.id, &info.name);
         self.keyboard_tables.devices.retain(|known| known.id != info.id);

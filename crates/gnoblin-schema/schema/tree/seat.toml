@@ -252,6 +252,28 @@ name = "device"
 type = "string"
 since = "0.2.0"
 
+# Make the devices that report the name `device` (a name from `Seat.device`) binding-only: their keys never reach a
+# client, the seat's key state or the shell's text input, and fire only chords claimed for them or for every device.
+# A chord that matches no claim is dropped. The device's own modifiers and keysyms are what a chord matches, since
+# its keys are not the seat's. `id` is allocated by the shell, per connection, never reused, and shares its number
+# space with `claim` and `claim_gesture`: `unclaim` removes it, and a claim of an id already held replaces that
+# claim. Keys the device held before the claim are released to the client they went to. The device's pointer
+# buttons, touches and gestures are not affected. Only the owner may claim. The claim goes with the shell that made
+# it. The name is a single line.
+[[object.method]]
+name = "claim_device"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "device"
+type = "string"
+since = "0.2.0"
+
 # A claimed chord changed state: `state` is `press`, `release` or `repeat`.
 [[object.signal]]
 name = "chord"

@@ -1810,6 +1810,272 @@ fn a_window_the_stock_shell_maximises_is_not_configured_back_to_its_old_size() {
     );
 }
 
+// ---- Gestures: a swipe on the real input path reaches the stock shell's Lua and changes shell state ---------------------
+//
+// The session is a real compositor, the shell is the stock shell in a real VM over the owner socket, and the swipe is
+// fed to the session's own input path (`Session::input`), which takes it through the recogniser and the claim table
+// exactly as a touchpad's sample goes. EIS has no gestures, so this is the nearest the input path gets to a device.
+
+/// One touchpad sample of a swipe with `fingers` contacts that moved `dx` and `dy` since the last sample.
+fn swipe_sample(
+    phase: gnoblin_backend::RawTouchpadPhase,
+    fingers: u8,
+    dx: f64,
+    dy: f64,
+) -> gnoblin_backend::InputEvent {
+    gnoblin_backend::InputEvent::Touchpad(gnoblin_backend::RawTouchpadSample {
+        device: gnoblin_types::DeviceId::new(1),
+        phase,
+        kind: gnoblin_backend::RawTouchpadKind::Swipe,
+        fingers,
+        dx,
+        dy,
+        scale: 1.0,
+        angle: 0.0,
+    })
+}
+
+/// Begins a swipe of `fingers` fingers and moves it left by `steps` samples of 50 units each.
+fn swipe_left(session: &Session, fingers: u8, steps: usize) {
+    use gnoblin_backend::RawTouchpadPhase::{Begin, Update};
+    assert!(session.input().inject(swipe_sample(Begin, fingers, 0.0, 0.0)));
+    for _ in 0..steps {
+        assert!(session.input().inject(swipe_sample(Update, fingers, -50.0, 0.0)));
+    }
+}
+
+/// Lifts the fingers of the swipe in flight.
+fn lift(session: &Session, fingers: u8) {
+    assert!(
+        session
+            .input()
+            .inject(swipe_sample(gnoblin_backend::RawTouchpadPhase::End, fingers, 0.0, 0.0))
+    );
+}
+
+/// The name of the workspace the Desk under the pointer shows, read inside the VM.
+fn active_workspace(role: &mut ShellRole) -> String {
+    role.run("active workspace", "return tostring(desk().active.name)")
+        .expect("the probe runs")
+        .expect("the probe returns text")
+}
+
+/// How far the active workspace is displaced along x, read inside the VM: a swipe in flight pulls it.
+fn active_offset(role: &mut ShellRole) -> f64 {
+    role.run("active offset", "return tostring(desk().active.x)")
+        .expect("the probe runs")
+        .expect("the probe returns text")
+        .parse()
+        .expect("a number")
+}
+
+/// A stock shell on a started session with its Desk sized: the state every gesture test starts from.
+fn shell_with_desk(session: &Session) -> ShellRole {
+    let mut role = connect(session);
+    load_stock_shell(&mut role);
+    tick_until(&mut role, "the mirror never held one seat and one screen", |role| {
+        mirror_counts(role) == (1, 1)
+    });
+    tick_until(&mut role, "the stock shell never built the screen's Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
+    wait_for_sized_workspace(&mut role);
+    role
+}
+
+/// Swipes three fingers left until the stock shell follows them, which says its claim of `Swipe3` is in force.
+///
+/// The shell's claim reaches the compositor a frame or two after it loads, and a swipe that begins before it is
+/// nobody's: it does nothing and is not delivered. So the swipe is begun again until the workspace is pulled; the
+/// swipe that is, is left in flight, with the workspace displaced.
+fn swipe_until_followed(session: &Session, role: &mut ShellRole) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        swipe_left(session, 3, 3);
+        let mut now = 0.0;
+        for _ in 0..40 {
+            role.tick(now).expect("a frame runs");
+            now += 0.016;
+            if active_offset(role) < 0.0 {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        lift(session, 3);
+        assert!(
+            Instant::now() < deadline,
+            "the stock shell never followed a swipe: diagnostics {:?}",
+            role.diagnostics()
+        );
+    }
+}
+
+#[test]
+fn a_three_finger_swipe_on_the_input_path_slides_the_stock_shell_to_the_next_workspace() {
+    let session = Session::start();
+    let mut role = shell_with_desk(&session);
+    assert_eq!(active_workspace(&mut role), "1");
+
+    // The fingers move left and the shell follows them: the workspace is pulled before the fingers lift.
+    swipe_until_followed(&session, &mut role);
+    assert_eq!(
+        active_workspace(&mut role),
+        "1",
+        "the slide has not finished while the fingers are down"
+    );
+    let pulled = role
+        .run("next shown", "return tostring(desk().space.children[2].visible)")
+        .expect("the probe runs")
+        .expect("the probe returns text");
+    assert_eq!(pulled, "true", "the workspace the fingers bring in is showing");
+
+    // They lift after more than a quarter of the travel, so the slide finishes: the next workspace is active.
+    lift(&session, 3);
+    tick_until(&mut role, "the swipe never changed the active workspace", |role| {
+        active_workspace(role) == "2"
+    });
+    assert!(
+        role.diagnostics().is_empty(),
+        "no handler failed and no transaction was refused: {:?}",
+        role.diagnostics()
+    );
+}
+
+#[test]
+fn a_swipe_that_is_short_of_the_commit_slides_back_and_a_gesture_nobody_claimed_does_nothing() {
+    let session = Session::start();
+    let mut role = shell_with_desk(&session);
+    swipe_until_followed(&session, &mut role);
+    // The fingers go back to where they began before they lift: the workspace is not changed.
+    use gnoblin_backend::RawTouchpadPhase::Update;
+    for _ in 0..3 {
+        assert!(session.input().inject(swipe_sample(Update, 3, 50.0, 0.0)));
+    }
+    lift(&session, 3);
+    tick_until(&mut role, "the workspace never settled back", |role| {
+        active_offset(role) == 0.0
+    });
+    assert_eq!(
+        active_workspace(&mut role),
+        "1",
+        "a swipe that went nowhere changed nothing"
+    );
+
+    // Four fingers are nobody's claim: the stock shell binds three, so the swipe is dropped and moves nothing.
+    swipe_left(&session, 4, 4);
+    lift(&session, 4);
+    // A claimed swipe after it proves the four-finger one was routed first.
+    swipe_until_followed(&session, &mut role);
+    assert_eq!(
+        active_workspace(&mut role),
+        "1",
+        "the four-finger swipe changed nothing and the three-finger one has not finished"
+    );
+    lift(&session, 3);
+    tick_until(&mut role, "the three-finger swipe never finished", |role| {
+        active_workspace(role) == "2"
+    });
+}
+
+/// The evdev codes of the keys the stock shell's `<Super>Left` chord is made of.
+const KEY_LEFTMETA: u32 = 125;
+const KEY_LEFT: u32 = 105;
+
+/// Plays Super+Left on the EI keyboard: press and release of each key, innermost last.
+fn play_super_left(remote: &mut support::ei::EiClient) {
+    remote.typing(KEY_LEFTMETA, true);
+    remote.typing(KEY_LEFT, true);
+    remote.typing(KEY_LEFT, false);
+    remote.typing(KEY_LEFTMETA, false);
+}
+
+#[test]
+fn a_shell_that_goes_gives_back_the_chord_it_claimed_and_a_replacement_claims_again() {
+    let session = Session::start();
+    let mut role = shell_with_desk(&session);
+    // The stock shell's `<Super>Left` moves a Strip's focus and does nothing on any other layout; this counts instead.
+    role.run(
+        "count",
+        "hits = 0 seat.data.keys['<Super>Left'] = function() hits = hits + 1 end",
+    )
+    .expect("the probe runs");
+    let mut client = support::ei::focused_client(&session);
+    tick_until(&mut role, "the client's window never reached the tree", |role| {
+        role.run("windows", "return tostring(#root:all('Window'))")
+            .expect("the probe runs")
+            .as_deref()
+            == Some("1")
+    });
+    role.run("focus", "seat.focus = root:all('Window')[1]")
+        .expect("the probe runs");
+    let deadline = Instant::now() + PATIENCE;
+    while client.keyboard_focus().is_empty() {
+        role.tick(0.0).expect("a frame runs");
+        client.roundtrip();
+        assert!(Instant::now() < deadline, "the client never gained keyboard focus");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut remote = support::ei::keyboard(&session);
+
+    // The claim is in force once the shell hears the chord, and no key of the chord but Super reached the client.
+    let hits = |role: &mut ShellRole| -> u32 {
+        role.run("hits", "return tostring(hits)")
+            .expect("the probe runs")
+            .expect("the probe returns text")
+            .parse()
+            .expect("a count")
+    };
+    let deadline = Instant::now() + PATIENCE;
+    while hits(&mut role) == 0 {
+        play_super_left(&mut remote);
+        role.tick(0.0).expect("a frame runs");
+        client.roundtrip();
+        assert!(Instant::now() < deadline, "the shell never heard its claimed chord");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    client.roundtrip();
+    assert!(
+        !client.keys().iter().any(|&(key, _)| key == KEY_LEFT),
+        "the claimed chord reached the client: {:?}",
+        client.keys()
+    );
+
+    // The shell goes. With nobody to hear it the chord is not withheld: its Left reaches the client.
+    drop(role);
+    let deadline = Instant::now() + PATIENCE;
+    while !client.keys().iter().any(|&(key, state)| key == KEY_LEFT && state == 1) {
+        play_super_left(&mut remote);
+        client.roundtrip();
+        assert!(
+            Instant::now() < deadline,
+            "the chord the gone shell claimed is still withheld: {:?}",
+            client.keys()
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // A replacement shell claims afresh: its claim stands, and the chord is the new shell's again.
+    let mut replacement = reconnect(&session);
+    load_stock_shell(&mut replacement);
+    tick_until(&mut replacement, "the replacement never built a Desk", |role| {
+        desk_probe(role) == "1 1"
+    });
+    replacement
+        .run(
+            "count",
+            "hits = 0 seat.data.keys['<Super>Left'] = function() hits = hits + 1 end",
+        )
+        .expect("the probe runs");
+    let deadline = Instant::now() + PATIENCE;
+    while hits(&mut replacement) == 0 {
+        play_super_left(&mut remote);
+        replacement.tick(0.0).expect("a frame runs");
+        client.roundtrip();
+        assert!(Instant::now() < deadline, "the replacement never heard the chord");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 // ---- Prompts: the stock shell replaces the built-in dialogs (data/lua/gnoblin/shell/prompts.lua) --------------------
 //
 // The compositor is a running session, the portal relay, the input role and the services role are real privileged

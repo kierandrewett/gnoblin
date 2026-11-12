@@ -538,6 +538,9 @@ one.
    one configured seat.
 3. **Default seat for new devices.** Hot-plugged devices with no rule: go to `seat0`
    (the author's suggestion), or stay unassigned until a rule claims them?
+   **Settled (O10, `design/cutover-survey.md` 16.6): `seat0`.** `State::device_added`
+   attaches every device to the one input seat, whatever logical seat the system tagged
+   it with.
 4. **Can one window be focused by two seats at once?** Keyboard focus per seat says
    yes (section 2.2). Should the window manager's "active" highlight follow one seat,
    the last seat that focused, or stay independent? **[JUDGEMENT]** The last seat
@@ -550,6 +553,10 @@ one.
 7. **Binding-only devices.** A macro keyboard that only fires bindings and never types
    into windows: should Gnoblin support that as a device setting, or is "no bindings
    match, so keys follow the seat" enough?
+   **Done as a claim, not a device setting:** `Seat:claim_device(name)` (and
+   `Seat:bind{ device = "...", only = true, ... }`) makes the devices that report the name
+   binding-only. It is a claim, so it goes with the shell that made it and a crashed shell
+   cannot leave a pad dead.
 8. **Input methods.** One input method shared by all seats, or one per seat?
 9. **Accessibility per seat.** Per-seat sticky and slow keys (section 2.6), or one
    setting for the session?
@@ -558,3 +565,4 @@ one.
     on hardware (section 1.2), phase 2 cannot be promised.
 11. **Phase 1 first.** Is it acceptable to ship device identity and device-scoped
     bindings before any seat work (option D)?
+    **Settled (O10): yes, and shipped** (`28ff31fff`, with the binding-only claim above).

@@ -229,6 +229,41 @@ pub struct SessionConfig {
     /// compared with it to name the settings the running compositor cannot apply
     /// (`design/config-reload.md`); a test that sets those tables by hand sets this too.
     pub started_with: Option<gnoblin_config::Config>,
+    /// A tap a test feeds the input events a real device sends and the EIS protocol cannot carry (a touchpad's
+    /// gestures), or [`None`] for the usual session. The session fills it when it starts serving.
+    pub input_tap: Option<InputTap>,
+}
+
+/// Where a test sends input a device would, into a running session.
+///
+/// An event goes through the same seat path as a device's: the lock gate, the grabs, the bindings and the claims
+/// apply to it. It is empty until the session serves, and every clone shares one session.
+#[derive(Clone, Debug, Default)]
+pub struct InputTap {
+    sink: Arc<std::sync::Mutex<Option<gnoblin_wayland::InputSink>>>,
+}
+
+impl InputTap {
+    /// A tap with no session behind it.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sends `event` to the session as if the backend had delivered it. `false` when no session serves yet.
+    pub fn inject(&self, event: gnoblin_backend::InputEvent) -> bool {
+        let sink = self.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(sink) = sink.as_ref() else {
+            return false;
+        };
+        sink.inject(event);
+        true
+    }
+
+    /// Points the tap at the session that serves through `sink`.
+    fn fill(&self, sink: gnoblin_wayland::InputSink) {
+        *self.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sink);
+    }
 }
 
 /// A handle that stops a running session from another thread.
@@ -397,6 +432,9 @@ impl Compositor {
         }
         .map_err(Error::Wayland)?;
         let control = server.control();
+        if let Some(tap) = &config.input_tap {
+            tap.fill(control.input_sink());
+        }
         let observation = server.observation();
 
         // The EIS endpoint is bound first: the IPC socket is what a client connects to, and the

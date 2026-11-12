@@ -130,8 +130,14 @@ seat:bind({
 })
 ```
 
-One holder claims one kind and finger count. A claim shadows a configured
-command binding of the same kind and finger count.
+One holder claims one kind and finger count; a second claim of the same gesture
+is refused. A claim shadows a configured command binding of the same kind and
+finger count. A gesture nobody claims runs no built-in action: it reaches the
+configured command bindings and, with none that match, nothing.
+
+A claim lasts as long as the shell that made it. A shell that exits, crashes or
+is restarted gives its gestures back (and its chords), so a swipe is never
+withheld for a shell that is not there to hear it.
 
 The stock shell claims `Swipe3`, so give a command binding four fingers.
 
@@ -143,7 +149,12 @@ claimable.
 ## Status and testing
 
 Command bindings and claims are wired from libinput gesture events through the
-touchpad router. The routing, cancel, lock, no-match and finger-count rules are
-covered by unit and tree-level tests that feed synthetic samples. They have not
-been run against a touchpad: no hardware proof is claimed, and the stock slide's
-`Gestures.travel` is not tuned on one.
+touchpad router.
+
+- The routing, cancel, lock, no-match, finger-count and shell-exit rules are
+  covered by unit and tree-level tests that feed synthetic samples.
+- A swipe fed to a running session's input path moves the stock shell's
+  workspace slide and switches workspace, in a test against the stock shell in a
+  real Lua VM.
+- None of this has been run against a touchpad. No hardware proof is claimed,
+  and the stock slide's `Gestures.travel` is not tuned on one.

@@ -86,6 +86,18 @@ impl TouchpadGestures {
         &mut self.claims
     }
 
+    /// Drops every claim whose holder `released` names, and withholds the gesture one of them was delivering.
+    pub(crate) fn release_where(&mut self, released: impl Fn(u64) -> bool) {
+        let holders: Vec<u64> = self
+            .claims
+            .claims()
+            .iter()
+            .map(|claim| claim.holder)
+            .filter(|holder| released(*holder))
+            .collect();
+        self.claims.release(&holders);
+    }
+
     /// Routes one libinput sample from a device the compositor has no name for, so no claim scoped to a
     /// device takes it. See [`TouchpadGestures::route_from`].
     #[cfg(test)]

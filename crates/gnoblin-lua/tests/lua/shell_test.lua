@@ -368,6 +368,75 @@ return {
             H.check(#s.device == 2 and s.device[2] == "2:Macro Pad:keyboard", "the device list reads back")
         end,
     },
+    {
+        "Seat:bind with only = true makes the device binding-only once, and refuses only without a device",
+        function()
+            local _, host = seat_shell()
+            local s = root:find(Seat)
+            local before = #host.calls
+            local ok = pcall(function()
+                s:bind({ only = true, F13 = function() end })
+            end)
+            H.check(not ok, "only without a device must be refused")
+            ok = pcall(function()
+                s:bind({ device = "Macro Pad", only = false, F13 = function() end })
+            end)
+            H.check(not ok, "only = false is not a way to say nothing")
+            H.check(#host.calls == before, "a refused bind sent a call")
+
+            s:bind({ device = "Macro Pad", only = true, F13 = function() end })
+            s:bind({ device = "Macro Pad", only = true, F14 = function() end })
+            local devices, chords = {}, {}
+            for i = before + 1, #host.calls do
+                local c = host.calls[i]
+                if c.method == "claim_device" then
+                    devices[#devices + 1] = c
+                elseif c.method == "claim" then
+                    chords[#chords + 1] = c.text
+                else
+                    H.check(false, "an unexpected call " .. tostring(c.method))
+                end
+            end
+            H.check(#devices == 1, "the device was claimed " .. #devices .. " times")
+            H.check(
+                devices[1].text == "Macro Pad",
+                "the device claim carries the bare name: " .. tostring(devices[1].text)
+            )
+            H.check(
+                #chords == 2 and chords[1] == "Macro Pad\nF13" and chords[2] == "Macro Pad\nF14",
+                "the chords were claimed for the device: " .. table.concat(chords, ",")
+            )
+            for _, c in ipairs(host.calls) do
+                H.check(c.text ~= "only", "the only key was claimed as a chord")
+            end
+            H.check(type(s.data.only["Macro Pad"]) == "number", "the claim's id is kept in seat.data.only")
+        end,
+    },
+    {
+        "Seat:claim_device is a one-line device name",
+        function()
+            local _, host = seat_shell()
+            local s = root:find(Seat)
+            local before = #host.calls
+            for _, bad in ipairs({ "", "two\nlines", 7 }) do
+                local ok = pcall(function()
+                    s:claim_device(bad)
+                end)
+                H.check(not ok, "a device name " .. tostring(bad) .. " must be refused")
+            end
+            H.check(not pcall(function()
+                s:claim_device()
+            end), "no device name must be refused")
+            H.check(#host.calls == before, "a refused claim sent a call")
+            local id = s:claim_device("Macro Pad")
+            local c = host.calls[#host.calls]
+            H.check(c.method == "claim_device" and c.text == "Macro Pad", "text " .. tostring(c.text))
+            H.check(string.unpack("<i8", c.args[1]) == id, "the call carries the id the claim returned")
+            s:unclaim(id)
+            c = host.calls[#host.calls]
+            H.check(c.method == "unclaim", "unclaim ends a device claim too")
+        end,
+    },
 
     {
         "click mode: pointer motion does not move focus",

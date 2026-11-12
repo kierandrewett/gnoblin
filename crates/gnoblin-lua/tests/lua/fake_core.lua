@@ -102,7 +102,7 @@ local SCHEMA = {
         },
         signals = { "chord", "gesture" },
         -- `grab` is not in seat.toml; init.lua drag() calls it. Kept so the stock drag path runs. Gap reported.
-        methods = { "warp", "claim", "claim_gesture", "unclaim", "grab" },
+        methods = { "warp", "claim", "claim_gesture", "claim_device", "unclaim", "grab" },
     },
     -- `index` is derived from the position in the parent, as the native Workspace reports it.
     {
@@ -134,6 +134,7 @@ local METHODS = {
     end,
     claim = function() end,
     claim_gesture = function() end,
+    claim_device = function() end,
     unclaim = function() end,
     grab = function() end,
     close = function() end,

@@ -40,6 +40,10 @@ end
 -- the pad sends it, and the same chord on the desk keyboard still types. A chord bound for a device is a different
 -- binding from the same chord bound for every device, and wins on its device. `keys` and `claims` hold the chord
 -- behind the device name and a line feed when it is scoped, so the two bindings do not share a slot.
+--
+-- `only = true` beside `device` makes that device binding-only: its keys reach no client and fire only the bindings
+-- for it or for every device, so a macro pad never types into a window. It lasts until the shell goes or
+-- `seat:unclaim(id)` is called with the id `seat.data.only[device]` holds.
 local GESTURES = { Swipe = "swipe", Pinch = "pinch" }
 local function claim_key(seat, key, grab, device)
     local name, fingers = key:match("^(%a+)(%d+)$")
@@ -51,9 +55,16 @@ end
 function Seat:bind(map)
     local keys, claims = self.data.keys or {}, self.data.claims or {}
     local device = type(map.device) == "string" and map.device or nil
+    if map.only ~= nil and not (map.only == true and device) then
+        error("Seat:bind: only = true names a device to make binding-only, and needs device = \"name\"", 2)
+    end
+    if map.only and not (self.data.only and self.data.only[device]) then
+        self.data.only = self.data.only or {}
+        self.data.only[device] = self:claim_device(device)
+    end
     local chords = {}
     for chord in pairs(map) do
-        if not (chord == "device" and device) then
+        if not ((chord == "device" and device) or (chord == "only" and map.only)) then
             chords[#chords + 1] = chord
         end
     end

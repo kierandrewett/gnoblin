@@ -65,6 +65,7 @@ pub struct Session {
     wayland: PathBuf,
     stop: StopHandle,
     eis: EisGate,
+    input: gnoblin_compositor::InputTap,
     thread: Option<JoinHandle<Result<gnoblin_compositor::SessionEnd, gnoblin_compositor::Error>>>,
     /// The guardian's end of the control socket. The session holds it open so the compositor
     /// reads handovers rather than an early EOF; it is closed before the session is joined, so
@@ -111,10 +112,12 @@ impl Session {
         }
         let stop = StopHandle::new();
         let eis = EisGate::default();
+        let input = gnoblin_compositor::InputTap::new();
         let mut config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
             eis: eis.clone(),
+            input_tap: Some(input.clone()),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 ..gnoblin_wayland::Config::default()
@@ -134,6 +137,7 @@ impl Session {
             wayland,
             stop,
             eis,
+            input,
             thread: Some(thread),
             guardian: Some(guardian),
         };
@@ -156,10 +160,12 @@ impl Session {
         let wayland = directory.path().join("wayland-0.sock");
         let stop = StopHandle::new();
         let eis = EisGate::default();
+        let input = gnoblin_compositor::InputTap::new();
         let config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
             eis: eis.clone(),
+            input_tap: Some(input.clone()),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 window_process_override: process,
@@ -177,6 +183,7 @@ impl Session {
             wayland,
             stop,
             eis,
+            input,
             thread: Some(thread),
             guardian: None,
         };
@@ -187,6 +194,11 @@ impl Session {
     /// The session's EIS gate, which grants or refuses input from EIS clients.
     pub fn eis(&self) -> &EisGate {
         &self.eis
+    }
+
+    /// Where a test sends input a device would and EIS cannot carry, such as a touchpad's gestures.
+    pub fn input(&self) -> &gnoblin_compositor::InputTap {
+        &self.input
     }
 
     /// The IPC socket `gnoblinctl` connects to.

@@ -2138,7 +2138,7 @@ impl gnoblin_render::transaction::ClassInfo for ClaimClasses {
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
-        class == "seat" && matches!(method, "claim" | "claim_gesture" | "unclaim")
+        class == "seat" && matches!(method, "claim" | "claim_gesture" | "claim_device" | "unclaim")
     }
 }
 
@@ -2436,12 +2436,13 @@ fn super_return(state: gnoblin_wayland::ChordState) -> (NodeId, gnoblin_wayland:
 }
 
 /// Makes the shell's seat and has it claim `<Super>Return` with `text`, which names a keyboard or not.
-fn claim_super_return(queue: &gnoblin_wayland::TreeQueue, text: &str) {
+fn claim_super_return(queue: &gnoblin_wayland::TreeQueue, text: &str) -> u64 {
     use gnoblin_render::transaction::{TreeOp, TreeTransaction};
 
+    let mut base = 0;
     let claimed = apply_on_shell(
         queue,
-        &mut 0,
+        &mut base,
         TreeTransaction::new(vec![
             TreeOp::New {
                 class: "seat".to_owned(),
@@ -2457,6 +2458,7 @@ fn claim_super_return(queue: &gnoblin_wayland::TreeQueue, text: &str) {
         ]),
     );
     assert!(claimed, "the shell's claim applies");
+    base
 }
 
 /// The edges of one key code a client was delivered, in order.
@@ -2685,6 +2687,230 @@ fn a_chord_claimed_for_every_keyboard_is_the_seats_and_fires_once() {
             .input_stats()
             .expect("the loop reports the router's counters");
         assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
+    });
+}
+
+/// The shell makes the devices that report `name` binding-only under claim `id`, on the seat a chord claim made.
+fn claim_device_on_shell(queue: &gnoblin_wayland::TreeQueue, base: &mut u64, id: i64, name: &str) {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let claimed = apply_on_shell(
+        queue,
+        base,
+        TreeTransaction::new(vec![TreeOp::TreeCall {
+            node: CLAIM_SEAT,
+            method: "claim_device".to_owned(),
+            args: vec![id],
+            token: 10,
+            text: SecretText::new(name),
+        }]),
+    );
+    assert!(claimed, "the shell's device claim applies");
+}
+
+/// Lets go of a claim on the shell's seat.
+fn unclaim_on_shell(queue: &gnoblin_wayland::TreeQueue, base: &mut u64, id: i64) {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    let unclaimed = apply_on_shell(
+        queue,
+        base,
+        TreeTransaction::new(vec![TreeOp::TreeCall {
+            node: CLAIM_SEAT,
+            method: "unclaim".to_owned(),
+            args: vec![id],
+            token: 11,
+            text: SecretText::default(),
+        }]),
+    );
+    assert!(unclaimed, "the shell's unclaim applies");
+}
+
+/// The pad plays Super+Return: both edges of the chord and of each key.
+fn pad_plays_super_return(session: &Handle, pad: DeviceId) {
+    key_on(session, pad, KEY_LEFTMETA, true);
+    key_on(session, pad, KEY_ENTER, true);
+    key_on(session, pad, KEY_ENTER, false);
+    key_on(session, pad, KEY_LEFTMETA, false);
+}
+
+#[test]
+fn a_binding_only_keyboard_fires_the_chords_claimed_for_it_and_types_into_nothing() {
+    use gnoblin_wayland::ChordState;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (desk, pad) = announce_keyboards(session);
+        let mut base = claim_super_return(&queue, "Macro Pad\n<Super>Return");
+        claim_device_on_shell(&queue, &mut base, 2, "Macro Pad");
+
+        // A key the pad has no chord for is dropped, and so are the pad's Super and Return around its chord.
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+        pad_plays_super_return(session, pad);
+        assert_eq!(
+            wait_for_chords(&batches, 2),
+            vec![super_return(ChordState::Press), super_return(ChordState::Release)],
+            "the pad's chord reaches the shell from the pad's own key state"
+        );
+
+        // The desk keyboard is not the pad: it types, and its Shift does not change what the pad's keys are.
+        key_on(session, desk, KEY_A, true);
+        key_on(session, desk, KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_A, true), (KEY_A, false)],
+            "only the desk keyboard typed: the pad's keys reached no client"
+        );
+        let stats = session
+            .control
+            .input_stats()
+            .expect("the loop reports the router's counters");
+        assert_eq!((stats.duplicate_presses, stats.orphan_releases), (0, 0));
+    });
+}
+
+#[test]
+fn a_binding_only_keyboard_fires_a_chord_claimed_for_every_keyboard() {
+    use gnoblin_wayland::ChordState;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (_desk, pad) = announce_keyboards(session);
+        let mut base = claim_super_return(&queue, "<Super>Return");
+        claim_device_on_shell(&queue, &mut base, 2, "Macro Pad");
+
+        pad_plays_super_return(session, pad);
+        assert_eq!(
+            wait_for_chords(&batches, 2),
+            vec![super_return(ChordState::Press), super_return(ChordState::Release)],
+            "a binding-only pad fires a chord claimed for every device, from its own modifiers"
+        );
+        key_on(session, DeviceId::VIRTUAL, KEY_A, true);
+        key_on(session, DeviceId::VIRTUAL, KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(state.key_edges, vec![(KEY_A, true), (KEY_A, false)]);
+    });
+}
+
+#[test]
+fn a_key_the_pad_held_before_it_went_binding_only_is_released_to_the_client() {
+    let (queue, _batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (desk, pad) = announce_keyboards(session);
+        let mut base = claim_super_return(&queue, "Macro Pad\n<Super>Return");
+
+        key_on(session, pad, KEY_B, true);
+        client.wait_for(|state| state.key_edges.contains(&(KEY_B, true)));
+        claim_device_on_shell(&queue, &mut base, 2, "Macro Pad");
+        // The claim lets go of the key for the client, and the pad's own release then is not a second one.
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_B, false)));
+        assert_eq!(state.key_edges, vec![(KEY_B, true), (KEY_B, false)]);
+        key_on(session, pad, KEY_B, false);
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+        key_on(session, desk, KEY_A, true);
+        key_on(session, desk, KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_B, false), (KEY_A, true), (KEY_A, false)],
+            "the pad's later keys went nowhere"
+        );
+    });
+}
+
+#[test]
+fn a_pad_plugged_in_after_the_claim_is_binding_only_from_its_first_key() {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+
+    let (queue, _batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let mut base = claim_super_return(&queue, "Macro Pad\n<Super>Return");
+        claim_device_on_shell(&queue, &mut base, 2, "Macro Pad");
+
+        let pad = DeviceId::new(7);
+        session.control.inject_input(InputEvent::DeviceAdded {
+            device: DeviceInfo::new(pad, "Macro Pad", DeviceKind::Keyboard),
+        });
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+        key_on(session, DeviceId::VIRTUAL, KEY_A, true);
+        key_on(session, DeviceId::VIRTUAL, KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(state.key_edges, vec![(KEY_A, true), (KEY_A, false)]);
+    });
+}
+
+#[test]
+fn unclaiming_a_binding_only_device_gives_its_keys_back_to_the_seat() {
+    let (queue, _batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (_desk, pad) = announce_keyboards(session);
+        let mut base = claim_super_return(&queue, "Macro Pad\n<Super>Return");
+        claim_device_on_shell(&queue, &mut base, 2, "Macro Pad");
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+
+        unclaim_on_shell(&queue, &mut base, 2);
+        key_on(session, pad, KEY_A, true);
+        key_on(session, pad, KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_A, true), (KEY_A, false)],
+            "the pad types again once it is not binding-only, and what it did while it was reached no client"
+        );
+    });
+}
+
+#[test]
+fn a_device_tagged_for_a_seat_this_session_does_not_have_attaches_to_the_default_seat() {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+
+    let session = Session::with_config(Config::default());
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let mut pad = DeviceInfo::new(DeviceId::new(5), "Tagged Pad", DeviceKind::Keyboard);
+        pad.seat = "seat1".to_owned();
+        session.control.inject_input(InputEvent::DeviceAdded { device: pad });
+        key_on(session, DeviceId::new(5), KEY_B, true);
+        key_on(session, DeviceId::new(5), KEY_B, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_B, false)));
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_B, false)],
+            "the default seat's keyboard focus takes the key, whatever seat the device was tagged for"
+        );
     });
 }
 
@@ -3122,6 +3348,195 @@ fn a_locked_session_never_delivers_a_claimed_gesture() {
         assert!(
             gesture_events(&batches).is_empty(),
             "a locked session does not deliver a claimed gesture to the shell"
+        );
+    });
+}
+
+/// The compositor's own seat, which the first batch announces: the only seat node the test shell did not make.
+fn compositor_seat(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>) -> NodeId {
+    use gnoblin_render::transaction::TreeChange;
+
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let found = batches.lock().expect("the batch lock").iter().find_map(|batch| {
+            batch.changes.iter().find_map(|change| match change {
+                TreeChange::Created { node, class, .. } if class == "seat" && *node != CLAIM_SEAT => Some(*node),
+                _ => None,
+            })
+        });
+        if let Some(found) = found {
+            return found;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the first batch announces the compositor's seat"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// A call on `node` that carries `args` and `text`, applied by the shell on top of the last batch it was sent.
+///
+/// A transaction built on an older batch is refused stale when the node it names changed since (a seat's focus, its
+/// device list), and the compositor publishes those on its own frames, so a refused one is built again on the newer
+/// batch. A call refused for any other reason is not retried: it fails the test.
+fn call_on_shell(
+    queue: &gnoblin_wayland::TreeQueue,
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    node: NodeId,
+    method: &str,
+    args: Vec<i64>,
+    text: &str,
+) {
+    use gnoblin_render::transaction::{TreeOp, TreeTransaction};
+
+    for _ in 0..100 {
+        let base = batches
+            .lock()
+            .expect("the batch lock")
+            .last()
+            .map_or(0, |batch| batch.serial);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        queue.submit(
+            base,
+            TreeTransaction::new(vec![TreeOp::TreeCall {
+                node,
+                method: method.to_owned(),
+                args: args.clone(),
+                token: 20,
+                text: SecretText::new(text),
+            }]),
+            || true,
+            move |_, result| {
+                let _ = sender.send(result.map_err(|refusal| refusal.code));
+            },
+        );
+        match receiver
+            .recv_timeout(TIMEOUT)
+            .expect("the shell's transaction is answered")
+        {
+            Ok(_) => return,
+            Err(gnoblin_render::transaction::Code::StaleBase) => thread::sleep(Duration::from_millis(10)),
+            Err(code) => panic!("the shell's {method} was refused: {code:?}"),
+        }
+    }
+    panic!("the shell's {method} stayed stale");
+}
+
+/// The shell claims a chord, a swipe and a binding-only device on the compositor's seat, under ids 1, 2 and 3.
+fn claim_everything_on(
+    queue: &gnoblin_wayland::TreeQueue,
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    seat: NodeId,
+) {
+    call_on_shell(queue, batches, seat, "claim", vec![1], "<Super>Return");
+    call_on_shell(queue, batches, seat, "claim_gesture", vec![2, 3], "swipe");
+    call_on_shell(queue, batches, seat, "claim_device", vec![3], "Macro Pad");
+}
+
+#[test]
+fn a_shell_that_detaches_takes_its_chord_gesture_and_device_claims_with_it() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Claims");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let (_desk, pad) = announce_keyboards(session);
+        let seat = compositor_seat(&batches);
+        claim_everything_on(&queue, &batches, seat);
+
+        // The claims hold: the chord and the swipe reach the shell, and the pad types into nothing.
+        press_claimed_chord(session);
+        swipe_gesture(session, 3);
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+        assert_eq!(wait_for_chords(&batches, 2).len(), 2);
+        assert_eq!(settled_gestures(&batches, 4).len(), 4);
+        session.key(KEY_A, true);
+        session.key(KEY_A, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_A, false)));
+        assert_eq!(
+            state.key_edges,
+            vec![
+                (KEY_LEFTMETA, true),
+                (KEY_LEFTMETA, false),
+                (KEY_A, true),
+                (KEY_A, false)
+            ],
+            "the client saw the chord's Super and then A: the chord's Return and the pad's B reached it never"
+        );
+
+        // The shell goes. Its claims were on the compositor's seat, which stays, so they are released by the
+        // detach and not by the seat's destruction.
+        queue.reap_shell_nodes(std::collections::BTreeSet::new);
+        call_on_shell(&queue, &batches, seat, "unclaim", vec![99], "");
+
+        press_claimed_chord(session);
+        swipe_gesture(session, 3);
+        key_on(session, pad, KEY_B, true);
+        key_on(session, pad, KEY_B, false);
+        let state = client.wait_for(|state| state.key_edges.contains(&(KEY_B, false)));
+        assert_eq!(
+            edges_of(state, KEY_ENTER),
+            vec![true, false],
+            "the chord the gone shell claimed reaches the client again"
+        );
+        assert_eq!(edges_of(state, KEY_B), vec![true, false], "the pad types again");
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(chord_events(&batches).len(), 2, "the gone shell hears no more chords");
+        assert_eq!(
+            gesture_events(&batches).len(),
+            4,
+            "the gone shell hears no more of a swipe"
+        );
+    });
+}
+
+#[test]
+fn the_claims_of_a_shell_that_replaces_another_survive_the_other_shells_release() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let seat = compositor_seat(&batches);
+        claim_everything_on(&queue, &batches, seat);
+
+        // The first shell detaches and the second claims in the same frame, so the frame sees the reap first and
+        // the new claims after. The second shell's claims are the ones that stand.
+        queue.reap_shell_nodes(std::collections::BTreeSet::new);
+        claim_everything_on(&queue, &batches, seat);
+
+        press_claimed_chord(session);
+        swipe_gesture(session, 3);
+        assert_eq!(
+            wait_for_chords(&batches, 2).len(),
+            2,
+            "the replacement's chord claim stands"
+        );
+        assert_eq!(
+            settled_gestures(&batches, 4).len(),
+            4,
+            "the replacement's swipe claim stands"
+        );
+    });
+}
+
+#[test]
+fn a_detach_leaves_the_claims_on_a_seat_another_connection_owns() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut base = 0;
+        claim_swipe_on_shell(&queue, &mut base, 3);
+        // The reap names the seat as an observer's: the observer's own claims are not the detached shell's.
+        queue.reap_shell_nodes(|| std::collections::BTreeSet::from([CLAIM_SEAT]));
+        call_on_shell(&queue, &batches, CLAIM_SEAT, "unclaim", vec![99], "");
+        swipe_gesture(session, 3);
+        assert_eq!(
+            settled_gestures(&batches, 4).len(),
+            4,
+            "the observer's seat still holds its claim"
         );
     });
 }

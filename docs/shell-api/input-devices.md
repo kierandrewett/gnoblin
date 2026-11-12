@@ -51,6 +51,33 @@ that report the same name are both matched.
 - `seat:claim(chord, grab, device)` and `seat:claim_gesture(kind, fingers, device)` take the name as an extra argument.
   A name that is empty or spans lines is an error.
 
+## A device that only binds
+
+A macro pad should fire shortcuts and never type into a window. Add `only = true` beside `device`:
+
+```lua
+seat:bind({
+    device = "Macro Pad",
+    only = true,
+    F13 = function() launch("kgx") end,
+})
+```
+
+From then on the keys of the devices that report `Macro Pad` reach no client, the seat's key state or the shell's
+text input. They run the bindings made for the pad and the bindings made for every device, and a key with no binding
+is dropped. `seat:claim_device(name)` does the same without a binding and returns an id, and `seat:unclaim(id)` ends it.
+
+- The pad's keys are its own. A Shift held on the pad does not change what the desk keyboard types, and a binding
+  matches the symbol and modifiers the pad's own keys make. A Caps Lock or Num Lock still counts, as for any binding for
+  a device.
+- A key the pad held when you made it binding-only is released to the client it went to, so that client is not left
+  with the key down.
+- A pad that is plugged in after the claim is binding-only from its first key.
+- Only the keys are withheld. The device's pointer buttons, touches and gestures behave as before.
+- `only = true` needs `device`. `only = false` is an error: leave it out.
+- The claim goes with the shell. A shell that exits, crashes or is restarted leaves the pad typing again until the
+  next shell claims it.
+
 ## Limits
 
 A key is down for the seat once any keyboard holds it, and up once none does. That is what a client is told.
@@ -61,4 +88,8 @@ A key is down for the seat once any keyboard holds it, and up once none does. Th
   keyboard still holds.
 - A binding for every device is the seat's, so a press of a held key does not fire it again.
 
-There is one seat. The list names devices and does not put them on different seats.
+Every device attaches to the one input seat, the default seat. Its name is `seat0` unless the session names another.
+A device the system tagged for a seat this session does not have (libinput's `default`, or a `WL_SEAT` set on another
+machine) attaches to it too, and so does a device plugged in later.
+
+The list names devices. It does not put them on different seats.

@@ -203,9 +203,10 @@ pub struct ShellVm {
 }
 
 /// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, a
-/// `Seat.claim` the chord to grab, a `Seat.claim_gesture` the kind of gesture and a `View.capture` the path to write.
-/// Every other call that carries text is treated as carrying a password.
-const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "capture"];
+/// `Seat.claim` the chord to grab, a `Seat.claim_gesture` the kind of gesture, a `Seat.claim_device` the name of the
+/// device and a `View.capture` the path to write. Every other call that carries text is treated as carrying a
+/// password.
+const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "claim_device", "capture"];
 
 /// What the sent-log keeps of one op for a stale-base retry. A call that carries a secret is not kept: its text
 /// is not held past the send, so a retry cannot send it again. A call whose text is plain content is kept, so a

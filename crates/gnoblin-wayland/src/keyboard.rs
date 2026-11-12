@@ -89,6 +89,17 @@ struct SeatEdge {
     state: KeyState,
 }
 
+/// How an edge relates to the seat's own key state.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum KeyOrigin {
+    /// The seat's state changes with it: the first press of a key across keyboards, or the last release.
+    Seat,
+    /// Another keyboard holds the key, so the seat's state does not change with it.
+    Shared,
+    /// A keyboard the shell made binding-only: its keys are never the seat's.
+    BindingOnly,
+}
+
 /// The offset between an `evdev` key code and the XKB key code of the same key.
 ///
 /// XKB key codes are the `evdev` code plus eight, which is the number a
@@ -169,6 +180,8 @@ pub(crate) struct KeyboardTables {
     /// The claim whose press the shell was told of, by the keyboard and keycode that pressed it, until the
     /// release is reported. Two keyboards holding one keycode are two presses.
     pub(crate) pressed_claims: BTreeMap<(DeviceId, u32), Claim>,
+    /// The devices the shell made binding-only, by their claim's name: their keys fire claims and reach nothing else.
+    pub(crate) device_claims: BTreeMap<String, DeviceClaim>,
     /// The input devices the backend announced, in arrival order. `Seat.device` lists them.
     pub(crate) devices: Vec<DeviceInfo>,
     /// Each keyboard's own key state, which a binding scoped to that keyboard matches.
@@ -210,6 +223,7 @@ impl Default for KeyboardTables {
             next_virtual_id: 0,
             claims: BTreeMap::new(),
             pressed_claims: BTreeMap::new(),
+            device_claims: BTreeMap::new(),
             devices: Vec::new(),
             device_keys: DeviceKeys::new(),
             keymap_generation: 0,
@@ -225,6 +239,14 @@ pub(crate) struct Claim {
     pub(crate) node: NodeId,
     pub(crate) id: i64,
     pub(crate) chord: String,
+}
+
+/// A device the shell made binding-only on a seat node: the name of the devices whose keys fire claims and reach
+/// nothing else.
+#[derive(Clone, Debug)]
+pub(crate) struct DeviceClaim {
+    pub(crate) node: NodeId,
+    pub(crate) device: DeviceSelector,
 }
 
 /// The router binding name for a claim. The name grammar allows only ASCII alphanumerics, `-` and
@@ -596,9 +618,9 @@ impl State {
         self.rebuild_keymap();
     }
 
-    /// Applies the seat `claim`, `claim_gesture` and `unclaim` calls the shell's transactions made. A
-    /// claim binds its chord in the router, so the router delivers it before any client; a gesture claim
-    /// takes its gesture from the touchpad bindings; an unclaim removes either.
+    /// Applies the seat `claim`, `claim_gesture`, `claim_device` and `unclaim` calls the shell's transactions made.
+    /// A claim binds its chord in the router, so the router delivers it before any client; a gesture claim takes its
+    /// gesture from the touchpad bindings; a device claim makes a keyboard binding-only; an unclaim removes any.
     pub(crate) fn apply_claims(&mut self, calls: Vec<TreeCall>) {
         for call in calls {
             let Some(&id) = call.args.first() else {
@@ -607,6 +629,10 @@ impl State {
             };
             if call.method == "claim_gesture" {
                 self.claim_gesture(&call, id);
+                continue;
+            }
+            if call.method == "claim_device" {
+                self.claim_device(&call, id);
                 continue;
             }
             if call.method == "unclaim" {
@@ -620,6 +646,7 @@ impl State {
             // A claim of an id already held replaces that claim.
             self.keyboard_tables.router.bindings_mut().remove_name(&bound);
             self.keyboard_tables.claims.remove(&name);
+            self.keyboard_tables.device_claims.remove(&name);
             if call.method == "unclaim" {
                 continue;
             }
@@ -664,11 +691,24 @@ impl State {
     /// Releases the claims the destroyed nodes held. A destroyed seat takes its claims with it, so
     /// its chords stop firing and reach the client again.
     pub(crate) fn release_seat_nodes(&mut self, gone: &[NodeId]) {
+        self.release_claims_where(|node| gone.contains(&node));
+    }
+
+    /// Releases every claim the shell that detached held: a claim outlives no connection, so a shell that
+    /// leaves, crashes or is restarted leaves its chords and gestures to the clients and the configured
+    /// bindings again, and the shell that replaces it claims afresh. `kept` names the seats that belong to
+    /// someone else (an observer's own), whose claims stay.
+    pub(crate) fn release_shell_claims(&mut self, kept: &BTreeSet<NodeId>) {
+        self.release_claims_where(|node| !kept.contains(&node));
+    }
+
+    /// Drops the chord and gesture claims made on the seats `released` names.
+    fn release_claims_where(&mut self, released: impl Fn(NodeId) -> bool) {
         let dropped: Vec<String> = self
             .keyboard_tables
             .claims
             .iter()
-            .filter(|(_, claim)| gone.contains(&claim.node))
+            .filter(|(_, claim)| released(claim.node))
             .map(|(name, _)| name.clone())
             .collect();
         for name in dropped {
@@ -677,11 +717,55 @@ impl State {
             }
             self.keyboard_tables.claims.remove(&name);
         }
-        let holders: Vec<u64> = gone.iter().map(|node| node.get()).collect();
-        self.touchpad_gestures.claims_mut().release(&holders);
+        self.touchpad_gestures
+            .release_where(|holder| released(NodeId::new(holder)));
         self.keyboard_tables
             .pressed_claims
-            .retain(|_, claim| !gone.contains(&claim.node));
+            .retain(|_, claim| !released(claim.node));
+        self.keyboard_tables
+            .device_claims
+            .retain(|_, claim| !released(claim.node));
+    }
+
+    /// Applies one seat `claim_device` call: the devices that report the call's text make no key reach a client
+    /// or the seat from now on. A name the selector refuses is logged and the claim is not made. A key such a
+    /// keyboard holds is released to the client it went to first, so that client's key is not left down.
+    fn claim_device(&mut self, call: &TreeCall, id: i64) {
+        let device = match DeviceSelector::new(call.text.expose()) {
+            Ok(device) => device,
+            Err(error) => {
+                log::warn!(area = "claim", claim = id, %error, "a seat device claim's name is refused");
+                return;
+            }
+        };
+        let held: Vec<DeviceId> = self
+            .keyboard_tables
+            .devices
+            .iter()
+            .filter(|known| device.matches(&known.name))
+            .map(|known| known.id)
+            .collect();
+        self.keyboard_tables.device_claims.insert(
+            claim_name(call.node, id),
+            DeviceClaim {
+                node: call.node,
+                device,
+            },
+        );
+        for keyboard in held {
+            self.release_keyboard(keyboard);
+        }
+    }
+
+    /// Whether `device` is one the shell made binding-only: a device that was never announced has no name to match.
+    fn is_binding_only(&self, device: DeviceId) -> bool {
+        let Some(name) = self.keyboard_tables.router.device_name(device) else {
+            return false;
+        };
+        self.keyboard_tables
+            .device_claims
+            .values()
+            .any(|claim| claim.device.matches(name))
     }
 
     /// The seat claim behind a router target, when the target is a claim.
@@ -799,9 +883,17 @@ impl State {
             keycode,
             state,
         };
+        // A binding-only device's keys are never the seat's: the seat's key state, the client and the shell's text
+        // input hear nothing of them, and the chords claimed for the device (or for every device) are all they can
+        // fire.
+        if self.is_binding_only(device) {
+            let modifiers = keyboard.modifier_state();
+            self.route_key_edge(edge, &modifiers, 0, KeyOrigin::BindingOnly);
+            return;
+        }
         let source = self.key_source(device);
         let seat_edge = keyboard.input_intercept(source, self, seat_code, key_state, |data, modifiers, symbol| {
-            data.route_key_edge(edge, modifiers, symbol.modified_sym().raw(), false)
+            data.route_key_edge(edge, modifiers, symbol.modified_sym().raw(), KeyOrigin::Seat)
         });
         let Some((consumed, modifiers_changed)) = seat_edge else {
             // Another keyboard holds the key, or still does: the seat's state is what it was. The router still
@@ -814,7 +906,7 @@ impl State {
                     .find(|handle| handle.raw_code() == seat_code)
                     .map_or(0, |handle| handle.modified_sym().raw())
             });
-            self.route_key_edge(edge, &modifiers, symbol, true);
+            self.route_key_edge(edge, &modifiers, symbol, KeyOrigin::Shared);
             return;
         };
         let forward = match state {
@@ -909,12 +1001,17 @@ impl State {
     /// A lock another keyboard toggled still applies to a scoped binding, because a lock is the seat's state
     /// and not a key this keyboard holds.
     ///
-    /// `shared` is set when the seat's key state does not change with this edge: another keyboard holds the
-    /// key this one pressed, or still holds the key this one released. The router sees the edge all the same,
+    /// [`KeyOrigin::Shared`] is when the seat's key state does not change with this edge: another keyboard holds
+    /// the key this one pressed, or still holds the key this one released. The router sees the edge all the same,
     /// so each keyboard's press keeps its own release and a binding scoped to this keyboard fires. A binding
     /// for every keyboard is the seat's, and the seat's key was already down or stays down, so such an edge
     /// runs nothing and never reaches the shell's node.
-    fn route_key_edge(&mut self, edge: SeatEdge, modifiers: &ModifiersState, symbol: u32, shared: bool) -> bool {
+    ///
+    /// [`KeyOrigin::BindingOnly`] is a keyboard the shell made binding-only. Its keys are its own: every binding
+    /// matches the symbol and modifiers its own state gives (the seat's locks still count), the edge is always
+    /// consumed, and it reaches neither a client nor the shell's node.
+    fn route_key_edge(&mut self, edge: SeatEdge, modifiers: &ModifiersState, symbol: u32, origin: KeyOrigin) -> bool {
+        let shared = origin == KeyOrigin::Shared;
         let SeatEdge {
             device,
             own,
@@ -926,11 +1023,18 @@ impl State {
         } else {
             ShortcutInhibit::Clear
         };
-        let seat_modifiers = modifiers_of(modifiers);
+        let mut seat_modifiers = modifiers_of(modifiers);
         let own = own.map(|own| DeviceKey {
             symbol: own.symbol,
             modifiers: own.modifiers.remove(LOCKS).union(seat_modifiers.intersect(LOCKS)),
         });
+        let mut symbol = symbol;
+        if origin == KeyOrigin::BindingOnly
+            && let Some(own) = own
+        {
+            seat_modifiers = own.modifiers;
+            symbol = own.symbol.get();
+        }
         let routed = self.keyboard_tables.router.route(
             RouterEvent::Key {
                 device,
@@ -962,7 +1066,8 @@ impl State {
         }
         // A key the router leaves to the client goes to the shell's node instead, when the shell holds
         // the seat focus on one that takes input. A locked session's cover owns every key, so none reach it.
-        if !shared
+        if origin != KeyOrigin::BindingOnly
+            && !shared
             && !consumed
             && self.lock.state() == LockState::Unlocked
             && let Some(node) = self.composer.shell_key_target()
@@ -993,7 +1098,7 @@ impl State {
                 self.open_focused_window_menu();
             }
         }
-        consumed
+        consumed || origin == KeyOrigin::BindingOnly
     }
 
     /// Whether a router target is a binding that names one keyboard.

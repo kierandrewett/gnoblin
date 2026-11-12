@@ -608,6 +608,9 @@ pub struct TreeFrame {
     /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
     /// took them. A destroyed seat takes its claims with it.
     destroyed: Vec<NodeId>,
+    /// The nodes the last reaping frame left alone (an observer's seats), until the compositor takes them. A
+    /// reap is a shell that detached, so every seat claim on a node not named here was the shell's and goes.
+    reaped: Option<BTreeSet<NodeId>>,
 }
 
 impl Default for TreeFrame {
@@ -641,6 +644,7 @@ impl TreeFrame {
             answers: Vec::new(),
             painter: hooks.painter,
             destroyed: Vec::new(),
+            reaped: None,
             revisions: TreeRevisions::new(),
         }
     }
@@ -766,6 +770,13 @@ impl TreeFrame {
         std::mem::take(&mut self.destroyed)
     }
 
+    /// Take the nodes a shell's detach left alone since the last take, or `None` when no shell detached. The
+    /// compositor drops every seat claim made on any other node: those claims were the detached shell's, and a
+    /// claim outlives no connection.
+    pub fn take_reaped(&mut self) -> Option<BTreeSet<NodeId>> {
+        self.reaped.take()
+    }
+
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
     /// order until the budget is spent, then one batch if anything changed, then the
     /// replies. `now` is read once at the start, and once before each transaction after
@@ -794,16 +805,21 @@ impl TreeFrame {
         }
         // A detached shell's nodes go first: the reads above (an attach among them) have seen the tree as the
         // shell left it, and the batch below tells that holder what went.
-        let reaped: Vec<Submission> = reaps
-            .into_iter()
-            .flat_map(|keep| reap_transactions(scene, &keep()))
-            .map(|transaction| Submission {
-                base: frame_serial,
-                transaction,
-                admitted: Box::new(|| true),
-                reply: Box::new(|_, _| {}),
-            })
-            .collect();
+        let mut reaped: Vec<Submission> = Vec::new();
+        for keep in reaps {
+            let keep = keep();
+            reaped.extend(
+                reap_transactions(scene, &keep)
+                    .into_iter()
+                    .map(|transaction| Submission {
+                        base: frame_serial,
+                        transaction,
+                        admitted: Box::new(|| true),
+                        reply: Box::new(|_, _| {}),
+                    }),
+            );
+            self.reaped = Some(keep);
+        }
 
         // Deferred work came first, then arrivals in arrival order. Every transaction is checked
         // when it applies, against the batches published since its base and the changes this
@@ -859,7 +875,10 @@ impl TreeFrame {
                     let (claims, rest): (Vec<TreeCall>, Vec<TreeCall>) =
                         std::mem::take(&mut done.calls).into_iter().partition(|call| {
                             scene.class(call.node) == Some("seat")
-                                && matches!(call.method.as_str(), "claim" | "claim_gesture" | "unclaim")
+                                && matches!(
+                                    call.method.as_str(),
+                                    "claim" | "claim_gesture" | "claim_device" | "unclaim"
+                                )
                         });
                     let (auths, calls): (Vec<TreeCall>, Vec<TreeCall>) = rest
                         .into_iter()

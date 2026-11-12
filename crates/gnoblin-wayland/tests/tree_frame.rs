@@ -38,7 +38,7 @@ impl ClassInfo for Table {
 
     fn has_method(&self, class: &str, method: &str) -> bool {
         (matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim"))
-            || (class == "seat" && method == "claim_gesture")
+            || (class == "seat" && matches!(method, "claim_gesture" | "claim_device"))
             || (class == "lock" && method == "authenticate")
             || (class == "window" && method == "close")
             || (class == "canvas" && method == "measure")

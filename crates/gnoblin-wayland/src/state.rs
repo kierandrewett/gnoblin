@@ -445,7 +445,7 @@ pub struct State {
     /// The last sequence number handed to a menu request.
     menu_seq: u64,
     /// The name the seat was created with, reported in each menu request.
-    seat_name: String,
+    pub(crate) seat_name: String,
     /// The current clipboard and primary selections.
     pub(crate) selections: WlDataDeviceManagerSelections,
     /// Which side owns each selection while the X11 bridge is running.
@@ -3478,6 +3478,11 @@ impl Host for State {
         let claims = self.tree.take_claims();
         let authentications = self.tree.take_authentications();
         self.begin_authentications(authentications);
+        // A shell that detached took its claims with it. They go before this frame's claims apply, so the shell
+        // that replaced it, whose first claims may be in this same frame, keeps the ones it makes.
+        if let Some(kept) = self.tree.take_reaped() {
+            self.release_shell_claims(&kept);
+        }
         self.apply_claims(claims);
         let destroyed = self.tree.take_destroyed();
         self.release_seat_nodes(&destroyed);

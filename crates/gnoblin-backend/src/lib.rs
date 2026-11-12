@@ -554,7 +554,8 @@ pub struct DeviceInfo {
     pub kind: DeviceKind,
     /// What the device can do.
     pub caps: DeviceCaps,
-    /// The logical seat the device belongs to.
+    /// The logical seat the system tagged the device with: libinput's name for it, `default` unless udev says otherwise.
+    /// The compositor has one input seat and attaches every device to it, whatever this says (`State::device_added`).
     pub seat: String,
 }
 
