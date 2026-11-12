@@ -898,7 +898,7 @@ fn a_transaction_setting_a_window_geometry_is_applied_and_published_at_the_next_
                 .iter()
                 .any(|change| change.kind == "set" && change.key == "width" && change.node == node)
     });
-    let applied: ReplyPayload = reply(&mut wire, "transact");
+    let applied: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
     assert!(applied.applied, "a writable geometry on a window applies: {changes:?}");
     assert_eq!(applied.failed_op, -1);
     assert_eq!(applied.serial, attached.serial + 1, "the batch advances the serial");
@@ -916,7 +916,7 @@ fn a_refused_transaction_leaves_the_window_node_untouched() {
 
     // A base that is not the current serial is refused before any of its ops apply.
     transact(&mut wire, 2, 7, 1, vec![set_double(node, "x", 999.0)]);
-    let refused: ReplyPayload = reply(&mut wire, "transact");
+    let refused: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
     assert!(!refused.applied, "the stale transaction is refused");
     assert_eq!(refused.code, "stale-base");
     assert_eq!(refused.serial, attached.serial, "the serial does not move");
@@ -1064,7 +1064,7 @@ fn the_owner_sends_a_pointer_motion_to_a_window_on_a_seat() {
     let window = window_titled(&nodes, "Input target").expect("the window node").id;
     transact(&mut wire, 2, 0, 1, create_seat(1000, attached.root, "xr"));
     let _: ChangesPayload = event(&mut wire, "changes");
-    let _: ReplyPayload = reply(&mut wire, "transact");
+    let _: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
 
     transact(
         &mut wire,
@@ -1073,7 +1073,7 @@ fn the_owner_sends_a_pointer_motion_to_a_window_on_a_seat() {
         2,
         vec![pointer_input(window, 1000, "motion", 4.0, 5.0)],
     );
-    let reply: ReplyPayload = reply(&mut wire, "transact");
+    let reply: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
     assert!(reply.applied, "an owner input to a window on a seat applies");
     session.stop().expect("the session stops cleanly");
 }
@@ -1115,7 +1115,7 @@ fn an_input_on_an_unknown_seat_is_refused_bad_value() {
         1,
         vec![pointer_input(window, 4242, "motion", 0.0, 0.0)],
     );
-    let reply: ReplyPayload = reply(&mut wire, "transact");
+    let reply: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
     assert!(!reply.applied, "an input on a seat that does not exist is refused");
     session.stop().expect("the session stops cleanly");
 }

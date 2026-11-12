@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, Once, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -44,7 +44,6 @@ pub const DEADLINE: Duration = Duration::from_secs(20);
 const SETTLE: Duration = Duration::from_millis(400);
 
 static NEXT_DAEMON: AtomicUsize = AtomicUsize::new(0);
-static INIT: Once = Once::new();
 
 /// A private `pipewire` daemon. Dropping it kills the daemon and removes its runtime directory.
 pub struct Daemon {
@@ -151,7 +150,7 @@ pub struct Observer {
 impl Observer {
     /// Connects to the daemon listening on `socket`.
     pub fn connect(socket: &Path) -> Self {
-        INIT.call_once(pipewire::init);
+        crate::init_pipewire();
         let mainloop = MainLoopRc::new(None).expect("create the observer main loop");
         let core = connect_client(&mainloop, socket);
         let registry = core.get_registry_rc().expect("get the observer registry");

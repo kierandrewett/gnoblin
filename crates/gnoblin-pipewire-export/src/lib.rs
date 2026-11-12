@@ -163,10 +163,16 @@ struct PipewireConnection {
     mainloop: MainLoopRc,
 }
 
+/// Initialises libpipewire once for the process. `pw_init` is not safe to call from two threads at once, so
+/// every connection in this crate, and the test helpers, go through this one `Once`.
+pub(crate) fn init_pipewire() {
+    static INIT: Once = Once::new();
+    INIT.call_once(pipewire::init);
+}
+
 impl PipewireConnection {
     fn open(socket: Option<&Path>) -> Result<Self, ExportError> {
-        static INIT: Once = Once::new();
-        INIT.call_once(pipewire::init);
+        init_pipewire();
         let mainloop = MainLoopRc::new(None).map_err(pipewire_error)?;
         let context = ContextRc::new(&mainloop, None).map_err(pipewire_error)?;
         let core = match socket {

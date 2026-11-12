@@ -410,3 +410,23 @@ fn the_lock_ends_a_view_stream_nobody_reads_and_leaves_an_output_stream_alone() 
         "a View stream does not come back when the lock is released"
     );
 }
+
+/// The test helpers and the export open connections from parallel test threads. `pw_init` is not safe
+/// to call from two threads at once, and a second `Once` beside the export's own made it so: the
+/// workspace test run died with SIGSEGV in this binary. Every caller goes through one `Once`.
+#[test]
+fn concurrent_callers_initialise_pipewire_through_one_once() {
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+    let threads: Vec<_> = (0..16)
+        .map(|_| {
+            let barrier = std::sync::Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                super::init_pipewire();
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().expect("no caller crashes or panics");
+    }
+}
