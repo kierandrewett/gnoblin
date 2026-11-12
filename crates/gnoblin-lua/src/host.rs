@@ -438,6 +438,9 @@ pub struct Host<T: Transport> {
     shared: Rc<RefCell<Shared<T>>>,
     guard: Rc<Guard>,
     limits: Limits,
+    /// What the last accepted reload replaced, until its commit is known: the compositor can
+    /// still refuse a document the host accepted, and then it is put back.
+    undo: Option<Previous>,
 }
 
 /// The most events one [`Host::pump`] takes from the connection before it runs the due
@@ -492,6 +495,7 @@ impl<T: Transport + 'static> Host<T> {
             shared,
             guard,
             limits,
+            undo: None,
         })
     }
 
@@ -631,12 +635,33 @@ impl<T: Transport + 'static> Host<T> {
         };
         if run.errors.is_empty() && run.config.is_ok() {
             self.carry_reload_completions(&previous);
+            self.undo = Some(previous);
             return Ok(ReloadOutcome::Accepted(Box::new(run)));
         }
         let problem = problems(&run);
         self.restore(previous)?;
         self.announce_reload_failure(run.path.path(), &problem);
         Ok(ReloadOutcome::Rejected(refusal(&run)))
+    }
+
+    /// The accepted reload was committed: what it replaced is not needed again.
+    pub fn keep_reload(&mut self) {
+        self.undo = None;
+    }
+
+    /// The compositor or the autostart check refused the document this host accepted. Put back
+    /// the handlers, timers and document of the last accepted file, and tell the handlers
+    /// watching `gnoblin.config.reload_failed` why.
+    ///
+    /// # Errors
+    ///
+    /// [`HostError::Sandbox`] when the previous callbacks cannot be restored.
+    pub fn revert_reload(&mut self, path: &Path, reason: &str) -> Result<(), HostError> {
+        if let Some(previous) = self.undo.take() {
+            self.restore(previous)?;
+        }
+        self.announce_reload_failure(path, reason);
+        Ok(())
     }
 
     /// Put back the state a rejected reload replaced.

@@ -156,3 +156,42 @@ fn a_script_reload_of_a_broken_file_keeps_the_accepted_configuration_and_the_rol
         (accepted(&session, &role, 2) == Some(48)).then_some(())
     });
 }
+
+#[test]
+fn a_reload_the_autostart_check_refuses_keeps_the_role_serving_and_the_old_handlers() {
+    // The failure this prevents: a reload that validates in Lua but is refused before the
+    // commit (an autostart entry that would start a second keyring) ended the runtime role, so
+    // one bad edit took down the process that holds the last good configuration. The refusal
+    // must leave revision 1 in force, the role serving and the handler of the accepted file
+    // still answering, so the next reload, with the edit fixed, commits.
+    let (session, mut ends) = Session::start_privileged(&["runtime"]);
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let init = directory.path().join("init.lua");
+    std::fs::write(&init, WITH_HANDLER).expect("the first configuration");
+    let (_, stream) = ends.pop().expect("the runtime's end");
+    let role = Role::start(stream, &init);
+    wait_for("the login configuration to commit", || {
+        (accepted(&session, &role, 1) == Some(24)).then_some(())
+    });
+
+    std::fs::write(
+        &init,
+        r#"gnoblin.configure({ autostart = { secrets = { command = { "gnome-keyring-daemon", "--start" } } } })"#,
+    )
+    .expect("the refused edit");
+    let mut client = support::Client::connect(session.wayland());
+    let _first = client.map_window("reload.test", "refused");
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    assert_eq!(role.ended(), None, "the refused reload ended the runtime role");
+    assert_eq!(
+        accepted(&session, &role, 1),
+        Some(24),
+        "the refused edit changed nothing"
+    );
+
+    std::fs::write(&init, "gnoblin.configure({ cursor = { size = 48 } })\n").expect("the fixed edit");
+    let _second = client.map_window("reload.test", "fixed");
+    wait_for("the fixed file to commit after the refusal", || {
+        (accepted(&session, &role, 2) == Some(48)).then_some(())
+    });
+}

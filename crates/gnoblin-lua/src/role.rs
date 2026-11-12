@@ -172,7 +172,7 @@ impl RoleRunner {
         let loaded = host
             .run_config(&self.paths)
             .map_err(|error| RoleError::Config(error.to_string()))?;
-        let Accepted { revision, .. } = commit(&mut host, &loaded, &mut reporter)?;
+        let Accepted { revision, .. } = commit(&mut host, &loaded, &mut reporter).map_err(|failed| failed.error)?;
         log::info!(area = "runtime", path = %loaded.path.path().display(),
             revision,
             "configuration committed"
@@ -189,6 +189,14 @@ impl RoleRunner {
         });
         serve(&mut host, &stop, &self.paths, &mut reporter, &mut shell)
     }
+}
+
+/// Why a commit did not go through.
+struct Failed {
+    error: RoleError,
+    /// Whether the role can keep serving: the document was refused (by the autostart check or
+    /// by the compositor), which leaves the last accepted one in force. A lost connection is not.
+    refusal: bool,
 }
 
 /// What the compositor accepted from a commit.
@@ -211,7 +219,7 @@ fn commit<T: Transport + 'static>(
     host: &mut Host<T>,
     report: &RunReport,
     reporter: &mut Reporter,
-) -> Result<Accepted, RoleError> {
+) -> Result<Accepted, Failed> {
     // A configuration that fails validation is not all-or-nothing at login: the sections that
     // validate are kept, and the dropped ones are logged as `ignored` once the revision is
     // accepted. Only a document with nothing left to keep is refused whole.
@@ -222,7 +230,12 @@ fn commit<T: Transport + 'static>(
                 owned_autostart(entries),
                 Vec::new(),
             ),
-            Err(problem) => return Err(refuse(report, reporter, &problem)),
+            Err(problem) => {
+                return Err(Failed {
+                    error: refuse(report, reporter, &problem),
+                    refusal: true,
+                });
+            }
         },
         Err(problems) => match keep_what_validates(report.document.clone()) {
             Some((kept, dropped)) => match enabled_autostart(&kept) {
@@ -231,9 +244,19 @@ fn commit<T: Transport + 'static>(
                     owned_autostart(entries),
                     dropped,
                 ),
-                Err(problem) => return Err(refuse(report, reporter, &problem)),
+                Err(problem) => {
+                    return Err(Failed {
+                        error: refuse(report, reporter, &problem),
+                        refusal: true,
+                    });
+                }
             },
-            None => return Err(refuse(report, reporter, &problems.to_string())),
+            None => {
+                return Err(Failed {
+                    error: refuse(report, reporter, &problems.to_string()),
+                    refusal: true,
+                });
+            }
         },
     };
     // A refused revision logs its script errors inside the refusal reason, so they are logged
@@ -243,7 +266,10 @@ fn commit<T: Transport + 'static>(
         Ok(committed) => committed,
         Err(error) => {
             reporter.write(&report::config_rejected(0, &error.to_string()));
-            return Err(RoleError::Commit(error.to_string()));
+            return Err(Failed {
+                refusal: matches!(error, ClientError::Refused { .. }),
+                error: RoleError::Commit(error.to_string()),
+            });
         }
     };
     let revision = committed.revision;
@@ -420,20 +446,36 @@ fn reload<T: Transport + 'static>(
         )),
     };
     match outcome {
-        ReloadOutcome::Accepted(loaded) => {
-            let Accepted {
+        ReloadOutcome::Accepted(loaded) => match commit(host, &loaded, reporter) {
+            Ok(Accepted {
                 revision,
                 warnings,
                 not_applied,
-            } = commit(host, &loaded, reporter)?;
-            host.announce_reload(loaded.path.path(), revision, &warnings, &not_applied);
-            host.answer_reload(Ok(Reloaded {
-                revision,
-                warnings: &warnings,
-                not_applied: &not_applied,
-            }));
-            log::info!(area = "runtime", path = %loaded.path.path().display(), revision, "configuration reloaded");
-        }
+            }) => {
+                host.keep_reload();
+                host.announce_reload(loaded.path.path(), revision, &warnings, &not_applied);
+                host.answer_reload(Ok(Reloaded {
+                    revision,
+                    warnings: &warnings,
+                    not_applied: &not_applied,
+                }));
+                log::info!(area = "runtime", path = %loaded.path.path().display(), revision, "configuration reloaded");
+            }
+            // The document passed Lua and validation but not the commit: the compositor or the
+            // autostart check refused a setting. The handlers of the last accepted file come
+            // back, the caller is told why, and the role keeps serving what it had.
+            Err(Failed { error, refusal: true }) => {
+                let reason = error.to_string();
+                log::error!(area = "runtime", "{reason}");
+                host.revert_reload(loaded.path.path(), &reason)
+                    .map_err(|error| RoleError::Serving(error.to_string()))?;
+                host.answer_reload(Err(&reason));
+                host.client_mut()
+                    .reject_config(&reason)
+                    .map_err(|error| RoleError::Commit(error.to_string()))?;
+            }
+            Err(Failed { error, .. }) => return Err(error),
+        },
         ReloadOutcome::Rejected(reason) => {
             log::error!(area = "runtime", "{reason}");
             host.answer_reload(Err(&reason));
