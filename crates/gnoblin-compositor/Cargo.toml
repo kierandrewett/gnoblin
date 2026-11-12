@@ -88,6 +88,9 @@ prost.workspace = true
 # The portal backend's own library, served on a private session bus against a live session:
 # the consent end to end test drives the real D-Bus methods into the real compositor.
 xdg-desktop-portal-gnoblin = { path = "../xdg-desktop-portal-gnoblin" }
+# The real services role, which serves the Gnoblin keyring on a private bus and offers its unlock prompt to the stock
+# shell through the compositor, so the keyring's `prompt.secret` path is tested as the session runs it.
+gnoblin-services = { path = "../gnoblin-services" }
 zbus.workspace = true
 # The portal test's request bodies are serialised D-Bus tuples, and its stress test bounds a
 # D-Bus call with a timer.

@@ -7,6 +7,9 @@
 
 mod support;
 
+#[path = "../../xdg-desktop-portal-gnoblin/tests/support/bus.rs"]
+mod bus;
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -1565,15 +1568,25 @@ fn a_window_the_stock_shell_maximises_is_not_configured_back_to_its_old_size() {
 // 500 ms arming is wall time, and the dialog arms on the same clock.
 
 mod prompts {
+    use std::collections::HashMap;
+    use std::os::fd::IntoRawFd as _;
     use std::os::unix::net::UnixStream;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, mpsc};
 
     use gnoblin_client::unix::UnixTransport;
     use gnoblin_client::wire::{PortalRequest, VerifiedCaller, portal_key, portal_ui, read_portal_outcome};
     use gnoblin_client::{Client as IpcClient, Event};
-    use gnoblin_input_eis::Caps;
     use gnoblin_model::{Fields, RequestCompletion};
+    use gnoblin_services::keyring::KeyringAgent;
+    use gnoblin_services::{Buses, Role};
+    use xdg_desktop_portal_gnoblin::serve::{ServeOptions, serve};
+    use xdg_desktop_portal_gnoblin::{BUS_NAME, IpcHost};
+    use zbus::connection::Builder;
+    use zbus::{Connection, ObjectPath, Proxy, Variant};
 
-    use super::support::ei::EiClient;
+    use super::bus::Bus;
+    use super::support::ei::{EiClient, keyboard};
     use super::support::{Session, Wire};
     use super::{
         Duration, Instant, PaintedCanvas, ShellRole, connect, connect_session, load_stock_shell, painted_canvases,
@@ -1585,6 +1598,9 @@ mod prompts {
     const KEY_ENTER: u32 = 28;
     const KEY_I: u32 = 23;
     const KEY_H: u32 = 35;
+
+    /// The path the portal backend serves its interfaces at.
+    const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 
     const APP: &str = "org.example.Requester";
     const QUESTION: &str = "Share the screen?";
@@ -1671,7 +1687,10 @@ mod prompts {
         role: Option<ShellRole>,
         relay: Wire,
         input: Wire,
-        services: IpcClient<UnixTransport>,
+        /// The services role's end as a client, for a test that offers requests as the role does. `None` when the
+        /// test hands the end to the real services role instead (`services_end`).
+        services: Option<IpcClient<UnixTransport>>,
+        services_end: Option<UnixStream>,
         keyboard: EiClient,
         clock: Instant,
     }
@@ -1683,27 +1702,15 @@ mod prompts {
             == Some("true")
     }
 
-    /// Starts the keyboard the way the EIS tests do, so a key is the real input path's.
-    fn keyboard(session: &Session) -> EiClient {
-        let mut remote = EiClient::connect(&session.directory().join("eis.sock"));
-        remote.wait_for("the seat", |client| client.seat.is_some());
-        assert!(session.eis().grant(Caps::KEYBOARD), "the endpoint is running");
-        remote.wait_for("the keyboard capability", |client| {
-            client.capabilities & u64::from(Caps::KEYBOARD.bits()) != 0
-        });
-        remote.bind_keyboard();
-        remote.wait_for("the keyboard device", |client| {
-            client
-                .devices
-                .first()
-                .is_some_and(|device| device.done && device.resumed.is_some())
-        });
-        remote
-    }
-
     impl Prompting {
         /// The stock shell loaded, with the user's files in `config` when there are some.
         fn start(config: Option<&std::path::Path>) -> Prompting {
+            Prompting::start_holding(config, true)
+        }
+
+        /// [`Prompting::start`], with the services role's end either read as a client (`as_client`) or left in
+        /// `services_end` for the real services role to adopt.
+        fn start_holding(config: Option<&std::path::Path>, as_client: bool) -> Prompting {
             let (session, mut ends) = Session::start_privileged(&["portal", "input", "services"]);
             let relay = end_for(&mut ends, "portal");
             let input = end_for(&mut ends, "input");
@@ -1714,14 +1721,19 @@ mod prompts {
                     .expect("a services end");
                 ends.remove(index)
             };
-            let mut services = IpcClient::connect(
-                UnixTransport::from_stream(stream).expect("a transport"),
-                gnoblin_compositor::version(),
-            )
-            .expect("the services handshake");
-            services
-                .set_read_timeout(Some(Duration::from_millis(1)))
-                .expect("a read deadline");
+            let (services, services_end) = if as_client {
+                let mut services = IpcClient::connect(
+                    UnixTransport::from_stream(stream).expect("a transport"),
+                    gnoblin_compositor::version(),
+                )
+                .expect("the services handshake");
+                services
+                    .set_read_timeout(Some(Duration::from_millis(1)))
+                    .expect("a read deadline");
+                (Some(services), None)
+            } else {
+                (None, Some(stream))
+            };
             let mut role = match config {
                 Some(config) => connect_session(&session, config),
                 None => {
@@ -1739,12 +1751,25 @@ mod prompts {
                 assert!(Instant::now() < deadline, "the stock shell never claimed portal.ui");
                 std::thread::sleep(Duration::from_millis(5));
             }
+            // A request offered before the shell has a Desk to draw on is declined, so the shell is ready for one
+            // only once its Desk exists.
+            while role
+                .run("desk", "return tostring(desk() ~= nil)")
+                .expect("the probe runs")
+                .as_deref()
+                != Some("true")
+            {
+                role.tick(clock.elapsed().as_secs_f64()).expect("a frame runs");
+                assert!(Instant::now() < deadline, "the stock shell never built a Desk");
+                std::thread::sleep(Duration::from_millis(5));
+            }
             Prompting {
                 session,
                 role: Some(role),
                 relay,
                 input,
                 services,
+                services_end,
                 keyboard,
                 clock,
             }
@@ -1752,6 +1777,13 @@ mod prompts {
 
         fn role(&mut self) -> &mut ShellRole {
             self.role.as_mut().expect("the shell is running")
+        }
+
+        /// The services role's end as a client.
+        fn services(&mut self) -> &mut IpcClient<UnixTransport> {
+            self.services
+                .as_mut()
+                .expect("this rig holds the services end as a client")
         }
 
         /// Runs shell frames until `done` holds, or fails after the patience with `what`.
@@ -1983,7 +2015,7 @@ mod prompts {
     fn a_passphrase_typed_on_the_real_input_path_reaches_the_host_and_is_not_painted() {
         let mut p = Prompting::start(None);
         let request = p
-            .services
+            .services()
             .offer(
                 "prompt.secret",
                 "Unlock the keyring",
@@ -2013,7 +2045,7 @@ mod prompts {
 
         let mut answer = None;
         p.until("the host never heard the passphrase", |p| {
-            match p.services.next_event() {
+            match p.services().next_event() {
                 Ok(Event::RequestAnswered {
                     request: id,
                     answer: bytes,
@@ -2043,7 +2075,7 @@ mod prompts {
     fn escape_in_the_passphrase_dialog_refuses_the_request() {
         let mut p = Prompting::start(None);
         let request = p
-            .services
+            .services()
             .offer(
                 "prompt.secret",
                 "Unlock the keyring",
@@ -2057,15 +2089,17 @@ mod prompts {
         });
         p.key(KEY_ESC);
         let mut finished = None;
-        p.until("the host never heard the refusal", |p| match p.services.next_event() {
-            Ok(Event::RequestFinished {
-                request: id,
-                completion,
-            }) if id == request => {
-                finished = Some(completion);
-                true
+        p.until("the host never heard the refusal", |p| {
+            match p.services().next_event() {
+                Ok(Event::RequestFinished {
+                    request: id,
+                    completion,
+                }) if id == request => {
+                    finished = Some(completion);
+                    true
+                }
+                _ => false,
             }
-            _ => false,
         });
         assert!(
             matches!(finished, Some(RequestCompletion::Ended | RequestCompletion::Refused(_))),
@@ -2187,5 +2221,411 @@ mod prompts {
             !texts(&painted_canvases(&session)).iter().any(|t| t == "Screenshot"),
             "the shell drew no dialog"
         );
+    }
+
+    /// The portal backend on a private session bus, served against the session's live compositor, and a caller on
+    /// that bus: the frontend's stand-in. The portal is `serve`, the body of the shipped binary's `main`, on the
+    /// owner's IPC connection, so a consent is offered to the shell exactly as the session offers it.
+    struct DbusPortal {
+        portal: Connection,
+        caller: Connection,
+        next: u32,
+        _bus: Bus,
+    }
+
+    /// How one `AccessDialog` call ended: the response code and its results, or the D-Bus error.
+    type AccessReply = zbus::Result<(u32, HashMap<String, zbus::OwnedVariant>)>;
+
+    /// The app that asks and what the call tells the portal to show. The stock dialog paints the portal interface as
+    /// its title ("Access") and the call's title and body together as its question.
+    const ASKER: &str = "org.example.Maps";
+    const ACCESS_TITLE: &str = "Share your location?";
+    const ACCESS_BODY: &str = "Maps wants to know where you are.";
+
+    /// The line the dialog paints under its title to say who asks.
+    fn asked_by() -> String {
+        format!("Asked by {ASKER}")
+    }
+
+    impl DbusPortal {
+        fn start(session: &Session) -> DbusPortal {
+            let bus = Bus::start();
+            let transport = UnixTransport::connect(session.socket()).expect("the session is listening");
+            let ipc = IpcClient::connect(transport, gnoblin_compositor::version()).expect("the session accepts us");
+            let shell = IpcHost::pair(ipc);
+            let portal = zbus::block_on(Builder::address(bus.address()).build()).expect("the portal's bus connection");
+            let (ready, serving) = mpsc::channel();
+            let connection = portal.clone();
+            std::thread::Builder::new()
+                .name("portal-dbus".to_owned())
+                .spawn(move || {
+                    let options = ServeOptions {
+                        pictures: None,
+                        secret_served: false,
+                        consent_lifetime: 60_000,
+                    };
+                    let ended = zbus::block_on(serve(connection, Some(shell), options, &mut || {
+                        let _ = ready.send(());
+                    }));
+                    if let Err(error) = ended {
+                        eprintln!("the portal ended with an error: {error}");
+                    }
+                })
+                .expect("the portal thread");
+            serving
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the portal serves");
+            let caller = zbus::block_on(Builder::address(bus.address()).build()).expect("a caller on the private bus");
+            DbusPortal {
+                portal,
+                caller,
+                next: 0,
+                _bus: bus,
+            }
+        }
+
+        /// Calls `AccessDialog` as the frontend does, on a thread of its own so the test can run the shell while the
+        /// call waits. Returns the request handle, which `Request.Close` cancels, and the call.
+        fn ask(&mut self) -> (String, std::thread::JoinHandle<AccessReply>) {
+            let sender = self
+                .caller
+                .unique_name()
+                .expect("a connected caller has a name")
+                .as_str()
+                .trim_start_matches(':')
+                .replace('.', "_");
+            let handle = format!("{PORTAL_PATH}/request/{sender}/t{}", self.next);
+            self.next += 1;
+            let caller = self.caller.clone();
+            let path = handle.clone();
+            let call = std::thread::spawn(move || {
+                zbus::block_on(async move {
+                    let proxy = Proxy::new(&caller, BUS_NAME, PORTAL_PATH, "org.freedesktop.impl.portal.Access")
+                        .await
+                        .expect("a proxy for the backend");
+                    let options: HashMap<&str, Variant<'_>> = HashMap::new();
+                    let handle = ObjectPath::try_from(path.as_str()).expect("a request path");
+                    let reply = proxy
+                        .call_method(
+                            "AccessDialog",
+                            &(handle, ASKER, "", ACCESS_TITLE, "", ACCESS_BODY, options),
+                        )
+                        .await?;
+                    Ok(reply.body().deserialize().expect("a response and results"))
+                })
+            });
+            (handle, call)
+        }
+
+        /// `Request.Close`, which is how the frontend cancels a call that is waiting for the user.
+        fn close_request(&self, handle: &str) {
+            zbus::block_on(async {
+                Proxy::new(
+                    &self.caller,
+                    BUS_NAME,
+                    handle.to_owned(),
+                    "org.freedesktop.impl.portal.Request",
+                )
+                .await
+                .expect("a proxy for the request")
+                .call_method("Close", &())
+                .await
+                .expect("Close answers")
+            });
+        }
+    }
+
+    impl Drop for DbusPortal {
+        fn drop(&mut self) {
+            let _ = zbus::block_on(self.portal.clone().close());
+        }
+    }
+
+    impl Prompting {
+        /// Waits for the access dialog the stock shell draws for the call: its title, who asks, the question and
+        /// both buttons, all painted.
+        fn access_dialog_shown(&mut self) {
+            self.until("the access dialog was never painted", |p| {
+                let shown = texts(&p.painted());
+                shown.iter().any(|t| t == "Access")
+                    && shown.iter().any(|t| t == &asked_by())
+                    && shown.iter().any(|t| t == &format!("{ACCESS_TITLE} {ACCESS_BODY}"))
+                    && shown.iter().any(|t| t == "Deny")
+                    && shown.iter().any(|t| t == "Allow")
+            });
+        }
+
+        fn access_dialog_gone(&mut self) {
+            self.until("the access dialog never closed", |p| {
+                !texts(&p.painted()).iter().any(|t| t == &asked_by())
+            });
+        }
+
+        /// Runs shell frames until the D-Bus call has answered, then returns its answer.
+        fn answered(&mut self, call: std::thread::JoinHandle<AccessReply>) -> AccessReply {
+            self.until("the D-Bus call never answered", |_| call.is_finished());
+            call.join().expect("the caller thread")
+        }
+    }
+
+    #[test]
+    fn a_dbus_access_dialog_is_drawn_by_the_stock_shell_and_escape_answers_the_caller_cancelled() {
+        let mut p = Prompting::start(None);
+        let mut dbus = DbusPortal::start(&p.session);
+        let (_, call) = dbus.ask();
+        p.access_dialog_shown();
+        assert!(
+            !call.is_finished(),
+            "the call waits for the user while the dialog is on screen"
+        );
+
+        p.key(KEY_ESC);
+        let (response, results) = p.answered(call).expect("AccessDialog answers");
+        assert_eq!(response, 1, "Escape is the user's own refusal");
+        assert!(results.is_empty(), "an access dialog returns no results");
+        p.access_dialog_gone();
+        assert!(
+            p.role().diagnostics().is_empty(),
+            "no handler failed and no transaction was refused: {:?}",
+            p.role().diagnostics()
+        );
+    }
+
+    #[test]
+    fn tab_then_enter_on_a_dbus_access_dialog_answers_the_caller_allowed() {
+        let mut p = Prompting::start(None);
+        let mut dbus = DbusPortal::start(&p.session);
+        let (_, call) = dbus.ask();
+        let sent = Instant::now();
+        p.access_dialog_shown();
+        p.after_arming(sent);
+        p.until("Allow never became live", |p| {
+            label_colour(&p.painted(), "Allow") == Some(LABEL_LIVE)
+        });
+        p.key(KEY_TAB);
+        p.until("Tab never moved the focus to Allow", |p| {
+            label_colour(&p.painted(), "Allow") == Some(LABEL_FOCUSED)
+        });
+        assert!(!call.is_finished(), "Tab alone answers nothing");
+        p.key(KEY_ENTER);
+
+        let (response, results) = p.answered(call).expect("AccessDialog answers");
+        assert_eq!(response, 0, "Allow is the caller's success");
+        assert!(results.is_empty(), "an access dialog returns no results");
+        p.access_dialog_gone();
+    }
+
+    #[test]
+    fn a_cancelled_dbus_call_closes_the_dialog_and_the_next_call_gets_its_own() {
+        let mut p = Prompting::start(None);
+        let mut dbus = DbusPortal::start(&p.session);
+        let (handle, call) = dbus.ask();
+        p.access_dialog_shown();
+
+        // The frontend cancels the request: the caller is answered, and the compositor is told to withdraw the dialog,
+        // so the shell's offer ends and its handler closes the dialog nobody is waiting on.
+        dbus.close_request(&handle);
+        let (response, _) = p.answered(call).expect("a cancelled call is still answered");
+        assert_ne!(response, 0, "a cancelled call never reports success");
+        p.access_dialog_gone();
+
+        // The shell is free again: a second call is drawn and answered like the first.
+        let (_, next) = dbus.ask();
+        p.access_dialog_shown();
+        p.key(KEY_ESC);
+        let (response, _) = p.answered(next).expect("AccessDialog answers");
+        assert_eq!(response, 1);
+        p.access_dialog_gone();
+    }
+
+    #[test]
+    fn a_caller_that_leaves_the_bus_closes_its_dialog() {
+        let mut p = Prompting::start(None);
+        let mut dbus = DbusPortal::start(&p.session);
+        let (_, call) = dbus.ask();
+        p.access_dialog_shown();
+
+        // A crashed app: its connection is gone and nobody is left to read an answer.
+        let _ = zbus::block_on(dbus.caller.clone().close());
+        p.access_dialog_gone();
+        let _ = call.join();
+    }
+
+    /// The real services role, adopting the session's services end, with the Gnoblin keyring served on the private
+    /// bus: a locked store whose unlock is a `prompt.secret` request to the stock shell. The role is the shipped one
+    /// and the agent is the shipped `KeyringAgent`; only the bus it serves on is the test's.
+    struct KeyringRole {
+        stop: Arc<AtomicBool>,
+        thread: Option<std::thread::JoinHandle<Result<(), gnoblin_services::RoleError>>>,
+        _directory: tempfile::TempDir,
+    }
+
+    impl KeyringRole {
+        fn start(end: UnixStream, connection: Connection) -> KeyringRole {
+            let directory = tempfile::tempdir().expect("a directory for the store");
+            let agent = KeyringAgent::new(
+                directory.path().join("keyring.db"),
+                directory.path().join("handoff.sock"),
+            )
+            .on_connection(connection);
+            let number = end.into_raw_fd();
+            let stop = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&stop);
+            let role = Role {
+                env: Box::new(move |name| (name == "GNOBLIN_IPC_FD").then(|| number.to_string())),
+                deadline: Duration::from_secs(120),
+                buses: Buses::None,
+            };
+            let thread = std::thread::Builder::new()
+                .name("services-role".to_owned())
+                .spawn(move || role.run(move || flag.load(Ordering::SeqCst), vec![Box::new(agent)]))
+                .expect("the services role thread");
+            KeyringRole {
+                stop,
+                thread: Some(thread),
+                _directory: directory,
+            }
+        }
+    }
+
+    impl KeyringRole {
+        /// Fails the test with the role's own error if the role has ended: a role that is gone serves nothing, and
+        /// waiting out the patience for what it would have served hides why.
+        #[track_caller]
+        fn assert_running(&mut self) {
+            if self.thread.as_ref().is_some_and(std::thread::JoinHandle::is_finished) {
+                let ended = self
+                    .thread
+                    .take()
+                    .expect("the thread")
+                    .join()
+                    .expect("the role did not panic");
+                panic!("the services role ended: {ended:?}");
+            }
+        }
+    }
+
+    impl Drop for KeyringRole {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
+        }
+    }
+
+    const SECRETS: &str = "org.freedesktop.secrets";
+    const SECRETS_PATH: &str = "/org/freedesktop/secrets";
+    const DEFAULT_COLLECTION: &str = "/org/freedesktop/secrets/collection/default";
+
+    /// What a Secret Service client saw while it unlocked the default collection: the first `Unlock`'s unlocked list
+    /// and prompt, whether the prompt was dismissed, and the `Unlock` a moment after it.
+    #[derive(Debug)]
+    struct UnlockSeen {
+        first_unlocked: Vec<String>,
+        prompt: String,
+        dismissed: bool,
+        then_unlocked: Vec<String>,
+        then_prompt: String,
+    }
+
+    /// A Secret Service client: `Unlock` the default collection, run the prompt it gets and wait for `Completed`.
+    fn unlock_default(client: Connection) -> std::thread::JoinHandle<zbus::Result<UnlockSeen>> {
+        std::thread::spawn(move || {
+            zbus::block_on(async move {
+                use futures_lite::StreamExt as _;
+                use zbus::OwnedObjectPath;
+                let service = Proxy::new(&client, SECRETS, SECRETS_PATH, "org.freedesktop.Secret.Service").await?;
+                let collection = ObjectPath::try_from(DEFAULT_COLLECTION).expect("a collection path");
+                let reply = service.call_method("Unlock", &(vec![collection.clone()],)).await?;
+                let (first_unlocked, prompt): (Vec<OwnedObjectPath>, OwnedObjectPath) = reply.body().deserialize()?;
+                let prompter = Proxy::new(
+                    &client,
+                    SECRETS,
+                    prompt.as_str().to_owned(),
+                    "org.freedesktop.Secret.Prompt",
+                )
+                .await?;
+                let mut completed = prompter.receive_signal("Completed").await?;
+                prompter.call_method("Prompt", &("",)).await?;
+                let signal = completed.next().await.expect("the prompt completes");
+                let (dismissed, _): (bool, zbus::OwnedVariant) = signal.body().deserialize()?;
+                let reply = service.call_method("Unlock", &(vec![collection],)).await?;
+                let (then_unlocked, then_prompt): (Vec<OwnedObjectPath>, OwnedObjectPath) =
+                    reply.body().deserialize()?;
+                let paths = |paths: Vec<OwnedObjectPath>| paths.iter().map(|path| path.to_string()).collect();
+                Ok(UnlockSeen {
+                    first_unlocked: paths(first_unlocked),
+                    prompt: prompt.to_string(),
+                    dismissed,
+                    then_unlocked: paths(then_unlocked),
+                    then_prompt: then_prompt.to_string(),
+                })
+            })
+        })
+    }
+
+    #[test]
+    fn a_secret_service_unlock_over_dbus_asks_the_stock_shell_and_the_typed_passphrase_unlocks_the_keyring() {
+        let mut p = Prompting::start_holding(None, false);
+        let bus = Bus::start();
+        let service = zbus::block_on(Builder::address(bus.address()).build()).expect("the keyring's bus connection");
+        let end = p.services_end.take().expect("the services role's end");
+        let mut role = KeyringRole::start(end, service);
+        let client = zbus::block_on(Builder::address(bus.address()).build()).expect("a client on the private bus");
+
+        // The role decides `keyring.enabled` first, from the compositor's accepted configuration or, after its
+        // window, the schema default, and only then takes the name.
+        let watcher = client.clone();
+        p.until("the keyring never took org.freedesktop.secrets", |_| {
+            role.assert_running();
+            zbus::block_on(async {
+                let bus = zbus::fdo::DBusProxy::new(&watcher).await.expect("the bus proxy");
+                let name = zbus::names::BusName::try_from(SECRETS).expect("a bus name");
+                bus.name_has_owner(name).await.unwrap_or(false)
+            })
+        });
+
+        let unlock = unlock_default(client);
+        let sent = Instant::now();
+        p.until("the keyring's passphrase dialog was never painted", |p| {
+            let shown = texts(&p.painted());
+            shown.iter().any(|t| t == "Unlock the keyring")
+                && shown
+                    .iter()
+                    .any(|t| t == "Enter your login password to unlock the keyring.")
+        });
+        p.after_arming(sent);
+        p.key(KEY_H);
+        p.key(KEY_I);
+        p.until("the entry never showed two characters", |p| {
+            texts(&p.painted()).iter().any(|t| t == "**")
+        });
+        assert!(
+            !unlock.is_finished(),
+            "the client waits for the user while the dialog is on screen"
+        );
+        p.key(KEY_ENTER);
+
+        p.until("the Secret Service client never saw the prompt complete", |_| {
+            unlock.is_finished()
+        });
+        let seen = unlock
+            .join()
+            .expect("the client thread")
+            .expect("the unlock calls answer");
+        assert!(
+            seen.first_unlocked.is_empty() && seen.prompt != "/",
+            "a locked keyring answers Unlock with a prompt: {seen:?}"
+        );
+        assert!(!seen.dismissed, "the typed passphrase completed the prompt: {seen:?}");
+        assert_eq!(
+            (seen.then_unlocked.as_slice(), seen.then_prompt.as_str()),
+            ([DEFAULT_COLLECTION.to_owned()].as_slice(), "/"),
+            "the collection is unlocked once the passphrase was accepted: {seen:?}"
+        );
+        p.until("the dialog never closed", |p| {
+            !texts(&p.painted()).iter().any(|t| t == "Unlock the keyring")
+        });
     }
 }

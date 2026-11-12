@@ -213,6 +213,24 @@ impl EiClient {
     }
 }
 
+/// A keyboard the session grants input to, started the way the EIS tests do, so a key is the real input path's.
+pub fn keyboard(session: &Session) -> EiClient {
+    let mut remote = EiClient::connect(&session.directory().join("eis.sock"));
+    remote.wait_for("the seat", |client| client.seat.is_some());
+    assert!(session.eis().grant(Caps::KEYBOARD), "the endpoint is running");
+    remote.wait_for("the keyboard capability", |client| {
+        client.capabilities & u64::from(Caps::KEYBOARD.bits()) != 0
+    });
+    remote.bind_keyboard();
+    remote.wait_for("the keyboard device", |client| {
+        client
+            .devices
+            .first()
+            .is_some_and(|device| device.done && device.resumed.is_some())
+    });
+    remote
+}
+
 /// A Wayland client with a mapped window, which the keyboard enters.
 pub fn focused_client(session: &Session) -> Client {
     let mut client = Client::connect(session.wayland());
