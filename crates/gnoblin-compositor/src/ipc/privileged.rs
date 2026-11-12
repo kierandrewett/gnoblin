@@ -74,11 +74,11 @@ pub fn owner_of(peer_uid: Option<u32>, owner_uid: u32) -> bool {
 ///
 /// `SO_PEERCRED` is the peer's uid as the kernel recorded it at `connect`, not anything the
 /// client sent, so the answer cannot be claimed by a handshake.
-pub fn socket_is_owner(stream: &UnixStream) -> bool {
+pub fn socket_is_owner(stream: &UnixStream, owner_uid: Option<u32>) -> bool {
     let peer = rustix::net::sockopt::socket_peercred(stream)
         .ok()
         .map(|cred| cred.uid.as_raw());
-    owner_of(peer, rustix::process::getuid().as_raw())
+    owner_of(peer, owner_uid.unwrap_or_else(|| rustix::process::getuid().as_raw()))
 }
 
 /// Read handovers from `control` until the guardian closes it, passing each accepted
@@ -155,7 +155,12 @@ mod tests {
         // The peer of a socket pair is this process, so its uid is the owner's: the kernel
         // answer `socket_is_owner` reads, end to end rather than through the pure function.
         let (ours, _theirs) = std::os::unix::net::UnixStream::pair().expect("a socket pair");
-        assert!(socket_is_owner(&ours));
+        assert!(socket_is_owner(&ours, None));
+        let own = rustix::process::getuid().as_raw();
+        assert!(
+            !socket_is_owner(&ours, Some(own.wrapping_add(1))),
+            "the override names another owner"
+        );
     }
 
     #[test]

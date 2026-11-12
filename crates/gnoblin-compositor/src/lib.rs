@@ -195,6 +195,14 @@ pub struct SessionConfig {
     ///
     /// A test passes its own path so the run touches no shared directory.
     pub ipc_socket: Option<PathBuf>,
+    /// The uid whose connections to the IPC socket are the session owner's, or [`None`] for the
+    /// uid this process runs as, which is what every real session uses.
+    ///
+    /// The owner is read from the kernel's peer credentials, so a test cannot make a connection
+    /// of another uid. It sets this to a uid that is not its own instead, and its ordinary
+    /// connections are then not the owner's: they are refused every owner member. Privileged
+    /// role connections are the guardian's and stay the owner's either way.
+    pub ipc_owner_uid: Option<u32>,
     /// The EIS endpoint's consent gate. The endpoint is served at `eis.sock` beside the IPC
     /// socket, and every connection on it waits until the gate grants it input.
     pub eis: EisGate,
@@ -407,6 +415,7 @@ impl Compositor {
             config.power.take(),
             tree,
             eis_gate.clone(),
+            config.ipc_owner_uid,
         )
         .map_err(Error::Ipc)?;
 

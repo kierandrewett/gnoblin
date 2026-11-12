@@ -251,6 +251,7 @@ impl IpcServer {
         power: Option<Box<dyn gnoblin_model::PowerBackend>>,
         tree: TreeHostHandle,
         eis: crate::eis::EisGate,
+        owner_uid: Option<u32>,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -324,7 +325,7 @@ impl IpcServer {
             {
                 let events = events.clone();
                 let stopping = Arc::clone(&stopping);
-                move || accept_loop(listener, events, stopping, readers, clients, version)
+                move || accept_loop(listener, events, stopping, readers, clients, version, owner_uid)
             },
             &path,
         )?;
@@ -377,6 +378,7 @@ fn accept_loop(
     readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>>,
     clients: Arc<AtomicU64>,
     version: Version,
+    owner_uid: Option<u32>,
 ) {
     loop {
         let stream = match listener.accept() {
@@ -397,7 +399,7 @@ fn accept_loop(
         let served = events.clone();
         // Whether this connection is the session owner's is read from its kernel peer uid
         // before the stream leaves this thread, so nothing the client sends can change it.
-        let owner = super::privileged::socket_is_owner(&stream);
+        let owner = super::privileged::socket_is_owner(&stream, owner_uid);
         // Holding the lock across the spawn and the insert is what lets the dispatcher
         // join a reader it has just been told about: the handle is in the map before
         // the reader can report anything.

@@ -1154,6 +1154,46 @@ mod tests {
     }
 
     #[test]
+    fn a_deny_is_terminal_and_the_built_in_dialog_never_opens() {
+        // The failure this prevents: an explicit refusal from the claimant is treated like a
+        // claimant that failed, so the built-in dialog opens and asks again until the user
+        // gives in. `deny` is the claimant's decision and the request ends with it. Only a
+        // decline, an answer the compositor cannot read, a missed deadline and a disconnect hand
+        // the request on (`a_claimant_that_cannot_answer_hands_the_request_to_the_built_in_dialog`).
+        let mut service = offered(&screenshot());
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"deny".to_vec()),
+            Tick::new(5_000),
+        );
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+        assert!(!service.wants_pump(), "no built-in dialog opens after a deny");
+        let keys = service.key("enter", false, Tick::new(6_000)).expect("a dialog key");
+        assert!(keys.is_empty(), "a key finds no dialog to settle, so none is open");
+    }
+
+    #[test]
+    fn an_early_allow_is_terminal_and_is_not_asked_again() {
+        // An `allow` inside the arming window counts as a refusal and ends the request. The
+        // compositor does not re-prompt: asking again would turn a click already in progress
+        // into a second chance to consent.
+        let mut service = offered(&screenshot());
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"allow".to_vec()),
+            Tick::new(ARMING_MS - 1),
+        );
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+        assert!(!service.wants_pump(), "no built-in dialog opens after an early allow");
+        let keys = service
+            .key("enter", false, Tick::new(ARMING_MS + 1))
+            .expect("a dialog key");
+        assert!(keys.is_empty(), "and no dialog is left open to settle");
+        // The grant is not recorded either: the request was refused.
+        assert!(!service.secret_granted("org.example.Requester"));
+    }
+
+    #[test]
     fn an_allowed_secret_through_the_claimant_grants_that_app() {
         let mut service = offered(&secret_from("org.example.Requester"));
         assert!(!service.secret_granted("org.example.Requester"));
