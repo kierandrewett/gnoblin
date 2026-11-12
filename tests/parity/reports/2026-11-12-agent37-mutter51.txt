@@ -1,0 +1,26 @@
+# Parity report: the scenarios on the Rust candidate and on stock Mutter 51.0
+#
+# Produced:   2026-11-12 on an Agent37 instance (gVisor, Debian 12 host).
+# Runner:     gnoblin-parity built from commit 26a257913 (feat(parity): popup and focus scenarios, a live mutter51
+#             target and recorded divergences), run as root:
+#               gnoblin-parity run tests/parity/scenarios --require mutter51
+# Reference:  Mutter 51.0 (tag 51.0, commit 138a14fbeef09d49ebf5be8a0cb83b042dd5c841) built by
+#             `scripts/parity-reference.sh mutter` inside an extracted Fedora 45 root file system, headless, one 1280x720
+#             virtual monitor, llvmpipe. It ran through scripts/parity-mutter51 with GNOBLIN_PARITY_MUTTER_ROOT set,
+#             because an Agent37 instance cannot run containers and its Debian 12 host cannot build Mutter 51
+#             (tests/parity/README.md, "Run the Mutter reference").
+# Exit:       0. The `mutter-gnoblin` row is the only skip: that target is not implemented.
+#
+[parity] 11 scenarios: 9 pass, 1 divergent, 0 fail, 1 skip
+  pass candidate-kill-unknown-window (candidate), 1 observation(s) matched
+  pass candidate-window-lifecycle (candidate), 2 observation(s) matched
+  pass candidate-workspace-list (candidate), 1 observation(s) matched
+  divergent focus-toplevels (candidate), 3 observation(s) compared
+       focus.second-toplevel: focus_new_windows defaults to prevent in the candidate, so a new window does not take focus from the focused one; stock Mutter 51 focuses it
+  pass focus-toplevels (mutter51), 3 observation(s) matched
+  skip nested-session-ipc (mutter-gnoblin): needs a live headless Mutter session with gnoblin_session_host_v1; the Mutter target arrives with lane P2
+  pass popup-lifecycle (candidate), 3 observation(s) matched
+  pass popup-lifecycle (mutter51), 3 observation(s) matched
+  pass popup-placement (candidate), 5 observation(s) matched
+  pass popup-placement (mutter51), 5 observation(s) matched
+  pass toplevel-configure (command), 2 observation(s) matched
