@@ -808,7 +808,7 @@ fn the_cost_of_one_view_redraw_on_each_path() {
                 }
             }
 
-            let (mut composer, output) = composer();
+            let (mut composer, output) = self::composer();
             composer.set_gpu_views(true);
             world(&mut composer, size, stereo);
             draw(&mut composer, output);

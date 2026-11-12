@@ -36,15 +36,16 @@ it looks down negative `z`. Scene `y` grows down.
   more), an `ipd` below zero, or a `metres` of zero or less draws a blank picture of the View's size. Nothing is
   refused: each property takes any number, and the picture is blank when the combination cannot be drawn.
 
-A stereo picture is drawn on the CPU like any other, one eye after the other, each into half the width.
+A stereo picture is drawn like any other, one eye after the other, each into half the width: on the CPU on the software
+renderer, and on the GPU as one texture with two viewports on GLES.
 
-Redraw time of one full-size window seen from a window's height away, with a headset's field of view (median of 15,
-release build, the same shared virtual machine as the table below):
+Redraw time on the software renderer of one full-size window seen from a window's height away, with a headset's field of
+view (median of 15, release build, the same shared virtual machine as the tables below):
 
 - 320x200: 0.9 ms. 640x360: 4.3 ms. 1280x720: 17 ms.
 - 1920x1080: 65 ms. 3840x2160: 141 ms.
 
-A stereo View of headset size needs an `fps` cap, as a large flat one does.
+A stereo View of headset size needs an `fps` cap on the software renderer, as a large flat one does.
 
 The XR extension shows a View with a stereo camera as an OpenXR projection layer; see
 [XR mode](../xr.md#stereo-views).
@@ -75,34 +76,74 @@ The clock has a resolution of one millisecond, so every `fps` of 1000 or more is
 once per millisecond, whether `fps` is 1000 or the largest number the wire carries. No value makes the compositor draw
 more often than `0` does, or never.
 
-## What a redraw costs
+## Where a View is drawn, and what a redraw costs
 
-A View is drawn on the CPU, on the compositor's own thread. A redraw takes time the frame loop spends on nothing else.
-The time grows with the number of pixels the source covers, at about 40 to 60 nanoseconds a pixel. A View that holds a
-full-size window costs more than one that holds a small one.
+Where the picture of a View is made depends on the renderer the session runs.
 
-Median of 15 redraws, release build, on a shared 4-vCPU virtual machine. Read the numbers as an order of magnitude.
+| Renderer                                                | The View's picture                                                                           | A redraw costs the compositor's thread  |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------- |
+| GLES (the DRM backend, or `compositor.renderer = gles`) | A texture the renderer draws from a description of the source and camera. Nothing is copied. | Building the description: microseconds  |
+| Software (and Vulkan)                                   | An image the compositor rasterises on the CPU, per pixel, on its own thread.                 | Time that grows with the pixels covered |
 
-| View size | One window, full size | One window, quarter of the area | Ten windows at 90% opacity |
-| --------- | --------------------- | ------------------------------- | -------------------------- |
-| 320x200   | 3 ms                  | 1 ms                            | 8 ms                       |
-| 640x360   | 12 ms                 | 6 ms                            | 28 ms                      |
-| 1280x720  | 53 ms                 | 18 ms                           | 110 ms                     |
-| 1920x1080 | 104 ms                | 26 ms                           | 260 ms                     |
-| 3840x2160 | 387 ms                | 98 ms                           | 1100 ms                    |
+On the GLES path the compositor describes the source subtree through the camera, for a stereo camera one description
+per eye, and the renderer draws it into a texture the size of the View. The View in the scene samples that texture.
 
-A 60 Hz frame is 16.7 ms. A View of up to about 640x360 redraws inside one frame. A larger View that is redrawn at
-every change of a live source makes the frames that carry the redraw late.
+The renderer keeps the texture until the View changes, is resized or is destroyed. A View that is destroyed gives its
+texture back on the next frame, and a View that is shown on no output keeps its texture while something reads it.
 
-To keep a large View cheap:
+The picture reaches the CPU only when something reads it: a capture session (`gnoblin_view_source_v1`, and so the XR
+extension), a PipeWire stream or a `capture` still.
 
-- Cap it with `fps`. A 720p View of a window-sized source takes about 50 ms, so `5` spends a quarter of the thread.
+- The compositor reads the texture back once per redraw, only for a View that is being read.
+- A request that arrives before the first read is answered in the same loop turn.
+- That readback is the only CPU copy of a GPU View. A secure node is never in it: see [Secure nodes](#secure-nodes).
+
+Two consequences:
+
+- A View of a window that shows a GPU buffer (a DMA-BUF) shows the window's real pixels on the GLES path. The CPU path
+  cannot read such a buffer and masks the window grey.
+- A View whose picture cannot be drawn (the driver refuses its size, or the GL context is lost) shows nothing until its
+  next change, and the rest of the frame is drawn as usual. It is asked again at its next redraw.
+
+A View has a size limit on both paths: at most 8192 pixels on a side and 32 Mpx (a 7680x4320 picture fits). A View
+outside it, or with a side of zero, has no picture, and nothing is drawn or captured for it.
+
+### Measurements
+
+Median of 15 redraws, release build, on a shared 4-vCPU virtual machine, one window covering the whole View.
+
+The GLES numbers were taken on **llvmpipe**, which is a software GL driver. Its absolute times are CPU time spent
+emulating a GPU and are **not** GPU numbers.
+
+What the table shows is the split. The compositor's own thread does the first column's work on the CPU path and almost
+none of it on the GLES path, and the readback is the only copy.
+
+| View size | Camera | CPU path, on the compositor thread | GLES path, on the compositor thread | GLES draw (llvmpipe, not a GPU) | Readback, only when read |
+| --------- | ------ | ---------------------------------- | ----------------------------------- | ------------------------------- | ------------------------ |
+| 320x200   | flat   | 2.5 ms                             | 0.01 ms                             | 1.9 ms                          | 0.3 ms                   |
+| 640x360   | flat   | 9.0 ms                             | 0.01 ms                             | 1.9 ms                          | 2.7 ms                   |
+| 1280x720  | flat   | 36 ms                              | 0.02 ms                             | 6.1 ms                          | 4.0 ms                   |
+| 1920x1080 | flat   | 82 ms                              | 0.02 ms                             | 14 ms                           | 5.0 ms                   |
+| 3840x2160 | flat   | 353 ms                             | 0.02 ms                             | 60 ms                           | 8.7 ms                   |
+| 1280x720  | stereo | 16 ms                              | 0.02 ms                             | 5.2 ms                          | 5.4 ms                   |
+| 1920x1080 | stereo | 36 ms                              | 0.02 ms                             | 12 ms                           | 8.0 ms                   |
+| 3840x2160 | stereo | 165 ms                             | 0.02 ms                             | 58 ms                           | 22 ms                    |
+
+The software renderer's table, from `view_cost.rs` (about 40 to 60 nanoseconds a pixel, ten windows at 90% opacity
+costing about two and a half times one window) is unchanged and still holds for a session on the software renderer.
+
+A 60 Hz frame is 16.7 ms. On the software renderer a View of up to about 640x360 redraws inside one frame, and a larger
+View that is redrawn at every change of a live source makes the frames that carry the redraw late. To keep a large View
+cheap there:
+
+- Cap it with `fps`. A 720p View of a window-sized source takes about 40 ms, so `5` spends a fifth of the thread.
 - Keep the View small.
 - Write a still with `capture` instead of keeping a live View.
 
-Views stay on the CPU path by decision (survey 16.2, O8). A GPU path is not started until a View that must be both
-large and live needs one. The measurement is `cargo test --release -p gnoblin-render-software --test view_cost --
---ignored --nocapture`.
+On GLES a large live View does not stall the compositor thread. A View that is also streamed or captured at every
+change pays the readback each time, so cap that one with `fps` too. The measurement is `cargo test --release -p
+gnoblin-backend --lib the_cost_of_one_view_redraw -- --ignored --nocapture` for both paths, and `cargo test --release -p
+gnoblin-render-software --test view_cost -- --ignored --nocapture` for the CPU rasteriser alone.
 
 ## Casting a View
 

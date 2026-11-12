@@ -1,9 +1,12 @@
 //! What one redraw of a View costs on the CPU path.
 //!
-//! A View is drawn by `render_rig` (`render_view` for a flat one) whenever its source changes, at most `fps` times a second. The owner kept the CPU
-//! path (decision O8, option (b)) until a profile says otherwise, so this is the profile: the time of one redraw for
-//! the View sizes and sources a shell is likely to make. It is a measurement, not a check, so it is ignored by default;
-//! its numbers are in `design/cutover-survey.md` (section 16.2) and `docs/shell-api/views.md`.
+//! A View is drawn by `render_rig` (`render_view` for a flat one) whenever its source changes, at most `fps` times a
+//! second, on a session that runs the software renderer. A session on the GLES renderer draws a View into a texture
+//! instead (step 9C, decision O8 revisited), and the profile that sets the two paths side by side is
+//! `the_cost_of_one_view_redraw_on_each_path` in `crates/gnoblin-backend/src/render/view_gpu_tests.rs`. This file is the
+//! CPU rasteriser's own profile: the time of one redraw for the View sizes and sources a shell is likely to make. It is
+//! a measurement, not a check, so it is ignored by default; its numbers are in `design/cutover-survey.md` (section
+//! 16.2) and `docs/shell-api/views.md`.
 //!
 //! ```text
 //! cargo test --release -p gnoblin-render-software --test view_cost -- --ignored --nocapture

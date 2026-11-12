@@ -2426,3 +2426,164 @@ macro_rules! ignore_gpu_events {
 }
 
 ignore_gpu_events!(dmabuf_global::ZwpLinuxDmabufV1, params::ZwpLinuxBufferParamsV1);
+
+// A View drawn on the GPU. The session draws with the GLES renderer, so the composer describes each View as a scene the
+// renderer draws into a texture and keeps no picture of it on the CPU. Everything a consumer reads is a readback made
+// once per revision, only for a View something is reading, in the loop turn the request arrives in. The same cases as
+// above run against it, and what they assert is the same.
+
+/// A session on the GLES renderer, or `None` (with the reason printed) on a machine that has no surfaceless EGL context.
+fn start_gles(observer: Option<Arc<dyn Observer>>) -> Option<(Session, Owner)> {
+    use gnoblin_backend::render::renderer::{AnyRenderer, RendererKind};
+    if let Err(error) = AnyRenderer::new(RendererKind::Gles, gnoblin_types::Size::new(8, 8)) {
+        println!("skipping the GPU View test: {error} (no surfaceless EGL context on this machine)");
+        return None;
+    }
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras {
+        observer,
+        gles: true,
+        ..Extras::default()
+    };
+    Some((Session::start_with_extras(None, hooks, extras), owner))
+}
+
+/// A window's pixels reach a `view`-role client, and a repainted window is delivered again, with no picture of the View
+/// kept on the CPU for the display.
+#[test]
+fn a_view_drawn_on_the_gpu_is_read_by_a_view_role_client_and_follows_its_source() {
+    let Some((session, owner)) = start_gles(None) else {
+        return;
+    };
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+
+        // The session was opened after the View was drawn, so its first frame waits for the read-back of this turn.
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until(SOURCE);
+        let last = SIDE - 1;
+        for (x, y) in [(0, 0), (SIDE / 2, SIDE / 2), (last, 0), (0, last), (last, last)] {
+            assert_eq!(
+                viewer.target.word(x, y) & 0x00FF_FFFF,
+                SOURCE & 0x00FF_FFFF,
+                "pixel ({x}, {y}) of the capture is the window's colour"
+            );
+        }
+        window.paint(&mut app, REPAINTED);
+        viewer.capture_until(REPAINTED);
+    });
+}
+
+/// A canvas inside a View is captured with its painted pixels, and again when its content is written again.
+#[test]
+fn a_canvas_in_a_view_drawn_on_the_gpu_is_captured_with_its_painted_pixels() {
+    let Some((session, owner)) = start_gles(None) else {
+        return;
+    };
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until_pixel(SIDE - 2, SIDE - 2, SOURCE);
+        assert_eq!(
+            viewer.differing(0, 24, SIDE, SIDE - 24, SOURCE),
+            0,
+            "below the text and the icon is fill"
+        );
+        let text = viewer.differing(2, 0, 30, 24, SOURCE);
+        assert!(text >= 20, "the text paints pixels over the fill: {text} differ");
+    });
+}
+
+/// The shell's `capture` writes a PNG of a View drawn on the GPU: it waits for the readback of the turn it was made
+/// in, is answered with the path, and the capture session is shown open until the file exists.
+#[test]
+fn a_still_of_a_view_drawn_on_the_gpu_is_written_and_answered() {
+    let recorder = Arc::new(Recorder::default());
+    let Some((session, owner)) = start_gles(Some(recorder.clone())) else {
+        return;
+    };
+    session.run(move |handle| {
+        arrange_canvas(&owner);
+        let runtime = std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+        let target = runtime.join("gpu-view.png");
+        recorder.target.set(target.clone()).expect("the target is set once");
+        let answer = owner.capture(VIEW, target.to_str().expect("a utf-8 path"));
+        assert_eq!(
+            (answer.error.as_str(), answer.result.as_str()),
+            ("", target.to_str().expect("a utf-8 path")),
+            "the shell is answered with the path written"
+        );
+        let (size, colour) = png_pixel(&target, SIDE - 2, SIDE - 2);
+        assert_eq!(size, (SIDE, SIDE), "the PNG is the View's size");
+        assert_eq!(colour, SOURCE & 0x00FF_FFFF, "the PNG holds the View's pixels");
+        let seen = recorder.seen.lock().expect("the recorder lock").clone();
+        assert_eq!(
+            seen.last(),
+            Some(&(0, true)),
+            "the capture closes once the file exists: {seen:?}"
+        );
+    });
+}
+
+/// A secure window's pixels are masked in the PNG of a View drawn on the GPU, and come back when the mark is cleared,
+/// while the display keeps showing them: the capture reads the scene's redacted variant, never the display texture.
+#[test]
+fn a_png_of_a_view_drawn_on_the_gpu_holds_none_of_a_secure_windows_pixels() {
+    let Some((session, owner)) = start_gles(None) else {
+        return;
+    };
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let (window, ..) = owner.window();
+        let source = SOURCE & 0x00FF_FFFF;
+
+        assert!(
+            still_of(&owner, handle, VIEW, "open.png")
+                .iter()
+                .all(|word| *word == source),
+            "an unmarked window is captured as it is drawn"
+        );
+        mark_secure(&owner, window, true);
+        assert!(
+            still_of(&owner, handle, VIEW, "secure.png")
+                .iter()
+                .all(|word| *word == MASKED & 0x00FF_FFFF),
+            "every pixel of the secure window is the mask"
+        );
+        mark_secure(&owner, window, false);
+        assert!(
+            still_of(&owner, handle, VIEW, "cleared.png")
+                .iter()
+                .all(|word| *word == source),
+            "a cleared mark shows the window again"
+        );
+    });
+}
+
+/// A `view`-role session's frames never carry a secure window's pixels once the mark is on, however the View is drawn.
+#[test]
+fn a_view_role_session_of_a_view_drawn_on_the_gpu_never_receives_a_secure_windows_pixels() {
+    let Some((session, owner)) = start_gles(None) else {
+        return;
+    };
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let (window, ..) = owner.window();
+        let mut viewer = Viewer::open(handle);
+        viewer.capture_until(SOURCE);
+        mark_secure(&owner, window, true);
+        viewer.capture_until(MASKED);
+        assert_eq!(
+            viewer.target.count_of(SOURCE),
+            0,
+            "no pixel of the secure window is in the frame"
+        );
+    });
+}

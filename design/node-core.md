@@ -199,6 +199,18 @@ locked, and is logged. A View has no cursor, so there is no cursor option. The a
 `n` redraws at most every `ceil(1000 / n)` ms of the session clock, coalescing the changes inside the slot and drawing
 the last state at its end. A View with no picture or a new size is drawn at once.
 
+**Where a View is drawn (implemented, lane GlesView, step 9C).** On a renderer that draws a View's subtree on the GPU
+(GLES: the headless GLES backend and the DRM backend) the composer keeps no picture of the View. It describes the source
+subtree through the camera as a `ViewScene` (`crates/gnoblin-render-frame/src/view_scene.rs`: per eye, the source's
+layers with the camera folded into each layer's model matrix, and clip start and end steps), and the renderer draws the
+scene into a texture it owns, per View and per revision. The layer that shows the View samples that texture, so a live
+View costs no CPU redraw on the compositor thread. The software and Vulkan renderers keep the CPU `render_rig` path,
+which is also the reference the GLES output is compared against. A consumer that needs bytes (a capture session, a
+PipeWire stream, the XR extension, a `capture` still) is served from one readback per revision, made only for a View
+something is reading; that readback is the only CPU copy. Secure nodes are unchanged: the scene carries a second set of
+eyes with each secure node masked or omitted, and a capture reads only that one. A View larger than 8192 pixels on a
+side or 32 Mpx has no picture on either path.
+
 **Screen** (base `Node`). An output. Replaces `output.toml`. Created and destroyed by the compositor.
 
 The composer creates a screen under the root when an output is declared (`set_output`), publishes its geometry on change, and destroys it with the output (`remove_output`). Its `name` is `output-N` for output id N until the output carries a connector name.

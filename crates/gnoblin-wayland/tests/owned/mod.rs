@@ -156,6 +156,8 @@ pub struct Extras {
     pub pipewire_socket: Option<std::path::PathBuf>,
     /// A stand-in GPU for the session's renderer to ask about client buffers; none when `None`.
     pub dmabuf_provider: Option<Box<dyn gnoblin_backend::DmabufProvider>>,
+    /// Draw with the GLES renderer, which draws a View on the GPU; the software renderer when `false`.
+    pub gles: bool,
 }
 
 /// A session that has been created but is not running yet.
@@ -282,7 +284,11 @@ impl Session {
             pipewire_socket: extras.pipewire_socket,
             ..Config::default()
         };
-        let mut headless = Headless::new();
+        let mut headless = if extras.gles {
+            Headless::with_config(gnoblin_backend::headless::HeadlessConfig::gles()).expect("a GLES headless session")
+        } else {
+            Headless::new()
+        };
         if let Some(provider) = extras.dmabuf_provider {
             headless = headless.with_dmabuf_provider(provider);
         }
