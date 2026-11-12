@@ -1256,6 +1256,7 @@ dependencies = [
  "gnoblin-render-frame",
  "gnoblin-schema",
  "gnoblin-secret",
+ "gnoblin-services",
  "gnoblin-types",
  "gnoblin-wayland",
  "gnoblin-xwayland",
