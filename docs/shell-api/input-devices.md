@@ -93,3 +93,4 @@ A device the system tagged for a seat this session does not have (libinput's `de
 machine) attaches to it too, and so does a device plugged in later.
 
 The list names devices. It does not put them on different seats.
+The compositor runs on one logind seat, so a device of another logind seat never reaches it.

@@ -187,6 +187,12 @@ fn modifiers_of(state: &xkb::State) -> Modifiers {
     modifiers
 }
 
+/// The seat a device attaches to: the seat its tag names when the session serves one of that name, otherwise the
+/// default seat. Device-to-seat rules beyond the tag (`design/multi-seat.md` lane 2.2) extend this function.
+pub(crate) fn attached_seat<'a>(tag: &'a str, served: &[&'a str], default: &'a str) -> &'a str {
+    served.iter().copied().find(|seat| *seat == tag).unwrap_or(default)
+}
+
 /// One `Seat.device` item: `id:name:caps`.
 pub(crate) fn item_of(device: &DeviceInfo) -> String {
     format!("{}:{}:{}", device.id.get(), device.name, device.caps)
@@ -214,24 +220,25 @@ pub(crate) fn split_selector(text: &str) -> (Option<&str>, &str) {
 }
 
 impl State {
-    /// Records a device the backend announced: it attaches to the default seat, joins the list, the router learns
-    /// its name, and the list is published. A device announced twice replaces its first entry.
+    /// Records a device the backend announced: it joins the list, the router learns its name, and the list is
+    /// published. A device announced twice replaces its first entry.
     ///
-    /// There is one input seat, the default seat (`seat0` unless the session names another), and every device
-    /// attaches to it whatever logical seat the system tagged it with: a plugged-in device that names a seat this
-    /// session does not have (libinput's `default`, a udev `WL_SEAT` of another machine's) is not left without
-    /// one. A device that was already announced, or one announced while a binding-only claim names it, takes the
-    /// same path, so a hot-plugged pad is binding-only from its first key.
-    pub(crate) fn device_added(&mut self, mut info: DeviceInfo) {
-        if info.seat != self.seat_name {
+    /// The device keeps the logical seat the system tagged it with: lane 2.2 of `design/multi-seat.md` routes
+    /// devices by that tag once a session serves a second seat. Which seat it attaches to today is
+    /// [`attached_seat`]: the one input seat, `seat0` unless the session names another, for a device whose tag
+    /// names no seat this session serves (libinput's `default`, a `WL_SEAT` of another machine's). A device that
+    /// was already announced, or one announced while a binding-only claim names it, takes the same path, so a
+    /// hot-plugged pad is binding-only from its first key.
+    pub(crate) fn device_added(&mut self, info: DeviceInfo) {
+        let attached = attached_seat(&info.seat, &[self.seat_name.as_str()], &self.seat_name);
+        if attached != info.seat {
             log::debug!(
                 area = "input",
                 device = %info.id,
                 tagged = %info.seat,
-                seat = %self.seat_name,
-                "a device tagged for a seat this session does not have attached to the default seat"
+                seat = %attached,
+                "a device tagged for a seat this session does not serve attached to the default seat"
             );
-            info.seat = self.seat_name.clone();
         }
         log::debug!(area = "input", device = %info.id, name = %info.name, caps = %info.caps, "a device joined the seat");
         self.keyboard_tables.router.device_added(info.id, &info.name);
@@ -383,6 +390,32 @@ mod tests {
     #[test]
     fn with_no_keymap_a_key_says_nothing() {
         assert_eq!(DeviceKeys::new().key(DESK, KEY_A, true), None);
+    }
+
+    #[test]
+    fn a_device_tagged_for_a_served_seat_attaches_there_and_any_other_tag_to_the_default() {
+        let served = ["seat0", "seat1"];
+        assert_eq!(
+            attached_seat("seat1", &served, "seat0"),
+            "seat1",
+            "a served seat's tag is kept"
+        );
+        assert_eq!(attached_seat("seat0", &served, "seat0"), "seat0");
+        assert_eq!(
+            attached_seat("seat2", &served, "seat0"),
+            "seat0",
+            "an unserved seat goes to the default"
+        );
+        assert_eq!(
+            attached_seat("default", &["seat0"], "seat0"),
+            "seat0",
+            "libinput's own name is no seat"
+        );
+        assert_eq!(
+            attached_seat("seat1", &["seat0"], "seat0"),
+            "seat0",
+            "one served seat takes every device"
+        );
     }
 
     #[test]

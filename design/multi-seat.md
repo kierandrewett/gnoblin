@@ -539,8 +539,9 @@ one.
 3. **Default seat for new devices.** Hot-plugged devices with no rule: go to `seat0`
    (the author's suggestion), or stay unassigned until a rule claims them?
    **Settled (O10, `design/cutover-survey.md` 16.6): `seat0`.** `State::device_added`
-   attaches every device to the one input seat, whatever logical seat the system tagged
-   it with.
+   attaches a device to the one input seat when its tag names no seat the session serves,
+   and keeps the tag (`attached_seat`), so lane 2.2 can route `ID_SEAT=seat1` to a
+   second seat. libinput is opened per logind seat, so only that seat's devices arrive.
 4. **Can one window be focused by two seats at once?** Keyboard focus per seat says
    yes (section 2.2). Should the window manager's "active" highlight follow one seat,
    the last seat that focused, or stay independent? **[JUDGEMENT]** The last seat
