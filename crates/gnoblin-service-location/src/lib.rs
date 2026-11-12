@@ -16,6 +16,10 @@
 //!    or below the requested level, the policy ceiling and the answer.
 //! 4. **Policy is absent.** The ceiling defaults to [`Policy::DENY`], which denies every
 //!    request.
+//! 5. **The caller is not GeoClue.** `AuthorizeApp` is answered only for the connection that
+//!    owns `org.freedesktop.GeoClue2`. Any other sender gets `AccessDenied` and no offer is
+//!    made, so a bus client cannot put an app id of its choosing in front of the shell. The
+//!    owner is read from the bus on every call, never cached.
 //!
 //! # Agent states
 //!
@@ -44,6 +48,7 @@ use futures_lite::StreamExt;
 use gnoblin_config::{Inherit, LocationAccuracy, SearchPaths, Store};
 
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
+use zbus::message::Header;
 use zbus::names::{BusName, WellKnownName};
 use zbus::{Connection, fdo, proxy};
 
@@ -456,13 +461,52 @@ impl Location {
     }
 }
 
+/// Whether `sender`, a unique bus name, currently owns [`GEOCLUE_SERVICE`].
+///
+/// The owner is asked of the bus on every call rather than cached, so a GeoClue that
+/// restarted is recognised at once and a name taken by someone else never inherits the
+/// old owner's standing. No sender, no owner and a failed lookup all answer `false`.
+async fn sender_is_geoclue(connection: &Connection, sender: Option<&str>) -> bool {
+    let Some(sender) = sender else {
+        return false;
+    };
+    let Ok(dbus) = fdo::DBusProxy::new(connection).await else {
+        return false;
+    };
+    let name = WellKnownName::from_static_str_unchecked(GEOCLUE_SERVICE);
+    match dbus.get_name_owner(BusName::WellKnown(name)).await {
+        Ok(owner) => owner.as_str() == sender,
+        Err(_) => false,
+    }
+}
+
 /// The agent's D-Bus interface.
 #[zbus::interface(name = "org.freedesktop.GeoClue2.Agent")]
 impl Location {
     /// Answer whether `desktop_id` may have its location at up to `req_accuracy_level`,
     /// and at what level.
-    async fn authorize_app(&self, desktop_id: &str, req_accuracy_level: u32) -> (bool, u32) {
-        self.authorize(desktop_id, req_accuracy_level).await
+    ///
+    /// Only the connection that owns [`GEOCLUE_SERVICE`] may ask: any other sender is
+    /// refused with `AccessDenied` before an offer is made, so a stray bus client cannot put
+    /// an app id of its choosing in front of the shell.
+    async fn authorize_app(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+        desktop_id: &str,
+        req_accuracy_level: u32,
+    ) -> fdo::Result<(bool, u32)> {
+        let sender = header.sender().map(|sender| sender.to_string());
+        if !sender_is_geoclue(connection, sender.as_deref()).await {
+            log::warn!(
+                area = "services",
+                ?sender,
+                app = desktop_id,
+                "AuthorizeApp from a sender that is not GeoClue was refused"
+            );
+            return Err(fdo::Error::AccessDenied("only GeoClue may call AuthorizeApp".into()));
+        }
+        Ok(self.authorize(desktop_id, req_accuracy_level).await)
     }
 
     /// The ceiling Gnoblin applies to every request.

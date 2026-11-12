@@ -91,24 +91,30 @@ async fn start_agent(address: &str, host: Host, policy: Policy) -> (Location, Co
     (location, connection)
 }
 
-/// Call `AuthorizeApp` on the agent from a separate client, on its own thread, so the test
-/// can answer the offer while the call waits.
-fn authorize(address: String, agent: String, app: &'static str) -> thread::JoinHandle<(bool, u32)> {
+/// Call `AuthorizeApp` on the agent as `caller`, on its own thread, so the test can answer
+/// the offer while the call waits. The caller is the connection GeoClue's name lives on
+/// when the call is meant to come from GeoClue.
+fn authorize(caller: Connection, agent: String, app: &'static str) -> thread::JoinHandle<zbus::Result<(bool, u32)>> {
     thread::spawn(move || {
         future::block_on(async move {
-            let client = Builder::address(address.as_str())
-                .build()
-                .await
-                .expect("the client connects");
-            let proxy = Proxy::new(&client, agent.as_str(), AGENT_PATH, AGENT_INTERFACE)
+            let proxy = Proxy::new(&caller, agent.as_str(), AGENT_PATH, AGENT_INTERFACE)
                 .await
                 .expect("the agent proxy builds");
-            proxy
-                .call("AuthorizeApp", &(app, 8u32))
-                .await
-                .expect("AuthorizeApp answers")
+            proxy.call("AuthorizeApp", &(app, 8u32)).await
         })
     })
+}
+
+/// A connection to `address` that does not own GeoClue's name.
+fn stranger(address: &str) -> Connection {
+    future::block_on(Builder::address(address).build()).expect("the stranger connects")
+}
+
+/// The answer to a call GeoClue made: the call must succeed.
+fn answered(call: thread::JoinHandle<zbus::Result<(bool, u32)>>) -> (bool, u32) {
+    call.join()
+        .expect("the client thread")
+        .expect("GeoClue's AuthorizeApp is answered")
 }
 
 /// The offer the agent made for the one pending request.
@@ -142,10 +148,14 @@ fn the_agent_skips_when_geoclue_is_absent() {
     thread::sleep(Duration::from_millis(200));
     assert!(!location.is_available());
     let agent = connection.unique_name().expect("unique name").to_string();
-    let answer = authorize(address, agent, "org.example.Absent")
+    // With no GeoClue on the bus nobody owns the manager's name, so no caller is GeoClue.
+    let refused = authorize(stranger(&address), agent, "org.example.Absent")
         .join()
         .expect("the client thread");
-    assert_eq!(answer, (false, 0));
+    assert!(
+        refused.is_err(),
+        "a call with no GeoClue on the bus is refused: {refused:?}"
+    );
     assert!(host.offers.lock().expect("the offer lock").is_empty());
 }
 
@@ -153,55 +163,87 @@ fn the_agent_skips_when_geoclue_is_absent() {
 fn an_answered_request_grants_the_level_the_shell_names() {
     let bus = Bus::start();
     let address = bus.address().to_owned();
-    let _manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
+    let manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
     let host = Host::default();
     let (location, connection) = future::block_on(start_agent(&address, host.clone(), Policy { max_level: 8 }));
     wait_until("the registration", || location.is_available());
 
     let agent = connection.unique_name().expect("unique name").to_string();
-    let call = authorize(address.clone(), agent, "org.example.Maps");
+    let call = authorize(manager.clone(), agent, "org.example.Maps");
     let (request, proposition) = one_offer(&host);
     assert_eq!(proposition.slot, CapabilitySlot::LocationAgent);
     assert_eq!(proposition.request.action_id, "org.example.Maps");
     assert!(location.answer(request, &RequestOutcome::answered(b"5".to_vec())));
 
-    assert_eq!(call.join().expect("the client thread"), (true, 5));
+    assert_eq!(answered(call), (true, 5));
 }
 
 #[test]
 fn an_empty_or_ended_request_is_denied() {
     let bus = Bus::start();
     let address = bus.address().to_owned();
-    let _manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
+    let manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
     let host = Host::default();
     let (location, connection) = future::block_on(start_agent(&address, host.clone(), Policy { max_level: 8 }));
     wait_until("the registration", || location.is_available());
     let agent = connection.unique_name().expect("unique name").to_string();
 
-    let empty = authorize(address.clone(), agent.clone(), "org.example.Empty");
+    let empty = authorize(manager.clone(), agent.clone(), "org.example.Empty");
     let (request, _) = one_offer(&host);
     location.answer(request, &RequestOutcome::answered(Vec::new()));
-    assert_eq!(empty.join().expect("the client thread"), (false, 0));
+    assert_eq!(answered(empty), (false, 0));
 
-    let ended = authorize(address.clone(), agent, "org.example.Ended");
+    let ended = authorize(manager.clone(), agent, "org.example.Ended");
     let (request, _) = one_offer(&host);
     location.answer(request, &RequestOutcome::Ended);
-    assert_eq!(ended.join().expect("the client thread"), (false, 0));
+    assert_eq!(answered(ended), (false, 0));
 }
 
 #[test]
 fn a_zero_policy_denies_without_offering() {
     let bus = Bus::start();
     let address = bus.address().to_owned();
-    let _manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
+    let manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
     let host = Host::default();
     let (location, connection) = future::block_on(start_agent(&address, host.clone(), Policy::DENY));
     wait_until("the registration", || location.is_available());
     let agent = connection.unique_name().expect("unique name").to_string();
 
-    let answer = authorize(address, agent, "org.example.Denied")
-        .join()
-        .expect("the client thread");
+    let answer = answered(authorize(manager.clone(), agent, "org.example.Denied"));
     assert_eq!(answer, (false, 0));
     assert!(host.offers.lock().expect("the offer lock").is_empty());
+}
+
+/// gnoblin-dlw4: only the connection that owns GeoClue's name may call `AuthorizeApp`. A second
+/// sender on the same bus is refused, makes no offer, and cannot reach the shell with an app id.
+#[test]
+fn a_second_sender_is_refused_and_makes_no_offer() {
+    let bus = Bus::start();
+    let address = bus.address().to_owned();
+    let manager = future::block_on(fake_manager(&address, Arc::new(ManagerState::default())));
+    let host = Host::default();
+    let (location, connection) = future::block_on(start_agent(&address, host.clone(), Policy { max_level: 8 }));
+    wait_until("the registration", || location.is_available());
+    let agent = connection.unique_name().expect("unique name").to_string();
+
+    let impostor = authorize(stranger(&address), agent.clone(), "org.example.Impostor");
+    // An accepted call would wait for the shell's answer, which never comes: a refusal is prompt.
+    wait_until("the impostor's refusal", || impostor.is_finished());
+    let refused = impostor.join().expect("the client thread");
+    let error = refused.expect_err("a call from a connection that is not GeoClue is refused");
+    assert!(
+        matches!(&error, zbus::Error::FDO(denied) if matches!(**denied, fdo::Error::AccessDenied(_))),
+        "the refusal is AccessDenied: {error:?}"
+    );
+    assert!(
+        host.offers.lock().expect("the offer lock").is_empty(),
+        "no offer reached the shell"
+    );
+
+    // GeoClue itself is still served afterwards.
+    let call = authorize(manager.clone(), agent, "org.example.Real");
+    let (request, proposition) = one_offer(&host);
+    assert_eq!(proposition.request.action_id, "org.example.Real");
+    assert!(location.answer(request, &RequestOutcome::answered(b"8".to_vec())));
+    assert_eq!(answered(call), (true, 8));
 }
