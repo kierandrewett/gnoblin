@@ -45,34 +45,87 @@ pub fn write_frame<W: Write>(writer: &mut W, envelope: &Envelope) -> Result<(), 
 ///
 /// End of stream in the middle of a frame is an error: the peer thought it sent
 /// something and did not, which is a bug worth reporting rather than hiding.
+///
+/// A reader with a read timeout must not use this: a timeout in the middle of a frame drops
+/// the bytes already read and the next call starts inside the frame. Keep one [`FrameAssembler`]
+/// for the stream instead.
 pub fn read_frame<R: Read>(reader: &mut R) -> Result<Option<Envelope>, CodecError> {
-    let mut prefix = [0u8; LENGTH_PREFIX_LEN];
-    let mut filled = 0;
-    while filled < LENGTH_PREFIX_LEN {
-        match reader.read(&mut prefix[filled..]) {
-            Ok(0) if filled == 0 => return Ok(None),
-            Ok(0) => return Err(CodecError::Truncated),
-            Ok(read) => filled += read,
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(CodecError::Io(error)),
-        }
-    }
+    FrameAssembler::default().read(reader)
+}
 
-    let len = u32::from_be_bytes(prefix) as usize;
-    if len > MAX_FRAME_LEN {
-        return Err(CodecError::TooLarge { len });
+/// Reads the frames of one stream and keeps a partial frame across a read that fails.
+///
+/// A role pumps its connection with a read timeout, and a frame is written as its prefix and
+/// then its body, so a timeout can fall between the two or inside the body. The bytes read so
+/// far stay here, and the next [`FrameAssembler::read`] goes on from them, so a timeout loses
+/// nothing and the stream never loses its framing.
+#[derive(Default)]
+pub struct FrameAssembler {
+    prefix: [u8; LENGTH_PREFIX_LEN],
+    /// How many bytes of the prefix have arrived.
+    prefix_filled: usize,
+    /// The body being read, once its prefix is complete, and how many bytes of it have arrived.
+    body: Option<(Zeroizing<Vec<u8>>, usize)>,
+}
+
+/// Shows how far a frame has come and never its bytes: a partial frame may be a secret.
+impl std::fmt::Debug for FrameAssembler {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FrameAssembler")
+            .field("prefix_filled", &self.prefix_filled)
+            .field("body_filled", &self.body.as_ref().map(|(_, filled)| *filled))
+            .finish_non_exhaustive()
     }
-    let mut body = Zeroizing::new(vec![0u8; len]);
-    reader.read_exact(&mut body).map_err(|error| match error.kind() {
-        io::ErrorKind::UnexpectedEof => CodecError::Truncated,
-        _ => CodecError::Io(error),
-    })?;
-    // The body is wiped when this function returns, so the decoded copy is the only one
-    // that outlives it, and `Envelope::drop` wipes that one for a sensitive frame.
-    let mut envelope = Envelope::decode(body.as_slice())?;
-    // A peer cannot make a secret member look plain by sending zero flags.
-    envelope.flag_schema_sensitivity();
-    Ok(Some(envelope))
+}
+
+impl FrameAssembler {
+    /// Read the next frame, or `None` when the peer closed the connection cleanly between frames.
+    ///
+    /// # Errors
+    ///
+    /// Any error `reader` gives, a timeout included, leaves the bytes already read here: call
+    /// again to go on. A length over [`MAX_FRAME_LEN`], a frame cut short by the end of the
+    /// stream and a body that does not decode are refusals of the stream itself.
+    pub fn read<R: Read>(&mut self, reader: &mut R) -> Result<Option<Envelope>, CodecError> {
+        while self.body.is_none() {
+            match reader.read(&mut self.prefix[self.prefix_filled..]) {
+                Ok(0) if self.prefix_filled == 0 => return Ok(None),
+                Ok(0) => return Err(CodecError::Truncated),
+                Ok(read) => self.prefix_filled += read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(CodecError::Io(error)),
+            }
+            if self.prefix_filled == LENGTH_PREFIX_LEN {
+                let len = u32::from_be_bytes(self.prefix) as usize;
+                if len > MAX_FRAME_LEN {
+                    return Err(CodecError::TooLarge { len });
+                }
+                self.body = Some((Zeroizing::new(vec![0u8; len]), 0));
+            }
+        }
+        while let Some((body, filled)) = self.body.as_mut() {
+            if *filled == body.len() {
+                break;
+            }
+            match reader.read(&mut body[*filled..]) {
+                Ok(0) => return Err(CodecError::Truncated),
+                Ok(read) => *filled += read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(CodecError::Io(error)),
+            }
+        }
+        let Some((body, _)) = self.body.take() else {
+            return Ok(None);
+        };
+        self.prefix_filled = 0;
+        // The body is wiped when this function returns, so the decoded copy is the only one
+        // that outlives it, and `Envelope::drop` wipes that one for a sensitive frame.
+        let mut envelope = Envelope::decode(body.as_slice())?;
+        // A peer cannot make a secret member look plain by sending zero flags.
+        envelope.flag_schema_sensitivity();
+        Ok(Some(envelope))
+    }
 }
 
 #[cfg(test)]
@@ -285,5 +338,114 @@ mod any_tests {
     fn a_closed_stream_ends_without_a_frame() {
         let mut reader = std::io::BufReader::new(&b""[..]);
         assert!(read_any(&mut reader).expect("a clean end").is_none());
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use std::io::{self, Read};
+
+    use super::{FrameAssembler, write_frame};
+    use crate::error::CodecError;
+    use crate::{Envelope, Kind};
+
+    /// A stream that hands out a few bytes, then times out, then a few more: what a socket with a read
+    /// timeout does when a frame's prefix and body are written apart.
+    struct Stalling {
+        bytes: Vec<u8>,
+        at: usize,
+        /// Bytes served between two timeouts.
+        burst: usize,
+        served_in_burst: usize,
+    }
+
+    impl Read for Stalling {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if self.at == self.bytes.len() {
+                return Ok(0);
+            }
+            if self.served_in_burst == self.burst {
+                self.served_in_burst = 0;
+                return Err(io::Error::new(io::ErrorKind::TimedOut, "the read timed out"));
+            }
+            let room = (self.burst - self.served_in_burst)
+                .min(buffer.len())
+                .min(self.bytes.len() - self.at);
+            buffer[..room].copy_from_slice(&self.bytes[self.at..self.at + room]);
+            self.at += room;
+            self.served_in_burst += room;
+            Ok(room)
+        }
+    }
+
+    fn frames() -> Vec<Envelope> {
+        vec![
+            Envelope::event("gnoblin", "changes", vec![7u8; 300]),
+            Envelope::request("gnoblin", "portal.ui", 2, b"a prompt".to_vec()),
+            Envelope::reply("gnoblin", "portal.ui", 2, Vec::new()),
+        ]
+    }
+
+    /// Reads every frame of `stream`, going on after each timeout as a pumping role does.
+    fn read_all(stream: &mut Stalling) -> (Vec<Envelope>, usize) {
+        let mut reader = FrameAssembler::default();
+        let mut read = Vec::new();
+        let mut timeouts = 0;
+        loop {
+            match reader.read(stream) {
+                Ok(Some(envelope)) => read.push(envelope),
+                Ok(None) => return (read, timeouts),
+                Err(CodecError::Io(error)) if error.kind() == io::ErrorKind::TimedOut => timeouts += 1,
+                Err(error) => panic!("the stream lost its framing: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_timeout_at_any_byte_of_a_frame_loses_nothing() {
+        // The failure this prevents: the portal pumped its connection with a 20 ms read timeout, a timeout fell
+        // between a frame's prefix and its body, the prefix was dropped, and the body was read as the next length.
+        let mut bytes = Vec::new();
+        for frame in frames() {
+            write_frame(&mut bytes, &frame).expect("a frame");
+        }
+        for burst in 1..=bytes.len().min(40) {
+            let mut stream = Stalling {
+                bytes: bytes.clone(),
+                at: 0,
+                burst,
+                served_in_burst: 0,
+            };
+            let (read, timeouts) = read_all(&mut stream);
+            assert_eq!(read, frames(), "a timeout every {burst} bytes changed the frames");
+            assert!(timeouts > 0 || burst >= bytes.len(), "burst {burst} never timed out");
+        }
+    }
+
+    #[test]
+    fn a_clean_end_between_frames_is_none_and_one_inside_a_frame_is_truncated() {
+        let mut bytes = Vec::new();
+        write_frame(&mut bytes, &frames()[0]).expect("a frame");
+        let mut whole = Stalling {
+            bytes: bytes.clone(),
+            at: 0,
+            burst: usize::MAX,
+            served_in_burst: 0,
+        };
+        let mut reader = FrameAssembler::default();
+        assert!(matches!(reader.read(&mut whole), Ok(Some(envelope)) if matches!(envelope.kind, Some(Kind::Event(_)))));
+        assert!(matches!(reader.read(&mut whole), Ok(None)));
+
+        bytes.truncate(bytes.len() - 1);
+        let mut cut = Stalling {
+            bytes,
+            at: 0,
+            burst: usize::MAX,
+            served_in_burst: 0,
+        };
+        assert!(matches!(
+            FrameAssembler::default().read(&mut cut),
+            Err(CodecError::Truncated)
+        ));
     }
 }

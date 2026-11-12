@@ -353,6 +353,8 @@ const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 pub struct Wire {
     stream: UnixStream,
     reader: std::io::BufReader<UnixStream>,
+    /// The frame being read, which a read deadline may leave half read.
+    frames: gnoblin_proto::FrameAssembler,
 }
 
 impl Wire {
@@ -363,7 +365,11 @@ impl Wire {
     pub fn connect_version(path: &Path, version: gnoblin_proto::Version) -> (Wire, gnoblin_proto::Handshake) {
         let stream = UnixStream::connect(path).expect("the session is listening");
         let reader = std::io::BufReader::new(stream.try_clone().expect("a duplicated socket"));
-        let mut wire = Wire { stream, reader };
+        let mut wire = Wire {
+            stream,
+            reader,
+            frames: gnoblin_proto::FrameAssembler::default(),
+        };
         let hello = gnoblin_proto::Handshake::hello(version);
         {
             let mut writer = &wire.stream;
@@ -389,7 +395,11 @@ impl Wire {
     /// privileged role's end, and returns the wire ready for envelopes.
     pub fn over(stream: UnixStream) -> Wire {
         let reader = std::io::BufReader::new(stream.try_clone().expect("a duplicated socket"));
-        let mut wire = Wire { stream, reader };
+        let mut wire = Wire {
+            stream,
+            reader,
+            frames: gnoblin_proto::FrameAssembler::default(),
+        };
         {
             let mut writer = &wire.stream;
             let hello = gnoblin_proto::Handshake::hello(gnoblin_compositor::version());
@@ -413,7 +423,7 @@ impl Wire {
     /// Reads one frame, or `None` when none arrives before the deadline set by
     /// [`Wire::set_read_timeout`]. A closed connection or a bad frame still panics.
     pub fn receive_within(&mut self) -> Option<gnoblin_proto::Envelope> {
-        match gnoblin_proto::read_frame(&mut self.reader) {
+        match self.frames.read(&mut self.reader) {
             Ok(envelope) => envelope,
             Err(gnoblin_proto::CodecError::Io(error))
                 if matches!(
@@ -451,7 +461,7 @@ impl Wire {
     /// written yet is waited for. Panics naming the missing frame if none arrives.
     pub fn receive(&mut self) -> Option<gnoblin_proto::Envelope> {
         self.await_frame(FRAME_WAIT);
-        gnoblin_proto::read_frame(&mut self.reader).expect("a decodable frame")
+        self.frames.read(&mut self.reader).expect("a decodable frame")
     }
 
     /// Blocks until the reader holds bytes or the connection has closed, polling in

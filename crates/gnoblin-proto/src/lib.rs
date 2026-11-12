@@ -44,7 +44,7 @@ mod version;
 pub use envelope::{FLAG_SENSITIVE, UNKNOWN_MEMBER};
 pub use error::CodecError;
 pub use exit::LOGOUT_EXIT_CODE;
-pub use frame::{LENGTH_PREFIX_LEN, MAX_FRAME_LEN, StreamFrame, read_any, read_frame, write_frame};
+pub use frame::{FrameAssembler, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, StreamFrame, read_any, read_frame, write_frame};
 pub use generated::gnoblin;
 pub use generated::ipc::envelope::Kind;
 pub use generated::ipc::{Envelope, Error, Event, Reply, Request};

@@ -29,6 +29,10 @@
 //! 4. **A peer sends an envelope where a handshake belongs.** The handshake read
 //!    fails on the magic rather than reading four bytes of length prefix as one:
 //!    `an_envelope_is_not_a_handshake`.
+//! 5. **A read times out in the middle of a frame.** A role pumps with a read timeout and a frame is
+//!    written as a prefix and then a body, so the timeout can fall between them. The bytes read so
+//!    far are kept and the next read goes on from them; dropping them would make the body the next
+//!    length prefix and lose the stream's framing: `a_read_timeout_inside_a_frame_loses_nothing`.
 
 use std::io::{self, BufReader, Read, Write};
 use std::os::fd::{BorrowedFd, OwnedFd};
@@ -36,7 +40,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gnoblin_proto::{CodecError, Envelope, HANDSHAKE_LEN, Handshake, read_frame, write_frame};
+use gnoblin_proto::{CodecError, Envelope, FrameAssembler, HANDSHAKE_LEN, Handshake, write_frame};
 
 use crate::error::HandshakeError;
 use crate::transport::Transport;
@@ -80,6 +84,8 @@ pub struct UnixTransport {
     writer: UnixStream,
     /// The reading half, buffered so a length prefix and its body are one call.
     reader: BufReader<UnixStream>,
+    /// The frame being read, which a read timeout may leave half read.
+    frames: FrameAssembler,
 }
 
 impl UnixTransport {
@@ -119,6 +125,7 @@ impl UnixTransport {
         Ok(UnixTransport {
             writer,
             reader: BufReader::new(stream),
+            frames: FrameAssembler::default(),
         })
     }
 
@@ -150,7 +157,7 @@ impl gnoblin_proto::Transport for UnixTransport {
     }
 
     fn receive(&mut self, _fds: &mut Vec<OwnedFd>) -> Result<Option<Envelope>, CodecError> {
-        read_frame(&mut self.reader)
+        self.frames.read(&mut self.reader)
     }
 }
 
@@ -285,6 +292,35 @@ mod tests {
             matches!(&error, CodecError::Io(io) if io.kind() == std::io::ErrorKind::Unsupported),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_read_timeout_inside_a_frame_loses_nothing() {
+        // A frame is written as a prefix and then a body. The portal pumped its connection with a 20 ms read
+        // timeout, the timeout fell between the two, and the body was then read as the next length prefix.
+        let (mut far, mut client) = pair();
+        client
+            .read_timeout(Some(std::time::Duration::from_millis(20)))
+            .expect("a read timeout");
+        let frame = Envelope::event("gnoblin", "changes", vec![9u8; 200]);
+        let mut bytes = Vec::new();
+        write_frame(&mut bytes, &frame).expect("a frame");
+        let (prefix, body) = bytes.split_at(gnoblin_proto::LENGTH_PREFIX_LEN);
+
+        std::io::Write::write_all(&mut far, prefix).expect("the prefix");
+        let early = gnoblin_proto::Transport::receive(&mut client, &mut Vec::new()).expect_err("the body is not here");
+        assert!(
+            matches!(&early, CodecError::Io(io) if matches!(io.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut)),
+            "{early}"
+        );
+        std::io::Write::write_all(&mut far, &body[..50]).expect("half the body");
+        gnoblin_proto::Transport::receive(&mut client, &mut Vec::new()).expect_err("half the body is not a frame");
+        std::io::Write::write_all(&mut far, &body[50..]).expect("the rest");
+
+        let received = gnoblin_proto::Transport::receive(&mut client, &mut Vec::new())
+            .expect("the frame arrives whole")
+            .expect("a frame");
+        assert_eq!(received, frame);
     }
 
     #[test]
