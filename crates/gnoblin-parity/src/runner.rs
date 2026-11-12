@@ -14,16 +14,16 @@ use crate::diff::{Diff, DiffLine};
 use crate::normaliser::Normaliser;
 use crate::report::{Report, ScenarioReport, Verdict};
 use crate::scenario::{Scenario, TargetSpec};
-use crate::target::{Environment, Observations, TargetError};
+use crate::target::{Observations, RunEnvironment, TargetError};
 
 /// Run every `*.toml` scenario in `directory`, in file-name order, with the Mutter reference the process
 /// environment configures.
 pub fn run_directory(directory: &Path) -> Result<Report, RunError> {
-    run_directory_in(directory, &Environment::from_process())
+    run_directory_in(directory, &RunEnvironment::from_process())
 }
 
 /// Run every `*.toml` scenario in `directory`, in file-name order, with the given environment.
-pub fn run_directory_in(directory: &Path, environment: &Environment) -> Result<Report, RunError> {
+pub fn run_directory_in(directory: &Path, environment: &RunEnvironment) -> Result<Report, RunError> {
     let mut report = Report::new();
     for path in scenario_files(directory)? {
         for scenario in run_scenario_file(&path, environment) {
@@ -57,7 +57,7 @@ pub fn scenario_files(directory: &Path) -> Result<Vec<PathBuf>, RunError> {
 /// Run one scenario file: one report row for its target and one for each reference. A file that cannot be loaded
 /// becomes a failing scenario report rather than an error out of the whole run, so one broken file does not hide the
 /// result of the others.
-pub fn run_scenario_file(path: &Path, environment: &Environment) -> Vec<ScenarioReport> {
+pub fn run_scenario_file(path: &Path, environment: &RunEnvironment) -> Vec<ScenarioReport> {
     let label = path.file_stem().map_or_else(
         || path.display().to_string(),
         |stem| stem.to_string_lossy().into_owned(),
@@ -86,7 +86,7 @@ pub fn run_scenario_file(path: &Path, environment: &Environment) -> Vec<Scenario
 
 /// Run an already-loaded scenario against its own target. `base` is the directory a relative recording path is
 /// resolved against.
-pub fn run_scenario(scenario: &Scenario, base: &Path, environment: &Environment) -> ScenarioReport {
+pub fn run_scenario(scenario: &Scenario, base: &Path, environment: &RunEnvironment) -> ScenarioReport {
     if let Some(reason) = &scenario.skip {
         return ScenarioReport::new(
             &scenario.name,
@@ -98,7 +98,7 @@ pub fn run_scenario(scenario: &Scenario, base: &Path, environment: &Environment)
 }
 
 /// Run the scenario's steps against `spec` and compare them with the expectations.
-fn run_against(scenario: &Scenario, spec: &TargetSpec, base: &Path, environment: &Environment) -> ScenarioReport {
+fn run_against(scenario: &Scenario, spec: &TargetSpec, base: &Path, environment: &RunEnvironment) -> ScenarioReport {
     let target = spec.name();
     let failed = |detail: String| {
         ScenarioReport::new(
@@ -317,7 +317,7 @@ id = "windows.list"
             Path::new("<memory>"),
         )
         .expect("scenario parses");
-        let report = run_scenario(&scenario, Path::new("."), &Environment::default());
+        let report = run_scenario(&scenario, Path::new("."), &RunEnvironment::default());
         match report.verdict() {
             Verdict::Skipped { reason } => assert!(reason.contains("Mutter 51")),
             other => panic!("expected a skip, got {other:?}"),
@@ -337,7 +337,7 @@ id = "windows.list"
             Path::new("<memory>"),
         )
         .expect("scenario parses");
-        let report = run_scenario(&scenario, Path::new("."), &Environment::default());
+        let report = run_scenario(&scenario, Path::new("."), &RunEnvironment::default());
         match report.verdict() {
             Verdict::Fail { diff } => {
                 assert!(
@@ -371,7 +371,7 @@ expect = []
             r#"{ "observations": { "windows.list": [] } }"#,
         )
         .expect("write the recording");
-        let report = run_directory_in(&directory, &Environment::default()).expect("the directory loads");
+        let report = run_directory_in(&directory, &RunEnvironment::default()).expect("the directory loads");
         std::fs::remove_dir_all(&directory).expect("remove the scenario directory");
 
         let rows: Vec<(&str, &str)> = report

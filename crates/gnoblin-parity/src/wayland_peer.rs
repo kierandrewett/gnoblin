@@ -31,7 +31,7 @@ pub(crate) struct Tag(u32);
 
 /// What the compositor last told a toplevel.
 #[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct ToplevelState {
+pub(crate) struct ToplevelFocus {
     /// Whether the last configure carried the `activated` state, which is how a client learns it has focus.
     pub activated: bool,
 }
@@ -50,12 +50,12 @@ pub(crate) struct PopupState {
 /// The client's dispatch state.
 #[derive(Default)]
 pub(crate) struct Protocol {
-    toplevels: BTreeMap<Tag, ToplevelState>,
+    toplevels: BTreeMap<Tag, ToplevelFocus>,
     popups: BTreeMap<Tag, PopupState>,
 }
 
 /// A real Wayland client connection, with the globals toplevels and popups need.
-pub(crate) struct Peer {
+pub(crate) struct WaylandPeer {
     target: &'static str,
     queue: EventQueue<Protocol>,
     state: Protocol,
@@ -110,7 +110,7 @@ impl Popup {
     }
 }
 
-impl Peer {
+impl WaylandPeer {
     /// Connects to `socket` and binds the globals a toplevel and a popup need. `target` names the compositor in
     /// an error.
     pub(crate) fn connect(target: &'static str, socket: &Path) -> Result<Self, TargetError> {
@@ -213,7 +213,7 @@ impl Peer {
     }
 
     /// What the compositor last told this toplevel.
-    pub(crate) fn toplevel_state(&self, window: &Toplevel) -> ToplevelState {
+    pub(crate) fn toplevel_state(&self, window: &Toplevel) -> ToplevelFocus {
         self.state.toplevels.get(&window.tag).copied().unwrap_or_default()
     }
 

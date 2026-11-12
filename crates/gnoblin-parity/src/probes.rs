@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
 
 use crate::target::TargetError;
-use crate::wayland_peer::{Peer, Place, Popup, Toplevel};
+use crate::wayland_peer::{Place, Popup, Toplevel, WaylandPeer};
 
 /// How long a probe waits for a change it expects before it reports the state it found.
 const SETTLE: Duration = Duration::from_secs(3);
@@ -49,7 +49,7 @@ pub(crate) fn handles(step: &str) -> bool {
 /// The shared client and the windows and popups the steps keep between them.
 pub(crate) struct Probes {
     target: &'static str,
-    peer: Peer,
+    peer: WaylandPeer,
     windows: BTreeMap<&'static str, Toplevel>,
     popups: BTreeMap<&'static str, Popup>,
 }
@@ -59,7 +59,7 @@ impl Probes {
     pub(crate) fn connect(target: &'static str, socket: &Path) -> Result<Self, TargetError> {
         Ok(Self {
             target,
-            peer: Peer::connect(target, socket)?,
+            peer: WaylandPeer::connect(target, socket)?,
             windows: BTreeMap::new(),
             popups: BTreeMap::new(),
         })

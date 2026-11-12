@@ -208,14 +208,14 @@ fn trim_output(text: &str) -> &str {
 
 /// What a run may use beyond the checked-in files: the launcher of the Mutter reference.
 #[derive(Debug, Clone, Default)]
-pub struct Environment {
+pub struct RunEnvironment {
     /// The program that starts headless Mutter 51 (`GNOBLIN_PARITY_MUTTER51`). Absent means the reference cannot run.
     pub mutter51_launcher: Option<OsString>,
     /// Where the reference's private runtime directory is made (`GNOBLIN_PARITY_RUNTIME_BASE`).
     pub runtime_base: Option<PathBuf>,
 }
 
-impl Environment {
+impl RunEnvironment {
     /// Reads the process environment.
     pub fn from_process() -> Self {
         Self {
@@ -230,7 +230,7 @@ impl TargetSpec {
     ///
     /// `base` is the scenario's own directory, which a recording path is
     /// relative to so a scenario and its fixture move together.
-    pub fn build_target(&self, base: &Path, environment: &Environment) -> Result<Box<dyn Target>, TargetError> {
+    pub fn build_target(&self, base: &Path, environment: &RunEnvironment) -> Result<Box<dyn Target>, TargetError> {
         match self {
             Self::Recorded(path) => {
                 let path = if path.is_absolute() {
@@ -478,7 +478,7 @@ command = { program = "printf", args = ["%s", "not json"], format = "json" }
     #[test]
     fn a_target_that_is_not_implemented_is_rejected() {
         let spec = TargetSpec::MutterGnoblin(LiveOptions {});
-        let Err(error) = spec.build_target(Path::new("."), &Environment::default()) else {
+        let Err(error) = spec.build_target(Path::new("."), &RunEnvironment::default()) else {
             panic!("a target with no implementation must not build");
         };
         assert!(
@@ -490,7 +490,7 @@ command = { program = "printf", args = ["%s", "not json"], format = "json" }
     #[test]
     fn the_mutter_reference_without_a_launcher_is_unavailable_and_names_the_variable() {
         let spec = TargetSpec::Mutter51(LiveOptions {});
-        let Err(error) = spec.build_target(Path::new("."), &Environment::default()) else {
+        let Err(error) = spec.build_target(Path::new("."), &RunEnvironment::default()) else {
             panic!("the reference cannot build without a launcher");
         };
         assert!(matches!(error, TargetError::Unavailable { .. }), "{error}");

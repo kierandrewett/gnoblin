@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_parity::{Environment, Report, ScenarioReport, Verdict, run_directory, run_directory_in};
+use gnoblin_parity::{Report, RunEnvironment, ScenarioReport, Verdict, run_directory, run_directory_in};
 
 fn scenario_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/parity/scenarios")
@@ -20,11 +20,11 @@ fn known_failing_dir() -> PathBuf {
 }
 
 fn run() -> Report {
-    run_directory_in(&scenario_dir(), &Environment::default()).expect("the checked-in scenario directory loads")
+    run_directory_in(&scenario_dir(), &RunEnvironment::default()).expect("the checked-in scenario directory loads")
 }
 
 fn run_known_failing() -> Report {
-    run_directory_in(&known_failing_dir(), &Environment::default()).expect("the known-failing directory loads")
+    run_directory_in(&known_failing_dir(), &RunEnvironment::default()).expect("the known-failing directory loads")
 }
 
 fn find<'report>(report: &'report Report, name: &str) -> &'report ScenarioReport {

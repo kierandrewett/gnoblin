@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 
 use crate::probes::{self, Probes};
 use crate::target::{Observations, Target, TargetError};
-use crate::wayland_peer::{Peer, Toplevel};
+use crate::wayland_peer::{Toplevel, WaylandPeer};
 
 /// The target name the report prints and the errors name.
 const TARGET: &str = "candidate";
@@ -98,7 +98,7 @@ struct CandidateSession {
 
 /// The Wayland client and the toplevel it may have mapped.
 struct Peers {
-    client: Peer,
+    client: WaylandPeer,
     window: Option<Toplevel>,
 }
 
@@ -258,7 +258,7 @@ impl CandidateSession {
     /// Maps a toplevel through a real Wayland client, then reports what `window list`
     /// shows for it: its title, app id, and whether it has focus.
     fn open_window(&mut self) -> Result<Value, TargetError> {
-        let mut client = Peer::connect(TARGET, &self.wayland)?;
+        let mut client = WaylandPeer::connect(TARGET, &self.wayland)?;
         let window = client.map_toplevel(APP_ID, WINDOW_TITLE)?;
         self.peers = Some(Peers {
             client,

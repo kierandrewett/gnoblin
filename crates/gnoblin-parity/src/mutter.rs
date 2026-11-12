@@ -8,7 +8,7 @@
 //! | `GNOBLIN_PARITY_MUTTER51`           | The launcher: `<launcher> <runtime-dir> <display>`. Required; without it the scenario is skipped. |
 //! | `GNOBLIN_PARITY_RUNTIME_BASE`       | The directory the private runtime directory is made in. Default: the system temporary directory. |
 //!
-//! [`crate::target::Environment`] reads both.
+//! [`crate::target::RunEnvironment`] reads both.
 //!
 //! The launcher starts headless Mutter 51 with `XDG_RUNTIME_DIR` set to `<runtime-dir>` and its Wayland socket named
 //! `<display>` inside it, with one virtual monitor, and stays in the foreground until it is killed. The target kills

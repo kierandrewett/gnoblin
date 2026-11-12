@@ -35,4 +35,4 @@ pub use normaliser::Normaliser;
 pub use report::{Report, ScenarioReport, Verdict};
 pub use runner::{RunError, run_directory, run_directory_in, run_scenario, run_scenario_file, scenario_files};
 pub use scenario::{Scenario, ScenarioError};
-pub use target::{CommandTarget, Environment, Observations, RecordedTarget, Target, TargetError};
+pub use target::{CommandTarget, Observations, RecordedTarget, RunEnvironment, Target, TargetError};
