@@ -170,6 +170,76 @@ fn a_request_in_a_namespace_nobody_serves_is_refused() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// `layers.register` was the one verb of the `gnoblin.layers` object, which the session published so a built-in
+/// provider could register a layer above a window. The layer registry is deleted (design/cutover-survey.md 16.1,
+/// lane 8C), so a client that still makes the call is refused, not left waiting: no object of that type is
+/// published, no published object serves the member, and the identity the object had is unknown.
+#[test]
+fn layers_register_is_refused_by_every_object_and_the_layers_object_is_gone() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let window_id = wait_for_listed_id(&session, "Alpha");
+
+    // A reply the session never wrote would block this client for ever, so the read has a deadline: a call that
+    // is not answered fails as a read error, which is not the refusal asserted below.
+    let transport = UnixTransport::connect(session.socket()).expect("the session is listening");
+    transport
+        .read_timeout(Some(std::time::Duration::from_secs(10)))
+        .expect("a read deadline");
+    let mut client = Client::connect(transport, version()).expect("the session accepts this build");
+    let snapshot = client.subscribe(Filter::All).expect("the snapshot");
+
+    let published: Vec<String> = snapshot.objects().iter().map(|view| view.ty().to_string()).collect();
+    assert!(
+        !published.iter().any(|ty| ty == "gnoblin.layers"),
+        "the layers object is not published: {published:?}"
+    );
+
+    // The arguments the deleted schema declared for `register`.
+    let arguments = Fields::from([
+        ("name".to_owned(), Value::Text("badge".to_owned())),
+        ("target".to_owned(), Value::Uint(window_id)),
+    ]);
+    let mut asked = Vec::new();
+    for view in snapshot.objects() {
+        let ty = view.ty().to_string();
+        if !["gnoblin.session", "gnoblin.idle", "gnoblin.window"].contains(&ty.as_str()) {
+            continue;
+        }
+        let error = client
+            .call(view.id(), "register", &arguments)
+            .expect_err("no object serves `register`");
+        match error {
+            gnoblin_client::ClientError::Refused { code, .. } => {
+                assert_eq!(code, gnoblin_client::code::UNKNOWN_MEMBER, "{ty}");
+            }
+            other => panic!("{ty}: expected an unknown-member refusal, got {other:?}"),
+        }
+        asked.push(ty);
+    }
+    for expected in ["gnoblin.session", "gnoblin.idle", "gnoblin.window"] {
+        assert!(
+            asked.iter().any(|ty| ty == expected),
+            "a {expected} object was published to ask: {asked:?}"
+        );
+    }
+
+    // An identity that names no live object is unknown, which is what the layers object's has become.
+    let error = client
+        .call(ObjectId::new(u64::from(u32::MAX)), "register", &arguments)
+        .expect_err("no object has that identity");
+    match error {
+        gnoblin_client::ClientError::Refused { code, .. } => {
+            assert_eq!(code, gnoblin_client::code::OBJECT_UNKNOWN);
+        }
+        other => panic!("expected an object-unknown refusal, got {other:?}"),
+    }
+
+    wayland.destroy(window);
+    session.stop().expect("the session stops cleanly");
+}
+
 #[test]
 fn an_ipc_peer_that_dies_does_not_stop_the_compositor() {
     let session = Session::start();

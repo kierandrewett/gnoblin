@@ -17,6 +17,12 @@
 //! work-area constraint of its own. The two meet at exactly one point, the reserved
 //! insets, which is the same seam a configuration's monitor insets would use.
 //!
+//! Nor is it a record in a registry. A layer registry once named every surface and nothing read the names back:
+//! stacking, hit testing, zones and keyboard never consulted it, so it was deleted
+//! (`design/cutover-survey.md` 16.1). What the session knows of a layer surface is
+//! `SessionSnapshot::layers`: its namespace, layer, rectangle, zone and whether it is mapped. The protocol owns
+//! the rest.
+//!
 //! ## Drawing
 //!
 //! This slice composes application windows; a layer surface's buffer is not in the
@@ -54,6 +60,20 @@
 //! 6. **A layer surface reserves against an output that is gone.** A disconnected
 //!    output drops its reservation and its surfaces' rectangles instead of leaving a
 //!    strip reserved for ever: `a_disconnected_output_reserves_nothing`.
+//! 7. **A surface that moves to another layer is still published in the old one.** The next commit carries the
+//!    layer, and the published entry follows it without a second entry or a moved strip —
+//!    `a_surface_that_changes_layer_is_published_in_the_one_it_moved_to`.
+//! 8. **Two surfaces in one namespace collide.** A namespace is the client's name for its surface, not a key, so
+//!    two surfaces may share it: both are kept, each reserves its own strip, and the first to exit gives back
+//!    only its own — `two_bars_in_one_namespace_each_keep_their_own_strip`.
+//! 9. **A surface below the shell layer holds the keyboard.** Only top and overlay surfaces are granted
+//!    exclusive focus, and a window that may take focus gets the keyboard from a bottom one —
+//!    `a_top_layer_surface_holds_the_keyboard_from_a_window_that_may_take_focus` and
+//!    `a_bottom_layer_surface_does_not_hold_the_keyboard_from_a_window`.
+//! 10. **A bar's menu is placed against the monitor instead of the bar.** The popup is configured where its
+//!     positioner put it, measured from the bar, and a reposition keeps it inside the bar's rectangle —
+//!     `a_popup_of_a_bar_is_placed_against_the_bar` and
+//!     `a_popup_of_a_bar_that_is_repositioned_stays_inside_the_bar`.
 
 use gnoblin_types::{Edge, Insets, OutputId, Rect};
 use smithay::output::Output as SmithayOutput;

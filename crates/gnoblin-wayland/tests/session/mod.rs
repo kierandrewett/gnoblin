@@ -325,6 +325,12 @@ pub struct App {
     pub layer_serial: Option<u32>,
     /// Whether the server told a layer surface it is closed.
     pub layer_closed: bool,
+    /// The position and size of the last popup configure, relative to its parent's window geometry.
+    pub popup_placed: Option<(i32, i32, i32, i32)>,
+    /// The token of the last `xdg_popup.repositioned`, which answers a `reposition` request.
+    pub popup_repositioned: Option<u32>,
+    /// Whether the server dismissed a popup.
+    pub popup_done: bool,
     /// The minted activation token, once `xdg_activation_token_v1.done` arrived.
     pub token: Option<String>,
     /// The mime types of the current clipboard offer, or `None` for no selection.
@@ -538,6 +544,40 @@ impl Client {
         let layer_surface = shell.get_layer_surface(&surface, None, layer, namespace.to_owned(), &self.qh, ());
         LayerWindow { surface, layer_surface }
     }
+
+    /// A positioner for a popup, built the way `place` says.
+    pub fn positioner(&self, place: &PopupPlace) -> xdg_positioner::XdgPositioner {
+        let positioner = self.wm_base.create_positioner(&self.qh, ());
+        positioner.set_size(place.size.0, place.size.1);
+        let (x, y, width, height) = place.anchor_rect;
+        positioner.set_anchor_rect(x, y, width, height);
+        positioner.set_anchor(place.anchor);
+        positioner.set_gravity(place.gravity);
+        positioner.set_constraint_adjustment(place.constraint_adjustment);
+        positioner
+    }
+
+    /// Creates a popup of a layer surface, takes its first configure and maps it with a buffer of the size it
+    /// asked for.
+    ///
+    /// A layer surface's popup has no xdg parent: the client creates it with none and hands it to the layer
+    /// surface, which is how the protocol makes a bar's menu.
+    pub fn layer_popup(&mut self, bar: &LayerWindow, place: &PopupPlace) -> Popup {
+        let positioner = self.positioner(place);
+        let surface = self.compositor.create_surface(&self.qh, ());
+        let xdg_surface = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
+        let popup = xdg_surface.get_popup(None, &positioner, &self.qh, ());
+        positioner.destroy();
+        bar.layer_surface.get_popup(&popup);
+        surface.commit();
+        self.wait_until("the popup's first configure", |state| state.popup_placed.is_some());
+        self.attach_buffer(&surface, place.size.0, place.size.1);
+        Popup {
+            surface,
+            xdg_surface,
+            popup,
+        }
+    }
 }
 
 /// The objects of one toplevel.
@@ -559,6 +599,38 @@ impl LayerWindow {
         let serial = client.state.layer_serial.expect("a layer configure arrived");
         self.layer_surface.ack_configure(serial);
     }
+}
+
+/// What a popup asks its positioner for.
+pub struct PopupPlace {
+    /// The anchor rectangle in the parent's window geometry: x, y, width, height.
+    pub anchor_rect: (i32, i32, i32, i32),
+    /// The popup's size.
+    pub size: (i32, i32),
+    pub anchor: xdg_positioner::Anchor,
+    pub gravity: xdg_positioner::Gravity,
+    /// How the compositor may move the popup to keep it where it belongs.
+    pub constraint_adjustment: xdg_positioner::ConstraintAdjustment,
+}
+
+impl PopupPlace {
+    /// A popup of `size` whose top left corner is at (`x`, `y`) in its parent's window geometry.
+    pub fn at(x: i32, y: i32, size: (i32, i32)) -> Self {
+        Self {
+            anchor_rect: (x, y, 1, 1),
+            size,
+            anchor: xdg_positioner::Anchor::TopLeft,
+            gravity: xdg_positioner::Gravity::BottomRight,
+            constraint_adjustment: xdg_positioner::ConstraintAdjustment::None,
+        }
+    }
+}
+
+/// The objects of one popup.
+pub struct Popup {
+    pub surface: wl_surface::WlSurface,
+    pub xdg_surface: xdg_surface::XdgSurface,
+    pub popup: xdg_popup::XdgPopup,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
@@ -926,7 +998,25 @@ wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);
 wayland_client::delegate_noop!(App: ignore wl_output::WlOutput);
 wayland_client::delegate_noop!(App: ignore xdg_positioner::XdgPositioner);
-wayland_client::delegate_noop!(App: ignore xdg_popup::XdgPopup);
+
+impl Dispatch<xdg_popup::XdgPopup, ()> for App {
+    fn event(
+        state: &mut Self,
+        _: &xdg_popup::XdgPopup,
+        event: <xdg_popup::XdgPopup as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            xdg_popup::Event::Configure { x, y, width, height } => state.popup_placed = Some((x, y, width, height)),
+            xdg_popup::Event::Repositioned { token } => state.popup_repositioned = Some(token),
+            xdg_popup::Event::PopupDone => state.popup_done = true,
+            _ => {}
+        }
+    }
+}
+
 wayland_client::delegate_noop!(App: ignore wl_data_device_manager::WlDataDeviceManager);
 wayland_client::delegate_noop!(App: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
 wayland_client::delegate_noop!(App: ignore xdg_activation_v1::XdgActivationV1);

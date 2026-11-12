@@ -498,3 +498,25 @@ fn the_layers_section_is_refused_with_the_migration_rather_than_a_typo_hint() {
         other => panic!("expected an explanation, got {other:?}"),
     }
 }
+
+#[test]
+fn a_committed_document_that_sets_layers_is_refused_with_the_sentence_a_user_reads() {
+    // The runtime commits a document as JSON bytes, so this is the text a person who still has the table sees.
+    let error = Config::from_json_bytes(br#"{"layers":{"gnoblin.portals":{"secure":true}}}"#)
+        .expect_err("the removed table is refused");
+    assert!(
+        error.starts_with("layers: no longer supported; the layer registry was deleted"),
+        "{error}"
+    );
+    assert!(error.contains("delete it"), "what to do is said: {error}");
+    assert!(error.contains("wlr-layer-shell"), "the replacement is named: {error}");
+    assert!(
+        !error.contains("unknown setting"),
+        "it is not also reported as a typo: {error}"
+    );
+    assert_eq!(
+        error.lines().count(),
+        1,
+        "one table is wrong, one line says so: {error}"
+    );
+}
