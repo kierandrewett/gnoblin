@@ -10,19 +10,7 @@ owner-slice = "docs wrong"
 
 [[allow]]
 name = ":begin_move"
-doc = "docs/shell-api/grants.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = ":begin_move"
 doc = "docs/shell-api/windows.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = ":begin_resize"
-doc = "docs/shell-api/grants.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
 
@@ -73,12 +61,6 @@ name = ":inspect_animation"
 doc = "docs/shell-api/appearance-animations.md"
 reason = "documented, not implemented; Visuals, tweens and named animations (S7)"
 owner-slice = "S7"
-
-[[allow]]
-name = ":narrow"
-doc = "docs/shell-api/grants.md"
-reason = "documented, not implemented; Request lifecycle and grants in Lua (S6)"
-owner-slice = "S6"
 
 [[allow]]
 name = ":narrow"
@@ -399,12 +381,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.input"
-doc = "docs/shell-api/grants.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
 name = "gnoblin.input.current_source"
 doc = "docs/shell-api/input.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
@@ -484,12 +460,6 @@ owner-slice = "S6"
 
 [[allow]]
 name = "gnoblin.input.on"
-doc = "docs/shell-api/grants.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.on"
 doc = "docs/shell-api/input-handlers.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
@@ -545,12 +515,6 @@ owner-slice = "docs wrong"
 [[allow]]
 name = "gnoblin.input.sources"
 doc = "docs/shell-api/input.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.input.text_target"
-doc = "docs/shell-api/grants.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
 
@@ -784,12 +748,6 @@ owner-slice = "S8"
 
 [[allow]]
 name = "gnoblin.shortcut.activated"
-doc = "docs/shell-api/grants.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
-
-[[allow]]
-name = "gnoblin.shortcut.activated"
 doc = "docs/shell-api/processes.md"
 reason = "documented, not implemented; Shortcuts and keybindings (S8)"
 owner-slice = "S8"
@@ -803,12 +761,6 @@ owner-slice = "S8"
 [[allow]]
 name = "gnoblin.shortcut.activated"
 doc = "docs/shell-api/windows.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
-
-[[allow]]
-name = "gnoblin.shortcut.binding"
-doc = "docs/shell-api/grants.md"
 reason = "documented, not implemented; Shortcuts and keybindings (S8)"
 owner-slice = "S8"
 
@@ -856,12 +808,6 @@ owner-slice = "S8"
 
 [[allow]]
 name = "gnoblin.shortcut.session.key"
-doc = "docs/shell-api/grants.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
-
-[[allow]]
-name = "gnoblin.shortcut.session.key"
 doc = "docs/shell-api/keyboard-shortcuts.md"
 reason = "documented, not implemented; Shortcuts and keybindings (S8)"
 owner-slice = "S8"
@@ -869,12 +815,6 @@ owner-slice = "S8"
 [[allow]]
 name = "gnoblin.shortcuts.actions"
 doc = "docs/shell-api/keyboard-shortcuts.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
-
-[[allow]]
-name = "gnoblin.shortcuts.bind"
-doc = "docs/shell-api/grants.md"
 reason = "documented, not implemented; Shortcuts and keybindings (S8)"
 owner-slice = "S8"
 
@@ -928,21 +868,9 @@ owner-slice = "S2"
 
 [[allow]]
 name = "gnoblin.window.menu"
-doc = "docs/shell-api/grants.md"
-reason = "documented, not implemented; Global event bus (S2)"
-owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.window.menu"
 doc = "docs/shell-api/windows.md"
 reason = "documented, not implemented; Global event bus (S2)"
 owner-slice = "S2"
-
-[[allow]]
-name = "gnoblin.windows.snap_context"
-doc = "docs/shell-api/grants.md"
-reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
-owner-slice = "docs wrong"
 
 [[allow]]
 name = "gnoblin.windows.snap_context"
@@ -1123,12 +1051,6 @@ name = "gnoblin.focus.policy-changed"
 doc = "docs/shell-api/focus-activation.md"
 reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remove it from the docs"
 owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.shortcut.binding-activated"
-doc = "docs/shell-api/grants.md"
-reason = "documented, not implemented; Shortcuts and keybindings (S8)"
-owner-slice = "S8"
 
 [[allow]]
 name = "gnoblin.session.activity-changed"

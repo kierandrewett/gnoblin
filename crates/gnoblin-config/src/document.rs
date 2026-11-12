@@ -153,13 +153,15 @@ impl Config {
                         "window rules and workspace sets are Lua tables in the shell files: set seat.data.window_rules and seat.data.workspace_sets in ~/.config/gnoblin/shell.lua (see docs/user-shell.md)",
                     );
                 }
-                removed(
-                    entries,
-                    "extensions",
-                    &root,
-                    &mut out,
-                    "the extension tier was removed: delete the table, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
-                );
+                for key in ["extensions", "extension-dirs", "extension_dirs"] {
+                    removed(
+                        entries,
+                        key,
+                        &root,
+                        &mut out,
+                        "the extension tier was removed: delete the setting, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
+                    );
+                }
                 removed(
                     entries,
                     "frame-renderers",

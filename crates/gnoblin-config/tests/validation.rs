@@ -167,6 +167,28 @@ fn the_extensions_section_is_refused_with_the_migration_rather_than_a_typo_hint(
 }
 
 #[test]
+fn an_extension_directory_list_is_refused_with_the_migration_in_either_spelling() {
+    // The old design searched `extension_dirs` for packages; the key never had a TOML home, so a document that
+    // carries it was written for a tier that no longer exists, and a typo hint would send it to a key that is not there.
+    for key in ["extension-dirs", "extension_dirs"] {
+        let document = table([(key, list(vec![text("/usr/share/gnoblin/extensions")]))]);
+        let problems = problems(document);
+        assert_eq!(problems.len(), 1, "`{key}`: one key is wrong, got {problems:?}");
+        assert_eq!(problems[0].0, key);
+        match &problems[0].1 {
+            Fault::Removed { detail } => {
+                assert!(detail.contains("extension tier was removed"), "`{key}`: {detail}");
+                assert!(
+                    detail.contains("require"),
+                    "`{key}`: the replacement is named: {detail}"
+                );
+            }
+            other => panic!("`{key}`: expected an explanation, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn the_frame_renderers_section_is_refused_with_the_migration_rather_than_a_typo_hint() {
     let document = table([(
         "frame-renderers",

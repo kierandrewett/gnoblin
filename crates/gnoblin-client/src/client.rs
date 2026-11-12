@@ -445,8 +445,8 @@ impl<T: Transport> Client<T> {
     /// Commit a configuration document, returning the revision the compositor
     /// assigned.
     ///
-    /// Privileged: the compositor answers [`crate::code::DENIED`] when this connection
-    /// does not hold `commit-config`. The document is opaque to the compositor, which
+    /// Owner-only: the compositor answers [`crate::code::DENIED`] when this connection
+    /// is not the session owner's. The document is opaque to the compositor, which
     /// holds the last accepted one for as long as it runs: that is what makes a
     /// runtime restart cost nothing but the reload. A caller that reports to a user
     /// calls [`Client::commit_config_reporting`], which also returns the settings the

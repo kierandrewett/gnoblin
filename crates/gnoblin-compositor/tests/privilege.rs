@@ -1,8 +1,8 @@
-//! The privileged connection: what it grants, and what the socket never does.
+//! The privileged connection: what the owner's connection may call, and what the socket never does.
 //!
-//! Design/rust-compositor.md, "One IPC": "The runtime and services connect over an inherited
-//! file descriptor that carries extra capabilities: trusted input contexts, input policy
-//! decisions, request handling and configuration commits." These tests drive that over a real
+//! Design/rust-compositor.md, "One IPC": the runtime and services connect over an inherited
+//! file descriptor, and that connection is the session owner's: it alone may commit
+//! configuration, claim slots and answer requests. These tests drive that over a real
 //! socket pair and a real socket: the role's end is a `UnixStream` the test holds, the
 //! compositor's end is the same process's other half, and every client is the real client
 //! library.

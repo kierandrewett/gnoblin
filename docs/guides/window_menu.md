@@ -11,7 +11,7 @@ The event includes:
 - `menu_type`: `wm` for a window-manager menu or `app` for an application menu;
 - `x` and `y`: requested menu position in global logical coordinates.
 
-For a window-manager menu, a Lua callback receives a [`grant`](/shell-api/grants) in `event.grant`. Use it with
+For a window-manager menu, a Lua callback receives a `grant` in `event.grant`. Use it with
 `window:begin_move(event.grant)` or `window:begin_resize(edge, event.grant)` on `event.grant.window` if the shell
 offers those actions.
 

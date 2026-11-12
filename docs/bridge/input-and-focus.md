@@ -263,7 +263,7 @@ validated a second config.
 
 ### API 1.68: modal key focus contexts
 
-- Lua listeners may receive a [`Grant`](/shell-api/grants). API 1.68 socket clients
+- Lua listeners may receive a `Grant`. API 1.68 socket clients
   may receive `focus_context`, a token bound to their connection.
 - Gnoblin issues a context only for real, non-repeated key presses and
   releases. Synthetic and input-method events are excluded.

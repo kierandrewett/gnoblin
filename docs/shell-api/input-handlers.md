@@ -64,7 +64,7 @@ Gesture events include `dx`, `dy`, and `fingers`; pinch events also include
 
 Touch events include the integer `slot` identifying their current contact.
 
-A button press over a window can include a typed `window` and a [`grant`](/shell-api/grants)
+A button press over a window can include a typed `window` and a `grant`
 for window operations. The window is absent over the desktop or a
 layer surface. Check for both fields before starting a window operation.
 

@@ -8,7 +8,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 
 ## API domains
 
-- [Windows](/shell-api/windows): live window objects, window actions, menu requests and grants.
+- [Windows](/shell-api/windows): live window objects, window actions and menu requests.
 - [Find objects](/shell-api/find): select windows, workspaces, outputs and other objects by field or by predicate.
 - [Focus and activation](/shell-api/focus-activation): focus policy, history, activation tokens, and trusted contexts.
 - [Workspaces](/shell-api/workspaces): state and operations.
@@ -19,7 +19,6 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Input](/shell-api/input): devices, sources, and orientation lock.
 - [Input handlers](/shell-api/input-handlers): handle local pointer, keyboard, and gesture events.
 - [Keyboard grabs](/shell-api/input-grab): take every key for a shell, with composed text and a lease that expires.
-- [Grants](/shell-api/grants): the proof of a user gesture that focus, move, resize, snap and text insertion need.
 - [Text insertion](/shell-api/text-insertion): insert text into a focused Wayland client.
 - [Window snapping](/shell-api/window-snapping): arrange a window from a trusted grant.
 - [Tablet-pad help](/shell-api/tablet-pad-help): receive tablet help requests.

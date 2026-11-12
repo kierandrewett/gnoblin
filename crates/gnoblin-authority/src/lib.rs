@@ -1,14 +1,15 @@
-//! Pure attribution, activation and grant rules.
+//! Pure launch attribution, activation and consent rules.
 //!
 //! This crate decides who may take focus and who may capture or inject input,
 //! with no compositor in it: no Smithay
 //! type, no socket, no `/proc` read and no clock. The compositor supplies every
 //! [`gnoblin_types::Tick`], every identifier and every event, so a decision replays exactly.
 //!
-//! It replaces the `FocusContext`, `MenuContext`, `WindowDrag`, `SnapContext` and
-//! `TextTarget` rules of `src/config/lua/gnoblin-lua-contexts.c` and
-//! `src/control/gnoblin-control-focus.c` (design/rust-compositor.md, "Authority:
-//! `gnoblin-authority`").
+//! It holds two machines: launch tokens and activation, which keep an application from
+//! stealing focus, and the user's consent for screen capture and remote input. The
+//! gesture-context machine that once proved a user gesture to a script was deleted: the
+//! shell is trusted Lua, and the compositor takes no gesture proof from it
+//! (design/rust-compositor.md, "Authority: `gnoblin-authority`").
 //!
 //! # The three rules
 //!
@@ -22,9 +23,10 @@
 //!   reused rather than looking like a forgery, and a token cannot outlive
 //!   [`gnoblin_types::Tick::saturating_add`] of its issue time no matter how long the machine is idle.
 //! - **Grants need consent from `portal.ui`.** A capture or input grant exists
-//!   per caller and per capability with a [`Consent`] state, and D14 makes the
-//!   missing-provider case a refusal: no client claiming `portal.ui` means no
-//!   prompt, no grant and an error the caller can act on.
+//!   per caller and per capability with a [`Consent`] state. The provider that
+//!   claims `portal.ui` is the built-in dialog or a shell, and a request with
+//!   no provider at all is refused: no prompt, no grant and an error the caller
+//!   can act on.
 //!
 //! # Failure modes first
 //!

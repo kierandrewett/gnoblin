@@ -155,7 +155,7 @@ the grab lease.
 
 A session belongs to a gesture of the user: it starts when the user holds a key and ends when the user lets go. The 10
 seconds only guard against a lost key release. No script owns a session, so nothing can renew it. Its events carry a
-[`grant`](/shell-api/grants) for a trusted shortcut.
+`grant` for a trusted shortcut.
 
 The two cannot share a lease. A lease that a script renews would let a script hold a session open for ever, and a grab
 that gives a `grant` would let a script move windows without a user gesture. They have different owners and

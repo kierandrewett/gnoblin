@@ -154,7 +154,7 @@ To disable an imported binding, set its named declaration to
 the earlier callback.
 
 The event contains the window under the pointer, its frame geometry, and the
-pointer's stage coordinates `pointer.x` and `pointer.y`. Its [`grant`](/shell-api/grants) authorizes
+pointer's stage coordinates `pointer.x` and `pointer.y`. Its `grant` authorizes
 a move or resize of that window during the trusted input interaction.
 
 These gestures operate on Wayland and Xwayland application windows,

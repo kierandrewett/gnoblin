@@ -3,6 +3,12 @@
 Status: **proposal, 2026-11-08.** Not decided. Kieran confirms the open points in
 section 6 and the decision row D32 in `design/rust-compositor.md`.
 
+> **Retracted in part (survey 16.3, lane 10).** The D22 extension tier this proposal hangs its observe and veto
+> hooks on is deleted: there is no extension manifest, no grants frame and no `config.extensions`. Section 3 and
+> every option that has an extension register an interceptor describe the deleted tier. The audit record of
+> privileged requests does not depend on it. An interceptor would need a new design on the node tree and the owner
+> connection, and a new owner decision, before anyone builds it.
+
 Source of the idea: Kieran's review of the privileged-request audit log. He said it
 "probably suited better as an API that allows people to create an extension to intercept
 requests and log before it". This document treats that as two questions: how a privileged

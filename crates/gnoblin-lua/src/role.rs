@@ -4,10 +4,9 @@
 //! fault in a script is a restart of this process rather than the end of the session.
 //! This module is the role `gnoblin --role runtime` plays:
 //!
-//! 1. Adopt the privileged connection the guardian passed, and connect. The handshake
-//!    grants `commit-config` and `input-policy`; the runtime is the only process that
-//!    knows what a configuration document means, so it is the only one allowed to commit
-//!    one.
+//! 1. Adopt the privileged connection the guardian passed, and connect. It is the owner's
+//!    connection, so the runtime may commit configuration; the runtime is the only process that
+//!    knows what a configuration document means, so it is the only one that does.
 //! 2. Locate, evaluate and validate `init.lua` through the configuration layer.
 //! 3. Commit the validated document, and report the revision it was given to the guardian.
 //! 4. Report readiness, then serve: pump the host's handlers on the caller's clock until

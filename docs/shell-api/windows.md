@@ -105,7 +105,7 @@ Each method returns an `Operation` handle.
 | `window:present()`                | None                                      | Focus a window of a process the runtime started.                                                 |
 
 Record properties remain read-only. In the native runtime,
-`Window:focus(grant)` requests focus with the [`grant`](/shell-api/grants) of
+`Window:focus(grant)` requests focus with the `grant` of
 an event such as `gnoblin.shortcut.activated`. The callback provides that value only for a
 trusted key press, pointer binding or window menu request. It expires after five seconds.
 A successful focus operation completes with `{id = window.id}`.
@@ -191,7 +191,7 @@ receive events with those names.
 
 > **Status:** not available yet: `menu_type` and `event.grant`. The menu's grant sentences below describe the target.
 
-For `menu_type == "wm"`, Lua receives a [`grant`](/shell-api/grants) in `event.grant`.
+For `menu_type == "wm"`, Lua receives a `grant` in `event.grant`.
 In that callback, call `window:begin_move(event.grant)` or
 `window:begin_resize(edge, event.grant)` on the window that raised the menu
 (`event.grant.window`) to start Mutter's keyboard grab on it.

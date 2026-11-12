@@ -55,7 +55,7 @@ phase, and time. Its phase is `press` or `release`.
 
 Real, non-repeated input may include a `grant` (`focus_context` on the socket).
 Synthetic and input-method events do not carry authority. The
-[grant](/shell-api/grants) lasts five seconds and lets each focus-sensitive
+grant lasts five seconds and lets each focus-sensitive
 compositor operation run once.
 
 For configured command shortcuts, `gnoblin.shortcut.activated` reports the

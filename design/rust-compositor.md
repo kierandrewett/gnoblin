@@ -131,7 +131,7 @@ flowchart TB
     subgraph Policy["Policy core (pure crates)"]
         WM["gnoblin-wm: stacking, focus, workspaces, placement, snapping, rules, layout hosting"]
         Lock["gnoblin-lock: session lock state machine"]
-        Auth["gnoblin-authority: attribution, grants, activation"]
+        Auth["gnoblin-authority: launch attribution, activation, consent"]
         Model["gnoblin-model: object graph, revisions, signals"]
     end
     subgraph Mechanism["Mechanism (engine crates)"]
@@ -483,7 +483,7 @@ gnoblin/
     gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
     gnoblin-wm/               deleted in lane W6: window state is `gnoblin-wayland/src/fallback.rs`, policy is the stock Lua shell
     gnoblin-lock/             pure session lock and protection cover state machine
-    gnoblin-authority/        pure attribution, activation and capability grant rules (D22)
+    gnoblin-authority/        pure launch attribution, activation tokens and user consent for capture and remote input
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol; dynamic globals from provider XML at run time (D22)
     gnoblin-render/           scene graph, effects, user shaders, animation and tween player, damage
     gnoblin-cursor/           pointer themes: the ordered D20 provider chain (Hyprcursor, SVG layout, Xcursor), theme lookup, image decoding, built-in arrow, shape names
@@ -1084,23 +1084,28 @@ failure-mode list that must be complete before isolated tests or code.
 ### Authority: `gnoblin-authority`
 
 - **Owns:** launch attribution (session leader and activation token, not app
-  ID), activation tokens, scoped grants. The gesture-context machine (trusted
-  input contexts for pointer, key and touch gestures) was deleted (survey 10B).
-- **Replaces:** `FocusContext`, `MenuContext`, `WindowDrag`, `SnapContext`,
-  `TextTarget` rules in `src/config/lua/gnoblin-lua-contexts.c` and
-  `src/control/gnoblin-control-focus.c`.
+  ID), activation tokens, and the user's consent for screen capture and remote
+  input (`portal.ui` prompt state, one consent per caller and capability). The
+  gesture-context machine (trusted input contexts for pointer, key and touch
+  gestures) was deleted (survey 10B): the shell is trusted Lua, and a script
+  proves nothing to the compositor by holding a gesture.
+- **Consent stays (D35).** D35 deletes capability gates, not the user's consent.
+  The decision is made in the portal process (`xdg-desktop-portal-gnoblin`
+  `consent.rs` over `Authority`, or a shell that claims `portal.ui`). The
+  portal then reports the answer to the compositor over the owner connection
+  (`remote.grant`, `remote.refuse`, `remote.connect`, `remote.end`, `cast.grant`,
+  `cast.start`, `cast.end`), and the compositor enforces it: the EIS endpoint is
+  default deny and `EisGate::grant_session` opens a per-session socket, and the
+  capture table refuses a stream with no granted session. Those members are
+  owner-only (`requires_owner`), so no other connection can assert consent.
 - **Failure modes first:** a token is reused; a token outlives its expiry; a
   child process inherits authority it should not; a client claims another's app
-  ID to get focus.
-- **Extension grants (D22):** the pure grant check and its never-grantable list
-  live here. A capability is granted only when host configuration lists it for
-  that extension. Lock embargo, session-lock bypass, authority and launch
-  attribution forging, and secret-marked frames are never grantable.
+  ID to get focus; a connection that is not the owner's asserts consent.
 
 ### Object model and IPC: `gnoblin-model`, `gnoblin-proto`, `gnoblin-client`, `gnoblinctl`
 
 - **Owns:** the object graph, revisions, property diffs, signals, `Operation`
-  handling, error codes, the handshake (with the Grants frame), the single
+  handling, error codes, the handshake (the accept frame is the whole preamble), the single
   extension envelope and stock `extension` surface, IPC 0.2.0, client library and CLI.
 - **Replaces:** `src/control` publication and dispatch, the runtime packet
   protocol, `src/cli`.
@@ -1683,6 +1688,8 @@ Each section below records the choice, its consequences, and the options conside
 | D35 | Node API                     | **Proposed 2026-11-08, for Kieran to confirm:** one public scene tree of twelve node types replaces the window manager's placement, stacking and focus policy, the layout engine, layer bands, roles and grants; the shell is trusted Lua; D17, D22, D25 and D33 retracted and D34 folded in. See `node-api-refactor.md`.               |
 
 See `node-core.md` for the D35 step 3 protocol and schema contract.
+
+D35 deletes capability gates and grants: there is no capability set, no grants frame and no extension tier, and the owner's connection is the one trust edge. It does not delete user consent. Consent for screen capture and remote input stays, as the decision in the portal process and the enforcement in the compositor, joined by owner-only IPC members (see "Authority: `gnoblin-authority`"). A shell replaces the built-in dialog by claiming `portal.ui` (D19); no claimant means the built-in dialog serves the request, never a refusal.
 
 ### D1: where scripts run
 

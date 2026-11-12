@@ -121,6 +121,7 @@ const FOLDED = {
     "config/runtime-api": "shell-api",
     "focus-transfer": "shell-api/focus-activation",
     "launch-feedback": "shell-api/launch-feedback",
+    "shell-api/grants": "shell-api",
     "shell-dbus-api": "dbus",
     "shell-api/workspaces-monitors": "shell-api/workspaces",
 };

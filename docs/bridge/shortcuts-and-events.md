@@ -88,7 +88,7 @@ was revoked. The first connection that uses a gesture keeps it; other connection
 
 Config reloads, session locks, subscription changes, and disconnects revoke
 socket tokens. Native Lua `Window:focus(grant)` uses its protected
-[`Grant`](/shell-api/grants) instead of a socket token.
+`Grant` instead of a socket token.
 
 Any compositor-socket client can focus a listed window with an XDG Activation
 token. The client must create the token after user input on one of its Wayland

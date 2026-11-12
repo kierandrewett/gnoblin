@@ -365,3 +365,71 @@ fn another_connection_can_neither_connect_nor_end_a_session_it_did_not_decide() 
         .remote_connect("/session/1")
         .expect("the holder is untouched by the other connection's attempts");
 }
+
+/// The uid this test process runs as, which a real session reads as the owner's.
+fn own_uid() -> u32 {
+    use std::os::unix::fs::MetadataExt as _;
+    std::fs::metadata("/proc/self").expect("the process directory").uid()
+}
+
+#[test]
+fn a_connection_that_is_not_the_owner_cannot_assert_the_users_consent() {
+    // The failure this prevents: a program that is not the session owner's connection tells the compositor
+    // the user approved a remote desktop or a screen cast, and gets a socket that types into the session. The
+    // table test lists the seven members; this shows the dispatcher refuses them on a live socket, and that
+    // the refusal recorded nothing the owner's later request could trip over.
+    let foreign = own_uid().wrapping_add(1);
+    let (session, mut ends) = Session::start_privileged_configured(&["runtime"], |config| {
+        config.ipc_owner_uid = Some(foreign);
+    });
+    let (_, owner_end) = ends.remove(0);
+    let mut owner = IpcClient::connect(
+        UnixTransport::from_stream(owner_end).expect("a transport"),
+        gnoblin_compositor::version(),
+    )
+    .expect("the owner's connection is accepted");
+    let mut outsider = portal(&session);
+
+    fn refused_as_not_owner<T: std::fmt::Debug>(outcome: Result<T, ClientError>, member: &str) {
+        match outcome {
+            Err(ClientError::Refused { code, message, .. }) => {
+                assert_eq!(code, wire::code::DENIED, "{member}: refused with the wrong code");
+                assert!(
+                    message.contains("session owner"),
+                    "{member}: the refusal names the owner gate, got `{message}`"
+                );
+            }
+            other => panic!("{member}: a connection that is not the owner's was served, got {other:?}"),
+        }
+    }
+    refused_as_not_owner(outsider.remote_grant("/session/1", DEVICE_KEYBOARD), "remote.grant");
+    refused_as_not_owner(outsider.remote_refuse("/session/1"), "remote.refuse");
+    refused_as_not_owner(outsider.remote_connect("/session/1"), "remote.connect");
+    refused_as_not_owner(outsider.remote_end("/session/1"), "remote.end");
+    refused_as_not_owner(
+        outsider.cast_grant("/session/1", wire::CastSource::Output(wire::OUTPUT_FIRST)),
+        "cast.grant",
+    );
+    refused_as_not_owner(outsider.cast_start("/session/1"), "cast.start");
+    refused_as_not_owner(outsider.cast_end("/session/1"), "cast.end");
+
+    // The refusals recorded no answer: the owner's connection still finds the session undecided, and may decide it.
+    assert_eq!(
+        refusal_code(owner.remote_connect("/session/1")),
+        wire::code::NO_CONSENT,
+        "the outsider's grant and refusal decided nothing"
+    );
+    assert_eq!(
+        refusal_code(owner.cast_start("/session/1")),
+        wire::code::NO_CONSENT,
+        "the outsider's cast grant decided nothing"
+    );
+    owner
+        .remote_grant("/session/1", DEVICE_KEYBOARD)
+        .expect("the owner's connection decides the session the outsider could not");
+    let mut remote = connect_session(&mut owner, "/session/1");
+    remote.wait_for("the approved keyboard", |client| {
+        client.capabilities == u64::from(Caps::KEYBOARD.bits())
+    });
+    drop(session);
+}

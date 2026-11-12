@@ -156,7 +156,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Schema:** `gnoblin-schema/schema/request.toml` already declares the request surface; check the Lua class exposes it.
 - **Tests first:** a socket client that did not receive the request cannot answer it; `finished` fires exactly once;
   a shell that dies mid-request ends it with a named code.
-- **Docs:** `docs/shell-api/authentication.md`, `docs/shell-api/grants.md`.
+- **Docs:** `docs/shell-api/authentication.md`.
 - **Status:** done on the IPC side (owner check on claim, abandon on offerer departure, failure tests for claim,
   answer, decline, secret routing and relay departure) and on the Lua side (offered and finished signals, claim,
   answer and decline, with failure tests for a repeat claim, an answer before a claim, and an answer after finish).

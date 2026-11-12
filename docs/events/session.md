@@ -34,8 +34,7 @@ Unavailable monitor capabilities report one of these reasons:
 - `pipewire_unavailable`: the monitor is disconnected or could not connect.
 
 Pass `grant` to `Window:focus(grant)` to use the authority granted to
-that event. Lua cannot inspect or create the protected value. See
-[grants](/shell-api/grants).
+that event. Lua cannot inspect or create the protected value.
 
 The compositor socket and its directory are accessible only to the current
 user. Any process running as that user can subscribe. Treat same-user socket

@@ -72,7 +72,7 @@ the shortcut and the event:
 | `closed`            | The binding has ended.                                    | None                                   |
 
 The global events stay for code that watches every binding. The `activated`
-event carries a [`grant`](/shell-api/grants) on a real activation.
+event carries a `grant` on a real activation.
 
 `shortcut:unbind()` removes the binding and returns an `Operation`. The
 `Shortcut` ends, and its `closed` listeners run, when the compositor has removed
@@ -130,7 +130,7 @@ the same events on its own object as `session_activated`, `session_key` and
   sent to a socket client when the Lua runtime stops while that client owns the
   active session.
 
-Lua listeners receive the same authority as a [`Grant`](/shell-api/grants)
+Lua listeners receive the same authority as a `Grant`
 in `event.grant` on real, non-repeated `session.key` events. Synthetic and input-method
 events are excluded. The gesture ends after five seconds, and each focus-sensitive
 operation can take its scope from it once. Gnoblin still delivers the key event if

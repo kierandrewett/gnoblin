@@ -132,7 +132,7 @@ families.
 | `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `grant` or `focus_context` | A Lua-registered dynamic shortcut activates. Only the first activation can carry a grant.       |
 | `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                                        | A press-triggered dynamic shortcut is physically released.                                      |
 | `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                              | A held dynamic shortcut starts or repeats its modal session.                                    |
-| `gnoblin.shortcut.session.key`         | `id`, `session_id`, key fields, optional `grant` or `focus_context`                      | A modal key event; real, non-repeat input may carry a [grant](/shell-api/grants).               |
+| `gnoblin.shortcut.session.key`         | `id`, `session_id`, key fields, optional `grant` or `focus_context`                      | A modal key event; real, non-repeat input may carry a grant.                                    |
 | `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                                     | A held shortcut session ends or is cancelled.                                                   |
 
 #### Shell requests: OSD, pointer, location, and authentication

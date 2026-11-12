@@ -2,7 +2,7 @@
 
 > **Status:** not available yet: `:commit`, `:offer_targets`, `gnoblin.window.drag.started`, `gnoblin.windows.snap_context`. The sections that use them describe the target, not current behaviour.
 
-Build and commit a window frame using a [grant](/shell-api/grants).
+Build and commit a window frame using a grant.
 
 Window snapping is available from a trusted event callback in a Gnoblin session.
 
@@ -57,7 +57,7 @@ Lua callbacks use `event.drag:offer_targets()` as described above.
 ### Keyboard snapping
 
 For keyboard-selected layouts, call `gnoblin.windows.snap_context(grant)` in
-a trusted shortcut callback, with the [grant](/shell-api/grants) of the event. It spends the `snap_context` scope
+a trusted shortcut callback, with the grant of the event. It spends the `snap_context` scope
 and returns an `Operation<SnapContext>` for the focused window; callers cannot provide a
 window ID.
 
