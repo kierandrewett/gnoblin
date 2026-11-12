@@ -30,6 +30,14 @@ clippy:
 test:
     cargo test --workspace --all-targets
 
+# The tests that start a private `pipewire` daemon and read the frames a stream carries: the export crate's own
+# failure-mode tests and the compositor-side capture end-to-end tests. `just test` runs them too; this recipe is the
+# subset the CI `pipewire` job runs on a runner that installs the daemon. It needs the `pipewire` binary on PATH
+# (`GNOBLIN_PIPEWIRE_BIN` names another), and a test fails, never skips, when there is none.
+pipewire-test:
+    cargo test --locked -p gnoblin-pipewire-export
+    cargo test --locked -p gnoblin-wayland --test view_capture_e2e
+
 # Enforce the dependency rules in design/rust-compositor.md over `cargo metadata`.
 deps:
     cargo xtask deps

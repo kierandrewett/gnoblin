@@ -82,6 +82,36 @@ jobs:
       - name: Run the extension workspace gate
         run: just ext-ci
 
+  # The PipeWire export (`gnoblin-pipewire-export`) and the capture end-to-end tests start a private `pipewire` daemon
+  # in a runtime directory of their own, link a producer to a consumer the way a session manager would, and read the
+  # frames that arrive (design/pipewire-capture-spike.md). They need the daemon binary, which the other jobs do not
+  # install, so they run here and fail when it is missing.
+  pipewire:
+    name: PipeWire export against a private daemon
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      # The daemon and its modules, the PipeWire and SPA headers the crate binds, and what the compositor crates link.
+      - name: Install PipeWire and the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pipewire libpipewire-0.3-dev libspa-0.2-dev libclang-dev pkg-config libwayland-dev libxkbcommon-dev \
+            libinput-dev libudev-dev libseat-dev libgbm-dev libdrm-dev libdbus-1-dev libpam0g-dev
+          pipewire --version
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Run the private-daemon tests
+        run: just pipewire-test
+
   # The minimum supported Rust version (`rust-version` in Cargo.toml), checked with
   # the exact pinned dependencies. The version here must equal `msrv_toolchain` in
   # the justfile.
