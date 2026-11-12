@@ -31,6 +31,7 @@ const PAGES = [
     "/docs/bridge/examples",
     "/docs/bridge/connection",
     "/docs/install-arch",
+    "/docs/guides/replace-built-in-dialogs",
     "/this-page-does-not-exist",
 ];
 const VIEWPORTS = {

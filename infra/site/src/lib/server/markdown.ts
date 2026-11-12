@@ -28,7 +28,7 @@ export interface RenderedPage {
 /** Resolves a link target written in a page to a site URL, or reports it as dead. */
 export type LinkResolver = (target: string, fromFile: string) => string | null;
 
-const LANGS = ["lua", "sh", "json", "nix", "javascript", "qml", "ini", "go", "glsl"] as const;
+const LANGS = ["lua", "sh", "json", "nix", "javascript", "qml", "ini", "go", "glsl", "rust"] as const;
 const LANG_LABELS: Record<string, string> = {
     lua: "Lua",
     sh: "Shell",
@@ -39,6 +39,7 @@ const LANG_LABELS: Record<string, string> = {
     ini: "INI",
     go: "Go",
     glsl: "GLSL",
+    rust: "Rust",
     text: "Text",
 };
 const CALLOUTS: Record<string, { icon: string; title: string }> = {
