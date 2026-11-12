@@ -16,7 +16,6 @@ firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://help.gnome.org/gnome-help/}"
 bingux_root="${GNOBLIN_DOC_BINGUX_ROOT:-$root/../bingux}"
 bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$bingux_root/shell/bingux}"
 bingux_base_config="${GNOBLIN_DOC_BINGUX_BASE_CONFIG:-$bingux_root/packaging/gnoblin/bingux.lua}"
-bingux_frame_dir="${GNOBLIN_DOC_BINGUX_FRAME_DIR:-$bingux_root/build}"
 wallpaper="${GNOBLIN_DOC_WALLPAPER:-$root/scripts/assets/doc-wallpaper.png}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
@@ -116,14 +115,6 @@ if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     }
     [ -f "$bingux_base_config" ] || {
         echo "Bingux's packaged Gnoblin defaults not found at $bingux_base_config" >&2
-        exit 1
-    }
-    if [ -x "$bingux_frame_dir/bingux-frame" ]; then
-        PATH="$bingux_frame_dir:$PATH"
-        export PATH
-    fi
-    command -v bingux-frame >/dev/null || {
-        echo "bingux-frame is required to show Bingux's installed window-frame defaults" >&2
         exit 1
     }
     mkdir -p "$XDG_CONFIG_HOME/gnoblin/conf.d"

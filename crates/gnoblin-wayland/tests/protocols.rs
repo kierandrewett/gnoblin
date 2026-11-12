@@ -3125,3 +3125,26 @@ fn a_locked_session_never_delivers_a_claimed_gesture() {
         );
     });
 }
+
+#[test]
+fn the_deleted_window_frame_global_is_not_advertised() {
+    let session = Session::start();
+    session.run(|session| {
+        let client = Client::connect(session.socket());
+        let names: Vec<String> = client
+            .globals
+            .contents()
+            .clone_list()
+            .iter()
+            .map(|global| global.interface.clone())
+            .collect();
+        assert!(
+            names.iter().any(|name| name == "wl_compositor"),
+            "the registry lists the compositor: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|name| name.contains("window_frame")),
+            "gnoblin_window_frame_v1 was deleted and must not be advertised: {names:?}"
+        );
+    });
+}

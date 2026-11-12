@@ -507,7 +507,7 @@ cat >"$CONFIG_DIR/99-test-protocol-typo.lua" <<'LUA'
 gnoblin.configure {
     protocols = {
         wlr_layer_shell = true, ext_foreign_toplevel_list = true, wlr_foreign_toplevel_management = true,
-        xdg_decoration = true, kde_server_decoration = true, window_frame_renderer = true, wlr_screencopy = true,
+        xdg_decoration = true, kde_server_decoration = true, wlr_screencopy = true,
         ext_background_effect_v1 = true, blur_fade = true, ext_data_control = true, ext_idle_notify = true,
         wlr_gamma_control = true, wlr_output_power_management = true, ext_session_lock = true,
         wlr_screencpy = false,
