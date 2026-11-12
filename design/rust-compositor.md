@@ -1678,7 +1678,7 @@ Each section below records the choice, its consequences, and the options conside
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                                                                                                                                       |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                                                                                                                              |
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source is the login password via a PAM module, with one unlock prompt when there is none (`design/keyring.md`)                                                                                                                                       |
-| D28 | Layer registry               | **Proposed 2026-11-06:** layer registry; full names `<provider>.<local>` (`gnoblin.`, `ext.<id>.`); closed bands. `secure` defaults off unless declared; config overrides. Captures mask secure nodes by default.                                                                                                                       |
+| D28 | Layer registry               | **Superseded 2026-11-12:** step 8 deleted the registry (lane 8C) and layer-shell stays protocol-owned (O14 b). It was proposed 2026-11-06 with full names `<provider>.<local>`, closed bands and `secure` defaults.                                                                                                                     |
 | D29 | Window menu                  | **Decided 2026-11-07:** the core has a `menu_requested` signal and a `request_menu` method on `window`; any extension shows the menu. No menu model in core (see D29).                                                                                                                                                                  |
 | D30 | Store                        | **Withdrawn 2026-11-07:** no generic store. `gnoblin-store`, `gnoblinctl store` and the store IPC are removed (see D30 below).                                                                                                                                                                                                          |
 | D31 | Multi-seat                   | **Proposed 2026-11-08, for Kieran to confirm:** full multi-seat (own keyboard, pointer, focus and cursor per seat) and per-device keybindings. See `multi-seat.md`.                                                                                                                                                                     |
@@ -3148,6 +3148,8 @@ Consequences:
 
 ### D28: layer registry
 
+**Superseded 2026-11-12: step 8 of `design/node-api-refactor.md` deleted the registry (lane 8C), and layer-shell surfaces stay protocol-owned (O14 b). This section is the record of the design that was removed.**
+
 **Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `design/layers.md`.
 
 Today the output frame has one `overlay` slot, shared by the portal dialog and the modal (`crates/gnoblin-render-frame/src/frame.rs:235-237`, `:358-360`). Portal placement centres on the output rectangle, not on the requesting window (`crates/gnoblin-compositor/src/ipc/portal.rs:370-377`). The portal request's `parent_window` is stored and never read (`crates/xdg-desktop-portal-gnoblin/src/backends.rs:85`). No Rust code draws the not-responding dialog or the window menu.
@@ -3207,7 +3209,7 @@ Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are i
 
 **Implemented.** The compositor emits `menu_requested` from all three sources: `xdg_toplevel.show_window_menu` (serial-checked, stale serials dropped), the Alt+Space default binding (`keyboard`, focused window's top-left anchor), and `window.request_menu` (`extension`). The signal reaches IPC subscribers.
 
-**Not built.** The shipped `gnoblin.window_menu` extension cannot show a menu yet. It needs the layers frame wiring (design/layers.md phase 3) and the draw-list painter, neither of which exists. Until both land a subscriber receives the signal and nothing appears.
+**Not built.** No shell draws a menu. The `gnoblin.window_menu` extension was never built, and the extension tier it would ship in and the layer registry it needed are both gone, so a subscriber receives the signal and nothing appears. A stock shell menu is a new feature on the `Canvas` painter and is not part of step 8 (`design/cutover-survey.md` 16.1, "Step 8 remainder").
 
 Needs Kieran:
 

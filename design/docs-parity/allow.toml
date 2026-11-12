@@ -567,24 +567,6 @@ reason = "documented, not implemented; Process object and launch attribution (S5
 owner-slice = "S5"
 
 [[allow]]
-name = "gnoblin.layer.changed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; the layer registry is deleted, so the page describes removed records until layer surfaces are tree nodes"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.layer.created"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; the layer registry is deleted, so the page describes removed records until layer surfaces are tree nodes"
-owner-slice = "docs wrong"
-
-[[allow]]
-name = "gnoblin.layer.removed"
-doc = "docs/events/lifecycle.md"
-reason = "documented, not implemented; the layer registry is deleted, so the page describes removed records until layer surfaces are tree nodes"
-owner-slice = "docs wrong"
-
-[[allow]]
 name = "gnoblin.lerp"
 doc = "docs/shell-api/tweens.md"
 reason = "documented, not implemented; Visuals, tweens and named animations (S7)"

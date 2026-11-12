@@ -51,9 +51,25 @@ Standard requests, events, and enums are documented in the
 [Wayland book](https://wayland.freedesktop.org/docs/book/) and the
 [wayland-protocols source](https://gitlab.freedesktop.org/wayland/wayland-protocols).
 
-A layer-shell client sets its anchors, keyboard interactivity, and exclusive
-zone. Gnoblin places the surface and reserves its zone. Window rules do not
-match layer surfaces.
+A layer-shell client names its layer, anchors, margins, size, exclusive zone,
+and keyboard interactivity, and Gnoblin answers as the protocol says:
+
+- It configures the surface against its output's edges. An axis anchored to
+  both edges is the output's length less the margins, an axis anchored to one
+  edge is the size the client asked for, and an unanchored axis is centred.
+- It takes an exclusive zone along one anchored edge out of the work area, so
+  a maximised window is the space the bars leave. The zones of the surfaces on
+  an output add up, and a surface that exits, or an output that is
+  disconnected, gives its strip back.
+- A surface on the `top` or `overlay` layer that asks for exclusive keyboard
+  interactivity keeps the keyboard until it exits, even when a new window
+  would take focus. A surface on `background` or `bottom` does not.
+- A popup that belongs to a layer surface is placed against that surface, and
+  a repositioned popup stays inside it.
+
+The protocol is the whole interface. A layer surface is not a window, so
+window rules do not match it, and Gnoblin keeps no registry of layer surfaces
+to configure, list or subscribe to.
 
 ![Quickshell panel above Firefox in a Gnoblin session](images/gnoblin-quickshell-firefox.png)
 

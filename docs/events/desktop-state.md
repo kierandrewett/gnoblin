@@ -90,18 +90,6 @@ dispatches `unfocused` before `focused` within that state revision.
 
 A closed event's `last` field contains the final available window record.
 
-Layer lifecycle events follow the native layer snapshot. Each carries
-the shared state `revision`, `sequence`, and monotonic `time`. The stable ID is
-in `layer.id` on `created`; `changed` and `removed` also carry `layer_id`.
-
-- `created` includes the record when its layer role first appears in the
-  snapshot. It can initially be unmapped.
-- `changed` includes the updated `layer` and a `changed` array. The array names
-  fields that changed, except for per-record `revision`. Mapped transitions are
-  changes.
-- `removed` includes the final record as `last` and is sent when the layer
-  disappears from the snapshot.
-
 `removed` reports the workspace's last record before removal. Its `number` is
 the position immediately before removal.
 

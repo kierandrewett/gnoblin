@@ -79,22 +79,19 @@ families.
 | `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `not_applied`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
 | `gnoblin.config.reload_failed`       | `path`, `error`, `sequence`, `time`                               | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
 
-#### Workspaces, outputs, and layers
+#### Workspaces and outputs
 
-| Event name                       | Fields                              | Dispatched when                                                             |
-| -------------------------------- | ----------------------------------- | --------------------------------------------------------------------------- |
-| `gnoblin.workspace.created`      | `workspace`                         | A runtime workspace is created.                                             |
-| `gnoblin.workspace.renamed`      | `workspace`                         | A workspace display name changes.                                           |
-| `gnoblin.workspace.changed`      | `workspace`, `changed`              | Its position, window count, or persistence state changes.                   |
-| `gnoblin.workspace.removed`      | `workspace_id`, `last`              | A temporary workspace is removed.                                           |
-| `gnoblin.workspace.activated`    | `workspace`, optional `previous_id` | The active workspace changes.                                               |
-| `gnoblin.workspace.window-moved` | `window_id`, `from_id`, `to_id`     | A window moves from one workspace to another.                               |
-| `gnoblin.output.added`           | `output_id`, `output`               | A display is connected.                                                     |
-| `gnoblin.output.changed`         | `output_id`, `output`, `changed`    | A field of an output changes; `changed` names the changed fields.           |
-| `gnoblin.output.removed`         | `output_id`, `last`                 | A display is disconnected.                                                  |
-| `gnoblin.layer.created`          | `layer`                             | A layer-shell surface appears in the published snapshot.                    |
-| `gnoblin.layer.changed`          | `layer_id`, `layer`, `changed`      | A published layer record changes, including mapped or unmapped transitions. |
-| `gnoblin.layer.removed`          | `layer_id`, `last`                  | A layer-shell surface disappears from the published snapshot.               |
+| Event name                       | Fields                              | Dispatched when                                                   |
+| -------------------------------- | ----------------------------------- | ----------------------------------------------------------------- |
+| `gnoblin.workspace.created`      | `workspace`                         | A runtime workspace is created.                                   |
+| `gnoblin.workspace.renamed`      | `workspace`                         | A workspace display name changes.                                 |
+| `gnoblin.workspace.changed`      | `workspace`, `changed`              | Its position, window count, or persistence state changes.         |
+| `gnoblin.workspace.removed`      | `workspace_id`, `last`              | A temporary workspace is removed.                                 |
+| `gnoblin.workspace.activated`    | `workspace`, optional `previous_id` | The active workspace changes.                                     |
+| `gnoblin.workspace.window-moved` | `window_id`, `from_id`, `to_id`     | A window moves from one workspace to another.                     |
+| `gnoblin.output.added`           | `output_id`, `output`               | A display is connected.                                           |
+| `gnoblin.output.changed`         | `output_id`, `output`, `changed`    | A field of an output changes; `changed` names the changed fields. |
+| `gnoblin.output.removed`         | `output_id`, `last`                 | A display is disconnected.                                        |
 
 #### Windows and focus
 

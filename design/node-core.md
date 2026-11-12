@@ -265,7 +265,7 @@ Methods: `engage()`, `release()`. Both are privileged: the owner connection deci
 | `window`                                                        | `Window`                         | replaced; `focus` moves, `present` moves | 3 schema, 6 methods |
 | `output`                                                        | `Screen`                         | replaced                                 | 3 schema, 5 apply   |
 | `workspace`                                                     | `Workspace`                      | replaced                                 | 7                   |
-| `layers`                                                        | `Surface` (role layer)           | replaced                                 | 8                   |
+| `layers`                                                        | none                             | deleted: nothing read it (8C, O14 b)     | 8                   |
 | `lock`                                                          | `Lock`                           | replaced                                 | 8                   |
 | `portal_ui`                                                     | none                             | kept: the built-in dialog stays (O3)     | -                   |
 | `capture`                                                       | `View`                           | replaced                                 | 9                   |
@@ -708,7 +708,7 @@ Each step writes its failure-mode tests first, cuts one area over completely, an
 | `crates/gnoblin-wm/src/placement.rs`, floating engine                                                | `shell/floating.lua`                               | 5    | placement goldens                   |
 | `crates/gnoblin-wm/src/stack.rs`, `pointer_focus.rs`, focus keys                                     | stock `Window:on_press`, `raise`                   | 6    | parity focus and stacking           |
 | `schema/workspace.toml`, `crates/gnoblin-lua/src/layout/`, `data/lua/gnoblin/layouts/`               | `Workspace`; `shell/tiling.lua`, `shell/strip.lua` | 7    | wm failure modes on the stock shell |
-| `crates/gnoblin-layers/`, `schema/layers.toml`                                                       | `Surface` (role layer), `Canvas`                   | 8    | portal, alert and menu tests        |
+| `crates/gnoblin-layers/`, `schema/layers.toml`                                                       | none: deleted, nothing read it (O14 b)             | 8    | portal tests                        |
 | `schema/lock.toml`                                                                                   | `Lock`                                             | 8    | lock scenarios                      |
 | `schema/portal_ui.toml`                                                                              | kept: the built-in dialog stays (O3)               | -    | portal tests and `portal_provider`  |
 | `schema/capture.toml`, GLES capture                                                                  | `View`                                             | 9    | capture goldens                     |
