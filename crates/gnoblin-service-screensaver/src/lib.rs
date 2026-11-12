@@ -99,7 +99,8 @@ use std::time::Instant;
 
 use futures_lite::StreamExt;
 
-use gnoblin_model::{Fields, ObjectId, Observation, TypeKey, Value};
+use gnoblin_client::SessionLock;
+use gnoblin_model::{Fields, TypeKey, Value};
 use gnoblin_service_core::Host;
 use zbus::fdo;
 use zbus::message::Header;
@@ -118,6 +119,11 @@ pub const PATHS: [&str; 2] = ["/org/freedesktop/ScreenSaver", "/ScreenSaver"];
 pub const GNOME_BUS_NAME: &str = "org.gnome.ScreenSaver";
 /// The object path of the GNOME name.
 pub const GNOME_PATH: &str = "/org/gnome/ScreenSaver";
+/// How long `Lock` waits for the lock node to reach `locked` before it reports a failure, so a caller never
+/// takes a queued request for a protected screen.
+pub const LOCK_CONFIRM: std::time::Duration = std::time::Duration::from_secs(3);
+/// How often the wait reads the lock node.
+const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 /// The most inhibits one sender may hold at once.
 pub const MAX_INHIBITS_PER_SENDER: usize = 64;
 
@@ -126,27 +132,19 @@ pub const MAX_INHIBITS_PER_SENDER: usize = 64;
 pub trait Compositor: Send + Sync {
     /// Milliseconds since the last input event, from the `idle` object.
     fn idle_ms(&self) -> Result<u64, String>;
-    /// The `lock` object as the compositor publishes it now, or `None` when it publishes
-    /// none. Read once when the service starts; later changes arrive as observations.
-    fn lock_reading(&self) -> Result<Option<LockReading>, String>;
+    /// The tree's lock node as the compositor publishes it now, or `None` when it publishes
+    /// none. Read once when the service starts; later changes arrive as [`gnoblin_client::Event::Lock`].
+    fn lock_state(&self) -> Result<Option<SessionLock>, String>;
     /// Ask the compositor to lock the session, and wait for it to confirm the lock. `Ok`
-    /// means the compositor has proven the session locked; an error means it refused, the
-    /// cover failed, or it did not confirm within its bound.
+    /// means the lock node reached `locked`, which a covered, protected frame has proven; an
+    /// error means the call was refused, the lock fell back to `not-locked`, or it did not
+    /// confirm within [`LOCK_CONFIRM`].
     fn lock(&self) -> Result<(), String>;
     /// Hold the session awake under `holder`, a name unique among the service's holders.
     /// `Ok` means the compositor recorded the hold.
     fn inhibit(&self, holder: &str) -> Result<(), String>;
     /// Release the hold `holder` names. Releasing a name nothing holds is `Ok`.
     fn uninhibit(&self, holder: &str) -> Result<(), String>;
-}
-
-/// The lock object's identity and whether the session was locked when it was read.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LockReading {
-    /// The lock object, whose later `locked` changes arrive by this identity.
-    pub object: ObjectId,
-    /// Whether the session is locked.
-    pub locked: bool,
 }
 
 /// The inhibit table: the sender that holds each cookie. The application and reason are
@@ -201,11 +199,11 @@ pub struct ScreenSaver {
     inner: Arc<Core>,
 }
 
-/// The lock object the service follows, and the last lock state it emitted.
+/// The lock state the service follows, and the last one it emitted.
 #[derive(Default)]
 struct LockTracking {
-    /// The lock object and its folded `locked` value, or `None` when none is known.
-    current: Option<LockReading>,
+    /// Whether the lock node covers the session, folded from its `state`, or `None` when no lock node is known.
+    current: Option<bool>,
     /// The last state `observe` returned for emission, so a repeat emits nothing.
     published: Option<bool>,
 }
@@ -218,14 +216,14 @@ struct Core {
 }
 
 impl ScreenSaver {
-    /// A service answering from `compositor`. The lock object is read once here, so the
+    /// A service answering from `compositor`. The lock node is read once here, so the
     /// state is known before the first change arrives; the state read here is not
     /// announced, since nothing changed yet.
     pub fn new(compositor: Box<dyn Compositor>) -> ScreenSaver {
-        let current = match compositor.lock_reading() {
-            Ok(reading) => reading,
+        let current = match compositor.lock_state() {
+            Ok(state) => state.map(SessionLock::covers),
             Err(error) => {
-                log::warn!(area = "services", %error, "the screensaver service cannot read the lock object");
+                log::warn!(area = "services", %error, "the screensaver service cannot read the lock node");
                 None
             }
         };
@@ -236,7 +234,7 @@ impl ScreenSaver {
                 locked_since: Mutex::new(None),
                 lock_state: Mutex::new(LockTracking {
                     current,
-                    published: current.map(|reading| reading.locked),
+                    published: current,
                 }),
             }),
         }
@@ -250,38 +248,14 @@ impl ScreenSaver {
         self.inner.lock_state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Fold one compositor observation into the lock state. `Some` means the folded state
-    /// is known and differs from the last state emitted, and the caller must publish it.
-    /// `None` means nothing the signal reports changed, or the lock object is not known.
-    pub fn observe(&self, observation: &Observation) -> Option<bool> {
+    /// Fold one change of the lock node's `state`. `Some` means the folded state differs from the
+    /// last state emitted, and the caller must publish it: `true` from the moment a lock is taken
+    /// (`pending` already hides the desktop) until the cover is gone. `None` means nothing the
+    /// signal reports changed.
+    pub fn observe(&self, state: SessionLock) -> Option<bool> {
         let mut tracking = self.lock_tracking();
-        match observation {
-            Observation::Opened { view, .. } if view.ty() == &TypeKey::gnoblin("lock") => {
-                if let Some(Value::Bool(locked)) = view.property("locked") {
-                    tracking.current = Some(LockReading {
-                        object: view.id(),
-                        locked: *locked,
-                    });
-                }
-            }
-            Observation::Changed {
-                object,
-                property,
-                value: Value::Bool(locked),
-                ..
-            } if property == "locked" => {
-                if let Some(current) = tracking.current.as_mut().filter(|current| current.object == *object) {
-                    current.locked = *locked;
-                }
-            }
-            Observation::Closed { object, .. } if tracking.current.is_some_and(|current| current.object == *object) => {
-                tracking.current = None;
-            }
-            _ => return None,
-        }
-        // With no lock object known there is no state to announce, and the last emitted
-        // state stays, so a later object that reports the same state emits nothing.
-        let locked = tracking.current?.locked;
+        let locked = state.covers();
+        tracking.current = Some(locked);
         if tracking.published == Some(locked) {
             return None;
         }
@@ -367,12 +341,11 @@ impl ScreenSaver {
         Ok(())
     }
 
-    /// The folded lock state, or an error when no lock object has been observed.
+    /// The folded lock state, or an error when no lock node has been observed.
     fn is_locked(&self) -> Result<bool, fdo::Error> {
         self.lock_tracking()
             .current
-            .map(|reading| reading.locked)
-            .ok_or_else(|| fdo::Error::Failed("the compositor publishes no lock object".to_owned()))
+            .ok_or_else(|| fdo::Error::Failed("the compositor publishes no lock node".to_owned()))
     }
 
     fn active_seconds(&self) -> Result<u32, fdo::Error> {
@@ -624,42 +597,26 @@ impl Compositor for Host {
         }
     }
 
-    fn lock_reading(&self) -> Result<Option<LockReading>, String> {
-        let snapshot = self.snapshot().map_err(|error| error.to_string())?;
-        let Some(view) = snapshot
-            .objects()
-            .iter()
-            .find(|view| view.ty() == &TypeKey::gnoblin("lock"))
-        else {
-            return Ok(None);
-        };
-        match view.property("locked") {
-            Some(Value::Bool(locked)) => Ok(Some(LockReading {
-                object: view.id(),
-                locked: *locked,
-            })),
-            _ => Err("the lock object has no locked".to_owned()),
-        }
+    fn lock_state(&self) -> Result<Option<SessionLock>, String> {
+        Ok(Host::lock_state(self))
     }
 
     fn lock(&self) -> Result<(), String> {
-        let snapshot = self.snapshot().map_err(|error| error.to_string())?;
-        let view = snapshot
-            .objects()
-            .iter()
-            .find(|view| view.ty() == &TypeKey::gnoblin("lock"))
-            .ok_or_else(|| "the compositor publishes no lock object".to_owned())?;
-        // The compositor answers `done` only once it has proven the session locked. Its
-        // refusal, failed cover or timeout arrives as `failed`, and that is an error here.
-        match self.call_operation(view.id(), "lock_session") {
-            Ok(gnoblin_model::OperationOutcome::Done) => Ok(()),
-            Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
-                Err(format!("the compositor did not lock the session: {}", code.as_str()))
+        // The lock call has no answer: the lock node's `state` is it. `Locked` proves the cover; a state that
+        // falls back to `not-locked` after the request, or none within the bound, is a lock that did not take.
+        self.lock_session().map_err(|error| error.to_string())?;
+        let deadline = Instant::now() + LOCK_CONFIRM;
+        loop {
+            match Host::lock_state(self) {
+                Some(SessionLock::Locked) => return Ok(()),
+                Some(SessionLock::NotLocked) if Instant::now() >= deadline => {
+                    return Err("the compositor did not lock the session: not-locked".to_owned());
+                }
+                _ if Instant::now() >= deadline => {
+                    return Err("the compositor did not confirm the lock in time".to_owned());
+                }
+                _ => std::thread::sleep(LOCK_POLL),
             }
-            Ok(gnoblin_model::OperationOutcome::Value(_)) => {
-                Err("the compositor answered lock_session with a value".to_owned())
-            }
-            Err(error) => Err(error.to_string()),
         }
     }
 
@@ -701,6 +658,11 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
             return None;
         }
     };
+    // The lock node is attached before the service reads it, so `GetActive` starts from the real state and
+    // `ActiveChanged` follows every change. Without one the service fails closed: `GetActive` is an error.
+    if let Err(error) = host.watch_lock() {
+        log::warn!(area = "services", %error, "the screensaver service cannot attach to the lock node");
+    }
     let service = ScreenSaver::new(Box::new(host.clone()));
     match service.register(&connection) {
         Ok(()) => {
@@ -732,12 +694,11 @@ fn watch_logind(service: &ScreenSaver) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_model::{ObjectView, Revision};
 
     struct Fake {
         idle: Result<u64, String>,
-        /// What the `lock` object reads as when the service starts.
-        lock_at_start: Result<Option<LockReading>, String>,
+        /// What the lock node reads as when the service starts.
+        lock_at_start: Result<Option<SessionLock>, String>,
         /// What the compositor answers a lock with: `Ok` once it has confirmed the lock.
         lock: Result<(), String>,
         locks: Mutex<u32>,
@@ -751,7 +712,7 @@ mod tests {
         fn idle_ms(&self) -> Result<u64, String> {
             self.idle.clone()
         }
-        fn lock_reading(&self) -> Result<Option<LockReading>, String> {
+        fn lock_state(&self) -> Result<Option<SessionLock>, String> {
             self.lock_at_start.clone()
         }
         fn lock(&self) -> Result<(), String> {
@@ -771,16 +732,9 @@ mod tests {
         }
     }
 
-    fn lock_at(object: u64, locked: bool) -> LockReading {
-        LockReading {
-            object: ObjectId::new(object),
-            locked,
-        }
-    }
-
     fn served_with(
         idle: Result<u64, String>,
-        lock_at_start: Result<Option<LockReading>, String>,
+        lock_at_start: Result<Option<SessionLock>, String>,
         lock: Result<(), String>,
         refuse_inhibit: bool,
     ) -> (Arc<Fake>, ScreenSaver) {
@@ -795,34 +749,9 @@ mod tests {
         (fake.clone(), ScreenSaver::new(Box::new(fake)))
     }
 
-    /// A service whose lock object starts unlocked, as object 7.
+    /// A service whose lock node starts `not-locked`.
     fn fake(idle: Result<u64, String>) -> (Arc<Fake>, ScreenSaver) {
-        served_with(idle, Ok(Some(lock_at(7, false))), Ok(()), false)
-    }
-
-    fn lock_opened(object: u64, locked: bool) -> Observation {
-        let mut properties = Fields::new();
-        properties.insert("locked".to_owned(), Value::Bool(locked));
-        Observation::Opened {
-            view: ObjectView::new(ObjectId::new(object), TypeKey::gnoblin("lock"), properties),
-            revision: Revision::new(1),
-        }
-    }
-
-    fn lock_changed(object: u64, locked: bool) -> Observation {
-        Observation::Changed {
-            object: ObjectId::new(object),
-            property: "locked".to_owned(),
-            value: Value::Bool(locked),
-            revision: Revision::new(2),
-        }
-    }
-
-    fn lock_closed(object: u64) -> Observation {
-        Observation::Closed {
-            object: ObjectId::new(object),
-            revision: Revision::new(3),
-        }
+        served_with(idle, Ok(Some(SessionLock::NotLocked)), Ok(()), false)
     }
 
     #[test]
@@ -885,7 +814,7 @@ mod tests {
     fn a_lock_the_compositor_does_not_confirm_is_an_error() {
         let (fake, service) = served_with(
             Ok(0),
-            Ok(Some(lock_at(7, false))),
+            Ok(Some(SessionLock::NotLocked)),
             Err("the compositor did not lock the session: not-locked".to_owned()),
             false,
         );
@@ -917,7 +846,7 @@ mod tests {
     fn a_refused_set_active_lock_is_an_error() {
         let (fake, service) = served_with(
             Ok(0),
-            Ok(Some(lock_at(7, false))),
+            Ok(Some(SessionLock::NotLocked)),
             Err("the compositor did not lock the session: not-locked".to_owned()),
             false,
         );
@@ -957,7 +886,7 @@ mod tests {
 
     #[test]
     fn a_refused_inhibit_leaves_no_entry() {
-        let (fake, service) = served_with(Ok(0), Ok(Some(lock_at(7, false))), Ok(()), true);
+        let (fake, service) = served_with(Ok(0), Ok(Some(SessionLock::NotLocked)), Ok(()), true);
         assert!(service.add_inhibit(":1.5").is_err());
         assert!(service.inhibitors().cookies_of(":1.5").is_empty());
         assert!(fake.holds.lock().unwrap().is_empty());
@@ -968,59 +897,43 @@ mod tests {
         // The failure mode: `ActiveChanged` was declared and never emitted, so a locker
         // that waited for it never saw the session lock.
         let (_, service) = fake(Ok(0));
-        assert_eq!(service.observe(&lock_changed(7, true)), Some(true));
-        assert_eq!(service.observe(&lock_changed(7, true)), None, "a repeat emits nothing");
         assert_eq!(
-            service.observe(&lock_opened(7, true)),
-            None,
-            "a duplicate open emits nothing"
+            service.observe(SessionLock::Pending),
+            Some(true),
+            "a pending lock already hides the desktop"
         );
-        assert_eq!(service.observe(&lock_changed(7, false)), Some(false));
+        assert_eq!(
+            service.observe(SessionLock::Locked),
+            None,
+            "pending to locked is not a change of `active`"
+        );
+        assert_eq!(service.observe(SessionLock::Locked), None, "a repeat emits nothing");
+        assert_eq!(service.observe(SessionLock::NotLocked), Some(false));
     }
 
     #[test]
     fn the_state_read_at_start_is_not_announced() {
         let (_, service) = fake(Ok(0));
-        assert_eq!(service.observe(&lock_opened(7, false)), None);
-    }
-
-    #[test]
-    fn a_change_to_another_object_is_ignored() {
-        let (_, service) = fake(Ok(0));
-        assert_eq!(service.observe(&lock_changed(9, true)), None);
-        assert!(matches!(block_on(service.get_active()), Ok(false)));
-    }
-
-    #[test]
-    fn a_closed_lock_object_is_unknown_and_a_returning_one_announces_only_a_change() {
-        let (_, service) = fake(Ok(0));
-        assert_eq!(
-            service.observe(&lock_closed(7)),
-            None,
-            "losing the object is not a lock change"
-        );
-        assert!(matches!(block_on(service.get_active()), Err(fdo::Error::Failed(_))));
-        assert_eq!(service.observe(&lock_opened(8, false)), None, "same state as before");
-        assert_eq!(service.observe(&lock_opened(8, true)), Some(true));
+        assert_eq!(service.observe(SessionLock::NotLocked), None);
     }
 
     #[test]
     fn get_active_answers_the_folded_lock_state() {
         let (_, service) = fake(Ok(0));
         assert!(matches!(block_on(service.get_active()), Ok(false)));
-        service.observe(&lock_changed(7, true));
+        service.observe(SessionLock::Locked);
         assert!(matches!(block_on(service.get_active()), Ok(true)));
     }
 
     #[test]
-    fn a_missing_lock_object_fails_closed() {
+    fn a_missing_lock_node_fails_closed() {
         let (_, service) = served_with(Ok(0), Ok(None), Ok(()), false);
         assert!(matches!(block_on(service.get_active()), Err(fdo::Error::Failed(_))));
     }
 
     #[test]
-    fn an_unreadable_lock_object_at_start_fails_closed() {
-        let (_, service) = served_with(Ok(0), Err("the lock object has no locked".to_owned()), Ok(()), false);
+    fn an_unreadable_lock_node_at_start_fails_closed() {
+        let (_, service) = served_with(Ok(0), Err("the tree has no lock node".to_owned()), Ok(()), false);
         assert!(matches!(block_on(service.get_active()), Err(fdo::Error::Failed(_))));
     }
 }

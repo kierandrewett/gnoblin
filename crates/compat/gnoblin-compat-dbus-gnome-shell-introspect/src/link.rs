@@ -9,7 +9,7 @@
 //!
 //! 1. **The link ends.** [`IntrospectLink::advance`] reports `Ok(false)`, so a host stops
 //!    rather than folding the same state forever.
-//! 2. **The graph publishes no lock object.** Refused at connect, because the gate's embargo
+//! 2. **The tree has no lock node.** Refused at connect, because the gate's embargo
 //!    would otherwise be built from a guess: [`IntrospectLink::connect`].
 //! 3. **A property is missing or mistyped.** Refused with the object and property named:
 //!    [`crate::state::IntrospectState::read`].
@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 
 use gnoblin_client::{Client, ClientError, Event, Transport};
+use gnoblin_compat_core::LockState;
 use gnoblin_model::{Filter, ObjectId, ObjectView, Observation};
 
 use crate::error::IntrospectError;
@@ -44,7 +45,18 @@ impl<C: Transport> IntrospectLink<C> {
             .iter()
             .map(|view| (view.id(), view.clone()))
             .collect();
-        let state = IntrospectState::read(views.values())?;
+        let lock = match client.watch_lock() {
+            Ok(state) => LockState::from_node(state.as_str()),
+            Err(ClientError::Refused { code, .. }) if code == "not-found" => {
+                return Err(IntrospectError::Unreadable {
+                    object: "lock".to_owned(),
+                    property: "state".to_owned(),
+                    reason: "the tree has no `lock` node".to_owned(),
+                });
+            }
+            Err(error) => return Err(IntrospectError::from(error)),
+        };
+        let state = IntrospectState::read(views.values(), lock)?;
         Ok(IntrospectLink { client, views, state })
     }
 
@@ -68,11 +80,12 @@ impl<C: Transport> IntrospectLink<C> {
             Err(ClientError::Disconnected) => return Ok(false),
             Err(error) => return Err(IntrospectError::from(error)),
         };
-        let Event::Model(observation) = event else {
+        match event {
+            Event::Model(observation) => self.fold(observation)?,
+            Event::Lock(state) => self.state.lock = LockState::from_node(state.as_str()),
             // No compat adapter offers a request, so an offer is not a state change.
-            return Ok(true);
-        };
-        self.fold(observation)?;
+            _ => {}
+        }
         Ok(true)
     }
 
@@ -117,7 +130,7 @@ impl<C: Transport> IntrospectLink<C> {
             }
             Observation::Signalled { .. } | Observation::Finished { .. } => return Ok(()),
         }
-        self.state = IntrospectState::read(self.views.values())?;
+        self.state = IntrospectState::read(self.views.values(), self.state.lock)?;
         Ok(())
     }
 }

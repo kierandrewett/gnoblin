@@ -39,7 +39,7 @@ impl ClassInfo for Table {
     fn has_method(&self, class: &str, method: &str) -> bool {
         (matches!(class, "seat" | "node") && matches!(method, "claim" | "unclaim"))
             || (class == "seat" && matches!(method, "claim_gesture" | "claim_device"))
-            || (class == "lock" && method == "authenticate")
+            || (class == "lock" && matches!(method, "authenticate" | "lock"))
             || (class == "window" && method == "close")
             || (class == "canvas" && method == "measure")
             || (class == "view" && method == "capture")
@@ -326,6 +326,59 @@ fn lock_authenticate_calls_leave_the_batch_for_the_compositor() {
         "the password call never reaches the shell"
     );
     assert!(replies.lock().unwrap()[0].1.is_ok());
+}
+
+#[test]
+fn a_lock_call_is_the_compositors_and_advances_no_serial() {
+    // The failure mode: an observer's `lock` call bumped the serial while no batch carried it, so the shell's mirror,
+    // which reads batches in order, saw a gap and stopped (`Gap { expected, got }`).
+    let mut frame = new_frame();
+    let mut scene = scene();
+    let replies = Replies::default();
+    let lock = NodeId::new(0x300);
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![
+            TreeOp::New {
+                class: "lock".to_owned(),
+                id: lock,
+            },
+            TreeOp::Insert {
+                node: lock,
+                parent: ROOT,
+                index: None,
+            },
+        ]),
+        &replies,
+    );
+    frame.drain(&mut scene, clock(Duration::ZERO));
+    let serial = frame.serial();
+    let _ = take_batches();
+
+    submit(
+        &frame,
+        serial,
+        TreeTransaction::new(vec![TreeOp::TreeCall {
+            token: 0,
+            node: lock,
+            method: "lock".to_owned(),
+            args: Vec::new(),
+            text: SecretText::default(),
+        }]),
+        &replies,
+    );
+    frame.drain(&mut scene, clock(Duration::ZERO));
+
+    let calls = frame.take_lock_calls();
+    assert_eq!(calls.len(), 1, "the lock call is kept for the compositor");
+    assert!(frame.take_lock_calls().is_empty(), "taking drains the calls");
+    assert_eq!(frame.serial(), serial, "a lock call advances no serial");
+    assert!(
+        take_batches().iter().all(|batch| batch.calls.is_empty()),
+        "the lock call never reaches the shell"
+    );
+    assert!(replies.lock().unwrap()[1].1.is_ok(), "the call applies");
 }
 
 #[test]

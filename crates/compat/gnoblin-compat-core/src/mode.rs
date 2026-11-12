@@ -202,6 +202,16 @@ pub enum LockState {
 }
 
 impl LockState {
+    /// The embargo for a state of the tree's `lock` node: `not-locked`, `pending` or `locked`. A name this build
+    /// does not know reads as locked, so a lock that grew a state errs towards refusing capture.
+    pub fn from_node(state: &str) -> LockState {
+        match state {
+            "not-locked" => LockState::Unlocked,
+            "pending" => LockState::Locking,
+            _ => LockState::Locked,
+        }
+    }
+
     /// Whether the lock embargo is in force.
     pub const fn is_engaged(self) -> bool {
         !matches!(self, Self::Unlocked)

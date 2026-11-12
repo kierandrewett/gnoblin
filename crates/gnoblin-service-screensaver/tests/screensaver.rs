@@ -14,8 +14,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use futures_lite::StreamExt;
-use gnoblin_model::{ObjectId, Observation, Revision, Value};
-use gnoblin_service_screensaver::{BUS_NAME, Compositor, LockReading, PATHS, ScreenSaver};
+use gnoblin_client::SessionLock;
+use gnoblin_service_screensaver::{BUS_NAME, Compositor, PATHS, ScreenSaver};
 use gnoblin_service_testkit::Bus;
 use zbus::Connection;
 use zbus::connection::Builder;
@@ -23,8 +23,6 @@ use zbus::connection::Builder;
 /// How long a test waits for the service to act on a bus event.
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The lock object the recorder reports, unlocked when the service starts.
-const LOCK_OBJECT: u64 = 7;
 /// The GNOME screen saver name and object path, as GNOME Shell and its clients use them.
 const GNOME_NAME: &str = "org.gnome.ScreenSaver";
 const GNOME_PATH: &str = "/org/gnome/ScreenSaver";
@@ -51,11 +49,8 @@ impl Compositor for Recorder {
         Ok(0)
     }
 
-    fn lock_reading(&self) -> Result<Option<LockReading>, String> {
-        Ok(Some(LockReading {
-            object: ObjectId::new(LOCK_OBJECT),
-            locked: false,
-        }))
+    fn lock_state(&self) -> Result<Option<SessionLock>, String> {
+        Ok(Some(SessionLock::NotLocked))
     }
 
     fn lock(&self) -> Result<(), String> {
@@ -106,13 +101,12 @@ fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
     }
 }
 
-/// A `locked` change to the lock object, as the services role delivers it.
-fn lock_changed(locked: bool) -> Observation {
-    Observation::Changed {
-        object: ObjectId::new(LOCK_OBJECT),
-        property: "locked".to_owned(),
-        value: Value::Bool(locked),
-        revision: Revision::new(1),
+/// A change of the lock node's `state`, as the services role delivers it.
+fn lock_changed(locked: bool) -> SessionLock {
+    if locked {
+        SessionLock::Locked
+    } else {
+        SessionLock::NotLocked
     }
 }
 
@@ -238,7 +232,7 @@ fn active_changed_reaches_a_subscriber_once_per_change() {
         // The compositor reports the lock twice with the same value, then unlocks. The
         // service must publish for the first change only, then for the unlock.
         for locked in [true, true, false] {
-            if let Some(active) = service.observe(&lock_changed(locked)) {
+            if let Some(active) = service.observe(lock_changed(locked)) {
                 ScreenSaver::publish(&server, active);
             }
         }
@@ -302,7 +296,7 @@ fn gnome_get_active_reports_the_same_lock_state_as_freedesktop() {
     let unlocked: bool = zbus::block_on(gnome.call("GetActive", &())).expect("GetActive answers");
     assert!(!unlocked);
 
-    assert_eq!(service.observe(&lock_changed(true)), Some(true));
+    assert_eq!(service.observe(lock_changed(true)), Some(true));
     let locked_gnome: bool = zbus::block_on(gnome.call("GetActive", &())).expect("GetActive answers");
     let locked_freedesktop: bool = zbus::block_on(freedesktop.call("GetActive", &())).expect("GetActive answers");
     assert_eq!((locked_gnome, locked_freedesktop), (true, true));
@@ -324,7 +318,7 @@ fn gnome_get_active_time_follows_the_lock_like_freedesktop() {
     assert_eq!(idle, 0);
 
     let (): () = zbus::block_on(gnome.call("Lock", &())).expect("the service accepts the lock");
-    assert_eq!(service.observe(&lock_changed(true)), Some(true));
+    assert_eq!(service.observe(lock_changed(true)), Some(true));
     let gnome_seconds: u32 = zbus::block_on(gnome.call("GetActiveTime", &())).expect("answers");
     let freedesktop_seconds: u32 = zbus::block_on(freedesktop.call("GetActiveTime", &())).expect("answers");
     assert_eq!(gnome_seconds, freedesktop_seconds);
@@ -370,7 +364,7 @@ fn gnome_active_changed_reaches_a_subscriber_once_per_change() {
 
     // Publish from outside any async block: the emit is itself a blocking call.
     for locked in [true, true, false] {
-        if let Some(active) = service.observe(&lock_changed(locked)) {
+        if let Some(active) = service.observe(lock_changed(locked)) {
             ScreenSaver::publish(&server, active);
         }
     }

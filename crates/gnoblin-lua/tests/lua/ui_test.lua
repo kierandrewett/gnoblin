@@ -74,7 +74,8 @@ return {
             end)
             local call = host.calls[#host.calls]
             H.check(call.method == "authenticate", "unlock must call authenticate")
-            H.check(call.args[1] == "hunter2", "the password must reach the native core")
+            H.check(call.text == "hunter2", "the password must reach the native core as the call's secret text")
+            H.check(call.args[1] == nil, "the password is never an argument")
         end,
     },
     {

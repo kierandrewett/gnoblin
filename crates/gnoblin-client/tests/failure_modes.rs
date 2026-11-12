@@ -508,3 +508,108 @@ fn calls_and_changes_interleave_without_losing_events() {
         "and so is the completion"
     );
 }
+
+// The session lock, read and taken through the tree's `lock` node. The lock rules themselves are the
+// compositor's; these are the client's reading of them.
+
+/// A pair whose tree has a lock node in `state`.
+fn lock_pair(state: &str) -> (Server, Client<Loopback>) {
+    let (mut server, client) = pair();
+    server.publish_lock(state);
+    (server, client)
+}
+
+#[test]
+fn a_tree_without_a_lock_node_is_refused_not_read_as_unlocked() {
+    // The failure mode: a guard that takes silence for an open desktop lets a capture through a lock.
+    let (_server, mut client) = pair();
+    match client.watch_lock() {
+        Err(ClientError::Refused { code, .. }) => assert_eq!(code, "not-found"),
+        other => panic!("a missing lock node is refused, not {other:?}"),
+    }
+    assert_eq!(client.lock_state(), None);
+}
+
+#[test]
+fn the_lock_state_is_read_from_the_snapshot_and_followed_by_change() {
+    let (mut server, mut client) = lock_pair("locked");
+    assert_eq!(
+        client.watch_lock().expect("attached"),
+        gnoblin_client::SessionLock::Locked
+    );
+    assert!(client.lock_state().expect("read").covers());
+    server.publish_lock("not-locked");
+    assert_eq!(
+        client.next_event().expect("an event"),
+        Event::Lock(gnoblin_client::SessionLock::NotLocked)
+    );
+    assert!(!client.lock_state().expect("read").covers());
+    server.publish_lock("pending");
+    assert_eq!(
+        client.next_event().expect("an event"),
+        Event::Lock(gnoblin_client::SessionLock::Pending)
+    );
+    assert!(
+        client.lock_state().expect("read").covers(),
+        "pending already hides the desktop: GetActive is true from the request"
+    );
+}
+
+#[test]
+fn a_repeated_state_raises_no_event() {
+    let (mut server, mut client) = lock_pair("locked");
+    client.watch_lock().expect("attached");
+    server.publish_lock("locked");
+    server.publish_lock("not-locked");
+    assert_eq!(
+        client.next_event().expect("an event"),
+        Event::Lock(gnoblin_client::SessionLock::NotLocked),
+        "the unchanged `locked` is not an event; the next one is the change"
+    );
+}
+
+#[test]
+fn a_lock_call_reaches_the_compositor_and_the_state_is_the_answer() {
+    let (mut server, mut client) = lock_pair("not-locked");
+    client.watch_lock().expect("attached");
+    client.lock_session().expect("the call applied");
+    assert_eq!(server.lock_calls(), 1);
+    assert_eq!(
+        client.lock_state(),
+        Some(gnoblin_client::SessionLock::NotLocked),
+        "no answer until the cover is up"
+    );
+    server.publish_lock("locked");
+    assert_eq!(
+        client.next_event().expect("an event"),
+        Event::Lock(gnoblin_client::SessionLock::Locked)
+    );
+}
+
+#[test]
+fn a_refused_lock_call_is_an_error_not_a_queued_request() {
+    let (mut server, mut client) = lock_pair("not-locked");
+    client.watch_lock().expect("attached");
+    server.deny_lock_calls("not-owner");
+    match client.lock_session() {
+        Err(ClientError::Refused { code, .. }) => assert_eq!(code, "not-owner"),
+        other => panic!("a refused call is reported with the compositor's code, not {other:?}"),
+    }
+    assert_eq!(server.lock_calls(), 0);
+}
+
+#[test]
+fn a_lock_call_before_the_attach_is_refused_locally() {
+    let (server, mut client) = lock_pair("not-locked");
+    assert!(matches!(client.lock_session(), Err(ClientError::Refused { code, .. }) if code == "not-found"));
+    assert_eq!(server.lock_calls(), 0, "nothing was sent");
+}
+
+#[test]
+fn an_unknown_lock_state_reads_as_covered() {
+    let (_server, mut client) = lock_pair("something-new");
+    assert_eq!(
+        client.watch_lock().expect("attached"),
+        gnoblin_client::SessionLock::Locked
+    );
+}

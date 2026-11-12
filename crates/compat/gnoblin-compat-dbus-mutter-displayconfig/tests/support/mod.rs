@@ -53,10 +53,3 @@ pub fn output_properties(name: &str, scale: f64, primary: bool) -> Fields {
         ],
     )
 }
-
-/// The properties of the `lock` object: the session is not locked.
-pub fn unlocked() -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("locked".to_owned(), Value::Bool(false));
-    properties
-}

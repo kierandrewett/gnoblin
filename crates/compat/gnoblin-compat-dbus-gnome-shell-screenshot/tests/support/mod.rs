@@ -9,7 +9,7 @@ pub mod bus;
 
 use std::path::Path;
 
-use gnoblin_model::{Fields, Graph, Value};
+use gnoblin_model::Graph;
 use gnoblin_proto::Version;
 use gnoblin_schema::Catalog;
 
@@ -24,11 +24,4 @@ pub fn graph() -> Graph {
     )
     .expect("the checked-in schema loads");
     Graph::new(catalog)
-}
-
-/// The properties of the `lock` object.
-pub fn lock_properties(locked: bool) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("locked".to_owned(), Value::Bool(locked));
-    properties
 }

@@ -141,7 +141,7 @@ struct ExtSessionLockV1Barrier {
 
 /// The locker the compositor's own `lock` method takes. Protocol identities count up
 /// from zero, so the largest value is never one of them.
-fn internal_locker() -> ClientId {
+pub(crate) fn internal_locker() -> ClientId {
     ClientId::new(u64::MAX)
 }
 
@@ -170,8 +170,6 @@ pub(crate) struct ExtSessionLockV1Tables {
     clients: HashMap<WaylandClientId, ClientId>,
     /// The next connection identity.
     next_client: u64,
-    /// The replies owed to the compositor's `lock` method, sent once the lock settles.
-    lock_waiters: Vec<std::sync::mpsc::SyncSender<bool>>,
 }
 
 impl SessionLockHandler for State {
@@ -338,7 +336,6 @@ impl State {
             }
         }
         self.refresh_lock_focus();
-        self.settle_lock_waiters();
         self.composer.set_lock_state(match self.lock.state() {
             LockState::Unlocked => "not-locked",
             LockState::Locking => "pending",
@@ -386,26 +383,15 @@ impl State {
             .answer(settled.answer.token, settled.answer.result, settled.answer.error);
     }
 
-    /// Takes the session lock for the compositor's `lock` method and answers `reply`
-    /// once the lock settles: `true` only when the cover has proven the session `locked`.
-    pub(crate) fn request_lock(&mut self, reply: std::sync::mpsc::SyncSender<bool>) {
-        self.lock_tables.lock_waiters.push(reply);
-        let effects = self.lock.apply(LockEvent::LockRequested {
-            locker: internal_locker(),
-        });
-        self.apply_lock(effects);
-    }
-
-    /// Answers every waiting `lock` call once the lock has a final state. `Locking`
-    /// waits for a covering frame on every output, so the answer waits for that too.
-    fn settle_lock_waiters(&mut self) {
-        let answer = match self.lock.state() {
-            LockState::Locked => true,
-            LockState::Unlocked | LockState::CoverFailed => false,
-            LockState::Locking | LockState::Unlocking => return,
-        };
-        for reply in self.lock_tables.lock_waiters.drain(..) {
-            let _ = reply.send(answer);
+    /// Runs the `lock` calls the shell or an observer made on the lock node: the compositor takes the
+    /// session lock for itself. There is no answer; `state` is it. A lock already pending or held is
+    /// left alone (the state machine refuses a second request), so the call is idempotent.
+    pub(crate) fn run_lock_calls(&mut self, calls: &[TreeCall]) {
+        for _ in calls {
+            let effects = self.lock.apply(LockEvent::LockRequested {
+                locker: internal_locker(),
+            });
+            self.apply_lock(effects);
         }
     }
 
@@ -644,8 +630,8 @@ impl State {
     /// Sends `locked` and keeps the owner's object for liveness checks.
     fn send_locked(&mut self, locker: ClientId) {
         if locker == internal_locker() {
-            // The compositor's own lock has no protocol confirmation to send; its
-            // waiters are answered by `settle_lock_waiters`.
+            // The compositor's own lock has no protocol confirmation to send: its
+            // observers read the lock node's `state`.
             return;
         }
         let Some(index) = self

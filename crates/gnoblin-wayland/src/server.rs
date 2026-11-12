@@ -646,7 +646,6 @@ impl Server {
                                 // read of the window's pose sees it.
                                 let _ = reply.send(state.window_visual(window, change));
                             }
-                            Command::Lock { reply } => state.request_lock(reply),
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
                             }
@@ -959,15 +958,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowVisual { window, change, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Locks the session and waits until the lock is `locked`, which is the state the
-    /// cover has proven. `Some(true)` is that confirmation, `Some(false)` a refusal or a
-    /// cover that failed, and `None` when the loop did not settle within the bound.
-    pub fn lock(&self) -> Option<bool> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::Lock { reply });
-        answer.recv_timeout(std::time::Duration::from_secs(3)).ok()
     }
 
     /// Adds (`held` true) or removes one named idle holder. `None` when the loop did not
@@ -1377,9 +1367,6 @@ enum Command {
         change: WindowChange,
         reply: std::sync::mpsc::SyncSender<Result<(), WindowChangeRefusal>>,
     },
-    /// A session lock request. The answer is sent once the lock settles: `true` when
-    /// the session is `locked`, `false` when the lock is refused or the cover fails.
-    Lock { reply: std::sync::mpsc::SyncSender<bool> },
     /// A shell visual request from the IPC, and the channel its answer goes back on: `Ok(())`
     /// when the drawing changed, `Err` with the reason when it did not.
     WindowVisual {

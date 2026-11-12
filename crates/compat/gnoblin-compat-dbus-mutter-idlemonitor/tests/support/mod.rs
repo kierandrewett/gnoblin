@@ -35,10 +35,3 @@ pub fn idle_properties(idle_ms: u64) -> Fields {
     properties.insert("inhibitors".to_owned(), Value::Uint(0));
     properties
 }
-
-/// The properties of the `lock` object, unlocked.
-pub fn unlocked() -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("locked".to_owned(), Value::Bool(false));
-    properties
-}

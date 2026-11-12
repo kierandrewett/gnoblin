@@ -119,7 +119,7 @@ local SCHEMA = {
         base = "Node",
         props = { engaged = { type = "boolean", default = false } },
         signals = { "requested" },
-        methods = { "authenticate" },
+        methods = { "authenticate", "lock" },
         slow = { authenticate = true },
     },
 }
@@ -144,6 +144,7 @@ local METHODS = {
     capture = function()
         return 0
     end,
+    lock = function() end,
     authenticate = function()
         auth_n = auth_n + 1
         return "auth" .. auth_n

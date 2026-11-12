@@ -28,9 +28,6 @@ use crate::error::IdleError;
 /// The object type that publishes the counter.
 pub const IDLE: &str = "idle";
 
-/// The lock object's type.
-pub const LOCK: &str = "lock";
-
 /// What the adapter reports: how long the session has been idle, and whether it is locked.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct IdleState {
@@ -41,15 +38,15 @@ pub struct IdleState {
 }
 
 impl IdleState {
-    /// Read the state from every object a subscription delivered.
+    /// Read the state from every object a subscription delivered, and the lock state the tree's `lock` node
+    /// last published.
     ///
     /// # Errors
     ///
     /// [`IdleError::NoCounter`] when the graph publishes no `idle` object, and
     /// [`IdleError::Unreadable`] when a property is absent or mistyped.
-    pub fn read<'a>(views: impl IntoIterator<Item = &'a ObjectView>) -> Result<IdleState, IdleError> {
+    pub fn read<'a>(views: impl IntoIterator<Item = &'a ObjectView>, lock: LockState) -> Result<IdleState, IdleError> {
         let mut idle = None;
-        let mut locked = None;
         for view in views {
             if view.ty() == &TypeKey::gnoblin(IDLE) {
                 match view.property("idle_ms") {
@@ -70,38 +67,8 @@ impl IdleState {
                     }
                 }
             }
-            if view.ty() == &TypeKey::gnoblin(LOCK) {
-                match view.property("locked") {
-                    Some(Value::Bool(value)) => locked = Some(*value),
-                    Some(other) => {
-                        return Err(IdleError::Unreadable {
-                            object: "lock".to_owned(),
-                            property: "locked".to_owned(),
-                            reason: format!("expected a bool, found {}", other.kind()),
-                        });
-                    }
-                    None => {
-                        return Err(IdleError::Unreadable {
-                            object: "lock".to_owned(),
-                            property: "locked".to_owned(),
-                            reason: "the property is absent".to_owned(),
-                        });
-                    }
-                }
-            }
         }
         let idle_ms = idle.ok_or(IdleError::NoCounter)?;
-        let lock = match locked {
-            Some(true) => LockState::Locked,
-            Some(false) => LockState::Unlocked,
-            None => {
-                return Err(IdleError::Unreadable {
-                    object: "lock".to_owned(),
-                    property: "locked".to_owned(),
-                    reason: "the graph publishes no `lock` object".to_owned(),
-                });
-            }
-        };
         Ok(IdleState { idle_ms, lock })
     }
 }
@@ -129,7 +96,18 @@ impl<C: Transport> IdleLink<C> {
             .iter()
             .map(|view| (view.id(), view.clone()))
             .collect();
-        let state = IdleState::read(views.values())?;
+        let lock = match client.watch_lock() {
+            Ok(state) => LockState::from_node(state.as_str()),
+            Err(ClientError::Refused { code, .. }) if code == "not-found" => {
+                return Err(IdleError::Unreadable {
+                    object: "lock".to_owned(),
+                    property: "state".to_owned(),
+                    reason: "the tree has no `lock` node".to_owned(),
+                });
+            }
+            Err(error) => return Err(IdleError::from(error)),
+        };
+        let state = IdleState::read(views.values(), lock)?;
         Ok(IdleLink { client, views, state })
     }
 
@@ -153,11 +131,12 @@ impl<C: Transport> IdleLink<C> {
             Err(ClientError::Disconnected) => return Ok(false),
             Err(error) => return Err(IdleError::from(error)),
         };
-        let Event::Model(observation) = event else {
+        match event {
+            Event::Model(observation) => self.fold(observation)?,
+            Event::Lock(state) => self.state.lock = LockState::from_node(state.as_str()),
             // No compat adapter offers a request, so an offer is not a state change.
-            return Ok(true);
-        };
-        self.fold(observation)?;
+            _ => {}
+        }
         Ok(true)
     }
 
@@ -202,7 +181,7 @@ impl<C: Transport> IdleLink<C> {
             }
             Observation::Signalled { .. } | Observation::Finished { .. } => return Ok(()),
         }
-        self.state = IdleState::read(self.views.values())?;
+        self.state = IdleState::read(self.views.values(), self.state.lock)?;
         Ok(())
     }
 }

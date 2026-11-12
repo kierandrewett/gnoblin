@@ -15,17 +15,8 @@ use zbus::fdo;
 /// A `Screenshot` call that could not be answered.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ScreenshotError {
-    /// The graph publishes no `lock` object, so the gate's embargo is unknown.
+    /// The tree has no `lock` node, so the gate's embargo is unknown.
     NoLock,
-    /// A property the schema declares is absent or is not the value the schema promises.
-    Unreadable {
-        /// The object the property belongs to.
-        object: String,
-        /// The property's schema name.
-        property: String,
-        /// What was wrong with it.
-        reason: String,
-    },
     /// The IPC connection ended, so the lock state can no longer be read.
     Link {
         /// What the transport reported.
@@ -48,14 +39,8 @@ pub enum ScreenshotError {
 impl fmt::Display for ScreenshotError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ScreenshotError::NoLock => formatter.write_str(
-                "the graph publishes no `lock` object, so the capture embargo is unknown rather than released",
-            ),
-            ScreenshotError::Unreadable {
-                object,
-                property,
-                reason,
-            } => write!(formatter, "`{object}.{property}` is unreadable: {reason}"),
+            ScreenshotError::NoLock => formatter
+                .write_str("the tree has no `lock` node, so the capture embargo is unknown rather than released"),
             ScreenshotError::Link { reason } => write!(formatter, "the IPC connection ended: {reason}"),
             ScreenshotError::Exported => write!(formatter, "this adapter is already exported"),
             ScreenshotError::NameTaken { name } => write!(formatter, "`{name}` is owned by another process"),

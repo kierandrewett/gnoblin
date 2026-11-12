@@ -1899,9 +1899,6 @@ impl Dispatcher {
             {
                 self.window_visual_call(client, envelope, object, &method, &arguments, window);
             }
-            (Some(ty), _, _, _) if ty == "lock" && method == "lock_session" => {
-                self.lock_call(client, envelope, object, &method, &arguments);
-            }
             (Some(ty), _, _, _) if ty == "session" && method == "logout" => {
                 self.session_call(client, envelope, object, &method, &arguments);
             }
@@ -2092,39 +2089,6 @@ impl Dispatcher {
                 }
             },
             None => OperationOutcome::Failed(POWER_UNAVAILABLE),
-        };
-        self.finish(object, &operation, Some(outcome));
-    }
-
-    /// Serves `lock.lock_session`: the loop locks the session, and the operation completes `done`
-    /// only once the cover has proven `locked`. A refusal, a failed cover, or no
-    /// confirmation within the loop's bound completes `not-locked`, so a caller never takes
-    /// a queued request for a protected screen.
-    fn lock_call(
-        &mut self,
-        client: ClientId,
-        envelope: &Envelope,
-        object: gnoblin_types::ObjectId,
-        method: &str,
-        arguments: &gnoblin_model::Fields,
-    ) {
-        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
-            Ok(operation) => operation,
-            Err(error) => {
-                let code = refusal_code(&error);
-                self.refuse(client, envelope, code, &error.to_string());
-                return;
-            }
-        };
-        self.reply_with_operation(client, envelope, &operation);
-        // The loop answers `Some(true)` once the cover proves `locked`, and `Some(false)` on a
-        // refusal or a failed cover. `None` is the bound: a lock that never confirms fails here
-        // rather than leaving the caller waiting on a screen that may not be covered.
-        let confirmed = self.control.lock();
-        self.sync();
-        let outcome = match confirmed {
-            Some(true) => OperationOutcome::Done,
-            Some(false) | None => OperationOutcome::Failed(NOT_LOCKED),
         };
         self.finish(object, &operation, Some(outcome));
     }
@@ -2794,9 +2758,6 @@ fn power_verb(method: &str) -> Option<gnoblin_model::PowerVerb> {
 
 /// The code a power verb completes with when this session was started with no power backend.
 const POWER_UNAVAILABLE: ErrorCode = ErrorCode::from_static("unavailable");
-
-/// The code a `lock` call completes with when the session is not confirmed locked.
-const NOT_LOCKED: ErrorCode = ErrorCode::from_static("not-locked");
 
 /// How long `window.present` keeps asking the loop before it gives up with `busy`. The doc
 /// promises five seconds, so the retry is bounded by the same number the caller was told.

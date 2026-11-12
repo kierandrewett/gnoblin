@@ -218,7 +218,7 @@ impl TreeSession {
 /// What an observer's transaction makes and destroys, or the index of the first op an observer may not send.
 ///
 /// An observer may send a `new` of class `seat`, a `set` of that seat's `name` in the same transaction, a `destroy`
-/// of a seat it made (`owned`), and an `input` on a seat it made. Everything else is the holder's. The returned seats are the ones made
+/// of a seat it made (`owned`), an `input` on a seat it made, and a `lock` call. Everything else is the holder's. The returned seats are the ones made
 /// and destroyed, for the caller to record once the transaction applies.
 ///
 /// # Errors
@@ -248,6 +248,9 @@ pub fn observer_ops(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Result<(Vec<Nod
             }
             // Input goes out on a seat the observer made itself, never on the shell's or another observer's.
             TreeOp::Input { seat, .. } => owned.contains(seat) || made.contains(seat),
+            // The one call an observer may make: take the session lock, the screensaver's `Lock`. It touches
+            // no node the shell owns; the frame runs it only on the lock node. `authenticate` stays the shell's.
+            TreeOp::TreeCall { method, .. } => method == "lock",
             _ => false,
         };
         if !allowed {
@@ -724,6 +727,27 @@ mod tests {
             }]),
             0
         );
+    }
+
+    fn call(method: &str) -> TreeOp {
+        TreeOp::TreeCall {
+            node: NodeId::new(2),
+            method: method.to_owned(),
+            args: Vec::new(),
+            text: gnoblin_secret::SecretText::default(),
+            token: 1,
+        }
+    }
+
+    /// An observer (the screensaver service, a compat adapter) may take the lock and may never answer its
+    /// password prompt: a `lock` call is its one call, and `authenticate` (which unlocks) is refused at once.
+    #[test]
+    fn an_observer_may_lock_and_may_not_authenticate() {
+        let owned = BTreeSet::new();
+        assert_eq!(observer_ops(&[call("lock")], &owned), Ok((Vec::new(), Vec::new())));
+        assert_eq!(observer_ops(&[call("authenticate")], &owned), Err(0));
+        assert_eq!(observer_ops(&[call("lock"), call("authenticate")], &owned), Err(1));
+        assert_eq!(observer_ops(&[call("close")], &owned), Err(0));
     }
 
     #[test]

@@ -3483,6 +3483,8 @@ impl Host for State {
         if let Some(kept) = self.tree.take_reaped() {
             self.release_shell_claims(&kept);
         }
+        let lock_calls = self.tree.take_lock_calls();
+        self.run_lock_calls(&lock_calls);
         self.apply_claims(claims);
         let destroyed = self.tree.take_destroyed();
         self.release_seat_nodes(&destroyed);

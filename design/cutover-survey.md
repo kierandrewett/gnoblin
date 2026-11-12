@@ -563,7 +563,7 @@ Status of the four steps at the base, in one table. Row 8 is brought up to date 
 
 | Step | Design row                                                  | Done at base                                                                                                                                                            | Not done at base                                                                                                                  |
 | ---- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 8    | `node-api-refactor.md:1934`                                 | `Canvas`, `Surface`, `Lock` classes and a stock `Titlebar` at the base. Since: 8A (painter), 8B (frame), 8C (layer registry), 8D (`portal.ui`) done; `Modal` stays (O3) | `lock.toml` to `Lock`: no lane; alerts and menu dropped; no 8E (O14 b). See 'Step 8 remainder'                                    |
+| 8    | `node-api-refactor.md:1934`                                 | `Canvas`, `Surface`, `Lock` classes and a stock `Titlebar` at the base. Since: 8A (painter), 8B (frame), 8C (layer registry), 8D (`portal.ui`) done; `Modal` stays (O3) | `lock.toml` to `Lock`: done (lane LockClass); alerts and menu dropped; no 8E (O14 b). See 'Step 8 remainder'                      |
 | 9    | `node-api-refactor.md:1935`                                 | `View` node drawn on the CPU (`render_view`), View capture over `ext-image-copy-capture`, `effects` list with blur and shadow                                           | GLES View path, `View:capture`, `View.fps`, PipeWire from a View, dmabuf; legacy `window.add_effect` and `effect.toml` still live |
 | 10   | `node-api-refactor.md:1936`                                 | capability set, role grants, `gnoblin-wasm`, `gnoblinctl capabilities` deleted                                                                                          | grants frame, D22 extension routing, `config.extensions`, Lua `require(namespace)`, slots; `gnoblin-authority` undecided          |
 | 11   | `node-api-refactor.md:1937`, `design/node-core.md:2.5`, `9` | `Seat` nodes (`main`, `xr`), `claim`/`unclaim`/`chord`, window-management policy as seat properties (`schema/tree/seat.toml:52-139`)                                    | `gnoblin-input` `PolicyQueue`, gesture action names, `grants.md`, device identity on events, EIS `remote` signal                  |
@@ -744,11 +744,12 @@ normalisation. Still naming the registry, and not code: the C-era bridge docs (`
 `design/constants/*.md` audits.
 
 **Step 8 remainder (decided in the 8C follow-up; the owner may revisit).** Done: 8A (the `Canvas` painter and `measure`), 8B (frame
-protocol), 8C (layer registry) and 8D (the `portal.ui` replacement path, with the stock `prompts.lua`). Remaining: `schema/lock.toml`
-replaced by `Lock` (`node-core.md` 2.5 and 9, green line "lock scenarios"), which no lane owns. The old
-`gnoblin.lock` object (`locked`, `lock_session`, error `not-locked`: `ipc/session.rs:222`, `ipc/server.rs:1902`) is still live beside
-the `Lock` node that the stock `lock.lua` drives, and the screensaver service and four compat adapters read it
-(`gnoblin-service-screensaver`, `gnoblin-compat-dbus-{gnome-shell-introspect,gnome-shell-screenshot,mutter-displayconfig,mutter-idlemonitor}`).
+protocol), 8C (layer registry) and 8D (the `portal.ui` replacement path, with the stock `prompts.lua`). Done by lane LockClass: `schema/lock.toml` and the
+old `gnoblin.lock` object (`locked`, `lock_session`, error `not-locked`) are deleted, and `Lock` (`schema/tree/lock.toml`) is the
+only session-lock object. The screensaver service, the four compat adapters
+(`gnoblin-compat-dbus-{gnome-shell-introspect,gnome-shell-screenshot,mutter-displayconfig,mutter-idlemonitor}`) and `gnoblinctl`
+read it as tree observers (`gnoblin_client::Client::watch_lock`), and `Lock:lock` replaces `lock_session` (`node-core.md`, "The old
+`lock` object and what replaced each member"). Step 8 is complete.
 Not remaining: 8E is not built (O14 b). The `gnoblin.alerts` layer and the `gnoblin.window_menu` extension leave the step. They were
 never built, and they were providers of the deleted registry (D28, D29) and of the removed extension tier. The compositor side they
 needed is built and tested: `window.request_menu` and `menu_requested` (`tests/ipc.rs`), and `Window.unresponsive`. What is missing is a

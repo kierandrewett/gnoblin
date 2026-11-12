@@ -30,6 +30,7 @@ use gnoblin_proto::{CodecError, Envelope, Handshake, HandshakeKind, StreamFrame,
 
 use crate::client::Client;
 use crate::error::{ConnectError, HandshakeError};
+use crate::loopback_lock::LoopLock;
 use crate::wire;
 
 /// One client connection's state.
@@ -65,6 +66,8 @@ struct Inner {
     version: Version,
     next_owner: u64,
     links: Vec<Link>,
+    /// The tree's lock node, which observers read and call.
+    lock: LoopLock,
 }
 
 impl Inner {
@@ -98,6 +101,10 @@ impl Inner {
 
     /// Decode and answer one request.
     fn handle(&mut self, owner: OwnerId, envelope: &Envelope, out: &mut Vec<StreamFrame>) {
+        if envelope.namespace == crate::lock::TREE {
+            self.lock.handle(owner, envelope, out);
+            return;
+        }
         if envelope.namespace != wire::NAMESPACE {
             out.push(refusal(
                 envelope,
@@ -321,6 +328,7 @@ impl Server {
                 version,
                 next_owner: 1,
                 links: Vec::new(),
+                lock: LoopLock::default(),
             })),
         }
     }
@@ -394,6 +402,28 @@ impl Server {
             inner.flush_all();
         }
         completed.map(|_| ())
+    }
+
+    /// Publish the lock node's `state` (`not-locked`, `pending` or `locked`) to every observer. The first
+    /// call makes the lock node; until then the tree has none.
+    pub fn publish_lock(&mut self, state: &str) {
+        let mut inner = self.inner.borrow_mut();
+        let frames = inner.lock.publish(state);
+        for (owner, frame) in frames {
+            if let Ok(link) = inner.link(owner) {
+                link.outbound.push_back(frame);
+            }
+        }
+    }
+
+    /// How many `lock` calls observers made and the loopback accepted.
+    pub fn lock_calls(&self) -> u64 {
+        self.inner.borrow().lock.calls()
+    }
+
+    /// Refuse every later `lock` call with `code`, as a compositor that cannot take the lock would.
+    pub fn deny_lock_calls(&mut self, code: &str) {
+        self.inner.borrow_mut().lock.deny_calls(code);
     }
 
     /// Offer a request that fails at `deadline`, announcing it to every client.

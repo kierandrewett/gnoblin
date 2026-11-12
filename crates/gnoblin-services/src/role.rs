@@ -240,15 +240,17 @@ impl Agents {
         match event {
             gnoblin_client::Event::Model(observation) => {
                 // The services role mirrors object state only for the agents that serve
-                // it: the idle object feeds SessionIdle, and the lock object feeds
-                // ScreenSaver's `ActiveChanged`.
+                // it: the idle object feeds SessionIdle.
                 if let Some(session_idle) = &self.session_idle
                     && let Some(activity) = session_idle.observe(&observation)
                 {
                     session_idle.publish(activity);
                 }
+            }
+            gnoblin_client::Event::Lock(state) => {
+                // The tree's lock node feeds ScreenSaver's `ActiveChanged`.
                 if let Some((service, connection)) = &self.screensaver
-                    && let Some(active) = service.observe(&observation)
+                    && let Some(active) = service.observe(state)
                 {
                     ScreenSaver::publish(connection, active);
                 }

@@ -249,29 +249,62 @@ Method: `warp(x, y)`. Chords are a `call` to the seat (section 5.1).
 
 Method: `activate()`.
 
-**Lock** (base `Node`). The session lock. While `engaged`, the compositor draws only `Lock` and routes input only to it.
+**Lock** (base `Node`). The session lock. The compositor owns the one `Lock` node of a session, makes it at startup and never
+destroys it. While the session is covered the compositor draws only the cover and routes input only to the locker; the node is
+how everyone else reads that and asks for it.
 
-| Property  | Type     | Default        | Flags    | Notes                                         |
-| --------- | -------- | -------------- | -------- | --------------------------------------------- |
-| `state`   | `string` | `"not-locked"` | readonly | `not-locked`, `pending`, `locked`             |
-| `engaged` | `bool`   | `false`        | readonly | true from the moment the lock client takes it |
+| Member               | Kind     | Type / flags                               | Notes                                                                                                                                           |
+| -------------------- | -------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`              | property | `string`, default `"not-locked"`, readonly | `not-locked`, `pending` (a lock was taken, the cover is not proven on every output) or `locked` (a covered frame is proven)                     |
+| `engaged`            | property | `bool`, default `false`                    | the shell's lock screen is up; the shell writes it, the compositor reads nothing from it                                                        |
+| `requested`          | signal   | none                                       | `state` left `not-locked`: the shell engages its lock screen. Sent to the shell only                                                            |
+| `lock()`             | method   | none; no answer                            | take the session lock. The answer is `state`. Idempotent while `pending` or `locked`. Callable by the shell and by observers                    |
+| `authenticate(text)` | method   | `text` is `secret`; answered by `answer`   | check the password against the session user. The shell only. `ok` unlocks; `denied`, `rate-limited`, `not-locked`, `busy`, `failed: ...` do not |
 
-Methods: `engage()`, `release()`. Both are privileged: the owner connection decides who may call them (`ipc/privileged.rs`).
+`state` is the whole contract for who is covered. `locked` (the old `gnoblin.lock.locked`) is `state != "not-locked"`: it is true from the
+moment a lock is taken until the cover is gone, so a caller that misses a change cannot read "unlocking" as a visible desktop.
+`CoverFailed` and `Unlocking` read as `locked`, because both still cover the session and embargo it.
+
+**Who may do what (D35: no capability, the owner-connection predicate).** Every attach to the tree is the owner's (`ipc/privileged.rs`), so
+a connection that is not the session owner's can neither read the lock nor take it: `not-owner` on attach, `not-privileged` on a
+transaction. The shell holds the tree and may call `lock` and `authenticate`. An observer (the screensaver service, the compat
+adapters, `gnoblinctl`) reads `state` from the snapshot and the change batches, may call `lock`, and is refused `not-holder` on
+anything else, so it can never reach `authenticate`. Unlocking has exactly one path: an accepted `authenticate` from the shell while
+the session is `locked` by its owner, or the owner's `ext-session-lock-v1` client unlocking through the protocol. A locker that
+crashes leaves the session `locked`; nothing on the tree can unlock it. `authenticate` refuses an empty password (`denied`, no check
+runs) and one over 1024 bytes (`failed: ...`), and the password is a `SecretText`: it never enters a batch, a log line or a `Debug`.
+
+#### The old `lock` object and what replaced each member
+
+| Old member (`schema/lock.toml`)                                               | Replacement                                                                                | Notes                                                                                                                                                                 |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lock.locked` (bool)                                                          | `Lock.state != "not-locked"`; `gnoblin_client::SessionLock::covers`                        | read by the screensaver service (`GetActive`, `ActiveChanged`) and the four compat adapters (the capture embargo) through `Client::watch_lock`                        |
+| `lock.lock_session()` (done once `locked`)                                    | `Lock:lock()`; the confirmation is `state` reaching `locked`                               | `Client::lock_session` sends it; the service waits for `locked` (3 s) and reports `not-locked` otherwise, as the operation's `not-locked` error did                   |
+| error `not-locked` on `lock_session`                                          | dropped: a lock that falls back to `not-locked`, or never reaches `locked`, is the failure | the answer is an observed state, not an error code, because an observer gets no answer frame                                                                          |
+| (none) lock request to the shell                                              | `Lock.requested`                                                                           | the screensaver and adapters never needed it: the shell, which draws the lock screen, hears it                                                                        |
+| (none) password check, unlock                                                 | `Lock:authenticate(text)`                                                                  | already the stock `lock.lua`'s path                                                                                                                                   |
+| `session.lock_state`, `lock_available`, `lock_revision`, `lock_state_changed` | unchanged: they are `session` members, not the `lock` object                               | the five-state locker view (`unlocked`, `covering`, `locked`, `failsafe`) stays on `session` for the Lua API and `session.lock()` (docs/shell-api/session-runtime.md) |
+| locker liveness                                                               | the locker's own state machine (`gnoblin-lock`) and `session.lock_state`                   | not a `Lock` member: a locker that dies leaves the session `locked`, which is all a tree reader may rely on                                                           |
+| idle and inhibit                                                              | not part of the old `lock` object: they stay the `idle` object                             | listed only because the brief names them                                                                                                                              |
+
+An observer attaches with `mode = "observer"` and may send one op, `call` of `lock` on the lock node (`observer_ops`); the frame
+routes it to the compositor (`take_lock_calls`) and never hands it to the shell. The old object's IPC members are gone, so a client
+that sends `lock.lock_session` is refused `unknown-member` (no IPC version bump, O5).
 
 ### 2.5 Old objects and the new classes
 
-| Old object (`schema/*.toml`)                                    | New class                        | Kept or replaced                         | Step                |
-| --------------------------------------------------------------- | -------------------------------- | ---------------------------------------- | ------------------- |
-| `window`                                                        | `Window`                         | replaced; `focus` moves, `present` moves | 3 schema, 6 methods |
-| `output`                                                        | `Screen`                         | replaced                                 | 3 schema, 5 apply   |
-| `workspace`                                                     | `Workspace`                      | replaced                                 | 7                   |
-| `layers`                                                        | none                             | deleted: nothing read it (8C, O14 b)     | 8                   |
-| `lock`                                                          | `Lock`                           | replaced                                 | 8                   |
-| `portal_ui`                                                     | none                             | kept: the built-in dialog stays (O3)     | -                   |
-| `capture`                                                       | `View`                           | replaced                                 | 9                   |
-| `effect`                                                        | value type behind `Node.effects` | kept as an element type                  | 9                   |
-| `eis`                                                           | `Seat`                           | replaced                                 | 11                  |
-| `session`, `idle`, `settings`, `config`, `request`, `operation` | none                             | kept: not tree classes                   | -                   |
+| Old object (`schema/*.toml`)                                    | New class                        | Kept or replaced                                    | Step                |
+| --------------------------------------------------------------- | -------------------------------- | --------------------------------------------------- | ------------------- |
+| `window`                                                        | `Window`                         | replaced; `focus` moves, `present` moves            | 3 schema, 6 methods |
+| `output`                                                        | `Screen`                         | replaced                                            | 3 schema, 5 apply   |
+| `workspace`                                                     | `Workspace`                      | replaced                                            | 7                   |
+| `layers`                                                        | none                             | deleted: nothing read it (8C, O14 b)                | 8                   |
+| `lock`                                                          | `Lock`                           | replaced (done: `lock.lock_session` is `Lock:lock`) | 8                   |
+| `portal_ui`                                                     | none                             | kept: the built-in dialog stays (O3)                | -                   |
+| `capture`                                                       | `View`                           | replaced                                            | 9                   |
+| `effect`                                                        | value type behind `Node.effects` | kept as an element type                             | 9                   |
+| `eis`                                                           | `Seat`                           | replaced                                            | 11                  |
+| `session`, `idle`, `settings`, `config`, `request`, `operation` | none                             | kept: not tree classes                              | -                   |
 
 ## 3. The tree contract
 
@@ -709,7 +742,7 @@ Each step writes its failure-mode tests first, cuts one area over completely, an
 | `crates/gnoblin-wm/src/stack.rs`, `pointer_focus.rs`, focus keys                                     | stock `Window:on_press`, `raise`                                 | 6    | parity focus and stacking                            |
 | `schema/workspace.toml`, `crates/gnoblin-lua/src/layout/`, `data/lua/gnoblin/layouts/`               | `Workspace`; `shell/tiling.lua`, `shell/strip.lua`               | 7    | wm failure modes on the stock shell                  |
 | `crates/gnoblin-layers/`, `schema/layers.toml`                                                       | none: deleted, nothing read it (O14 b)                           | 8    | portal tests                                         |
-| `schema/lock.toml`                                                                                   | `Lock`                                                           | 8    | lock scenarios                                       |
+| `schema/lock.toml` (deleted)                                                                         | `Lock` (`schema/tree/lock.toml`)                                 | 8    | lock scenarios                                       |
 | `schema/portal_ui.toml`                                                                              | kept: the built-in dialog stays (O3)                             | -    | portal tests and `portal_provider`                   |
 | `schema/capture.toml`, GLES capture                                                                  | `View`                                                           | 9    | capture goldens                                      |
 | `schema/effect.toml`                                                                                 | element type of `Node.effects` (done: `schema/tree/effect.toml`) | 9    | effect goldens (`gnoblin-render-gles/tests/golden/`) |

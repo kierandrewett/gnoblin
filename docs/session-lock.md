@@ -123,6 +123,26 @@ gnoblinctl status
 `lock_state` changes from `unlocked` to `locked` after the locker takes the
 lock.
 
+## The lock node
+
+The compositor's tree has one `lock` node, made at startup. Its `state` is `not-locked`, `pending` (a lock was taken and
+the cover is not proven on every output yet) or `locked`.
+
+Everything that reads the lock reads this node: the stock lock
+screen, the ScreenSaver service (`GetActive`, `ActiveChanged`), the capture embargo of the D-Bus compatibility adapters,
+and `gnoblinctl status`. `pending` already counts as locked for all of them, so nothing captures the desktop while the
+cover goes up.
+
+`Lock:lock()` takes the lock:
+
+- It has no answer of its own. The confirmation is `state` reaching `locked`; a lock that falls back to `not-locked` did not take.
+- The ScreenSaver service and `gnoblinctl lock` use it. A second call while the session is `pending` or `locked` changes nothing.
+- Only the session owner's connection can read the node or call it. Any other connection is refused `not-owner`.
+- A reader that is not the shell (the service, an adapter, `gnoblinctl`) can take the lock and can never unlock it.
+- Unlocking goes through the authenticated check below, or through the locker's own `ext-session-lock-v1` request.
+
+There is no `gnoblin.lock` object (`locked`, `lock_session`); a client that sends one is refused `unknown-member`.
+
 ## Password check (PAM)
 
 The stock lock screen unlocks through the compositor's `lock` node: `Lock:unlock(password)` calls `authenticate`, and the
@@ -135,6 +155,9 @@ session unlocks only when PAM accepts. Every other answer keeps it locked:
 | `denied`       | Wrong password or unknown user. Three denials in a row delay the next attempt by 2 s.          | locked  |
 | `rate-limited` | The delay is running; the answer says how many milliseconds remain.                            | locked  |
 | `failed: ...`  | PAM could not decide: it is missing, or `pam_acct_mgmt` refused the account (expired, denied). | locked  |
+
+An empty password is answered `denied` without a check, so an account with no password cannot be opened with a bare Enter. A password
+over 1024 bytes is answered `failed: the password is longer than 1024 bytes` and no check starts.
 
 A `failed` check logs one warning that names the failure. Neither the log nor the answer carries the password.
 

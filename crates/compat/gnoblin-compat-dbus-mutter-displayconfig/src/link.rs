@@ -16,7 +16,7 @@
 //! 1. **The link ends.** [`DisplayLink::advance`] reports `Ok(false)`, so a host stops
 //!    instead of folding the same state forever: the loop is a caller's, and it has to
 //!    be able to end.
-//! 2. **The graph publishes no `lock` object.** Refused at connect, because the gate's
+//! 2. **The tree has no `lock` node.** Refused at connect, because the gate's
 //!    embargo would otherwise be built from a guess: [`DisplayLink::connect`].
 //! 3. **A property the schema promises is missing or mistyped.** Refused with the
 //!    object and property named, rather than a monitor with a zero scale:
@@ -31,7 +31,7 @@ use gnoblin_model::{Fields, Filter, ObjectId, ObjectView, Observation};
 
 use crate::error::DisplayError;
 use crate::service::OutputApplier;
-use crate::state::{DisplayState, read_lock};
+use crate::state::DisplayState;
 
 /// One subscription to the compositor, and the state it has delivered so far.
 #[derive(Debug)]
@@ -58,7 +58,17 @@ impl<C: Transport> DisplayLink<C> {
             .map(|view| (view.id(), view.clone()))
             .collect();
         let state = DisplayState::read(views.values())?;
-        let lock = read_lock(views.values())?;
+        let lock = match client.watch_lock() {
+            Ok(state) => LockState::from_node(state.as_str()),
+            Err(ClientError::Refused { code, .. }) if code == "not-found" => {
+                return Err(DisplayError::Unreadable {
+                    object: "lock".to_owned(),
+                    property: "state".to_owned(),
+                    reason: "the tree has no `lock` node".to_owned(),
+                });
+            }
+            Err(error) => return Err(DisplayError::from(error)),
+        };
         Ok(DisplayLink {
             client,
             views,
@@ -93,12 +103,13 @@ impl<C: Transport> DisplayLink<C> {
             Err(ClientError::Disconnected) => return Ok(false),
             Err(error) => return Err(DisplayError::from(error)),
         };
-        let gnoblin_client::Event::Model(observation) = event else {
+        match event {
+            gnoblin_client::Event::Model(observation) => self.fold(observation)?,
+            gnoblin_client::Event::Lock(state) => self.lock = LockState::from_node(state.as_str()),
             // Requests are the provider's business and no compat adapter offers one, so
             // an offer or a completion is not a state change.
-            return Ok(true);
-        };
-        self.fold(observation)?;
+            _ => {}
+        }
         Ok(true)
     }
 
@@ -194,7 +205,6 @@ impl<C: Transport> DisplayLink<C> {
             Observation::Signalled { .. } | Observation::Finished { .. } => return Ok(()),
         }
         self.state = DisplayState::read(self.views.values())?;
-        self.lock = read_lock(self.views.values())?;
         Ok(())
     }
 }

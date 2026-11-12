@@ -28,7 +28,6 @@
 //!    that raced a hotplug is told to read the state again instead of overwriting it:
 //!    [`ApplyPlan::validate`].
 
-use gnoblin_compat_core::LockState;
 use gnoblin_model::{Fields, ObjectView, TypeKey, Value};
 
 use crate::error::DisplayError;
@@ -470,26 +469,4 @@ fn boolean(view: &ObjectView, property: &str) -> Result<bool, DisplayError> {
         )),
         None => Err(unreadable(&object_name(view), property, "the property is absent")),
     }
-}
-
-/// The lock state the graph publishes, as the gate's embargo value.
-///
-/// `true` is the whole embargo: the schema publishes one boolean because the locker's
-/// `locking` and `locked` states both hide the desktop, and a caller that missed the
-/// transition must not read the finer value as "visible".
-pub fn read_lock<'a>(views: impl IntoIterator<Item = &'a ObjectView>) -> Result<LockState, DisplayError> {
-    for view in views {
-        if view.ty() == &TypeKey::gnoblin("lock") {
-            return Ok(if boolean(view, "locked")? {
-                LockState::Locked
-            } else {
-                LockState::Unlocked
-            });
-        }
-    }
-    Err(DisplayError::Unreadable {
-        object: "lock".to_owned(),
-        property: "locked".to_owned(),
-        reason: "the graph publishes no `lock` object".to_owned(),
-    })
 }

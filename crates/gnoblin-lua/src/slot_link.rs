@@ -168,7 +168,7 @@ impl<T: Transport> SlotLink for ClientSlotLink<T> {
                     completion: completion_name(&completion),
                 }),
                 // The shell is neither a host that offers requests nor a subscriber to the graph.
-                Ok(Event::RequestAnswered { .. } | Event::Model(_)) => {}
+                Ok(Event::RequestAnswered { .. } | Event::Model(_) | Event::Lock(_)) => {}
                 Err(ClientError::Idle) => return Ok(events),
                 Err(error) => return Err(refusal(error)),
             }

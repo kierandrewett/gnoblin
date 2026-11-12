@@ -17,9 +17,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures_lite::future::block_on;
-use gnoblin_model::ObjectId;
+use gnoblin_client::SessionLock;
 use gnoblin_service_screensaver::logind;
-use gnoblin_service_screensaver::{Compositor, LockReading, ScreenSaver};
+use gnoblin_service_screensaver::{Compositor, ScreenSaver};
 use gnoblin_service_testkit::Bus;
 use zbus::Connection;
 use zbus::connection::Builder;
@@ -28,9 +28,6 @@ use zbus::{OwnedFd, OwnedObjectPath};
 
 /// How long a test waits for the service to act on a bus event.
 const TIMEOUT: Duration = Duration::from_secs(10);
-
-/// The lock object the recorder reports, unlocked when the service starts.
-const LOCK_OBJECT: u64 = 7;
 
 const LOGIND: &str = "org.freedesktop.login1";
 const MANAGER_PATH: &str = "/org/freedesktop/login1";
@@ -92,11 +89,8 @@ impl Compositor for World {
         Ok(0)
     }
 
-    fn lock_reading(&self) -> Result<Option<LockReading>, String> {
-        Ok(Some(LockReading {
-            object: ObjectId::new(LOCK_OBJECT),
-            locked: false,
-        }))
+    fn lock_state(&self) -> Result<Option<SessionLock>, String> {
+        Ok(Some(SessionLock::NotLocked))
     }
 
     fn lock(&self) -> Result<(), String> {

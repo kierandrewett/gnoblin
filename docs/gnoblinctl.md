@@ -105,7 +105,12 @@ error: invalid value 'nosuch' for '[PROPERTY]'
 
 - `gnoblinctl ping` exits 0 and prints `pong` when the compositor answers the
   handshake.
-- `gnoblinctl status` prints the session state, its revision and the lock.
+- `gnoblinctl status` prints the session state, its revision and the lock. The lock is read from the compositor's `lock`
+  node: `locked` from the moment a lock is taken until the cover is gone, `unlocked` otherwise, and `unavailable` when the
+  compositor has no lock node or this connection may not read it.
+- `gnoblinctl lock` locks the session and waits until the cover is up, then prints `locked`. It exits 0 at once on a
+  session that is already locked, and exits 1 with `not-locked` when the lock falls back or does not confirm within
+  5 seconds. It never unlocks: only the lock screen's password check does.
 - `gnoblinctl version` prints the Gnoblin and IPC versions.
 
 ```sh

@@ -164,7 +164,11 @@ fn watch<T: Transport>(
             // not a change to the objects this command was asked about. An answer only
             // ever reaches the connection that offered the request, so `gnoblinctl`
             // never sees one.
-            Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
+            // `watch` never attaches to the tree, so no lock event reaches it.
+            Event::RequestOffered { .. }
+            | Event::RequestAnswered { .. }
+            | Event::RequestFinished { .. }
+            | Event::Lock(_) => {}
         }
     }
 }

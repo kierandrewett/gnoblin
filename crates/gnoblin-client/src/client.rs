@@ -31,6 +31,7 @@ use gnoblin_model::{
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
 use crate::error::{ClientError, ConnectError, HandshakeError, WireError};
+use crate::lock::{self, LockView, SessionLock};
 use crate::transport::Transport;
 use crate::wire;
 
@@ -58,6 +59,9 @@ pub enum PortalOutcome {
 pub enum Event {
     /// A change to the object graph, in revision order.
     Model(Observation),
+    /// The session lock's state changed, as the tree's lock node published it. Only after
+    /// [`Client::watch_lock`].
+    Lock(SessionLock),
     /// A request this client may claim.
     RequestOffered {
         /// The new request.
@@ -97,6 +101,7 @@ impl std::fmt::Debug for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Model(observation) => f.debug_tuple("Model").field(observation).finish(),
+            Event::Lock(state) => f.debug_tuple("Lock").field(state).finish(),
             Event::RequestOffered {
                 request,
                 deadline,
@@ -162,6 +167,8 @@ pub struct Client<T: Transport> {
     stashed: BTreeMap<u64, Envelope>,
     inbox: VecDeque<Event>,
     descriptors: Vec<OwnedFd>,
+    /// What the tree's lock node last said, once [`Client::watch_lock`] attached.
+    lock: LockView,
 }
 
 impl<T: Transport> Client<T> {
@@ -184,6 +191,7 @@ impl<T: Transport> Client<T> {
                     stashed: BTreeMap::new(),
                     inbox: VecDeque::new(),
                     descriptors: Vec::new(),
+                    lock: LockView::default(),
                 })
             }
             HandshakeKind::Refuse => Err(ConnectError::Refused(Mismatch {
@@ -226,6 +234,63 @@ impl<T: Transport> Client<T> {
             member: wire::member::SUBSCRIBE.to_owned(),
             reason,
         })
+    }
+
+    /// Attach to the tree as an observer and read the lock node, so [`Client::lock_state`] answers and
+    /// [`Event::Lock`] follows every change. Privileged: only the session owner's connection attaches.
+    ///
+    /// # Errors
+    ///
+    /// [`ClientError::Refused`] `not-owner` from a connection that is not the owner's, `not-found` when the
+    /// tree has no lock node; the transport's failure otherwise.
+    pub fn watch_lock(&mut self) -> Result<SessionLock, ClientError> {
+        let request = self.next_id();
+        self.send(&lock::attach_request(request))?;
+        self.await_reply(request)?;
+        self.lock.attached();
+        // The snapshot follows the reply at once. A reader with a read timeout gets "nothing yet" while it
+        // is in flight, so wait through a bounded number of idle reads before giving up.
+        let mut idle_reads = 0_u32;
+        while !self.lock.is_complete() {
+            match self.receive() {
+                Ok(envelope) => self.deliver(&envelope)?,
+                Err(ClientError::Idle) if idle_reads < 200 => idle_reads += 1,
+                Err(error) => return Err(error),
+            }
+        }
+        self.lock.state().ok_or_else(|| ClientError::Refused {
+            member: "tree.attach".to_owned(),
+            code: "not-found".to_owned(),
+            message: "the tree has no lock node".to_owned(),
+        })
+    }
+
+    /// The lock's state as of the last event read, or `None` before [`Client::watch_lock`].
+    #[must_use]
+    pub fn lock_state(&self) -> Option<SessionLock> {
+        self.lock.state()
+    }
+
+    /// Take the session lock: the `lock` call on the lock node. The compositor has no answer to give: the
+    /// confirmation is [`SessionLock::Locked`] arriving as [`Event::Lock`] (or read by [`Client::lock_state`]
+    /// after a read), and a caller that wants it reads until then. Needs [`Client::watch_lock`] first.
+    ///
+    /// # Errors
+    ///
+    /// [`ClientError::Refused`] with the compositor's code when the call is refused, `not-found` when no lock
+    /// node was attached, and the transport's failure otherwise.
+    pub fn lock_session(&mut self) -> Result<(), ClientError> {
+        let Some((node, serial)) = self.lock.target() else {
+            return Err(ClientError::Refused {
+                member: "tree.transact".to_owned(),
+                code: "not-found".to_owned(),
+                message: "the client has not attached to a lock node".to_owned(),
+            });
+        };
+        let request = self.next_id();
+        self.send(&lock::lock_request(request, node, serial))?;
+        let payload = self.await_reply(request)?;
+        lock::lock_reply(&payload)
     }
 
     /// Call a declared method, returning the operation its completion is matched on.
@@ -696,6 +761,13 @@ impl<T: Transport> Client<T> {
 
     /// Decode a frame into a queued event.
     fn deliver(&mut self, envelope: &Envelope) -> Result<(), ClientError> {
+        if envelope.namespace == lock::TREE {
+            // The tree is read for the lock node only; every other tree frame is the shell's.
+            if let Some(state) = self.lock.fold(envelope)? {
+                self.inbox.push_back(Event::Lock(state));
+            }
+            return Ok(());
+        }
         if envelope.namespace != wire::NAMESPACE {
             // A frame in a namespace this client does not speak is not ours to read.
             return Ok(());
@@ -808,6 +880,7 @@ mod routing_tests {
             stashed: Default::default(),
             inbox: Default::default(),
             descriptors: Vec::new(),
+            lock: Default::default(),
         }
     }
 

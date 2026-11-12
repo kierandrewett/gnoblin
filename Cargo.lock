@@ -1016,6 +1016,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-testkit",
+ "prost",
  "zeroize",
 ]
 
@@ -1244,6 +1245,7 @@ dependencies = [
  "gnoblin-cursor",
  "gnoblin-input",
  "gnoblin-input-eis",
+ "gnoblin-lock-auth",
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-model",
@@ -1256,6 +1258,8 @@ dependencies = [
  "gnoblin-render-frame",
  "gnoblin-schema",
  "gnoblin-secret",
+ "gnoblin-service-core",
+ "gnoblin-service-screensaver",
  "gnoblin-services",
  "gnoblin-types",
  "gnoblin-wayland",
@@ -1686,6 +1690,7 @@ name = "gnoblin-service-screensaver"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
+ "gnoblin-client",
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-service-core",

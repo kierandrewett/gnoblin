@@ -590,6 +590,8 @@ pub struct TreeFrame {
     claims: Vec<TreeCall>,
     /// `authenticate` calls the applied transactions made, in op order, for the compositor to check.
     authentications: Vec<TreeCall>,
+    /// `lock` calls the applied transactions made, in op order, for the compositor to run.
+    lock_calls: Vec<TreeCall>,
     /// Window nodes whose `maximised`, `fullscreen`, `minimised`, `tiled`, `width` or `height` the shell wrote, in the order
     /// the writes applied, for the compositor to answer with a configure.
     window_writes: Vec<NodeId>,
@@ -637,6 +639,7 @@ impl TreeFrame {
             frames: 0,
             claims: Vec::new(),
             authentications: Vec::new(),
+            lock_calls: Vec::new(),
             window_writes: Vec::new(),
             window_calls: Vec::new(),
             view_captures: Vec::new(),
@@ -731,6 +734,11 @@ impl TreeFrame {
     /// to check against the session's password.
     pub fn take_authentications(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.authentications)
+    }
+
+    /// Take the `lock` calls the applied transactions made, in op order, for the compositor to run.
+    pub fn take_lock_calls(&mut self) -> Vec<TreeCall> {
+        std::mem::take(&mut self.lock_calls)
     }
 
     /// Take the window nodes the shell wrote state or size on since the last take, each once, for the
@@ -867,7 +875,13 @@ impl TreeFrame {
             };
             match result {
                 Ok(mut done) => {
-                    changed |= !(done.changes.is_empty() && done.motion.is_empty() && done.calls.is_empty());
+                    // A `lock` call changes no node and is the compositor's alone: no batch carries it, so it must not
+                    // advance the serial either, or every mirror that reads batches in order sees a gap.
+                    let shell_calls = done
+                        .calls
+                        .iter()
+                        .any(|call| !(scene.class(call.node) == Some("lock") && call.method == "lock"));
+                    changed |= !(done.changes.is_empty() && done.motion.is_empty() && !shell_calls);
                     self.inputs.extend(done.inputs.iter().copied());
                     // The calls move into the batch, and the seat claims and password checks move out to
                     // the compositor: each call has exactly one owner from here, so a password is never
@@ -883,6 +897,10 @@ impl TreeFrame {
                     let (auths, calls): (Vec<TreeCall>, Vec<TreeCall>) = rest
                         .into_iter()
                         .partition(|call| scene.class(call.node) == Some("lock") && call.method == "authenticate");
+                    // A `lock` is the compositor's to run: it has no answer, the lock's `state` is it.
+                    let (locks, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
+                        .into_iter()
+                        .partition(|call| scene.class(call.node) == Some("lock") && call.method == "lock");
                     // A `measure` is answered on the spot: it reads no scene state, only the fonts.
                     let (measures, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
                         .into_iter()
@@ -897,6 +915,7 @@ impl TreeFrame {
                         .partition(|call| scene.class(call.node) == Some("view") && call.method == "capture");
                     self.view_captures.extend(captures);
                     self.authentications.extend(auths);
+                    self.lock_calls.extend(locks);
                     self.claims.extend(claims);
                     for change in &done.changes {
                         if let TreeChange::Set { node, key, .. } = change

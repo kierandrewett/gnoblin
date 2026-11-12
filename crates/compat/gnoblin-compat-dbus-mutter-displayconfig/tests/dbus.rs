@@ -24,7 +24,7 @@ use gnoblin_compat_dbus_mutter_displayconfig::{
 };
 use gnoblin_model::{Fields, TypeKey, Value};
 use support::bus::Bus;
-use support::{VERSION, graph, output_properties, unlocked};
+use support::{VERSION, graph, output_properties};
 use zbus::{Connection, OwnedVariant, Proxy};
 
 /// A property dict, as the interface declares it.
@@ -97,7 +97,6 @@ struct Fixture {
     link: DisplayLink<Loopback>,
     primary: gnoblin_model::ObjectId,
     second: gnoblin_model::ObjectId,
-    lock: gnoblin_model::ObjectId,
 }
 
 impl Fixture {
@@ -110,9 +109,7 @@ impl Fixture {
         let second = server
             .create(TypeKey::gnoblin("output"), output_properties("DP-1", 1.0, false))
             .expect("a second output is a second object");
-        let lock = server
-            .create(TypeKey::gnoblin("lock"), unlocked())
-            .expect("the lock type and its property are in the schema");
+        server.publish_lock("not-locked");
         let client = server.connect(VERSION).expect("the versions match");
         let link = DisplayLink::connect(client).expect("the snapshot is a state this adapter can report");
         Fixture {
@@ -120,7 +117,6 @@ impl Fixture {
             link,
             primary,
             second,
-            lock,
         }
     }
 
@@ -415,15 +411,12 @@ fn a_read_is_allowed_while_the_session_is_locked() {
         let service = DisplayConfigService::new(Box::new(SharedRecorder(Arc::new(Recorder::default()))))
             .expect("the matrix loads");
         export(&connection, &service).await.expect("the name is free");
-        fixture
-            .server
-            .set(fixture.lock, "locked", Value::Bool(true))
-            .expect("locked is a declared bool property");
+        fixture.server.publish_lock("locked");
         fixture.publish(&service).await;
         assert_eq!(
             fixture.link.lock(),
             gnoblin_compat_core::LockState::Locked,
-            "the link read the lock object"
+            "the link read the lock node"
         );
         let proxy = caller(&connection).await;
         let (_, monitors, ..) = state(&proxy).await;

@@ -75,6 +75,7 @@ use gnoblin_types::{DeviceId, KeyCode, KeyState, Keysym, Modifiers, NodeId, Wind
 use crate::State;
 use crate::devices::{DeviceKeys, LOCKS};
 use crate::observation::{MenuAnchor, MenuSource};
+use crate::protocols::ext_session_lock_v1::internal_locker;
 use crate::tree_frame::{ChordEvent, ChordState, TreeInput};
 
 use crate::log;
@@ -1065,12 +1066,22 @@ impl State {
             consumed = answer;
         }
         // A key the router leaves to the client goes to the shell's node instead, when the shell holds
-        // the seat focus on one that takes input. A locked session's cover owns every key, so none reach it.
+        // the seat focus on one that takes input. A locked session's cover owns every key, so none reach the
+        // shell either, with one exception: while the compositor's own lock covers the session (a lock the
+        // screensaver service or `gnoblinctl lock` took, not an `ext-session-lock-v1` client's), the keys
+        // go to the shell's focused node when the shell's lock screen is up (`Lock.engaged`), so a password
+        // typed at it reaches the screen that checks it. An external locker's session never does this.
+        let shell_target = if self.lock.state() == LockState::Unlocked {
+            self.composer.shell_key_target()
+        } else if self.lock.state() == LockState::Locked && self.lock.locker() == Some(internal_locker()) {
+            self.composer.shell_lock_key_target()
+        } else {
+            None
+        };
         if origin != KeyOrigin::BindingOnly
             && !shared
             && !consumed
-            && self.lock.state() == LockState::Unlocked
-            && let Some(node) = self.composer.shell_key_target()
+            && let Some(node) = shell_target
         {
             self.tree.input(
                 node,

@@ -13,6 +13,10 @@ use smithay::reexports::calloop::channel::{self, Channel, Sender};
 use crate::log;
 use crate::tree_frame::TreeAnswer;
 
+/// The longest password a check accepts, in bytes. PAM's own response limit is 512; a password past this is not
+/// one a user typed, and the check refuses it without copying it into a worker.
+pub const MAX_SECRET_BYTES: usize = 1024;
+
 /// The worker's answer to one check, delivered back to the event loop.
 pub struct AuthDone {
     pub token: u64,
@@ -63,6 +67,16 @@ impl LockAuth {
     pub fn begin(&mut self, token: u64, password: SecretText, locked: bool, now_ms: u64) -> Option<TreeAnswer> {
         if !locked {
             return Some(refused(token, "not-locked"));
+        }
+        // An empty password is never checked: an account with none would let a bare Enter unlock the session.
+        if password.is_empty() {
+            return Some(refused(token, "denied"));
+        }
+        if password.expose().len() > MAX_SECRET_BYTES {
+            return Some(refused(
+                token,
+                &format!("failed: the password is longer than {MAX_SECRET_BYTES} bytes"),
+            ));
         }
         if self.in_flight.is_some() {
             return Some(refused(token, "busy"));
@@ -202,6 +216,42 @@ mod tests {
         let (mut auth, _results) = LockAuth::new(accepting(), Some(USER.to_owned()));
         let answer = auth.begin(7, SecretText::new(PASSWORD), false, 0).expect("refused");
         assert_eq!(answer, refused(7, "not-locked"));
+    }
+
+    /// The failure mode: an account with an empty password lets an empty submission through PAM, so a
+    /// locked session opens to a bare Enter. An empty secret is refused before any check runs.
+    #[test]
+    fn an_empty_secret_is_refused_without_a_worker() {
+        let (mut auth, _results) = LockAuth::new(accepting(), Some(USER.to_owned()));
+        let answer = auth.begin(3, SecretText::new(""), true, 0).expect("refused");
+        assert_eq!(answer, refused(3, "denied"));
+        assert!(auth.in_flight.is_none(), "no worker was started");
+        // It is not a denial the limiter counts either: it never reached the account.
+        assert!(auth.limiter.allows(0));
+    }
+
+    /// The failure mode: a megabyte password is copied into PAM and a worker for each attempt. An oversized
+    /// secret is refused, and the refusal names the limit and never the secret.
+    #[test]
+    fn an_oversized_secret_is_refused_and_never_named() {
+        let (mut auth, _results) = LockAuth::new(accepting(), Some(USER.to_owned()));
+        let huge = "x".repeat(MAX_SECRET_BYTES + 1);
+        let answer = auth.begin(4, SecretText::new(huge.clone()), true, 0).expect("refused");
+        assert_eq!(answer.token, 4);
+        assert!(answer.result.is_empty());
+        assert!(answer.error.starts_with("failed: "), "{answer:?}");
+        assert!(!answer.error.contains(&huge), "the refusal never carries the secret");
+        assert!(auth.in_flight.is_none(), "no worker was started");
+    }
+
+    #[test]
+    fn a_secret_at_the_limit_is_checked() {
+        let (mut auth, _results) = LockAuth::new(accepting(), Some(USER.to_owned()));
+        let longest = "x".repeat(MAX_SECRET_BYTES);
+        assert!(
+            auth.begin(5, SecretText::new(longest), true, 0).is_none(),
+            "a check started"
+        );
     }
 
     #[test]

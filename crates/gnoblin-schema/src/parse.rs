@@ -694,7 +694,6 @@ mod tests {
                 "config",
                 "eis",
                 "idle",
-                "lock",
                 "operation",
                 "output",
                 "portal_ui",

@@ -7,16 +7,15 @@
 mod support;
 
 use gnoblin_client::Server;
+use gnoblin_compat_core::LockState;
 use gnoblin_compat_dbus_gnome_shell_introspect::{IntrospectError, IntrospectLink, IntrospectState};
 use gnoblin_model::{Fields, ObjectId, ObjectView, TypeKey, Value};
-use support::{VERSION, graph, output_properties, unlocked, window_properties};
+use support::{VERSION, graph, output_properties, window_properties};
 
-/// A server with the lock object, so a link can connect.
+/// A server whose tree has a lock node, so a link can connect.
 fn server() -> Server {
     let mut server = Server::new(graph(), VERSION);
-    server
-        .create(TypeKey::gnoblin("lock"), unlocked())
-        .expect("the lock type is in the schema");
+    server.publish_lock("not-locked");
     server
 }
 
@@ -54,7 +53,7 @@ fn a_window_property_the_schema_does_not_promise_is_refused() {
     properties.insert("height".to_owned(), Value::Uint(600));
     let view = ObjectView::new(ObjectId::new(1), TypeKey::gnoblin("window"), properties);
 
-    match IntrospectState::read([&view]) {
+    match IntrospectState::read([&view], LockState::Unlocked) {
         Err(IntrospectError::Unreadable { property, .. }) => assert_eq!(property, "title"),
         other => panic!("a mistyped title is refused, got {other:?}"),
     }
@@ -81,7 +80,7 @@ fn a_graph_without_an_enabled_output_cannot_answer_the_screen_size() {
 }
 
 #[test]
-fn a_graph_without_a_lock_object_is_refused() {
+fn a_tree_without_a_lock_node_is_refused() {
     // The failure mode: the gate's embargo is built from a guess because nothing said whether
     // the session is locked.
     let mut server = Server::new(graph(), VERSION);
@@ -96,8 +95,8 @@ fn a_graph_without_a_lock_object_is_refused() {
     match IntrospectLink::connect(client) {
         Err(IntrospectError::Unreadable { object, property, .. }) => {
             assert_eq!(object, "lock");
-            assert_eq!(property, "locked");
+            assert_eq!(property, "state");
         }
-        other => panic!("a missing lock object is refused, got {other:?}"),
+        other => panic!("a missing lock node is refused, got {other:?}"),
     }
 }

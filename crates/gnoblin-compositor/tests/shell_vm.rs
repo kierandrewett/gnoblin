@@ -2103,7 +2103,7 @@ mod prompts {
 
     use super::bus::Bus;
     use super::support::ei::{EiClient, keyboard};
-    use super::support::{Session, Wire};
+    use super::support::{Locker, Session, Wire};
     use super::{
         Duration, Instant, PaintedCanvas, ShellRole, connect, connect_session, load_stock_shell, painted_canvases,
         user_config,
@@ -2227,7 +2227,16 @@ mod prompts {
         /// [`Prompting::start`], with the services role's end either read as a client (`as_client`) or left in
         /// `services_end` for the real services role to adopt.
         fn start_holding(config: Option<&std::path::Path>, as_client: bool) -> Prompting {
-            let (session, mut ends) = Session::start_privileged(&["portal", "input", "services"]);
+            Prompting::start_configured(config, as_client, |_| {})
+        }
+
+        /// [`Prompting::start_holding`], with `configure` setting the rest of the session's configuration first.
+        fn start_configured(
+            config: Option<&std::path::Path>,
+            as_client: bool,
+            configure: impl FnOnce(&mut gnoblin_compositor::SessionConfig),
+        ) -> Prompting {
+            let (session, mut ends) = Session::start_privileged_configured(&["portal", "input", "services"], configure);
             let relay = end_for(&mut ends, "portal");
             let input = end_for(&mut ends, "input");
             let (_, stream) = {
@@ -3143,5 +3152,214 @@ mod prompts {
         p.until("the dialog never closed", |p| {
             !texts(&p.painted()).iter().any(|t| t == "Unlock the keyring")
         });
+    }
+
+    /// The lock screen a user's shell file draws on top of the stock `lock.lua`: a secret entry on the Desk, focused,
+    /// whose submitted text goes to the stock `Lock:unlock`. The stock shell draws no lock screen of its own (an
+    /// `ext-session-lock-v1` locker normally does); this is the smallest one, so the stock lock path is exercised
+    /// with typed input. `attempts` records each answer: the result, a colon and the error.
+    const LOCK_SCREEN: &str = r##"
+attempts = {}
+screen = nil
+function Lock:on_requested()
+    self.engaged = true
+    go(function()
+        local d = desk()
+        screen = d:add(Entry({ secret = true, x = 100, y = 100, width = 300, height = 44, fill = "#313244" }))
+        seat.focus = screen
+        local result
+        repeat
+            local text = await(screen.submit)
+            local err
+            result, err = self:unlock(text)
+            attempts[#attempts + 1] = tostring(result) .. ":" .. tostring(err)
+            screen.text = ""
+        until result == "ok"
+        screen:destroy()
+        screen = nil
+    end)
+end
+"##;
+
+    const SAVER: &str = "org.freedesktop.ScreenSaver";
+    const SAVER_PATH: &str = "/org/freedesktop/ScreenSaver";
+    const KEY_Y: u32 = 21;
+
+    /// A probe of the shell VM's state as text.
+    fn probe(p: &mut Prompting, code: &str) -> String {
+        p.role()
+            .run("lock probe", code)
+            .expect("the probe runs")
+            .expect("the probe returns text")
+    }
+
+    /// `org.freedesktop.ScreenSaver.GetActive` as a caller on the private bus sees it.
+    fn saver_active(caller: &Connection) -> bool {
+        zbus::block_on(async {
+            let proxy = Proxy::new(caller, SAVER, SAVER_PATH, SAVER)
+                .await
+                .expect("the saver proxy");
+            proxy
+                .call_method("GetActive", &())
+                .await
+                .expect("GetActive answers")
+                .body()
+                .deserialize()
+                .expect("a bool")
+        })
+    }
+
+    /// The real ScreenSaver service over the real owner connection to the compositor, as the services role runs it:
+    /// the lock node is attached, a thread pumps the connection's events into `ActiveChanged`, and the service is
+    /// served on the private bus.
+    struct Saver {
+        stop: Arc<AtomicBool>,
+        pump: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Saver {
+        fn start(socket: &std::path::Path, server: &Connection) -> Saver {
+            let client = IpcClient::connect(
+                UnixTransport::connect(socket).expect("the compositor's socket"),
+                gnoblin_compositor::version(),
+            )
+            .expect("the owner's connection");
+            let host = gnoblin_service_core::Host::new(client, Duration::from_secs(30));
+            host.watch_lock().expect("the session has a lock node");
+            host.set_read_timeout(Some(Duration::from_millis(20)));
+            let service = gnoblin_service_screensaver::ScreenSaver::new(Box::new(host.clone()));
+            service
+                .register(server)
+                .expect("the service registers on the private bus");
+            let stop = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&stop);
+            let connection = server.clone();
+            let pump = std::thread::Builder::new()
+                .name("saver-pump".to_owned())
+                .spawn(move || {
+                    while !flag.load(Ordering::SeqCst) {
+                        match host.next_event() {
+                            Ok(Event::Lock(state)) => {
+                                if let Some(active) = service.observe(state) {
+                                    gnoblin_service_screensaver::ScreenSaver::publish(&connection, active);
+                                }
+                            }
+                            Ok(_) | Err(gnoblin_client::ClientError::Idle) => {}
+                            Err(_) => break,
+                        }
+                    }
+                })
+                .expect("the pump thread");
+            Saver { stop, pump: Some(pump) }
+        }
+    }
+
+    impl Drop for Saver {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(pump) = self.pump.take() {
+                let _ = pump.join();
+            }
+        }
+    }
+
+    /// The whole lock path on the stock shell, in a real session. `org.freedesktop.ScreenSaver.Lock` takes the lock
+    /// through the real service; the compositor covers the session and tells the stock shell, which engages its lock
+    /// screen; a wrong password typed on the session's real input path (the EI keyboard) is denied and the session
+    /// stays locked; the right one unlocks it, through the compositor's PAM-free scripted check.
+    #[test]
+    fn the_screensaver_locks_the_session_and_a_typed_password_unlocks_the_stock_lock_screen() {
+        const USER: &str = "kieran";
+        let config = user_config(&[("shell.lua", LOCK_SCREEN)]);
+        let mut p = Prompting::start_configured(Some(config.path()), true, |config| {
+            config.wayland.lock_check = Some(gnoblin_wayland::LockCheck {
+                authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, "hi")),
+                user: Some(USER.to_owned()),
+            });
+        });
+        let bus = Bus::start();
+        let server = zbus::block_on(Builder::address(bus.address()).build()).expect("the service's bus connection");
+        let _saver = Saver::start(p.session.socket(), &server);
+        let caller = zbus::block_on(Builder::address(bus.address()).build()).expect("a caller on the private bus");
+        assert!(!saver_active(&caller), "a new session is not locked");
+        assert_eq!(probe(&mut p, "return lock.state"), "not-locked");
+
+        // The call blocks until the cover is proven, so it runs on its own thread while the shell takes its frames.
+        let asker = caller.clone();
+        let call = std::thread::spawn(move || {
+            zbus::block_on(async {
+                let proxy = Proxy::new(&asker, SAVER, SAVER_PATH, SAVER).await?;
+                proxy.call_method("Lock", &()).await.map(|_| ())
+            })
+        });
+        p.until("the shell's lock screen never came up", |p| {
+            probe(p, "return tostring(lock.engaged) .. ' ' .. tostring(screen ~= nil)") == "true true"
+        });
+        p.until("the Lock call never returned", |_| call.is_finished());
+        call.join()
+            .expect("the caller thread")
+            .expect("Lock answers once the cover is confirmed");
+        assert_eq!(probe(&mut p, "return lock.state"), "locked");
+        assert!(saver_active(&caller), "GetActive is true while locked");
+
+        // A wrong password through the real input path: denied, and the session stays locked.
+        p.key(KEY_H);
+        p.key(KEY_Y);
+        p.until("the entry never showed the two characters", |p| {
+            texts(&p.painted()).iter().any(|t| t == "**")
+        });
+        p.key(KEY_ENTER);
+        p.until("the wrong password was never answered", |p| {
+            probe(p, "return table.concat(attempts, ',')") == ":denied"
+        });
+        assert_eq!(
+            probe(&mut p, "return lock.state"),
+            "locked",
+            "a denied password keeps the lock"
+        );
+        assert!(saver_active(&caller), "GetActive stays true after a denied password");
+
+        // The right one unlocks.
+        p.key(KEY_H);
+        p.key(KEY_I);
+        p.key(KEY_ENTER);
+        p.until("the right password never unlocked the session", |p| {
+            probe(p, "return lock.state") == "not-locked"
+        });
+        assert!(
+            probe(&mut p, "return table.concat(attempts, ',')").starts_with(":denied,ok:"),
+            "the second attempt was accepted"
+        );
+        p.until("the service never announced the unlock", |_| !saver_active(&caller));
+        assert!(
+            p.role().diagnostics().is_empty(),
+            "no handler failed and no transaction was refused: {:?}",
+            p.role().diagnostics()
+        );
+    }
+
+    /// The failure mode this guards: the exception that lets a typed password reach the shell's lock screen under the
+    /// compositor's own lock also lets keys reach it under an `ext-session-lock-v1` locker's, where the locker owns every
+    /// key. A key typed under an external lock never reaches the shell, even with its lock screen engaged and focused.
+    #[test]
+    fn keys_typed_under_an_external_locker_never_reach_the_shells_lock_screen() {
+        let config = user_config(&[("shell.lua", LOCK_SCREEN)]);
+        let mut p = Prompting::start(Some(config.path()));
+        let mut locker = Locker::connect(p.session.wayland());
+        locker.lock();
+        p.until("the shell's lock screen never came up", |p| {
+            probe(p, "return tostring(lock.engaged) .. ' ' .. tostring(screen ~= nil)") == "true true"
+        });
+        p.key(KEY_H);
+        p.key(KEY_I);
+        p.run_for(Duration::from_millis(500));
+        assert_eq!(
+            probe(&mut p, "return screen.text"),
+            "",
+            "the shell's entry received no key under an external lock"
+        );
+        p.key(KEY_ENTER);
+        p.run_for(Duration::from_millis(300));
+        assert_eq!(probe(&mut p, "return #attempts"), "0", "nothing was submitted");
     }
 }

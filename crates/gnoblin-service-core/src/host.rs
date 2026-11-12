@@ -58,6 +58,23 @@ impl Host {
         self.lock().subscribe(Filter::All)
     }
 
+    /// Attach to the tree as an observer and read the lock node, so [`Host::lock_state`] answers and
+    /// [`gnoblin_client::Event::Lock`] follows every change.
+    pub fn watch_lock(&self) -> Result<gnoblin_client::SessionLock, ClientError> {
+        self.lock().watch_lock()
+    }
+
+    /// The lock node's state as of the last event the pump read, or `None` before [`Host::watch_lock`].
+    pub fn lock_state(&self) -> Option<gnoblin_client::SessionLock> {
+        self.lock().lock_state()
+    }
+
+    /// Take the session lock. The confirmation is the lock node reaching `locked`; see
+    /// [`gnoblin_client::Client::lock_session`].
+    pub fn lock_session(&self) -> Result<(), ClientError> {
+        self.lock().lock_session()
+    }
+
     /// The configuration the compositor has accepted this session, with its revision, or `None`
     /// while it has accepted none. The document is the JSON the compositor evaluated.
     pub fn configuration(&self) -> Result<Option<(u64, Vec<u8>)>, ClientError> {

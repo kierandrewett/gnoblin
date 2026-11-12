@@ -992,6 +992,9 @@ impl<T: Transport + 'static> Host<T> {
             // A request's answer goes only to the connection that offered it, so a script
             // never sees one. Its completion arrives on `finished`.
             Event::RequestAnswered { .. } => {}
+            // The lock is the tree's `lock` node, which a script reads through the tree and not
+            // through this connection: it never attaches as an observer.
+            Event::Lock(_) => {}
             Event::RequestOffered {
                 request,
                 deadline,

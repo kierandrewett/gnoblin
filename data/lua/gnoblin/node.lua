@@ -765,6 +765,24 @@ for _, s in ipairs(core.classes()) do
             return setmetatable({ node = n, name = tostring(token) }, Signal)
         end)
     end
+    if s.name == "Lock" then
+        -- `lock:authenticate(password)` asks the compositor to check `password` against the session user. The
+        -- password is the call's secret text and never an argument: arguments are numbers, and the compositor wipes
+        -- the text with the call and keeps it out of every log. It answers later, so the call returns a signal that
+        -- fires with `"ok"`, or `""` and the error (`denied`, `rate-limited` with the wait in ms as the result,
+        -- `not-locked`, `busy`, `failed: <reason>`).
+        rawset(c, "authenticate", function(n, password)
+            if type(password) ~= "string" then
+                error("authenticate: the password must be a string", 2)
+            end
+            local token = core.call(rawget(n, ID), "authenticate", nil, password)
+            return setmetatable({ node = n, name = tostring(token) }, Signal)
+        end)
+        -- The compositor takes the session lock for the caller; the answer is `state`, so the call returns nothing.
+        rawset(c, "lock", function(n)
+            core.call(rawget(n, ID), "lock")
+        end)
+    end
     settle(m)
 end
 local Node = classes.Node

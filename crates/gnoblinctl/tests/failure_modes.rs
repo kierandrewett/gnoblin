@@ -36,7 +36,7 @@ const VERSION: Version = Version::new(0, 2, 0);
 
 /// The verbs written by hand rather than generated from the schema. They are not
 /// object commands, so the drift check must not expect a schema object behind them.
-const HAND_WRITTEN: &[&str] = &["ping", "status", "version"];
+const HAND_WRITTEN: &[&str] = &["lock", "ping", "status", "version"];
 
 /// A unique path under the temporary directory.
 fn scratch(suffix: &str) -> PathBuf {
@@ -71,6 +71,8 @@ enum Step {
     Set(ObjectId, &'static str, Value),
     /// Complete the oldest pending operation.
     Complete(OperationOutcome),
+    /// Publish the tree's lock node in this state.
+    Lock(&'static str),
 }
 
 /// A transport over the in-process link that steps the model on an empty read.
@@ -95,6 +97,7 @@ impl Stepping {
             Step::Set(object, property, value) => {
                 self.server.set(object, property, value).expect("a declared property");
             }
+            Step::Lock(state) => self.server.publish_lock(state),
             Step::Complete(outcome) => {
                 let pending: Vec<_> = self.server.graph().pending().collect();
                 if let Some(operation) = pending.first() {
@@ -147,6 +150,13 @@ impl ModelConnection {
             server: Server::new(graph, VERSION),
             steps: steps.into(),
         }
+    }
+
+    /// The same, with the tree's lock node in `state` (`not-locked`, `pending` or `locked`).
+    fn with_lock(graph: Graph, state: &str, steps: Vec<Step>) -> ModelConnection {
+        let mut connection = ModelConnection::new(graph, steps);
+        connection.server.publish_lock(state);
+        connection
     }
 }
 
@@ -302,8 +312,25 @@ fn status_reports_the_revision_and_an_unavailable_lock() {
     assert!(out.contains("revision  "), "{out}");
     assert!(
         out.contains("lock      unavailable\n"),
-        "a compositor with no lock object is not unlocked:\n{out}"
+        "a compositor with no lock node is not unlocked:\n{out}"
     );
+}
+
+#[test]
+fn status_reads_the_lock_node() {
+    // The failure mode: `status` reads an unlocked desktop from a lock that is only pending, so a
+    // script that guards on it acts while the cover is going up.
+    for (state, shown) in [("not-locked", "unlocked"), ("pending", "locked"), ("locked", "locked")] {
+        let (graph, _, _) = two_windows();
+        let (code, out, err) = run(
+            &["--json", "status"],
+            ModelConnection::with_lock(graph, state, Vec::new()),
+        );
+        assert_eq!(code, 0, "stderr: {err}");
+        let document: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+        assert_eq!(document["lock_available"], true, "{state}");
+        assert_eq!(document["lock_state"], shown, "{state}");
+    }
 }
 
 #[test]
@@ -718,4 +745,55 @@ fn the_wire_version_is_the_schema_version() {
         gnoblin_schema::Version::new(0, 2, 0),
         "the generated tree speaks the schema's version"
     );
+}
+
+#[test]
+fn lock_takes_the_lock_and_waits_for_the_cover() {
+    let (graph, _, _) = two_windows();
+    let steps = vec![Step::Lock("pending"), Step::Lock("locked")];
+    let (code, out, err) = run(&["lock"], ModelConnection::with_lock(graph, "not-locked", steps));
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "locked\n");
+}
+
+#[test]
+fn lock_on_a_locked_session_is_ok_and_sends_nothing() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(
+        &["--json", "lock"],
+        ModelConnection::with_lock(graph, "locked", Vec::new()),
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+    assert_eq!(document["lock_state"], "locked");
+}
+
+#[test]
+fn lock_fails_when_the_lock_falls_back_to_not_locked() {
+    // The failure mode: a script locks and then acts, taking a request that never produced a cover for a
+    // protected screen.
+    let (graph, _, _) = two_windows();
+    let steps = vec![Step::Lock("pending"), Step::Lock("not-locked")];
+    let (code, out, err) = run(&["lock"], ModelConnection::with_lock(graph, "not-locked", steps));
+    assert_eq!(code, 1);
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("not-locked"), "{err}");
+}
+
+#[test]
+fn lock_with_no_confirmation_fails() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["lock"], ModelConnection::with_lock(graph, "not-locked", Vec::new()));
+    assert_eq!(code, 1);
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("not-locked"), "{err}");
+}
+
+#[test]
+fn lock_on_a_compositor_without_a_lock_node_is_refused() {
+    let (graph, _, _) = two_windows();
+    let (code, out, err) = run(&["lock"], ModelConnection::new(graph, Vec::new()));
+    assert_eq!(code, 1);
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("not-found"), "{err}");
 }

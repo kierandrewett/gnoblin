@@ -496,6 +496,8 @@ impl<T: Transport> IpcLoop<T> {
                     // already removed, so this does nothing for it.
                     self.secrets.remove(&request);
                 }
+                // The portal never attaches to the tree, so the lock node's changes never reach it.
+                Ok(Event::Lock(_)) => {}
                 Ok(Event::RequestOffered { .. }) => {
                     // A request this connection could claim is not its business: the portal
                     // offers, it does not draw.

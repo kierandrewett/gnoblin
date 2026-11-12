@@ -382,6 +382,7 @@ fn verb_commands() -> Vec<Command> {
     vec![
         Command::new("ping").about("Exit 0 when the compositor answers the handshake."),
         Command::new("status").about("The session's state, its revision and the lock."),
+        Command::new("lock").about("Lock the session and wait until the cover is up."),
         Command::new("version").about("The Gnoblin version and the IPC version this connection speaks."),
         Command::new("config")
             .about("Read or reload the configuration, or check a file against the runtime's parser.")
@@ -428,6 +429,10 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         "log" => log_invocation(sub, json)?,
         "ping" => Invocation::Verb {
             verb: verbs::Verb::Ping,
+            json,
+        },
+        "lock" => Invocation::Verb {
+            verb: verbs::Verb::Lock,
             json,
         },
         "status" => Invocation::Verb {

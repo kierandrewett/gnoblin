@@ -13,14 +13,12 @@ use gnoblin_compat_dbus_mutter_displayconfig::{
     ApplyMethod, ApplyPlan, DisplayError, DisplayLink, DisplayState, LogicalMonitor, MonitorAssignment,
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};
-use support::{VERSION, graph, output_properties, unlocked};
+use support::{VERSION, graph, output_properties};
 
 /// A server with the lock object, so a link can connect.
 fn server() -> Server {
     let mut server = Server::new(graph(), VERSION);
-    server
-        .create(TypeKey::gnoblin("lock"), unlocked())
-        .expect("the lock type is in the schema");
+    server.publish_lock("not-locked");
     server
 }
 
@@ -108,7 +106,7 @@ fn the_current_mode_must_be_one_of_the_outputs_modes() {
 }
 
 #[test]
-fn a_graph_without_a_lock_object_is_refused() {
+fn a_tree_without_a_lock_node_is_refused() {
     // The failure mode: the gate's embargo is built from a guess because nothing told the
     // adapter whether the session is locked. It fails closed at connect instead.
     let mut server = Server::new(graph(), VERSION);
@@ -118,9 +116,9 @@ fn a_graph_without_a_lock_object_is_refused() {
     match DisplayLink::connect(client) {
         Err(DisplayError::Unreadable { object, property, .. }) => {
             assert_eq!(object, "lock");
-            assert_eq!(property, "locked");
+            assert_eq!(property, "state");
         }
-        other => panic!("a missing lock object is refused, got {other:?}"),
+        other => panic!("a missing lock node is refused, got {other:?}"),
     }
 }
 

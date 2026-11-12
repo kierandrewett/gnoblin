@@ -11,9 +11,8 @@ use gnoblin_compat_core::{LockState, Mode, SupportMatrix};
 use gnoblin_compat_dbus_gnome_shell_screenshot::{
     BUS_NAME, INTERFACE, MATRIX, PATH, ScreenshotError, ScreenshotLink, ScreenshotService, export,
 };
-use gnoblin_model::{ObjectId, TypeKey, Value};
 use support::bus::Bus;
-use support::{VERSION, graph, lock_properties};
+use support::{VERSION, graph};
 use zbus::{Connection, Proxy};
 
 /// The message of a refused call, which is where the adapter's rule id lives.
@@ -43,19 +42,16 @@ async fn caller(connection: &Connection) -> Proxy<'static> {
 struct Fixture {
     server: Server,
     link: ScreenshotLink<Loopback>,
-    lock: ObjectId,
 }
 
 impl Fixture {
     /// An unlocked session, read through the loopback.
     fn new() -> Fixture {
         let mut server = Server::new(graph(), VERSION);
-        let lock = server
-            .create(TypeKey::gnoblin("lock"), lock_properties(false))
-            .expect("the lock type and its property are in the schema");
+        server.publish_lock("not-locked");
         let client = server.connect(VERSION).expect("the versions match");
         let link = ScreenshotLink::connect(client).expect("the snapshot publishes the embargo");
-        Fixture { server, link, lock }
+        Fixture { server, link }
     }
 
     /// Publish whatever the link has folded.
@@ -108,12 +104,9 @@ fn a_screenshot_is_refused_while_the_session_is_locked() {
         service.set_mode(Mode::Unmediated);
         export(&connection, &service).await.expect("the name is free");
 
-        fixture
-            .server
-            .set(fixture.lock, "locked", Value::Bool(true))
-            .expect("locked is a declared bool property");
+        fixture.server.publish_lock("locked");
         fixture.publish(&service);
-        assert_eq!(fixture.link.lock(), LockState::Locked, "the link read the lock object");
+        assert_eq!(fixture.link.lock(), LockState::Locked, "the link read the lock node");
 
         let error = caller(&connection)
             .await

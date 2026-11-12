@@ -91,6 +91,11 @@ xdg-desktop-portal-gnoblin = { path = "../xdg-desktop-portal-gnoblin" }
 # The real services role, which serves the Gnoblin keyring on a private bus and offers its unlock prompt to the stock
 # shell through the compositor, so the keyring's `prompt.secret` path is tested as the session runs it.
 gnoblin-services = { path = "../gnoblin-services" }
+# The real ScreenSaver service and the connection it reads the lock through, so the lock end to end test takes the
+# lock the way a locker on the user's desktop does: `org.freedesktop.ScreenSaver.Lock` on a private bus.
+gnoblin-service-core = { path = "../gnoblin-service-core" }
+gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
+gnoblin-lock-auth = { path = "../gnoblin-lock-auth" }
 zbus.workspace = true
 # Decodes the PNG a View capture writes, so a test reads the pixels the compositor composed.
 png.workspace = true

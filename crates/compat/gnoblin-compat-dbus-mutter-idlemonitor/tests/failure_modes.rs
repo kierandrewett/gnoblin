@@ -7,6 +7,7 @@
 mod support;
 
 use gnoblin_client::Server;
+use gnoblin_compat_core::LockState;
 use gnoblin_compat_dbus_mutter_idlemonitor::{IdleError, IdleLink, IdleState, WatchKind, Watches};
 use gnoblin_model::{Fields, ObjectId, ObjectView, TypeKey, Value};
 use support::{VERSION, graph};
@@ -16,14 +17,36 @@ fn a_graph_without_an_idle_counter_is_refused() {
     // The failure mode: the adapter reports zero idle time because nothing told it
     // otherwise, so every policy believes the user is active and no watch ever fires.
     let mut server = Server::new(graph(), VERSION);
-    server
-        .create(TypeKey::gnoblin("lock"), support::unlocked())
-        .expect("the lock type is in the schema");
+    server.publish_lock("not-locked");
     let client = server.connect(VERSION).expect("the versions match");
 
     match IdleLink::connect(client) {
         Err(IdleError::NoCounter) => {}
         other => panic!("a graph with no idle object is refused, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_tree_without_a_lock_node_is_refused() {
+    // The failure mode: the embargo the adapter reports is a guess because nothing said whether the
+    // session is locked. It fails closed at connect instead of reporting an unlocked session.
+    let mut server = Server::new(graph(), VERSION);
+    server
+        .create(TypeKey::gnoblin("idle"), {
+            let mut properties = Fields::new();
+            properties.insert("idle_ms".to_owned(), Value::Uint(0));
+            properties.insert("inhibitors".to_owned(), Value::Uint(0));
+            properties
+        })
+        .expect("the idle object is in the schema");
+    let client = server.connect(VERSION).expect("the versions match");
+
+    match IdleLink::connect(client) {
+        Err(IdleError::Unreadable { object, property, .. }) => {
+            assert_eq!(object, "lock");
+            assert_eq!(property, "state");
+        }
+        other => panic!("a tree with no lock node is refused, got {other:?}"),
     }
 }
 
@@ -37,7 +60,7 @@ fn a_mistyped_counter_is_refused() {
     properties.insert("idle_ms".to_owned(), Value::Text("five minutes".to_owned()));
     let view = ObjectView::new(ObjectId::new(1), TypeKey::gnoblin("idle"), properties);
 
-    match IdleState::read([&view]) {
+    match IdleState::read([&view], LockState::Unlocked) {
         Err(IdleError::Unreadable { property, .. }) => assert_eq!(property, "idle_ms"),
         other => panic!("a mistyped counter is refused, got {other:?}"),
     }

@@ -17,6 +17,8 @@ gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-proto = { path = "../gnoblin-proto" }
 # Secret answers are wiped on drop, the same policy the wire and the model apply.
 zeroize.workspace = true
+# The tree's payloads are generated messages; the lock view decodes the few it reads.
+prost.workspace = true
 
 [dev-dependencies]
 # The tests build a graph from the checked-in schema, so the loopback pair is

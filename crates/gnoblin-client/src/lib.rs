@@ -75,7 +75,11 @@ mod error;
 #[cfg(unix)]
 mod inherit;
 #[cfg(unix)]
+mod lock;
+#[cfg(unix)]
 mod loopback;
+#[cfg(unix)]
+mod loopback_lock;
 #[cfg(unix)]
 mod reporter;
 #[cfg(unix)]
@@ -91,6 +95,8 @@ pub use client::{Client, Committed, Event, PortalOutcome, PortalTicket};
 pub use error::{ClientError, ConnectError, HandshakeError, WireError};
 #[cfg(unix)]
 pub use inherit::{Environment, Inherited, file as inherited_file, stream as inherited_stream};
+#[cfg(unix)]
+pub use lock::SessionLock;
 #[cfg(unix)]
 pub use loopback::{Loopback, Server};
 #[cfg(unix)]

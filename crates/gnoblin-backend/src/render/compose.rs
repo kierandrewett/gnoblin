@@ -2280,6 +2280,18 @@ impl Composer {
         (self.main_seat_focus() == Some(node) && self.scene.input(node) == Some(true)).then_some(node)
     }
 
+    /// The shell's node that takes the keys while the compositor's own lock covers the session: the same node
+    /// [`Self::shell_key_target`] names, and only while the shell's lock screen is up (the `lock` node's `engaged` is
+    /// true). The shell is the compositor's own trusted peer and the lock screen is what it draws, so the typed
+    /// password reaches the screen that checks it; no client ever sees the keys.
+    #[must_use]
+    pub fn shell_lock_key_target(&self) -> Option<NodeId> {
+        let lock = self.lock_node?;
+        matches!(self.scene.value(lock, "engaged"), Some(TreeValue::Bool(true)))
+            .then(|| self.shell_key_target())
+            .flatten()
+    }
+
     /// The node the main seat's `focus` names, which the shell may have written.
     #[must_use]
     pub fn main_seat_focus(&self) -> Option<NodeId> {

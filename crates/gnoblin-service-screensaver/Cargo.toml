@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 # The vocabulary the inhibit table and the compositor's answers are read in, and the field
 # and type keys the compositor's objects are named with.
+gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-model = { path = "../gnoblin-model" }
 # The shared agent machinery: the host the agent reaches the compositor through.
 gnoblin-service-core = { path = "../gnoblin-service-core" }

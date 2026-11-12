@@ -1,7 +1,6 @@
 namespace gnoblin version 0.2.0
 error too-many-inhibitors since 0.2.0
 error idle-unavailable since 0.2.0
-error not-locked since 0.2.0
 error unknown-member since 0.2.0
 error denied since 0.2.0
 error unsupported since 0.2.0
@@ -40,9 +39,6 @@ object idle since 0.2.0 secret false
     param holder type string since 0.2.0 secret false
   method uninhibit since 0.2.0 secret false function false
     param holder type string since 0.2.0 secret false
-object lock since 0.2.0 secret false
-  property locked type bool since 0.2.0 secret false
-  method lock_session since 0.2.0 secret false function false
 object operation since 0.2.0 secret false
   signal completed since 0.2.0 secret false
     field operation_id type uint since 0.2.0 secret false
@@ -411,6 +407,7 @@ object lock since 0.2.0 secret false
   property skipped type list<string> since 0.2.0 secret false
   property state type string since 0.2.0 secret false
   property engaged type bool since 0.2.0 secret false
+  method lock since 0.2.0 secret false function false
   method authenticate since 0.2.0 secret false function false
     param text type string since 0.2.0 secret true
   signal destroyed since 0.2.0 secret false
@@ -756,7 +753,7 @@ object workspace since 0.2.0 secret false
 //
 // Namespace: gnoblin
 // Version: 0.2.0
-// Schema: crates/gnoblin-schema/schema (config.toml, eis.toml, idle.toml, lock.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
+// Schema: crates/gnoblin-schema/schema (config.toml, eis.toml, idle.toml, operation.toml, output.toml, portal_ui.toml, request.toml, session.toml, settings.toml, window.toml, workspace.toml)
 
 syntax = "proto3";
 
@@ -839,18 +836,6 @@ message Idle {
     // since 0.2.0
     string holder = 1;
   }
-}
-
-// Object `lock`, since 0.2.0.
-message Lock {
-  // Property values, carried by a property diff. Field numbers never change.
-  message Properties {
-    // since 0.2.0
-    bool locked = 1;
-  }
-
-  // Method `lock_session`, since 0.2.0.
-  message LockSessionArgs {}
 }
 
 // Object `operation`, since 0.2.0.
@@ -1564,27 +1549,25 @@ enum GnoblinError {
   // since 0.2.0
   GNOBLIN_IDLE_UNAVAILABLE = 2;
   // since 0.2.0
-  GNOBLIN_NOT_LOCKED = 3;
+  GNOBLIN_UNKNOWN_MEMBER = 3;
   // since 0.2.0
-  GNOBLIN_UNKNOWN_MEMBER = 4;
+  GNOBLIN_DENIED = 4;
   // since 0.2.0
-  GNOBLIN_DENIED = 5;
+  GNOBLIN_UNSUPPORTED = 5;
   // since 0.2.0
-  GNOBLIN_UNSUPPORTED = 6;
+  GNOBLIN_BUSY = 6;
   // since 0.2.0
-  GNOBLIN_BUSY = 7;
+  GNOBLIN_UNAVAILABLE = 7;
   // since 0.2.0
-  GNOBLIN_UNAVAILABLE = 8;
+  GNOBLIN_TIMED_OUT = 8;
   // since 0.2.0
-  GNOBLIN_TIMED_OUT = 9;
+  GNOBLIN_INTERNAL = 9;
   // since 0.2.0
-  GNOBLIN_INTERNAL = 10;
+  GNOBLIN_NOT_FLOATING = 10;
   // since 0.2.0
-  GNOBLIN_NOT_FLOATING = 11;
+  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 11;
   // since 0.2.0
-  GNOBLIN_TRANSIENT_FOLLOWS_PARENT = 12;
-  // since 0.2.0
-  GNOBLIN_REFUSED = 13;
+  GNOBLIN_REFUSED = 12;
 }
 -- tree.proto
 // Generated from the object schema by gnoblin-proto's build script. Do not
@@ -1795,6 +1778,9 @@ message Lock {
     // since 0.2.0
     bool engaged = 20;
   }
+
+  // Method `lock`, since 0.2.0.
+  message LockArgs {}
 
   // Method `authenticate`, since 0.2.0.
   message AuthenticateArgs {

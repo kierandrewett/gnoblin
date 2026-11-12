@@ -16,7 +16,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use gnoblin_client::wire::NoticeKind;
-use gnoblin_client::{Client, Transport};
+use gnoblin_client::{Client, ClientError, Event, SessionLock, Transport};
 use gnoblin_config::{SearchPaths, document::Config};
 use gnoblin_model::{Filter, ObjectView, Snapshot, TypeKey, Value};
 use serde_json::{Value as Json, json};
@@ -30,6 +30,8 @@ pub(crate) enum Verb {
     Ping,
     /// The session state, the revision and the lock.
     Status,
+    /// Take the session lock and wait until the cover is up.
+    Lock,
     /// The Gnoblin version and the IPC version this connection speaks.
     Version,
     /// The configuration document the compositor last accepted.
@@ -54,6 +56,7 @@ pub(crate) fn execute<T: Transport>(
     let outcome = match verb {
         Verb::Ping => ping(json, out),
         Verb::Status => status(client, json, out),
+        Verb::Lock => lock(client, json, out),
         Verb::Version => version(client, json, out),
         Verb::ConfigGet => config_get(client, json, out),
         Verb::ConfigReload => config_reload(client, json, out),
@@ -79,7 +82,14 @@ fn ping(json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
 /// `status`: the session's state, read from one snapshot.
 fn status<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
     let snapshot = client.subscribe(Filter::All).map_err(Failure::Client)?;
-    let report = StatusReport::from_snapshot(&snapshot);
+    // The lock is the tree's `lock` node. A compositor with none, or one that does not let this connection
+    // observe it, reports the lock as unavailable: never as unlocked.
+    let lock = match client.watch_lock() {
+        Ok(state) => Some(state),
+        Err(ClientError::Refused { code, .. }) if code == "not-found" || code == "not-owner" => None,
+        Err(error) => return Err(Failure::Client(error)),
+    };
+    let report = StatusReport::new(&snapshot, lock);
     let result = if json {
         writeln!(out, "{}", report.json())
     } else {
@@ -89,8 +99,49 @@ fn status<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write)
     Ok(0)
 }
 
+/// How long `lock` waits for the cover before it reports a failure.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// `lock`: the `lock` call on the tree's lock node, then a read until the node says `locked`. The call has no answer of
+/// its own, so a lock that falls back to `not-locked`, or never confirms, is a failure: a script that locks and then acts
+/// must not take a queued request for a protected screen. A session that is already locked is `ok`.
+fn lock<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
+    let unconfirmed = |message: &str| Failure::Refusal {
+        code: "not-locked".to_owned(),
+        message: message.to_owned(),
+    };
+    let state = client.watch_lock().map_err(Failure::Client)?;
+    if state != SessionLock::Locked {
+        if state == SessionLock::NotLocked {
+            client.lock_session().map_err(Failure::Client)?;
+        }
+        // A transport with no read deadline (the in-process one) is read to its end instead.
+        let _ = client.set_read_timeout(Some(LOCK_WAIT));
+        loop {
+            match client.next_event() {
+                Ok(Event::Lock(SessionLock::Locked)) => break,
+                Ok(Event::Lock(SessionLock::NotLocked)) => {
+                    return Err(unconfirmed("the compositor did not take the lock"));
+                }
+                Ok(_) => {}
+                Err(ClientError::Idle | ClientError::Disconnected) => {
+                    return Err(unconfirmed("the compositor did not confirm the lock"));
+                }
+                Err(error) => return Err(Failure::Client(error)),
+            }
+        }
+    }
+    let result = if json {
+        writeln!(out, "{}", json!({"lock_state": "locked"}))
+    } else {
+        writeln!(out, "locked")
+    };
+    result.map_err(Failure::Io)?;
+    Ok(0)
+}
+
 /// What `status` reports. The lock is absent from a compositor that publishes no
-/// lock object; that is reported as unavailable rather than as unlocked.
+/// lock node; that is reported as unavailable rather than as unlocked.
 #[derive(Debug, PartialEq, Eq)]
 struct StatusReport {
     revision: u64,
@@ -99,17 +150,13 @@ struct StatusReport {
 }
 
 impl StatusReport {
-    fn from_snapshot(snapshot: &Snapshot) -> StatusReport {
-        let lock = find(snapshot, "lock");
-        let lock_state = lock.and_then(|view| match view.property("locked") {
-            Some(Value::Bool(true)) => Some("locked"),
-            Some(Value::Bool(false)) => Some("unlocked"),
-            _ => None,
-        });
+    /// The report for `snapshot` and the lock node's state, `None` when the tree has none. `locked` is the
+    /// whole embargo: a lock that is still `pending` already hides the desktop.
+    fn new(snapshot: &Snapshot, lock: Option<SessionLock>) -> StatusReport {
         StatusReport {
             revision: snapshot.revision().get(),
             lock_available: lock.is_some(),
-            lock_state,
+            lock_state: lock.map(|state| if state.covers() { "locked" } else { "unlocked" }),
         }
     }
 

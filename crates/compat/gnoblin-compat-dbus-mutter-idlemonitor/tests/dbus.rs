@@ -15,7 +15,7 @@ use gnoblin_compat_dbus_mutter_idlemonitor::{
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};
 use support::bus::Bus;
-use support::{VERSION, graph, idle_properties, unlocked};
+use support::{VERSION, graph, idle_properties};
 use zbus::{Connection, Proxy};
 
 /// The message of a refused call, which is where the adapter's rule id lives.
@@ -78,9 +78,7 @@ impl Fixture {
         let idle = server
             .create(TypeKey::gnoblin("idle"), idle_properties(0))
             .expect("the idle type and its property are in the schema");
-        server
-            .create(TypeKey::gnoblin("lock"), unlocked())
-            .expect("the lock type and its property are in the schema");
+        server.publish_lock("not-locked");
         let client = server.connect(VERSION).expect("the versions match");
         let link = IdleLink::connect(client).expect("the snapshot publishes a counter");
         Fixture { server, link, idle }

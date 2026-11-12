@@ -17,7 +17,7 @@ use gnoblin_compat_dbus_gnome_shell_introspect::{
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};
 use support::bus::Bus;
-use support::{VERSION, graph, output_properties, unlocked, window_properties};
+use support::{VERSION, graph, output_properties, window_properties};
 use zbus::{Connection, OwnedVariant, Proxy};
 
 /// One window's property dict.
@@ -93,9 +93,7 @@ impl Fixture {
         server
             .create(TypeKey::gnoblin("output"), output_properties("eDP-1", 1920, 1080, true))
             .expect("the output type and its properties are in the schema");
-        server
-            .create(TypeKey::gnoblin("lock"), unlocked())
-            .expect("the lock type and its property are in the schema");
+        server.publish_lock("not-locked");
         let client = server.connect(VERSION).expect("the versions match");
         let link = IntrospectLink::connect(client).expect("the snapshot is a state this adapter can report");
         Fixture { server, link }

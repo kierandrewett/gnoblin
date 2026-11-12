@@ -281,7 +281,8 @@ fn a_window_object_outlives_its_surface_only_until_the_surface_ends() {
                 gnoblin_client::Event::Model(_) => {}
                 gnoblin_client::Event::RequestOffered { .. }
                 | gnoblin_client::Event::RequestAnswered { .. }
-                | gnoblin_client::Event::RequestFinished { .. } => {}
+                | gnoblin_client::Event::RequestFinished { .. }
+                | gnoblin_client::Event::Lock(_) => {}
             }
         }
     });
@@ -608,7 +609,8 @@ fn focus_completes_after_the_diff_it_caused() {
             gnoblin_client::Event::Model(_) => {}
             gnoblin_client::Event::RequestOffered { .. }
             | gnoblin_client::Event::RequestAnswered { .. }
-            | gnoblin_client::Event::RequestFinished { .. } => {}
+            | gnoblin_client::Event::RequestFinished { .. }
+            | gnoblin_client::Event::Lock(_) => {}
         }
     }
     assert!(

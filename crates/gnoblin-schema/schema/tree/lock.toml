@@ -28,6 +28,14 @@ default = false
 name = "requested"
 since = "0.2.0"
 
+# Take the session lock. The compositor covers every output and moves `state` to `pending`, then `locked`: the call has no
+# answer, the state is it. A caller that needs the confirmation watches `state` for `locked`; one that sees it return to
+# `not-locked` was refused. Idempotent while `pending` or `locked`. Owner connections only: the shell holds the tree, and
+# an observer (the screensaver service and the compat adapters) may send this one call and no other.
+[[object.method]]
+name = "lock"
+since = "0.2.0"
+
 # Check the password `text` against the session user. The compositor answers with `token`:
 # `result` `ok` on accept; `error` `denied`, `rate-limited` (`result` is the retry-after in ms),
 # `not-locked`, `busy`, or `failed: <reason>`. The password never enters a batch.

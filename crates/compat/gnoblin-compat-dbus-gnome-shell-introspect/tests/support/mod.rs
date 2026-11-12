@@ -58,10 +58,3 @@ pub fn output_properties(name: &str, width: u32, height: u32, enabled: bool) -> 
         ],
     )
 }
-
-/// The properties of the `lock` object, unlocked.
-pub fn unlocked() -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("locked".to_owned(), Value::Bool(false));
-    properties
-}

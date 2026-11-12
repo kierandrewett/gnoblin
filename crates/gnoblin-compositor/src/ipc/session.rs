@@ -96,8 +96,6 @@ mod member {
     pub const UNRESPONSIVE: &str = "unresponsive";
     /// The name of an `output` object, as the compositor reports it.
     pub const NAME: &str = "name";
-    /// The `lock` object's locked property: whether the lock is holding the desktop.
-    pub const LOCKED: &str = "locked";
     /// The `idle` object's idle_ms property: milliseconds since the last input event.
     pub const IDLE_MS: &str = "idle_ms";
     /// The `idle` object's inhibitors property: how many holds keep the session awake.
@@ -167,8 +165,6 @@ pub struct SessionSync {
     graph: Graph,
     /// The `session` object, which carries the slot properties and the schema version.
     session: ObjectId,
-    /// The `lock` object, whose `locked` property `apply` writes from the snapshot.
-    lock: ObjectId,
     /// The `idle` object, whose idle_ms and inhibitors properties `apply` writes from the snapshot.
     idle: ObjectId,
     /// The `settings` object, which `publish_settings` writes from the configuration.
@@ -218,8 +214,6 @@ impl SessionSync {
         ]);
         properties.extend(gnoblin_model::Slots::new().fields());
         let session = graph.create(TypeKey::gnoblin("session"), properties)?;
-        let lock_properties = Fields::from([(member::LOCKED.to_owned(), Value::Bool(false))]);
-        let lock = graph.create(TypeKey::gnoblin("lock"), lock_properties)?;
         let idle_properties = Fields::from([
             (member::IDLE_MS.to_owned(), Value::Uint(0)),
             (member::INHIBITORS.to_owned(), Value::Uint(0)),
@@ -229,7 +223,6 @@ impl SessionSync {
         Ok(SessionSync {
             graph,
             session,
-            lock,
             idle,
             settings,
             bells: 0,
@@ -373,7 +366,6 @@ impl SessionSync {
         self.apply_windows(snapshot, &mut failures);
         self.apply_outputs(snapshot, &mut failures);
         self.apply_workspaces(snapshot, &mut failures);
-        self.publish_lock(snapshot.lock_active());
         self.publish_lock_state(snapshot.lock_state());
         self.publish_idle(snapshot.idle_ms(), snapshot.inhibitors());
         if failures.is_empty() {
@@ -381,14 +373,6 @@ impl SessionSync {
         } else {
             Err(PublishError { failures })
         }
-    }
-
-    /// Writes the `lock` object's `locked` property from the snapshot's lock state.
-    ///
-    /// This is `ScreenSaver.GetActive`, true from the moment a lock is asked for. It is not
-    /// the confirmation a `lock` call waits for: that is the operation's own outcome.
-    fn publish_lock(&mut self, locked: bool) {
-        self.set_if_changed(self.lock, member::LOCKED, Value::Bool(locked));
     }
 
     /// Publishes the lock state the snapshot carries on the `session` object, and raises

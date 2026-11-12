@@ -32,9 +32,6 @@ pub const WINDOW: &str = "window";
 /// The object type it reads for the screen's extent.
 pub const OUTPUT: &str = "output";
 
-/// The lock object's type.
-pub const LOCK: &str = "lock";
-
 /// One window, as the interface's dictionary describes it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct WindowInfo {
@@ -96,17 +93,20 @@ pub struct IntrospectState {
 }
 
 impl IntrospectState {
-    /// Read the state from every object a subscription delivered.
+    /// Read the state from every object a subscription delivered, and the lock state the tree's `lock`
+    /// node last published (read by the link, not by the graph).
     ///
     /// # Errors
     ///
     /// [`IntrospectError::DuplicateWindow`] when two windows claim one identity, and the
     /// property refusals of [`WindowInfo::read`] and [`IntrospectError::Unreadable`] for an
     /// output that cannot be measured.
-    pub fn read<'a>(views: impl IntoIterator<Item = &'a ObjectView>) -> Result<IntrospectState, IntrospectError> {
+    pub fn read<'a>(
+        views: impl IntoIterator<Item = &'a ObjectView>,
+        lock: LockState,
+    ) -> Result<IntrospectState, IntrospectError> {
         let mut windows: Vec<WindowInfo> = Vec::new();
         let mut extent: Option<Extent> = None;
-        let mut locked = None;
         for view in views {
             if view.ty() == &TypeKey::gnoblin(WINDOW) {
                 let window = WindowInfo::read(view)?;
@@ -126,22 +126,8 @@ impl IntrospectState {
                     },
                 });
             }
-            if view.ty() == &TypeKey::gnoblin(LOCK) {
-                locked = Some(boolean(view, "locked")?);
-            }
         }
         windows.sort_by_key(|window| window.id);
-        let lock = match locked {
-            Some(true) => LockState::Locked,
-            Some(false) => LockState::Unlocked,
-            None => {
-                return Err(IntrospectError::Unreadable {
-                    object: "lock".to_owned(),
-                    property: "locked".to_owned(),
-                    reason: "the graph publishes no `lock` object".to_owned(),
-                });
-            }
-        };
         Ok(IntrospectState {
             windows,
             screen: extent.map(|extent| (extent.right, extent.bottom)),
