@@ -249,7 +249,12 @@ const CASES: &[Case] = &[
 
 /// The outcome of one snippet under one profile.
 fn outcome(profile: Profile, snippet: &str) -> bool {
-    let limits = Limits::default();
+    // The instruction budget alone may end a snippet. A 16 ms deadline would turn a test
+    // thread the machine descheduled into a false mismatch, so the deadline is an hour.
+    let limits = Limits {
+        handler_ticks: 3_600_000,
+        ..Limits::default()
+    };
     let guard = Rc::new(Guard::new());
     guard.begin(&limits);
     let sink: Sink = Rc::new(|_: LogLevel, _: &str| {});

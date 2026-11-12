@@ -7,9 +7,11 @@
 //!   it before every entry with [`Guard::begin`], so each entry gets a budget.
 //! - **Memory.** The allocator refuses past [`Limits::memory_bytes`], so a script
 //!   that builds a huge table fails with a memory error.
-//! - **Deadline.** The hook also compares wall-clock time with
+//! - **Deadline.** The hook also compares the time on the guard's [`Clock`] with
 //!   [`Limits::handler_ticks`] milliseconds, because a loop that never yields to the
-//!   caller would otherwise never see its budget run out.
+//!   caller would otherwise never see its budget run out. [`Guard::new`] reads the host's
+//!   monotonic clock; [`Guard::with_clock`] takes another, so a test of a budget or of the
+//!   deadline itself does not depend on how fast the machine runs.
 //!
 //! Two profiles choose the stdlib each state loads:
 //!
@@ -46,6 +48,7 @@
 //! always text, because crafted bytecode can crash the interpreter.
 
 use std::cell::Cell;
+use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -100,6 +103,28 @@ pub enum Profile {
     Layout,
 }
 
+/// The clock a [`Guard`] reads to enforce the handler deadline.
+///
+/// `now` is the time since an arbitrary fixed origin and never goes backwards. Only the
+/// difference between two reads matters, so a clock that does not move is a valid one: the
+/// deadline then never passes and the instruction and memory budgets are the only limits.
+pub trait Clock: Debug {
+    /// The time elapsed since this clock's origin.
+    fn now(&self) -> Duration;
+}
+
+/// The host's monotonic clock, which a guard reads unless a host gives it another.
+#[derive(Debug)]
+struct MonotonicClock {
+    origin: Instant,
+}
+
+impl Clock for MonotonicClock {
+    fn now(&self) -> Duration {
+        self.origin.elapsed()
+    }
+}
+
 /// The budgets one entry consumes, shared between the host and the hook.
 ///
 /// The host owns the cells and the hook reads them, so this is a separate type: the
@@ -111,11 +136,13 @@ pub struct Guard {
     budget: Cell<u64>,
     /// How long the current entry may run, in milliseconds.
     deadline_ms: Cell<u64>,
-    started: Cell<Option<Instant>>,
+    started: Cell<Option<Duration>>,
     aborted: Cell<bool>,
     /// The message of the abort that latched `aborted`. Every later raise repeats it, so a
     /// caught error still names the budget that ran out.
     abort_message: std::cell::RefCell<String>,
+    /// Where the deadline reads the time.
+    clock: Rc<dyn Clock>,
     /// Hook calls per Lua thread as (thread pointer, count). Tests read it to see which
     /// threads the hook reached.
     #[cfg(test)]
@@ -129,8 +156,14 @@ impl Default for Guard {
 }
 
 impl Guard {
-    /// A guard for a host that has not run anything yet.
+    /// A guard for a host that has not run anything yet, with the deadline on the host's
+    /// monotonic clock.
     pub fn new() -> Guard {
+        Guard::with_clock(Rc::new(MonotonicClock { origin: Instant::now() }))
+    }
+
+    /// A guard whose deadline reads `clock` instead of the host's monotonic clock.
+    pub fn with_clock(clock: Rc<dyn Clock>) -> Guard {
         Guard {
             remaining: Cell::new(0),
             budget: Cell::new(0),
@@ -138,6 +171,7 @@ impl Guard {
             started: Cell::new(None),
             aborted: Cell::new(false),
             abort_message: Default::default(),
+            clock,
             #[cfg(test)]
             hook_calls: Default::default(),
         }
@@ -149,7 +183,7 @@ impl Guard {
         self.budget.set(limits.instructions);
         self.deadline_ms.set(limits.handler_ticks);
         self.aborted.set(false);
-        self.started.set(Some(Instant::now()));
+        self.started.set(Some(self.clock.now()));
     }
 
     /// Run `f` as a nested entry with its own budgets, and give the outer entry back its state.
@@ -640,7 +674,7 @@ fn install_hook(lua: &Lua, guard: Rc<Guard>) -> Result<(), Error> {
             guard.remaining.set(remaining - u64::from(HOOK_INSTRUCTIONS));
             let deadline_ms = guard.deadline_ms.get();
             if let Some(started) = guard.started.get()
-                && started.elapsed() >= Duration::from_millis(deadline_ms)
+                && guard.clock.now().saturating_sub(started) >= Duration::from_millis(deadline_ms)
             {
                 return Err(guard.latch(format!("the handler deadline ({deadline_ms} ms) passed")));
             }
@@ -658,9 +692,51 @@ mod tests {
         Rc::new(|_, _| {})
     }
 
+    /// A clock the tests drive. `now` moves by `step` after every read and by `advance` when a
+    /// test says so. A zero step never moves, which keeps the wall clock out of an entry that a
+    /// budget must end: a deadline cannot pass on a busy machine if no clock is running.
+    #[derive(Debug)]
+    struct TestClock {
+        now: Cell<Duration>,
+        step: Duration,
+    }
+
+    impl TestClock {
+        /// A clock that moves only when a test advances it.
+        fn frozen() -> Rc<TestClock> {
+            TestClock::stepping(Duration::ZERO)
+        }
+
+        /// A clock that moves `step` after every read. The hook reads it once per call, so the
+        /// deadline falls on a hook call a test can name.
+        fn stepping(step: Duration) -> Rc<TestClock> {
+            Rc::new(TestClock {
+                now: Cell::new(Duration::ZERO),
+                step,
+            })
+        }
+
+        fn advance(&self, by: Duration) {
+            self.now.set(self.now.get() + by);
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now(&self) -> Duration {
+            let now = self.now.get();
+            self.now.set(now + self.step);
+            now
+        }
+    }
+
+    /// A guard whose deadline cannot pass, so only the instruction and memory budgets end an entry.
+    fn frozen_guard() -> Rc<Guard> {
+        Rc::new(Guard::with_clock(TestClock::frozen()))
+    }
+
     fn lua(profile: Profile) -> Lua {
         let limits = Limits::default();
-        let guard = Rc::new(Guard::new());
+        let guard = frozen_guard();
         guard.begin(&limits);
         create(profile, &limits, guard, quiet()).expect("the sandbox builds")
     }
@@ -671,7 +747,7 @@ mod tests {
             instructions: 200_000,
             ..Limits::default()
         };
-        let guard = Rc::new(Guard::new());
+        let guard = frozen_guard();
         guard.begin(&limits);
         let lua = create(Profile::Config, &limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
         let spin = lua
@@ -811,7 +887,7 @@ mod tests {
             instructions: 50_000,
             ..Limits::default()
         };
-        let guard = Rc::new(Guard::new());
+        let guard = frozen_guard();
         guard.begin(&limits);
         let lua = create(Profile::Layout, &limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
         let error = lua.load("while true do end").exec().expect_err("the loop must abort");
@@ -903,11 +979,7 @@ mod tests {
     #[test]
     fn a_pcall_loop_of_raises_cannot_outrun_the_budget() {
         let outcome = capped(config_state, small_budget(), "while true do pcall(error, 'x') end");
-        assert!(
-            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
-            "{}",
-            outcome.error
-        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
         assert!(
             outcome.aborted,
             "{} hook calls on {} threads",
@@ -984,11 +1056,7 @@ mod tests {
             small_budget(),
             "while true do pcall(coroutine.wrap(function() while true do end end)) end",
         );
-        assert!(
-            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
-            "{}",
-            outcome.error
-        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
         assert!(
             outcome.aborted,
             "{} hook calls on {} threads",
@@ -1026,6 +1094,11 @@ mod tests {
         );
     }
 
+    /// A configuration state whose clock moves a millisecond per hook call.
+    fn stepping_state(limits: &Limits) -> (Lua, Rc<Guard>) {
+        armed_on(Profile::Config, limits, TestClock::stepping(Duration::from_millis(1)))
+    }
+
     #[test]
     fn a_coroutine_loop_hits_the_deadline() {
         let limits = Limits {
@@ -1034,11 +1107,15 @@ mod tests {
             ..Limits::default()
         };
         let outcome = capped(
-            coroutine_state,
+            stepping_state,
             limits,
             "while true do coroutine.resume(coroutine.create(function() while true do end end)) end",
         );
-        assert!(outcome.error.contains("deadline"), "{}", outcome.error);
+        assert!(
+            outcome.error.contains("handler deadline (20 ms) passed"),
+            "{}",
+            outcome.error
+        );
         assert!(
             outcome.aborted,
             "{} hook calls on {} threads",
@@ -1107,7 +1184,7 @@ mod tests {
     fn two_entries(profile: Profile, limits: Limits, first: &'static str, second: &'static str) -> (String, bool, u64) {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let guard = Rc::new(Guard::new());
+            let guard = frozen_guard();
             guard.begin(&limits);
             let lua = create(profile, &limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
             let _ = lua.load(first).exec();
@@ -1160,7 +1237,7 @@ mod tests {
             "local a = coroutine.wrap(function() pcall(coroutine.wrap(function() coroutine.wrap(function() while true do end end)() end)) end) a()",
         );
         assert!(
-            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            outcome.error.contains("instruction budget"),
             "{} ({} hook calls on {} threads)",
             outcome.error,
             outcome.hook_calls,
@@ -1177,7 +1254,7 @@ mod tests {
             "for v in coroutine.wrap(function() while true do coroutine.yield(1) end end) do end",
         );
         assert!(
-            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            outcome.error.contains("instruction budget"),
             "{} ({} hook calls on {} threads)",
             outcome.error,
             outcome.hook_calls,
@@ -1221,7 +1298,7 @@ mod tests {
             "coroutine.close did not run the pending __close handler (error: {error}, {calls} hook calls)"
         );
         assert!(
-            error.contains("instruction budget") || error.contains("handler deadline"),
+            error.contains("instruction budget"),
             "the entry must end with the budget error, got: {error} ({calls} hook calls)"
         );
         assert!(aborted, "the budget must latch ({calls} hook calls)");
@@ -1243,7 +1320,7 @@ mod tests {
     fn layout_metamethod_is_bounded(script: &'static str) {
         let outcome = capped(layout_state, small_budget(), script);
         assert!(
-            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            outcome.error.contains("instruction budget"),
             "{} ({} hook calls on {} threads)",
             outcome.error,
             outcome.hook_calls,
@@ -1350,7 +1427,11 @@ mod tests {
     }
 
     fn armed(profile: Profile, limits: &Limits) -> (Lua, Rc<Guard>) {
-        let guard = Rc::new(Guard::new());
+        armed_on(profile, limits, TestClock::frozen())
+    }
+
+    fn armed_on(profile: Profile, limits: &Limits, clock: Rc<TestClock>) -> (Lua, Rc<Guard>) {
+        let guard = Rc::new(Guard::with_clock(clock));
         guard.begin(limits);
         let lua = create(profile, limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
         (lua, guard)
@@ -1374,17 +1455,168 @@ mod tests {
         assert_eq!(lua.load("return 1 + 1").eval::<i64>().expect("a fresh entry runs"), 2);
     }
 
+    /// A layout state on the host's monotonic clock, the one clock the other tests keep out.
+    fn wall_clock_state(limits: &Limits) -> (Lua, Rc<Guard>) {
+        let guard = Rc::new(Guard::new());
+        guard.begin(limits);
+        let lua = create(Profile::Layout, limits, Rc::clone(&guard), quiet()).expect("the sandbox builds");
+        (lua, guard)
+    }
+
     #[test]
     fn the_deadline_aborts_a_loop_that_outlives_its_wall_clock_budget() {
+        // The only test on the host's monotonic clock, and it asserts no timing: the loop has
+        // no instruction budget, so only the deadline can end it, on a machine of any speed.
         let limits = Limits {
             instructions: u64::MAX,
             handler_ticks: 5,
             ..Limits::default()
         };
-        let (lua, guard) = armed(Profile::Layout, &limits);
+        let outcome = capped(wall_clock_state, limits, "while true do end");
+        assert!(
+            outcome.error.contains("handler deadline (5 ms) passed"),
+            "{}",
+            outcome.error
+        );
+        assert!(outcome.aborted);
+    }
+
+    #[test]
+    fn the_deadline_is_checked_on_every_hook_call() {
+        // `begin` reads the clock once and the clock moves a millisecond per read, so the fifth
+        // hook call is the first to see five milliseconds gone: not the fourth, not the sixth.
+        let limits = Limits {
+            instructions: u64::MAX,
+            handler_ticks: 5,
+            ..Limits::default()
+        };
+        let clock = TestClock::stepping(Duration::from_millis(1));
+        let (lua, guard) = armed_on(Profile::Layout, &limits, clock);
         let error = lua.load("while true do end").exec().expect_err("the loop must abort");
         assert!(error.to_string().contains("handler deadline (5 ms) passed"), "{error}");
         assert!(guard.aborted());
+        let calls: u64 = guard.hook_calls().iter().map(|(_, count)| count).sum();
+        assert_eq!(calls, 5, "the deadline ends the entry on the hook call that sees it");
+    }
+
+    #[test]
+    fn the_deadline_reads_only_the_guards_clock() {
+        // Two million loop iterations take far longer than the one millisecond deadline on the
+        // wall clock, so the frozen clock is what lets the first entry finish.
+        let limits = Limits {
+            instructions: u64::MAX,
+            handler_ticks: 1,
+            ..Limits::default()
+        };
+        let clock = TestClock::frozen();
+        let (lua, guard) = armed_on(Profile::Layout, &limits, Rc::clone(&clock));
+        let spin = "for i = 1, 2000000 do end";
+        lua.load(spin)
+            .exec()
+            .expect("a clock that does not move never passes the deadline");
+        assert!(!guard.aborted());
+        clock.advance(Duration::from_millis(1));
+        let error = lua
+            .load(spin)
+            .exec()
+            .expect_err("a millisecond on the guard's clock passes the deadline");
+        assert!(error.to_string().contains("handler deadline (1 ms) passed"), "{error}");
+        assert!(guard.aborted());
+    }
+
+    #[test]
+    fn the_limit_that_runs_out_first_ends_the_entry() {
+        // The clock moves a millisecond per hook call and the budget spends a thousand
+        // instructions per call, so each case names the call on which each limit runs out.
+        let cases = [
+            // The deadline falls on call 3; the budget on call 1000.
+            (1_000_000, 3, "handler deadline (3 ms) passed"),
+            // The budget falls on call 3; the deadline on call 1000.
+            (3_000, 1_000, "instruction budget"),
+            // Both fall on call 3, and the hook checks the budget first.
+            (3_000, 3, "instruction budget"),
+        ];
+        for (instructions, handler_ticks, named) in cases {
+            let limits = Limits {
+                instructions,
+                handler_ticks,
+                ..Limits::default()
+            };
+            let clock = TestClock::stepping(Duration::from_millis(1));
+            let (lua, _guard) = armed_on(Profile::Layout, &limits, clock);
+            let error = lua.load("while true do end").exec().expect_err("the loop must abort");
+            assert!(
+                error.to_string().contains(named),
+                "{instructions} instructions, {handler_ticks} ms: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rearmed_guard_gives_the_next_entry_a_fresh_deadline() {
+        let limits = Limits {
+            instructions: u64::MAX,
+            handler_ticks: 10,
+            ..Limits::default()
+        };
+        let clock = TestClock::frozen();
+        let (lua, guard) = armed_on(Profile::Layout, &limits, Rc::clone(&clock));
+        let spin = "for i = 1, 5000 do end";
+        clock.advance(Duration::from_millis(20));
+        let error = lua
+            .load(spin)
+            .exec()
+            .expect_err("twenty milliseconds pass a ten millisecond deadline");
+        assert!(error.to_string().contains("handler deadline (10 ms) passed"), "{error}");
+        guard.begin(&limits);
+        assert!(!guard.aborted());
+        lua.load(spin)
+            .exec()
+            .expect("the deadline counts from the new entry, not the old one");
+    }
+
+    #[test]
+    fn a_scoped_entry_has_its_own_deadline_and_the_outer_entry_keeps_its_own() {
+        let outer = Limits {
+            instructions: u64::MAX,
+            handler_ticks: 100,
+            ..Limits::default()
+        };
+        let inner = Limits {
+            handler_ticks: 10,
+            ..outer
+        };
+        let clock = TestClock::frozen();
+        let (lua, guard) = armed_on(Profile::Config, &outer, Rc::clone(&clock));
+        let spin = lua
+            .load("while true do end")
+            .into_function()
+            .expect("the loop compiles");
+        let burn = lua
+            .load("for i = 1, 5000 do end")
+            .into_function()
+            .expect("the loop compiles");
+        clock.advance(Duration::from_millis(30));
+        let (result, aborted) = guard.scoped(&inner, || {
+            clock.advance(Duration::from_millis(20));
+            spin.call::<()>(())
+        });
+        assert!(result.is_err(), "twenty milliseconds pass the inner deadline");
+        assert!(
+            aborted.is_some_and(|message| message.contains("handler deadline (10 ms) passed")),
+            "the abort names the inner deadline"
+        );
+        assert!(!guard.aborted(), "the outer entry is not aborted");
+        burn.call::<()>(())
+            .expect("the outer entry is fifty milliseconds into a hundred");
+        clock.advance(Duration::from_millis(60));
+        let error = burn
+            .call::<()>(())
+            .expect_err("the outer deadline counts from the outer start: 110 ms");
+        assert!(
+            error.to_string().contains("handler deadline (100 ms) passed"),
+            "{error}"
+        );
     }
 
     #[test]

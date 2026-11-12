@@ -140,7 +140,12 @@ fn stock_lua() -> Lua {
 }
 
 fn sandbox_lua() -> (Lua, Rc<Guard>, Limits) {
-    let limits = Limits::default();
+    // The instruction budget alone decides which cases are skipped. A 16 ms deadline would skip
+    // a different set of cases on a busy machine, so the deadline is an hour.
+    let limits = Limits {
+        handler_ticks: 3_600_000,
+        ..Limits::default()
+    };
     let guard = Rc::new(Guard::new());
     let sink: Sink = Rc::new(|_: LogLevel, _: &str| {});
     let lua = create(Profile::Config, &limits, Rc::clone(&guard), sink).expect("sandbox state");
