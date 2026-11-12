@@ -1,0 +1,30 @@
+# Focus follows the toplevel a client maps, and returns to the previous one when it closes. A client learns it has
+# focus from the `activated` state of its xdg_toplevel configure, so the scenario needs no input device and reads the
+# same on any compositor: it runs on the Rust candidate and on stock Mutter 51 against one expectation.
+#
+# design/rust-compositor.md phase 2 lists "parity scenarios for single and multiple toplevels, popups, focus".
+name = "focus-toplevels"
+description = "A new toplevel takes focus from the one before it, and closing it returns focus to that one."
+target = { candidate = {} }
+references = [{ mutter51 = {} }]
+
+[[steps]]
+id = "focus.first-toplevel"
+description = "The only toplevel is told it is activated."
+expect = { a_activated = true }
+
+[[steps]]
+id = "focus.second-toplevel"
+description = "A second toplevel is mapped: it is activated and the first is told it no longer is."
+expect = { a_activated = false, b_activated = true }
+
+# The candidate's `focus_new_windows` defaults to `prevent` (`crates/gnoblin-wayland/src/policy.rs`, `NewWindowFocus`):
+# a window that maps while another has focus is left unfocused, so it cannot steal focus. Stock Mutter 51 focuses it.
+[steps.divergence.candidate]
+expect = { a_activated = true, b_activated = false }
+reason = "focus_new_windows defaults to prevent in the candidate, so a new window does not take focus from the focused one; stock Mutter 51 focuses it"
+
+[[steps]]
+id = "focus.close-focused"
+description = "The second toplevel is destroyed: the first is activated again."
+expect = { a_activated = true }

@@ -8,14 +8,23 @@
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_parity::{Report, ScenarioReport, Verdict, run_directory};
+use gnoblin_parity::{Environment, Report, ScenarioReport, Verdict, run_directory, run_directory_in};
 
 fn scenario_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/parity/scenarios")
 }
 
+/// The scenarios that can never pass, which exist to prove the runner names a difference in words.
+fn known_failing_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/parity/known-failing")
+}
+
 fn run() -> Report {
-    run_directory(&scenario_dir()).expect("the checked-in scenario directory loads")
+    run_directory_in(&scenario_dir(), &Environment::default()).expect("the checked-in scenario directory loads")
+}
+
+fn run_known_failing() -> Report {
+    run_directory_in(&known_failing_dir(), &Environment::default()).expect("the known-failing directory loads")
 }
 
 fn find<'report>(report: &'report Report, name: &str) -> &'report ScenarioReport {
@@ -29,13 +38,26 @@ fn find<'report>(report: &'report Report, name: &str) -> &'report ScenarioReport
 #[test]
 fn the_checked_in_scenarios_report_their_verdicts() {
     let report = run();
-    assert_eq!(report.scenarios().len(), 6, "unexpected scenario count:\n{report}");
+    // Without a Mutter launcher in the environment the three `mutter51` reference rows and the `mutter-gnoblin`
+    // scenario are skipped; the candidate rows pass and one diverges on record. The directory is a gate: no failure.
+    assert_eq!(report.scenarios().len(), 11, "unexpected scenario count:\n{report}");
     assert_eq!(
-        (report.passed(), report.failed(), report.skipped()),
-        (4, 1, 1),
+        (report.passed(), report.divergent(), report.failed(), report.skipped()),
+        (6, 1, 0, 4),
         "unexpected verdicts:\n{report}"
     );
-    assert!(!report.is_ok(), "a reported difference must fail the run");
+    assert!(
+        report.is_ok(),
+        "the scenario directory is a gate and must not fail:\n{report}"
+    );
+
+    let refused = run_known_failing();
+    assert_eq!(
+        (refused.passed(), refused.failed()),
+        (0, 1),
+        "unexpected verdicts:\n{refused}"
+    );
+    assert!(!refused.is_ok(), "a reported difference must fail the run");
 }
 
 #[test]
@@ -68,9 +90,56 @@ fn the_candidate_scenarios_pass_against_the_rust_compositor() {
     }
 }
 
+/// The report row of `name` for `target`.
+fn row<'report>(report: &'report Report, name: &str, target: &str) -> &'report ScenarioReport {
+    report
+        .scenarios()
+        .iter()
+        .find(|scenario| scenario.name() == name && scenario.target() == target)
+        .unwrap_or_else(|| panic!("no `{name}` row for `{target}`:\n{report}"))
+}
+
+#[test]
+fn the_popup_scenarios_pass_against_the_rust_compositor() {
+    let report = run();
+    for (name, compared) in [("popup-placement", 5), ("popup-lifecycle", 3)] {
+        match row(&report, name, "candidate").verdict() {
+            Verdict::Pass { compared: count } => assert_eq!(*count, compared, "every step of `{name}` is compared"),
+            other => panic!("`{name}` must pass against the candidate, got:\n{report}\n{other:?}"),
+        }
+    }
+}
+
+#[test]
+fn the_candidate_diverges_from_mutter_on_focus_for_a_recorded_reason() {
+    let report = run();
+    match row(&report, "focus-toplevels", "candidate").verdict() {
+        Verdict::Divergent { compared, reasons } => {
+            assert_eq!(*compared, 3);
+            assert_eq!(reasons.len(), 1, "one step diverges:\n{report}");
+            assert!(
+                reasons[0].starts_with("focus.second-toplevel: focus_new_windows defaults to prevent"),
+                "{reasons:?}"
+            );
+        }
+        other => panic!("expected a recorded divergence, got:\n{report}\n{other:?}"),
+    }
+}
+
+#[test]
+fn the_mutter_reference_rows_skip_and_name_the_launcher_variable_when_none_is_configured() {
+    let report = run();
+    for name in ["focus-toplevels", "popup-placement", "popup-lifecycle"] {
+        match row(&report, name, "mutter51").verdict() {
+            Verdict::Skipped { reason } => assert!(reason.contains("GNOBLIN_PARITY_MUTTER51"), "{reason}"),
+            other => panic!("`{name}` must skip its reference without a launcher, got:\n{report}\n{other:?}"),
+        }
+    }
+}
+
 #[test]
 fn the_recorded_scenario_reports_the_stacking_difference() {
-    let report = run();
+    let report = run_known_failing();
     let scenario = find(&report, "layer-surface-stacking");
     assert_eq!(
         scenario.target(),
@@ -94,7 +163,7 @@ fn the_recorded_scenario_reports_the_stacking_difference() {
 
 #[test]
 fn the_recorded_scenarios_volatile_values_are_normalised_away() {
-    let report = run();
+    let report = run_known_failing();
     let scenario = find(&report, "layer-surface-stacking");
     let Verdict::Fail { diff } = scenario.verdict() else {
         panic!("expected a failure, got:\n{report}");

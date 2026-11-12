@@ -10,7 +10,7 @@
 //! `deny_unknown_fields`, and a typo in a checked-in scenario fails the run
 //! instead of silently skipping a check.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -29,6 +29,11 @@ pub struct Scenario {
     pub description: String,
     /// The target the scenario runs against.
     pub target: TargetSpec,
+    /// Further live targets that run the same steps against the same expectations, one report row each. The Rust
+    /// candidate scenario that has a Mutter reference names it here, so a difference between the two is a failing
+    /// row and not a note in a ledger.
+    #[serde(default)]
+    pub references: Vec<TargetSpec>,
     /// Why the scenario does not run yet. When present the report says `skip`
     /// and the target is never built or started, so a scenario can be checked in
     /// ahead of the lane that makes it runnable and still show up in the report.
@@ -59,11 +64,27 @@ pub struct Step {
     /// volatile value the normaliser removes.
     #[serde(default)]
     pub expect: Option<Value>,
+    /// Where one target is known to differ from `expect`, keyed by the target's name (`candidate`). The reference's
+    /// value stays in `expect`; the entry records what the diverging target does instead and why. The target is
+    /// compared against the entry, and its report says `divergent`, so a divergence is a reviewed fact in the
+    /// scenario file. When the target stops diverging it no longer matches the entry and the run fails.
+    #[serde(default)]
+    pub divergence: BTreeMap<String, Divergence>,
     /// How the `command` target realises the stimulus. A live target ignores
     /// this, so leaving it out keeps a scenario runnable against a session and
     /// out of reach of the `command` target.
     #[serde(default)]
     pub command: Option<CommandStep>,
+}
+
+/// A reviewed difference between a target and the reference on one step.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Divergence {
+    /// What the target produces on this step, in the same shape as `expect`.
+    pub expect: Value,
+    /// Why the target differs, in a sentence a reviewer can accept or reject.
+    pub reason: String,
 }
 
 /// A step the `command` target runs as a program.
@@ -95,10 +116,10 @@ pub enum OutputFormat {
 
 /// Which target a scenario runs against.
 ///
-/// Two variants are implemented: `recorded`, which replays a checked-in JSON
-/// recording, and `command`, which runs a program per step. The other three name
-/// the live targets from the plan and are rejected until their lane lands, so a
-/// scenario that asks for one fails loudly rather than passing on a stand-in.
+/// `recorded` replays a checked-in JSON recording and `command` runs a program per
+/// step. `candidate` and `mutter51` are live. `mutter-gnoblin` is named in the plan
+/// and rejected until its lane lands, so a scenario that asks for it fails loudly
+/// rather than passing on a stand-in.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum TargetSpec {
@@ -108,13 +129,13 @@ pub enum TargetSpec {
     /// Run each step's `command` on this machine and capture its output.
     Command(CommandTargetOptions),
     /// Stock Mutter 51 with the headless backend: the reference for core
-    /// protocol behaviour. Arrives with the Mutter target lane.
+    /// protocol behaviour. Started by the launcher `GNOBLIN_PARITY_MUTTER51`
+    /// names; without one the scenario is skipped with that reason.
     Mutter51(LiveOptions),
     /// Gnoblin on the patched Mutter: the reference for Gnoblin's own API.
     /// Arrives with the Mutter target lane.
     MutterGnoblin(LiveOptions),
-    /// The Rust candidate with `gnoblin-backend` headless. Arrives with the first
-    /// phase where `gnoblin-compositor` runs a session.
+    /// The Rust candidate with `gnoblin-backend` headless.
     Candidate(LiveOptions),
 }
 
@@ -188,6 +209,13 @@ impl Scenario {
         {
             return Err(format!("scenario `{}` has an empty skip reason", self.name));
         }
+        if let Some(reference) = self.references.iter().find(|reference| !reference.is_live()) {
+            return Err(format!(
+                "scenario `{}` names `{}` as a reference, which is not a live target",
+                self.name,
+                reference.name()
+            ));
+        }
         let mut seen = BTreeSet::new();
         for step in &self.steps {
             if !seen.insert(step.id.as_str()) {
@@ -195,6 +223,26 @@ impl Scenario {
             }
             if step.id.trim().is_empty() {
                 return Err(format!("scenario `{}` has a step with no id", self.name));
+            }
+            for (target, divergence) in &step.divergence {
+                if !matches!(target.as_str(), "candidate" | "mutter51" | "mutter-gnoblin") {
+                    return Err(format!(
+                        "step `{}` records a divergence for `{target}`, which is not a live target",
+                        step.id
+                    ));
+                }
+                if divergence.reason.trim().is_empty() {
+                    return Err(format!(
+                        "step `{}` records a divergence for `{target}` with no reason",
+                        step.id
+                    ));
+                }
+                if step.expect.is_none() {
+                    return Err(format!(
+                        "step `{}` records a divergence but has no `expect` to diverge from",
+                        step.id
+                    ));
+                }
             }
             if matches!(self.target, TargetSpec::Command(_)) && step.command.is_none() {
                 return Err(format!(
@@ -253,6 +301,38 @@ command = { program = "printf", args = ["%s", "{\"width\": 320}"], format = "jso
         assert_eq!(scenario.steps[0].expect, Some(serde_json::json!({ "width": 320 })));
         assert_eq!(scenario.target.name(), "command");
         assert!(!scenario.target.is_live());
+    }
+
+    #[test]
+    fn a_divergence_needs_a_live_target_a_reason_and_an_expectation() {
+        let with = |divergence: &str| {
+            format!(
+                "name = \"d\"\ntarget = {{ candidate = {{}} }}\n[[steps]]\nid = \"s\"\nexpect = 1\n[steps.divergence.{divergence}\n"
+            )
+        };
+        assert!(
+            Scenario::parse(
+                &with("candidate]\nexpect = 2\nreason = \"differs\""),
+                Path::new("<memory>")
+            )
+            .is_ok(),
+            "a reviewed divergence parses"
+        );
+        let error = Scenario::parse(
+            &with("recorded]\nexpect = 2\nreason = \"differs\""),
+            Path::new("<memory>"),
+        )
+        .expect_err("a recording is not a live target");
+        assert!(error.to_string().contains("not a live target"), "{error}");
+        let error = Scenario::parse(&with("candidate]\nexpect = 2\nreason = \" \""), Path::new("<memory>"))
+            .expect_err("a divergence says why");
+        assert!(error.to_string().contains("no reason"), "{error}");
+        let error = Scenario::parse(
+            "name = \"d\"\ntarget = { candidate = {} }\n[[steps]]\nid = \"s\"\n[steps.divergence.candidate]\nexpect = 2\nreason = \"r\"\n",
+            Path::new("<memory>"),
+        )
+        .expect_err("a divergence needs something to diverge from");
+        assert!(error.to_string().contains("no `expect`"), "{error}");
     }
 
     #[test]

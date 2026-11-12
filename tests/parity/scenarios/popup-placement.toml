@@ -1,0 +1,33 @@
+# Where the compositor places an xdg_popup. The positioner rules (anchor, gravity, offset) are core xdg-shell and
+# placement is reported to the client as the position and size of the popup's configure, relative to the parent's
+# window geometry. Every step uses no constraint adjustment, so the result does not depend on where the parent sits
+# on the output, and the scenario reads the same on the Rust candidate and on stock Mutter 51.
+name = "popup-placement"
+description = "A popup is placed where its positioner says: by anchor and gravity, with an offset, nested, and after a reposition."
+target = { candidate = {} }
+references = [{ mutter51 = {} }]
+
+[[steps]]
+id = "popup.place.anchor-bottom-right"
+description = "Anchored at the bottom right of a 10x10 rectangle at (20, 20), gravity bottom right, 60x40."
+expect = { x = 30, y = 30, width = 60, height = 40 }
+
+[[steps]]
+id = "popup.place.gravity-top-left"
+description = "Anchored at the top left of a rectangle at (80, 70), gravity top left: the popup hangs up and to the left."
+expect = { x = 20, y = 30, width = 60, height = 40 }
+
+[[steps]]
+id = "popup.place.offset"
+description = "Anchored at the bottom edge of a rectangle at (50, 20, 20, 10), gravity bottom, offset (5, 7): centred below it, then moved."
+expect = { x = 35, y = 37, width = 60, height = 40 }
+
+[[steps]]
+id = "popup.place.nested"
+description = "A popup of a popup is placed relative to the first popup's window geometry."
+expect = { x = 60, y = 0, width = 30, height = 20 }
+
+[[steps]]
+id = "popup.reposition"
+description = "xdg_popup.reposition with a new positioner and token: the compositor answers repositioned with the token and a configure."
+expect = { token = 7, placement = { x = 60, y = 60, width = 40, height = 30 } }

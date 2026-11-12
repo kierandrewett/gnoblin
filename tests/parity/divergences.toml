@@ -1,24 +1,33 @@
-# Divergence ledger: where a scenario's reference has not been run, and why.
+# Divergence ledger: where a scenario has no reference run, and why.
 #
-# A candidate scenario records the candidate's own observation, so it pins the
-# candidate's behaviour. It is not a claim of parity until the reference target
-# has produced the same observation. Until the Mutter target lane lands, the
-# reference is absent for every entry below.
+# A scenario with `references = [{ mutter51 = {} }]` is compared with stock Mutter 51 (tests/parity/README.md, "Run the
+# Mutter reference"), and a step where the candidate differs records the difference and its reason in the scenario
+# file itself (`[steps.divergence.candidate]`), so the report says `divergent` and a divergence that stops being true
+# fails. This file lists only the scenarios that have no Mutter row at all.
+#
+# A candidate scenario records the candidate's own observation, so it pins the candidate's behaviour. It is not a claim
+# of parity until a reference target has produced the same observation.
 
 [[entries]]
 scenario = "candidate-workspace-list"
 reference = "mutter51"
-status = "reference not run"
-note = "Stock Mutter 51 needs a headless Mutter session, which this crate does not start yet."
+status = "no reference"
+note = "The step reads `gnoblinctl workspace list`, which stock Mutter does not have; the reference answers only the Wayland probes."
 
 [[entries]]
 scenario = "candidate-window-lifecycle"
 reference = "mutter51"
-status = "reference not run"
-note = "Stock Mutter 51 needs a headless Mutter session, which this crate does not start yet."
+status = "no reference"
+note = "The step reads `gnoblinctl window list`, which stock Mutter does not have. The core-protocol half, that a mapped toplevel is focused and a closed one hands focus back, is `focus-toplevels`, which runs on both."
 
 [[entries]]
 scenario = "candidate-kill-unknown-window"
 reference = "mutter51"
-status = "reference not run"
-note = "The refusal text is gnoblinctl's own; Mutter has no equivalent IPC, so the reference is compared on exit status only once it runs."
+status = "no reference"
+note = "The refusal text is gnoblinctl's own; Mutter has no equivalent IPC."
+
+[[entries]]
+scenario = "nested-session-ipc"
+reference = "mutter-gnoblin"
+status = "skipped"
+note = "Needs Gnoblin on the patched Mutter with gnoblin_session_host_v1 and a nested session; the `mutter-gnoblin` target is not implemented."

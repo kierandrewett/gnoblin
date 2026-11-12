@@ -1,0 +1,22 @@
+# What a popup does to focus. A popup without a grab leaves the keyboard focus of its parent toplevel alone, and so
+# does closing it. A popup that asks for an explicit grab with a serial no input event produced is not dismissed and
+# does not move focus on either compositor.
+name = "popup-lifecycle"
+description = "A popup does not take focus from its parent, and a grab that names no input event serial neither dismisses it nor moves focus."
+target = { candidate = {} }
+references = [{ mutter51 = {} }]
+
+[[steps]]
+id = "popup.map.parent-keeps-focus"
+description = "A popup without a grab is mapped: it is configured, not dismissed, and the parent is still activated."
+expect = { parent_activated = true, popup_configured = true, popup_done = false }
+
+[[steps]]
+id = "popup.destroy.parent-keeps-focus"
+description = "The popup is destroyed: the parent is still activated."
+expect = { parent_activated = true }
+
+[[steps]]
+id = "popup.grab.without-input"
+description = "A popup asks for a grab with serial 0, which no input event produced."
+expect = { popup_done = false, parent_activated = true }

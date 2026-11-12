@@ -1,9 +1,10 @@
 //! What a run says about each scenario.
 //!
 //! The report is the artifact of a run: CI stores it, and a person reads it to
-//! decide whether the candidate is done. It therefore has three states and no
-//! more. A scenario either produced every expected observation, differed in a way
-//! the diff spells out, or did not run and said why. Silence is never a pass: a
+//! decide whether the candidate is done. It therefore has four states and no
+//! more. A scenario either produced every expected observation, differed from the
+//! reference in a way its scenario file records and justifies (divergent), differed
+//! in a way the diff spells out, or did not run and said why. Silence is never a pass: a
 //! scenario that could not be run is a `skip` with a reason on disk, not a line
 //! that is missing.
 
@@ -34,6 +35,15 @@ pub enum Verdict {
         /// recorded but not counted).
         compared: usize,
     },
+    /// Every observation matched the reference except where the scenario file records a divergence for this target
+    /// and the target produced exactly the recorded observation. A target that stops diverging fails instead, so a
+    /// divergence cannot outlive the behaviour it describes.
+    Divergent {
+        /// How many observations were compared.
+        compared: usize,
+        /// One line per diverging step: its id and the reason the scenario file gives.
+        reasons: Vec<String>,
+    },
     /// At least one observation differed, or the target failed.
     Fail { diff: Diff },
     /// The scenario declares a reason not to run it yet.
@@ -61,6 +71,11 @@ impl Report {
         self.count(|verdict| matches!(verdict, Verdict::Pass { .. }))
     }
 
+    /// Number of scenarios whose verdict is a recorded divergence.
+    pub fn divergent(&self) -> usize {
+        self.count(|verdict| matches!(verdict, Verdict::Divergent { .. }))
+    }
+
     /// Number of scenarios whose verdict is a failure.
     pub fn failed(&self) -> usize {
         self.count(|verdict| matches!(verdict, Verdict::Fail { .. }))
@@ -69,6 +84,15 @@ impl Report {
     /// Number of scenarios that were skipped.
     pub fn skipped(&self) -> usize {
         self.count(|verdict| matches!(verdict, Verdict::Skipped { .. }))
+    }
+
+    /// Number of skipped rows that name `target`, so a job that exists to run a target can refuse a run where it
+    /// did not.
+    pub fn skipped_for(&self, target: &str) -> usize {
+        self.scenarios
+            .iter()
+            .filter(|report| report.target == target && matches!(report.verdict, Verdict::Skipped { .. }))
+            .count()
     }
 
     /// Whether the run found no difference. A skip does not fail the run: the
@@ -114,6 +138,7 @@ impl Verdict {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Pass { .. } => "pass",
+            Self::Divergent { .. } => "divergent",
             Self::Fail { .. } => "fail",
             Self::Skipped { .. } => "skip",
         }
@@ -124,9 +149,10 @@ impl fmt::Display for Report {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             formatter,
-            "[parity] {} scenarios: {} pass, {} fail, {} skip",
+            "[parity] {} scenarios: {} pass, {} divergent, {} fail, {} skip",
             self.scenarios.len(),
             self.passed(),
+            self.divergent(),
             self.failed(),
             self.skipped()
         )?;
@@ -137,6 +163,12 @@ impl fmt::Display for Report {
             write!(formatter, "  {label:<4} {name} ({target})")?;
             match &report.verdict {
                 Verdict::Pass { compared } => writeln!(formatter, ", {compared} observation(s) matched")?,
+                Verdict::Divergent { compared, reasons } => {
+                    writeln!(formatter, ", {compared} observation(s) compared")?;
+                    for reason in reasons {
+                        writeln!(formatter, "       {reason}")?;
+                    }
+                }
                 Verdict::Fail { diff } => {
                     writeln!(formatter)?;
                     for line in diff.to_string().lines() {
@@ -165,7 +197,10 @@ mod tests {
     #[test]
     fn an_empty_report_prints_a_zero_count_and_is_ok() {
         let report = Report::new();
-        assert_eq!(report.to_string(), "[parity] 0 scenarios: 0 pass, 0 fail, 0 skip\n");
+        assert_eq!(
+            report.to_string(),
+            "[parity] 0 scenarios: 0 pass, 0 divergent, 0 fail, 0 skip\n"
+        );
         assert!(report.is_ok());
     }
 
@@ -185,6 +220,36 @@ mod tests {
     }
 
     #[test]
+    fn a_divergence_prints_its_reasons_and_does_not_fail_the_run() {
+        let report = report_with(vec![Verdict::Divergent {
+            compared: 3,
+            reasons: vec!["focus.second-toplevel: a new window does not take focus".to_owned()],
+        }]);
+        assert_eq!(
+            report.to_string(),
+            "[parity] 1 scenarios: 0 pass, 1 divergent, 0 fail, 0 skip\n  divergent scenario-0 (command), 3 observation(s) compared\n       focus.second-toplevel: a new window does not take focus\n"
+        );
+        assert!(report.is_ok());
+    }
+
+    #[test]
+    fn skipped_rows_are_counted_per_target() {
+        let mut report = Report::new();
+        report.push(ScenarioReport::new(
+            "a",
+            "mutter51",
+            Verdict::Skipped {
+                reason: "no launcher".to_owned(),
+            },
+        ));
+        report.push(ScenarioReport::new("a", "candidate", Verdict::Pass { compared: 1 }));
+        assert_eq!(
+            (report.skipped_for("mutter51"), report.skipped_for("candidate")),
+            (1, 0)
+        );
+    }
+
+    #[test]
     fn a_skip_alone_does_not_fail_the_run() {
         let report = report_with(vec![Verdict::Skipped {
             reason: "needs a live headless Mutter 51 session".to_owned(),
@@ -197,7 +262,7 @@ mod tests {
         let report = report_with(vec![Verdict::Pass { compared: 3 }]);
         assert_eq!(
             report.to_string(),
-            "[parity] 1 scenarios: 1 pass, 0 fail, 0 skip\n  pass scenario-0 (command), 3 observation(s) matched\n"
+            "[parity] 1 scenarios: 1 pass, 0 divergent, 0 fail, 0 skip\n  pass scenario-0 (command), 3 observation(s) matched\n"
         );
     }
 
@@ -208,7 +273,7 @@ mod tests {
         }]);
         assert_eq!(
             report.to_string(),
-            "[parity] 1 scenarios: 0 pass, 1 fail, 0 skip\n  fail scenario-0 (command)\n       step `broken`: `printf` failed with exit status: 3\n"
+            "[parity] 1 scenarios: 0 pass, 0 divergent, 1 fail, 0 skip\n  fail scenario-0 (command)\n       step `broken`: `printf` failed with exit status: 3\n"
         );
     }
 
@@ -219,7 +284,7 @@ mod tests {
         }]);
         assert_eq!(
             report.to_string(),
-            "[parity] 1 scenarios: 0 pass, 0 fail, 1 skip\n  skip scenario-0 (command): needs a live session\n"
+            "[parity] 1 scenarios: 0 pass, 0 divergent, 0 fail, 1 skip\n  skip scenario-0 (command): needs a live session\n"
         );
     }
 }

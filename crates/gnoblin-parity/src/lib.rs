@@ -8,8 +8,10 @@
 //! - [`scenario`] reads the TOML files under `tests/parity/scenarios`.
 //! - [`target`] obtains observations. `recorded` and `command` replay checked-in
 //!   output; `candidate` runs the Rust compositor headless and drives it over IPC
-//!   and Wayland. `mutter51` and `mutter-gnoblin` need a Mutter session and fail
-//!   loudly until the Mutter lane lands, so a scenario never passes on a stand-in.
+//!   and Wayland. `mutter51` runs stock Mutter 51 headless through a launcher the
+//!   environment names and is skipped, with the reason, where none is configured;
+//!   `mutter-gnoblin` is not implemented and fails loudly, so a scenario never
+//!   passes on a stand-in.
 //! - [`normaliser`] removes the ids, serials and timestamps two conforming
 //!   targets never agree on, so a comparison is about behaviour.
 //! - [`diff`] and [`report`] say what differed, in words, per scenario.
@@ -18,15 +20,19 @@
 
 pub mod candidate;
 pub mod diff;
+pub mod mutter;
 pub mod normaliser;
+mod probes;
 pub mod report;
 pub mod runner;
 pub mod scenario;
 pub mod target;
+mod wayland_peer;
 pub use candidate::CandidateTarget;
 pub use diff::{Diff, DiffLine};
+pub use mutter::Mutter51Target;
 pub use normaliser::Normaliser;
 pub use report::{Report, ScenarioReport, Verdict};
-pub use runner::{RunError, run_directory, run_scenario, run_scenario_file, scenario_files};
+pub use runner::{RunError, run_directory, run_directory_in, run_scenario, run_scenario_file, scenario_files};
 pub use scenario::{Scenario, ScenarioError};
-pub use target::{CommandTarget, Observations, RecordedTarget, Target, TargetError};
+pub use target::{CommandTarget, Environment, Observations, RecordedTarget, Target, TargetError};

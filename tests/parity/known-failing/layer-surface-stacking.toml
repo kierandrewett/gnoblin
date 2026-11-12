@@ -8,6 +8,9 @@
 # expectation's: the normaliser must remove them, so the only reported differences
 # are the layer and the record name that moved with it.
 #
+# It lives in `known-failing/`, not `scenarios/`, because it can never pass: `gnoblin-parity run tests/parity/scenarios` is a
+# gate that must exit 0, and this directory is run only by the runner's own tests.
+#
 # Lane 8C (design/cutover-survey.md 16.1) deleted the layer registry, so no target
 # serves `layers.list` or the `gnoblin.surface_layer_shell:*` records any more. This
 # scenario is kept as a refused expectation: the recording is a fixed file, the

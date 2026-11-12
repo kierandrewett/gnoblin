@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Start headless stock Mutter 51 for the `mutter51` target of the parity runner (crates/gnoblin-parity).
+#
+# usage: parity-mutter51 RUNTIME_DIR DISPLAY
+#
+# The runner calls this with XDG_RUNTIME_DIR set to RUNTIME_DIR (mode 0700) and expects a Wayland socket named DISPLAY
+# in it. The script stays in the foreground until the runner kills its process group. One 1280x720 virtual monitor.
+#
+# Environment:
+#   GNOBLIN_PARITY_MUTTER_PREFIX  prefix of a Mutter 51 install, for a build that is not on the system paths
+#                                 (bin/mutter, lib64/ or lib/). Unset: `mutter` from PATH.
+#   GNOBLIN_PARITY_MUTTER_ARGS    extra mutter arguments. Default `--no-x11`; set it empty for a build without Xwayland,
+#                                 which does not know the option.
+#   GNOBLIN_PARITY_MUTTER_ROOT    run Mutter inside this root file system with chroot (root only). RUNTIME_DIR must lie
+#                                 inside it, and the script re-runs itself there. For a machine where Mutter 51 is only
+#                                 installed in a rootfs, such as a Fedora 45 tree on a host that cannot run containers
+#                                 (tests/parity/README.md, "Run the Mutter reference").
+set -euo pipefail
+
+runtime_dir="${1:?usage: parity-mutter51 RUNTIME_DIR DISPLAY}"
+display="${2:?usage: parity-mutter51 RUNTIME_DIR DISPLAY}"
+
+if [ -n "${GNOBLIN_PARITY_MUTTER_ROOT:-}" ]; then
+    root="${GNOBLIN_PARITY_MUTTER_ROOT%/}"
+    case "$runtime_dir" in
+        "$root"/*) ;;
+        *)
+            echo "parity-mutter51: $runtime_dir is not inside GNOBLIN_PARITY_MUTTER_ROOT ($root)" >&2
+            exit 2
+            ;;
+    esac
+    exec chroot "$root" /usr/bin/env -i \
+        PATH=/usr/local/bin:/usr/bin:/bin HOME=/root \
+        "GNOBLIN_PARITY_MUTTER_PREFIX=${GNOBLIN_PARITY_MUTTER_PREFIX:-}" \
+        "GNOBLIN_PARITY_MUTTER_ARGS=${GNOBLIN_PARITY_MUTTER_ARGS---no-x11}" \
+        /bin/bash -s -- "${runtime_dir#"$root"}" "$display" <"${BASH_SOURCE[0]}"
+fi
+
+mutter=mutter
+if [ -n "${GNOBLIN_PARITY_MUTTER_PREFIX:-}" ]; then
+    prefix="${GNOBLIN_PARITY_MUTTER_PREFIX%/}"
+    mutter="$prefix/bin/mutter"
+    export LD_LIBRARY_PATH="$prefix/lib64:$prefix/lib64/mutter-51:$prefix/lib:$prefix/lib/mutter-51${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+fi
+
+export XDG_RUNTIME_DIR="$runtime_dir"
+# No GPU: render with llvmpipe, so the session is the same on a runner and on a workstation.
+export LIBGL_ALWAYS_SOFTWARE=1
+# shellcheck disable=SC2086  # the extra arguments are a word list on purpose
+exec dbus-run-session -- "$mutter" --headless --wayland --wayland-display "$display" \
+    --virtual-monitor 1280x720 ${GNOBLIN_PARITY_MUTTER_ARGS---no-x11}

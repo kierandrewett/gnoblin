@@ -1,0 +1,73 @@
+name: Parity reference
+
+# The parity scenarios (tests/parity/scenarios) against the Rust candidate and against stock Mutter 51 on its headless
+# backend, with one expectation per step. `rust.yml` runs the same scenarios without the Mutter rows, which it skips
+# for want of a launcher; this job builds Mutter 51 and requires every `mutter51` row to have run, so a difference
+# between the compositors is a red job and the report is kept as an artifact. design/rust-compositor.md, "The parity harness".
+
+on:
+  push:
+    paths:
+      - "crates/gnoblin-parity/**"
+      - "crates/gnoblin-wayland/**"
+      - "crates/gnoblin-compositor/**"
+      - "crates/gnoblin-backend/**"
+      - "tests/parity/**"
+      - "scripts/parity-mutter51"
+      - "scripts/parity-reference.sh"
+      - "Cargo.lock"
+      - ".github/workflows/parity-reference.yml"
+  pull_request:
+    paths:
+      - "crates/gnoblin-parity/**"
+      - "crates/gnoblin-wayland/**"
+      - "crates/gnoblin-compositor/**"
+      - "crates/gnoblin-backend/**"
+      - "tests/parity/**"
+      - "scripts/parity-mutter51"
+      - "scripts/parity-reference.sh"
+      - "Cargo.lock"
+      - ".github/workflows/parity-reference.yml"
+  schedule:
+    - cron: "42 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  parity:
+    name: Scenarios on the candidate and on Mutter 51
+    runs-on: ubuntu-latest
+    container: fedora:45
+    timeout-minutes: 90
+    steps:
+      - name: Install checkout and cache tools
+        run: dnf -y install git tar zstd gzip
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install the build dependencies
+        run: scripts/parity-reference.sh deps
+      # Mutter 51.0 takes most of the job to build and changes only when the tag or the build recipe does.
+      - name: Restore the Mutter build
+        uses: actions/cache@v4
+        with:
+          path: /opt/mutter51
+          key: mutter51-${{ hashFiles('scripts/parity-reference.sh') }}
+      - name: Build Mutter 51
+        run: scripts/parity-reference.sh mutter
+      - name: Run the scenarios against both compositors
+        run: scripts/parity-reference.sh run parity-report.txt
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-report
+          path: parity-report.txt
+          if-no-files-found: ignore

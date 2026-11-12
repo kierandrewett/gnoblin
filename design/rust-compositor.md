@@ -796,9 +796,15 @@ Landed:
 - `tests/parity/contracts/`, read out of the C sources by
   `scripts/contract-inventory.py` with a `--check` mode that fails on a stale
   file.
-- The parity runner, its normaliser, its report, three scenarios and the test
-  kit. The Mutter targets are named and refused with the lane that brings them,
-  so no scenario passes on a stand-in.
+- The parity runner, its normaliser, its report, the scenarios and the test
+  kit. `mutter51` is a live target: stock Mutter 51 on its headless backend,
+  started by a launcher the environment names, driven by the same Wayland client
+  as the candidate (`scripts/parity-mutter51`, `scripts/parity-reference.sh`,
+  `.github/workflows/parity-reference.yml`). `mutter-gnoblin` is named and
+  refused, so no scenario passes on a stand-in. A scenario step may record a
+  reviewed divergence for one target, which the report shows as `divergent`.
+  The popup and focus scenarios (`popup-placement`, `popup-lifecycle`,
+  `focus-toplevels`) run on both, and `tests/parity/reports/` stores the report.
 - Failure-mode lists, each entry naming its test, in the crate docs of
   `gnoblin-wm`, `gnoblin-lock`, `gnoblin-authority`, `gnoblin-a11y`,
   `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`.
@@ -807,15 +813,17 @@ Landed:
 
 Open:
 
-- The two Mutter reference targets and the EIS input path, so a scenario can run
-  against the reference and the performance baseline can be recorded.
+- The `mutter-gnoblin` reference target and the EIS input path, so the scenarios
+  that read Gnoblin's own API can run against a reference and the performance
+  baseline can be recorded.
 - The MSRV is measured at 1.97.0 (1.96.0 fails on `cranelift-assembler-x64` 0.137.1,
   which needs 1.97.0). `just msrv` and the CI `msrv` job check it.
 - The native dependency probe on every target image.
 - The `lua-api/*` phases landed or their design frozen.
 
-Gate, unmet: the parity runner runs in CI against both Mutter targets and stores
-a report.
+Gate, partly met: the parity runner runs the core-protocol scenarios against
+`mutter51` and stores a report (CI job `parity-reference`, and a report from an
+Agent37 run in `tests/parity/reports/`). Unmet: the `mutter-gnoblin` target.
 
 ### Phase 1: outside-in ports that ship on Mutter
 
@@ -857,7 +865,10 @@ wires the roles together.
 - `gnoblin-wm` driving the engine through events and commands.
 - EIS input in the candidate.
 - Gate: wlcs core subset passes; parity scenarios for single and multiple
-  toplevels, popups and focus pass or have ledger entries.
+  toplevels, popups and focus pass or have ledger entries. Met for the
+  core-protocol scenarios: `focus-toplevels` (one recorded divergence:
+  `focus_new_windows` defaults to `prevent`), `popup-placement` and
+  `popup-lifecycle` pass on both compositors.
 
 ### Phase 3: a shell can run
 
@@ -3240,8 +3251,10 @@ Needs Kieran:
 - [ ] Record a contract inventory from a reference session at API 1.93.
 - [x] Build the parity runner with its normaliser, report, three scenarios and
       the test kit.
-- [ ] Add the two Mutter targets and the EIS input path, and record the
-      reference observations and the performance baseline with them.
+- [x] Add the `mutter51` target and record its observations
+      (`tests/parity/reports/`).
+- [ ] Add the `mutter-gnoblin` target and the EIS input path, and record the
+      performance baseline with them.
 - [x] Write the failure-mode lists for lock, authority and focus, input policy
       and the pure crates, each entry naming its test.
 - [ ] Write the capture-embargo failure-mode list; `gnoblin-capture` is still a
