@@ -222,6 +222,13 @@ pub struct SessionConfig {
     /// reach, or [`None`] for a session that links none: every power verb is then refused
     /// `unavailable`. The binary passes the machine's init-system backend; a test passes a fake.
     pub power: Option<Box<dyn gnoblin_model::PowerBackend>>,
+    /// The accepted document the settings this process reads only at start came from, or [`None`]
+    /// when it started with none, which is the defaults.
+    ///
+    /// [`configure_session_tables_from_store`] records it beside the tables it reads. A commit is
+    /// compared with it to name the settings the running compositor cannot apply
+    /// (`design/config-reload.md`); a test that sets those tables by hand sets this too.
+    pub started_with: Option<gnoblin_config::Config>,
 }
 
 /// A handle that stops a running session from another thread.
@@ -416,6 +423,9 @@ impl Compositor {
             tree,
             eis_gate.clone(),
             config.ipc_owner_uid,
+            config.started_with.take().unwrap_or_else(|| {
+                gnoblin_config::Config::from_json_bytes(b"{}").expect("the empty document is valid")
+            }),
         )
         .map_err(Error::Ipc)?;
 

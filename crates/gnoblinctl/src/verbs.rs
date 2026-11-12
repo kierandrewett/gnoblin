@@ -15,6 +15,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use gnoblin_client::wire::NoticeKind;
 use gnoblin_client::{Client, Transport};
 use gnoblin_config::{SearchPaths, document::Config};
 use gnoblin_model::{Filter, ObjectView, Snapshot, TypeKey, Value};
@@ -192,12 +193,37 @@ fn config_get<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Wr
 /// refuses leaves the last accepted one in force, and the refusal comes back as the
 /// compositor's `CONFIG_REJECTED` error with the diagnostic, so it reaches
 /// [`Failure::report`] like any other refused request.
+///
+/// An accepted document can still contain settings the running session does not apply: ones a
+/// process reads only when it starts, and ones nothing reads. They are listed after the revision,
+/// each on its own line, so a reload never passes silently for a change that did not happen.
 fn config_reload<T: Transport>(client: &mut Client<T>, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
-    let revision = client.reload_config().map_err(Failure::Client)?;
+    let reloaded = client.reload_config().map_err(Failure::Client)?;
+    let of_kind = |kind| {
+        reloaded
+            .notices
+            .iter()
+            .filter(|notice| notice.kind == kind)
+            .map(|notice| notice.text.as_str())
+            .collect::<Vec<_>>()
+    };
     let result = if json {
-        writeln!(out, "{}", json!({"revision": revision}))
+        writeln!(
+            out,
+            "{}",
+            json!({
+                "revision": reloaded.revision,
+                "restart_required": of_kind(NoticeKind::RestartRequired),
+                "no_effect": of_kind(NoticeKind::NoEffect),
+            })
+        )
     } else {
-        writeln!(out, "reloaded: revision {revision}")
+        writeln!(out, "reloaded: revision {}", reloaded.revision).and_then(|()| {
+            reloaded
+                .notices
+                .iter()
+                .try_for_each(|notice| writeln!(out, "not applied: {}", notice.text))
+        })
     };
     result.map_err(Failure::Io)?;
     Ok(0)

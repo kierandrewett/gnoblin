@@ -978,6 +978,70 @@ pub fn read_revision(payload: &[u8]) -> Result<u64, WireError> {
     Ok(revision)
 }
 
+/// Why an accepted configuration did not take effect in the running session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoticeKind {
+    /// A process reads the setting only when it starts, so the change waits for the next start.
+    RestartRequired,
+    /// Nothing reads the setting.
+    NoEffect,
+}
+
+impl NoticeKind {
+    fn tag(self) -> u8 {
+        match self {
+            NoticeKind::RestartRequired => 0,
+            NoticeKind::NoEffect => 1,
+        }
+    }
+
+    fn from_tag(tag: u8) -> Result<NoticeKind, WireError> {
+        match tag {
+            0 => Ok(NoticeKind::RestartRequired),
+            1 => Ok(NoticeKind::NoEffect),
+            other => Err(WireError::Tag(other)),
+        }
+    }
+}
+
+/// One setting a configuration commit accepted without applying it, as a sentence a user can read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Notice {
+    /// Why it was not applied.
+    pub kind: NoticeKind,
+    /// The setting and the reason, for example
+    /// `compositor.renderer: restart required (the compositor reads it when it starts): ...`.
+    pub text: String,
+}
+
+/// Encode the answer to `config.commit` and `config.reload`: the revision, then every setting
+/// the commit accepted without applying.
+pub fn committed_payload(revision: u64, notices: &[Notice]) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.u64(revision);
+    writer.u64(notices.len() as u64);
+    for notice in notices {
+        writer.u8(notice.kind.tag());
+        writer.text(&notice.text);
+    }
+    writer.finish()
+}
+
+/// Decode the answer to `config.commit` and `config.reload`.
+pub fn read_committed(payload: &[u8]) -> Result<(u64, Vec<Notice>), WireError> {
+    let mut reader = FrameReader::new(payload);
+    let revision = reader.u64()?;
+    let count = reader.length()?;
+    let mut notices = Vec::new();
+    for _ in 0..count {
+        let kind = NoticeKind::from_tag(reader.u8()?)?;
+        let text = reader.text()?;
+        notices.push(Notice { kind, text });
+    }
+    reader.done()?;
+    Ok((revision, notices))
+}
+
 /// Decode the `config.current` reply: the revision and the document, or zeros for
 /// "nothing accepted yet".
 pub fn read_configuration(payload: &[u8]) -> Result<(u64, Vec<u8>), WireError> {
@@ -1668,6 +1732,25 @@ mod tests {
         let payload = configuration_payload(7, &document);
         assert_eq!(read_configuration(&payload), Ok((7, document)));
         assert_eq!(read_configuration(&configuration_payload(0, &[])), Ok((0, Vec::new())));
+    }
+
+    #[test]
+    fn a_commit_answer_carries_the_revision_and_what_was_not_applied() {
+        let notices = vec![
+            Notice {
+                kind: NoticeKind::RestartRequired,
+                text: "compositor.renderer: restart required".to_owned(),
+            },
+            Notice {
+                kind: NoticeKind::NoEffect,
+                text: "compositor.blur: no effect".to_owned(),
+            },
+        ];
+        let payload = committed_payload(4, &notices);
+        assert_eq!(read_committed(&payload), Ok((4, notices)));
+        assert_eq!(read_committed(&committed_payload(9, &[])), Ok((9, Vec::new())));
+        // A bare revision, which is what the answer was before it carried notices, is refused.
+        assert!(read_committed(&4_u64.to_be_bytes()).is_err());
     }
 
     #[test]

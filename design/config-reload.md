@@ -17,7 +17,10 @@ table disagrees with the rules.
    it publishes the `settings` object, pushes each live setting to the Wayland loop through
    `ControlHandle`, reconciles the X11 session, and records the document so the guardian
    reconciles autostart (`Guardian::reconcile_autostart`).
-4. The reply carries the revision.
+4. The reply carries the revision and one line for every accepted setting that was **not**
+   applied: `restart required` (a process reads it once, at start) or `no effect` (nothing
+   reads it). `gnoblinctl config reload` prints them, and the Lua operation and the
+   `gnoblin.config.reloaded` event carry them as `not_applied`.
 
 ## What the status words mean
 

@@ -7,7 +7,7 @@
 //! shares its answer, so a reload pressed twice runs the runtime once. A runtime that never
 //! answers ends the wait at a deadline, so a caller is never held by a process that is gone.
 
-use gnoblin_client::wire;
+use gnoblin_client::wire::{self, Notice};
 use gnoblin_model::Tick;
 use gnoblin_proto::Envelope;
 use gnoblin_types::ClientId;
@@ -18,8 +18,9 @@ const DEADLINE_MS: u64 = 10_000;
 /// What became of an outstanding reload, as the runtime or the deadline decided it.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ReloadVerdict {
-    /// The runtime committed the document, which is now in force under this revision.
-    Accepted { revision: u64 },
+    /// The runtime committed the document, which is now in force under this revision. The notices
+    /// name each setting it accepted without applying.
+    Accepted { revision: u64, notices: Vec<Notice> },
     /// The runtime refused the document, and the last accepted one stays in force.
     Rejected { message: String },
     /// The runtime did not answer before the deadline.
@@ -83,11 +84,11 @@ impl Reload {
 /// The envelope that answers one caller with the outcome of its reload.
 fn answer(request_id: u64, outcome: &ReloadVerdict) -> Envelope {
     match outcome {
-        ReloadVerdict::Accepted { revision } => Envelope::reply(
+        ReloadVerdict::Accepted { revision, notices } => Envelope::reply(
             wire::NAMESPACE,
             wire::member::CONFIG_RELOAD,
             request_id,
-            revision.to_be_bytes().to_vec(),
+            wire::committed_payload(*revision, notices),
         ),
         ReloadVerdict::Rejected { message } => Envelope::error(
             wire::NAMESPACE,
@@ -119,14 +120,24 @@ mod tests {
         let mut reload = Reload::default();
         assert_eq!(reload.request(FIRST, 1, Tick::ZERO), Some(1));
         assert_eq!(reload.request(SECOND, 2, Tick::ZERO), None);
-        let answers = reload.finish(&ReloadVerdict::Accepted { revision: 4 });
+        let notice = Notice {
+            kind: wire::NoticeKind::RestartRequired,
+            text: "compositor.renderer: restart required".to_owned(),
+        };
+        let answers = reload.finish(&ReloadVerdict::Accepted {
+            revision: 4,
+            notices: vec![notice.clone()],
+        });
         let callers: Vec<(ClientId, u64)> = answers
             .iter()
             .map(|(client, envelope)| (*client, envelope.request_id))
             .collect();
         assert_eq!(callers, vec![(FIRST, 1), (SECOND, 2)]);
         for (_, envelope) in &answers {
-            assert_eq!(envelope.payload(), Some(4_u64.to_be_bytes().as_slice()));
+            assert_eq!(
+                wire::read_committed(envelope.payload().expect("a payload")),
+                Ok((4, vec![notice.clone()]))
+            );
         }
     }
 
@@ -168,6 +179,13 @@ mod tests {
     #[test]
     fn an_answer_with_no_reload_outstanding_is_nothing() {
         let mut reload = Reload::default();
-        assert!(reload.finish(&ReloadVerdict::Accepted { revision: 1 }).is_empty());
+        assert!(
+            reload
+                .finish(&ReloadVerdict::Accepted {
+                    revision: 1,
+                    notices: Vec::new()
+                })
+                .is_empty()
+        );
     }
 }

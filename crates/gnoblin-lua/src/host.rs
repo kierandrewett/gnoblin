@@ -374,6 +374,19 @@ struct Emission<'a> {
     fields: &'a Fields,
 }
 
+/// What a committed reload leaves a script to read: the revision the compositor holds, the sections
+/// it dropped, and the settings it accepted without applying.
+#[derive(Clone, Copy, Debug)]
+pub struct Reloaded<'a> {
+    /// The revision now in force.
+    pub revision: u64,
+    /// The problems of the sections the commit dropped.
+    pub warnings: &'a [String],
+    /// The settings accepted without being applied: read only when a process starts, or read by
+    /// nothing. One sentence each.
+    pub not_applied: &'a [String],
+}
+
 /// The state a reload replaces, kept so a rejected reload can put it back.
 struct Previous {
     handlers: BTreeMap<u64, Watching>,
@@ -381,6 +394,15 @@ struct Previous {
     deferred: Vec<u64>,
     document: Value,
     callbacks: mlua::Table,
+}
+
+/// A Lua array of `items`.
+fn string_list(lua: &Lua, items: &[String]) -> mlua::Result<mlua::Table> {
+    let list = lua.create_table()?;
+    for (index, item) in items.iter().enumerate() {
+        list.set(index + 1, item.as_str())?;
+    }
+    Ok(list)
 }
 
 /// The problems a refused run reported, joined on one line.
@@ -665,12 +687,12 @@ impl<T: Transport + 'static> Host<T> {
     /// `Ok` carries the revision the compositor accepted and the warnings of the sections it
     /// dropped; `Err` carries the reason the reload was refused. Called once the answer is known,
     /// so a handler that reads the operation sees the outcome the compositor holds.
-    pub fn answer_reload(&mut self, outcome: Result<(u64, &[String]), &str>) {
+    pub fn answer_reload(&mut self, outcome: Result<Reloaded<'_>, &str>) {
         let inflight = std::mem::take(&mut self.shared.borrow_mut().reload_inflight);
         for operation in inflight {
             let failure = match outcome {
-                Ok((revision, warnings)) => self
-                    .store_reload_result(operation, revision, warnings)
+                Ok(reloaded) => self
+                    .store_reload_result(operation, reloaded)
                     .err()
                     .map(|error| ("internal".to_owned(), error.to_string())),
                 Err(reason) => Some(("config_rejected".to_owned(), reason.to_owned())),
@@ -682,18 +704,15 @@ impl<T: Transport + 'static> Host<T> {
     }
 
     /// Keep the table a completed reload operation hands its handler: `ok`, `action`,
-    /// `settings_revision` and the `warnings` the commit produced.
-    fn store_reload_result(&self, operation: OperationId, revision: u64, warnings: &[String]) -> mlua::Result<()> {
-        let revision = i64::try_from(revision).map_err(|error| mlua::Error::runtime(error.to_string()))?;
+    /// `settings_revision`, the `warnings` the commit produced and the settings it `not_applied`.
+    fn store_reload_result(&self, operation: OperationId, reloaded: Reloaded<'_>) -> mlua::Result<()> {
+        let revision = i64::try_from(reloaded.revision).map_err(|error| mlua::Error::runtime(error.to_string()))?;
         let result = self.lua.create_table()?;
         result.set("ok", true)?;
         result.set("action", "config reload")?;
         result.set("settings_revision", revision)?;
-        let list = self.lua.create_table()?;
-        for (index, warning) in warnings.iter().enumerate() {
-            list.set(index + 1, warning.as_str())?;
-        }
-        result.set("warnings", list)?;
+        result.set("warnings", string_list(&self.lua, reloaded.warnings)?)?;
+        result.set("not_applied", string_list(&self.lua, reloaded.not_applied)?)?;
         crate::bindings::callbacks(&self.lua)?.raw_set(format!("operation-value:{}", operation.get()), result)
     }
 
@@ -758,8 +777,9 @@ impl<T: Transport + 'static> Host<T> {
     }
 
     /// Raise `gnoblin.config.reloaded` once a reload has committed. `warnings` are the
-    /// problems of the sections the commit dropped; `revision` is the one it committed.
-    pub(crate) fn announce_reload(&mut self, path: &Path, revision: u64, warnings: &[String]) {
+    /// problems of the sections the commit dropped; `not_applied` are the settings it accepted
+    /// without applying; `revision` is the one it committed.
+    pub(crate) fn announce_reload(&mut self, path: &Path, revision: u64, warnings: &[String], not_applied: &[String]) {
         let (sequence, time) = {
             let mut shared = self.shared.borrow_mut();
             shared.reloads += 1;
@@ -767,6 +787,7 @@ impl<T: Transport + 'static> Host<T> {
         };
         let path = path.display().to_string();
         let warnings = warnings.to_vec();
+        let not_applied = not_applied.to_vec();
         let mut handlers = 0;
         self.run_global_signal("gnoblin", "config", "reloaded", &mut handlers, move |lua| {
             let as_integer = |value: u64| i64::try_from(value).map_err(|error| mlua::Error::runtime(error.to_string()));
@@ -774,11 +795,8 @@ impl<T: Transport + 'static> Host<T> {
             table.set("name", "gnoblin.config.reloaded")?;
             table.set("path", path.as_str())?;
             table.set("revision", as_integer(revision)?)?;
-            let list = lua.create_table()?;
-            for (index, warning) in warnings.iter().enumerate() {
-                list.set(index + 1, warning.as_str())?;
-            }
-            table.set("warnings", list)?;
+            table.set("warnings", string_list(lua, &warnings)?)?;
+            table.set("not_applied", string_list(lua, &not_applied)?)?;
             table.set("sequence", as_integer(sequence)?)?;
             table.set("time", as_integer(time)?)?;
             Ok(table)

@@ -19,6 +19,7 @@ use crate::log;
 pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &Path) {
     match store.load(source) {
         Ok(stored) => {
+            config.started_with = Some(stored.config.clone());
             config.wayland.protocols = stored.config.protocols.unwrap_or_default();
             config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
             config.wayland.input_sources = stored.config.input_sources;

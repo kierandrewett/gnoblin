@@ -25,7 +25,7 @@ use gnoblin_model::{Fields, Graph, ObjectId, OperationId, OperationOutcome, Tick
 use gnoblin_proto::{CodecError, Envelope, Handshake, Version};
 use gnoblin_schema::Catalog;
 
-use gnoblin_lua::{Host, Limits, PUMP_EVENT_BATCH, ReloadOutcome, RunReport};
+use gnoblin_lua::{Host, Limits, PUMP_EVENT_BATCH, ReloadOutcome, Reloaded, RunReport};
 
 const VERSION: Version = Version::new(0, 2, 0);
 
@@ -3033,7 +3033,8 @@ session:on("ready", function()
     first:on_complete(function(value, err)
         if err then error("first failed " .. err.code .. ": " .. err.message) end
         error("first answered revision=" .. value.settings_revision .. " action=" .. value.action
-            .. " warnings=" .. #value.warnings .. " ok=" .. tostring(value.ok))
+            .. " warnings=" .. #value.warnings .. " ok=" .. tostring(value.ok)
+            .. " not_applied=" .. value.not_applied[1])
     end)
     local second = gnoblin.runtime.reload_config()
     second:on_complete(function(value, err)
@@ -3073,13 +3074,17 @@ fn a_script_reload_request_is_answered_with_the_revision_the_reload_committed() 
         host.reload_config(&config.paths()).expect("the reload runs"),
         ReloadOutcome::Accepted(_)
     ));
-    host.answer_reload(Ok((7, &["ignored section: nope".to_owned()])));
+    host.answer_reload(Ok(Reloaded {
+        revision: 7,
+        warnings: &["ignored section: nope".to_owned()],
+        not_applied: &["compositor.renderer: restart required".to_owned()],
+    }));
     let pumped = host.pump(Tick::new(2)).expect("the answers reach their handlers");
     let messages: Vec<&str> = pumped.errors.iter().map(|error| error.message()).collect();
     assert!(
         messages
             .iter()
-            .any(|message| message.contains("first answered revision=7 action=config reload warnings=1 ok=true")),
+            .any(|message| message.contains("first answered revision=7 action=config reload warnings=1 ok=true not_applied=compositor.renderer: restart required")),
         "{messages:?}"
     );
     assert!(

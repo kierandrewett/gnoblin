@@ -168,6 +168,22 @@ end)
 
 The `gnoblin.config.reloaded` Lua event carries the same `warnings` list.
 
+### Settings a reload accepts but does not apply
+
+Most settings take effect when the reload commits. A few are read only when a
+process starts, and a few are read by nothing. A reload that accepts one of
+them still succeeds, and says so:
+
+- `gnoblinctl config reload` prints one `not applied:` line for each.
+- `--json` lists them under `restart_required` and `no_effect`.
+- A script reads them as `not_applied`, a list of sentences, in the result of
+  `gnoblin.runtime.reload_config()` and in the `gnoblin.config.reloaded` event.
+
+A `restart required` setting stays in the list on every reload until the
+process that reads it restarts. A `no effect` setting is listed when it
+changes. The contributor audit of every setting is in
+`design/config-reload.md`.
+
 Warnings use normalized names: a misspelled `not_a_section` appears as
 `not-a-section`. The list contains up to 64 diagnostics, followed by an
 omission message if more exist. Long names are shortened. Gnoblin also

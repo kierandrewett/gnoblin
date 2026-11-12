@@ -70,6 +70,14 @@ name = "warnings"
 type = "list<string>"
 since = "0.2.0"
 
+# The settings the reload accepted without applying them, each a sentence that names the
+# setting and the reason: `restart required` for a setting a process reads only when it
+# starts, and `no effect` for one nothing reads. Empty when everything took effect.
+[[object.signal.field]]
+name = "not_applied"
+type = "list<string>"
+since = "0.2.0"
+
 # How many reloads this host has accepted, counted from 1 for each host.
 [[object.signal.field]]
 name = "sequence"

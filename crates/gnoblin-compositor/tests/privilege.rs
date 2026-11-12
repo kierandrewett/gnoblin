@@ -365,7 +365,11 @@ fn the_owner_reload_reaches_the_runtime_which_commits_the_answer() {
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
     assert_eq!(runtime.commit_config(&document).expect("the runtime's commit"), 1);
     assert_eq!(
-        reload.join().expect("the reload thread").expect("the reload answered"),
+        reload
+            .join()
+            .expect("the reload thread")
+            .expect("the reload answered")
+            .revision,
         1,
         "the CLI's reload is answered with the revision the runtime committed"
     );

@@ -179,7 +179,7 @@ local config = {}
 ---@return gnoblin.Subscription
 function config:on(name, callback) end
 ---@param name "reloaded"
----@param callback fun(fields: { path: string, revision: integer, warnings: string[], sequence: integer, time: integer })
+---@param callback fun(fields: { path: string, revision: integer, warnings: string[], not_applied: string[], sequence: integer, time: integer })
 ---@return gnoblin.Subscription
 function config:on(name, callback) end
 ---@class gnoblin.configCollection

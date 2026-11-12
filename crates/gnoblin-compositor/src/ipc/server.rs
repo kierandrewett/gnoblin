@@ -88,6 +88,7 @@ use gnoblin_wayland::{
     WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
+use super::applied::Applied;
 use super::consent::Consent;
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
@@ -252,6 +253,7 @@ impl IpcServer {
         tree: TreeHostHandle,
         eis: crate::eis::EisGate,
         owner_uid: Option<u32>,
+        started_with: gnoblin_config::Config,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -273,6 +275,7 @@ impl IpcServer {
             pending,
             requests: Requests::new(),
             reload: Reload::default(),
+            applied: Applied::new(started_with),
             portal: PortalService::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
@@ -724,6 +727,8 @@ struct Dispatcher {
     requests: Requests,
     /// The `config.reload` requests waiting for the runtime to answer them.
     reload: Reload,
+    /// The documents each commit is compared with, to name the settings it accepts without applying.
+    applied: Applied,
     /// The portal UI: admitted requests, their owners, and the open dialog.
     portal: PortalService,
     /// Every connection that reached the socket, keyed by client.
@@ -1289,6 +1294,12 @@ impl Dispatcher {
         // every commit the runtime made, including one this process cannot decode. The
         // settings object then keeps its last good values.
         let revision = self.requests.commit(document);
+        // What the accepted document says that is not in effect: read only when a process
+        // starts, or read by nothing. A document that did not decode says nothing new.
+        let mut notices = match &config {
+            Ok(config) => self.applied.notices(config),
+            Err(_) => Vec::new(),
+        };
         match config {
             Ok(config) => {
                 Self::persist_last_good(&config);
@@ -1319,6 +1330,12 @@ impl Dispatcher {
                     && let Err(message) = self.xwayland.apply(&self.control, revision, desired)
                 {
                     log::warn!(area = "xwayland", %message, "the accepted xwayland settings were not applied; the running X11 session stays");
+                    notices.push(wire::Notice {
+                        kind: wire::NoticeKind::RestartRequired,
+                        text: format!(
+                            "xwayland: not applied, the running X11 session stays: {message}; close the X11 windows and reload again"
+                        ),
+                    });
                 }
                 // The keyboard repeat and layouts are applied from the accepted document. A section the
                 // document does not name keeps what the seat already has, as at startup.
@@ -1359,11 +1376,11 @@ impl Dispatcher {
                 wire::NAMESPACE,
                 wire::member::CONFIG_COMMIT,
                 envelope.request_id,
-                revision.to_be_bytes().to_vec(),
+                wire::committed_payload(revision, &notices),
             ));
         }
         // A commit made while a reload waits is the runtime's answer to that reload.
-        let answers = self.reload.finish(&ReloadVerdict::Accepted { revision });
+        let answers = self.reload.finish(&ReloadVerdict::Accepted { revision, notices });
         self.deliver_replies(answers);
     }
 

@@ -86,7 +86,7 @@ pub mod unix;
 pub mod wire;
 
 #[cfg(unix)]
-pub use client::{Client, Event, PortalOutcome, PortalTicket};
+pub use client::{Client, Committed, Event, PortalOutcome, PortalTicket};
 #[cfg(unix)]
 pub use error::{ClientError, ConnectError, HandshakeError, WireError};
 #[cfg(unix)]

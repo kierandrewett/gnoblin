@@ -22,6 +22,7 @@ object config since 0.2.0 secret false
     field path type string since 0.2.0 secret false
     field revision type uint since 0.2.0 secret false
     field warnings type list<string> since 0.2.0 secret false
+    field not_applied type list<string> since 0.2.0 secret false
     field sequence type uint since 0.2.0 secret false
     field time type uint since 0.2.0 secret false
 object eis since 0.2.0 secret false
@@ -777,10 +778,12 @@ message Config {
     uint64 revision = 2;
     // since 0.2.0; list
     repeated string warnings = 3;
+    // since 0.2.0; list
+    repeated string not_applied = 4;
     // since 0.2.0
-    uint64 sequence = 4;
+    uint64 sequence = 5;
     // since 0.2.0
-    uint64 time = 5;
+    uint64 time = 6;
   }
 }
 

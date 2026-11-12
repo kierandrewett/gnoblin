@@ -127,6 +127,26 @@ impl std::fmt::Debug for Event {
     }
 }
 
+/// What a configuration commit or reload answered: the revision now in force, and the settings
+/// it accepted without applying.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Committed {
+    /// The revision the compositor holds.
+    pub revision: u64,
+    /// One entry per accepted setting that is not in effect: read only at a process's start, or
+    /// read by nothing. Empty when everything the document says is applied.
+    pub notices: Vec<wire::Notice>,
+}
+
+/// Decode the answer to `member`, a commit or a reload.
+fn committed(payload: &[u8], member: &str) -> Result<Committed, ClientError> {
+    let (revision, notices) = wire::read_committed(payload).map_err(|reason| ClientError::Protocol {
+        member: member.to_owned(),
+        reason,
+    })?;
+    Ok(Committed { revision, notices })
+}
+
 /// One connection to the compositor.
 #[derive(Debug)]
 pub struct Client<T: Transport> {
@@ -428,19 +448,25 @@ impl<T: Transport> Client<T> {
     /// Privileged: the compositor answers [`crate::code::DENIED`] when this connection
     /// does not hold `commit-config`. The document is opaque to the compositor, which
     /// holds the last accepted one for as long as it runs: that is what makes a
-    /// runtime restart cost nothing but the reload.
+    /// runtime restart cost nothing but the reload. A caller that reports to a user
+    /// calls [`Client::commit_config_reporting`], which also returns the settings the
+    /// commit accepted without applying.
     pub fn commit_config(&mut self, document: &[u8]) -> Result<u64, ClientError> {
+        Ok(self.commit_config_reporting(document)?.revision)
+    }
+
+    /// [`Client::commit_config`], with the settings the compositor accepted without applying:
+    /// those a process reads only when it starts, and those nothing reads.
+    pub fn commit_config_reporting(&mut self, document: &[u8]) -> Result<Committed, ClientError> {
         let correlation = self.next_id();
         let frame = wire::config_commit(correlation, document);
         self.send(&frame)?;
         let payload = self.await_reply(correlation)?;
-        wire::read_revision(&payload).map_err(|reason| ClientError::Protocol {
-            member: wire::member::CONFIG_COMMIT.to_owned(),
-            reason,
-        })
+        committed(&payload, wire::member::CONFIG_COMMIT)
     }
 
-    /// Ask the runtime to re-read the configuration, returning the revision it committed.
+    /// Ask the runtime to re-read the configuration, returning the revision it committed and
+    /// the settings the compositor accepted without applying.
     ///
     /// Needs `reload-config`, which the session owner's socket connection holds. The
     /// compositor does not commit anything itself: it hands the reload to the runtime,
@@ -448,15 +474,12 @@ impl<T: Transport> Client<T> {
     /// [`crate::code::CONFIG_REJECTED`] with the runtime's diagnostic when it is wrong,
     /// which leaves the last accepted document in force. Requests made while one is
     /// outstanding share its answer.
-    pub fn reload_config(&mut self) -> Result<u64, ClientError> {
+    pub fn reload_config(&mut self) -> Result<Committed, ClientError> {
         let correlation = self.next_id();
         let frame = wire::config_reload(correlation);
         self.send(&frame)?;
         let payload = self.await_reply(correlation)?;
-        wire::read_revision(&payload).map_err(|reason| ClientError::Protocol {
-            member: wire::member::CONFIG_RELOAD.to_owned(),
-            reason,
-        })
+        committed(&payload, wire::member::CONFIG_RELOAD)
     }
 
     /// Tell the compositor the runtime refused the reload, with the diagnostic that
