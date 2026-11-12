@@ -55,6 +55,8 @@
 
 /// Accent and colour rules for the `appearance` table.
 pub mod appearance;
+/// What a running session does when a setting changes: applied live, read at start, or unused.
+pub mod apply;
 /// The typed configuration document and the salvage that keeps its valid sections.
 pub mod document;
 /// The validation engine: reads one setting and reports the diagnostic for a wrong one.
