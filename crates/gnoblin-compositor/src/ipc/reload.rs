@@ -7,7 +7,7 @@
 //! shares its answer, so a reload pressed twice runs the runtime once. A runtime that never
 //! answers ends the wait at a deadline, so a caller is never held by a process that is gone.
 
-use gnoblin_client::wire::{self, Notice};
+use gnoblin_client::wire::{self, ConfigNotice};
 use gnoblin_model::Tick;
 use gnoblin_proto::Envelope;
 use gnoblin_types::ClientId;
@@ -20,7 +20,7 @@ const DEADLINE_MS: u64 = 10_000;
 pub(crate) enum ReloadVerdict {
     /// The runtime committed the document, which is now in force under this revision. The notices
     /// name each setting it accepted without applying.
-    Accepted { revision: u64, notices: Vec<Notice> },
+    Accepted { revision: u64, notices: Vec<ConfigNotice> },
     /// The runtime refused the document, and the last accepted one stays in force.
     Rejected { message: String },
     /// The runtime did not answer before the deadline.
@@ -120,7 +120,7 @@ mod tests {
         let mut reload = Reload::default();
         assert_eq!(reload.request(FIRST, 1, Tick::ZERO), Some(1));
         assert_eq!(reload.request(SECOND, 2, Tick::ZERO), None);
-        let notice = Notice {
+        let notice = ConfigNotice {
             kind: wire::NoticeKind::RestartRequired,
             text: "compositor.renderer: restart required".to_owned(),
         };

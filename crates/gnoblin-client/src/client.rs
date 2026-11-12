@@ -135,7 +135,7 @@ pub struct Committed {
     pub revision: u64,
     /// One entry per accepted setting that is not in effect: read only at a process's start, or
     /// read by nothing. Empty when everything the document says is applied.
-    pub notices: Vec<wire::Notice>,
+    pub notices: Vec<wire::ConfigNotice>,
 }
 
 /// Decode the answer to `member`, a commit or a reload.

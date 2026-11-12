@@ -1006,7 +1006,7 @@ impl NoticeKind {
 
 /// One setting a configuration commit accepted without applying it, as a sentence a user can read.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Notice {
+pub struct ConfigNotice {
     /// Why it was not applied.
     pub kind: NoticeKind,
     /// The setting and the reason, for example
@@ -1016,7 +1016,7 @@ pub struct Notice {
 
 /// Encode the answer to `config.commit` and `config.reload`: the revision, then every setting
 /// the commit accepted without applying.
-pub fn committed_payload(revision: u64, notices: &[Notice]) -> Vec<u8> {
+pub fn committed_payload(revision: u64, notices: &[ConfigNotice]) -> Vec<u8> {
     let mut writer = Writer::new();
     writer.u64(revision);
     writer.u64(notices.len() as u64);
@@ -1028,7 +1028,7 @@ pub fn committed_payload(revision: u64, notices: &[Notice]) -> Vec<u8> {
 }
 
 /// Decode the answer to `config.commit` and `config.reload`.
-pub fn read_committed(payload: &[u8]) -> Result<(u64, Vec<Notice>), WireError> {
+pub fn read_committed(payload: &[u8]) -> Result<(u64, Vec<ConfigNotice>), WireError> {
     let mut reader = FrameReader::new(payload);
     let revision = reader.u64()?;
     let count = reader.length()?;
@@ -1036,7 +1036,7 @@ pub fn read_committed(payload: &[u8]) -> Result<(u64, Vec<Notice>), WireError> {
     for _ in 0..count {
         let kind = NoticeKind::from_tag(reader.u8()?)?;
         let text = reader.text()?;
-        notices.push(Notice { kind, text });
+        notices.push(ConfigNotice { kind, text });
     }
     reader.done()?;
     Ok((revision, notices))
@@ -1737,11 +1737,11 @@ mod tests {
     #[test]
     fn a_commit_answer_carries_the_revision_and_what_was_not_applied() {
         let notices = vec![
-            Notice {
+            ConfigNotice {
                 kind: NoticeKind::RestartRequired,
                 text: "compositor.renderer: restart required".to_owned(),
             },
-            Notice {
+            ConfigNotice {
                 kind: NoticeKind::NoEffect,
                 text: "compositor.blur: no effect".to_owned(),
             },

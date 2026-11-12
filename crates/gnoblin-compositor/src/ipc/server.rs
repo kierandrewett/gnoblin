@@ -88,7 +88,7 @@ use gnoblin_wayland::{
     WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
-use super::applied::Applied;
+use super::applied::StartedDocuments;
 use super::consent::Consent;
 use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
@@ -275,7 +275,7 @@ impl IpcServer {
             pending,
             requests: Requests::new(),
             reload: Reload::default(),
-            applied: Applied::new(started_with),
+            applied: StartedDocuments::new(started_with),
             portal: PortalService::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
@@ -728,7 +728,7 @@ struct Dispatcher {
     /// The `config.reload` requests waiting for the runtime to answer them.
     reload: Reload,
     /// The documents each commit is compared with, to name the settings it accepts without applying.
-    applied: Applied,
+    applied: StartedDocuments,
     /// The portal UI: admitted requests, their owners, and the open dialog.
     portal: PortalService,
     /// Every connection that reached the socket, keyed by client.
@@ -1330,7 +1330,7 @@ impl Dispatcher {
                     && let Err(message) = self.xwayland.apply(&self.control, revision, desired)
                 {
                     log::warn!(area = "xwayland", %message, "the accepted xwayland settings were not applied; the running X11 session stays");
-                    notices.push(wire::Notice {
+                    notices.push(wire::ConfigNotice {
                         kind: wire::NoticeKind::RestartRequired,
                         text: format!(
                             "xwayland: not applied, the running X11 session stays: {message}; close the X11 windows and reload again"

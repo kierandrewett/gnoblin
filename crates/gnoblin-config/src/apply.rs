@@ -26,7 +26,7 @@ use crate::value::Value;
 
 /// A process that reads a setting once, when it starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Process {
+pub enum StartProcess {
     /// The compositor, which reads the last accepted document before the runtime commits.
     Compositor,
     /// The services role: the Secret Service, the polkit agent and the location agent. It
@@ -37,14 +37,14 @@ pub enum Process {
     CompatHost,
 }
 
-impl Process {
+impl StartProcess {
     /// The words a reload report uses for the process.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Process::Compositor => "the compositor",
-            Process::Services => "the services role",
-            Process::CompatHost => "the compatibility host",
+            StartProcess::Compositor => "the compositor",
+            StartProcess::Services => "the services role",
+            StartProcess::CompatHost => "the compatibility host",
         }
     }
 
@@ -52,7 +52,7 @@ impl Process {
     /// one the compositor started with.
     #[must_use]
     pub const fn starts_after_first_commit(self) -> bool {
-        !matches!(self, Process::Compositor)
+        !matches!(self, StartProcess::Compositor)
     }
 }
 
@@ -62,14 +62,14 @@ pub enum Applies {
     /// The owning process applies the new value as soon as the document is accepted.
     Live,
     /// The process reads the value once, when it starts; the change waits for the next start.
-    Restart(Process),
+    Restart(StartProcess),
     /// Nothing reads the setting. The document accepts it and no behaviour follows.
     Unused,
 }
 
 /// The rule for one setting, or for a whole section whose keys are entries (`key` is `*`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Rule {
+pub struct ApplyRule {
     /// The top-level section.
     pub section: &'static str,
     /// The key inside it, or `*`.
@@ -80,8 +80,8 @@ pub struct Rule {
     pub detail: &'static str,
 }
 
-const fn live(section: &'static str, key: &'static str) -> Rule {
-    Rule {
+const fn live(section: &'static str, key: &'static str) -> ApplyRule {
+    ApplyRule {
         section,
         key,
         applies: Applies::Live,
@@ -89,8 +89,8 @@ const fn live(section: &'static str, key: &'static str) -> Rule {
     }
 }
 
-const fn restart(section: &'static str, key: &'static str, process: Process, detail: &'static str) -> Rule {
-    Rule {
+const fn restart(section: &'static str, key: &'static str, process: StartProcess, detail: &'static str) -> ApplyRule {
+    ApplyRule {
         section,
         key,
         applies: Applies::Restart(process),
@@ -98,8 +98,8 @@ const fn restart(section: &'static str, key: &'static str, process: Process, det
     }
 }
 
-const fn unused(section: &'static str, key: &'static str, detail: &'static str) -> Rule {
-    Rule {
+const fn unused(section: &'static str, key: &'static str, detail: &'static str) -> ApplyRule {
+    ApplyRule {
         section,
         key,
         applies: Applies::Unused,
@@ -108,7 +108,7 @@ const fn unused(section: &'static str, key: &'static str, detail: &'static str) 
 }
 
 /// One rule per declared setting, in the schema's section order.
-pub const RULES: &[Rule] = &[
+pub const RULES: &[ApplyRule] = &[
     unused("compositor", "debug", "nothing reads it yet"),
     unused("compositor", "locate-pointer", "nothing reads it yet"),
     unused("compositor", "locate-pointer-key", "nothing reads it yet"),
@@ -119,7 +119,7 @@ pub const RULES: &[Rule] = &[
     restart(
         "compositor",
         "renderer",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the renderer is created when the compositor starts",
     ),
     live("window-management", "focus-mode"),
@@ -131,7 +131,7 @@ pub const RULES: &[Rule] = &[
     restart(
         "window-management",
         "check-alive-timeout",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the liveness checker is created when the compositor starts",
     ),
     live("window-management", "edge-tiling"),
@@ -164,39 +164,39 @@ pub const RULES: &[Rule] = &[
     restart(
         "protocols",
         "*",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the advertised protocols are chosen when the compositor starts, and a protocol that was switched off cannot be advertised again to clients that already hold the registry",
     ),
     unused("layer-shell", "preserve-active-window", "nothing reads it yet"),
     restart(
         "keyring",
         "enabled",
-        Process::Services,
+        StartProcess::Services,
         "the services role decides whether to serve the Secret Service when it starts",
     ),
     unused("auth", "polkit-agent", "nothing reads it yet"),
     restart(
         "location",
         "enabled",
-        Process::Services,
+        StartProcess::Services,
         "the location agent reads its policy when the services role starts",
     ),
     restart(
         "location",
         "max-accuracy",
-        Process::Services,
+        StartProcess::Services,
         "the location agent reads its policy when the services role starts",
     ),
     restart(
         "compat",
         "capture",
-        Process::CompatHost,
+        StartProcess::CompatHost,
         "the compatibility host reads the capture mode when it starts",
     ),
     restart(
         "capture",
         "secure-treatment",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the backend's renderer is built with the secure-layer treatment when the compositor starts",
     ),
     unused("monitors", "privacy-screen", "no output applies it yet"),
@@ -209,44 +209,44 @@ pub const RULES: &[Rule] = &[
     restart(
         "workspaces",
         "*",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the workspaces are published to the shell when the compositor starts, and the stock shell builds its desks from them once",
     ),
     restart(
         "touchpad-gestures",
         "*",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the gesture table is built when the compositor starts",
     ),
     unused("animations", "*", "nothing reads the animations section"),
     restart(
         "logging",
         "console",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the log sinks are opened when the process starts",
     ),
     restart(
         "logging",
         "level",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the log filter is installed when the process starts",
     ),
     restart(
         "logging",
         "file",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the log sinks are opened when the process starts",
     ),
     restart(
         "logging",
         "dir",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the log sinks are opened when the process starts",
     ),
     restart(
         "logging",
         "max-size-mb",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the log sinks are opened when the process starts",
     ),
     live("autostart", "*"),
@@ -255,51 +255,51 @@ pub const RULES: &[Rule] = &[
     restart(
         "shortcuts",
         "*",
-        Process::Compositor,
+        StartProcess::Compositor,
         "the shortcut table is built when the compositor starts",
     ),
 ];
 
 /// The rule for `section.key`.
 #[must_use]
-pub fn rule_of(section: &str, key: &str) -> Option<&'static Rule> {
+pub fn rule_of(section: &str, key: &str) -> Option<&'static ApplyRule> {
     RULES.iter().find(|rule| rule.section == section && rule.key == key)
 }
 
 /// Whether a reported setting waits for a restart or has no effect at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PendingKind {
-    /// The setting is read when `Process` starts, so it takes effect at the next start.
-    RestartRequired(Process),
+pub enum UnappliedKind {
+    /// The setting is read when `StartProcess` starts, so it takes effect at the next start.
+    WaitsForRestart(StartProcess),
     /// Nothing reads the setting.
-    NoEffect,
+    Ignored,
 }
 
 /// One setting a reload accepted without applying it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Pending {
+pub struct Unapplied {
     /// The setting, spelled as in the document: `renderer` of `compositor` is
     /// `compositor.renderer`, and an entry of a section of entries is `protocols.wlr-layer-shell`.
     pub setting: String,
     /// Why it is not applied.
-    pub kind: PendingKind,
+    pub kind: UnappliedKind,
     /// The reason, in a sentence a user can read.
     pub detail: &'static str,
 }
 
-impl Pending {
+impl Unapplied {
     /// The line a user sees, for example
     /// `compositor.renderer: restart required, the renderer is created when the compositor starts`.
     #[must_use]
     pub fn describe(&self) -> String {
         match self.kind {
-            PendingKind::RestartRequired(process) => format!(
+            UnappliedKind::WaitsForRestart(process) => format!(
                 "{}: restart required ({} reads it when it starts): {}",
                 self.setting,
                 process.name(),
                 self.detail
             ),
-            PendingKind::NoEffect => format!("{}: no effect, {}", self.setting, self.detail),
+            UnappliedKind::Ignored => format!("{}: no effect, {}", self.setting, self.detail),
         }
     }
 }
@@ -307,9 +307,9 @@ impl Pending {
 /// The settings of `process` that `now` sets differently from `started_with`, the document the
 /// process read when it started.
 #[must_use]
-pub fn restart_required(started_with: &Config, now: &Config, process: Process) -> Vec<Pending> {
+pub fn restart_required(started_with: &Config, now: &Config, process: StartProcess) -> Vec<Unapplied> {
     changes(started_with, now, |rule| match rule.applies {
-        Applies::Restart(owner) if owner == process => Some(PendingKind::RestartRequired(owner)),
+        Applies::Restart(owner) if owner == process => Some(UnappliedKind::WaitsForRestart(owner)),
         _ => None,
     })
 }
@@ -317,14 +317,14 @@ pub fn restart_required(started_with: &Config, now: &Config, process: Process) -
 /// The settings nothing reads that `now` sets differently from `previous`, the document
 /// accepted before it.
 #[must_use]
-pub fn no_effect(previous: &Config, now: &Config) -> Vec<Pending> {
+pub fn no_effect(previous: &Config, now: &Config) -> Vec<Unapplied> {
     changes(previous, now, |rule| {
-        matches!(rule.applies, Applies::Unused).then_some(PendingKind::NoEffect)
+        matches!(rule.applies, Applies::Unused).then_some(UnappliedKind::Ignored)
     })
 }
 
 /// Every setting the selected rules cover that differs between the two documents, in rule order.
-fn changes(from: &Config, to: &Config, select: impl Fn(&Rule) -> Option<PendingKind>) -> Vec<Pending> {
+fn changes(from: &Config, to: &Config, select: impl Fn(&ApplyRule) -> Option<UnappliedKind>) -> Vec<Unapplied> {
     let mut found = Vec::new();
     for rule in RULES {
         let Some(kind) = select(rule) else {
@@ -334,7 +334,7 @@ fn changes(from: &Config, to: &Config, select: impl Fn(&Rule) -> Option<PendingK
         let before = lookup(from.document(), rule);
         let after = lookup(to.document(), rule);
         for setting in differing(rule, before, after, default.as_ref()) {
-            found.push(Pending {
+            found.push(Unapplied {
                 setting,
                 kind,
                 detail: rule.detail,
@@ -346,7 +346,7 @@ fn changes(from: &Config, to: &Config, select: impl Fn(&Rule) -> Option<PendingK
 
 /// The value `section.key` has in `document`, if the document sets it. For `*` it is the whole
 /// section.
-fn lookup<'a>(document: &'a Value, rule: &Rule) -> Option<&'a Value> {
+fn lookup<'a>(document: &'a Value, rule: &ApplyRule) -> Option<&'a Value> {
     let section = document.as_table()?.get(rule.section)?;
     if rule.key == "*" {
         return Some(section);
@@ -356,7 +356,7 @@ fn lookup<'a>(document: &'a Value, rule: &Rule) -> Option<&'a Value> {
 
 /// The value an unset setting behaves as, from the schema, so an explicit default and an absent
 /// key are the same thing.
-fn default_of(rule: &Rule) -> Option<Value> {
+fn default_of(rule: &ApplyRule) -> Option<Value> {
     let setting = SETTINGS
         .iter()
         .find(|setting| setting.section == rule.section && setting.key == rule.key)?;
@@ -387,7 +387,7 @@ fn unset<'a>(value: Option<&'a Value>, default: Option<&'a Value>) -> Option<&'a
 /// A section of entries reports each entry that was added, removed or changed, so a change to
 /// one protocol names that protocol and not the whole table. A list, such as the workspaces, is
 /// one setting.
-fn differing(rule: &Rule, before: Option<&Value>, after: Option<&Value>, default: Option<&Value>) -> Vec<String> {
+fn differing(rule: &ApplyRule, before: Option<&Value>, after: Option<&Value>, default: Option<&Value>) -> Vec<String> {
     if rule.key == "*"
         && let (None | Some(Value::Map(_)), None | Some(Value::Map(_))) = (before, after)
     {
@@ -425,7 +425,7 @@ mod tests {
     fn an_entry_of_a_section_of_entries_names_the_entry() {
         let before = config(r#"{"protocols":{"wlr-layer-shell":true}}"#);
         let after = config(r#"{"protocols":{"wlr-layer-shell":false,"ext-idle-notify":true}}"#);
-        let settings: Vec<String> = restart_required(&before, &after, Process::Compositor)
+        let settings: Vec<String> = restart_required(&before, &after, StartProcess::Compositor)
             .into_iter()
             .map(|pending| pending.setting)
             .collect();
@@ -436,10 +436,10 @@ mod tests {
     fn an_explicit_default_is_the_same_as_an_absent_key() {
         let before = config("{}");
         let after = config(r#"{"compositor":{"renderer":"auto"}}"#);
-        assert!(restart_required(&before, &after, Process::Compositor).is_empty());
+        assert!(restart_required(&before, &after, StartProcess::Compositor).is_empty());
         let changed = config(r#"{"compositor":{"renderer":"software"}}"#);
         assert_eq!(
-            restart_required(&before, &changed, Process::Compositor)
+            restart_required(&before, &changed, StartProcess::Compositor)
                 .into_iter()
                 .map(|pending| pending.setting)
                 .collect::<Vec<_>>(),
@@ -450,14 +450,14 @@ mod tests {
     #[test]
     fn a_setting_changed_back_is_not_pending() {
         let started = config(r#"{"compositor":{"renderer":"software"}}"#);
-        assert!(restart_required(&started, &started.clone(), Process::Compositor).is_empty());
+        assert!(restart_required(&started, &started.clone(), StartProcess::Compositor).is_empty());
     }
 
     #[test]
     fn only_the_named_process_is_reported() {
         let before = config("{}");
         let after = config(r#"{"keyring":{"enabled":false},"compositor":{"renderer":"software"}}"#);
-        let services: Vec<String> = restart_required(&before, &after, Process::Services)
+        let services: Vec<String> = restart_required(&before, &after, StartProcess::Services)
             .into_iter()
             .map(|pending| pending.setting)
             .collect();
@@ -471,7 +471,7 @@ mod tests {
         let reported = no_effect(&before, &after);
         assert_eq!(reported.len(), 1);
         assert_eq!(reported[0].setting, "compositor.blur");
-        assert_eq!(reported[0].kind, PendingKind::NoEffect);
+        assert_eq!(reported[0].kind, UnappliedKind::Ignored);
         assert!(no_effect(&after, &after).is_empty());
     }
 }

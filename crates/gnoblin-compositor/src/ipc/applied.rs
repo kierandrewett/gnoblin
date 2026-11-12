@@ -5,15 +5,19 @@
 //! settings are in that second state, or a user who reloads believes they took effect
 //! (`design/config-reload.md`). This keeps the three documents the comparison needs.
 
-use gnoblin_client::wire::{Notice, NoticeKind};
+use gnoblin_client::wire::{ConfigNotice, NoticeKind};
 use gnoblin_config::Config;
-use gnoblin_config::apply::{self, Pending, PendingKind, Process};
+use gnoblin_config::apply::{self, StartProcess, Unapplied, UnappliedKind};
 
 /// The processes that read a setting at their start, in the order a report lists them.
-const PROCESSES: [Process; 3] = [Process::Compositor, Process::Services, Process::CompatHost];
+const PROCESSES: [StartProcess; 3] = [
+    StartProcess::Compositor,
+    StartProcess::Services,
+    StartProcess::CompatHost,
+];
 
 /// The documents a session compares each commit with.
-pub(crate) struct Applied {
+pub(crate) struct StartedDocuments {
     /// The document the compositor read when it started. It reads the last accepted file before
     /// the runtime has committed anything, so this is the previous session's document.
     started_with: Config,
@@ -24,10 +28,10 @@ pub(crate) struct Applied {
     previous: Option<Config>,
 }
 
-impl Applied {
+impl StartedDocuments {
     /// A session whose compositor started with `started_with`.
-    pub(crate) fn new(started_with: Config) -> Applied {
-        Applied {
+    pub(crate) fn new(started_with: Config) -> StartedDocuments {
+        StartedDocuments {
             started_with,
             first: None,
             previous: None,
@@ -36,7 +40,7 @@ impl Applied {
 
     /// Records `accepted` as the newest document and returns the settings of it that are not in
     /// effect: those a process reads only at its start, and those nothing reads.
-    pub(crate) fn notices(&mut self, accepted: &Config) -> Vec<Notice> {
+    pub(crate) fn notices(&mut self, accepted: &Config) -> Vec<ConfigNotice> {
         let first = self.first.get_or_insert_with(|| accepted.clone());
         let mut pending = Vec::new();
         for process in PROCESSES {
@@ -57,11 +61,11 @@ impl Applied {
 }
 
 /// The wire form of a pending setting.
-fn notice(pending: &Pending) -> Notice {
-    Notice {
+fn notice(pending: &Unapplied) -> ConfigNotice {
+    ConfigNotice {
         kind: match pending.kind {
-            PendingKind::RestartRequired(_) => NoticeKind::RestartRequired,
-            PendingKind::NoEffect => NoticeKind::NoEffect,
+            UnappliedKind::WaitsForRestart(_) => NoticeKind::RestartRequired,
+            UnappliedKind::Ignored => NoticeKind::NoEffect,
         },
         text: pending.describe(),
     }
@@ -75,7 +79,7 @@ mod tests {
         Config::from_json_bytes(json.as_bytes()).expect("the document is valid")
     }
 
-    fn texts(notices: &[Notice]) -> Vec<&str> {
+    fn texts(notices: &[ConfigNotice]) -> Vec<&str> {
         notices.iter().map(|notice| notice.text.as_str()).collect()
     }
 
@@ -83,7 +87,7 @@ mod tests {
     fn a_setting_the_compositor_started_without_is_reported_on_the_first_commit() {
         // The compositor reads the last accepted file before the runtime commits, so a setting
         // edited between two logins is not in force when the new session's first commit arrives.
-        let mut applied = Applied::new(config("{}"));
+        let mut applied = StartedDocuments::new(config("{}"));
         let notices = applied.notices(&config(r#"{"compositor":{"renderer":"software"}}"#));
         assert_eq!(notices.len(), 1, "{notices:?}");
         assert_eq!(notices[0].kind, NoticeKind::RestartRequired);
@@ -96,7 +100,7 @@ mod tests {
     #[test]
     fn a_setting_the_compositor_started_with_is_not_reported() {
         let started = config(r#"{"compositor":{"renderer":"software"}}"#);
-        let mut applied = Applied::new(started.clone());
+        let mut applied = StartedDocuments::new(started.clone());
         assert!(applied.notices(&started).is_empty());
     }
 
@@ -104,7 +108,7 @@ mod tests {
     fn a_service_setting_is_compared_with_the_first_commit_not_the_compositor_start() {
         // The services role starts after the first commit and reads what it saved: a keyring
         // setting the first commit carries is already in force, and only a later change waits.
-        let mut applied = Applied::new(config("{}"));
+        let mut applied = StartedDocuments::new(config("{}"));
         assert!(applied.notices(&config(r#"{"keyring":{"enabled":false}}"#)).is_empty());
         let later = applied.notices(&config(r#"{"keyring":{"enabled":true}}"#));
         assert_eq!(later.len(), 1, "{later:?}");
@@ -116,7 +120,7 @@ mod tests {
 
     #[test]
     fn a_setting_nothing_reads_is_reported_once_when_it_changes() {
-        let mut applied = Applied::new(config("{}"));
+        let mut applied = StartedDocuments::new(config("{}"));
         let first = applied.notices(&config(r#"{"compositor":{"blur":"on"}}"#));
         assert_eq!(texts(&first), ["compositor.blur: no effect, nothing reads it yet"]);
         assert!(applied.notices(&config(r#"{"compositor":{"blur":"on"}}"#)).is_empty());
