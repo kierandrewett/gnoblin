@@ -3154,33 +3154,6 @@ mod prompts {
         });
     }
 
-    /// The lock screen a user's shell file draws on top of the stock `lock.lua`: a secret entry on the Desk, focused,
-    /// whose submitted text goes to the stock `Lock:unlock`. The stock shell draws no lock screen of its own (an
-    /// `ext-session-lock-v1` locker normally does); this is the smallest one, so the stock lock path is exercised
-    /// with typed input. `attempts` records each answer: the result, a colon and the error.
-    const LOCK_SCREEN: &str = r##"
-attempts = {}
-screen = nil
-function Lock:on_requested()
-    self.engaged = true
-    go(function()
-        local d = desk()
-        screen = d:add(Entry({ secret = true, x = 100, y = 100, width = 300, height = 44, fill = "#313244" }))
-        seat.focus = screen
-        local result
-        repeat
-            local text = await(screen.submit)
-            local err
-            result, err = self:unlock(text)
-            attempts[#attempts + 1] = tostring(result) .. ":" .. tostring(err)
-            screen.text = ""
-        until result == "ok"
-        screen:destroy()
-        screen = nil
-    end)
-end
-"##;
-
     const SAVER: &str = "org.freedesktop.ScreenSaver";
     const SAVER_PATH: &str = "/org/freedesktop/ScreenSaver";
     const KEY_Y: u32 = 21;
@@ -3270,8 +3243,7 @@ end
     #[test]
     fn the_screensaver_locks_the_session_and_a_typed_password_unlocks_the_stock_lock_screen() {
         const USER: &str = "kieran";
-        let config = user_config(&[("shell.lua", LOCK_SCREEN)]);
-        let mut p = Prompting::start_configured(Some(config.path()), true, |config| {
+        let mut p = Prompting::start_configured(None, true, |config| {
             config.wayland.lock_check = Some(gnoblin_wayland::LockCheck {
                 authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, "hi")),
                 user: Some(USER.to_owned()),
@@ -3293,7 +3265,7 @@ end
             })
         });
         p.until("the shell's lock screen never came up", |p| {
-            probe(p, "return tostring(lock.engaged) .. ' ' .. tostring(screen ~= nil)") == "true true"
+            probe(p, "return tostring(lock.engaged) .. ' ' .. tostring(#root:all(Entry))") == "true 1"
         });
         p.until("the Lock call never returned", |_| call.is_finished());
         call.join()
@@ -3310,7 +3282,7 @@ end
         });
         p.key(KEY_ENTER);
         p.until("the wrong password was never answered", |p| {
-            probe(p, "return table.concat(attempts, ',')") == ":denied"
+            texts(&p.painted()).iter().any(|t| t == "Wrong password.")
         });
         assert_eq!(
             probe(&mut p, "return lock.state"),
@@ -3326,10 +3298,6 @@ end
         p.until("the right password never unlocked the session", |p| {
             probe(p, "return lock.state") == "not-locked"
         });
-        assert!(
-            probe(&mut p, "return table.concat(attempts, ',')").starts_with(":denied,ok:"),
-            "the second attempt was accepted"
-        );
         p.until("the service never announced the unlock", |_| !saver_active(&caller));
         assert!(
             p.role().diagnostics().is_empty(),
@@ -3343,23 +3311,25 @@ end
     /// key. A key typed under an external lock never reaches the shell, even with its lock screen engaged and focused.
     #[test]
     fn keys_typed_under_an_external_locker_never_reach_the_shells_lock_screen() {
-        let config = user_config(&[("shell.lua", LOCK_SCREEN)]);
-        let mut p = Prompting::start(Some(config.path()));
+        let mut p = Prompting::start(None);
         let mut locker = Locker::connect(p.session.wayland());
         locker.lock();
         p.until("the shell's lock screen never came up", |p| {
-            probe(p, "return tostring(lock.engaged) .. ' ' .. tostring(screen ~= nil)") == "true true"
+            probe(p, "return tostring(lock.engaged) .. ' ' .. tostring(#root:all(Entry))") == "true 1"
         });
         p.key(KEY_H);
         p.key(KEY_I);
         p.run_for(Duration::from_millis(500));
         assert_eq!(
-            probe(&mut p, "return screen.text"),
+            probe(&mut p, "return root:all(Entry)[1].text"),
             "",
             "the shell's entry received no key under an external lock"
         );
         p.key(KEY_ENTER);
         p.run_for(Duration::from_millis(300));
-        assert_eq!(probe(&mut p, "return #attempts"), "0", "nothing was submitted");
+        assert!(
+            !texts(&p.painted()).iter().any(|t| t == "Wrong password."),
+            "nothing was submitted"
+        );
     }
 }

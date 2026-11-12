@@ -1,10 +1,81 @@
--- data/lua/gnoblin/shell/lock.lua: the stock lock screen. The host sends `requested` when the session locks; the
--- shell engages the Lock node. `unlock` asks the native core to check the password and waits for its answer.
--- It returns `"ok"` (and disengages) or `""` with the error `"denied"`; a rate-limited attempt returns the
--- wait in milliseconds as the result with the error `"rate-limited"`. Any other outcome keeps the lock engaged.
+-- data/lua/gnoblin/shell/lock.lua: the stock lock screen. The host sends `requested` when the session locks; the shell
+-- engages the Lock node and draws a password entry over the desk. `unlock` asks the native core to check the password
+-- and waits for its answer. It returns `"ok"` (and disengages) or `""` with the error `"denied"`; a rate-limited
+-- attempt returns the wait in milliseconds as the result with the error `"rate-limited"`. Any other outcome keeps the
+-- lock engaged. The password is the entry's text and goes to the compositor as the call's secret text only: the screen
+-- never prints it, and a connection that is not the session owner's has no tree to draw it in.
+Box:extend("LockScrim")({ fill = "#11111bf2" })
+Box:extend("LockCard")({
+    width = 360,
+    radius = 16,
+    fill = "#1e1e2e",
+    padding = 20,
+    gap = 12,
+    direction = "column",
+    secure = true,
+})
+
+local shown = false
+
 function Lock:on_requested()
     self.engaged = true
+    if shown then
+        return
+    end
+    shown = true
+    go(function()
+        self:show()
+    end)
 end
+
+local function feedback_for(result, err)
+    if err == "rate-limited" then
+        local seconds = math.ceil((tonumber(result) or 0) / 1000)
+        return ("Too many attempts. Try again in %d s."):format(seconds)
+    elseif err == "denied" then
+        return "Wrong password."
+    elseif err == "busy" then
+        return "Checking the previous attempt."
+    end
+    return "The password could not be checked."
+end
+
+-- Draws the lock screen on the desk under the pointer and returns once the session is unlocked.
+function Lock:show()
+    local d = desk()
+    if not d then
+        shown = false
+        return
+    end
+    local before = seat.focus
+    local scrim = d:add(LockScrim({ x = 0, y = 0, width = d.width, height = d.height }))
+    local card = scrim:add(LockCard({ x = (d.width - 360) // 2, y = d.height // 3, height = 150 }))
+    card:add(Text({ text = "Locked", size = 18 }))
+    local entry = card:add(Entry({ secret = true, height = 44, radius = 10, fill = "#313244", size = 15 }))
+    local message = card:add(Text({ text = "Enter your password.", size = 13, color = "#a6adc8" }))
+    seat.focus = entry
+    local result
+    repeat
+        local text = await(entry.submit)
+        if text ~= "" then
+            local err
+            result, err = self:unlock(text)
+            entry.text = ""
+            if result ~= "ok" then
+                message.text = feedback_for(result, err)
+                message.color = "#f38ba8"
+            end
+        end
+    until result == "ok"
+    shown = false
+    scrim:destroy()
+    if before then
+        pcall(function()
+            seat.focus = before
+        end)
+    end
+end
+
 function Lock:unlock(password)
     local result, err = await(self:authenticate(password))
     if result == "ok" then

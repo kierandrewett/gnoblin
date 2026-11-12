@@ -215,15 +215,6 @@ function idle:uninhibit(holder) end
 ---@field by_id fun(id: integer): gnoblin.idle|nil
 ---@field all fun(): gnoblin.idle[]
 
----@class gnoblin.lock
----@field locked boolean
-local lock = {}
----@return gnoblin.Operation
-function lock:lock_session() end
----@class gnoblin.lockCollection
----@field by_id fun(id: integer): gnoblin.lock|nil
----@field all fun(): gnoblin.lock[]
-
 ---@class gnoblin.operation
 local operation = {}
 ---@param name "completed"
@@ -666,7 +657,6 @@ function workspace:on(name, callback) end
 ---@field config gnoblin.configCollection
 ---@field eis gnoblin.eisCollection
 ---@field idle gnoblin.idleCollection
----@field lock gnoblin.lockCollection
 ---@field operation gnoblin.operationCollection
 ---@field output gnoblin.outputCollection
 ---@field portal_ui gnoblin.portal_uiCollection
