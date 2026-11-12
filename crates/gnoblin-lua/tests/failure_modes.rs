@@ -3023,3 +3023,119 @@ fn session_status_reports_the_published_lock_state_and_revision() {
         "{message}"
     );
 }
+
+/// The script asks for a reload from a handler and reports what the operation was answered with
+/// by raising it, which is how these tests read a value out of a handler.
+const ASKS_FOR_RELOAD: &str = r#"
+local session = gnoblin.session.by_id({session})
+session:on("ready", function()
+    local first = gnoblin.runtime.reload_config()
+    first:on_complete(function(value, err)
+        if err then error("first failed " .. err.code .. ": " .. err.message) end
+        error("first answered revision=" .. value.settings_revision .. " action=" .. value.action
+            .. " warnings=" .. #value.warnings .. " ok=" .. tostring(value.ok))
+    end)
+    local second = gnoblin.runtime.reload_config()
+    second:on_complete(function(value, err)
+        if err then error("second failed " .. err.code) end
+        error("second answered revision=" .. value.settings_revision)
+    end)
+end)
+"#;
+
+#[test]
+fn a_script_reload_request_is_answered_with_the_revision_the_reload_committed() {
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let config = Config::new("script-reload-accepted");
+    let init = config.write(
+        "init.lua",
+        &ASKS_FOR_RELOAD.replace("{session}", &session.get().to_string()),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    assert!(!host.take_reload_request(), "nothing has asked for a reload yet");
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    host.pump(Tick::new(1)).expect("the handler asks for the reload");
+    assert!(
+        host.take_reload_request(),
+        "the script's call asks the role loop for a reload"
+    );
+    assert!(!host.take_reload_request(), "one request runs one reload");
+
+    // Two calls before the reload starts share its one answer. The edit proves the reload ran
+    // the file as it is now, not a cached copy.
+    fs::write(&init, "-- the edited configuration\n").expect("the file changes");
+    assert!(matches!(
+        host.reload_config(&config.paths()).expect("the reload runs"),
+        ReloadOutcome::Accepted(_)
+    ));
+    host.answer_reload(Ok((7, &["ignored section: nope".to_owned()])));
+    let pumped = host.pump(Tick::new(2)).expect("the answers reach their handlers");
+    let messages: Vec<&str> = pumped.errors.iter().map(|error| error.message()).collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("first answered revision=7 action=config reload warnings=1 ok=true")),
+        "{messages:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("second answered revision=7")),
+        "{messages:?}"
+    );
+}
+
+#[test]
+fn a_script_reload_request_fails_config_rejected_with_the_reason_when_the_file_is_refused() {
+    let (mut server, mut host) = pair();
+    let session = session(&mut server);
+    let config = Config::new("script-reload-rejected");
+    let init = config.write(
+        "init.lua",
+        &ASKS_FOR_RELOAD.replace("{session}", &session.get().to_string()),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    server
+        .signal(session, "ready", Fields::new())
+        .expect("ready is a signal");
+    host.pump(Tick::new(1)).expect("the handler asks for the reload");
+    assert!(host.take_reload_request());
+
+    fs::write(&init, "local broken = = 1\n").expect("the file changes");
+    let ReloadOutcome::Rejected(reason) = host.reload_config(&config.paths()).expect("the reload runs") else {
+        panic!("a syntax error was accepted");
+    };
+    host.answer_reload(Err(&reason));
+    let pumped = host.pump(Tick::new(2)).expect("the answers reach their handlers");
+    let messages: Vec<&str> = pumped.errors.iter().map(|error| error.message()).collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("first failed config_rejected") && message.contains("init.lua:1")),
+        "the refusal reaches the handler the refused document left in force: {messages:?}"
+    );
+}
+
+#[test]
+fn a_script_cannot_ask_for_a_reload_while_the_configuration_loads() {
+    let (_server, mut host) = pair();
+    let config = Config::new("script-reload-during-load");
+    config.write("init.lua", "gnoblin.runtime.reload_config()\n");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert_eq!(report.errors.len(), 1, "{:#?}", report.errors);
+    assert!(
+        report.errors[0].message().contains("while the configuration loads"),
+        "{:?}",
+        report.errors[0]
+    );
+    assert!(
+        !host.take_reload_request(),
+        "a refused call does not leave a reload queued, or every reload would ask for another"
+    );
+}

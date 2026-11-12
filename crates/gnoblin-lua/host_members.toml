@@ -91,6 +91,17 @@ params = [{ name = "id", type = "integer" }]
 returns = ["gnoblin.Process|nil"]
 
 [[member]]
+name = "runtime"
+kind = "table"
+doc = "The runtime role itself: what a script asks of the process that runs it."
+
+[[member.members]]
+name = "reload_config"
+kind = "function"
+doc = "Ask for the reload `gnoblinctl config reload` asks for: the runtime evaluates the configuration again and commits it, and a refused document leaves the last accepted one in force. The operation finishes with `{ok = true, action = \"config reload\", settings_revision = n, warnings = {...}}` once the compositor has accepted the revision, or fails `config_rejected` with the reason. The running configuration's handlers are replaced by the new document's, except the completion handlers of this operation. Raised while the configuration loads, because every reload would ask for another."
+returns = ["gnoblin.Operation"]
+
+[[member]]
 name = "windows"
 kind = "table"
 doc = "The live windows, as interned objects. Each answer is as of the last pump; a window that closes leaves every answer at the same time."

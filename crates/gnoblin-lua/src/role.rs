@@ -406,10 +406,12 @@ fn reload<T: Transport + 'static>(
         ReloadOutcome::Accepted(loaded) => {
             let (revision, warnings) = commit(host, &loaded, reporter)?;
             host.announce_reload(loaded.path.path(), revision, &warnings);
+            host.answer_reload(Ok((revision, &warnings)));
             log::info!(area = "runtime", path = %loaded.path.path().display(), revision, "configuration reloaded");
         }
         ReloadOutcome::Rejected(reason) => {
             log::error!(area = "runtime", "{reason}");
+            host.answer_reload(Err(&reason));
             reporter.write(&report::config_rejected(0, &reason));
             host.client_mut()
                 .reject_config(&reason)

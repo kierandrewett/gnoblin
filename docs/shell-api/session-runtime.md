@@ -1,6 +1,6 @@
 # Session and runtime health
 
-> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.runtime.reload_config`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
+> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
 
 `gnoblin.session.status()` returns a record with these fields:
 
@@ -72,11 +72,11 @@ The [compositor bridge](/bridge/) documents the socket request format.
 
 ## Runtime health and reload
 
-`gnoblin.runtime.reload_config()` takes no arguments. It validates and applies
-the complete Lua configuration while the session is running. Native settings,
-policies, autostart entries, and Lua callbacks are updated as one reload
-transaction. If loading or applying the candidate fails, Gnoblin keeps the
-previous configuration active.
+`gnoblin.runtime.reload_config()` takes no arguments. It asks for the reload
+`gnoblinctl config reload` asks for: the runtime evaluates the complete Lua
+configuration again and commits it to the compositor, which applies it while
+the session is running. If loading or applying the candidate fails, Gnoblin
+keeps the previous configuration active.
 
 Call `gnoblin.runtime.status()` to read worker health:
 
@@ -126,17 +126,24 @@ sent if the compositor exits first and closes the socket.
 The native open-animation matcher uses updated rules for windows mapped after
 reload. Reload does not replay open animations for windows already mapped.
 
-The Lua `Operation` completes after the candidate config has loaded, validated,
-and been staged. Its `runtime_generation` is the generation assigned if the
-candidate commits; it does not confirm commit. Mutter waits for active-runtime
-operations and deferred callbacks before swapping runtimes.
+`gnoblin.runtime.reload_config()` returns an `Operation`:
 
-`gnoblinctl lua` also exposes `gnoblin.runtime.reload_config()`. It waits for
-the compositor operation and returns its result as a deeply read-only value.
+- It finishes once the compositor has accepted the reloaded configuration,
+  with `{ok = true, action = "config reload", settings_revision = n, warnings = {...}}`.
+  `settings_revision` is the revision the compositor now holds.
+- When the file is refused it fails with the code `config_rejected` and a
+  reason that names the file and line. The previous configuration stays in
+  force.
+- The reload starts on the runtime's next turn, not inside the call. Calls made
+  before it starts share one reload and one answer.
+- The call raises an error while the configuration is loading, because each
+  reload would load the file again and ask for another.
+
+A reload replaces every handler with the new file's, so the completion
+handler of the operation is the one handler of the old file that survives it.
 
 `gnoblin.config.reloaded` signals that the candidate became active. If the
-session stops first, the candidate is discarded and that event is not sent, even
-if the Lua operation already reported successful staging.
+session stops first, the candidate is discarded and that event is not sent.
 
 After the commit, the runtime also emits `gnoblin.focus.policy-changed` when the
 effective focus policy changed. This event carries the committed policy snapshot
@@ -145,21 +152,21 @@ while the previous runtime remains active.
 
 ### Reload warnings
 
-Check `warnings` in the result of `gnoblinctl config reload` or
-`gnoblin.runtime.reload_config()` from `gnoblinctl lua`. It is a list of
-diagnostic strings for unknown top-level sections and protocol names in the
-accepted config. The reload succeeds with `ok = true`; unsupported names
-have no effect. A clean config returns an empty list.
+Check `warnings` in the result of `gnoblinctl config reload` or of the
+operation `gnoblin.runtime.reload_config()` returns. It is a list of
+diagnostic strings for the sections the commit dropped. The reload succeeds
+with `ok = true`; the dropped sections have no effect. A clean config returns
+an empty list.
 
-For example, open `gnoblinctl lua` inside your session and enter:
+For example, a handler can print them after a reload it asked for:
 
 ```lua
-for _, warning in ipairs(gnoblin.runtime.reload_config().warnings) do print(warning) end
+gnoblin.runtime.reload_config():on_complete(function(result)
+    for _, warning in ipairs(result.warnings) do print(warning) end
+end)
 ```
 
 The `gnoblin.config.reloaded` Lua event carries the same `warnings` list.
-Use that event for feedback after a reload requested by a running Lua handler;
-its `Operation` result only confirms staging.
 
 Warnings use normalized names: a misspelled `not_a_section` appears as
 `not-a-section`. The list contains up to 64 diagnostics, followed by an

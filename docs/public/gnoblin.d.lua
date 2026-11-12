@@ -123,6 +123,11 @@ function gnoblin.process.list() end
 ---@return gnoblin.Process|nil
 function gnoblin.process.by_id(id) end
 
+--- The runtime role itself: what a script asks of the process that runs it.
+--- Ask for the reload `gnoblinctl config reload` asks for: the runtime evaluates the configuration again and commits it, and a refused document leaves the last accepted one in force. The operation finishes with `{ok = true, action = "config reload", settings_revision = n, warnings = {...}}` once the compositor has accepted the revision, or fails `config_rejected` with the reason. The running configuration's handlers are replaced by the new document's, except the completion handlers of this operation. Raised while the configuration loads, because every reload would ask for another.
+---@return gnoblin.Operation
+function gnoblin.runtime.reload_config() end
+
 --- The live windows, as interned objects. Each answer is as of the last pump; a window that closes leaves every answer at the same time.
 --- Every live window, in identity order.
 ---@return gnoblin.window[]

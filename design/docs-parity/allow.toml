@@ -693,12 +693,6 @@ reason = "no slice in design/runtime-surface-plan.md plans this; plan it or remo
 owner-slice = "docs wrong"
 
 [[allow]]
-name = "gnoblin.runtime.reload_config"
-doc = "docs/shell-api/session-runtime.md"
-reason = "documented, not implemented; gnoblinctl verbs (S10)"
-owner-slice = "S10"
-
-[[allow]]
 name = "gnoblin.runtime.status"
 doc = "docs/events/lifecycle.md"
 reason = "documented, not implemented; gnoblinctl verbs (S10)"

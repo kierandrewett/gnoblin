@@ -153,6 +153,10 @@ pub(super) struct Shared<T: Transport> {
     /// The request arrives as a signal while the pump observes the graph, so the caller acts on
     /// it once the pump returns.
     pub(super) reload_requested: bool,
+    /// Operations `gnoblin.runtime.reload_config()` returned that no reload has started for yet.
+    pub(super) reload_waiters: Vec<OperationId>,
+    /// Operations the reload now running answers: the waiters it took when it started.
+    pub(super) reload_inflight: Vec<OperationId>,
     /// Refused reloads this host has announced; the next `reload_failed` carries the count
     /// after its own increment, so the first refusal is sequence 1.
     pub(super) reload_failures: u64,
@@ -457,6 +461,8 @@ impl<T: Transport + 'static> Host<T> {
             completed: Vec::new(),
             operation_completions: 0,
             reloads: 0,
+            reload_waiters: Vec::new(),
+            reload_inflight: Vec::new(),
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         Ok(Host {
@@ -573,6 +579,10 @@ impl<T: Transport + 'static> Host<T> {
             // A failure the last run already reported must show again on this run, or a reload
             // that fails the same way looks like one that succeeded.
             shared.reported.clear();
+            // The operations scripts hold from `gnoblin.runtime.reload_config()` are answered by
+            // this reload, so a request made after it starts waits for the next one.
+            let waiting = std::mem::take(&mut shared.reload_waiters);
+            shared.reload_inflight.extend(waiting);
             Previous {
                 handlers: std::mem::take(&mut shared.handlers),
                 timers: std::mem::take(&mut shared.timers),
@@ -598,6 +608,7 @@ impl<T: Transport + 'static> Host<T> {
             }
         };
         if run.errors.is_empty() && run.config.is_ok() {
+            self.carry_reload_completions(&previous);
             return Ok(ReloadOutcome::Accepted(Box::new(run)));
         }
         let problem = problems(&run);
@@ -618,6 +629,72 @@ impl<T: Transport + 'static> Host<T> {
         self.lua
             .set_named_registry_value(crate::bindings::CALLBACKS, previous.callbacks)
             .map_err(HostError::Sandbox)
+    }
+
+    /// Keep the completion handlers of the operations this reload answers.
+    ///
+    /// A reload replaces every handler with the new document's, and the handler a script
+    /// attached to `reload_config()`'s operation belongs to the document that asked. Without
+    /// this it would be dropped before the answer it waits for exists.
+    fn carry_reload_completions(&mut self, previous: &Previous) {
+        let Ok(current) = self.lua.named_registry_value::<mlua::Table>(crate::bindings::CALLBACKS) else {
+            return;
+        };
+        let mut shared = self.shared.borrow_mut();
+        let waiting: Vec<u64> = shared
+            .reload_inflight
+            .iter()
+            .filter_map(|operation| shared.operations.get(operation))
+            .flat_map(|pending| pending.completions.iter().copied())
+            .collect();
+        for id in waiting {
+            let Some(watching) = previous.handlers.get(&id) else {
+                continue;
+            };
+            let Ok(callback) = previous.callbacks.raw_get::<LuaValue>(id) else {
+                continue;
+            };
+            if current.raw_set(id, callback).is_ok() {
+                shared.handlers.insert(id, watching.clone());
+            }
+        }
+    }
+
+    /// Answer the operations the reload that just ran was asked for.
+    ///
+    /// `Ok` carries the revision the compositor accepted and the warnings of the sections it
+    /// dropped; `Err` carries the reason the reload was refused. Called once the answer is known,
+    /// so a handler that reads the operation sees the outcome the compositor holds.
+    pub fn answer_reload(&mut self, outcome: Result<(u64, &[String]), &str>) {
+        let inflight = std::mem::take(&mut self.shared.borrow_mut().reload_inflight);
+        for operation in inflight {
+            let failure = match outcome {
+                Ok((revision, warnings)) => self
+                    .store_reload_result(operation, revision, warnings)
+                    .err()
+                    .map(|error| ("internal".to_owned(), error.to_string())),
+                Err(reason) => Some(("config_rejected".to_owned(), reason.to_owned())),
+            };
+            let mut shared = self.shared.borrow_mut();
+            let ready = shared.finish_local(operation, OperationOutcome::Done, failure);
+            shared.deferred.extend(ready);
+        }
+    }
+
+    /// Keep the table a completed reload operation hands its handler: `ok`, `action`,
+    /// `settings_revision` and the `warnings` the commit produced.
+    fn store_reload_result(&self, operation: OperationId, revision: u64, warnings: &[String]) -> mlua::Result<()> {
+        let revision = i64::try_from(revision).map_err(|error| mlua::Error::runtime(error.to_string()))?;
+        let result = self.lua.create_table()?;
+        result.set("ok", true)?;
+        result.set("action", "config reload")?;
+        result.set("settings_revision", revision)?;
+        let list = self.lua.create_table()?;
+        for (index, warning) in warnings.iter().enumerate() {
+            list.set(index + 1, warning.as_str())?;
+        }
+        result.set("warnings", list)?;
+        crate::bindings::callbacks(&self.lua)?.raw_set(format!("operation-value:{}", operation.get()), result)
     }
 
     /// Tell the handlers watching `gnoblin.config.reload_failed` that a reload was refused.

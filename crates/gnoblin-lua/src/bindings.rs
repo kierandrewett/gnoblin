@@ -339,6 +339,47 @@ pub(super) fn install<T: Transport + 'static>(
     gnoblin.set("process", process)?;
     crate::session_api::install(lua, &gnoblin)?;
 
+    // `runtime.reload_config` asks the role for the reload `gnoblinctl config reload` asks the
+    // compositor for. The request is a flag the role loop reads, like the compositor's own; the
+    // operation finishes when that reload is answered.
+    let runtime = lua.create_table()?;
+    {
+        let shared = Rc::clone(&shared);
+        runtime.set(
+            "reload_config",
+            lua.create_function(move |lua, ()| {
+                let operation = {
+                    let mut shared = shared.borrow_mut();
+                    if shared.configuring {
+                        return Err(Error::runtime(
+                            "gnoblin.runtime.reload_config() cannot run while the configuration loads: each reload \
+                             would load it again and ask for another",
+                        ));
+                    }
+                    let operation = shared.allocate_operation();
+                    shared.operations.insert(
+                        operation,
+                        crate::host::Pending {
+                            method: "reload_config".to_owned(),
+                            outcome: None,
+                            local_error: None,
+                            completions: Vec::new(),
+                        },
+                    );
+                    shared.reload_waiters.push(operation);
+                    shared.reload_requested = true;
+                    operation
+                };
+                lua.create_userdata(Operation {
+                    shared: Rc::clone(&shared),
+                    operation,
+                    method: "reload_config",
+                })
+            })?,
+        )?;
+    }
+    gnoblin.set("runtime", runtime)?;
+
     // Core object types sit directly on `gnoblin`. The build refuses a core type named
     // like a declared member, so the two never share a key.
     let mut core: Vec<&'static str> = Vec::new();
