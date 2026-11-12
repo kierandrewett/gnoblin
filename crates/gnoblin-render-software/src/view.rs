@@ -33,10 +33,12 @@
 //!
 //! # Status
 //!
-//! Not yet used by the compositor. This is the primitive for View nodes, captures
-//! and headset eyes; the compositor and the XR extension call it when they land.
-//! Only software rasterisation: no GPU and no DMA-BUF.
+//! The compositor draws every View node with it (`Composer::draw_view` in `gnoblin-backend`), a View's capture and
+//! its PipeWire stream read the picture it makes, and the XR extension reads it through the capture protocol.
+//! Only software rasterisation: no GPU and no DMA-BUF. The owner kept it that way until a profile says otherwise;
+//! `tests/view_cost.rs` is that profile, and the numbers are in `design/cutover-survey.md`, section 16.2.
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use gnoblin_render::Scene;
@@ -143,6 +145,22 @@ pub fn render_view<'a, F>(scene: &Scene, root: NodeId, camera: &ViewCamera, size
 where
     F: Fn(NodeId) -> Option<&'a Image>,
 {
+    render_with_scan(scene, root, camera, size, buffers, true)
+}
+
+/// [`render_view`], with `restrict_scan` saying whether a node's pixels are looked for only where its bounds project.
+/// The two give the same picture; the unrestricted scan is the definition the restriction is tested against.
+fn render_with_scan<'a, F>(
+    scene: &Scene,
+    root: NodeId,
+    camera: &ViewCamera,
+    size: Size,
+    buffers: F,
+    restrict_scan: bool,
+) -> ViewImage
+where
+    F: Fn(NodeId) -> Option<&'a Image>,
+{
     let rows = projection_rows(camera.projection, size);
     let depths_valid =
         camera.near.is_finite() && camera.far.is_finite() && camera.near > 0.0 && camera.far > camera.near;
@@ -166,6 +184,7 @@ where
         near: camera.near,
         far: camera.far,
         size,
+        restrict_scan,
     };
     draw_node(&context, &buffers, root, 1.0, &mut Vec::new(), &mut pixels);
     let image = Image::new(size, stride, pixels).expect("the pixel buffer is sized for the image");
@@ -183,6 +202,9 @@ struct ViewContext<'s> {
     near: f64,
     far: f64,
     size: Size,
+    /// Whether a node's pixels are looked for only in the part of the image its bounds project onto, which is what a
+    /// render does. A test turns it off to compare the result with the scan of the whole image the restriction replaces.
+    restrict_scan: bool,
 }
 
 /// A node's plane mapped to pixels, both ways.
@@ -190,6 +212,8 @@ struct ViewContext<'s> {
 struct PlaneMap {
     /// The eye matrix of the node's plane, so `eye = eye_rows · (u, v, 0, 1)`.
     eye: [[f64; 4]; 4],
+    /// The plane-to-pixel homography: `(X, Y, W) = forward · (u, v, 1)` and the pixel is `(X, Y) / W`.
+    forward: [[f64; 3]; 3],
     /// Inverse of the plane-to-pixel homography: `(u, v, 1) ∝ inverse · (px, py, 1)`.
     inverse: [[f64; 3]; 3],
 }
@@ -211,7 +235,7 @@ impl PlaneMap {
             }
         }
         let inverse = invert3(&forward)?;
-        Some(Self { eye, inverse })
+        Some(Self { eye, forward, inverse })
     }
 
     /// The plane point under the pixel centre `(x, y)`, or `None` when the pixel
@@ -224,6 +248,42 @@ impl PlaneMap {
             return None;
         }
         Some((dot(&self.inverse[0]) / scale, dot(&self.inverse[1]) / scale))
+    }
+
+    /// The columns and rows of the image that can hold a pixel centre of `bounds`, as half-open ranges.
+    ///
+    /// The plane-to-pixel map is a homography, so while the four corners of `bounds` are all on one side of the
+    /// camera's plane (their `W` has one sign) the rectangle's image is the convex quadrilateral of the projected
+    /// corners, and every pixel centre that maps back into `bounds` lies in its bounding box. The box is widened by a
+    /// pixel so rounding at its edge never drops a pixel the exact test would draw. When a corner is on the camera's
+    /// plane, behind it, or does not project to a finite pixel, the rectangle reaches the horizon and the whole image
+    /// is scanned, which is what the exact per-pixel test then decides.
+    fn pixel_span(&self, bounds: Rect, size: Size) -> (Range<u32>, Range<u32>) {
+        let whole = (0..size.width, 0..size.height);
+        let (left, top) = (f64::from(bounds.x), f64::from(bounds.y));
+        let (right, bottom) = (left + f64::from(bounds.width), top + f64::from(bounds.height));
+        let (mut low, mut high) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+        let mut side = 0.0_f64;
+        for (u, v) in [(left, top), (right, top), (left, bottom), (right, bottom)] {
+            let at = |row: &[f64; 3]| row[0] * u + row[1] * v + row[2];
+            let w = at(&self.forward[2]);
+            if !w.is_finite() || w == 0.0 || (side != 0.0 && w.signum() != side) {
+                return whole;
+            }
+            side = w.signum();
+            let (x, y) = (at(&self.forward[0]) / w, at(&self.forward[1]) / w);
+            if !x.is_finite() || !y.is_finite() {
+                return whole;
+            }
+            low = [low[0].min(x), low[1].min(y)];
+            high = [high[0].max(x), high[1].max(y)];
+        }
+        let span = |low: f64, high: f64, limit: u32| {
+            let start = (low.floor() - 1.0).clamp(0.0, f64::from(limit));
+            let end = (high.ceil() + 1.0).clamp(0.0, f64::from(limit));
+            start as u32..end as u32
+        };
+        (span(low[0], high[0], size.width), span(low[1], high[1], size.height))
     }
 
     /// The eye depth of the plane point `(u, v)`: positive in front of the camera.
@@ -319,8 +379,13 @@ fn paint(
         return;
     }
     let row = ctx.size.width as usize * 4;
-    for y in 0..ctx.size.height {
-        for x in 0..ctx.size.width {
+    let (columns, rows) = if ctx.restrict_scan {
+        plane.pixel_span(bounds, ctx.size)
+    } else {
+        (0..ctx.size.width, 0..ctx.size.height)
+    };
+    for y in rows {
+        for x in columns.clone() {
             let (px, py) = (f64::from(x) + 0.5, f64::from(y) + 0.5);
             let Some((u, v)) = plane.locate(px, py) else {
                 continue;
@@ -939,5 +1004,156 @@ mod tests {
         let shared = image.clone().into_image();
         assert_eq!(shared.data(), image.data());
         assert_eq!(Arc::strong_count(&shared), 1);
+    }
+
+    /// The pixel columns and rows a node is looked for in, for a node of an orthographic View.
+    fn span_of(bounds: Rect, camera: &ViewCamera, size: Size) -> (Range<u32>, Range<u32>) {
+        let mut scene = Scene::new();
+        let root = node(&mut scene, 1, None, Rect::new(0, 0, size.width, size.height));
+        let child = node(&mut scene, 2, Some(1), bounds);
+        let rows = projection_rows(camera.projection, size).expect("a projection that draws");
+        let plane = PlaneMap::new(&scene, root, child, &eye_matrix(camera), &rows).expect("a plane that projects");
+        plane.pixel_span(bounds, size)
+    }
+
+    #[test]
+    fn an_orthographic_node_is_looked_for_only_in_its_own_rectangle_of_pixels() {
+        let size = Size::new(200, 200);
+        let span = span_of(Rect::new(10, 20, 30, 40), &ortho_centred(200, 200), size);
+        assert_eq!(span, (9..41, 19..61), "the rectangle, widened by one pixel each way");
+        let off_image = span_of(Rect::new(500, 20, 30, 40), &ortho_centred(200, 200), size);
+        assert!(
+            off_image.0.is_empty(),
+            "a node right of the image has no column to look in"
+        );
+        let partly = span_of(Rect::new(-50, 190, 100, 100), &ortho_centred(200, 200), size);
+        assert_eq!(partly, (0..51, 189..200), "the span is cut to the image");
+    }
+
+    #[test]
+    fn a_node_that_reaches_the_camera_plane_is_looked_for_in_the_whole_image() {
+        // The camera sits at z = 10 above the plane, and the node is turned 80 degrees about y, so its near edge is
+        // behind the camera and its far edge in front: the corners straddle the camera's plane.
+        let size = Size::new(80, 60);
+        let mut scene = Scene::new();
+        let root = node(&mut scene, 1, None, Rect::new(0, 0, 80, 60));
+        let child = node(&mut scene, 2, Some(1), Rect::new(-100, 0, 200, 60));
+        let mut transform = *scene.transform(child).expect("the child has a transform");
+        transform.base.rotation_degrees.y = 80.0;
+        scene.set_transform(child, transform).expect("the transform is set");
+        let camera = ViewCamera {
+            position: Vec3 {
+                x: 0.0,
+                y: 30.0,
+                z: 10.0,
+            },
+            rotation_degrees: Vec3::ZERO,
+            projection: ViewProjection::Perspective {
+                vertical_fov_degrees: 90.0,
+            },
+            near: 0.1,
+            far: 10_000.0,
+        };
+        let rows = projection_rows(camera.projection, size).expect("a projection that draws");
+        let plane = PlaneMap::new(&scene, root, child, &eye_matrix(&camera), &rows).expect("a plane that projects");
+        assert_eq!(
+            plane.pixel_span(Rect::new(-100, 0, 200, 60), size),
+            (0..80, 0..60),
+            "a rectangle across the camera's plane has no bounded image"
+        );
+    }
+
+    /// A deterministic stream of numbers in `[0, 1)`, so a failing scene can be replayed from its seed.
+    struct Stream(u64);
+
+    impl Stream {
+        fn next(&mut self) -> f64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            (self.0 >> 11) as f64 / (1_u64 << 53) as f64
+        }
+
+        fn between(&mut self, low: f64, high: f64) -> f64 {
+            low + (high - low) * self.next()
+        }
+    }
+
+    /// Looking for a node's pixels only where its bounds project is a speed-up and not a change: over seeded scenes
+    /// of rotated, nested, clipped and translucent nodes under orthographic and perspective cameras, including
+    /// cameras so close that nodes cross the camera's plane, the picture is the one a scan of the whole image draws.
+    #[test]
+    fn restricting_the_scan_to_the_projected_bounds_never_changes_a_picture() {
+        let size = Size::new(72, 56);
+        let mut painted = 0;
+        for seed in 1..=300_u64 {
+            let mut random = Stream(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+            let mut scene = Scene::new();
+            let root = node(&mut scene, 1, None, Rect::new(0, 0, size.width, size.height));
+            let mut buffers = HashMap::new();
+            for index in 0..1 + seed % 4 {
+                let bounds = Rect::new(
+                    random.between(-40.0, 60.0) as i32,
+                    random.between(-40.0, 50.0) as i32,
+                    random.between(4.0, 90.0) as u32,
+                    random.between(4.0, 80.0) as u32,
+                );
+                let parent = if index > 0 && seed % 2 == 0 { 2 } else { 1 };
+                let child = node(&mut scene, 2 + index, Some(parent), bounds);
+                let mut transform = *scene.transform(child).expect("the child has a transform");
+                transform.base.rotation_degrees = Vec3 {
+                    x: random.between(-85.0, 85.0),
+                    y: random.between(-85.0, 85.0),
+                    z: random.between(-180.0, 180.0),
+                };
+                transform.opacity = random.between(0.2, 1.0) as f32;
+                scene.set_transform(child, transform).expect("the transform is set");
+                if index == 0 && seed % 5 == 0 {
+                    scene.set_clip(child, true).expect("the clip is set");
+                }
+                let colour = [
+                    random.between(0.0, 255.0) as u8,
+                    random.between(0.0, 255.0) as u8,
+                    random.between(0.0, 255.0) as u8,
+                    random.between(100.0, 255.0) as u8,
+                ];
+                buffers.insert(child, solid(6, 5, colour));
+            }
+            let camera = if seed % 3 == 0 {
+                ortho_centred(size.width as i32, size.height as i32)
+            } else {
+                ViewCamera {
+                    position: Vec3 {
+                        x: random.between(0.0, 72.0),
+                        y: random.between(0.0, 56.0),
+                        z: random.between(-20.0, 400.0),
+                    },
+                    rotation_degrees: Vec3 {
+                        x: random.between(-20.0, 20.0),
+                        y: random.between(-20.0, 20.0),
+                        z: random.between(-20.0, 20.0),
+                    },
+                    projection: ViewProjection::Perspective {
+                        vertical_fov_degrees: random.between(35.0, 110.0),
+                    },
+                    near: 0.5,
+                    far: 5000.0,
+                }
+            };
+            let restricted = render_with_scan(&scene, root, &camera, size, |node| buffers.get(&node), true);
+            let whole = render_with_scan(&scene, root, &camera, size, |node| buffers.get(&node), false);
+            assert_eq!(
+                restricted.data(),
+                whole.data(),
+                "seed {seed}: the restricted scan drew a different picture"
+            );
+            if restricted.data().as_chunks::<4>().0.iter().any(|pixel| *pixel != BLACK) {
+                painted += 1;
+            }
+        }
+        assert!(
+            painted > 100,
+            "the seeds draw something in most scenes, not black pictures: {painted}"
+        );
     }
 }

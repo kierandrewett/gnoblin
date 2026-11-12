@@ -29,7 +29,7 @@ pub(super) fn pass_from_wire(entry: &effect::Properties) -> Result<Pass, String>
     match entry.kind.as_str() {
         "blur" => blur_pass(entry),
         "shadow" => shadow_pass(entry),
-        "shader" => Err("the compositor runs no shader effects".to_owned()),
+        "shader" => Err("user shaders were removed: use a `blur` or `shadow` effect, or draw a `Canvas`".to_owned()),
         other => Err(format!("unknown effect kind `{other}`")),
     }
 }

@@ -395,12 +395,23 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
             "blur_radius" => props.blur_radius = expect_double(value, &name)?,
             "spread" => props.spread = expect_double(value, &name)?,
             "colour" => props.colour = expect_text(value, &name)?,
+            "source" | "entry" | "uniforms" => {
+                return Err(lua_err(format!(
+                    "an effect has no field {name}: user shaders were removed, an effect's kind is blur or shadow \
+                     (draw a Canvas for anything else)"
+                )));
+            }
             other => return Err(lua_err(format!("an effect has no field {other}"))),
         }
     }
     if props.kind != "blur" && props.kind != "shadow" {
+        let removed = if props.kind == "shader" {
+            "user shaders were removed: "
+        } else {
+            ""
+        };
         return Err(lua_err(format!(
-            "an effect's kind is blur or shadow, not {:?}",
+            "{removed}an effect's kind is blur or shadow, not {:?} (draw a Canvas for anything else)",
             props.kind
         )));
     }

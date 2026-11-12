@@ -45,6 +45,21 @@ return {
     },
 
     {
+        "the removed add_effect call names the effects list that replaces it",
+        function()
+            H.fresh()
+            local p = Canvas({})
+            local ok, err = pcall(function()
+                p:add_effect("shadow", { radius = 24 })
+            end)
+            H.check(
+                not ok and tostring(err):find("`effects` list", 1, true) and tostring(err):find("blur, shadow", 1, true),
+                "add_effect must raise and name the effects list, got: " .. tostring(err)
+            )
+        end,
+    },
+
+    {
         "a native property is written to the mirror and reads back",
         function()
             local _, host = H.fresh()

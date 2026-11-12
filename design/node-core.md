@@ -701,20 +701,20 @@ Each row is written before the code. A slice's tests name the rows they check.
 
 Each step writes its failure-mode tests first, cuts one area over completely, and deletes what it replaces (plan 7.2).
 
-| Old object or code                                                                                   | New class or home                                  | Step | Green at the end                    |
-| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ---- | ----------------------------------- |
-| `schema/window.toml`, window methods in `ipc`                                                        | `Window`, `Node` (`schema/tree/`)                  | 3, 6 | parity focus and stacking           |
-| `schema/output.toml`, output apply                                                                   | `Screen`                                           | 3, 5 | placement goldens                   |
-| `crates/gnoblin-wm/src/placement.rs`, floating engine                                                | `shell/floating.lua`                               | 5    | placement goldens                   |
-| `crates/gnoblin-wm/src/stack.rs`, `pointer_focus.rs`, focus keys                                     | stock `Window:on_press`, `raise`                   | 6    | parity focus and stacking           |
-| `schema/workspace.toml`, `crates/gnoblin-lua/src/layout/`, `data/lua/gnoblin/layouts/`               | `Workspace`; `shell/tiling.lua`, `shell/strip.lua` | 7    | wm failure modes on the stock shell |
-| `crates/gnoblin-layers/`, `schema/layers.toml`                                                       | none: deleted, nothing read it (O14 b)             | 8    | portal tests                        |
-| `schema/lock.toml`                                                                                   | `Lock`                                             | 8    | lock scenarios                      |
-| `schema/portal_ui.toml`                                                                              | kept: the built-in dialog stays (O3)               | -    | portal tests and `portal_provider`  |
-| `schema/capture.toml`, GLES capture                                                                  | `View`                                             | 9    | capture goldens                     |
-| `schema/effect.toml`                                                                                 | element type of `Node.effects`                     | 9    | effect goldens                      |
-| `schema/eis.toml`, gesture action names                                                              | `Seat`                                             | 11   | input failure modes                 |
-| `schema/session.toml`, `idle.toml`, `settings.toml`, `config.toml`, `request.toml`, `operation.toml` | kept                                               | -    | unchanged                           |
+| Old object or code                                                                                   | New class or home                                                | Step | Green at the end                                     |
+| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---- | ---------------------------------------------------- |
+| `schema/window.toml`, window methods in `ipc`                                                        | `Window`, `Node` (`schema/tree/`)                                | 3, 6 | parity focus and stacking                            |
+| `schema/output.toml`, output apply                                                                   | `Screen`                                                         | 3, 5 | placement goldens                                    |
+| `crates/gnoblin-wm/src/placement.rs`, floating engine                                                | `shell/floating.lua`                                             | 5    | placement goldens                                    |
+| `crates/gnoblin-wm/src/stack.rs`, `pointer_focus.rs`, focus keys                                     | stock `Window:on_press`, `raise`                                 | 6    | parity focus and stacking                            |
+| `schema/workspace.toml`, `crates/gnoblin-lua/src/layout/`, `data/lua/gnoblin/layouts/`               | `Workspace`; `shell/tiling.lua`, `shell/strip.lua`               | 7    | wm failure modes on the stock shell                  |
+| `crates/gnoblin-layers/`, `schema/layers.toml`                                                       | none: deleted, nothing read it (O14 b)                           | 8    | portal tests                                         |
+| `schema/lock.toml`                                                                                   | `Lock`                                                           | 8    | lock scenarios                                       |
+| `schema/portal_ui.toml`                                                                              | kept: the built-in dialog stays (O3)                             | -    | portal tests and `portal_provider`                   |
+| `schema/capture.toml`, GLES capture                                                                  | `View`                                                           | 9    | capture goldens                                      |
+| `schema/effect.toml`                                                                                 | element type of `Node.effects` (done: `schema/tree/effect.toml`) | 9    | effect goldens (`gnoblin-render-gles/tests/golden/`) |
+| `schema/eis.toml`, gesture action names                                                              | `Seat`                                                           | 11   | input failure modes                                  |
+| `schema/session.toml`, `idle.toml`, `settings.toml`, `config.toml`, `request.toml`, `operation.toml` | kept                                                             | -    | unchanged                                            |
 
 Plugin and config compatibility is in section 7.4 of the plan (unverified). An old object is deleted in the step that replaces it.
 

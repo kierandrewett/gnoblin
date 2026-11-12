@@ -26,7 +26,7 @@ fn blur(radius: f32) -> BlurParams {
 }
 
 /// A renderer, or a printed reason when this machine cannot make a GLES context.
-fn gles(physical: Size) -> Option<Gles> {
+pub(super) fn gles(physical: Size) -> Option<Gles> {
     match Gles::new(physical) {
         Ok(renderer) => Some(renderer),
         Err(error) => {

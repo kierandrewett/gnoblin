@@ -394,7 +394,19 @@ fn a_node_effects_list_takes_blur_and_shadow_only_and_skipped_is_read_only() {
         assert(#core.get(2, "skipped") == 0, "nothing is skipped until the compositor says so")
         "#,
     );
-    assert!(refused(&lua, r#"core.set(2, "effects", { { kind = "shader" } })"#).contains("blur or shadow"));
+    let shader = refused(&lua, r#"core.set(2, "effects", { { kind = "shader" } })"#);
+    assert!(
+        shader.contains("user shaders were removed") && shader.contains("blur or shadow"),
+        "a shader kind names what replaced it: {shader}"
+    );
+    let source = refused(
+        &lua,
+        r#"core.set(2, "effects", { { kind = "shader", source = "void main() {}" } })"#,
+    );
+    assert!(
+        source.contains("user shaders were removed") && source.contains("blur or shadow"),
+        "a shader's source field names what replaced it: {source}"
+    );
     assert!(
         refused(
             &lua,

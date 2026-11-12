@@ -34,6 +34,42 @@ size is never kept. Lowering `fps` to `0` draws any change that was waiting on t
 The slots are measured on the session's clock, which the loop advances once per turn. A redraw happens on the first
 turn at or after the end of the slot.
 
+`fps` is an unsigned whole number. A negative or fractional value is refused and the View keeps the value it had. On
+the wire the code is `wrong-type`; in Lua it is a type error.
+
+The clock has a resolution of one millisecond, so every `fps` of 1000 or more is the same slot. A View draws at most
+once per millisecond, whether `fps` is 1000 or the largest number the wire carries. No value makes the compositor draw
+more often than `0` does, or never.
+
+## What a redraw costs
+
+A View is drawn on the CPU, on the compositor's own thread. A redraw takes time the frame loop spends on nothing else.
+The time grows with the number of pixels the source covers, at about 40 to 60 nanoseconds a pixel. A View that holds a
+full-size window costs more than one that holds a small one.
+
+Median of 15 redraws, release build, on a shared 4-vCPU virtual machine. Read the numbers as an order of magnitude.
+
+| View size | One window, full size | One window, quarter of the area | Ten windows at 90% opacity |
+| --------- | --------------------- | ------------------------------- | -------------------------- |
+| 320x200   | 3 ms                  | 1 ms                            | 8 ms                       |
+| 640x360   | 12 ms                 | 6 ms                            | 28 ms                      |
+| 1280x720  | 53 ms                 | 18 ms                           | 110 ms                     |
+| 1920x1080 | 104 ms                | 26 ms                           | 260 ms                     |
+| 3840x2160 | 387 ms                | 98 ms                           | 1100 ms                    |
+
+A 60 Hz frame is 16.7 ms. A View of up to about 640x360 redraws inside one frame. A larger View that is redrawn at
+every change of a live source makes the frames that carry the redraw late.
+
+To keep a large View cheap:
+
+- Cap it with `fps`. A 720p View of a window-sized source takes about 50 ms, so `5` spends a quarter of the thread.
+- Keep the View small.
+- Write a still with `capture` instead of keeping a live View.
+
+Views stay on the CPU path by decision (survey 16.2, O8). A GPU path is not started until a View that must be both
+large and live needs one. The measurement is `cargo test --release -p gnoblin-render-software --test view_cost --
+--ignored --nocapture`.
+
 ## Casting a View
 
 A View is a screen cast source, beside the outputs. The stream carries the View's capture picture, the same one
@@ -78,6 +114,14 @@ compositor starts no stream for a session it was not told the user approved (`no
   session and the user is asked again. An output stream may keep showing the lock scene; a View stream may not.
 - Destroying the View ends its stream, and the node leaves PipeWire. Closing the portal session, or the portal's
   connection going away, ends it too.
+- Destroying the View's `source` does not end the stream, because the View is still there and the shell may give it
+  another source. From the next frame the View has no picture, so the stream carries none of the destroyed source's
+  pixels (its buffers arrive empty, with a zero-length chunk, and nothing stale is repeated), and the node and the
+  privacy indicator stay up. A new `source` makes the stream carry that source's pixels again, on the same session.
+- A consumer that stops reading does not slow the compositor. The compositor drives the stream with a turn of its
+  PipeWire connection that never waits, and a frame it cannot place because the consumer holds every buffer is skipped.
+  A stalled consumer keeps its node and its session until it reads again, when frames resume. The View's own redraws
+  and the output's frames do not wait for it.
 
 ## `capture(path)`
 

@@ -5,7 +5,7 @@
 //! Every test grants or refuses through [`Table::open`], the same call the portal consent flow
 //! makes, never by reaching into the table.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gnoblin_capture::{Copied, Format, PixelFormat, SessionId, Stop, Table, Target};
 use gnoblin_lock::{Capture, CaptureStream};
@@ -277,6 +277,72 @@ fn consumer_receives_frames_of_the_window_colour() {
         consumer.frames().iter().all(|frame| frame.is_solid(WINDOW_COLOUR)),
         "every frame is the window colour"
     );
+}
+
+/// The longest one `pump` may take while its consumer reads nothing. A pump is one non-blocking turn of the
+/// connection plus at most one frame copy, a few milliseconds; the bound is far above that so a loaded machine does
+/// not trip it, and far below a blocked pump, which is as long as the stall.
+const PUMP_BOUND: Duration = Duration::from_millis(250);
+
+/// A consumer that has stopped reading does not hold the producer: every pump (the call the compositor's frame loop
+/// makes) returns at once however long the consumer stays silent, the buffers a silent consumer holds are not
+/// waited for, and when the consumer reads again frames flow again without a new stream.
+fn a_stalled_consumer_never_blocks_the_pump(target: Target) {
+    let daemon = Daemon::start();
+    let mut table = Table::new();
+    let session = table.open(owner(), target, CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export
+        .start(&table, session, owner())
+        .expect("a granted session starts");
+    let consumer = FrameConsumer::connect(&daemon.socket(), node);
+    consumer.wait_for_frame_pumping(
+        "before the stall",
+        pump_of(&mut export, &mut table, &mut SolidSource),
+        |frame| frame.is_solid(WINDOW_COLOUR),
+    );
+
+    // The consumer's loop is not iterated from here: its process callback never runs and it returns no buffer.
+    let started = Instant::now();
+    let mut slowest = Duration::ZERO;
+    let mut pumps = 0u32;
+    let mut tick = 10_000;
+    while started.elapsed() < Duration::from_millis(2000) {
+        tick += 1;
+        let before = Instant::now();
+        export.pump(&mut table, Tick::new(tick), Capture::Desktop, &mut SolidSource);
+        slowest = slowest.max(before.elapsed());
+        pumps += 1;
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        slowest < PUMP_BOUND,
+        "the slowest of {pumps} pumps took {slowest:?} while the consumer was silent"
+    );
+    assert!(pumps > 50, "the loop kept turning for the whole stall: {pumps} pumps");
+    assert!(export.is_live(), "a silent consumer does not end its stream");
+    assert_eq!(
+        table.get(session).map(|entry| entry.stopped()),
+        Some(None),
+        "and does not stop the session"
+    );
+
+    consumer.forget();
+    consumer.wait_for_frame_pumping(
+        "after the consumer reads again",
+        pump_of(&mut export, &mut table, &mut SolidSource),
+        |frame| frame.is_solid(WINDOW_COLOUR),
+    );
+}
+
+#[test]
+fn a_stalled_consumer_of_an_output_never_blocks_the_pump() {
+    a_stalled_consumer_never_blocks_the_pump(output());
+}
+
+#[test]
+fn a_stalled_consumer_of_a_view_never_blocks_the_pump() {
+    a_stalled_consumer_never_blocks_the_pump(Target::View(NodeId::new(5)));
 }
 
 /// A source whose target is drawn at a size the test changes, painting every pixel one colour.

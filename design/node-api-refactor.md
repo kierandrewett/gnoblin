@@ -78,17 +78,17 @@ Codes used in the tables of sections 1 and 2:
 
 ### Scene, renderer and frames
 
-| Object or API                    | Where                                                                          | Created and ended by | Callers            | Axes      |
-| -------------------------------- | ------------------------------------------------------------------------------ | -------------------- | ------------------ | --------- |
-| `Scene` tree, `NodeKind::Space`  | `crates/gnoblin-render/src/scene.rs:63-125`                                    | composer             | K                  | T Z D E O |
-| `Scene::hit_test`                | `crates/gnoblin-render/src/scene.rs:645-654`                                   | n/a                  | no caller in input | I         |
-| `TweenPlayer`                    | `crates/gnoblin-render/src/tween.rs:1-35`                                      | composer             | K                  | T O       |
-| `Composer`                       | `crates/gnoblin-backend/src/render/compose.rs:213-260`                         | K                    | K                  | Z T O V E |
-| `OutputFrame` layer list, cursor | `crates/gnoblin-render-frame/src/frame.rs:385-395` (per `layers-status.md:27`) | K                    | K                  | Z         |
-| Effects (`MAX_PASSES` 32)        | `crates/gnoblin-render/src/effect.rs:28-31`                                    | `window.add_effect`  | S P                | E         |
-| `effect` object                  | `crates/gnoblin-schema/schema/effect.toml`                                     | IPC                  | S P                | E         |
-| Shell visuals                    | `window.toml:209-251`, `compose.rs:764-823`                                    | IPC                  | S P                | O T       |
-| GLES, Vulkan, software renderers | `crates/gnoblin-render-{gles,vulkan,software}`                                 | K                    | K                  | draw only |
+| Object or API                    | Where                                                                                        | Created and ended by | Callers            | Axes      |
+| -------------------------------- | -------------------------------------------------------------------------------------------- | -------------------- | ------------------ | --------- |
+| `Scene` tree, `NodeKind::Space`  | `crates/gnoblin-render/src/scene.rs:63-125`                                                  | composer             | K                  | T Z D E O |
+| `Scene::hit_test`                | `crates/gnoblin-render/src/scene.rs:645-654`                                                 | n/a                  | no caller in input | I         |
+| `TweenPlayer`                    | `crates/gnoblin-render/src/tween.rs:1-35`                                                    | composer             | K                  | T O       |
+| `Composer`                       | `crates/gnoblin-backend/src/render/compose.rs:213-260`                                       | K                    | K                  | Z T O V E |
+| `OutputFrame` layer list, cursor | `crates/gnoblin-render-frame/src/frame.rs:385-395` (per `layers-status.md:27`)               | K                    | K                  | Z         |
+| Effects (`MAX_PASSES` 32)        | `crates/gnoblin-render/src/effect.rs:28-31`                                                  | `window.add_effect`  | S P                | E         |
+| `effect` object                  | `crates/gnoblin-schema/schema/tree/effect.toml` (the legacy `schema/effect.toml` is deleted) | node `effects` list  | S P                | E         |
+| Shell visuals                    | `window.toml:209-251`, `compose.rs:764-823`                                                  | IPC                  | S P                | O T       |
+| GLES, Vulkan, software renderers | `crates/gnoblin-render-{gles,vulkan,software}`                                               | K                    | K                  | draw only |
 
 ### Layers, decorations and protocol surfaces
 
@@ -1922,20 +1922,20 @@ Each step writes its failure-mode tests first, cuts one area over completely, an
 same change. Builds and tests run on Agent37 only. Pass 2 moves the Lua half earlier: the class system and the
 stock library land in step 4 with tests against a fake core, before any policy is cut over.
 
-| Step | What                                   | Crates and files                                                                                                                    | Green at the end                                        |
-| ---- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| 1    | Tree contract tests                    | `gnoblin-render/tests/tree.rs`, `gnoblin-model/tests/model.rs`                                                                      | all existing suites                                     |
-| 2    | Scene becomes the one authority inside | `compose.rs` (drop `order`, opacity writers), `state.rs:3013` (ray pick on `Scene`); `TweenPlayer` takes sampled curves             | parity suite; new rotated-window click test             |
-| 3    | Ten native classes and transactions    | one schema file per class with `base`; `gnoblin-proto`, `gnoblin-model`; the nine `core` calls of 5a.4                              | generated bindings; old objects untouched               |
-| 4    | Class system, stock library, shell VM  | `data/lua/gnoblin/node.lua`, `shell/init.lua`, `shell/ui.lua`; `tests/shell/` on a fake core; `gnoblin-lua` host calls `tick`       | fake-core suites, replay-twice; wm still places         |
-| 5    | Placement cutover (section 8)          | delete `placement.rs`, `FloatingEngine`, the D17 floating module; add `shell/floating.lua`                                          | placement goldens, parity placement scenarios           |
-| 6    | Stacking and focus cutover             | delete `stack.rs`, `pointer_focus.rs`, focus keys; the stock `Window:on_press` and `raise`                                          | parity focus and stacking scenarios                     |
-| 7    | States, workspaces, rules, layouts     | delete `gnoblin-wm`, `gnoblin-lua/src/layout`, `data/lua/gnoblin/layouts`; add `shell/tiling.lua`, `shell/strip.lua`                | wm failure modes ported to the stock shell              |
-| 8    | Layers and decorations                 | delete `gnoblin-layers`, `layers.toml`, `gnoblin_window_frame_v1.rs`; add the `Canvas` painter and `measure`; `modal.rs` stays (O3) | portal tests; the `portal.ui` replacement path, 8D done |
-| 9    | Views, capture, effects                | GLES subtree-to-texture, `View:capture`, PipeWire producer; the `effects` list replaces `effect.toml`                               | capture, secure and effect goldens                      |
-| 10   | Trust edge                             | delete `capability.rs` grants, `privileged.rs` roles, D22 code, `gnoblin-wasm`; slots stay (O6)                                     | IPC tests on one owner connection                       |
-| 11   | Seats                                  | `Seat` nodes, `claim`, device identity (multi-seat phase 1); delete `policy.rs`, gesture action names; gesture chords               | input failure modes                                     |
-| 12   | XR                                     | stereo and off-axis `Camera`, ray input, linux-dmabuf; `gnoblin-xr` per section 9                                                   | translational test on recorded trees                    |
+| Step | What                                   | Crates and files                                                                                                                                           | Green at the end                                        |
+| ---- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1    | Tree contract tests                    | `gnoblin-render/tests/tree.rs`, `gnoblin-model/tests/model.rs`                                                                                             | all existing suites                                     |
+| 2    | Scene becomes the one authority inside | `compose.rs` (drop `order`, opacity writers), `state.rs:3013` (ray pick on `Scene`); `TweenPlayer` takes sampled curves                                    | parity suite; new rotated-window click test             |
+| 3    | Ten native classes and transactions    | one schema file per class with `base`; `gnoblin-proto`, `gnoblin-model`; the nine `core` calls of 5a.4                                                     | generated bindings; old objects untouched               |
+| 4    | Class system, stock library, shell VM  | `data/lua/gnoblin/node.lua`, `shell/init.lua`, `shell/ui.lua`; `tests/shell/` on a fake core; `gnoblin-lua` host calls `tick`                              | fake-core suites, replay-twice; wm still places         |
+| 5    | Placement cutover (section 8)          | delete `placement.rs`, `FloatingEngine`, the D17 floating module; add `shell/floating.lua`                                                                 | placement goldens, parity placement scenarios           |
+| 6    | Stacking and focus cutover             | delete `stack.rs`, `pointer_focus.rs`, focus keys; the stock `Window:on_press` and `raise`                                                                 | parity focus and stacking scenarios                     |
+| 7    | States, workspaces, rules, layouts     | delete `gnoblin-wm`, `gnoblin-lua/src/layout`, `data/lua/gnoblin/layouts`; add `shell/tiling.lua`, `shell/strip.lua`                                       | wm failure modes ported to the stock shell              |
+| 8    | Layers and decorations                 | delete `gnoblin-layers`, `layers.toml`, `gnoblin_window_frame_v1.rs`; add the `Canvas` painter and `measure`; `modal.rs` stays (O3)                        | portal tests; the `portal.ui` replacement path, 8D done |
+| 9    | Views, capture, effects                | Done: `View:capture`, `View.fps`, PipeWire producer, the `effects` list replaces `effect.toml`, user shaders dropped (O7). Views stay on the CPU path (O8) | capture, secure and effect goldens                      |
+| 10   | Trust edge                             | delete `capability.rs` grants, `privileged.rs` roles, D22 code, `gnoblin-wasm`; slots stay (O6)                                                            | IPC tests on one owner connection                       |
+| 11   | Seats                                  | `Seat` nodes, `claim`, device identity (multi-seat phase 1); delete `policy.rs`, gesture action names; gesture chords                                      | input failure modes                                     |
+| 12   | XR                                     | stereo and off-axis `Camera`, ray input, linux-dmabuf; `gnoblin-xr` per section 9                                                                          | translational test on recorded trees                    |
 
 What stays Rust is the list in 5a.6. The named easing curves in `gnoblin-animation/src/easing.rs:24-60` (at
 `c28c0c671`) become Lua functions in step 2; the Rust side keeps one sampled-curve variant.

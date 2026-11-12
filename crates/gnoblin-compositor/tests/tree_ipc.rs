@@ -372,6 +372,53 @@ fn a_shader_effect_refuses_the_whole_effects_set_bad_value() {
     session.stop().expect("the session stops cleanly");
 }
 
+fn set_number(node: u64, key: &str, value_kind: &str, int: i64, uint: u64, double: f64) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: value_kind.to_owned(),
+        value_int: int,
+        value_uint: uint,
+        value_double: double,
+        ..Default::default()
+    }
+}
+
+/// `fps` is a `uint`: the largest value is accepted and published as it is, a negative or a fractional one is
+/// `wrong-type` and the View keeps the value it had.
+#[test]
+fn a_views_fps_is_an_unsigned_count_and_a_negative_or_fractional_one_is_refused() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create_view(1000, attached.root);
+    ops.push(set_number(1000, "fps", "uint", 0, u64::MAX, 0.0));
+    transact(&mut wire, 2, 0, 1, ops);
+    let changes: ChangesPayload = event(&mut wire, "changes");
+    let accepted: ReplyPayload = reply(&mut wire, "transact");
+    assert!(accepted.applied, "the largest uint is a legal fps: {accepted:?}");
+    let fps = changes
+        .changes
+        .iter()
+        .find(|change| change.kind == "set" && change.key == "fps")
+        .expect("the fps set is published");
+    assert_eq!(fps.value_uint, u64::MAX);
+
+    for (request, op) in [
+        (3, set_number(1000, "fps", "int", -1, 0, 0.0)),
+        (4, set_number(1000, "fps", "double", 0, 0, 2.5)),
+    ] {
+        transact(&mut wire, request, 1, 2, vec![op]);
+        let refused: ReplyPayload = reply(&mut wire, "transact");
+        assert!(!refused.applied, "request {request}: a non-uint fps is refused");
+        assert_eq!(refused.code, "wrong-type", "request {request}");
+        assert_eq!(refused.serial, 1, "request {request}: the tree is unchanged");
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
 /// The headless session draws with the software renderer, which draws no blur: the node says so in `skipped`.
 #[test]
 fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {

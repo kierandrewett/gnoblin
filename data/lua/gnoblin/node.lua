@@ -839,6 +839,16 @@ function Node:raise()
     self.parent:add(self)
 end -- the last child draws on top
 
+-- Removed: a node's effects are its `effects` list. The method raises, so a script written for the old call is told
+-- what replaces it instead of failing with "attempt to call a nil value".
+function Node:add_effect()
+    error(
+        "Node:add_effect was removed: set the node's `effects` list, for example "
+            .. "`node.effects = { { kind = \"shadow\" } }` (kinds: blur, shadow; see /shell-api/effects)",
+        2
+    )
+end
+
 -- Motion. `node:to(0.2, { x = 0 }, ease.out)` hands Gnoblin a sampled curve and returns a signal.
 ease = {
     linear = function(t)

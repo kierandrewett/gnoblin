@@ -1236,4 +1236,6 @@ mod dmabuf;
 mod view;
 
 #[cfg(test)]
+mod golden;
+#[cfg(test)]
 mod tests;

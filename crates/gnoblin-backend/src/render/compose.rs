@@ -6480,6 +6480,87 @@ mod tests {
         );
     }
 
+    /// An `fps` too large to mean anything is paced to the one-millisecond clock the loop runs on: the slot is never
+    /// zero (no division by it, no redraw inside one tick) and never a panic, including at the largest value a `uint`
+    /// holds.
+    #[test]
+    fn an_enormous_fps_is_a_one_millisecond_slot_and_neither_panics_nor_draws_twice_in_one() {
+        for fps in [1000, 1_000_000, u64::from(u32::MAX) + 1, u64::MAX] {
+            let (mut composer, output) = paced_view(fps);
+            repaint(&mut composer, 5);
+            let _ = damage_of(&mut composer, output);
+            assert_eq!(
+                view_red(&composer),
+                Some(1),
+                "fps {fps}: inside the millisecond the picture holds"
+            );
+            composer.advance_motion(1);
+            let _ = damage_of(&mut composer, output);
+            assert_eq!(
+                view_red(&composer),
+                Some(5),
+                "fps {fps}: the next millisecond draws the change"
+            );
+            repaint(&mut composer, 6);
+            let _ = damage_of(&mut composer, output);
+            assert_eq!(
+                view_red(&composer),
+                Some(5),
+                "fps {fps}: one draw a millisecond, not one a change"
+            );
+        }
+    }
+
+    /// A node's `effects` list is the effect chain of the layer that draws it, for a canvas and for a View, and
+    /// clearing the list clears the chain.
+    #[test]
+    fn a_nodes_effects_list_is_the_effect_chain_of_its_layer() {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(2);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        add_view(&mut composer, NodeId::new(1), None, Some(canvas));
+        let chains = |composer: &mut Composer| -> Vec<Effects> {
+            composer.begin_frame();
+            let mut frame = OutputFrame::new();
+            composer.compose(output, &mut frame);
+            composer.end_frame();
+            frame
+                .layers()
+                .iter()
+                .filter_map(|layer| match layer {
+                    Layer::Surface(surface) => Some(surface.effects.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert!(
+            chains(&mut composer).iter().all(Effects::is_empty),
+            "no effects list, no passes"
+        );
+        for node in [canvas, NodeId::new(1)] {
+            composer.with_scene(|scene| scene.set_effects(node, blur_and_shadow()).expect("the effects"));
+        }
+        let drawn = chains(&mut composer);
+        assert_eq!(drawn.len(), 2, "the canvas and the View each draw one layer");
+        assert!(
+            drawn.iter().all(|chain| *chain == blur_and_shadow()),
+            "each layer carries its node's list, in order: {drawn:?}"
+        );
+        for node in [canvas, NodeId::new(1)] {
+            composer.with_scene(|scene| scene.set_effects(node, Effects::new()).expect("the effects"));
+        }
+        assert!(
+            chains(&mut composer).iter().all(Effects::is_empty),
+            "an emptied list draws no passes"
+        );
+    }
+
     #[test]
     fn a_canvas_with_content_that_does_not_decode_draws_nothing() {
         let (mut composer, output) = screen();

@@ -1945,6 +1945,101 @@ fn a_cast_of_a_view_ends_cleanly_when_the_view_is_destroyed() {
     });
 }
 
+/// The replacement source the test gives the View.
+const NEW_PARENT: NodeId = NodeId::new(0x106);
+const NEW_PLACE: NodeId = NodeId::new(0x107);
+
+/// A View whose *source* is destroyed is still a View: its stream is not the source's to end. The stream carries
+/// none of the destroyed source's pixels from the frame after the destroy (nothing stale is repeated), the node stays
+/// in the daemon and the indicator stays on, and when the shell gives the View a new source the stream carries that
+/// source's pixels again without a new session.
+#[test]
+fn a_cast_of_a_view_whose_source_is_destroyed_carries_none_of_its_pixels_and_recovers_with_a_new_source() {
+    let daemon = Daemon::start();
+    let recorder = Arc::new(Recorder::default());
+    let (session, owner) = start_casting(&daemon, Some(recorder.clone()), None);
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        arrange(&owner);
+        let stream = cast(handle, VIEW);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
+
+        // The window is the compositor's node, so a shell cannot destroy it with its holder: it goes back under the
+        // root in the same transaction that destroys the holder.
+        let (window_node, _, root) = owner.window();
+        owner.transact(|| {
+            vec![
+                TreeOp::Insert {
+                    node: window_node,
+                    parent: root,
+                    index: None,
+                },
+                TreeOp::Destroy { node: PARENT },
+            ]
+        });
+        owner.frames(3);
+        // Frames the stream queued before the destroy may still be on their way: let them arrive, then count only what
+        // the stream sends after the compositor has drawn the View with no source.
+        consumer.listen(Duration::from_millis(300));
+        consumer.forget();
+        consumer.listen(Duration::from_millis(400));
+        assert!(
+            consumer.frames().iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
+            "no frame carries a pixel of the destroyed source"
+        );
+        assert!(
+            consumer.observer.node(&node_name(&stream)).is_some(),
+            "the View is still there, so its stream is"
+        );
+        wait_for_count(&recorder, 1);
+
+        // The window went back to the root when its holder was destroyed. A new holder, shifted like the first, is a
+        // new source; a repaint makes the picture a colour the old source never showed.
+        let (window_node, placed, root) = owner.window();
+        owner.transact(|| {
+            let set = |node, key: &str, value| TreeOp::Set {
+                node,
+                key: key.to_owned(),
+                value,
+                timing: None,
+            };
+            vec![
+                TreeOp::New {
+                    class: "node".to_owned(),
+                    id: NEW_PARENT,
+                },
+                TreeOp::Insert {
+                    node: NEW_PARENT,
+                    parent: root,
+                    index: None,
+                },
+                TreeOp::New {
+                    class: "node".to_owned(),
+                    id: NEW_PLACE,
+                },
+                TreeOp::Insert {
+                    node: NEW_PLACE,
+                    parent: NEW_PARENT,
+                    index: None,
+                },
+                TreeOp::Insert {
+                    node: window_node,
+                    parent: NEW_PLACE,
+                    index: None,
+                },
+                set(NEW_PLACE, "x", TreeValue::Double(-f64::from(placed.x))),
+                set(NEW_PLACE, "y", TreeValue::Double(-f64::from(placed.y))),
+                set(VIEW, "source", TreeValue::Node(Some(NEW_PARENT))),
+            ]
+        });
+        window.paint(&mut app, REPAINTED);
+        owner.frames(3);
+        consumer.wait_for_frame("of the new source's colour", |frame| frame.is_solid(rgb(REPAINTED)));
+    });
+}
+
 /// A View that is not in the scene is not a target: the start is refused by name and makes no node.
 #[test]
 fn a_cast_of_a_view_that_is_not_there_is_refused() {
