@@ -118,6 +118,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
+ "prost",
  "zeroize",
 ]
 
