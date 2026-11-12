@@ -89,14 +89,16 @@ impl ShmShape {
 
 /// The shape of a client's shared-memory buffer.
 ///
+/// A buffer the client has destroyed is read like a live one. The handle keeps the buffer's pool mapped, and the
+/// protocol lets a compositor go on showing a destroyed buffer for as long as its storage is not reused
+/// (`wl_surface.attach`), which is the case a client that exits is in. A window that closes is read in exactly that
+/// state: its client's connection may be gone before the compositor hears the toplevel is.
+///
 /// # Errors
 ///
 /// [`ShmError`] when the buffer is not shared memory, its format is not one of the packed
 /// 32-bit layouts, its rows do not fit its stride or it reaches past its pool.
 pub fn shape(buffer: &WlBuffer) -> Result<ShmShape, ShmError> {
-    if !buffer.is_alive() {
-        return Err(ShmError::NotShared);
-    }
     with_buffer_contents(buffer, |_pointer, length, data| checked_shape(length, &data)).map_err(access_error)?
 }
 
@@ -110,9 +112,6 @@ pub fn shape(buffer: &WlBuffer) -> Result<ShmShape, ShmError> {
 ///
 /// The same as [`shape`], and [`ShmError::Outside`] when `out` is the wrong length.
 pub fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmError> {
-    if !buffer.is_alive() {
-        return Err(ShmError::NotShared);
-    }
     with_buffer_contents(buffer, |pointer, length, data| {
         let shape = checked_shape(length, &data)?;
         if pointer.is_null() || out.len() != shape.packed_bytes() {

@@ -161,9 +161,15 @@ Hiding a window in the compositor, as minimizing it does, fades the window's las
 200 ms. The window keeps its content, so restoring it shows the last frame its client committed.
 Restoring it during that fade eases it back to opaque. With reduced motion the window is hidden at once.
 
-The Rust compositor (`gnoblin-backend`) does not read `gnoblin.animation` declarations for these two
-transitions yet. Its minimise fade and workspace slide use the built-in timing described here, and the selected
-animation's `progress` does not change them.
+A window that closes fades out the same way, over the same 200 ms, from the last picture its client committed. The
+fade plays when the client destroys the window, when it frees its buffers first and when it exits: the compositor
+keeps the picture it read, not the client's buffer.
+
+A window that shows a GPU buffer (`zwp_linux_dmabuf_v1`) has no picture the compositor can keep, so it is hidden and
+closed without a fade.
+
+The Rust compositor (`gnoblin-backend`) does not read `gnoblin.animation` declarations for its fades and its workspace
+slide yet. They use the built-in timing described here, and the selected animation's `progress` does not change them.
 
 A workspace switch on the Rust compositor has these rules:
 

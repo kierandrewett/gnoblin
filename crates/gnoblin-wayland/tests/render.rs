@@ -43,7 +43,8 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_types::{DeviceId, OutputId, Rect, WindowId};
 use gnoblin_wayland::{
-    Config, ControlHandle, FrameStats, LoopError, ObservedWindow, Server, SessionSnapshot, VisualAccessibilitySettings,
+    Config, ControlHandle, FrameStats, LoopError, ManualClock, ObservedWindow, Server, SessionSnapshot,
+    VisualAccessibilitySettings,
 };
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
@@ -126,6 +127,17 @@ impl Handle {
             .colour_at(x, y)
             .unwrap_or_else(|| panic!("the probe at ({x}, {y}) is inside the output"))
     }
+
+    /// The colour at one point of the output once the session's clock has moved on by `milliseconds`.
+    ///
+    /// The loop reads the clock at the start of an iteration and answers a screenshot at its end, so an iteration
+    /// already running when the clock moves would answer from a frame drawn before the move. The first screenshot is
+    /// thrown away: the iteration that answers the second one began after the clock moved.
+    fn probe_after(&self, clock: &ManualClock, milliseconds: u64, at: gnoblin_types::Point) -> [u8; 4] {
+        clock.advance(Duration::from_millis(milliseconds));
+        let _stale = self.screenshot();
+        self.probe(at.x, at.y)
+    }
 }
 
 /// Stops the session when the worker finishes, including when it panics: without this
@@ -165,12 +177,34 @@ impl Session {
 
     /// Creates a live session with the given visual accessibility settings.
     fn start_with(backend: Headless, visual_accessibility: VisualAccessibilitySettings) -> Self {
+        Self::start_configured(
+            backend,
+            Config {
+                visual_accessibility,
+                ..Config::default()
+            },
+        )
+    }
+
+    /// Creates a session whose motion is live and runs on `clock`: an animation moves only when the test moves the
+    /// clock, so a probe lands at a chosen instant of a fade and not at whatever time the loop happened to reach.
+    fn start_on_clock(backend: Headless, clock: Arc<ManualClock>) -> Self {
+        Self::start_configured(
+            backend,
+            Config {
+                clock,
+                ..Config::default()
+            },
+        )
+    }
+
+    /// Creates a session from `config`, with a socket of its own.
+    fn start_configured(backend: Headless, config: Config) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
-            visual_accessibility,
-            ..Config::default()
+            ..config
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {
@@ -336,6 +370,14 @@ impl Client {
         let (buffer, pool) = self.buffers.remove(0);
         buffer.destroy();
         pool.destroy();
+        self.roundtrip();
+    }
+
+    /// Destroys a toplevel the way a well-behaved client does: the role, then the shell surface, then the surface.
+    fn destroy(&mut self, window: Window) {
+        window.toplevel.destroy();
+        window.xdg_surface.destroy();
+        window.surface.destroy();
         self.roundtrip();
     }
 
@@ -1067,5 +1109,130 @@ fn a_window_id_is_never_reused_for_a_different_window() {
             BLUE,
             "the new window is drawn, not the old one's pixels"
         );
+    });
+}
+
+/// How long the compositor fades a window in and out, which `docs/guides/animations.md` gives as 200 ms.
+const FADE_MS: u64 = 200;
+
+/// Steps the clock through the fade of the window at `at`, which began at this instant, and fails unless the window is
+/// drawn at every step until the fade's duration has passed and is gone after it.
+///
+/// A fade of the red window over the black background reads as its opacity times 255, so the red channel is the opacity
+/// the output shows. `fading_out` says which way the opacity moves: each step must be fainter (out) or stronger (in)
+/// than the one before it, and a step is not allowed to jump to the end. The steps stop at 140 ms, where the ease-out
+/// curve is still a few levels from its target: past that a step is within a rounding error of the end.
+fn assert_fade(session: &Handle, clock: &ManualClock, at: gnoblin_types::Point, fading_out: bool) {
+    let first = session.probe_after(clock, 0, at)[0];
+    if fading_out {
+        assert!(
+            first >= 250,
+            "a fade out begins with the window as the client left it, got red {first}"
+        );
+    } else {
+        assert!(
+            first <= 5,
+            "a fade in begins with the window not yet drawn, got red {first}"
+        );
+    }
+    let mut previous = first;
+    for elapsed in (20..=140).step_by(20) {
+        let red = session.probe_after(clock, 20, at)[0];
+        if fading_out {
+            assert!(
+                0 < red && red < previous,
+                "{elapsed} ms into a {FADE_MS} ms fade out the window is still drawn and fainter than before: \
+                 red {red} after {previous}"
+            );
+        } else {
+            assert!(
+                previous < red && red < 255,
+                "{elapsed} ms into a {FADE_MS} ms fade in the window is stronger than before and not yet opaque: \
+                 red {red} after {previous}"
+            );
+        }
+        previous = red;
+    }
+    let settled = session.probe_after(clock, 2 * FADE_MS, at);
+    assert_eq!(
+        settled,
+        if fading_out { BACKGROUND } else { RED },
+        "the fade has run out"
+    );
+}
+
+/// Runs `body` on a session whose motion is live and follows a clock the body moves, once for every renderer.
+fn on_each_renderer_with_a_clock(body: impl Fn(&Handle, &ManualClock) + Clone + Send + 'static) {
+    for_each_renderer(|backend| {
+        let clock = Arc::new(ManualClock::new());
+        let body = body.clone();
+        Session::start_on_clock(backend, Arc::clone(&clock)).run(move |session| body(session, &clock));
+    });
+}
+
+/// Maps a red window and lets its open fade run out, so the window is opaque on screen at the point returned.
+fn map_opaque(session: &Handle, clock: &ManualClock, title: &str) -> (Client, Window, gnoblin_types::Point) {
+    let mut client = Client::connect(session.socket());
+    let window = client.create_window(title);
+    client.attach_solid(&window, 100, 100, RED);
+    let at = red_window_centre(session);
+    assert_eq!(
+        session.probe_after(clock, 2 * FADE_MS, at),
+        RED,
+        "the open fade has run out, so the window is opaque before anything else happens to it"
+    );
+    (client, window, at)
+}
+
+/// A mapped window fades in over the open duration: the first frame it is in does not show it, and the frames after
+/// show it stronger step by step. `gnoblin-cyjm` reported frames that showed the window fully opaque from the first
+/// one, although the animation events said the fade was running.
+#[test]
+fn a_mapped_window_fades_in_over_the_open_duration() {
+    on_each_renderer_with_a_clock(|session, clock| {
+        let mut client = Client::connect(session.socket());
+        let window = client.create_window("Opening");
+        client.attach_solid(&window, 100, 100, RED);
+        assert_fade(session, clock, red_window_centre(session), false);
+    });
+}
+
+/// A window the client destroys keeps its last picture on screen and fades it out over the close duration.
+/// `gnoblin-cyjm` saw the close animation cancelled about 6 ms after it started, so a closed window vanished at once.
+#[test]
+fn a_destroyed_window_fades_out_over_the_whole_close_duration() {
+    on_each_renderer_with_a_clock(|session, clock| {
+        let (mut client, window, at) = map_opaque(session, clock, "Closing");
+        client.destroy(window);
+        session.wait_for(|observation| observation.is_empty());
+        assert_fade(session, clock, at, true);
+    });
+}
+
+/// A client frees its buffers before its window, which is what a toolkit does as it tears down. The window fades out
+/// from the picture the compositor reads from the buffer the client destroyed, which the protocol lets it keep
+/// showing until the storage is reused.
+#[test]
+fn a_window_whose_buffer_is_destroyed_first_fades_out_over_the_whole_close_duration() {
+    on_each_renderer_with_a_clock(|session, clock| {
+        let (mut client, window, at) = map_opaque(session, clock, "Freed");
+        client.destroy_first_buffer();
+        client.destroy(window);
+        session.wait_for(|observation| observation.is_empty());
+        assert_fade(session, clock, at, true);
+    });
+}
+
+/// A client that exits without destroying anything closes its window the same way: its connection ends, every object
+/// it made is dead by the time the compositor hears the toplevel is, and the window fades out all the same.
+/// `gnoblin-cyjm` named a client exit among the closes whose animation never showed.
+#[test]
+fn a_window_whose_client_exits_fades_out_over_the_whole_close_duration() {
+    on_each_renderer_with_a_clock(|session, clock| {
+        let (client, window, at) = map_opaque(session, clock, "Exiting");
+        drop(window);
+        drop(client);
+        session.wait_for(|observation| observation.is_empty());
+        assert_fade(session, clock, at, true);
     });
 }
