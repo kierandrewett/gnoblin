@@ -114,6 +114,8 @@ impl Mutter51Target {
 struct MutterSession {
     child: Child,
     log: PathBuf,
+    /// Set once the launcher is gone, so a second `stop` never signals a process group that may belong to someone else.
+    stopped: bool,
 }
 
 impl MutterSession {
@@ -134,7 +136,11 @@ impl MutterSession {
             .process_group(0)
             .spawn()
             .map_err(|error| live(format!("cannot start the launcher {launcher:?}: {error}")))?;
-        let mut session = Self { child, log };
+        let mut session = Self {
+            child,
+            log,
+            stopped: false,
+        };
         session.wait_until_serving(&directory.join(DISPLAY))?;
         Ok(session)
     }
@@ -146,6 +152,8 @@ impl MutterSession {
                 return Ok(());
             }
             if let Ok(Some(status)) = self.child.try_wait() {
+                // The launcher is reaped, so its process group id is no longer ours to signal.
+                self.stopped = true;
                 return Err(live(format!(
                     "the launcher exited with {status} before it served {}\n{}",
                     socket.display(),
@@ -185,6 +193,10 @@ impl MutterSession {
 
     /// Kills the launcher's process group and waits for the launcher to be gone.
     fn stop(&mut self) {
+        if self.stopped {
+            return;
+        }
+        self.stopped = true;
         if let Some(pid) = i32::try_from(self.child.id()).ok().and_then(Pid::from_raw) {
             let _ = kill_process_group(pid, Signal::TERM);
         }
