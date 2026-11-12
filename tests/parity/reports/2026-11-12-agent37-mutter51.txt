@@ -1,8 +1,7 @@
 # Parity report: the scenarios on the Rust candidate and on stock Mutter 51.0
 #
 # Produced:   2026-11-12 on an Agent37 instance (gVisor, Debian 12 host).
-# Runner:     gnoblin-parity built from commit 26a257913 (feat(parity): popup and focus scenarios, a live mutter51
-#             target and recorded divergences), run as root:
+# Runner:     gnoblin-parity built from commit fa76c8b80 (the parity code of this report's commit), run as root:
 #               gnoblin-parity run tests/parity/scenarios --require mutter51
 # Reference:  Mutter 51.0 (tag 51.0, commit 138a14fbeef09d49ebf5be8a0cb83b042dd5c841) built by
 #             `scripts/parity-reference.sh mutter` inside an extracted Fedora 45 root file system, headless, one 1280x720
