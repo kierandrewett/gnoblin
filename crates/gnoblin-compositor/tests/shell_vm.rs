@@ -1631,8 +1631,8 @@ mod prompts {
         }
 
         fn key(&mut self, code: u32) {
-            self.keyboard.key(code, true);
-            self.keyboard.key(code, false);
+            self.keyboard.typing(code, true);
+            self.keyboard.typing(code, false);
         }
 
         fn painted(&self) -> Vec<PaintedCanvas> {

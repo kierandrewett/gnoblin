@@ -170,6 +170,23 @@ impl EiClient {
     /// Presses or releases `key` on the keyboard device, which must be resumed.
     pub fn key(&mut self, key: u32, pressed: bool) {
         let (wire, serial, keyboard) = self.device_with::<ei::Keyboard>();
+        wire.start_emulating(serial, 1);
+        keyboard.key(
+            key,
+            if pressed {
+                ei::keyboard::KeyState::Press
+            } else {
+                ei::keyboard::KeyState::Released
+            },
+        );
+        wire.frame(serial, 0);
+        let _ = self.context.flush();
+    }
+
+    /// Presses or releases `key` as a client that keeps typing does: the emulating sequence is started once, and
+    /// later keys are only frames. A client that starts it again for every key stops being heard after the second.
+    pub fn typing(&mut self, key: u32, pressed: bool) {
+        let (wire, serial, keyboard) = self.device_with::<ei::Keyboard>();
         if !self.emulating {
             wire.start_emulating(serial, 1);
             self.emulating = true;
