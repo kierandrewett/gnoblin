@@ -194,6 +194,19 @@ session is locked, a new capture request is refused, and a monitor stream that w
 already running when the lock began is stopped: its client receives `stopped` and
 no further frame. No desktop pixels are sent while the lock holds.
 
+A View is covered by the same rule:
+
+- A capture session on a View is stopped when the lock begins, and a PipeWire stream of one ends.
+- The shell's `View:capture` is answered `locked` and writes no file.
+- A session or a cast that starts while the session is locked is refused.
+- When a View is drawn on the GPU (`compositor.renderer = gles`) the cover names no View, so the renderer gives back
+  every View texture at the lock.
+- After the unlock a reader sees the window as it is then.
+
+The tests are `the_lock_cuts_every_reader_of_a_view_and_none_is_served_a_picture_from_before_it` (`gnoblin-wayland`,
+`tests/view_capture_e2e.rs`, on both renderers) and
+`a_locked_output_names_no_view_alive_so_the_renderer_gives_each_texture_back`.
+
 Remote keyboard and pointer input is available after `locked` and lock-scene
 presentation, and is routed only to the active lock surface. It is refused
 during the transition and failsafe states. No lock-specific portal setting is

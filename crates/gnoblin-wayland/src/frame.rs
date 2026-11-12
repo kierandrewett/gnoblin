@@ -433,6 +433,10 @@ mod tests {
     struct CursorRecorder {
         outputs: Vec<gnoblin_backend::Output>,
         cursor_drawn: Vec<bool>,
+        /// How many Views each frame names alive or carries a scene of.
+        views: Vec<usize>,
+        /// How many times the host asked the backend to give its View textures back.
+        released: usize,
     }
 
     impl Backend<State> for CursorRecorder {
@@ -464,6 +468,7 @@ mod tests {
             let mut frame = OutputFrame::new();
             host.frame(output, &mut frame);
             self.cursor_drawn.push(frame.cursor().is_some());
+            self.views.push(frame.live_views().len() + frame.view_scenes().len());
             Ok(Present::Nothing)
         }
 
@@ -474,6 +479,10 @@ mod tests {
         fn dispatch(&mut self, _host: &mut State) -> Vec<gnoblin_backend::BackendEvent> {
             Vec::new()
         }
+
+        fn release_views(&mut self) {
+            self.released += 1;
+        }
     }
 
     #[test]
@@ -482,6 +491,8 @@ mod tests {
         let mut recorder = CursorRecorder {
             outputs: Backend::<State>::outputs(&backend).to_vec(),
             cursor_drawn: Vec::new(),
+            views: Vec::new(),
+            released: 0,
         };
         let stats = Arc::new(Mutex::new(FrameStats::default()));
         let screenshots = Screenshots::default();
@@ -502,6 +513,61 @@ mod tests {
             recorder.cursor_drawn,
             vec![false],
             "a locked output must not draw a pointer over the cover"
+        );
+    }
+
+    /// A View the GPU path draws is a texture the renderer keeps for as long as a frame names it alive. The cover a
+    /// locked output shows names none, so the renderer gives every View's texture back at the lock: nothing the desktop
+    /// showed is left in GPU memory behind the cover for whatever draws next.
+    #[test]
+    fn a_locked_output_names_no_view_alive_so_the_renderer_gives_each_texture_back() {
+        use gnoblin_render::NodeSpec;
+        let (backend, mut state) = session();
+        let mut recorder = CursorRecorder {
+            outputs: Backend::<State>::outputs(&backend).to_vec(),
+            cursor_drawn: Vec::new(),
+            views: Vec::new(),
+            released: 0,
+        };
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+        state.composer.set_gpu_views(true);
+        state.composer.with_scene(|scene| {
+            let (source, view) = (gnoblin_types::NodeId::new(10), gnoblin_types::NodeId::new(11));
+            scene
+                .insert(source, NodeSpec::new(Rect::new(0, 0, 32, 32)))
+                .expect("a source");
+            scene
+                .insert(view, NodeSpec::new(Rect::new(0, 0, 32, 32)))
+                .expect("a view");
+            scene.set_class(view, Some("view".to_owned())).expect("the class");
+            scene.set_source(view, Some(source)).expect("the source");
+        });
+
+        // Unlocked, the frame names the View alive, so the locked result below is not vacuously empty.
+        render(&mut recorder, &mut state, &stats, &screenshots);
+        assert!(
+            recorder.views[0] > 0,
+            "an unlocked frame names the View: {:?}",
+            recorder.views
+        );
+        recorder.views.clear();
+        assert_eq!(recorder.released, 0, "an unlocked session keeps its View textures");
+
+        let effects = state.lock.apply(LockEvent::LockRequested {
+            locker: ClientId::new(1),
+        });
+        state.apply_lock(effects);
+        render(&mut recorder, &mut state, &stats, &screenshots);
+        assert_eq!(state.lock_state(), LockState::Locked);
+        assert_eq!(
+            recorder.views,
+            vec![0],
+            "the cover names no View, so the renderer drops every View texture at the lock"
+        );
+        assert_eq!(
+            recorder.released, 1,
+            "and the loop asks the backend to give back the textures it holds for readbacks"
         );
     }
 

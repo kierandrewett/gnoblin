@@ -30,6 +30,9 @@
 //!    ([`State::abort_view_copy`]).
 //! 3. **A View is destroyed with a consumer waiting.** The queued copy is answered by the table, which finds the
 //!    target gone and stops the session.
+//! 4. **The session is locked.** No reader is served: nothing is read back, the readbacks and the textures the backend
+//!    holds are given back ([`Backend::release_views`]), and what waited is answered by the table, which refuses it.
+//!    `the_lock_cuts_every_reader_of_a_view_and_none_is_served_a_picture_from_before_it` in `tests/view_capture_e2e.rs`.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -128,7 +131,19 @@ impl State {
     pub(crate) fn read_gpu_views(&mut self, backend: &mut dyn Backend<State>) {
         let scenes = self.composer.view_scenes();
         let live: Vec<u64> = scenes.iter().map(|(view, _)| view.get()).collect();
-        let viewed = self.viewed();
+        let viewed = if self.capture_allowed() {
+            self.viewed()
+        } else {
+            // The session is locked: no reader is served, so no View is read, and nothing of the desktop is kept for
+            // a bug to find. The readbacks go, and so do the textures the backend holds for them; a View a reader
+            // asks for after the unlock is drawn and read again from the scene it has then.
+            for (view, _) in &scenes {
+                self.capture.view_readbacks.remove(view);
+                self.capture.view_pictures.remove(view);
+            }
+            backend.release_views();
+            BTreeSet::new()
+        };
         for (view, scene) in &scenes {
             if !viewed.contains(view) {
                 continue;

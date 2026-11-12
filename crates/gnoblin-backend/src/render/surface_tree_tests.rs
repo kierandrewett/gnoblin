@@ -457,6 +457,42 @@ fn a_view_of_a_window_draws_its_popups() {
     assert_eq!(probe(&picture, 150, 150), BACKGROUND, "nothing else is");
 }
 
+/// A View whose source is a popup of a secure window is of secure content: the window's mark is on every surface of its
+/// tree, whichever node the View is of. The window is not in the View's source, so only the shared rule reaches it.
+#[test]
+fn a_view_of_a_popup_of_a_secure_window_is_masked_in_its_capture() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_surfaces(window, vec![popup(10, (90, 90), (40, 40), BLUE)]);
+    frame_of(&mut composer, output);
+    let popup_node = tree_node(&composer, window, 10);
+    let view = NodeId::new(1);
+    composer.with_scene(|scene| {
+        scene
+            .insert(view, NodeSpec::new(Rect::new(0, 0, 300, 300)))
+            .expect("a view node");
+        scene
+            .set_class(view, Some("view".to_owned()))
+            .expect("the view's class");
+        scene.set_source(view, Some(popup_node)).expect("the view's source");
+    });
+    frame_of(&mut composer, output);
+    assert_eq!(
+        probe(&captured(&composer, view), 5, 5),
+        BLUE,
+        "the control: the popup is in the picture"
+    );
+
+    composer.set_window_secure(window, true);
+    frame_of(&mut composer, output);
+    let masked = captured(&composer, view);
+    assert_eq!(
+        probe(&masked, 5, 5),
+        [128, 128, 128, 255],
+        "the secure window's popup is the mask"
+    );
+    assert_eq!(probe(&masked, 35, 35), [128, 128, 128, 255]);
+}
+
 #[test]
 fn a_view_draws_a_subsurface_below_its_parent_behind_it() {
     let (mut composer, output, window) = drawing();
@@ -752,7 +788,7 @@ fn the_shells_own_children_of_a_window_keep_their_place_between_the_surfaces() {
 }
 
 /// A `Dmabuf` of `size` with one plane of `/dev/null`: the shape of a GPU buffer, which is all the composer reads.
-fn dmabuf_source(size: Size) -> SurfaceSource {
+pub(super) fn dmabuf_source(size: Size) -> SurfaceSource {
     use smithay::backend::allocator::dmabuf::{Dmabuf, DmabufFlags};
     use smithay::backend::allocator::{Fourcc, Modifier};
     let fd = std::os::fd::OwnedFd::from(std::fs::File::open("/dev/null").expect("/dev/null opens"));

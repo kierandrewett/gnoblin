@@ -306,6 +306,13 @@ impl AnyRenderer {
         let gles = self.gles_mut().ok_or(RenderError::Unsupported)?;
         gles.read_view(scene, capture, live)
     }
+
+    /// Gives back every View texture the renderer holds. A renderer that draws a View on the CPU holds none.
+    pub fn release_views(&mut self) {
+        if let Some(gles) = self.gles_mut() {
+            gles.retire_views(&[]);
+        }
+    }
 }
 
 /// What a redacted capture reads: the frame last drawn, where the capture covers, and how

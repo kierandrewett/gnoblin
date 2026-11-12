@@ -783,6 +783,51 @@ mod tests {
         assert_eq!(renderer.subtree_textures(), 0);
     }
 
+    /// The cover a locked output shows is a frame that names no View. Drawing it gives back every texture, the display
+    /// picture and the capture variant alike, so nothing the desktop showed stays in GPU memory behind the cover, and a
+    /// View read after the unlock is drawn again from the scene it has then, never served from a texture of before.
+    #[test]
+    fn a_frame_that_names_no_view_gives_back_the_display_and_the_capture_texture_alike() {
+        let size = Size::new(16, 16);
+        let Some(mut renderer) = gles(size) else {
+            return;
+        };
+        let projection = flat(size);
+        let secure = ViewScene::new(
+            1,
+            1,
+            size,
+            vec![eye(size, vec![fill(&projection, Rect::new(0, 0, 8, 8), RED)])],
+            Some(vec![eye(size, vec![fill(&projection, Rect::new(0, 0, 8, 8), BLUE)])]),
+        );
+        renderer
+            .view_pixels(&secure, false)
+            .expect("the display picture is drawn");
+        renderer
+            .view_pixels(&secure, true)
+            .expect("the capture variant is drawn");
+        assert_eq!(renderer.subtree_textures(), 2, "a secure View holds both textures");
+
+        let mut cover = OutputFrame::new();
+        cover.push_damage(Rect::from_size(size));
+        renderer.draw(&cover, Scale::IDENTITY).expect("the cover is drawn");
+        assert_eq!(
+            renderer.subtree_textures(),
+            0,
+            "the cover names no View, so both textures are gone"
+        );
+        assert!(renderer.subtree_texture(1).is_none());
+
+        // The unlock: the View is named again and read from a texture drawn afresh.
+        let capture = renderer.view_pixels(&secure, true).expect("drawn again");
+        assert_eq!(
+            pixel(&capture, 4, 4),
+            BLUE,
+            "the capture variant, not a texture left from before"
+        );
+        assert_eq!(renderer.subtree_textures(), 1);
+    }
+
     #[test]
     fn a_view_the_driver_refuses_leaves_the_frame_alone() {
         let size = Size::new(16, 16);

@@ -847,3 +847,6 @@ fn the_cost_of_one_view_redraw_on_each_path() {
         }
     }
 }
+
+#[path = "view_secure_tests.rs"]
+mod secure;

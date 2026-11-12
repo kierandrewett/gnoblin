@@ -70,6 +70,11 @@
 //!     `a_subsurface_below_its_parent_is_drawn_behind_it`.
 //! 11. **A secure window shows through its popups.** The window's mark is on every surface of its tree:
 //!     `a_popup_of_a_secure_window_is_secure`.
+//! 12. **A secure node is judged by what reads it.** Every path asks the one set `Composer::find_secure` makes for the
+//!     frame (a marked window, a node whose `secure` is true, and everything below either), so a View of a node below a
+//!     secure one, a View or a window below one, and a window's fade are all secure, and a View's capture never reads
+//!     the picture drawn before a mark: `a_source_below_a_secure_ancestor_is_redacted_in_the_views_capture_and_the_view_is_a_secure_layer`
+//!     and the cases beside it in `view_secure_tests.rs`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -174,8 +179,6 @@ struct CanvasPicture {
     /// Physical pixels per logical pixel the picture was painted at. The image is `size * scale` pixels, and the
     /// renderer draws it over the node's logical rectangle.
     scale: Scale,
-    /// Whether the node was secure (its own `secure` value or an ancestor's) when the frame was last composed.
-    secure: bool,
     image: Option<Arc<Image>>,
 }
 
@@ -451,6 +454,10 @@ pub struct Composer {
     /// What a View's capture picture draws in place of a secure node, the same choice an output capture makes for a
     /// secure layer. It is fixed for the session by the `capture.secure-treatment` setting.
     secure_treatment: SecureTreatment,
+    /// The nodes that are secure in the frame being drawn: see [`Composer::find_secure`]. Taken once per frame by
+    /// [`Composer::begin_frame_reading`], which damages the nodes whose answer changed, and read by every path that
+    /// shows or captures a node: the layers a frame marks secure and the redaction of each View's capture.
+    secure_scope: BTreeSet<NodeId>,
     /// The effect kinds ([`Pass::name`]) the active renderer draws. A node's effect of any other kind is named in its
     /// `skipped` list. The compositor sets it once from the backend before any frame; until then every kind is
     /// taken as drawn.
@@ -522,6 +529,7 @@ impl Composer {
             view_clock_ms: 0,
             paced_views: BTreeSet::new(),
             secure_treatment: SecureTreatment::default(),
+            secure_scope: BTreeSet::new(),
             effect_kinds: Pass::NAMES,
             canvases: BTreeMap::new(),
             output_scales: BTreeMap::new(),
@@ -674,6 +682,7 @@ impl Composer {
     /// that is stale, and a buffer `reader` answers `None` for is masked.
     pub fn begin_frame_reading(&mut self, reader: &mut ReadDmabuf<'_>) {
         let dirty = self.scene.take_dirty();
+        self.take_secure_scope();
         self.render_canvases();
         self.render_views(&dirty, reader);
         self.damage = Some(self.scene.take_damage());
@@ -685,11 +694,6 @@ impl Composer {
     fn render_canvases(&mut self) {
         let canvases = self.canvas_nodes();
         self.canvases.retain(|canvas, _| canvases.contains(canvas));
-        if canvases.is_empty() {
-            return;
-        }
-        let nodes: Vec<NodeId> = self.scene.node_ids().collect();
-        let secure = self.secure_nodes(nodes);
         for canvas in canvases {
             let (Some(bounds), Some(revision)) = (self.scene.bounds(canvas), self.scene.content_revision(canvas))
             else {
@@ -697,20 +701,11 @@ impl Composer {
             };
             let size = Size::new(bounds.width, bounds.height);
             let scale = self.canvas_scale(canvas);
-            let is_secure = secure.contains(&canvas);
-            if let Some(picture) = self.canvases.get_mut(&canvas)
-                && picture.revision == revision
-                && picture.size == size
-                && picture.scale == scale
+            if self
+                .canvases
+                .get(&canvas)
+                .is_some_and(|picture| picture.revision == revision && picture.size == size && picture.scale == scale)
             {
-                // A mark changes what a capture shows and not the pixels on screen, so the node is damaged and the
-                // frame a capture reads is drawn again with the new mark.
-                if picture.secure != is_secure {
-                    picture.secure = is_secure;
-                    if let Some(placed) = self.scene.absolute_bounds(canvas) {
-                        self.scene.damage_rect(placed);
-                    }
-                }
                 continue;
             }
             let image = self.paint_canvas(canvas, size, scale);
@@ -720,7 +715,6 @@ impl Composer {
                     revision,
                     size,
                     scale,
-                    secure: is_secure,
                     image,
                 },
             );
@@ -861,27 +855,54 @@ impl Composer {
         }
     }
 
-    /// The nodes among `nodes` a capture may not show: a window the shell or a rule marked secure, and any node whose
-    /// own `secure` value is true, each with everything below it.
-    ///
-    /// A node that is not drawn from pixels of its own (a plain parent) is in the set when it is secure, so its
-    /// children are: a secure subtree is secure as a whole.
+    /// The nodes among `nodes` a capture may not show: those the frame's secure scope holds.
     fn secure_nodes(&self, nodes: impl IntoIterator<Item = NodeId>) -> BTreeSet<NodeId> {
-        let nodes: BTreeSet<NodeId> = nodes.into_iter().collect();
+        nodes
+            .into_iter()
+            .filter(|node| self.secure_scope.contains(node))
+            .collect()
+    }
+
+    /// Every node that is secure: a window the shell or a rule marked, a node whose own `secure` value is true, and
+    /// everything below either. A secure subtree is secure as a whole, wherever a reader stands in it: a View of a
+    /// node that lies below a secure one reads secure content though the View's own source holds no mark, and a View
+    /// that is itself below a secure node is a secure layer.
+    ///
+    /// This is the one answer to "is this node secure". The layers a frame marks (windows and their surfaces,
+    /// canvases, Views) and the redaction of a View's capture, on the CPU and on the GPU, all take it from the scope
+    /// [`Composer::take_secure_scope`] keeps, so no path decides it for itself.
+    fn find_secure(&self) -> BTreeSet<NodeId> {
         let marked_windows = self
             .windows
             .values()
             .filter(|entry| entry.secure)
             .filter_map(|entry| entry.node);
-        let marked_nodes = nodes
-            .iter()
-            .copied()
+        let marked_nodes = self
+            .scene
+            .node_ids()
             .filter(|node| matches!(self.scene.value(*node, "secure"), Some(TreeValue::Bool(true))));
-        let mut secure = BTreeSet::new();
-        for root in marked_windows.chain(marked_nodes).filter(|node| nodes.contains(node)) {
-            secure.extend(self.subtree(root).into_iter().filter(|node| nodes.contains(node)));
+        let mut scope = BTreeSet::new();
+        for root in marked_windows.chain(marked_nodes) {
+            // An ancestor that is marked has taken the subtree already.
+            if !scope.contains(&root) {
+                scope.extend(self.subtree(root));
+            }
         }
-        secure
+        scope
+    }
+
+    /// Finds the frame's secure scope and damages the nodes whose answer changed since the last one, so the frame a
+    /// capture reads is drawn again with the new mark: a mark changes what a capture shows and not the pixels on
+    /// screen, so nothing else would redraw it.
+    fn take_secure_scope(&mut self) {
+        let scope = self.find_secure();
+        let changed: Vec<NodeId> = scope.symmetric_difference(&self.secure_scope).copied().collect();
+        for node in changed {
+            if let Some(placed) = self.scene.absolute_bounds(node) {
+                self.scene.damage_rect(placed);
+            }
+        }
+        self.secure_scope = scope;
     }
 
     /// How a View's source subtree is drawn: the picture itself on the CPU, or the scene the renderer draws it from.
@@ -3066,7 +3087,7 @@ impl Composer {
                 model: None,
                 // A capture of the output replaces the picture of a View that holds a secure node, so the output
                 // reveals nothing a View's own capture hides.
-                secure: !picture.secure.is_empty(),
+                secure: !picture.secure.is_empty() || self.secure_scope.contains(&view),
             }));
         }
         if let Some(flash) = self.flash {
@@ -3150,7 +3171,7 @@ impl Composer {
             corner_radius: transform.corner_radius,
             effects: self.scene.effects(canvas).cloned().unwrap_or_else(Effects::new),
             model,
-            secure: self.canvases.get(&canvas).is_some_and(|picture| picture.secure),
+            secure: self.secure_scope.contains(&canvas),
         }));
     }
 
@@ -3637,7 +3658,7 @@ impl Composer {
             corner_radius: drawn.corner_radius,
             effects: drawn.effects,
             model,
-            secure: paint.entry.secure,
+            secure: self.secure_scope.contains(&node),
         }));
     }
 }

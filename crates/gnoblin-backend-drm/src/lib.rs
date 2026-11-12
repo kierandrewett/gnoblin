@@ -484,6 +484,10 @@ impl<S: Host + 'static> Backend<S> for Drm {
         self.scanout.read_view(scene, capture, live)
     }
 
+    fn release_views(&mut self) {
+        self.scanout.release_views();
+    }
+
     fn output_controls(&self) -> gnoblin_backend::OutputControls {
         gnoblin_backend::OutputControls {
             gamma: true,

@@ -784,6 +784,11 @@ pub trait Backend<S: Host + 'static> {
         Err(gnoblin_render_frame::error::RenderError::Unsupported)
     }
 
+    /// Gives back every View texture this backend's renderers hold, so a picture of the desktop does not stay in GPU
+    /// memory while nothing may read it. The host calls it while the session is locked. A View that is read or drawn
+    /// afterwards is drawn again from the scene it has then. The default holds none.
+    fn release_views(&mut self) {}
+
     /// What this backend can import of a client's GPU buffers, or `None` when it cannot import
     /// any: the host then never serves `zwp_linux_dmabuf_v1`, and a client shares memory instead.
     ///

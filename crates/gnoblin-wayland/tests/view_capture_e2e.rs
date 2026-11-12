@@ -2587,3 +2587,220 @@ fn a_view_role_session_of_a_view_drawn_on_the_gpu_never_receives_a_secure_window
         );
     });
 }
+
+// Secure content in a View on both renderers, and the session lock. Each case runs on the software renderer (the View is
+// a picture the composer draws on the CPU) and on GLES (the View is a texture the renderer draws, read back for a
+// reader): what a reader may see is the same, so the case is the same. A machine with no surfaceless EGL context runs
+// the software half only.
+
+/// A session on the renderer named, with a PipeWire daemon when one is given and the lock's password check when asked.
+/// `None` (with the reason printed) for GLES on a machine that has no surfaceless EGL context.
+fn start_for(gles: bool, daemon: Option<&Daemon>, lock_check: bool) -> Option<(Session, Owner)> {
+    use gnoblin_backend::render::renderer::{AnyRenderer, RendererKind};
+    if gles && let Err(error) = AnyRenderer::new(RendererKind::Gles, gnoblin_types::Size::new(8, 8)) {
+        println!("skipping the GPU half of the case: {error} (no surfaceless EGL context on this machine)");
+        return None;
+    }
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras {
+        gles,
+        pipewire_socket: daemon.map(Daemon::socket),
+        lock_check: lock_check.then(|| gnoblin_wayland::LockCheck {
+            authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, PASSWORD)),
+            user: Some(USER.to_owned()),
+        }),
+        ..Extras::default()
+    };
+    Some((Session::start_with_extras(None, hooks, extras), owner))
+}
+
+/// Writes `secure` on `node` and returns when the shell is answered, with no frame waited for after it: the next frame
+/// a reader asks for is the first one after the compositor acknowledged the mark.
+fn mark_secure_acknowledged(owner: &Owner, node: NodeId, secure: bool) {
+    owner.transact(|| {
+        vec![TreeOp::Set {
+            node,
+            key: "secure".to_owned(),
+            value: TreeValue::Bool(secure),
+            timing: None,
+        }]
+    });
+}
+
+/// A node the shell puts above the View's source, which the mark below goes on.
+const ABOVE: NodeId = NodeId::new(0x108);
+
+/// A frame a reader asks for the moment the shell is told a node is secure holds none of that node's pixels, whichever
+/// renderer draws the View: the picture a reader copies is never older than the mark the shell was answered for.
+#[test]
+fn the_first_frame_a_reader_asks_for_after_a_mark_is_acknowledged_holds_none_of_the_pixels() {
+    for gles in [false, true] {
+        let Some((session, owner)) = start_for(gles, None, false) else {
+            continue;
+        };
+        session.run(move |handle| {
+            let mut app = Connected::connect(handle.socket(), App::default());
+            let _window = Window::map(&mut app, SOURCE);
+            arrange(&owner);
+            let (window, ..) = owner.window();
+            let mut viewer = Viewer::open(handle);
+            viewer.capture_until(SOURCE);
+
+            mark_secure_acknowledged(&owner, window, true);
+            for ask in 0..6 {
+                if viewer.capture() {
+                    assert_eq!(
+                        viewer.target.count_of(SOURCE),
+                        0,
+                        "gles: {gles}: frame {ask} after the acknowledged mark holds a pixel of the secure window"
+                    );
+                }
+            }
+            viewer.capture_until(MASKED);
+        });
+    }
+}
+
+/// Everything below a secure node is secure with it, also when the node is above the View's source and not in it: the
+/// session, the stream and the PNG all read the mask, and the window shows again when the mark is cleared.
+#[test]
+fn a_node_above_the_views_source_that_is_secure_masks_every_reader_of_the_view() {
+    for gles in [false, true] {
+        let daemon = Daemon::start();
+        let Some((session, owner)) = start_for(gles, Some(&daemon), false) else {
+            continue;
+        };
+        session.run(move |handle| {
+            let mut app = Connected::connect(handle.socket(), App::default());
+            let _window = Window::map(&mut app, SOURCE);
+            arrange(&owner);
+            let (_, _, root) = owner.window();
+            owner.transact(|| {
+                vec![
+                    TreeOp::New {
+                        class: "node".to_owned(),
+                        id: ABOVE,
+                    },
+                    TreeOp::Insert {
+                        node: ABOVE,
+                        parent: root,
+                        index: None,
+                    },
+                    TreeOp::Insert {
+                        node: PARENT,
+                        parent: ABOVE,
+                        index: None,
+                    },
+                ]
+            });
+            owner.frames(3);
+            let mut viewer = Viewer::open(handle);
+            viewer.capture_until(SOURCE);
+            let stream = cast(handle, VIEW);
+            let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+            consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
+
+            mark_secure(&owner, ABOVE, true);
+            viewer.capture_until(MASKED);
+            assert!(
+                still_of(&owner, handle, VIEW, "above.png")
+                    .iter()
+                    .all(|word| *word == MASKED & 0x00FF_FFFF),
+                "gles: {gles}: the PNG of a View whose source is below a secure node is the mask"
+            );
+            consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
+            consumer.forget();
+            consumer.listen(Duration::from_millis(400));
+            assert!(
+                consumer.frames().iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
+                "gles: {gles}: no frame of the stream holds a pixel of the window"
+            );
+
+            mark_secure(&owner, ABOVE, false);
+            viewer.capture_until(SOURCE);
+        });
+    }
+}
+
+/// While the session is locked no reader of a View is served: the session is stopped, the stream ends, a still is
+/// refused and writes nothing, and a cast or a session opened during the lock gets nothing. A window that repaints
+/// behind the lock is what a reader sees after the unlock, never the picture that was current before it.
+#[test]
+fn the_lock_cuts_every_reader_of_a_view_and_none_is_served_a_picture_from_before_it() {
+    for gles in [false, true] {
+        let daemon = Daemon::start();
+        let Some((session, owner)) = start_for(gles, Some(&daemon), true) else {
+            continue;
+        };
+        session.run(move |handle| {
+            let mut app = Connected::connect(handle.socket(), App::default());
+            let mut window = Window::map(&mut app, SOURCE);
+            arrange(&owner);
+            let mut viewer = Viewer::open(handle);
+            viewer.capture_until(SOURCE);
+            let stream = cast(handle, VIEW);
+            let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+            consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
+            assert!(
+                still_of(&owner, handle, VIEW, "before-lock.png")
+                    .iter()
+                    .all(|word| *word == SOURCE & 0x00FF_FFFF),
+                "the control: before the lock a still is the window"
+            );
+
+            let _locker = lock(handle.socket());
+            let node = lock_node(&owner);
+            wait_lock_state(&owner, node, "locked");
+            viewer
+                .client
+                .wait_until("the capture session to stop", |state| state.session_stopped >= 1);
+            assert!(!viewer.capture(), "gles: {gles}: a stopped session delivers no frame");
+            assert!(
+                consumer.observer.wait_gone(&node_name(&stream)),
+                "gles: {gles}: the lock ends the stream"
+            );
+            let runtime =
+                std::fs::canonicalize(handle.socket().parent().expect("the socket's directory")).expect("a path");
+            let locked = runtime.join("locked.png");
+            let answer = owner.capture(VIEW, locked.to_str().expect("a utf-8 path"));
+            assert_eq!(
+                answer.error, "locked",
+                "gles: {gles}: a still during the lock is refused"
+            );
+            assert!(!locked.exists(), "gles: {gles}: and writes nothing");
+            assert_eq!(
+                handle
+                    .control
+                    .start_cast(PORTAL, gnoblin_capture::Target::View(VIEW))
+                    .expect("the loop answers"),
+                Err(gnoblin_wayland::CastRefusal::Locked),
+                "gles: {gles}: a cast of the locked desktop is refused"
+            );
+            // The window repaints behind the lock; the picture of before it must not be served after it.
+            window.paint(&mut app, REPAINTED);
+            owner.frames(3);
+            let answer = owner.call(node, "authenticate", PASSWORD);
+            assert_eq!((answer.error.as_str(), answer.result.as_str()), ("", "ok"));
+            wait_lock_state(&owner, node, "not-locked");
+            let mut fresh = Viewer::open(handle);
+            for ask in 0..5 {
+                if fresh.capture() {
+                    assert_eq!(
+                        fresh.target.count_of(SOURCE),
+                        0,
+                        "gles: {gles}: frame {ask} after the unlock holds a pixel of the picture from before the lock"
+                    );
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            fresh.capture_until(REPAINTED);
+            assert!(
+                still_of(&owner, handle, VIEW, "after-unlock.png")
+                    .iter()
+                    .all(|word| *word == REPAINTED & 0x00FF_FFFF),
+                "gles: {gles}: a still after the unlock is the window as it is now"
+            );
+        });
+    }
+}

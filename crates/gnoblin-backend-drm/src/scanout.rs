@@ -121,6 +121,14 @@ impl Device {
         self.probe()?.read_view(scene, capture, live)
     }
 
+    /// Gives back every View texture the probe context holds. The outputs' own contexts give theirs back when they
+    /// draw a frame that names no View, which is the cover a locked output shows.
+    pub(crate) fn release_views(&mut self) {
+        if let Some(probe) = self.probe.as_mut() {
+            probe.retire_views(&[]);
+        }
+    }
+
     /// Writes a picture the CPU holds into a client's GPU buffer, on the probe context.
     ///
     /// The frame an output last drew is not copied: a scan-out buffer is the frame, and it is handed to the display,

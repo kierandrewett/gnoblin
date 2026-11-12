@@ -98,10 +98,14 @@ extension), a PipeWire stream or a `capture` still.
 - A request that arrives before the first read is answered in the same loop turn.
 - That readback is the only CPU copy of a GPU View. A secure node is never in it: see [Secure nodes](#secure-nodes).
 
-Two consequences:
+Four consequences:
 
-- A View of a window that shows a GPU buffer (a DMA-BUF) shows the window's real pixels on the GLES path. The CPU path
-  cannot read such a buffer and masks the window grey.
+- A View of a window that shows a GPU buffer (a DMA-BUF) shows the window's real pixels on the GLES path. This is on
+  purpose: the screen shows the buffer, and a View is a window onto the same content.
+- The CPU path reads such a buffer back through the backend when it can, and masks the window grey when it cannot, so
+  it never shows what it did not read.
+- What a buffer holds never decides secrecy; the `secure` mark does. The same buffer under a secure window is grey (or
+  left out) in every capture of the View, on both paths. See [Secure nodes](#secure-nodes).
 - A View whose picture cannot be drawn (the driver refuses its size, or the GL context is lost) shows nothing until its
   next change, and the rest of the frame is drawn as usual. It is asked again at its next redraw.
 
@@ -249,16 +253,43 @@ Each capture leaves an audit record in the log, with the View, the path and the 
 
 A node whose `secure` is true is never captured. The View still shows it on screen.
 
-- The capture picture (the PNG `capture` writes, and every frame of a `gnoblin_view_source_v1` session) holds a neutral
-  grey rectangle in the node's place, the same thing a capture of an output draws over a secure window.
-- Everything below a secure node is secure with it, so a window under a secure parent is masked though the window is
-  not marked.
+- The capture picture holds a neutral grey rectangle in the node's place, the same thing a capture of an output draws
+  over a secure window. The picture is what `capture` writes and what every reader gets: a `gnoblin_view_source_v1`
+  session, a PipeWire stream, the XR extension and a copy into a GPU buffer.
+- It is the same on the CPU and the GLES path, with a window's pixels in shared memory or a GPU buffer, in a mono or a
+  stereo View.
+- Everything below a secure node is secure with it, wherever the node is. A window under a secure parent is masked
+  though the window is not marked. A View whose `source` has a secure ancestor above it is of secure content, so its
+  capture is masked as a whole. A source that is moved under a secure node is masked in the next picture, and one that
+  is moved out is shown again.
+- A View that is itself below a secure node is a secure layer on the output, whatever its source holds, as a window or
+  a canvas below one is.
 - With `capture.secure-treatment = "omit"` the node is left out of the picture instead, and what lies beneath it in the
   View's source shows.
-- The mark is read every frame: a node that becomes secure is masked in the next picture, whatever the View's `fps`.
+- The mark is read every frame: a node that becomes secure is masked in the next picture, whatever the View's `fps`. A
+  reader that asks for a frame after the compositor has answered the write of the mark is given that picture and never
+  the one drawn before it.
 - A capture of an output that shows a View with a secure node in its source replaces the whole View, so the portal's
   screenshot and screen cast never carry the node's pixels through a View either.
 - A View of a View draws no picture of the inner View, so no capture of it can hold what the inner View's source holds.
+- A window that fades out when it closes or minimises keeps its mark for the whole fade, a window that shows a GPU
+  buffer included. A View of it holds none of its pixels during the fade.
+- One rule decides all of this. The composer works out once per frame which nodes are secure (a marked window, a node
+  whose `secure` is true, and everything below either) and every path asks that answer: the layers of the output, the
+  capture picture of a View on the CPU, and the capture variant of a View's scene on the GPU. The tests are in
+  `crates/gnoblin-backend/src/render/view_secure_tests.rs`.
+
+### The session lock
+
+While the session is locked no capture of a View is served on any path:
+
+- A session on a View is stopped, and a PipeWire stream of one ends.
+- A `capture` still is answered `locked` and writes no file.
+- A cast or a session started during the lock is refused.
+- On GLES the cover a locked output shows names no View, so the renderer gives every View's texture back at the lock.
+  The compositor also drops the readbacks it holds and the textures its backend keeps for them. Nothing the desktop
+  showed stays in GPU memory behind the cover, and no View is read for a request the lock is about to refuse.
+- After the unlock a reader gets the window as it is then, never a picture from before the lock.
 
 ### Not covered
 

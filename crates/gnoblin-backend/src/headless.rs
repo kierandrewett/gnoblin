@@ -293,6 +293,11 @@ impl HeadlessTarget {
         self.renderer.view_pixels(scene, capture, live)
     }
 
+    /// Gives back every View texture this target's renderer holds.
+    pub fn release_views(&mut self) {
+        self.renderer.release_views();
+    }
+
     /// How many frames the target was asked to present.
     #[must_use]
     pub fn presents(&self) -> u64 {
@@ -979,6 +984,12 @@ impl<S: Host + 'static> Backend<S> for Headless {
             .read_view(scene, capture, live)
     }
 
+    fn release_views(&mut self) {
+        for target in &mut self.targets {
+            target.release_views();
+        }
+    }
+
     fn output_controls(&self) -> OutputControls {
         OutputControls {
             gamma: true,
@@ -1294,6 +1305,27 @@ mod tests {
             1,
             "a headless target reports no present, whichever renderer drew"
         );
+    }
+
+    /// The lock releases every View texture: a readback made one, and giving the views back leaves the renderer
+    /// holding none, so a View read afterwards is drawn again from the scene it has then.
+    #[test]
+    fn releasing_the_views_gives_back_every_texture_a_readback_made() {
+        use gnoblin_render_frame::view_scene::ViewScene;
+        let Ok(mut backend) = Headless::with_config(HeadlessConfig::gles()) else {
+            println!("skipping the GLES headless test: no surfaceless EGL context on this machine");
+            return;
+        };
+        let scene = ViewScene::new(1, 1, Size::new(8, 8), Vec::new(), None);
+        let target = backend.targets.first_mut().expect("a target");
+        target.read_view(&scene, true, &[1]).expect("a blank scene reads");
+        let held =
+            |target: &mut HeadlessTarget| target.renderer.gles_mut().expect("a GLES renderer").subtree_textures();
+        assert_eq!(held(target), 1, "the readback made a texture");
+        target.release_views();
+        assert_eq!(held(target), 0, "releasing the views gave it back");
+        target.read_view(&scene, true, &[1]).expect("drawn again");
+        assert_eq!(held(target), 1, "and a later read draws the View again");
     }
 
     #[test]

@@ -313,6 +313,24 @@ impl Session {
 
     /// Creates a session with an explicit protocol configuration.
     fn start_with(protocols: Protocols) -> Self {
+        Self::start_on(protocols, gnoblin_backend::headless::Headless::new())
+    }
+
+    /// Creates a session drawn by the GLES renderer, which draws a View on the GPU, or `None` (with the reason
+    /// printed) on a machine that has no surfaceless EGL context.
+    fn start_gles() -> Option<Self> {
+        use gnoblin_backend::headless::{Headless, HeadlessConfig};
+        match Headless::with_config(HeadlessConfig::gles()) {
+            Ok(backend) => Some(Self::start_on(Protocols::default(), backend)),
+            Err(error) => {
+                println!("skipping the GPU half of the case: {error} (no surfaceless EGL context on this machine)");
+                None
+            }
+        }
+    }
+
+    /// Creates a session on `backend`, on sockets of its own.
+    fn start_on(protocols: Protocols, backend: gnoblin_backend::headless::Headless) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
@@ -328,8 +346,7 @@ impl Session {
             protocols,
             ..Config::default()
         };
-        let server =
-            Server::new(Box::new(gnoblin_backend::headless::Headless::new()), config).expect("the session starts");
+        let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {
             socket,
             privileged_socket,
@@ -1911,7 +1928,19 @@ fn a_shell_that_clears_the_secure_mark_unmasks_the_window() {
 /// everything, and an output capture, which is what the portal's screen cast and screenshot read, must not carry them.
 #[test]
 fn a_view_of_a_secure_window_is_masked_in_a_capture_of_the_output() {
-    let session = Session::start();
+    a_view_over_a_secure_window_is_masked_in_an_output_capture(Session::start());
+}
+
+/// The same with the View drawn on the GPU: the GLES renderer draws the View as a texture, and the capture of the
+/// output replaces that layer, whose texture holds the window's real pixels, as it replaces the window.
+#[test]
+fn a_view_drawn_on_the_gpu_over_a_secure_window_is_masked_in_a_capture_of_the_output() {
+    if let Some(session) = Session::start_gles() {
+        a_view_over_a_secure_window_is_masked_in_an_output_capture(session);
+    }
+}
+
+fn a_view_over_a_secure_window_is_masked_in_an_output_capture(session: Session) {
     session.run(|session| {
         let mut app = Client::app(session.socket());
         let _secret = app.map_window("org.gnoblin.Secret", "Secret", 512, 768, RED);

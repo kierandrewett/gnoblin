@@ -717,7 +717,7 @@ impl State {
     /// whose picture is new has changed everywhere, so its next frame reports the whole
     /// of it. The picture is compared by identity: the composer hands back the same
     /// `Arc` for as long as a View is not redrawn.
-    fn publish_view_pictures(&mut self) {
+    pub(crate) fn publish_view_pictures(&mut self) {
         let mut pictures: BTreeMap<NodeId, Arc<Image>> = self.composer.view_pictures().into_iter().collect();
         // A View drawn on the GPU has no picture on the CPU until a consumer reads it back.
         pictures.extend(

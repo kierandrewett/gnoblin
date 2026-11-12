@@ -3498,6 +3498,10 @@ impl Host for State {
         self.composer.begin_frame_reading(reader);
         // A View the composer drew again has no read-back of its old picture left for a consumer to find.
         self.sync_view_readbacks();
+        // And the picture a reader copies is the one this frame drew: a copy asked for after the frame that applied a
+        // `secure` mark must never read the picture drawn before it. The loop's own publish (`poll_capture`) runs
+        // before the frame draws, so it alone would serve the old picture for one more turn.
+        self.publish_view_pictures();
         // A View's picture is final for this frame, so a shell's `capture` writes what the View shows now.
         let view_captures = self.tree.take_view_captures();
         self.run_view_captures(view_captures);
