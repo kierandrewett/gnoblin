@@ -157,3 +157,19 @@ fn gnoblinctl_config_reload_lists_the_settings_that_were_not_applied() {
         output.out
     );
 }
+
+#[test]
+fn shortcuts_gestures_and_the_liveness_timeout_are_applied_so_a_commit_does_not_report_them() {
+    // The failure this prevents: these were read only when the compositor started, so a first
+    // commit that carried them had to say `restart required`. They are applied on commit now.
+    let (_session, mut ends) = Session::start_privileged(&["runtime"]);
+    let mut runtime = runtime(&mut ends);
+    let committed = runtime
+        .commit_config_reporting(
+            br#"{"shortcuts":{"term":{"binding":"<Super>t","command":["true"]}},
+                 "touchpad-gestures":[{"name":"g","gesture":"swipe","fingers":3,"path":[{"x":0,"y":0},{"x":1,"y":0}],"tolerance":0.5,"command":["true"]}],
+                 "window-management":{"check-alive-timeout":2000}}"#,
+        )
+        .expect("the commit");
+    assert!(committed.notices.is_empty(), "{:?}", committed.notices);
+}

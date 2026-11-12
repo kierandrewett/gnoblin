@@ -391,7 +391,14 @@ impl State {
                 commands.insert(name.clone(), argv.clone());
             }
         }
-        let next = match self.keyboard_tables.router.bindings().reconcile(&declared) {
+        // A shell's seat claims live in the same table and belong to the shell, not to the document.
+        let claims = &self.keyboard_tables.claims;
+        let next = match self
+            .keyboard_tables
+            .router
+            .bindings()
+            .reconcile_keeping(&declared, |name| claims.contains_key(name))
+        {
             Ok(next) => next,
             Err(conflict) => {
                 log::warn!(

@@ -1691,3 +1691,163 @@ fn a_popup_that_is_not_reactive_is_not_configured_when_its_window_moves() {
         );
     });
 }
+
+/// A document's `shortcuts` or `touchpad-gestures`, as the compositor holds them after a commit.
+fn accepted_config(json: &str) -> gnoblin_config::Config {
+    gnoblin_config::Config::from_json_bytes(json.as_bytes()).expect("the test document is valid")
+}
+
+/// Waits until `path` exists, or fails after the session timeout.
+fn wait_for_file(path: &Path, what: &str) {
+    let deadline = Instant::now() + TIMEOUT;
+    while !path.exists() {
+        assert!(Instant::now() < deadline, "{what}: {} never appeared", path.display());
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Presses and releases Ctrl+Alt+T, the chord the shortcut tests bind.
+fn press_ctrl_alt_t(handle: &Handle) {
+    const CTRL: u32 = 29;
+    const ALT: u32 = 56;
+    const T: u32 = 20;
+    for (keycode, pressed) in [
+        (CTRL, true),
+        (ALT, true),
+        (T, true),
+        (T, false),
+        (ALT, false),
+        (CTRL, false),
+    ] {
+        handle.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
+            keycode,
+            pressed,
+        });
+    }
+}
+
+#[test]
+fn a_committed_shortcut_table_takes_effect_in_a_running_session_and_its_removal_ends_it() {
+    // The failure this prevents: shortcuts were read once at start, so a reload left the old
+    // table in force and the first login after installing Gnoblin had none at all.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let marker = directory.path().join("shortcut-ran");
+    let session = Session::start(Headless::new());
+    session.run(move |session| {
+        press_ctrl_alt_t(session);
+        thread::sleep(Duration::from_millis(300));
+        assert!(!marker.exists(), "no shortcut is bound before the document says so");
+
+        let json = format!(
+            r#"{{"shortcuts":{{"touch":{{"binding":"<Control><Alt>t","command":["touch","{}"]}}}}}}"#,
+            marker.display()
+        );
+        session
+            .control
+            .set_shortcuts(accepted_config(&json).shortcuts.expect("the shortcuts"));
+        press_ctrl_alt_t(session);
+        wait_for_file(&marker, "the committed shortcut runs");
+
+        // A document with no `shortcuts` section ends the shortcut.
+        std::fs::remove_file(&marker).expect("the marker is removed");
+        session.control.set_shortcuts(gnoblin_config::Shortcuts::default());
+        press_ctrl_alt_t(session);
+        thread::sleep(Duration::from_millis(500));
+        assert!(!marker.exists(), "the removed shortcut still ran");
+    });
+}
+
+#[test]
+fn committed_touchpad_gestures_take_effect_in_a_running_session() {
+    // The failure this prevents: the gesture table was built once at start, so a configured
+    // swipe did nothing until the next login.
+    use gnoblin_backend::{RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample};
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let marker = directory.path().join("gesture-ran");
+    let session = Session::start(Headless::new());
+    session.run(move |session| {
+        let swipe = |session: &Handle| {
+            for (phase, dx) in [
+                (RawTouchpadPhase::Begin, 0.0),
+                (RawTouchpadPhase::Update, 120.0),
+                (RawTouchpadPhase::Update, 120.0),
+                (RawTouchpadPhase::End, 0.0),
+            ] {
+                session.control.inject_input(InputEvent::Touchpad(RawTouchpadSample {
+                    device: DeviceId::new(1),
+                    phase,
+                    kind: RawTouchpadKind::Swipe,
+                    fingers: 3,
+                    dx,
+                    dy: 0.0,
+                    scale: 1.0,
+                    angle: 0.0,
+                }));
+            }
+        };
+        swipe(session);
+        thread::sleep(Duration::from_millis(300));
+        assert!(!marker.exists(), "no gesture is bound before the document says so");
+
+        let json = format!(
+            r#"{{"touchpad-gestures":[{{"name":"touch","gesture":"swipe","fingers":3,"path":[{{"x":0,"y":0}},{{"x":1,"y":0}}],"tolerance":0.5,"command":["touch","{}"]}}]}}"#,
+            marker.display()
+        );
+        session
+            .control
+            .set_touchpad_gestures(accepted_config(&json).touchpad_gestures);
+        swipe(session);
+        wait_for_file(&marker, "the committed gesture runs");
+
+        std::fs::remove_file(&marker).expect("the marker is removed");
+        session.control.set_touchpad_gestures(Vec::new());
+        swipe(session);
+        thread::sleep(Duration::from_millis(500));
+        assert!(!marker.exists(), "the removed gesture still ran");
+    });
+}
+
+#[test]
+fn a_committed_check_alive_timeout_changes_when_a_silent_client_is_unresponsive() {
+    // The failure this prevents: the timeout was read once at start. The session starts with
+    // the pings off; a commit that sets a timeout must start them, and one that sets zero must
+    // clear the mark again.
+    let session = Session::start_with_timeout(Headless::new(), Duration::ZERO);
+    session.run(|session| {
+        let mut silent = Client::connect(session.socket());
+        silent.state.silent = true;
+        let _window = silent.map_window("org.gnoblin.Silent", "Silent");
+        session.wait_for(|observation| observation.titled("Silent").is_some_and(|window| window.mapped));
+        for _ in 0..5 {
+            session.control.advance(600);
+            silent.roundtrip();
+        }
+        assert!(
+            !session
+                .windows()
+                .titled("Silent")
+                .is_some_and(|window| window.unresponsive),
+            "a zero timeout never marks a client"
+        );
+
+        let set = |timeout| {
+            session.control.set_window_management(
+                WmOptions::default(),
+                gnoblin_wayland::TitlebarActions::default(),
+                timeout,
+            );
+        };
+        set(Duration::from_millis(1000));
+        for _ in 0..5 {
+            session.control.advance(600);
+            silent.roundtrip();
+        }
+        session.wait_for(|observation| observation.titled("Silent").is_some_and(|window| window.unresponsive));
+
+        set(Duration::ZERO);
+        session.control.advance(600);
+        silent.roundtrip();
+        session.wait_for(|observation| observation.titled("Silent").is_some_and(|window| !window.unresponsive));
+    });
+}

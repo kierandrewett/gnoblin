@@ -77,11 +77,17 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 fn apply(config: &mut SessionConfig, section: &WindowManagement) {
     config.wayland.wm = wm_options_of(section);
     config.wayland.titlebar_actions = TitlebarActions::of(section);
+    config.wayland.check_alive_timeout = check_alive_timeout_of(section);
+}
+
+/// The check-alive timeout a `window-management` section sets, or the compositor's default when
+/// it leaves the key out. Startup and a committed reload both read it from here.
+pub(crate) fn check_alive_timeout_of(section: &WindowManagement) -> Duration {
     let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
-    config.wayland.check_alive_timeout = section
+    section
         .check_alive_timeout
         .and_then(|ms| u64::try_from(ms).ok())
-        .map_or(default_timeout, Duration::from_millis);
+        .map_or(default_timeout, Duration::from_millis)
 }
 
 /// The window manager options a `window-management` section sets. A leaf the section leaves

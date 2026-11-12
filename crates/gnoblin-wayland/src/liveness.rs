@@ -40,6 +40,12 @@ impl Liveness {
         }
     }
 
+    /// Changes the timeout for the pings from now on. Zero disables them, which the next poll
+    /// answers by clearing every client's unresponsive mark.
+    pub(crate) fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+    }
+
     /// Whether the client `id` has missed its timeout.
     pub(crate) fn is_unresponsive(&self, id: &ClientId) -> bool {
         self.tracked

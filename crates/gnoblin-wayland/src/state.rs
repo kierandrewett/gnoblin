@@ -2175,10 +2175,34 @@ impl State {
 
     /// Applies the accepted window management options and titlebar gestures, then republishes
     /// the seat policy the stock shell reads.
-    pub(crate) fn apply_window_management(&mut self, options: WmOptions, titlebar: TitlebarActions) {
+    pub(crate) fn apply_window_management(
+        &mut self,
+        options: WmOptions,
+        titlebar: TitlebarActions,
+        check_alive_timeout: std::time::Duration,
+    ) {
         self.options = options;
         self.titlebar_actions = titlebar;
+        self.liveness.set_timeout(check_alive_timeout);
         self.publish_seat_policy();
+    }
+
+    /// Replaces the touchpad gesture bindings. A table that cannot be built keeps the bindings
+    /// in force, as a refused shortcut table does.
+    pub(crate) fn apply_touchpad_gestures(&mut self, gestures: &[gnoblin_config::Gesture]) {
+        match crate::touchpad::TouchpadGestures::from_config(gestures) {
+            Ok(mut next) => {
+                // Claims belong to the shell that made them, not to the document.
+                std::mem::swap(next.claims_mut(), self.touchpad_gestures.claims_mut());
+                self.touchpad_gestures = next;
+            }
+            Err(error) => {
+                log::error!(
+                    area = "touchpad",
+                    "touchpad gestures refused, the previous ones stay: {error}"
+                );
+            }
+        }
     }
 
     /// Advances the window animations by the real time one loop turn took.

@@ -128,12 +128,7 @@ pub const RULES: &[ApplyRule] = &[
     live("window-management", "auto-raise"),
     live("window-management", "auto-raise-delay"),
     live("window-management", "focus-change-on-pointer-rest"),
-    restart(
-        "window-management",
-        "check-alive-timeout",
-        StartProcess::Compositor,
-        "the liveness checker is created when the compositor starts",
-    ),
+    live("window-management", "check-alive-timeout"),
     live("window-management", "edge-tiling"),
     unused("window-management", "attach-modal-dialogs", "nothing reads it yet"),
     unused("window-management", "disable-workarounds", "nothing reads it yet"),
@@ -212,12 +207,7 @@ pub const RULES: &[ApplyRule] = &[
         StartProcess::Compositor,
         "the workspaces are published to the shell when the compositor starts, and the stock shell builds its desks from them once",
     ),
-    restart(
-        "touchpad-gestures",
-        "*",
-        StartProcess::Compositor,
-        "the gesture table is built when the compositor starts",
-    ),
+    live("touchpad-gestures", "*"),
     unused("animations", "*", "nothing reads the animations section"),
     restart(
         "logging",
@@ -252,12 +242,7 @@ pub const RULES: &[ApplyRule] = &[
     live("autostart", "*"),
     unused("keybindings", "*", "nothing reads the keybindings section"),
     unused("portals", "*", "nothing reads the portals section"),
-    restart(
-        "shortcuts",
-        "*",
-        StartProcess::Compositor,
-        "the shortcut table is built when the compositor starts",
-    ),
+    live("shortcuts", "*"),
 ];
 
 /// The rule for `section.key`.

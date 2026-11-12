@@ -326,12 +326,19 @@ impl BindingTable {
     /// returns the error and `self` is untouched, so a failed reload keeps the bindings
     /// that worked.
     pub fn reconcile(&self, declared: &[Declaration]) -> Result<Self, Conflict> {
+        self.reconcile_keeping(declared, |_| false)
+    }
+
+    /// [`BindingTable::reconcile`] for a table that holds bindings the declared set does not
+    /// own, such as a shell's claims: a name `keep` accepts is never removed as stale, and keeps
+    /// its chord unless a declaration takes it, which is a conflict like any other.
+    pub fn reconcile_keeping(&self, declared: &[Declaration], keep: impl Fn(&str) -> bool) -> Result<Self, Conflict> {
         let mut next = self.clone();
         let wanted: std::collections::BTreeSet<&str> = declared.iter().map(|d| d.name.as_str()).collect();
         let stale: Vec<BindingId> = next
             .by_name
             .iter()
-            .filter(|(name, _)| !wanted.contains(name.as_str()))
+            .filter(|(name, _)| !wanted.contains(name.as_str()) && !keep(name))
             .map(|(_, id)| *id)
             .collect();
         for id in stale {
@@ -484,6 +491,28 @@ mod tests {
             allow_when_inhibited: false,
             device: None,
         }
+    }
+
+    #[test]
+    fn a_reload_keeps_the_bindings_it_is_told_it_does_not_own() {
+        // The failure this prevents: a shortcuts reload drops a shell's seat claims, which live
+        // in the same table, so every chord the shell bound stops firing.
+        let mut table = BindingTable::new();
+        table
+            .insert(&name("claim-1"), chord("w"), Trigger::Press, false)
+            .expect("claim");
+        table
+            .insert(&name("old"), chord("q"), Trigger::Press, false)
+            .expect("old");
+        let reloaded = table
+            .reconcile_keeping(&[declaration("new", "e")], |name| name.starts_with("claim-"))
+            .expect("reload");
+        assert_eq!(
+            reloaded.lookup(&chord("w")).expect("claim kept").name(),
+            &name("claim-1")
+        );
+        assert!(reloaded.lookup(&chord("q")).is_none(), "the stale shortcut is gone");
+        assert_eq!(reloaded.lookup(&chord("e")).expect("new").name(), &name("new"));
     }
 
     #[test]

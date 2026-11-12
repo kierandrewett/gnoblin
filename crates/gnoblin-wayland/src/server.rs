@@ -604,9 +604,10 @@ impl Server {
                             Command::WindowManagement {
                                 options,
                                 titlebar,
+                                check_alive_timeout,
                                 reply,
                             } => {
-                                state.apply_window_management(options, titlebar);
+                                state.apply_window_management(options, titlebar, check_alive_timeout);
                                 let _ = reply.send(());
                             }
                             Command::Xwayland { session, reply } => {
@@ -615,6 +616,8 @@ impl Server {
                             Command::KeyboardSettings(keyboard) => state.apply_keyboard_settings(&keyboard),
                             Command::CursorSettings(cursor) => state.apply_cursor_settings(&cursor),
                             Command::InputSources(sources) => state.apply_input_sources(&sources),
+                            Command::Shortcuts(shortcuts) => state.apply_shortcuts(&shortcuts),
+                            Command::TouchpadGestures(gestures) => state.apply_touchpad_gestures(&gestures),
                             Command::Focus { window, reply } => {
                                 // The answer is sent after the publish, so a caller that
                                 // reads the observation on the strength of it sees what
@@ -1126,14 +1129,16 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
-    /// Applies the accepted window management options and titlebar gestures, and republishes
-    /// the seat policy the stock shell reads. Like the rules, it waits for the change to be
-    /// applied, so a reload is confirmed before the reply is sent.
-    pub fn set_window_management(&self, options: WmOptions, titlebar: TitlebarActions) {
+    /// Applies the accepted window management options, titlebar gestures and check-alive
+    /// timeout (zero stops the pings), and republishes the seat policy the stock shell reads.
+    /// Like the rules, it waits for the change to be applied, so a reload is confirmed before
+    /// the reply is sent.
+    pub fn set_window_management(&self, options: WmOptions, titlebar: TitlebarActions, check_alive_timeout: Duration) {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowManagement {
             options,
             titlebar,
+            check_alive_timeout,
             reply,
         });
         let _ = answer.recv_timeout(FOCUS_TIMEOUT);
@@ -1229,6 +1234,19 @@ impl ControlHandle {
     /// Replaces the switchable layouts from the next loop turn, as a committed document does.
     pub fn set_input_sources(&self, sources: gnoblin_config::InputSources) {
         self.control.push(Command::InputSources(Box::new(sources)));
+    }
+
+    /// Replaces the shortcuts that run a command from the next loop turn, as a committed document
+    /// does. A table the router refuses (an unknown key, a chord another shortcut owns) leaves
+    /// the previous shortcuts in force.
+    pub fn set_shortcuts(&self, shortcuts: gnoblin_config::Shortcuts) {
+        self.control.push(Command::Shortcuts(Box::new(shortcuts)));
+    }
+
+    /// Replaces the touchpad gesture bindings from the next loop turn, as a committed document
+    /// does. A table that cannot be built leaves the previous bindings in force.
+    pub fn set_touchpad_gestures(&self, gestures: Vec<gnoblin_config::Gesture>) {
+        self.control.push(Command::TouchpadGestures(gestures));
     }
 
     /// Adds a key binding to the session's router.
@@ -1429,10 +1447,12 @@ enum Command {
     },
     /// Whether window property changes land at once instead of animating.
     ReducedMotion(bool),
-    /// The window management options and titlebar gestures from an accepted document.
+    /// The window management options, titlebar gestures and check-alive timeout from an accepted
+    /// document.
     WindowManagement {
         options: WmOptions,
         titlebar: TitlebarActions,
+        check_alive_timeout: Duration,
         reply: std::sync::mpsc::SyncSender<()>,
     },
     /// The X11 session the configuration accepted, replacing the running one (`None` stops
@@ -1451,6 +1471,10 @@ enum Command {
     VisualAccessibility(Box<VisualAccessibilitySettings>),
     /// The switchable layouts the configuration accepted, applied in place.
     InputSources(Box<gnoblin_config::InputSources>),
+    /// The shortcuts the configuration accepted, replacing the table in force.
+    Shortcuts(Box<gnoblin_config::Shortcuts>),
+    /// The touchpad gesture bindings the configuration accepted, replacing the table in force.
+    TouchpadGestures(Vec<gnoblin_config::Gesture>),
     /// A tick of the session clock, in milliseconds.
     Advance(u64),
     /// A chosen keyboard layout.

@@ -1323,7 +1323,12 @@ impl Dispatcher {
                 self.control.set_window_management(
                     crate::window_management::wm_options_of(&section),
                     gnoblin_wayland::TitlebarActions::of(&section),
+                    crate::window_management::check_alive_timeout_of(&section),
                 );
+                // The shortcuts and touchpad gestures are re-derived from the accepted document
+                // too: a document with no such section drops the ones the previous one declared.
+                self.control.set_shortcuts(config.shortcuts.clone().unwrap_or_default());
+                self.control.set_touchpad_gestures(config.touchpad_gestures.clone());
                 // The X11 session follows the accepted document. An unchanged session is left running; a
                 // changed one restarts the server only when no X11 client is connected, else it is refused.
                 if let Some(desired) = xwayland
