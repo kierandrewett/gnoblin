@@ -135,12 +135,16 @@ struct SeenPort {
 /// A second client of the daemon. It records every node the daemon holds and forgets a node when the daemon
 /// removes it.
 pub struct Observer {
+    // Fields drop in declaration order, and the listener goes before the registry it listens to. A `Listener`
+    // holds only a `spa_hook` that is linked into the registry proxy's list: dropping the registry frees that list,
+    // and a hook removed afterwards writes into freed memory (valgrind: "Invalid write of size 8" in
+    // `spa_hook_remove`, "free'd" by `pw_core_disconnect`). The same rule holds for every listener in this file.
+    _listener: Listener,
+    _registry: RegistryRc,
     /// The client's loop, which every wait here iterates.
     pub mainloop: MainLoopRc,
     /// The client's connection to the daemon.
     pub core: CoreRc,
-    _registry: RegistryRc,
-    _listener: Listener,
     /// Every node currently in the registry.
     nodes: Rc<RefCell<Vec<ObservedNode>>>,
     /// Every port currently in the registry.

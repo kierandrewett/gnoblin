@@ -28,10 +28,13 @@ const CORE_ID: u32 = 0;
 
 /// A bound capture node. Dropping the proxy or the listener stops PipeWire events for it, so
 /// both are held here for as long as the global exists.
+///
+/// Fields drop in declaration order and the listener goes first: it holds only a `spa_hook` linked into the proxy's
+/// list, and removing it after the proxy is destroyed writes into freed memory.
 struct Held {
     proxy: u32,
-    _node: Node,
     _listener: NodeListener,
+    _node: Node,
 }
 
 /// Everything the PipeWire callbacks share on one connection.
