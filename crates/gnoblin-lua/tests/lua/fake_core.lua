@@ -14,6 +14,8 @@ local SCHEMA = {
             z = { type = "number", default = 0 },
             rotation = { type = "table", default = { 0, 0, 0 } }, -- radians about x, y, z, as node.toml says
             input = { type = "boolean", default = true },
+            secure = { type = "boolean", default = false },
+            id = { type = "number", readonly = true },
             width = { type = "number", default = 0 },
             height = { type = "number", default = 0 },
             opacity = { type = "number", default = 1 },
@@ -293,6 +295,9 @@ return function()
         if key == "class" then
             return r.class
         end
+        if key == "id" then
+            return id
+        end
         if key == "parent" then
             return r.parent
         end
@@ -372,6 +377,63 @@ return function()
     core.resume = coroutine.resume
     core.pcall = pcall
 
+    -- Slots, as the compositor's owner connection serves them. `host.claimed` holds the slots the shell claimed,
+    -- `host.answers` and `host.declines` what it answered and declined, in order. A test makes the compositor refuse
+    -- by setting `host.refuse` to the error text the next slot claim raises, and ends a request with `host.finish`.
+    local offers_pending, finished_requests = {}, {}
+    host.claimed, host.answers, host.declines, host.request_claims = {}, {}, {}, {}
+    function core.slot_claim(name)
+        if host.refuse then
+            error(host.refuse, 2)
+        end
+        host.claimed[name] = true
+    end
+    function core.slot_release(name)
+        host.claimed[name] = nil
+    end
+    function core.request_claim(request)
+        if finished_requests[request] then
+            error("request-finished: the request already ended", 2)
+        end
+        host.request_claims[#host.request_claims + 1] = request
+    end
+    function core.request_answer(request, text)
+        if finished_requests[request] then
+            error("request-finished: the request already ended", 2)
+        end
+        host.answers[#host.answers + 1] = { request = request, text = text }
+        finished_requests[request] = true
+    end
+    function core.request_decline(request)
+        if finished_requests[request] then
+            error("request-finished: the request already ended", 2)
+        end
+        host.declines[#host.declines + 1] = request
+        finished_requests[request] = true
+    end
+    -- The compositor offers a request to the slot, on the next frame.
+    function host.offer(spec)
+        offers_pending[#offers_pending + 1] = {
+            kind = "offered",
+            request = spec.request,
+            slot = spec.slot or "portal.ui",
+            title = spec.title or "Screenshot",
+            message = spec.message or "Share the screen?",
+            subject = spec.subject or "org.example.Requester",
+            deadline = spec.deadline or 30000,
+        }
+    end
+    -- The compositor ends a request: its requester left or it timed out. Delivered on the next frame.
+    function host.finish(request, completion)
+        finished_requests[request] = true
+        offers_pending[#offers_pending + 1] =
+            { kind = "finished", request = request, completion = completion or "ended" }
+    end
+    -- The connection for slots is gone.
+    function host.lose()
+        offers_pending[#offers_pending + 1] = { kind = "lost" }
+    end
+
     -- Runs one frame: the tick gets the native changes and the events, then the batch of writes is committed.
     -- Changes and removals made during the frame are delivered on the next one.
     -- A native node the compositor makes on its own (a new window): parentless, reported as `created` by the next frame.
@@ -397,7 +459,9 @@ return function()
         for _, e in ipairs(events or {}) do
             list[#list + 1] = e
         end
-        local wake = host.tick(now, pending, list, born)
+        local offers = offers_pending
+        offers_pending = {}
+        local wake = host.tick(now, pending, list, born, offers)
         for _, id in ipairs(closing) do
             if nodes[id] then
                 local cleared = remove(id)

@@ -132,6 +132,7 @@ mod session_status;
 pub mod shell_role;
 mod shell_scripts;
 pub mod shell_vm;
+pub mod slot_link;
 pub mod tree_core;
 pub mod tree_link;
 pub mod tree_mirror;

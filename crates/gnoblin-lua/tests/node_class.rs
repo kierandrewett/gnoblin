@@ -21,6 +21,8 @@ fn node_class_and_shell_cases_pass_on_lua_55() -> mlua::Result<()> {
             "ui_test.lua",
             "gestures_test.lua",
             "xr_test.lua",
+            "slots_test.lua",
+            "prompts_test.lua",
             "focus_test.lua",
             "snap_test.lua",
             "states_test.lua",

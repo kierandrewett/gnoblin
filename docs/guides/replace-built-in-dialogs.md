@@ -1,10 +1,71 @@
 # Replace the built-in dialogs
 
-Gnoblin draws its own consent dialog for portal requests. It is the default,
-and it is replaceable: a program of your own, such as your shell, claims the
-`portal.ui` slot and draws the dialog instead. The built-in dialog stays in
-the compositor as the fallback, so a request is never left without a way to
-ask the user.
+Gnoblin draws its own consent dialog for portal requests. It is the default
+and it is replaceable.
+
+The stock shell already replaces it: it claims the `portal.ui` and
+`prompt.secret` slots and draws both dialogs as shell nodes
+([the stock dialogs](#the-stock-shell-draws-them)). You can turn those off and
+draw your own in a shell file, or claim the slot from a program of your own.
+
+The built-in dialog stays in the compositor as the fallback, so a request is
+never left without a way to ask the user.
+
+## The stock shell draws them
+
+`data/lua/gnoblin/shell/prompts.lua` claims both slots on the shell's first
+frame, after your shell files have loaded.
+
+The consent dialog:
+
+- Opens with Deny focused. Escape denies.
+- Moves between the buttons with Tab, Left and Right. Return or Space presses
+  the focused one.
+- Ignores Allow for the first 500 ms.
+- Names the caller by the app id the portal backend verified.
+- Sits above every window, takes the keys and the pointer while it is open,
+  and is `secure`, so a View capture masks it.
+
+The passphrase dialog types into an entry that shows asterisks, answers on
+Return and refuses on Escape.
+
+To turn the stock dialogs off, set `seat.data.prompts` in a shell file
+([shell files](/user-shell)):
+
+```lua
+-- ~/.config/gnoblin/shell.lua
+seat.data.prompts = false                -- neither dialog
+seat.data.prompts = { portal = false }   -- keep only the passphrase dialog
+seat.data.prompts = { secret = false }   -- keep only the consent dialog
+```
+
+The option is read once, when the shell has loaded its files. Then claim the
+slot yourself, with a handler that draws whatever you like:
+
+```lua
+seat.data.prompts = { portal = false }
+slots.claim("portal.ui", function(offer)
+    -- offer.title, offer.message and offer.subject (the verified app id).
+    -- Draw nodes, wait for the user, then answer exactly "allow" or "deny":
+    offer:answer("deny")
+end)
+```
+
+`offer:decline()` hands the request to the built-in dialog. `offer:on_finished(fn)`
+tells you when the request ended without you. `slots.release("portal.ui")` gives
+the slot back.
+
+A handler that raises is reported and declines its offer. The handler runs in a
+coroutine, so it can `await`.
+
+A passphrase in a `prompt.secret` handler lives in a Lua string, which Lua
+cannot wipe. Do not store it in a node property or a report.
+
+Restarting the shell releases the claim, because its connection closes, and the
+built-in dialog serves until the new shell claims the slot again.
+
+To replace them from a program of your own, use the client library as below.
+One holder has a slot at a time, so turn the stock dialogs off first.
 
 ## What the built-in dialog covers
 
@@ -62,8 +123,8 @@ loop {
 }
 ```
 
-Replace the version with the one your Gnoblin build serves. The Lua runtime
-cannot claim a slot yet, so the claimant is a program like this one.
+Replace the version with the one your Gnoblin build serves. A Lua shell file
+claims the slot with `slots.claim` instead, as shown above.
 
 A second program that claims `portal.ui` while one holds it is refused. Only the
 holder gives the slot back with `release_slot`, and a holder that disconnects

@@ -83,6 +83,25 @@ What happens when an entry goes past its limit:
 - The same report is logged once every five seconds, with a count of the copies
   it held back.
 
+## Prompts
+
+The stock shell draws the consent dialog for portal requests and the keyring's
+passphrase prompt. It claims the `portal.ui` and `prompt.secret` slots on its
+first frame, after your files have loaded, so a file can change what it claims.
+Assign `seat.data.prompts` to turn them off:
+
+```lua
+-- ~/.config/gnoblin/shell.lua
+seat.data.prompts = false              -- both dialogs are the compositor's built-in ones
+seat.data.prompts = { portal = false } -- the consent dialog is built in; the passphrase dialog is the shell's
+seat.data.prompts = { secret = false } -- the passphrase dialog is built in or yours
+```
+
+The built-in dialogs serve every prompt the shell does not claim, and every
+prompt a shell dialog fails on. To draw your own, turn the stock one off and call
+`slots.claim(name, handler)` in a file; see
+[replace the built-in dialogs](/guides/replace-built-in-dialogs).
+
 ## Window rules
 
 Assign a list to `seat.data.window_rules`. A rule is a `match` table and the

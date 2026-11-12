@@ -78,6 +78,7 @@ end
 -- A coroutine belongs to the node whose handler started it and stops when that node is destroyed.
 local owners = setmetatable({}, { __mode = "k" })
 local labels = setmetatable({}, { __mode = "k" }) -- what a coroutine is, named in a report of its failure
+local fail_hooks = setmetatable({}, { __mode = "k" }) -- what to do when a coroutine fails
 local function resume(co, ...)
     local o = owners[co]
     if o and not nodes[rawget(o, ID)] then
@@ -89,6 +90,10 @@ local function resume(co, ...)
     current = outer
     if not ok then
         core.report((labels[co] or "handler") .. ": " .. tostring(err))
+        local hook = fail_hooks[co]
+        if hook then
+            hook()
+        end
     end
 end
 local function start(o, label, fn, ...)
@@ -167,6 +172,145 @@ end
 -- Logs `message` as a script report. It never raises, so a refused rule or set does not stop the handler reporting it.
 function report(message)
     core.report(tostring(message))
+end
+
+-- Slots. A slot is a prompt the compositor serves through whoever claims it: `portal.ui` is the consent dialog an app's
+-- portal request asks, `prompt.secret` the passphrase prompt. The compositor's own dialog is the default and the
+-- fallback, so a shell that claims a slot replaces the dialog, and one that cannot answer lets the compositor's serve.
+--
+--   slots.claim("portal.ui", function(offer) ... end)   take the slot; refused with the compositor's code when it is
+--                                                       held, or when this is not the session owner's connection
+--   slots.release("portal.ui")                          give it back; the compositor's dialog serves again
+--
+-- Each request for the slot reaches the handler as an offer, in a coroutine of its own, so the handler can `await`.
+-- An offer has `request`, `slot`, `title` (what asked), `message` (the question), `subject` (who asked: the app id
+-- the portal verified, never text the app wrote) and `deadline`, and:
+--
+--   offer:answer(text)       settle it. `portal.ui` takes exactly "allow" or "deny"; `prompt.secret` takes the
+--                            passphrase. An answer is never logged or kept: it goes to the compositor and no further.
+--   offer:decline()          this shell will not answer; the compositor's own dialog serves the request
+--   offer:on_finished(fn)    `fn(offer, completion)` when the request ends without this shell: "ended" (its
+--                            requester left), "timed-out", "refused", or "lost" (the connection went)
+--   offer.finished           true once it has ended or been settled
+--
+-- A handler that raises is reported and declines its offer. One that never answers lets the deadline pass, and the
+-- compositor takes the request back.
+local slot_handlers, live_offers = {}, {}
+local Offer = {}
+Offer.__index = Offer
+local function finish(offer, completion)
+    if offer.finished then
+        return
+    end
+    offer.finished, offer.completion = true, completion
+    live_offers[offer.request] = nil
+    local callbacks = offer.callbacks
+    offer.callbacks = {}
+    for _, fn in ipairs(callbacks) do
+        start(nil, "offer finished handler", fn, offer, completion)
+    end
+end
+function Offer:answer(text)
+    if self.finished then
+        error(("the offer is over (%s)"):format(self.completion), 2)
+    end
+    local ok, err = pcall(core.request_answer, self.request, text)
+    if not ok then
+        finish(self, "refused")
+        error(err, 2)
+    end
+    finish(self, "answered")
+end
+function Offer:decline()
+    if self.finished then
+        return
+    end
+    local ok, err = pcall(core.request_decline, self.request)
+    finish(self, "declined")
+    if not ok then
+        error(err, 2)
+    end
+end
+function Offer:on_finished(fn)
+    if self.finished then
+        start(nil, "offer finished handler", fn, self, self.completion)
+    else
+        table.insert(self.callbacks, fn)
+    end
+end
+slots = {}
+function slots.claim(name, handler)
+    if type(name) ~= "string" or type(handler) ~= "function" then
+        error("slots.claim(name, handler): a slot name and a function(offer)", 2)
+    end
+    if slot_handlers[name] then
+        error(("slots.claim: this shell already claims %s"):format(name), 2)
+    end
+    core.slot_claim(name)
+    slot_handlers[name] = handler
+end
+function slots.release(name)
+    if not slot_handlers[name] then
+        return
+    end
+    slot_handlers[name] = nil
+    for _, offer in pairs(live_offers) do
+        if offer.slot == name then
+            finish(offer, "ended")
+        end
+    end
+    core.slot_release(name)
+end
+function slots.claimed(name)
+    return slot_handlers[name] ~= nil
+end
+local function offered(e)
+    local offer = setmetatable({
+        request = e.request,
+        slot = e.slot,
+        title = e.title,
+        message = e.message,
+        subject = e.subject,
+        deadline = e.deadline,
+        callbacks = {},
+        finished = false,
+    }, Offer)
+    -- Claiming is what makes this shell the one that answers. A request someone else took, or that is already over,
+    -- is not ours to draw.
+    if not pcall(core.request_claim, e.request) then
+        return
+    end
+    local handler = slot_handlers[e.slot]
+    if not handler then
+        pcall(core.request_decline, e.request)
+        return
+    end
+    live_offers[e.request] = offer
+    -- No pcall around the handler: it may await, and a pcall of the host's cannot yield. A failure ends the coroutine,
+    -- is reported by `resume`, and runs the hook that declines the offer.
+    local co = coroutine.create(handler)
+    labels[co] = ("slot %s handler"):format(e.slot)
+    fail_hooks[co] = function()
+        if not offer.finished then
+            pcall(offer.decline, offer)
+        end
+    end
+    resume(co, offer)
+end
+local function slot_event(e)
+    if e.kind == "offered" then
+        offered(e)
+    elseif e.kind == "finished" then
+        local offer = live_offers[e.request]
+        if offer then
+            finish(offer, e.completion)
+        end
+    elseif e.kind == "lost" then -- the connection went: every claim and offer with it
+        slot_handlers = {}
+        for _, offer in pairs(live_offers) do
+            finish(offer, "lost")
+        end
+    end
 end
 
 -- The paint list. A Canvas's `draw` is a Lua array of drawing ops; `paint_encode` turns it into the bytes of the
@@ -283,7 +427,11 @@ local function wrap(id) -- a node Gnoblin made gets its Lua face
     if nodes[id] then
         return nodes[id]
     end
-    local cls = classes[core.get(id, "class")]
+    local known, name = pcall(core.get, id, "class")
+    if not known then -- a node the compositor has dropped since the reference was written: nothing to wrap
+        return nil
+    end
+    local cls = classes[name]
     if not cls then
         return nil
     end -- a native node the class table does not know
@@ -612,6 +760,12 @@ meta(Node).signals.ready = true
 meta(Node).signals.destroyed = true
 -- `Floating:on_child_added` is a handler only when the signal is declared before the classes settle.
 meta(Node).signals.child_added = true
+-- The input signals the compositor sends as events for a node (design/node-api-refactor.md, section 3), and `request`
+-- for a window's client request. The tree schema declares only `destroyed`, so without these `Window:on_press` and
+-- `Entry:on_key` would be plain methods that nothing ever calls.
+for _, name in ipairs({ "press", "release", "motion", "scroll", "enter", "leave", "key", "request" }) do
+    meta(Node).signals[name] = true
+end
 for _, c in pairs(classes) do
     settle(meta(c))
 end
@@ -855,9 +1009,17 @@ local function announce_snapshot()
     end
 end
 
+-- An input event can name a node the shell destroyed since: a key's release arrives after the press closed its
+-- dialog. Such an event has no one to go to.
+local function live(id)
+    local ok, n = pcall(wrap, id)
+    if ok then
+        return n
+    end
+end
 -- The one entry the host calls each frame: the frame clock, changed native properties, events,
--- and the ids of nodes Gnoblin created this batch.
-return function(t, changes, events, created)
+-- the ids of nodes Gnoblin created this batch, and what the compositor sent for the slots this shell claims.
+return function(t, changes, events, created, offers)
     now = t
     if not booted then
         booted = true
@@ -876,7 +1038,17 @@ return function(t, changes, events, created)
             touch(n, c[2])
         end
     end
+    for _, o in ipairs(offers or {}) do
+        slot_event(o)
+    end
     for _, e in ipairs(events) do
+        -- An input or request event carries its details (`x`, `y`, `button`, `dx`, `dy`, `key`, `text`, `pressed`,
+        -- `request`) as fields of the event table its handlers receive.
+        if e.fields then
+            for k, v in pairs(e.fields) do
+                e[k] = v
+            end
+        end
         if e.chord then -- a claimed chord: routed to the seat that made the claim
             local seat = claims[e.chord.claim]
             if seat and nodes[rawget(seat, ID)] then
@@ -888,7 +1060,7 @@ return function(t, changes, events, created)
                 emit(seat, "gesture", e.gesture)
             end
         elseif e.bubbles then -- input: the path is fixed first, as in the DOM
-            e.target = wrap(e.target)
+            e.target = live(e.target)
             e.stop = function(self)
                 self.stopped = true
             end
@@ -912,10 +1084,18 @@ return function(t, changes, events, created)
             if e.type == "destroyed" then
                 n = nodes[e.target]
             else
-                n = wrap(e.target)
+                n = live(e.target)
             end
             if n then
-                emit(n, e.type, table.unpack(e.args or {}))
+                if e.fields then -- a request, an enter or a leave: the node alone, with the event's details
+                    e.target = n
+                    e.stop = function(self)
+                        self.stopped = true
+                    end
+                    emit(n, e.type, e)
+                else
+                    emit(n, e.type, table.unpack(e.args or {}))
+                end
             end
             if e.type == "destroyed" then
                 if n then -- its bindings must not run again against a node that is gone

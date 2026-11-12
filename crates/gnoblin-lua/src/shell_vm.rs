@@ -16,6 +16,7 @@
 //! (`ShellLimits`): the frame as a whole, and each handler, binding or timer inside it. A handler that
 //! runs away is stopped and reported by name, and the frame goes on with the next one.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 use std::rc::Rc;
@@ -25,9 +26,11 @@ use gnoblin_lua_sandbox::{Guard, Limits, Profile};
 use mlua::{Function, Lua, MultiValue, Table, Thread, Value};
 
 use crate::require::{ModuleRoots, Modules};
+use crate::slot_link::{self, SharedSlots, SlotEvent, SlotLink};
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
 use crate::tree_mirror::{
-    LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId, SnapshotNode, TreeLink,
+    EventFields, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId,
+    SnapshotNode, TreeLink,
 };
 
 /// The budgets the shell VM runs under. Three kinds of entry into Lua, each with its own:
@@ -152,6 +155,10 @@ pub struct LuaEvent {
     pub gesture: Option<LuaGesture>,
     /// Positional strings: an `answer` event carries the call's result and its error, else empty.
     pub args: Vec<String>,
+    /// The input or request details of a pointer, key or request event: `x`, `y`, `button`, `dx`, `dy`, `key`, `text`,
+    /// `pressed`, `request`. node.lua copies them onto the event table its handlers receive. `None` for every
+    /// other kind of event.
+    pub fields: Option<EventFields>,
 }
 
 /// What one frame produced for the caller.
@@ -190,6 +197,9 @@ pub struct ShellVm {
     /// How many transactions in a row were refused `stale-base` and sent again: reset by an applied one. Once it
     /// reaches [`STALE_RETRIES`] the refused op is dropped rather than sent again.
     stale_refusals: u32,
+    /// The shell's connection for slots and requests, shared with the `core.slot_*` and `core.request_*` calls.
+    /// Empty until [`ShellVm::set_slot_link`], and again once the connection is lost.
+    slots: SharedSlots,
 }
 
 /// The calls whose text is content and not a secret: a `Canvas.measure` carries the string to measure, a
@@ -269,6 +279,8 @@ impl ShellVm {
         .map_err(lua_error)?;
         let core_table = tree_core::install(&lua, &core).map_err(lua_error)?;
         install_entries(&lua, &core_table, &guard, limits.entry).map_err(lua_error)?;
+        let slots: SharedSlots = Rc::new(RefCell::new(None));
+        slot_link::install(&lua, &core_table, &slots).map_err(lua_error)?;
         let shipped = lua_dir.parent().unwrap_or(lua_dir).to_path_buf();
         install_require(&lua, Modules::new(ModuleRoots { shipped, user: None })).map_err(lua_error)?;
         let path = lua_dir.join("node.lua");
@@ -293,6 +305,7 @@ impl ShellVm {
             sent: VecDeque::new(),
             retry: Vec::new(),
             stale_refusals: 0,
+            slots,
         })
     }
 
@@ -358,6 +371,7 @@ impl ShellVm {
                                 chord: None,
                                 gesture: None,
                                 args: Vec::new(),
+                                fields: None,
                             }),
                     );
                     self.apply_changes(serial, &changes)?;
@@ -449,14 +463,22 @@ impl ShellVm {
                         }
                     }
                 }
-                LuaIncoming::Event(event) => tree_events.push(LuaEvent {
-                    target: event.node,
-                    kind: event.kind,
-                    bubbles: false,
-                    chord: None,
-                    gesture: None,
-                    args: Vec::new(),
-                }),
+                LuaIncoming::Event(event) => {
+                    // A pointer or key event is delivered as the DOM delivers it: to the node under the ray or
+                    // holding the focus, and up its ancestors until a handler stops it. A request, an enter and a
+                    // leave go to their node alone. Both carry their details as `e.x`, `e.key` and so on.
+                    let bubbles = matches!(event.kind.as_str(), "press" | "release" | "motion" | "scroll" | "key");
+                    let carries_fields = bubbles || matches!(event.kind.as_str(), "enter" | "leave" | "request");
+                    tree_events.push(LuaEvent {
+                        target: event.node,
+                        kind: event.kind,
+                        bubbles,
+                        chord: None,
+                        gesture: None,
+                        args: Vec::new(),
+                        fields: carries_fields.then_some(event.fields),
+                    });
+                }
                 LuaIncoming::Chord(chord) => tree_events.push(LuaEvent {
                     target: 0,
                     kind: "chord".to_owned(),
@@ -464,6 +486,7 @@ impl ShellVm {
                     chord: Some(chord),
                     gesture: None,
                     args: Vec::new(),
+                    fields: None,
                 }),
                 LuaIncoming::Gesture(gesture) => tree_events.push(LuaEvent {
                     target: 0,
@@ -472,6 +495,7 @@ impl ShellVm {
                     chord: None,
                     gesture: Some(gesture),
                     args: Vec::new(),
+                    fields: None,
                 }),
                 LuaIncoming::Attached(_) | LuaIncoming::Snapshot { .. } => {
                     return Err(ShellVmError::Link("attach or snapshot after boot".to_owned()));
@@ -486,6 +510,7 @@ impl ShellVm {
                             chord: None,
                             gesture: None,
                             args: vec![String::from_utf8_lossy(&result).into_owned(), error],
+                            fields: None,
                         }),
                         None => diagnostics.push(format!("answer {token} has no pending call")),
                     }
@@ -502,7 +527,8 @@ impl ShellVm {
             touched.retain(|(node, _)| mirror.node(*node).is_some());
             created.retain(|node| mirror.node(*node).is_some());
         }
-        let wake = self.tick_lua(now, &touched, &created, events.into_iter().chain(tree_events))?;
+        let offers = self.poll_slots(&mut diagnostics);
+        let wake = self.tick_lua(now, &touched, &created, events.into_iter().chain(tree_events), &offers)?;
         let reports = self.core.borrow_mut().take_reports();
         diagnostics.extend(self.throttle(now, reports));
 
@@ -607,6 +633,7 @@ impl ShellVm {
         touched: &[(u64, String)],
         created: &[u64],
         events: impl Iterator<Item = LuaEvent>,
+        offers: &[SlotEvent],
     ) -> Result<Option<f64>> {
         let lua = &self.lua;
         let changes = lua.create_table().map_err(lua_error)?;
@@ -650,12 +677,87 @@ impl ShellVm {
                 claim.set("rotation", gesture.rotation).map_err(lua_error)?;
                 entry.set("gesture", claim).map_err(lua_error)?;
             }
+            if let Some(fields) = &event.fields {
+                let table = lua.create_table().map_err(lua_error)?;
+                table.set("x", fields.x).map_err(lua_error)?;
+                table.set("y", fields.y).map_err(lua_error)?;
+                table.set("button", fields.button as i64).map_err(lua_error)?;
+                table.set("dx", fields.dx).map_err(lua_error)?;
+                table.set("dy", fields.dy).map_err(lua_error)?;
+                table.set("key", fields.key.as_str()).map_err(lua_error)?;
+                table.set("text", fields.text.as_str()).map_err(lua_error)?;
+                table.set("pressed", fields.pressed).map_err(lua_error)?;
+                table.set("request", fields.request.as_str()).map_err(lua_error)?;
+                entry.set("fields", table).map_err(lua_error)?;
+            }
             events_table.set(i + 1, entry).map_err(lua_error)?;
         }
+        let offers_table = self.offers_table(offers).map_err(lua_error)?;
         self.guard.begin(&self.limits.frame);
         self.tick
-            .call((now, changes, events_table, created_table))
+            .call((now, changes, events_table, created_table, offers_table))
             .map_err(lua_error)
+    }
+
+    /// Connects the shell's connection for slots and requests. `slots.claim` in the stock shell and the user's
+    /// files claims through it; without one every `slots` call fails with `no-slot-connection`.
+    pub fn set_slot_link(&mut self, link: Box<dyn SlotLink>) {
+        *self.slots.borrow_mut() = Some(link);
+    }
+
+    /// What the compositor sent on the slot connection since the last frame. A failed connection is dropped,
+    /// reported once, and passed on as [`SlotEvent::Lost`]: the compositor released every claim with it, the
+    /// offers the shell had open are over, and the built-in dialogs serve from here on. The tree link is not
+    /// touched, so the rest of the shell goes on.
+    fn poll_slots(&mut self, diagnostics: &mut Vec<String>) -> Vec<SlotEvent> {
+        let polled = match self.slots.borrow_mut().as_mut() {
+            Some(link) => link.poll(),
+            None => return Vec::new(),
+        };
+        match polled {
+            Ok(events) => events,
+            Err(error) => {
+                *self.slots.borrow_mut() = None;
+                diagnostics.push(format!(
+                    "the slot connection is lost ({error}); the built-in dialogs serve prompts again"
+                ));
+                vec![SlotEvent::Lost]
+            }
+        }
+    }
+
+    /// The fifth argument of the tick: one table per slot event, `kind` first.
+    fn offers_table(&self, offers: &[SlotEvent]) -> mlua::Result<Table> {
+        let table = self.lua.create_table()?;
+        for (index, event) in offers.iter().enumerate() {
+            let entry = self.lua.create_table()?;
+            match event {
+                SlotEvent::Offered {
+                    request,
+                    deadline,
+                    slot,
+                    title,
+                    message,
+                    subject,
+                } => {
+                    entry.set("kind", "offered")?;
+                    entry.set("request", *request as i64)?;
+                    entry.set("deadline", *deadline as i64)?;
+                    entry.set("slot", slot.as_str())?;
+                    entry.set("title", title.as_str())?;
+                    entry.set("message", message.as_str())?;
+                    entry.set("subject", self.lua.create_string(subject)?)?;
+                }
+                SlotEvent::Finished { request, completion } => {
+                    entry.set("kind", "finished")?;
+                    entry.set("request", *request as i64)?;
+                    entry.set("completion", *completion)?;
+                }
+                SlotEvent::Lost => entry.set("kind", "lost")?,
+            }
+            table.set(index + 1, entry)?;
+        }
+        Ok(table)
     }
 
     /// Passes on each distinct report text at most once per [`REPORT_INTERVAL`] seconds. The

@@ -160,6 +160,75 @@ return {
             H.same(hits, { "inner" })
         end,
     },
+    {
+        "the details of an input event are fields of the table its handlers receive",
+        function()
+            local _, host = H.fresh()
+            local node = Canvas({})
+            root:add(node)
+            local got
+            function node:on_key(e)
+                got = e
+            end
+            local id = host.ids("Canvas")[1]
+            host.frame(0, {
+                {
+                    type = "key",
+                    bubbles = true,
+                    target = id,
+                    args = {},
+                    fields = {
+                        key = "a",
+                        text = "a",
+                        pressed = true,
+                        x = 0,
+                        y = 0,
+                        button = 0,
+                        dx = 0,
+                        dy = 0,
+                        request = "",
+                    },
+                },
+            })
+            H.check(
+                got and got.key == "a" and got.text == "a" and got.pressed == true,
+                "the key's fields must reach the handler"
+            )
+            H.check(got.target == node, "the target is the node, not its id")
+        end,
+    },
+    {
+        "a request event reaches its node alone with its request name",
+        function()
+            local _, host = H.fresh()
+            local win = Window({})
+            root:add(win)
+            local asked
+            function win:on_request(e)
+                asked = e.request
+            end
+            host.frame(0, {
+                {
+                    type = "request",
+                    bubbles = false,
+                    target = host.ids("Window")[1],
+                    args = {},
+                    fields = {
+                        request = "maximize",
+                        key = "",
+                        text = "",
+                        pressed = false,
+                        x = 0,
+                        y = 0,
+                        button = 0,
+                        dx = 0,
+                        dy = 0,
+                    },
+                },
+            })
+            H.check(asked == "maximize", "the handler must read e.request, got " .. tostring(asked))
+        end,
+    },
 
     {
         "a press on a child reaches its parent when no handler stops it",

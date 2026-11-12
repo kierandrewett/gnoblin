@@ -184,6 +184,41 @@ pub struct TxReply {
     pub removed: Vec<NodeId>,
 }
 
+/// The fields an input or request event carries, as the compositor's `event` signal names them. Which ones mean
+/// something depends on the kind: `x` and `y` (node-local) for the pointer kinds, `button` for a press and a
+/// release, `dx` and `dy` for a scroll, `key`, `text` and `pressed` for a key, `request` for a client request.
+#[derive(Clone, Default, PartialEq)]
+pub struct EventFields {
+    pub x: f64,
+    pub y: f64,
+    pub button: u64,
+    pub dx: f64,
+    pub dy: f64,
+    /// The xkbcommon name of the keysym (`Return`, `Escape`, `a`). Typed into a passphrase entry it is the
+    /// passphrase, so `Debug` shows only its length.
+    pub key: String,
+    /// What the key types, empty for a key that types nothing. `Debug` shows only its length.
+    pub text: String,
+    pub pressed: bool,
+    pub request: String,
+}
+
+impl std::fmt::Debug for EventFields {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EventFields")
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("button", &self.button)
+            .field("dx", &self.dx)
+            .field("dy", &self.dy)
+            .field("key", &format_args!("<{} bytes>", self.key.len()))
+            .field("text", &format_args!("<{} bytes>", self.text.len()))
+            .field("pressed", &self.pressed)
+            .field("request", &self.request)
+            .finish()
+    }
+}
+
 /// An input event addressed to a node.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreeEvent {
@@ -191,6 +226,7 @@ pub struct TreeEvent {
     pub seq: u64,
     pub node: NodeId,
     pub kind: String,
+    pub fields: EventFields,
 }
 
 /// A claimed chord the compositor saw change state: `claim` is the id the Lua side allocated.

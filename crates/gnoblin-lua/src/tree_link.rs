@@ -18,7 +18,7 @@ use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
 
 use crate::tree_mirror::{
-    Attached, LinkError, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue,
+    Attached, EventFields, LinkError, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue,
     MirrorChangeKind, SnapshotNode, TreeEvent, TreeLink, TxReply,
 };
 
@@ -325,6 +325,17 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                 seq: payload.seq,
                 node: payload.node,
                 kind: payload.kind,
+                fields: EventFields {
+                    x: payload.x,
+                    y: payload.y,
+                    button: payload.button,
+                    dx: payload.dx,
+                    dy: payload.dy,
+                    key: payload.key,
+                    text: payload.text,
+                    pressed: payload.pressed,
+                    request: payload.request,
+                },
             }))
         }
         (Some(Kind::Event(_)), "chord") => {

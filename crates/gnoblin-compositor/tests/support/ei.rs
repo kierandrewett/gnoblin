@@ -27,6 +27,9 @@ pub struct EiClient {
     pub serial: u32,
     /// Whether the server told this client it was disconnected.
     pub disconnected: bool,
+    /// Whether `start_emulating` was sent. The protocol starts a sequence once; a client that keeps typing sends it
+    /// once and then only frames.
+    emulating: bool,
 }
 
 /// One device the server created, with its interfaces and resume state.
@@ -57,6 +60,7 @@ impl EiClient {
             devices: Vec::new(),
             serial: handshake.serial,
             disconnected: false,
+            emulating: false,
         }
     }
 
@@ -166,7 +170,10 @@ impl EiClient {
     /// Presses or releases `key` on the keyboard device, which must be resumed.
     pub fn key(&mut self, key: u32, pressed: bool) {
         let (wire, serial, keyboard) = self.device_with::<ei::Keyboard>();
-        wire.start_emulating(serial, 1);
+        if !self.emulating {
+            wire.start_emulating(serial, 1);
+            self.emulating = true;
+        }
         keyboard.key(
             key,
             if pressed {

@@ -146,11 +146,14 @@ function Entry:build()
     }
 end
 function Entry:on_key(e)
+    if e.pressed == false then -- the key coming up types nothing
+        return
+    end
     if e.key == "Return" then
         self.submit:emit(self.text)
     elseif e.key == "BackSpace" then
         self.text = self.text:sub(1, (utf8.offset(self.text, -1) or 1) - 1)
-    elseif e.text then
+    elseif e.text and e.text ~= "" then
         self.text = self.text .. e.text
     end
 end

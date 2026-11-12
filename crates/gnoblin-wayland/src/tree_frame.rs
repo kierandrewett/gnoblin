@@ -212,6 +212,21 @@ pub fn keysym_name(keysym: Keysym) -> String {
     xkb::keysym_get_name(xkb::Keysym::new(keysym.get()))
 }
 
+/// The text a keysym types, the `text` a shell reads from a key event: `a`, `A`, `!`, a space. A key that types
+/// nothing (`Return`, `Tab`, `BackSpace`, `Escape`, an arrow, a modifier) reads as the empty string, and so does a
+/// control character: the shell reads those keys by `key`, never as text to insert.
+#[must_use]
+pub fn keysym_text(keysym: Keysym) -> String {
+    let text = xkb::keysym_to_utf8(xkb::Keysym::new(keysym.get()));
+    // xkbcommon writes the character and a terminating NUL; the NUL is not part of what the key types.
+    let text = text.trim_end_matches('\0');
+    if text.chars().any(char::is_control) {
+        String::new()
+    } else {
+        text.to_owned()
+    }
+}
+
 /// What a delivered event says: a client request that needs policy, or a pointer edge.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TreeFrameInput {
@@ -231,7 +246,29 @@ pub enum TreeFrameInput {
 
 #[cfg(test)]
 mod tests {
-    use super::TreeRequest;
+    use super::{TreeRequest, keysym_name, keysym_text};
+    use gnoblin_types::Keysym;
+
+    #[test]
+    fn a_key_that_types_a_character_reads_as_that_text_and_the_others_as_none() {
+        // The failure this prevents: a text entry that cannot be typed into, or one that inserts a carriage
+        // return or an escape into a passphrase. The compositor names the keysym; it also says what it types.
+        for (keysym, name, text) in [
+            (0x61, "a", "a"),
+            (0x41, "A", "A"),
+            (0x21, "exclam", "!"),
+            (0x20, "space", " "),
+            (0xff0d, "Return", ""),
+            (0xff09, "Tab", ""),
+            (0xff08, "BackSpace", ""),
+            (0xff1b, "Escape", ""),
+            (0xffe1, "Shift_L", ""),
+            (0xff51, "Left", ""),
+        ] {
+            assert_eq!(keysym_name(Keysym::new(keysym)), name);
+            assert_eq!(keysym_text(Keysym::new(keysym)), text, "text of {name}");
+        }
+    }
 
     #[test]
     fn an_activation_request_is_named_for_the_shell() {

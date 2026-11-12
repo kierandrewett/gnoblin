@@ -10,6 +10,9 @@ Entry:extend("Launcher")({
 -- Key presses are a signal: the handler chains after Entry's, so Entry's typing still runs first. Escape and
 -- Return are the launcher's own keys.
 function Launcher:on_key(e)
+    if e.pressed == false then
+        return
+    end
     if e.key == "Escape" then
         self:destroy()
     elseif e.key == "Return" then

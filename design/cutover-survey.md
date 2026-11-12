@@ -679,6 +679,14 @@ Order: 8B and 8C do not need the painter and can land first, in that order (both
 long pole and has no overlap with them. 8D needs nothing from 8A: the built-in dialog stays, and a shell that draws its own uses the Canvas painter and `Seat:grab` when those exist. 8E is optional for step 8's deletions
 and is in scope only if O14 says layer-shell becomes nodes in this step.
 
+8D status: done, including the stock shell. `data/lua/gnoblin/shell/prompts.lua` claims `portal.ui` and `prompt.secret` over a second owner
+connection the shell VM holds (`crates/gnoblin-lua/src/slot_link.rs`, Lua `slots.claim`), so the replacement is no longer only a program of
+the user's own. The slots stay on the IPC `gnoblin` namespace and not on the tree: no `Prompt` node class, because a request is not a node
+property (`node-api-refactor.md` O6 keeps the slot registry as the way a shell claims them). The stock dialogs are on by default, off with
+`seat.data.prompts = false`. Proven by `tests/shell_vm.rs` (`prompts`: real VM, real EI keys, the built-in dialog stays closed while the
+shell holds the claim, a failing or silent handler and a killed shell fall back to the built-in dialog) and `tests/portal_provider.rs` (a deny and
+an early allow are terminal; a non-owner connection is refused every slot and request member).
+
 **Status, lane 8B: done** (owner decision O1 default selected, owner may revisit). `gnoblin_window_frame_v1` and its XML,
 `Global::GnoblinWindowFrameV1Frame`, `ClientRole::FrameRenderer`, `State::window_frame` and the `frame-renderers` section
 are deleted, with the `bitflags` dependency, the `text-list-map` schema kind and `IdShape::Renderer`. `promise_role`,

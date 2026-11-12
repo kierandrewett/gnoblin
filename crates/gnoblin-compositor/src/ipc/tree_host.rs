@@ -25,7 +25,7 @@ use gnoblin_secret::SecretText;
 use gnoblin_types::{ClientId, NodeId};
 use gnoblin_wayland::{
     ChordEvent, ChordState, FrameTreeEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
-    keysym_name,
+    keysym_name, keysym_text,
 };
 
 use super::server::IpcEvent;
@@ -391,6 +391,7 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
                 TreeInput::Key { pressed, keysym } => EventPayload {
                     kind,
                     key: keysym_name(keysym),
+                    text: keysym_text(keysym),
                     pressed,
                     ..base
                 },

@@ -19,6 +19,7 @@ use gnoblin_client::unix::{UnixTransport, socket_path};
 use crate::module_dir::{default_prefix, installed_module_dir};
 use crate::role::version;
 use crate::shell_vm::{ShellLimits, ShellVm, ShellVmError};
+use crate::slot_link::ClientSlotLink;
 use crate::tree_core::{ClassSpec, tree_classes};
 use crate::tree_link::SocketTreeLink;
 
@@ -87,6 +88,11 @@ impl ShellRole {
     /// Run a Lua chunk inside the VM, as a named chunk.
     pub fn run(&mut self, name: &str, src: &str) -> Result<Option<String>, ShellVmError> {
         self.vm.run(name, src)
+    }
+
+    /// Gives the VM its connection for slots and requests (see [`ShellVm::set_slot_link`]).
+    pub fn set_slot_link(&mut self, link: Box<dyn crate::slot_link::SlotLink>) {
+        self.vm.set_slot_link(link);
     }
 
     /// Loads the stock shell and the user's shell files into the VM (see [`ShellVm::load_shell`]). The errors the
@@ -199,7 +205,22 @@ pub fn connect_owner_socket_with_limits(
         .into_inner()
         .into_stream()
         .map_err(|error| ShellVmError::Link(error.to_string()))?;
-    connect_shell(dir, stream, tree_classes(), limits)
+    let mut role = connect_shell(dir, stream, tree_classes(), limits)?;
+    // Slots and requests travel on the `gnoblin` namespace, which the tree socket does not carry, so the shell
+    // holds a second owner connection for them. Without it the shell still runs and the compositor's built-in
+    // dialogs serve every prompt, so a failure to open it is reported and not fatal.
+    match ClientSlotLink::connect(&path, version()) {
+        Ok(link) => role.set_slot_link(Box::new(link)),
+        Err(error) => {
+            crate::log::warn!(
+                area = "shell-vm",
+                "the shell has no slot connection ({error}); the built-in dialogs serve prompts"
+            );
+            role.diagnostics
+                .push(format!("the shell has no slot connection ({error})"));
+        }
+    }
+    Ok(role)
 }
 
 /// What the runtime role runs: [`connect_owner_socket`], then the stock shell and the user's shell files.

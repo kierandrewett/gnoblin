@@ -1404,3 +1404,636 @@ fn a_view_capture_the_shell_asks_for_writes_a_png_and_answers_its_path() {
         role.diagnostics()
     );
 }
+
+// ---- Prompts: the stock shell replaces the built-in dialogs (data/lua/gnoblin/shell/prompts.lua) --------------------
+//
+// The compositor is a running session, the portal relay, the input role and the services role are real privileged
+// connections, the shell is the stock shell in a real VM over the owner socket, and the keys come from an EI client
+// on the session's own input path. The frame clock is the wall clock, as the runtime role runs it: the compositor's
+// 500 ms arming is wall time, and the dialog arms on the same clock.
+
+mod prompts {
+    use std::os::unix::net::UnixStream;
+
+    use gnoblin_client::unix::UnixTransport;
+    use gnoblin_client::wire::{PortalRequest, VerifiedCaller, portal_key, portal_ui, read_portal_outcome};
+    use gnoblin_client::{Client as IpcClient, Event};
+    use gnoblin_input_eis::Caps;
+    use gnoblin_model::{Fields, RequestCompletion};
+
+    use super::support::ei::EiClient;
+    use super::support::{Session, Wire};
+    use super::{
+        Duration, Instant, PaintedCanvas, ShellRole, connect, connect_session, load_stock_shell, painted_canvases,
+        user_config,
+    };
+
+    const KEY_ESC: u32 = 1;
+    const KEY_TAB: u32 = 15;
+    const KEY_ENTER: u32 = 28;
+    const KEY_I: u32 = 23;
+    const KEY_H: u32 = 35;
+
+    const APP: &str = "org.example.Requester";
+    const QUESTION: &str = "Share the screen?";
+    /// The fills the stock consent dialog paints: the card, a focused button, an enabled one, a disabled one.
+    const CARD: [u8; 3] = [0x1e, 0x1e, 0x2e];
+    const FOCUSED: [u8; 3] = [0x89, 0xb4, 0xfa];
+    const DISABLED: [u8; 3] = [0x2a, 0x2a, 0x3a];
+    /// The colours a button's label is painted in: on the focused button, on a live one and on a disabled one.
+    const LABEL_FOCUSED: [u8; 3] = [0x11, 0x11, 0x1b];
+    const LABEL_LIVE: [u8; 3] = [0xcd, 0xd6, 0xf4];
+    const LABEL_DISABLED: [u8; 3] = [0x6c, 0x70, 0x86];
+
+    fn consent(timeout_ms: u64) -> PortalRequest {
+        PortalRequest {
+            interface: "Screenshot".to_owned(),
+            caller: VerifiedCaller::new(0, APP),
+            prompt: QUESTION.to_owned(),
+            timeout_ms,
+            options: Fields::default(),
+            parent_window: String::new(),
+        }
+    }
+
+    fn end_for(ends: &mut Vec<(String, UnixStream)>, role: &str) -> Wire {
+        let index = ends
+            .iter()
+            .position(|(name, _)| name == role)
+            .unwrap_or_else(|| panic!("the session handed out no end for {role}"));
+        let (_, stream) = ends.remove(index);
+        let wire = Wire::over(stream);
+        wire.set_read_timeout(Duration::from_secs(5));
+        wire
+    }
+
+    /// How a settled portal request ended, as the relay is told.
+    fn outcome(relay: &mut Wire) -> Option<(String, String)> {
+        relay.set_read_timeout(Duration::from_millis(1));
+        let reply = relay.receive_within()?;
+        Some(read_portal_outcome(reply.payload().unwrap_or(&[])).expect("a portal outcome reply"))
+    }
+
+    /// Every text a painted canvas of the compositor's tree holds.
+    fn texts(canvases: &[PaintedCanvas]) -> Vec<String> {
+        canvases
+            .iter()
+            .flat_map(|canvas| {
+                canvas.list.ops.iter().filter_map(|op| match op {
+                    gnoblin_paint::PaintOp::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+            })
+            .collect()
+    }
+
+    /// How many canvases paint a rectangle of `rgb`, opaque, with a width.
+    fn filled(canvases: &[PaintedCanvas], rgb: [u8; 3]) -> usize {
+        canvases
+            .iter()
+            .filter(|canvas| {
+                canvas.list.ops.iter().any(|op| {
+                    matches!(op, gnoblin_paint::PaintOp::Rect { fill, width, .. }
+                        if *width > 0.0 && fill.a == 255 && [fill.r, fill.g, fill.b] == rgb)
+                })
+            })
+            .count()
+    }
+
+    /// The colour the text `label` is painted in, when it is painted.
+    fn label_colour(canvases: &[PaintedCanvas], label: &str) -> Option<[u8; 3]> {
+        canvases.iter().find_map(|canvas| {
+            canvas.list.ops.iter().find_map(|op| match op {
+                gnoblin_paint::PaintOp::Text { text, colour, .. } if text == label => {
+                    Some([colour.r, colour.g, colour.b])
+                }
+                _ => None,
+            })
+        })
+    }
+
+    /// A session with the relay, input and services roles, the stock shell loaded and its claims made, and an EI
+    /// keyboard the session grants input to.
+    struct Prompting {
+        session: Session,
+        role: Option<ShellRole>,
+        relay: Wire,
+        input: Wire,
+        services: IpcClient<UnixTransport>,
+        keyboard: EiClient,
+        clock: Instant,
+    }
+
+    fn claimed(role: &mut ShellRole, slot: &str) -> bool {
+        role.run("claimed", &format!("return tostring(slots.claimed('{slot}'))"))
+            .expect("the probe runs")
+            .as_deref()
+            == Some("true")
+    }
+
+    /// Starts the keyboard the way the EIS tests do, so a key is the real input path's.
+    fn keyboard(session: &Session) -> EiClient {
+        let mut remote = EiClient::connect(&session.directory().join("eis.sock"));
+        remote.wait_for("the seat", |client| client.seat.is_some());
+        assert!(session.eis().grant(Caps::KEYBOARD), "the endpoint is running");
+        remote.wait_for("the keyboard capability", |client| {
+            client.capabilities & u64::from(Caps::KEYBOARD.bits()) != 0
+        });
+        remote.bind_keyboard();
+        remote.wait_for("the keyboard device", |client| {
+            client
+                .devices
+                .first()
+                .is_some_and(|device| device.done && device.resumed.is_some())
+        });
+        remote
+    }
+
+    impl Prompting {
+        /// The stock shell loaded, with the user's files in `config` when there are some.
+        fn start(config: Option<&std::path::Path>) -> Prompting {
+            let (session, mut ends) = Session::start_privileged(&["portal", "input", "services"]);
+            let relay = end_for(&mut ends, "portal");
+            let input = end_for(&mut ends, "input");
+            let (_, stream) = {
+                let index = ends
+                    .iter()
+                    .position(|(name, _)| name == "services")
+                    .expect("a services end");
+                ends.remove(index)
+            };
+            let mut services = IpcClient::connect(
+                UnixTransport::from_stream(stream).expect("a transport"),
+                gnoblin_compositor::version(),
+            )
+            .expect("the services handshake");
+            services
+                .set_read_timeout(Some(Duration::from_millis(1)))
+                .expect("a read deadline");
+            let mut role = match config {
+                Some(config) => connect_session(&session, config),
+                None => {
+                    let mut role = connect(&session);
+                    load_stock_shell(&mut role);
+                    role
+                }
+            };
+            let keyboard = keyboard(&session);
+            let clock = Instant::now();
+            // Frames from here on run on the wall clock.
+            let deadline = Instant::now() + super::PATIENCE;
+            while !claimed(&mut role, "portal.ui") {
+                role.tick(clock.elapsed().as_secs_f64()).expect("a frame runs");
+                assert!(Instant::now() < deadline, "the stock shell never claimed portal.ui");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Prompting {
+                session,
+                role: Some(role),
+                relay,
+                input,
+                services,
+                keyboard,
+                clock,
+            }
+        }
+
+        fn role(&mut self) -> &mut ShellRole {
+            self.role.as_mut().expect("the shell is running")
+        }
+
+        /// Runs shell frames until `done` holds, or fails after the patience with `what`.
+        fn until(&mut self, what: &str, mut done: impl FnMut(&mut Prompting) -> bool) {
+            let deadline = Instant::now() + super::PATIENCE;
+            loop {
+                let now = self.clock.elapsed().as_secs_f64();
+                self.role().tick(now).expect("a frame runs");
+                if done(self) {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{what}: diagnostics {:?}",
+                    self.role().diagnostics()
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        /// Runs shell frames for `span`, so what the compositor sent has been handled.
+        fn run_for(&mut self, span: Duration) {
+            let end = Instant::now() + span;
+            while Instant::now() < end {
+                let now = self.clock.elapsed().as_secs_f64();
+                self.role().tick(now).expect("a frame runs");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        fn key(&mut self, code: u32) {
+            self.keyboard.key(code, true);
+            self.keyboard.key(code, false);
+        }
+
+        fn painted(&self) -> Vec<PaintedCanvas> {
+            painted_canvases(&self.session)
+        }
+
+        /// Waits for the consent dialog: the title, who asks and the question, all painted.
+        fn dialog_shown(&mut self) {
+            self.until("the consent dialog was never painted", |p| {
+                let shown = texts(&p.painted());
+                shown.iter().any(|t| t == "Screenshot")
+                    && shown.iter().any(|t| t == &format!("Asked by {APP}"))
+                    && shown.iter().any(|t| t == QUESTION)
+                    && shown.iter().any(|t| t == "Deny")
+                    && shown.iter().any(|t| t == "Allow")
+            });
+        }
+
+        fn dialog_gone(&mut self) {
+            self.until("the consent dialog never closed", |p| {
+                !texts(&p.painted()).iter().any(|t| t == "Screenshot")
+            });
+        }
+
+        /// Presses Escape on the built-in dialog a few times and checks the relay hears nothing: a built-in dialog
+        /// open for the request would take the first and settle it.
+        fn assert_no_built_in_dialog(&mut self) {
+            for attempt in 0..8_u64 {
+                self.input.send(&portal_key(5_000 + attempt, "escape", false));
+                let _ack = self.input.receive();
+                self.run_for(Duration::from_millis(30));
+                assert!(
+                    outcome(&mut self.relay).is_none(),
+                    "the built-in dialog opened and took the key, while the shell held the claim"
+                );
+            }
+        }
+
+        /// Waits until the compositor's arming window is over (700 ms since `since`) and the dialog has armed itself,
+        /// which its second button shows by leaving its dimmed look, and the focus has moved to where keys go.
+        fn after_arming(&mut self, since: Instant) {
+            while since.elapsed() < Duration::from_millis(700) {
+                self.run_for(Duration::from_millis(20));
+            }
+            self.until("the dialog never armed", |p| {
+                let canvases = p.painted();
+                [label_colour(&canvases, "Allow"), label_colour(&canvases, "Unlock")].contains(&Some(LABEL_LIVE))
+            });
+            self.run_for(Duration::from_millis(150));
+        }
+
+        fn reply(&mut self, what: &str) -> (String, String) {
+            let mut reply = None;
+            self.until(what, |p| {
+                reply = outcome(&mut p.relay);
+                reply.is_some()
+            });
+            reply.expect("a reply")
+        }
+
+        /// Serves a request the built-in dialog must serve: a key on the input role settles it, and the shell keeps
+        /// running meanwhile, as it does in the session.
+        fn built_in_settles(&mut self) -> (String, String) {
+            for attempt in 0..200_u64 {
+                self.input.send(&portal_key(9_000 + attempt, "escape", false));
+                let _ack = self.input.receive();
+                self.run_for(Duration::from_millis(20));
+                if let Some(done) = outcome(&mut self.relay) {
+                    return done;
+                }
+            }
+            panic!("the built-in dialog never served the request");
+        }
+    }
+
+    #[test]
+    fn the_stock_shell_claims_both_slots_and_draws_a_consent_dialog_with_deny_focused() {
+        let mut p = Prompting::start(None);
+        assert!(
+            claimed(p.role(), "prompt.secret"),
+            "the passphrase prompt is claimed too"
+        );
+
+        p.relay.set_read_timeout(Duration::from_secs(5));
+        p.relay.send(&portal_ui(1, &consent(30_000)));
+        p.dialog_shown();
+
+        let canvases = p.painted();
+        let card = canvases
+            .iter()
+            .find(|canvas| {
+                canvas.list.ops.iter().any(|op| {
+                    matches!(op, gnoblin_paint::PaintOp::Rect { fill, width, .. }
+                        if *width >= 480.0 && fill.a == 255 && [fill.r, fill.g, fill.b] == CARD)
+                })
+            })
+            .expect("the dialog's card is painted");
+        assert_eq!(
+            card.picture().pixel(card.width / 2, card.height / 2),
+            Some([CARD[0], CARD[1], CARD[2], 255]),
+            "the card's pixels are the card colour"
+        );
+        // Deny is the focused button, and Allow is not live yet: it is painted disabled until the arming window passes.
+        assert_eq!(filled(&canvases, FOCUSED), 1, "one button is focused: Deny");
+        assert_eq!(
+            filled(&canvases, DISABLED),
+            1,
+            "Allow is disabled while the dialog is not armed"
+        );
+        assert_eq!(
+            label_colour(&canvases, "Deny"),
+            Some(LABEL_FOCUSED),
+            "Deny's label is the focused one"
+        );
+        assert_eq!(
+            label_colour(&canvases, "Allow"),
+            Some(LABEL_DISABLED),
+            "Allow's label is dimmed"
+        );
+        assert!(
+            texts(&canvases).iter().all(|t| !t.contains('\n')),
+            "no control character is painted"
+        );
+
+        // The built-in dialog stays closed while the shell holds the claim.
+        p.assert_no_built_in_dialog();
+        // And the dialog is secure, so a View capture would mask it: its card is marked in the compositor's tree.
+        p.role()
+            .run("probe", "return tostring(root:all(ConsentDialog)[1].secure)")
+            .expect("the probe runs")
+            .filter(|secure| secure == "true")
+            .expect("the dialog is secure");
+        assert!(
+            p.role().diagnostics().is_empty(),
+            "no handler failed and no transaction was refused: {:?}",
+            p.role().diagnostics()
+        );
+    }
+
+    #[test]
+    fn tab_then_enter_through_the_real_input_path_allows_once_the_dialog_is_armed() {
+        let mut p = Prompting::start(None);
+        p.relay.set_read_timeout(Duration::from_secs(5));
+        p.relay.send(&portal_ui(2, &consent(30_000)));
+        let sent = Instant::now();
+        p.dialog_shown();
+        p.after_arming(sent);
+        p.until("Allow never became live", |p| {
+            let canvases = p.painted();
+            label_colour(&canvases, "Allow") == Some(LABEL_LIVE) && filled(&canvases, DISABLED) == 0
+        });
+
+        p.key(KEY_TAB);
+        p.until("Tab never moved the focus to Allow", |p| {
+            // Both buttons are live and the focus colour is on one of them: Deny lost it, so it is enabled-coloured.
+            let canvases = p.painted();
+            label_colour(&canvases, "Allow") == Some(LABEL_FOCUSED)
+                && label_colour(&canvases, "Deny") == Some(LABEL_LIVE)
+        });
+        assert!(outcome(&mut p.relay).is_none(), "Tab alone answers nothing");
+        p.key(KEY_ENTER);
+
+        let reply = p.reply("the allow never reached the requester");
+        assert_eq!(reply, ("handled".to_owned(), "allowed".to_owned()));
+        p.dialog_gone();
+        p.assert_no_built_in_dialog();
+        assert!(
+            p.role().diagnostics().is_empty(),
+            "no handler failed and no transaction was refused: {:?}",
+            p.role().diagnostics()
+        );
+    }
+
+    #[test]
+    fn enter_on_the_default_button_and_escape_both_deny() {
+        let mut p = Prompting::start(None);
+        p.relay.set_read_timeout(Duration::from_secs(5));
+        for (id, code) in [(3_u64, KEY_ENTER), (4, KEY_ESC)] {
+            p.relay.send(&portal_ui(id, &consent(30_000)));
+            let sent = Instant::now();
+            p.dialog_shown();
+            p.after_arming(sent);
+            p.key(code);
+            let reply = p.reply("the denial never reached the requester");
+            assert_eq!(
+                reply,
+                ("cancelled".to_owned(), "user".to_owned()),
+                "key {code} denies, and Deny is what Enter presses by default"
+            );
+            p.dialog_gone();
+            p.assert_no_built_in_dialog();
+        }
+    }
+
+    #[test]
+    fn a_passphrase_typed_on_the_real_input_path_reaches_the_host_and_is_not_painted() {
+        let mut p = Prompting::start(None);
+        let request = p
+            .services
+            .offer(
+                "prompt.secret",
+                "Unlock the keyring",
+                "Enter your login password.",
+                b"",
+                Duration::from_secs(60),
+            )
+            .expect("the shell claimed the slot");
+        let sent = Instant::now();
+        p.until("the passphrase dialog was never painted", |p| {
+            let shown = texts(&p.painted());
+            shown.iter().any(|t| t == "Unlock the keyring") && shown.iter().any(|t| t == "Enter your login password.")
+        });
+        p.after_arming(sent);
+
+        p.key(KEY_H);
+        p.key(KEY_I);
+        p.until("the entry never showed two characters", |p| {
+            texts(&p.painted()).iter().any(|t| t == "**")
+        });
+        let shown = texts(&p.painted());
+        assert!(
+            !shown.iter().any(|t| t.contains("hi")),
+            "the compositor must hold asterisks and never the passphrase: {shown:?}"
+        );
+        p.key(KEY_ENTER);
+
+        let mut answer = None;
+        p.until("the host never heard the passphrase", |p| {
+            match p.services.next_event() {
+                Ok(Event::RequestAnswered {
+                    request: id,
+                    answer: bytes,
+                }) if id == request => {
+                    answer = Some(bytes.to_vec());
+                    true
+                }
+                _ => false,
+            }
+        });
+        assert_eq!(
+            answer.as_deref(),
+            Some(&b"hi"[..]),
+            "the typed text is the answer, and only the host reads it"
+        );
+        p.until("the dialog never closed", |p| {
+            !texts(&p.painted()).iter().any(|t| t == "Unlock the keyring")
+        });
+        assert!(
+            p.role().diagnostics().iter().all(|line| !line.contains("hi")),
+            "no diagnostic carries the passphrase: {:?}",
+            p.role().diagnostics()
+        );
+    }
+
+    #[test]
+    fn escape_in_the_passphrase_dialog_refuses_the_request() {
+        let mut p = Prompting::start(None);
+        let request = p
+            .services
+            .offer(
+                "prompt.secret",
+                "Unlock the keyring",
+                "Password?",
+                b"",
+                Duration::from_secs(60),
+            )
+            .expect("the shell claimed the slot");
+        p.until("the passphrase dialog was never painted", |p| {
+            texts(&p.painted()).iter().any(|t| t == "Unlock the keyring")
+        });
+        p.key(KEY_ESC);
+        let mut finished = None;
+        p.until("the host never heard the refusal", |p| match p.services.next_event() {
+            Ok(Event::RequestFinished {
+                request: id,
+                completion,
+            }) if id == request => {
+                finished = Some(completion);
+                true
+            }
+            _ => false,
+        });
+        assert!(
+            matches!(finished, Some(RequestCompletion::Ended | RequestCompletion::Refused(_))),
+            "a dismissed prompt ends the request and is never an answer: {finished:?}"
+        );
+    }
+
+    #[test]
+    fn a_killed_shell_releases_the_claim_and_the_next_request_uses_the_built_in_dialog() {
+        let mut p = Prompting::start(None);
+        // The shell goes: its connections close, and the compositor releases what it claimed.
+        drop(p.role.take());
+        p.relay.set_read_timeout(Duration::from_secs(5));
+        p.relay.send(&portal_ui(6, &consent(30_000)));
+        let mut input = p.input;
+        let mut relay = p.relay;
+        let mut served = None;
+        for attempt in 0..200_u64 {
+            input.send(&portal_key(9_000 + attempt, "escape", false));
+            let _ack = input.receive();
+            std::thread::sleep(Duration::from_millis(20));
+            if let Some(done) = outcome(&mut relay) {
+                served = Some(done);
+                break;
+            }
+        }
+        assert_eq!(
+            served,
+            Some(("cancelled".to_owned(), "user".to_owned())),
+            "the built-in dialog served the request once the shell was gone"
+        );
+
+        // A new shell claims the slot again: the dead one's claim is not still held.
+        let mut next = connect(&p.session);
+        load_stock_shell(&mut next);
+        let clock = Instant::now();
+        let deadline = Instant::now() + super::PATIENCE;
+        while !claimed(&mut next, "portal.ui") {
+            next.tick(clock.elapsed().as_secs_f64()).expect("a frame runs");
+            assert!(Instant::now() < deadline, "the restarted shell never claimed portal.ui");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            next.diagnostics().is_empty(),
+            "a restart reports no refused claim: {:?}",
+            next.diagnostics()
+        );
+    }
+
+    #[test]
+    fn a_handler_that_raises_hands_the_request_to_the_built_in_dialog() {
+        let config = user_config(&[(
+            "shell.lua",
+            "seat.data.prompts = false\nslots.claim('portal.ui', function(offer) error('this dialog is broken') end)\n",
+        )]);
+        let mut p = Prompting::start(Some(config.path()));
+        p.relay.set_read_timeout(Duration::from_secs(5));
+        p.relay.send(&portal_ui(7, &consent(30_000)));
+        assert_eq!(
+            p.built_in_settles(),
+            ("cancelled".to_owned(), "user".to_owned()),
+            "the declined request is served by the built-in dialog, which Escape refuses"
+        );
+        assert!(
+            p.role()
+                .diagnostics()
+                .iter()
+                .any(|line| line.contains("this dialog is broken")),
+            "the failure is reported: {:?}",
+            p.role().diagnostics()
+        );
+    }
+
+    #[test]
+    fn a_handler_that_never_answers_lets_the_built_in_dialog_serve_after_its_window() {
+        let config = user_config(&[(
+            "shell.lua",
+            "seat.data.prompts = false\nslots.claim('portal.ui', function(offer) end)\n",
+        )]);
+        let mut p = Prompting::start(Some(config.path()));
+        p.relay.set_read_timeout(Duration::from_secs(5));
+        // A 2 s request gives the claimant a 1 s window and the built-in dialog the rest.
+        p.relay.send(&portal_ui(8, &consent(2_000)));
+        assert_eq!(
+            p.built_in_settles(),
+            ("cancelled".to_owned(), "user".to_owned()),
+            "past the claimant's window the built-in dialog serves the request"
+        );
+    }
+
+    #[test]
+    fn seat_data_prompts_false_leaves_both_dialogs_to_the_built_in() {
+        let config = user_config(&[("shell.lua", "seat.data.prompts = false\n")]);
+        let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
+        let mut relay = end_for(&mut ends, "portal");
+        let mut input = end_for(&mut ends, "input");
+        let mut role = connect_session(&session, config.path());
+        let clock = Instant::now();
+        // Several frames run, so the first-frame claim would have happened.
+        for _ in 0..40 {
+            role.tick(clock.elapsed().as_secs_f64()).expect("a frame runs");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!claimed(&mut role, "portal.ui") && !claimed(&mut role, "prompt.secret"));
+        relay.send(&portal_ui(9, &consent(30_000)));
+        let mut served = None;
+        for attempt in 0..200_u64 {
+            input.send(&portal_key(9_000 + attempt, "escape", false));
+            let _ack = input.receive();
+            role.tick(clock.elapsed().as_secs_f64()).expect("a frame runs");
+            std::thread::sleep(Duration::from_millis(20));
+            if let Some(done) = outcome(&mut relay) {
+                served = Some(done);
+                break;
+            }
+        }
+        assert_eq!(served, Some(("cancelled".to_owned(), "user".to_owned())));
+        assert!(
+            !texts(&painted_canvases(&session)).iter().any(|t| t == "Screenshot"),
+            "the shell drew no dialog"
+        );
+    }
+}

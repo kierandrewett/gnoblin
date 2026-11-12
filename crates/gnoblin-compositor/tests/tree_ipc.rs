@@ -2081,7 +2081,7 @@ const KEY_B: u32 = 48;
 
 /// The `key` events the shell is sent within `window`, in order, as `(node, key, pressed)`. Every other frame (a change
 /// batch, the lock's `requested`) is read and skipped.
-fn key_events_within(wire: &mut Wire, window: Duration, want: usize) -> Vec<(u64, String, bool)> {
+fn key_events_within(wire: &mut Wire, window: Duration, want: usize) -> Vec<(u64, String, bool, String)> {
     wire.set_read_timeout(Duration::from_millis(100));
     let deadline = Instant::now() + window;
     let mut keys = Vec::new();
@@ -2094,7 +2094,7 @@ fn key_events_within(wire: &mut Wire, window: Duration, want: usize) -> Vec<(u64
         }
         let event: EventPayload = envelope.payload_as().expect("the payload decodes");
         if event.kind == "key" {
-            keys.push((event.node, event.key, event.pressed));
+            keys.push((event.node, event.key, event.pressed, event.text));
         }
     }
     keys
@@ -2163,7 +2163,10 @@ fn a_key_reaches_the_shell_node_holding_the_focus_and_nothing_reaches_it_while_l
     let unlocked = key_events_within(&mut wire, Duration::from_secs(5), 2);
     assert_eq!(
         unlocked,
-        vec![(1000, "a".to_owned(), true), (1000, "a".to_owned(), false)],
+        vec![
+            (1000, "a".to_owned(), true, "a".to_owned()),
+            (1000, "a".to_owned(), false, "a".to_owned())
+        ],
         "the key reaches the shell as an event on the focused node, press then release"
     );
 

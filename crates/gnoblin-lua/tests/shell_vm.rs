@@ -410,6 +410,7 @@ fn event(target: u64, kind: &str) -> LuaEvent {
         chord: None,
         gesture: None,
         args: Vec::new(),
+        fields: None,
     }
 }
 
