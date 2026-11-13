@@ -129,6 +129,46 @@ return {
         end,
     },
     {
+        "an external unlock takes the screen down, and a later request draws it again",
+        function()
+            local host, id, lock = setup()
+            host.external(id, "state", "pending")
+            H.frame(host, 1, { { type = "requested", target = id, args = {} } })
+            H.check(#root:all(Entry) == 1 and lock.engaged, "the request must draw the screen")
+            host.external(id, "state", "not-locked") -- unlocked through the protocol while the screen is up
+            H.frame(host, 2, {})
+            H.check(#root:all(Entry) == 0, "an unlock must take the screen down")
+            H.check(not lock.engaged, "an unlock must disengage the lock")
+            host.external(id, "state", "pending")
+            H.frame(host, 3, { { type = "requested", target = id, args = {} } })
+            H.check(#root:all(Entry) == 1 and lock.engaged, "a later request must draw the screen again")
+        end,
+    },
+    {
+        "Enter on the lock screen sends the typed password to the native core",
+        function()
+            local host, id = setup()
+            host.external(id, "state", "pending")
+            H.frame(host, 1, { { type = "requested", target = id, args = {} } })
+            local entry = root:all(Entry)[1]
+            H.check(entry ~= nil, "the request must draw the screen")
+            entry.text = "hunter2"
+            entry.key:emit({ key = "Return", text = "", pressed = true })
+            H.frame(host, 2, {})
+            local call -- the frame's measures of the entry's text come after the authenticate it sent
+            for _, c in ipairs(host.calls) do
+                if c.method == "authenticate" then
+                    call = c
+                end
+            end
+            H.check(call ~= nil, "Enter must call authenticate")
+            H.check(
+                call.text == "hunter2",
+                "the typed password must reach the native core, got " .. tostring(call.text)
+            )
+        end,
+    },
+    {
         "unlock sends the password to the native core",
         function()
             local host = setup()

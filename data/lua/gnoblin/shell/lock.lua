@@ -56,6 +56,8 @@ end
 
 -- Draws the lock screen on the desk under the pointer and returns once the session is unlocked. The desk may not exist yet
 -- (the shell attaches before its screen is published): the screen waits for it, and gives up if the session unlocks first.
+-- The session can also unlock while the screen is up (another client unlocks it through the protocol): the screen comes
+-- down then, and a later request draws it again.
 function Lock:show()
     local d = desk()
     while self.state ~= "not-locked" and not d do
@@ -74,22 +76,34 @@ function Lock:show()
     local message = card:add(Text({ text = "Enter your password.", size = 13, color = "#a6adc8" }))
     seat.focus = entry
     self.engaged = true
+    local submitted -- the text of the last Enter the loop has not taken yet
+    entry.submit:connect(function(_, text)
+        submitted = text
+    end)
     local result
-    repeat
-        local text = await(entry.submit)
-        if text ~= "" then
+    while self.state ~= "not-locked" and result ~= "ok" do
+        local text = submitted
+        submitted = nil
+        if text == nil then
+            await(POLL)
+        elseif text ~= "" then
             local err
             result, err = self:unlock(text)
+            submitted = nil -- an Enter pressed while the native core was checking is not a second attempt
             entry.text = ""
             if result ~= "ok" then
                 message.text = feedback_for(result, err)
                 message.color = "#f38ba8"
             end
         end
-    until result == "ok"
+    end
     shown = false
+    self.engaged = false
+    -- Focus goes back to the window that had it only if the screen still held it: a menu or another window that took
+    -- focus while the screen was going down keeps it.
+    local held = seat.focus == entry
     scrim:destroy()
-    if before then
+    if held and before then
         pcall(function()
             seat.focus = before
         end)
