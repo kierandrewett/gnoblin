@@ -5,5 +5,6 @@
 //! batches over the owner socket. A runtime (Lua today, JavaScript next) sits on top of these
 //! types and owns only the translation between its values and [`tree_mirror::MirrorValue`].
 
+pub mod slot_link;
 pub mod tree_link;
 pub mod tree_mirror;

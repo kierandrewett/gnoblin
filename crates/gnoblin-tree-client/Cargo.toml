@@ -12,6 +12,10 @@ publish.workspace = true
 gnoblin-secret.workspace = true
 # The wire: the envelopes, the tree messages and the framing. The link speaks them directly.
 gnoblin-proto = { path = "../gnoblin-proto" }
+# The owner socket's client and its vocabulary: the slot link speaks them.
+gnoblin-client = { path = "../gnoblin-client" }
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-types.workspace = true
 
 [lints]
 workspace = true

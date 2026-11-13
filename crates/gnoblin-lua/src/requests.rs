@@ -130,14 +130,7 @@ fn reason_name(reason: DeclineReason) -> &'static str {
 /// Read a decline reason a script named. An unknown name is refused, not treated as no
 /// reason, so a typo cannot silently turn a locked refusal into a plain one.
 pub(crate) fn parse_reason(name: &str) -> mlua::Result<DeclineReason> {
-    match name {
-        "locked" => Ok(DeclineReason::Locked),
-        "denied" => Ok(DeclineReason::Denied),
-        "unavailable" => Ok(DeclineReason::Unavailable),
-        other => Err(Error::runtime(format!(
-            "a decline reason is `locked`, `denied` or `unavailable`, found `{other}`"
-        ))),
-    }
+    gnoblin_tree_client::slot_link::parse_decline_reason(name).map_err(crate::require::runtime)
 }
 
 /// The script-visible error for a refused client call, keeping the compositor's code.

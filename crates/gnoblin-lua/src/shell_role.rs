@@ -19,8 +19,8 @@ use gnoblin_client::unix::{UnixTransport, socket_path};
 use crate::module_dir::{default_prefix, installed_module_dir};
 use crate::role::version;
 use crate::shell_vm::{ShellLimits, ShellVm, ShellVmError};
-use crate::slot_link::ClientSlotLink;
 use crate::tree_core::{ClassSpec, tree_classes};
+use gnoblin_tree_client::slot_link::ClientSlotLink;
 use gnoblin_tree_client::tree_link::SocketTreeLink;
 
 /// The environment variable that names the shell VM's Lua directory, or turns the VM off with `0`.
@@ -91,7 +91,7 @@ impl ShellRole {
     }
 
     /// Gives the VM its connection for slots and requests (see [`ShellVm::set_slot_link`]).
-    pub fn set_slot_link(&mut self, link: Box<dyn crate::slot_link::SlotLink>) {
+    pub fn set_slot_link(&mut self, link: Box<dyn gnoblin_tree_client::slot_link::SlotLink>) {
         self.vm.set_slot_link(link);
     }
 

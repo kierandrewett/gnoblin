@@ -26,8 +26,9 @@ use gnoblin_lua_sandbox::{Guard, Limits, Profile};
 use mlua::{Function, Lua, MultiValue, Table, Thread, Value};
 
 use crate::require::{ModuleRoots, Modules};
-use crate::slot_link::{self, SharedSlots, SlotEvent, SlotLink};
+use crate::slot_link;
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
+use gnoblin_tree_client::slot_link::{SharedSlots, SlotEvent, SlotLink};
 use gnoblin_tree_client::tree_mirror::{
     EventFields, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId,
     SnapshotNode, TreeLink,
