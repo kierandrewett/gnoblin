@@ -6,17 +6,17 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 
 use gnoblin_lua::shell_vm::LuaEvent;
-use gnoblin_lua::tree_link::SocketTreeLink;
-use gnoblin_lua::tree_mirror::{
-    Attached, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
-    SnapshotNode, TreeLink, TxReply,
-};
 use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
 use gnoblin_proto::tree::{change, snapshot_node};
 use gnoblin_proto::{Envelope, read_frame, write_frame};
+use gnoblin_tree_client::tree_link::SocketTreeLink;
+use gnoblin_tree_client::tree_mirror::{
+    Attached, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
+    SnapshotNode, TreeLink, TxReply,
+};
 
 fn pair() -> (SocketTreeLink, UnixStream) {
     let (client, server) = UnixStream::pair().expect("a socketpair");

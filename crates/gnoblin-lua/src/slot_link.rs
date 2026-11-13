@@ -23,7 +23,7 @@ use gnoblin_types::RequestId;
 use mlua::{Lua, Table};
 
 use crate::requests::parse_reason;
-use crate::tree_mirror::LinkError;
+use gnoblin_tree_client::tree_mirror::LinkError;
 
 /// How long a poll waits for bytes that have not arrived. Short, so a frame never stalls on it.
 const READ_WAIT: Duration = Duration::from_millis(1);

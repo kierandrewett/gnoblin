@@ -14,7 +14,7 @@ use std::rc::Rc;
 use gnoblin_lua::shell_role::{SHELL_VM_VARIABLE, ShellRole, ShellSlot, shell_vm_dir};
 use gnoblin_lua::shell_vm::{ShellVm, ShellVmError};
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
-use gnoblin_lua::tree_mirror::{
+use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, MirrorChangeKind, SnapshotNode, TreeLink,
     TxReply,
 };

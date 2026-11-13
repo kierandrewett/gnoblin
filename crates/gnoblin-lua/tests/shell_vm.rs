@@ -12,7 +12,7 @@ use std::rc::Rc;
 use gnoblin_lua::Limits;
 use gnoblin_lua::shell_vm::{LuaEvent, REPORT_INTERVAL, STALE_RETRIES, ShellLimits, ShellVm};
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
-use gnoblin_lua::tree_mirror::{
+use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
     TreeLink, TxReply,
 };

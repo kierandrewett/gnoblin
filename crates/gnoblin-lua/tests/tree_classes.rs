@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeCore, TreeValueKind, tree_classes};
-use gnoblin_lua::tree_mirror::{LuaMirror, LuaValue};
 use gnoblin_schema::{Catalog, DefaultValue, Namespace, ObjectType, Property, Type};
+use gnoblin_tree_client::tree_mirror::{LuaMirror, LuaValue};
 
 /// The ten tree classes, by their Lua names.
 const TEN: [&str; 10] = [

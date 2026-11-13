@@ -134,8 +134,6 @@ mod shell_scripts;
 pub mod shell_vm;
 pub mod slot_link;
 pub mod tree_core;
-pub mod tree_link;
-pub mod tree_mirror;
 
 /// The `gnoblin.d.lua` stub, and the writer that copies it out for an editor.
 pub use bindings::{stub, write_stub};

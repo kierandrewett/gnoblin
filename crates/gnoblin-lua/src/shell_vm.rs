@@ -28,7 +28,7 @@ use mlua::{Function, Lua, MultiValue, Table, Thread, Value};
 use crate::require::{ModuleRoots, Modules};
 use crate::slot_link::{self, SharedSlots, SlotEvent, SlotLink};
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
-use crate::tree_mirror::{
+use gnoblin_tree_client::tree_mirror::{
     EventFields, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId,
     SnapshotNode, TreeLink,
 };
@@ -846,7 +846,7 @@ fn lua_error(e: mlua::Error) -> ShellVmError {
 #[cfg(test)]
 mod refusal_tests {
     use super::describe_op;
-    use crate::tree_mirror::{LuaMirror, LuaOp, LuaValue};
+    use gnoblin_tree_client::tree_mirror::{LuaMirror, LuaOp, LuaValue};
 
     #[test]
     fn a_refused_set_names_its_index_class_property_and_value_kind() {

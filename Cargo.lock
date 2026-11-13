@@ -1388,6 +1388,7 @@ dependencies = [
  "gnoblin-schema",
  "gnoblin-secret",
  "gnoblin-testkit",
+ "gnoblin-tree-client",
  "gnoblin-types",
  "mlua",
  "rustix 1.1.6",
@@ -1758,6 +1759,14 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-schema",
  "serde_json",
+]
+
+[[package]]
+name = "gnoblin-tree-client"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-proto",
+ "gnoblin-secret",
 ]
 
 [[package]]

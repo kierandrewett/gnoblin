@@ -1,7 +1,7 @@
 //! The shell's tree mirror and its transaction builder, with no Lua involved
 //! (design/node-core.md, sections 4.1 and 4.6).
 
-use gnoblin_lua::tree_mirror::{
+use gnoblin_tree_client::tree_mirror::{
     Attached, LuaApplied, LuaChange, LuaMirror, LuaOp, LuaTxBuilder, LuaValue, MirrorChangeKind, MirrorError, NIL,
     NodeId, SnapshotBuilder, SnapshotNode, TxError,
 };
@@ -490,7 +490,7 @@ fn debug_of_a_lua_call_never_shows_its_text() {
         token: 1,
         text: gnoblin_secret::SecretText::new(SECRET),
     };
-    let transaction = gnoblin_lua::tree_mirror::LuaTransaction {
+    let transaction = gnoblin_tree_client::tree_mirror::LuaTransaction {
         base_serial: 1,
         serial: 2,
         ops: vec![op.clone()],

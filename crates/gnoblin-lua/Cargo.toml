@@ -25,6 +25,8 @@ gnoblin-config = { path = "../gnoblin-config" }
 # The bindings speak the object model's vocabulary: identities, values,
 # observations, operations and ticks.
 gnoblin-model = { path = "../gnoblin-model" }
+# The client side of the tree protocol: the mirror, its transaction builder and the socket link.
+gnoblin-tree-client = { path = "../gnoblin-tree-client" }
 # The schema parser: the stock schemas are embedded and parsed at run time, and an
 # extension's schema is parsed from its package, so the runtime needs the parser itself.
 gnoblin-schema = { path = "../gnoblin-schema" }

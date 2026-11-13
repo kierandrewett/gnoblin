@@ -8,10 +8,10 @@ use std::time::Duration;
 
 use gnoblin_lua::shell_vm::ShellVm;
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
-use gnoblin_lua::tree_link::SocketTreeLink;
 use gnoblin_proto::tree::snapshot_node;
 use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, SnapshotPayload};
 use gnoblin_proto::{Envelope, read_frame, write_frame};
+use gnoblin_tree_client::tree_link::SocketTreeLink;
 
 const WAIT: Duration = Duration::from_secs(10);
 

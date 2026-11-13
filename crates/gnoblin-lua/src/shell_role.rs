@@ -21,7 +21,7 @@ use crate::role::version;
 use crate::shell_vm::{ShellLimits, ShellVm, ShellVmError};
 use crate::slot_link::ClientSlotLink;
 use crate::tree_core::{ClassSpec, tree_classes};
-use crate::tree_link::SocketTreeLink;
+use gnoblin_tree_client::tree_link::SocketTreeLink;
 
 /// The environment variable that names the shell VM's Lua directory, or turns the VM off with `0`.
 pub const SHELL_VM_VARIABLE: &str = "GNOBLIN_SHELL_VM";

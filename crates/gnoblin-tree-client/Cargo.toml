@@ -1,0 +1,17 @@
+[package]
+name = "gnoblin-tree-client"
+description = "The client side of the tree protocol: the mirror of the object graph, its transaction builder and the socket link. No script runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Text that must not leak (a seat chord, a password): redacted `Debug`, wiped on drop.
+gnoblin-secret.workspace = true
+# The wire: the envelopes, the tree messages and the framing. The link speaks them directly.
+gnoblin-proto = { path = "../gnoblin-proto" }
+
+[lints]
+workspace = true

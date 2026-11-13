@@ -2,7 +2,7 @@
 //! `node.lua` makes, with the refusals the schema and the transaction builder make.
 
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, Shared, TreeCore, TreeValueKind, install};
-use gnoblin_lua::tree_mirror::{LuaChange, LuaMirror, LuaOp, LuaValue, MirrorChangeKind, NIL, SnapshotNode};
+use gnoblin_tree_client::tree_mirror::{LuaChange, LuaMirror, LuaOp, LuaValue, MirrorChangeKind, NIL, SnapshotNode};
 use mlua::Lua;
 
 fn snap(id: u64, parent: u64, index: i64, class: &str) -> SnapshotNode {
