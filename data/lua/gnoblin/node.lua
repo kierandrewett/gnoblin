@@ -1134,7 +1134,9 @@ return function(t, changes, events, created, offers)
                 n = live(e.target)
             end
             if n then
-                if e.fields then -- a request, an enter or a leave: the node alone, with the event's details
+                if e.type == "ready" then
+                    ready(n) -- the shell may have announced it already (created, snapshot or add): once is enough
+                elseif e.fields then -- a request, an enter or a leave: the node alone, with the event's details
                     e.target = n
                     e.stop = function(self)
                         self.stopped = true

@@ -80,7 +80,8 @@ Box:extend("MenuMark")({
 Box:extend("MenuSeparator")({
     height = SEPARATOR_H,
     draw = function(s)
-        return { { rect = { EDGE, s.height // 2, s.width - 2 * EDGE, 1 }, fill = COLOURS.line } }
+        -- Before the card lays its entries out a separator is as wide as nothing, and the compositor refuses a negative size.
+        return { { rect = { EDGE, s.height // 2, math.max(0, s.width - 2 * EDGE), 1 }, fill = COLOURS.line } }
     end,
 })
 
@@ -405,6 +406,19 @@ local function locked()
 end
 M.locked = locked
 
+-- Gives the seat's focus back to `node`, when it is still in the tree. A node that has gone cannot be focused, and the
+-- compositor would refuse the whole transaction that said so, taking everything else the frame did with it.
+function M.refocus(node)
+    local alive, parent = pcall(function()
+        return node.parent
+    end)
+    if alive and parent ~= nil then
+        pcall(function()
+            seat.focus = node
+        end)
+    end
+end
+
 -- Closes the menu, if one is open, and gives the keyboard back to where it was.
 function M.close()
     local menu = current
@@ -416,11 +430,7 @@ function M.close()
     pcall(function()
         menu:destroy()
     end)
-    if before then
-        pcall(function()
-            seat.focus = before
-        end)
-    end
+    M.refocus(before)
     return true
 end
 

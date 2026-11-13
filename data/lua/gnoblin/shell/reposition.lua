@@ -87,9 +87,7 @@ function M.finish(keep)
     pcall(function()
         grab:destroy()
     end)
-    pcall(function()
-        seat.focus = w
-    end)
+    require("gnoblin.shell.menus").refocus(w)
     return true
 end
 

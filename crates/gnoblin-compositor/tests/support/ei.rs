@@ -30,8 +30,6 @@ pub struct EiClient {
     /// Whether `start_emulating` was sent. The protocol starts a sequence once; a client that keeps typing sends it
     /// once and then only frames.
     emulating: bool,
-    /// The same for the pointer device, which carries the motion and the buttons together.
-    moving: bool,
 }
 
 /// One device the server created, with its interfaces and resume state.
@@ -63,7 +61,6 @@ impl EiClient {
             serial: handshake.serial,
             disconnected: false,
             emulating: false,
-            moving: false,
         }
     }
 
@@ -209,30 +206,8 @@ impl EiClient {
     /// Moves the absolute pointer to `(x, y)` in the layout's own coordinates.
     pub fn motion_absolute(&mut self, x: f32, y: f32) {
         let (wire, serial, pointer) = self.device_with::<ei::PointerAbsolute>();
-        if !self.moving {
-            wire.start_emulating(serial, 1);
-            self.moving = true;
-        }
+        wire.start_emulating(serial, 1);
         pointer.motion_absolute(x, y);
-        wire.frame(serial, 0);
-        let _ = self.context.flush();
-    }
-
-    /// Presses or releases the pointer button `button` (an evdev code such as `BTN_LEFT`) on the pointer device.
-    pub fn button(&mut self, button: u32, pressed: bool) {
-        let (wire, serial, device) = self.device_with::<ei::Button>();
-        if !self.moving {
-            wire.start_emulating(serial, 1);
-            self.moving = true;
-        }
-        device.button(
-            button,
-            if pressed {
-                ei::button::ButtonState::Press
-            } else {
-                ei::button::ButtonState::Released
-            },
-        );
         wire.frame(serial, 0);
         let _ = self.context.flush();
     }
@@ -252,29 +227,6 @@ pub fn keyboard(session: &Session) -> EiClient {
             .devices
             .first()
             .is_some_and(|device| device.done && device.resumed.is_some())
-    });
-    remote
-}
-
-/// A keyboard, an absolute pointer and its buttons the session grants input to, so a click and a key are the real
-/// input path's. `motion_absolute` takes the global logical coordinates the shell's nodes are placed in.
-pub fn pointer_and_keyboard(session: &Session) -> EiClient {
-    let mut remote = EiClient::connect(&session.directory().join("eis.sock"));
-    remote.wait_for("the seat", |client| client.seat.is_some());
-    let caps = Caps::KEYBOARD | Caps::POINTER_ABSOLUTE | Caps::BUTTON;
-    assert!(session.eis().grant(caps), "the endpoint is running");
-    remote.wait_for("the keyboard, pointer and button capabilities", |client| {
-        client.capabilities & u64::from(caps.bits()) == u64::from(caps.bits())
-    });
-    remote.bind(u64::from(caps.bits()));
-    remote.wait_for("the devices", |client| {
-        let ready = |interface: &str| {
-            client
-                .devices
-                .iter()
-                .any(|device| device.done && device.resumed.is_some() && device.interfaces.contains_key(interface))
-        };
-        ready("ei_keyboard") && ready("ei_pointer_absolute") && ready("ei_button")
     });
     remote
 }

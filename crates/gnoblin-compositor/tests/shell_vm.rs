@@ -3343,7 +3343,7 @@ mod prompts {
 mod window_menu {
     use std::process::{Child, Command as Process, Stdio};
 
-    use super::support::ei::{EiClient, frame, pointer_and_keyboard};
+    use super::support::ei::{EiClient, frame, keyboard};
     use super::{
         Client, Duration, Instant, PATIENCE, PaintedCanvas, Session, ShellRole, Window, connect, connect_session,
         has_text, load_stock_shell, mirror_counts, observe, painted_canvases, user_config, wait_for_sized_workspace,
@@ -3376,7 +3376,7 @@ mod window_menu {
                 mirror_counts(role) == (1, 1)
             });
             wait_for_sized_workspace(&mut role);
-            let remote = pointer_and_keyboard(&session);
+            let remote = keyboard(&session);
             let mut client = Client::connect(session.wayland());
             client.pointers_on_every_seat();
             let window = client.map_window("org.example.menu", title);
@@ -3387,16 +3387,8 @@ mod window_menu {
                 client,
                 clock: Instant::now(),
             };
-            let mut seen = String::new();
             rig.until("the titlebar was never built", |r| {
-                let now = r.probe(
-                    "local w = root:all('Window')[1] return #root:all('Window') .. ' ' .. (w and #w:all(Titlebar) or -1) .. ' ' .. #root:all('Desk') .. ' ' .. #root:all('Screen')",
-                );
-                if now != seen {
-                    eprintln!("windows titlebars desks screens: {now}");
-                    seen = now.clone();
-                }
-                now.split(' ').nth(1).and_then(|n| n.parse::<i32>().ok()) >= Some(1)
+                r.probe("local w = root:all('Window')[1] return tostring(w ~= nil and #w:all(Titlebar) == 1)") == "true"
             });
             (rig, window)
         }
@@ -3453,11 +3445,25 @@ mod window_menu {
             self.run_for(Duration::from_millis(60));
         }
 
+        /// Moves the pointer to `at` and presses and releases `button`, on the session's input tap: the events take the
+        /// seat path a device's do (the lock gate, the grabs, the shell's hit test). The keys come from EI.
         fn click(&mut self, button: u32, at: (f32, f32)) {
-            self.remote.motion_absolute(at.0, at.1);
+            use gnoblin_backend::InputEvent;
+            use gnoblin_types::{DeviceId, OutputId, Point};
+            let tap = self.session.input().clone();
+            assert!(tap.inject(InputEvent::PointerMotion {
+                device: DeviceId::VIRTUAL,
+                output: OutputId::new(0),
+                position: Point::new(at.0 as i32, at.1 as i32),
+            }));
             self.run_for(Duration::from_millis(80));
-            self.remote.button(button, true);
-            self.remote.button(button, false);
+            for pressed in [true, false] {
+                assert!(tap.inject(InputEvent::PointerButton {
+                    device: DeviceId::VIRTUAL,
+                    button,
+                    pressed,
+                }));
+            }
             self.run_for(Duration::from_millis(80));
         }
 
@@ -3483,7 +3489,6 @@ mod window_menu {
     }
 
     #[test]
-    #[ignore = "the EI pointer click never reaches the shell or the client in this rig; not yet debugged"]
     fn a_titlebar_right_click_opens_the_menu_at_the_pointer_and_down_then_enter_maximises_the_window() {
         let (mut rig, _window) = Rig::start(Session::start(), None, "Menu me");
         let at = rig.titlebar_point("Menu me");
@@ -3506,7 +3511,6 @@ mod window_menu {
     }
 
     #[test]
-    #[ignore = "the EI pointer click never reaches the shell or the client in this rig; not yet debugged"]
     fn escape_and_a_click_away_close_the_menu_and_run_nothing() {
         let (mut rig, _window) = Rig::start(Session::start(), None, "Dismiss me");
         rig.open_menu("Dismiss me");
@@ -3525,7 +3529,6 @@ mod window_menu {
     }
 
     #[test]
-    #[ignore = "the EI pointer click never reaches the shell or the client in this rig; not yet debugged"]
     fn a_clients_menu_request_opens_one_menu_even_over_the_titlebars_and_closing_the_window_closes_it() {
         let (mut rig, window) = Rig::start(Session::start(), None, "Client menu");
         let (x, y, _, _) = frame(&rig.session, "Client menu");
@@ -3546,7 +3549,6 @@ mod window_menu {
     }
 
     #[test]
-    #[ignore = "the EI pointer click never reaches the shell or the client in this rig; not yet debugged"]
     fn a_menu_for_a_secure_window_is_secure_in_the_tree() {
         let (mut rig, _window) = Rig::start(Session::start(), None, "Secret");
         rig.probe("root:all('Window')[1].secure = true return 'set'");
@@ -3568,7 +3570,6 @@ mod window_menu {
     }
 
     #[test]
-    #[ignore = "the EI pointer click never reaches the shell or the client in this rig; not yet debugged"]
     fn a_shell_that_loaded_no_menus_answers_a_menu_request_with_nothing() {
         let session = Session::start();
         let role = connect(&session); // node.lua only: no stock shell, so no menus.lua
@@ -3576,7 +3577,7 @@ mod window_menu {
         super::tick_until(&mut role, "the mirror never held a screen", |role| {
             mirror_counts(role) == (1, 1)
         });
-        let remote = pointer_and_keyboard(&session);
+        let remote = keyboard(&session);
         let mut client = Client::connect(session.wayland());
         client.pointers_on_every_seat();
         let window = client.map_window("org.example.menu", "Bare");
@@ -3601,7 +3602,6 @@ mod window_menu {
     }
 
     #[test]
-    #[ignore = "the EI pointer click never reaches the shell or the client in this rig; not yet debugged"]
     fn a_users_shell_file_replaces_the_menus_entries() {
         let config = user_config(&[(
             "shell.lua",

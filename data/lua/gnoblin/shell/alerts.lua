@@ -113,9 +113,7 @@ function M.show(w)
         dialog:destroy()
     end)
     if before then
-        pcall(function()
-            seat.focus = before
-        end)
+        Menus.refocus(before)
     end
     if answer == "recovered" then
         return

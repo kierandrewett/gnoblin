@@ -719,4 +719,17 @@ return {
             H.check(core.get(host.ids("Canvas")[1], "content") == expected, "the line box is centred: y is -3")
         end,
     },
+    {
+        "a window has one titlebar even when the compositor's ready event follows the creation of its node",
+        function()
+            local host, win = window_setup({ app_id = "foot" })
+            H.frame(host, 1, {})
+            H.check(#win:all(Titlebar) == 1, "one titlebar after creation")
+            H.frame(host, 2, { { type = "ready", target = host.ids("Window")[1], args = {} } })
+            H.check(
+                #win:all(Titlebar) == 1,
+                "a node is ready once, whatever tells the shell, got " .. #win:all(Titlebar)
+            )
+        end,
+    },
 }
