@@ -129,6 +129,27 @@ impl Handle {
             pressed: false,
         });
     }
+
+    /// Clicks the session's only window and returns the serial the button carried to `client`: a serial the session
+    /// issued on an input event, the kind a request that names one (a window menu, a move) must hold.
+    pub fn click_for_serial(&self, client: &mut Client) -> u32 {
+        let geometry = self
+            .wait_for(|observation| observation.only().is_some_and(|candidate| candidate.mapped))
+            .only()
+            .expect("the clicked window is managed")
+            .geometry;
+        // The buffer `map_window` draws sits at the frame origin; only it takes pointer input.
+        self.click(Point::new(geometry.x + 100, geometry.y + 75));
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            client.roundtrip();
+            if let Some(serial) = client.state.button_serial {
+                return serial;
+            }
+            assert!(Instant::now() < deadline, "the click never reached the client");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
 
 /// Stops the session when the worker finishes, including when it panics: without this a

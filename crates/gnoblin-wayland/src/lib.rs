@@ -273,7 +273,7 @@ pub use tree_frame::{
 };
 
 /// The identity and the window process a client's surface belongs to.
-pub use process::{ProcessIdentity, WindowProcess};
+pub use process::{KillRefusal, KillTarget, ProcessIdentity, WindowProcess};
 /// A screen cast stream the compositor started for a consented session, and why one is refused.
 pub use protocols::capture_shared::{CastRefusal, CastStream};
 /// Protocol extension trait and host traits, with the activation and surface types they use.

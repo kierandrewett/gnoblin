@@ -211,6 +211,22 @@ impl EiClient {
         wire.frame(serial, 0);
         let _ = self.context.flush();
     }
+
+    /// Presses or releases the pointer button `button` (an evdev code such as `BTN_LEFT`) on the pointer device.
+    pub fn button(&mut self, button: u32, pressed: bool) {
+        let (wire, serial, device) = self.device_with::<ei::Button>();
+        wire.start_emulating(serial, 1);
+        device.button(
+            button,
+            if pressed {
+                ei::button::ButtonState::Press
+            } else {
+                ei::button::ButtonState::Released
+            },
+        );
+        wire.frame(serial, 0);
+        let _ = self.context.flush();
+    }
 }
 
 /// A keyboard the session grants input to, started the way the EIS tests do, so a key is the real input path's.
@@ -227,6 +243,29 @@ pub fn keyboard(session: &Session) -> EiClient {
             .devices
             .first()
             .is_some_and(|device| device.done && device.resumed.is_some())
+    });
+    remote
+}
+
+/// A keyboard, an absolute pointer and its buttons the session grants input to, so a click and a key are the real
+/// input path's. `motion_absolute` takes the global logical coordinates the shell's nodes are placed in.
+pub fn pointer_and_keyboard(session: &Session) -> EiClient {
+    let mut remote = EiClient::connect(&session.directory().join("eis.sock"));
+    remote.wait_for("the seat", |client| client.seat.is_some());
+    let caps = Caps::KEYBOARD | Caps::POINTER_ABSOLUTE | Caps::BUTTON;
+    assert!(session.eis().grant(caps), "the endpoint is running");
+    remote.wait_for("the keyboard, pointer and button capabilities", |client| {
+        client.capabilities & u64::from(caps.bits()) == u64::from(caps.bits())
+    });
+    remote.bind(u64::from(caps.bits()));
+    remote.wait_for("the devices", |client| {
+        let ready = |interface: &str| {
+            client
+                .devices
+                .iter()
+                .any(|device| device.done && device.resumed.is_some() && device.interfaces.contains_key(interface))
+        };
+        ready("ei_keyboard") && ready("ei_pointer_absolute") && ready("ei_button")
     });
     remote
 }

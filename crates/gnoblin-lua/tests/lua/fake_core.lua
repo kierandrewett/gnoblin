@@ -52,9 +52,10 @@ local SCHEMA = {
             maximised = { type = "boolean", default = false },
             minimised = { type = "boolean", default = false },
             tiled = { type = "boolean", default = false },
+            unresponsive = { type = "boolean", default = false, readonly = true },
         },
         signals = { "closed", "request", "activate" },
-        methods = { "close" },
+        methods = { "close", "kill" },
     },
     { name = "Canvas", base = "Node", props = { content = { type = "bytes" } }, methods = { "measure" } },
     {
@@ -138,6 +139,7 @@ local METHODS = {
     unclaim = function() end,
     grab = function() end,
     close = function() end,
+    kill = function() end,
     camera = function()
         return 0
     end,

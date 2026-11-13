@@ -634,17 +634,24 @@ function Window:present()
         self:raise()
     end
 end
--- A raised window goes last among its siblings, which draws on top. A fullscreen sibling keeps the top: it is put back
--- over the raised window, so a window that raises or is activated lands under the fullscreen ones.
+-- A raised window goes last among its siblings, which draws on top. Two kinds of sibling keep the top: a window that
+-- is always on top (`data.above`, see `Window:set_above`) stays over a raised window that is not, and a fullscreen
+-- window stays over them all. Each is put back over the raised window in the order it had, so a window that raises
+-- or is activated lands under them.
 function Window:raise()
-    local parent, above = self.parent, {}
+    local parent, pinned, covering = self.parent, {}, {}
     for _, c in ipairs(parent.children) do
         if c ~= self and c.fullscreen and not self.fullscreen then
-            above[#above + 1] = c
+            covering[#covering + 1] = c
+        elseif c ~= self and c.data.above and not c.fullscreen and not self.data.above and not self.fullscreen then
+            pinned[#pinned + 1] = c
         end
     end
     parent:add(self)
-    for _, c in ipairs(above) do
+    for _, c in ipairs(pinned) do
+        parent:add(c)
+    end
+    for _, c in ipairs(covering) do
         parent:add(c)
     end
 end
@@ -967,4 +974,7 @@ require("gnoblin.shell.prompts")
 require("gnoblin.shell.workspaces")
 require("gnoblin.shell.gestures")
 require("gnoblin.shell.xr")
+require("gnoblin.shell.reposition")
+require("gnoblin.shell.menus")
+require("gnoblin.shell.alerts")
 require("gnoblin.shell.decorations")

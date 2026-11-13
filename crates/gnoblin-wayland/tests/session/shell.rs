@@ -115,6 +115,22 @@ impl Shell {
             .filter(|event| event.node == node)
             .filter_map(|event| match &event.event {
                 TreeFrameInput::Request(request) => Some(request.name()),
+                TreeFrameInput::Menu { .. } => Some("menu"),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The anchors of the `menu` requests the compositor delivered for `node`, in the order they arrived.
+    pub fn menu_anchors(&self, node: NodeId) -> Vec<(i32, i32)> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.events)
+            .filter(|event| event.node == node)
+            .filter_map(|event| match &event.event {
+                TreeFrameInput::Menu { x, y } => Some((*x, *y)),
                 _ => None,
             })
             .collect()

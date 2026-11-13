@@ -400,7 +400,6 @@ impl Server {
         // `'static` and the display can stay in the state.
         let poll_fd = display.as_fd().try_clone_to_owned().map_err(StartupError::Io)?;
 
-        let window_process_override = config.window_process_override;
         let workspace_names = config.workspace_names;
         let global_scale = config.monitors.global_scale;
         apply_global_scale(backend.as_mut(), None, global_scale);
@@ -460,6 +459,7 @@ impl Server {
         // A renderer that draws a View's subtree into a texture takes the View's description instead of its pixels.
         state.composer.set_gpu_views(backend.gpu_views());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
+        state.window_process_override = config.window_process_override;
         let clock = config.clock.clone();
         // A worker's answer lands here, so the lock settles on the loop that owns the state.
         event_loop
@@ -652,12 +652,7 @@ impl Server {
                                 let _ = reply.send(state.idle_hold(holder, held));
                             }
                             Command::WindowProcess { window, reply } => {
-                                let process = state.window_process(window);
-                                let process = match (process, window_process_override) {
-                                    (Some(_), Some(over)) => Some(over),
-                                    (process, _) => process,
-                                };
-                                let _ = reply.send(process);
+                                let _ = reply.send(state.window_process_for_control(window));
                             }
                             Command::ExportedWindow { handle, reply } => {
                                 let _ = reply.send(state.exported_window(&handle));

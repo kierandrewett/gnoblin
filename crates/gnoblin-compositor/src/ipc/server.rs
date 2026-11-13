@@ -84,7 +84,7 @@ use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, privilege, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
-    ControlHandle, Observer, PresentAnswer, ProcessIdentity, SessionSnapshot, TreeBatch, TreeFrameInput, WindowChange,
+    ControlHandle, KillRefusal, Observer, PresentAnswer, SessionSnapshot, TreeBatch, TreeFrameInput, WindowChange,
     WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
@@ -2173,31 +2173,26 @@ impl Dispatcher {
             }
             Some(Some(WindowProcess::Connected(identity))) => identity,
         };
-        if identity.pid == std::process::id() || identity.pid == 1 {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::UNKNOWN_MEMBER,
-                "kill: refuses the compositor's own process and init",
-            );
-            return;
-        }
-        // The pidfd is opened before the identity is checked. Once it is open it names the
-        // process that holds the pid, and the check shows whether that process is the one
-        // that connected: a pid reused since then fails the check.
-        let pidfd = i32::try_from(identity.pid)
-            .ok()
-            .and_then(rustix::process::Pid::from_raw)
-            .and_then(|pid| rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok());
-        let current = ProcessIdentity::of(identity.pid);
-        let Some(pidfd) = pidfd.filter(|_| current == Some(identity)) else {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::PROCESS_CHANGED,
-                "kill: the window's process has exited or changed",
-            );
-            return;
+        let target = match identity.kill_target() {
+            Ok(target) => target,
+            Err(KillRefusal::Unkillable) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    "kill: refuses the compositor's own process and init",
+                );
+                return;
+            }
+            Err(KillRefusal::Changed) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::PROCESS_CHANGED,
+                    "kill: the window's process has exited or changed",
+                );
+                return;
+            }
         };
         let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
             Ok(operation) => operation,
@@ -2208,12 +2203,12 @@ impl Dispatcher {
             }
         };
         self.reply_with_operation(client, envelope, &operation);
-        // The signal goes through the pidfd, so it cannot land on a process that took the
-        // pid after the check; a process that has already exited fails it instead.
-        let signalled = rustix::process::pidfd_send_signal(&pidfd, rustix::process::Signal::KILL);
-        let outcome = match signalled {
-            Ok(()) => OperationOutcome::Done,
-            Err(_) => OperationOutcome::Failed(OBJECT_GONE),
+        // The signal goes through the pidfd the target holds, so it cannot land on a process that took the pid after
+        // the check; a process that has already exited fails it instead.
+        let outcome = if target.kill() {
+            OperationOutcome::Done
+        } else {
+            OperationOutcome::Failed(OBJECT_GONE)
         };
         self.finish(object, &operation, Some(outcome));
     }

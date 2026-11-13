@@ -40,6 +40,8 @@ x11rb = "0.14.0"
 # Rectangles, sizes, scales and output identities, so a geometry value is the same
 # value the window manager and the output layout already know.
 gnoblin-types.workspace = true
+# The kill of a window's process goes through a pidfd (`process.rs`), which `rustix` wraps without `unsafe`.
+rustix = { workspace = true, features = ["process"] }
 # Window state transitions go through the pure policy state machine: this crate
 # translates protocols into `Wm::apply` events and turns the effects back into
 # configures, focus changes and stacking.

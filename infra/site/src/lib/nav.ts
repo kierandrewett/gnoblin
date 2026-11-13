@@ -123,6 +123,7 @@ export const NAV: NavSection[] = [
                     { label: "Cursors", slug: "guides/cursors" },
                     { label: "Session settings", slug: "guides/session_settings" },
                     { label: "Window menu", slug: "guides/window_menu" },
+                    { label: "Window menu and alerts", slug: "guides/stock-window-menu" },
                     { label: "Window state shortcuts", slug: "guides/window_state_shortcuts" },
                     { label: "Window snapping", slug: "guides/window_snapping" },
                 ],

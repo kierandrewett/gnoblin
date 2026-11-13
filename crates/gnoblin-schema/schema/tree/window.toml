@@ -67,6 +67,16 @@ type = "bool"
 since = "0.2.0"
 default = false
 
+# Whether the window's client has left a liveness ping unanswered for longer than `window-management.check-alive-timeout`
+# (5000 ms by default; 0 turns the pings off, so no window is ever marked). The compositor writes it and clears it when
+# the client answers. The stock shell's not-responding alert reads it. An X11 window is not pinged and is never marked.
+[[object.property]]
+name = "unresponsive"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
 # Give the window keyboard focus. The shell's focus policy decides.
 [[object.method]]
 name = "focus"
@@ -75,4 +85,12 @@ since = "0.2.0"
 # Ask the window's client to close. The client decides whether it exits; the window goes away when it destroys it.
 [[object.method]]
 name = "close"
+since = "0.2.0"
+
+# Kill the process that owns the window with SIGKILL: the stock alert's Force quit. The compositor refuses (and does
+# nothing) when the owning process is unknown, has disconnected or changed since the window mapped, or is the
+# compositor itself or init, exactly as `gnoblin.window.kill` does. Only the connection that holds the tree makes
+# calls on its nodes, and only the session owner's connection holds it.
+[[object.method]]
+name = "kill"
 since = "0.2.0"

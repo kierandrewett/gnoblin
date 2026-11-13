@@ -497,6 +497,9 @@ pub struct State {
     pub(crate) activity: Activity,
     /// The liveness pings and the clients that have missed them.
     pub(crate) liveness: crate::liveness::Liveness,
+    /// The process every window reports to a kill instead of its client's connection: a test names its victim here
+    /// (`Config::window_process_override`). `None` in a real session.
+    pub(crate) window_process_override: Option<crate::WindowProcess>,
 
     /// The record of windows and outputs, and the minimal policy applied while no shell holds the tree.
     ///
@@ -834,6 +837,7 @@ impl State {
             touchpad_gestures: crate::touchpad::TouchpadGestures::default(),
             activity: Activity::new(),
             liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
+            window_process_override: None,
             fallback: Fallback::default(),
             options,
             focus: None,
@@ -2125,6 +2129,16 @@ impl State {
         })
     }
 
+    /// The process a control request acts on: what [`State::window_process`] reports, unless the session names one
+    /// (`Config::window_process_override`, which a test uses to name its victim), which then stands in for it while
+    /// the window exists.
+    pub(crate) fn window_process_for_control(&self, window: WindowId) -> Option<crate::WindowProcess> {
+        match (self.window_process(window), self.window_process_override) {
+            (Some(_), Some(named)) => Some(named),
+            (process, _) => process,
+        }
+    }
+
     /// The matrix a window's node is drawn with and its projected bounds, or `None` when it
     /// is not drawn.
     pub(crate) fn drawn_node(&self, window: WindowId) -> Option<(Mat4, Rect)> {
@@ -2276,17 +2290,23 @@ impl State {
     /// the policy authority, so the window manager does not act on the request. Otherwise
     /// returns false and the request takes its usual path.
     pub(crate) fn request_to_shell(&mut self, surface: &WlSurface, request: TreeRequest) -> bool {
-        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
-            return false;
-        }
         let Some(node) = self
             .window_of(surface)
-            .and_then(|window| self.composer.window_node(window))
+            .and_then(|window| self.shell_decides_for(window))
         else {
             return false;
         };
         self.tree.event(node, request);
         true
+    }
+
+    /// The window's node, when the shell decides for the window: it holds the tree and the session is not locked.
+    /// `None` when the window manager acts instead.
+    fn shell_decides_for(&self, window: WindowId) -> Option<NodeId> {
+        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+            return None;
+        }
+        self.composer.window_node(window)
     }
 
     /// Records a window's app id that changed from a path that is not the toplevel's own commit, and republishes
@@ -2376,6 +2396,14 @@ impl State {
         if self.fallback.window(window).is_none() {
             log::debug!(area = "menu", ?window, "a request for a closed window was dropped");
             return false;
+        }
+        // A shell that holds the tree draws the menu: it hears the request as an event on the window's node, with the
+        // anchor, and no `menu_requested` signal goes out, so a second program subscribed to it does not open a
+        // second menu over the shell's.
+        if let Some(node) = self.shell_decides_for(window) {
+            log::debug!(area = "menu", ?window, source = source.as_str(), "sent to the shell");
+            self.tree.menu(node, anchor.x(), anchor.y());
+            return true;
         }
         self.menu_seq = self.menu_seq.saturating_add(1);
         let request = MenuRequest::new(window, self.menu_seq, anchor, source, &self.seat_name);
@@ -2727,9 +2755,15 @@ impl State {
             selection: self.clipboard_mime_types(),
             ..SessionSnapshot::default()
         };
+        let mut liveness = Vec::new();
         for window in self.fallback.windows() {
             let entry = self.windows.get(&window.id);
             let mapped = entry.is_some_and(|entry| entry.mapped);
+            let unresponsive = matches!(
+                entry.map(|entry| &entry.surface),
+                Some(Managed::Wayland(surface)) if crate::liveness::owner(surface).is_some_and(|id| self.liveness.is_unresponsive(&id))
+            );
+            liveness.push((window.id, unresponsive));
             snapshot.windows.insert(
                 window.id,
                 ObservedWindow {
@@ -2745,13 +2779,14 @@ impl State {
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),
                     modal: window.kind == WindowKind::Modal,
-                    unresponsive: matches!(
-                        entry.map(|entry| &entry.surface),
-                        Some(Managed::Wayland(surface)) if crate::liveness::owner(surface).is_some_and(|id| self.liveness.is_unresponsive(&id))
-                    ),
+                    unresponsive,
                     transient_for: window.transient_for,
                 },
             );
+        }
+        // The shell reads the same answer on the window's node.
+        for (window, unresponsive) in liveness {
+            self.composer.set_window_unresponsive(window, unresponsive);
         }
         match self.observation.lock() {
             Ok(mut guard) => {

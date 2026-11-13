@@ -141,7 +141,6 @@ pub enum TreeRequest {
     Raise,
     /// A window asked to go under its siblings.
     Lower,
-    Menu,
     /// An activation token the client redeemed for its window, or a taskbar picked it; the shell decides whether it focuses.
     Activate,
 }
@@ -162,7 +161,6 @@ impl TreeRequest {
             Self::Close => "close",
             Self::Raise => "raise",
             Self::Lower => "lower",
-            Self::Menu => "menu",
             Self::Activate => "activate",
         }
     }
@@ -269,6 +267,10 @@ pub fn keysym_text(keysym: Keysym) -> String {
 pub enum TreeFrameInput {
     /// A client request the shell decides on.
     Request(TreeRequest),
+    /// A request for the window's menu, anchored at a point in global logical coordinates: the pointer's place on the
+    /// client's surface for `show_window_menu`, the window's corner for the keyboard's window-menu key. The shell
+    /// decides whether to draw one.
+    Menu { x: i32, y: i32 },
     /// A pointer edge over the node.
     Input(TreeInput),
     /// The node first has content. Sent once per window node, when it is created.
@@ -679,6 +681,11 @@ impl TreeFrame {
     /// Records a request event for `node`, delivered to the shell in the next batch.
     pub fn event(&mut self, node: NodeId, request: TreeRequest) {
         self.push_event(node, TreeFrameInput::Request(request));
+    }
+
+    /// Records a window-menu request for `node` at the anchor `(x, y)`, delivered to the shell in the next batch.
+    pub fn menu(&mut self, node: NodeId, x: i32, y: i32) {
+        self.push_event(node, TreeFrameInput::Menu { x, y });
     }
 
     /// Records that `node` has content for the first time, delivered to the shell in the next batch.

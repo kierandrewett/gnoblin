@@ -40,8 +40,9 @@ end
 local LEFT, RIGHT, MIDDLE = 272, 273, 274
 local DOUBLE_CLICK = 0.5
 local last_press = setmetatable({}, { __mode = "k" })
--- What each action does to its window. `menu`, `minimize` and the one-axis maximise have no Lua surface yet, so they
--- do nothing; `none` does nothing too. An action the schema does not name raises.
+-- What each action does to its window. `minimize` and the one-axis maximise have no Lua surface yet, so they do
+-- nothing; `none` does nothing too; `menu` opens the window menu where menus.lua is loaded, and does nothing where it
+-- is not. An action the schema does not name raises.
 local ACTIONS = {
     ["toggle-maximize"] = function(w)
         if w.maximised then
@@ -54,7 +55,11 @@ local ACTIONS = {
         w:lower()
     end,
     none = function() end,
-    menu = function() end,
+    menu = function(w)
+        if w.show_menu then
+            w:show_menu()
+        end
+    end,
     minimize = function() end,
     ["toggle-maximize-horizontally"] = function() end,
     ["toggle-maximize-vertically"] = function() end,

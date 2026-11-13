@@ -1787,6 +1787,7 @@ dependencies = [
  "gnoblin-secret",
  "gnoblin-types",
  "png",
+ "rustix 1.1.6",
  "smithay",
  "tempfile",
  "wayland-client",

@@ -580,6 +580,11 @@ pub struct App {
     pub seats: Vec<(wl_seat::WlSeat, String)>,
     /// Pointer events, tagged with the name of the seat whose wl_pointer sent them.
     pub pointer: Vec<(String, PointerEvent)>,
+    /// The serial of the last `wl_pointer.button` any pointer of this client received: one the session issued on an
+    /// input event, which `xdg_toplevel.show_window_menu` must name.
+    pub button_serial: Option<u32>,
+    /// Whether this client stays silent when the compositor pings it, so its windows go unresponsive.
+    mute_pings: bool,
 }
 
 /// One wl_pointer event, with the protocol's own numbers. A surface is its protocol id.
@@ -665,6 +670,24 @@ impl Client {
     /// Processes every event the session has sent.
     pub fn roundtrip(&mut self) {
         self.queue.roundtrip(&mut self.app).expect("a round trip");
+    }
+
+    /// Stops (`true`) or resumes (`false`) answering `xdg_wm_base.ping`. A silent client's windows go unresponsive
+    /// once the check-alive timeout passes, and a client that answers again is responsive from then on.
+    pub fn mute_pings(&mut self, mute: bool) {
+        self.app.mute_pings = mute;
+    }
+
+    /// Asks for the window menu the way a client does when its user right-clicks its own titlebar:
+    /// `xdg_toplevel.show_window_menu` at `(x, y)` in the window's surface, with the serial of the last button press
+    /// the client received.
+    pub fn show_window_menu(&mut self, window: &Window, x: i32, y: i32) {
+        let serial = self
+            .app
+            .button_serial
+            .expect("the client has been clicked, so it holds a serial");
+        window.toplevel.show_window_menu(&self.seat, serial, x, y);
+        self.roundtrip();
     }
 
     /// The size of `window`'s last configure, or `None` when it has not been configured.
@@ -858,14 +881,16 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for App {
     fn event(
-        _: &mut Self,
+        app: &mut Self,
         wm_base: &xdg_wm_base::XdgWmBase,
         event: <xdg_wm_base::XdgWmBase as Proxy>::Event,
         _: &(),
         _: &WaylandConnection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_wm_base::Event::Ping { serial } = event {
+        if let xdg_wm_base::Event::Ping { serial } = event
+            && !app.mute_pings
+        {
             wm_base.pong(serial);
         }
     }
@@ -1112,13 +1137,17 @@ impl Dispatch<wl_pointer::WlPointer, String> for App {
                 y: surface_y,
             },
             wl_pointer::Event::Button {
+                serial,
                 button,
                 state: WEnum::Value(state),
                 ..
-            } => PointerEvent::Button {
-                button,
-                pressed: state == wl_pointer::ButtonState::Pressed,
-            },
+            } => {
+                app.button_serial = Some(serial);
+                PointerEvent::Button {
+                    button,
+                    pressed: state == wl_pointer::ButtonState::Pressed,
+                }
+            }
             wl_pointer::Event::Axis {
                 axis: WEnum::Value(axis),
                 value,

@@ -720,8 +720,10 @@ object window since 0.2.0 secret false
   property minimised type bool since 0.2.0 secret false
   property workspace type object:workspace since 0.2.0 secret false
   property tiled type bool since 0.2.0 secret false
+  property unresponsive type bool since 0.2.0 secret false
   method focus since 0.2.0 secret false function false
   method close since 0.2.0 secret false function false
+  method kill since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
 object workspace since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
@@ -2497,6 +2499,8 @@ message Window {
     string workspace = 25;
     // since 0.2.0
     bool tiled = 26;
+    // since 0.2.0
+    bool unresponsive = 27;
   }
 
   // Method `focus`, since 0.2.0.
@@ -2504,6 +2508,9 @@ message Window {
 
   // Method `close`, since 0.2.0.
   message CloseArgs {}
+
+  // Method `kill`, since 0.2.0.
+  message KillArgs {}
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}

@@ -727,6 +727,7 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
         .map(|event| match &event.event {
             TreeFrameInput::Input(input) => input.name(),
             TreeFrameInput::Request(_) => "request",
+            TreeFrameInput::Menu { .. } => "menu",
             TreeFrameInput::Ready => "ready",
             TreeFrameInput::Requested => "requested",
             TreeFrameInput::Chord(_) => "chord",

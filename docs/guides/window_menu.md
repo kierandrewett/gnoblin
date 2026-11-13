@@ -1,5 +1,7 @@
 # Window menu requests
 
+Looking for the menu the stock shell draws? See [the window menu and alerts](/guides/stock-window-menu).
+
 Gnoblin reports window-menu requests to the active shell. The shell draws the
 menu as its own Wayland surface and chooses which actions to show.
 

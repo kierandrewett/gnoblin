@@ -25,6 +25,9 @@ for _, file in ipairs({
     "xr_test",
     "slots_test",
     "prompts_test",
+    "menus_test",
+    "reposition_test",
+    "alerts_test",
 }) do
     for _, c in ipairs(dofile(dir .. "/" .. file .. ".lua")) do
         local ok, err = pcall(c[2])

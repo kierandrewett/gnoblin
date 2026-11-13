@@ -358,6 +358,13 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             request: request.name().to_owned(),
             ..base
         },
+        TreeFrameInput::Menu { x, y } => EventPayload {
+            kind: "request".to_owned(),
+            request: "menu".to_owned(),
+            x: f64::from(x),
+            y: f64::from(y),
+            ..base
+        },
         TreeFrameInput::Ready => EventPayload {
             kind: "ready".to_owned(),
             ..base

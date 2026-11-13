@@ -102,6 +102,19 @@ prompt a shell dialog fails on. To draw your own, turn the stock one off and cal
 `slots.claim(name, handler)` in a file; see
 [replace the built-in dialogs](/guides/replace-built-in-dialogs).
 
+## Window menu and not-responding alert
+
+The stock shell draws the window menu (a titlebar right click, a client's
+`show_window_menu`, the window-menu key) and, for a window that has stopped
+answering, an alert with Wait and Force quit.
+
+- Replace `Window:menu_items` to change the entries.
+- Replace `Window:show_menu` to draw your own menu.
+- Assign `seat.data.alerts = false` to turn the alert off.
+
+See [the window menu and alerts](/guides/stock-window-menu) for the keys and a
+complete example.
+
 ## Window rules
 
 Assign a list to `seat.data.window_rules`. A rule is a `match` table and the

@@ -25,6 +25,51 @@ impl ProcessIdentity {
             start_time: parse_start_time(&stat)?,
         })
     }
+
+    /// Opens the process for a kill, when it is still the process that connected and is one a kill may name.
+    ///
+    /// The pidfd is opened before the identity is checked. Once it is open it names the process that holds the pid, and
+    /// the check shows whether that process is the one that connected: a pid reused since then fails the check, and
+    /// the signal later goes through the pidfd, so it cannot land on a process that took the pid after the check.
+    ///
+    /// # Errors
+    ///
+    /// [`KillRefusal::Unkillable`] for the compositor's own process and init, which are never a client, and
+    /// [`KillRefusal::Changed`] when the process has exited or its pid now names another one.
+    pub fn kill_target(self) -> Result<KillTarget, KillRefusal> {
+        if self.pid == std::process::id() || self.pid == 1 {
+            return Err(KillRefusal::Unkillable);
+        }
+        let pidfd = i32::try_from(self.pid)
+            .ok()
+            .and_then(rustix::process::Pid::from_raw)
+            .and_then(|pid| rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok());
+        match pidfd {
+            Some(pidfd) if Self::of(self.pid) == Some(self) => Ok(KillTarget(pidfd)),
+            _ => Err(KillRefusal::Changed),
+        }
+    }
+}
+
+/// Why a kill was refused before any signal was sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KillRefusal {
+    /// The process is the compositor's own or init's.
+    Unkillable,
+    /// The process has exited, or its pid now names a different process than the one that connected.
+    Changed,
+}
+
+/// A process held open by its pidfd after its identity was checked: the one signal a kill sends goes to it.
+#[derive(Debug)]
+pub struct KillTarget(std::os::fd::OwnedFd);
+
+impl KillTarget {
+    /// Sends SIGKILL. `false` when the process had already exited.
+    #[must_use]
+    pub fn kill(&self) -> bool {
+        rustix::process::pidfd_send_signal(&self.0, rustix::process::Signal::KILL).is_ok()
+    }
 }
 
 /// What the compositor knows about the process behind a window.

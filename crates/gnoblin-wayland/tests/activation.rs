@@ -7,10 +7,10 @@
 mod session;
 
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use session::shell::Shell;
-use session::{Client, Session, TIMEOUT};
+use session::{Client, Session};
 use wayland_protocols::xdg::activation::v1::client::xdg_activation_v1;
 use wayland_protocols::xdg::shell::client::xdg_toplevel;
 
@@ -44,27 +44,6 @@ fn request_token(
     client.state.token.clone()
 }
 
-/// Clicks a window and returns the serial the button carried.
-fn click_for_serial(client: &mut Client, session: &session::Handle, _window: &session::Window) -> u32 {
-    let geometry = session
-        .wait_for(|observation| observation.only().is_some_and(|candidate| candidate.mapped))
-        .only()
-        .expect("the clicked window is managed")
-        .geometry;
-    // The buffer `map_window` draws sits at the frame origin; only it takes pointer input.
-    let centre = gnoblin_types::Point::new(geometry.x + 100, geometry.y + 75);
-    session.click(centre);
-    let deadline = Instant::now() + TIMEOUT;
-    loop {
-        client.roundtrip();
-        if let Some(serial) = client.state.button_serial {
-            return serial;
-        }
-        assert!(Instant::now() < deadline, "the click never reached the client");
-        thread::sleep(Duration::from_millis(5));
-    }
-}
-
 /// Waits for the session to report one window with this title focused.
 fn wait_focus(session: &session::Handle, title: &str) {
     session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == title));
@@ -87,7 +66,7 @@ fn a_token_from_a_click_activates_the_window() {
         let activation = activation(&mut alpha);
         let alpha_window = alpha.map_window("org.gnoblin.Alpha", "Alpha");
         wait_focus(session, "Alpha");
-        let serial = click_for_serial(&mut alpha, session, &alpha_window);
+        let serial = session.click_for_serial(&mut alpha);
 
         let token = request_token(&mut alpha, &activation, Some(serial)).expect("a click earns a token");
 
@@ -115,7 +94,7 @@ fn a_token_cannot_be_redeemed_twice() {
         let activation = activation(&mut alpha);
         let alpha_window = alpha.map_window("org.gnoblin.Alpha", "Alpha");
         wait_focus(session, "Alpha");
-        let serial = click_for_serial(&mut alpha, session, &alpha_window);
+        let serial = session.click_for_serial(&mut alpha);
         let token = request_token(&mut alpha, &activation, Some(serial)).expect("a click earns a token");
 
         activation.activate(token.clone(), &alpha_window.surface);
@@ -234,7 +213,7 @@ fn a_denied_activation_reports_the_decision_without_changing_focus() {
         let activation = activation(&mut alpha);
         let alpha_window = alpha.map_window("org.gnoblin.Alpha", "Alpha");
         wait_focus(session, "Alpha");
-        let serial = click_for_serial(&mut alpha, session, &alpha_window);
+        let serial = session.click_for_serial(&mut alpha);
         let token = request_token(&mut alpha, &activation, Some(serial)).expect("a click earns a token");
 
         // The token is spent on Alpha, which is the focused window already.

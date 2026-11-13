@@ -353,6 +353,8 @@ struct WindowNode {
     published_geometry: Option<[f64; 4]>,
     /// The window state last published to the node: focused, fullscreen, maximised, minimised.
     published_state: Option<[bool; 4]>,
+    /// Whether `unresponsive` was last published to the node as true. A node starts false.
+    published_unresponsive: bool,
     /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
     /// tree's, when a subsurface reaches past the root surface.
     hit_extent: Option<Rect>,
@@ -1295,6 +1297,7 @@ impl Composer {
                 title: String::new(),
                 app_id: String::new(),
                 published_state: None,
+                published_unresponsive: false,
                 applied_size: None,
                 published_geometry: None,
                 hit_extent: None,
@@ -1412,6 +1415,27 @@ impl Composer {
                 value: TreeValue::Bool(value),
             });
         }
+    }
+
+    /// Publishes whether the window's client has stopped answering its liveness pings, as the node's `unresponsive`,
+    /// when that changed. A window with no node yet is published once it has one: nothing is recorded until then, and
+    /// a window that gets a node while marked reports it on the next call.
+    pub fn set_window_unresponsive(&mut self, window: WindowId, unresponsive: bool) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let Some(node) = entry.node else {
+            return;
+        };
+        if entry.published_unresponsive == unresponsive {
+            return;
+        }
+        entry.published_unresponsive = unresponsive;
+        self.tree_changes.push(TreeChange::Set {
+            node,
+            key: "unresponsive".to_owned(),
+            value: TreeValue::Bool(unresponsive),
+        });
     }
 
     /// The `[fullscreen, maximised, minimised]` flags the shell holds on a window's node, or

@@ -199,8 +199,29 @@ impl State {
         }
     }
 
+    /// Sends SIGKILL to the process behind a window's client, as the shell's `kill` call asks. The signal goes through
+    /// a pidfd opened for the process the client connected as, so a pid that was reused since is never signalled; the
+    /// compositor's own process and init are refused, as are a window whose process is unknown or has disconnected.
+    /// `false` when nothing was signalled.
+    pub(crate) fn kill_window(&mut self, window: WindowId) -> bool {
+        let identity = match self.window_process_for_control(window) {
+            Some(crate::WindowProcess::Connected(identity)) => identity,
+            other => {
+                log::debug!(area = "toplevel", %window, ?other, "a kill for a window with no process the compositor can name");
+                return false;
+            }
+        };
+        match identity.kill_target() {
+            Ok(target) => target.kill(),
+            Err(refusal) => {
+                log::debug!(area = "toplevel", %window, ?refusal, "a kill was refused");
+                false
+            }
+        }
+    }
+
     /// Runs the method calls the shell made on window nodes. `close` asks the client to close, and the client
-    /// decides whether it exits.
+    /// decides whether it exits. `kill` ends its process.
     pub(crate) fn run_window_calls(&mut self, calls: Vec<TreeCall>) {
         for call in calls {
             let Some(window) = self.composer.window_of_node(call.node) else {
@@ -209,6 +230,9 @@ impl State {
             match call.method.as_str() {
                 "close" => {
                     self.close_window(window);
+                }
+                "kill" => {
+                    self.kill_window(window);
                 }
                 other => log::trace!(area = "toplevel", %window, method = other, "a window call nothing answers"),
             }

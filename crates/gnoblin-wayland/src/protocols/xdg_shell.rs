@@ -51,9 +51,11 @@ impl XdgShellHandler for State {
     /// The request is honoured only with a serial the session handed to this client on
     /// an input event, which is the protocol's rule against a client opening menus on its
     /// own. A serial the session never issued, or one that has aged out, is ignored with
-    /// a debug log, and nothing is shown. The point is surface-local, so it is shifted by
-    /// the window's own origin, less where its geometry starts in the surface, to give the output position the menu
-    /// is anchored at.
+    /// a debug log, and nothing is shown, whether a shell holds the tree or not: a menu takes
+    /// the keyboard, so an unchecked request would let a client steal it. The point is
+    /// surface-local, so it is shifted by the window's own origin, less where its geometry starts
+    /// in the surface, to give the output position the menu is anchored at. A shell that holds the
+    /// tree hears it as a `menu` request on the window's node, with that anchor.
     fn show_window_menu(
         &mut self,
         surface: ToplevelSurface,
@@ -61,9 +63,6 @@ impl XdgShellHandler for State {
         serial: Serial,
         location: Point<i32, Logical>,
     ) {
-        if self.request_to_shell(surface.wl_surface(), TreeRequest::Menu) {
-            return;
-        }
         if !self.serial_issued(u32::from(serial)) {
             log::debug!(
                 area = "xdg",

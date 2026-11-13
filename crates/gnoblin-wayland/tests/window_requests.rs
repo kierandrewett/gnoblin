@@ -511,3 +511,91 @@ fn a_window_the_shell_maximises_is_not_configured_back_to_its_old_size() {
         assert_configured_for_good(&client, asked, false, OWN_SIZE);
     });
 }
+
+/// The frame's corner of the only window the session manages: what a surface-local point is shifted by.
+fn frame_corner(session: &session::Handle) -> (i32, i32) {
+    let geometry = session
+        .wait_for(|observation| observation.only().is_some_and(|window| window.mapped))
+        .only()
+        .expect("one window")
+        .geometry;
+    (geometry.x, geometry.y)
+}
+
+#[test]
+fn a_window_menu_request_with_an_issued_serial_reaches_the_shell_at_its_anchor_and_is_not_published_twice() {
+    // The failure mode: the menu is asked for, a shell holds the tree, and either nobody hears it (no menu ever
+    // opens) or both the shell and an extension subscribed to `menu_requested` open one, stacked.
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.socket());
+        let window = client.map_window("org.gnoblin.Menu", "Menu");
+        let node = shell.wait_window_node();
+        let serial = session.click_for_serial(&mut client);
+        let (x, y) = frame_corner(session);
+
+        window.toplevel.show_window_menu(&client.seat, serial, 30, 40);
+        client.roundtrip();
+        shell.wait_request(node, "menu", 1);
+
+        assert_eq!(
+            shell.menu_anchors(node),
+            [(x + 30, y + 40)],
+            "the anchor is the surface point in global coordinates"
+        );
+        assert!(
+            session.windows().menu_requests().is_empty(),
+            "a shell that holds the tree draws the menu, so no `menu_requested` goes to a second subscriber: {:?}",
+            session.windows().menu_requests()
+        );
+    });
+}
+
+#[test]
+fn a_window_menu_request_with_a_serial_nobody_issued_reaches_nobody() {
+    // The failure mode: a client opens menus on its own, and a menu takes the keyboard, so it steals it. The serial
+    // check holds whether or not a shell is attached.
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.socket());
+        let window = client.map_window("org.gnoblin.Menu", "Menu");
+        let node = shell.wait_window_node();
+        let issued = session.click_for_serial(&mut client);
+
+        // One more than the last serial the client was handed was never handed to it.
+        window
+            .toplevel
+            .show_window_menu(&client.seat, issued.wrapping_add(1_000_003), 30, 40);
+        window.toplevel.show_window_menu(&client.seat, 0, 30, 40);
+        client.roundtrip();
+        settle(&mut client);
+
+        assert!(
+            shell.menu_anchors(node).is_empty(),
+            "an unissued serial opens no menu: {:?}",
+            shell.menu_anchors(node)
+        );
+        assert!(session.windows().menu_requests().is_empty());
+    });
+}
+
+#[test]
+fn a_window_menu_request_with_no_shell_is_published_for_a_subscriber_as_before() {
+    let session = Session::start();
+    session.run(move |session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.map_window("org.gnoblin.Menu", "Menu");
+        let serial = session.click_for_serial(&mut client);
+        let (x, y) = frame_corner(session);
+
+        window.toplevel.show_window_menu(&client.seat, serial, 30, 40);
+        client.roundtrip();
+        let observation = session.wait_for(|observation| !observation.menu_requests().is_empty());
+        let request = &observation.menu_requests()[0];
+        assert_eq!((request.anchor().x(), request.anchor().y()), (x + 30, y + 40));
+    });
+}

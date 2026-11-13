@@ -180,7 +180,8 @@ local function heading(offer)
     return rows, height
 end
 
-local function button_row(first, second)
+-- Two buttons side by side, as the rows and the pair of buttons. Other dialogs of the shell (alerts.lua) use it too.
+function M.button_row(first, second)
     local row = Box({ direction = "row", gap = 12, padding = 0, height = 44 })
     local a = row:add(PromptButton({ label = first, grow = 1 }))
     local b = row:add(PromptButton({ label = second, grow = 1 }))
@@ -239,7 +240,7 @@ end
 -- Builds the consent dialog and its scrim on `d`. Returns the scrim (destroy it to close) and the dialog.
 function M.build_consent(d, offer)
     local rows, height = heading(offer)
-    local row, buttons = button_row("Deny", "Allow")
+    local row, buttons = M.button_row("Deny", "Allow")
     buttons[2].enabled = false -- until the dialog is armed
     local total = 2 * PAD + height + 44
     local scrim = d:add(PromptScrim({ x = 0, y = 0, width = d.width, height = d.height }))
@@ -261,7 +262,7 @@ end
 function M.build_passphrase(d, offer)
     local rows, height = heading(offer)
     local entry = Entry({ secret = true, height = 44, radius = 10, fill = "#313244", size = 15 })
-    local row, buttons = button_row("Cancel", "Unlock")
+    local row, buttons = M.button_row("Cancel", "Unlock")
     buttons[2].enabled = false
     local total = 2 * PAD + height + 44 + GAP + 44
     local scrim = d:add(PromptScrim({ x = 0, y = 0, width = d.width, height = d.height }))
