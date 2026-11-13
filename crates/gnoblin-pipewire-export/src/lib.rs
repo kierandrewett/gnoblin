@@ -503,17 +503,67 @@ impl PipewireExport {
         }
     }
 
-    /// Drops every stream whose session is gone, stopped, or no longer granted, and the
-    /// connection when no stream is left.
-    fn reap(&mut self, table: &Table) {
-        self.exports.retain(|session, _| {
-            table
-                .get(*session)
-                .is_some_and(|entry| entry.stream() == CaptureStream::Granted && entry.stopped().is_none())
-        });
+    /// Drops every stream whose session is gone, stopped, or no longer granted, and the connection when no stream
+    /// is left. An ended stream is disconnected and the daemon synced before it is dropped, so its node is gone
+    /// before the compositor could send another frame for it.
+    pub fn reap(&mut self, table: &Table) {
+        let ended: Vec<SessionId> = self
+            .exports
+            .keys()
+            .copied()
+            .filter(|session| {
+                !table
+                    .get(*session)
+                    .is_some_and(|entry| entry.stream() == CaptureStream::Granted && entry.stopped().is_none())
+            })
+            .collect();
+        if ended.is_empty() {
+            return;
+        }
+        let removed: Vec<PipewireExportStream> = ended
+            .iter()
+            .filter_map(|session| self.exports.remove(session))
+            .collect();
+        if let Some(connection) = &self.connection {
+            for export in &removed {
+                let _ = export.stream.disconnect();
+            }
+            sync_ended(connection);
+        }
+        drop(removed);
         if self.exports.is_empty() {
             self.connection = None;
         }
+    }
+}
+
+/// How long a reaped stream's disconnect may take to reach the daemon before the compositor treats the stream as
+/// ended anyway.
+const END_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Runs a core roundtrip, so the daemon has handled every request sent before it, the disconnects included, or
+/// until [`END_TIMEOUT`] passes.
+fn sync_ended(connection: &PipewireConnection) {
+    let Ok(pending) = connection.core.sync(0) else {
+        return;
+    };
+    let answered = Rc::new(RefCell::new(false));
+    let done = Rc::clone(&answered);
+    let _listener = connection
+        .core
+        .add_listener_local()
+        .done(move |_, seq| {
+            if seq.raw() == pending.raw() {
+                *done.borrow_mut() = true;
+            }
+        })
+        .register();
+    let started = Instant::now();
+    while !*answered.borrow() && started.elapsed() < END_TIMEOUT {
+        connection
+            .mainloop
+            .loop_()
+            .iterate(Timeout::Finite(Duration::from_millis(10)));
     }
 }
 

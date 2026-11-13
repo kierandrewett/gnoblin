@@ -416,7 +416,9 @@ impl CaptureTables {
     }
 
     /// Ends, as [`Stop::Secure`], every live session whose target `reaches` answers true for: a capture of a node
-    /// the frame just marked secure must not run on.
+    /// the frame just marked secure must not run on. Its PipeWire stream is disconnected and the daemon synced
+    /// before this returns, so the caller can acknowledge the frame's replies only after no more buffers can
+    /// reach a consumer.
     pub(crate) fn stop_targets_reaching(&mut self, reaches: impl Fn(Target) -> bool) {
         let ended: Vec<SessionId> = self
             .table
@@ -427,6 +429,7 @@ impl CaptureTables {
         for session in ended {
             self.stop(session, Stop::Secure);
         }
+        self.pipewire.reap(&self.table);
     }
 
     /// Ends every session and every unresolved screencopy frame.
