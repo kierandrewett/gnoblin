@@ -74,6 +74,13 @@ _The panel is a separate Quickshell process using Gnoblin's layer-shell support.
 
 Bingux is an integrated desktop with a bar, dock, search and notifications. See [Bingux](bingux.md) to install it.
 
+## Build your own shell
+
+A shell is Lua running on Gnoblin's [shell object model](shell-object-model.md).
+Start with [window rules and workspace sets](user-shell.md#window-rules), which
+need no code. To replace a stock method or write your own layout, see
+[Build your shell](build-your-shell.md).
+
 ## What Gnoblin provides
 
 Gnoblin provides window management, locking, desktop services, and a small
