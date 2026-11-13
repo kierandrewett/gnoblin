@@ -91,24 +91,25 @@ fn the_owner_connection_is_served_the_privileged_members() {
 
 #[test]
 fn an_offer_to_a_slot_with_no_provider_is_refused() {
-    // `prompt.secret` has no default provider, so an offer for it must fail at once: a
-    // prompt nobody will draw must not cost its host the whole deadline.
+    // `portal.ui` has no default provider and a host cannot offer it a request, so an offer for it must fail at
+    // once: a prompt nobody will draw must not cost its host the whole deadline. (`prompt.secret` has no default
+    // provider either, but the compositor's own dialog serves it: `tests/portal_provider.rs`.)
     let (session, mut ends) = Session::start_privileged(&["services"]);
     let mut services = role_client(&mut ends, "services");
     let started = std::time::Instant::now();
     let (code, message) = refusal(
         services
             .offer(
-                "prompt.secret",
-                "Unlock the keyring",
-                "Enter your passphrase",
+                "portal.ui",
+                "Screenshot",
+                "Share the screen?",
                 b"",
                 Duration::from_secs(60),
             )
             .expect_err("nobody provides the slot"),
     );
     assert_eq!(code, code::NO_PROVIDER, "{message}");
-    assert!(message.contains("prompt.secret"), "the slot is named: {message}");
+    assert!(message.contains("portal.ui"), "the slot is named: {message}");
     assert!(started.elapsed() < TIMEOUT / 2, "the refusal is immediate, not a wait");
     drop(session);
 }

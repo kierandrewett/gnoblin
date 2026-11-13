@@ -215,8 +215,8 @@ impl KeyringAgent {
 const PROMPT_DEADLINE_MS: u64 = 120_000;
 
 /// Offers the unlock password as a `prompt.secret` request. The compositor routes it to the shell
-/// that claimed the slot. An unclaimed slot refuses the offer at once, so the keyring stays locked
-/// rather than waiting on a prompt nobody draws.
+/// that claimed the slot, and draws its own passphrase dialog when none did, so an unclaimed slot
+/// still gets the prompt answered.
 struct HostOffer {
     host: Host,
 }

@@ -49,6 +49,7 @@ gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-portal = { path = "../gnoblin-portal" }
 gnoblin-portal-core = { path = "../gnoblin-portal-core" }
 gnoblin-portal-ui = { path = "../gnoblin-portal-ui" }
+gnoblin-portal-consent = { path = "../gnoblin-portal-consent" }
 gnoblin-input = { path = "../gnoblin-input" }
 # The still-picture seam: the output choice and the PNG encoding for `capture.screen`.
 gnoblin-capture = { path = "../gnoblin-capture" }
@@ -69,6 +70,8 @@ gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-schema = { path = "../gnoblin-schema" }
 
 [dev-dependencies]
+# Reads back what the compositor logs, so a test proves a typed passphrase reaches no log line.
+gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # A real client for the real Wayland socket: the end-to-end tests drive the
 # session the way another process would.
 wayland-client = "0.31.14"

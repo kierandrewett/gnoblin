@@ -10,13 +10,43 @@ There is no config switch for this. The keyring asks whenever it needs its
 password. Turn the keyring off with
 [`gnoblin.configure.keyring`](/config/configure/keyring) if you use another keyring.
 
-## Fails closed without a claimant
+## The compositor draws it when no shell does
 
-The stock shell claims `prompt.secret` and draws the prompt (`prompts.lua`). If no
-shell has claimed it, the request is refused at once and names `prompt.secret`.
-Nothing waits out a deadline, and the keyring stays locked.
+The stock shell claims `prompt.secret` and draws the prompt (`prompts.lua`). When
+no shell has claimed the slot, the compositor draws its own passphrase dialog and
+returns the answer, so the keyring can always be unlocked: with no shell, with a
+runtime that has not started or has crashed, and with a script that never claims
+the slot.
 
-Claim the slot before you expect unlock prompts to appear.
+The built-in dialog:
+
+- is drawn by the compositor above every window, layer and shell node, and a
+  screen capture leaves it out. A script cannot draw over it or hide it;
+- takes every key and click while it is open, so no client or script sees what
+  you type;
+- shows a lock, the request's own title and question, and who asks (the request's
+  subject, for the keyring "keyring");
+- masks the entry with one mark per character. Enter confirms a non-empty entry,
+  Escape or Cancel declines, and a decline ends the request with no answer;
+- queues requests that arrive while one is open, and declines them when the
+  session locks;
+- wipes the passphrase from memory when it is answered, and logs no more than
+  the request number.
+
+### When a shell claims the slot
+
+A shell that claims the slot replaces the built-in dialog. The compositor still
+owns the request and its deadline, so:
+
+- A claimant that disappears before it answers hands the same request to the
+  built-in dialog, with the deadline it had. The host keeps waiting on the same
+  request.
+- A claimant that answers first wins. A late answer from a gone claimant is
+  refused.
+- A claimant that declines ends the request, as the stock shell's dialog does on
+  Escape. The built-in dialog does not open over a prompt the user dismissed.
+- A claimant that stays connected but never answers is not taken over before the
+  request's own deadline.
 
 ## What a claimant receives
 

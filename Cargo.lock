@@ -1345,6 +1345,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-paint",
  "gnoblin-portal",
+ "gnoblin-portal-consent",
  "gnoblin-portal-core",
  "gnoblin-portal-ui",
  "gnoblin-proto",
@@ -1616,6 +1617,7 @@ dependencies = [
  "egui",
  "gnoblin-portal-core",
  "gnoblin-portal-ui",
+ "gnoblin-secret",
  "gnoblin-types",
 ]
 

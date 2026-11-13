@@ -31,6 +31,7 @@ mod portal;
 mod privileged;
 mod reload;
 mod requests;
+mod secret;
 mod server;
 mod session;
 mod settings;

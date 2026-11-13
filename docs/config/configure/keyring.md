@@ -39,13 +39,13 @@ not serve.
 The store lives in `$XDG_DATA_HOME/gnoblin/keyring.db`, or under
 `$HOME/.local/share/gnoblin/` when `XDG_DATA_HOME` is unset. It stays locked
 until the login password reaches it. When the login session has no password, the
-keyring asks for it through a `prompt.secret` request that a shell answers. With
-no shell claiming that request, the store stays locked. See
-[passphrase prompts](/shell-api/passphrase-prompts).
+keyring asks for it through a `prompt.secret` request. A shell that claims that
+slot answers it; with no shell claiming it, the compositor draws its own
+passphrase dialog. See [passphrase prompts](/shell-api/passphrase-prompts).
 
 While the store is locked, an app that saves a new password makes the keyring ask for
 the password first. The app's save finishes after you answer. If the request is
-dismissed, answered wrongly or not claimed, nothing is saved. Searching and reading
+dismissed or answered wrongly, nothing is saved. Searching and reading
 while locked return nothing until the store is unlocked.
 
 ## When a change applies

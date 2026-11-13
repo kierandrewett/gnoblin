@@ -48,7 +48,7 @@ const FRAME_WIDTH: usize = 640;
 const FRAME_HEIGHT: usize = 360;
 
 /// The wire code for a key name the dialog grammar does not know.
-const UNKNOWN_KEY: &str = "unknown-key";
+pub(super) const UNKNOWN_KEY: &str = "unknown-key";
 
 /// The wire code for a payload that does not decode.
 pub const MALFORMED: &str = "malformed";
@@ -457,6 +457,12 @@ impl PortalService {
         self.settle()
     }
 
+    /// Draws the open dialog again on the next pump: the passphrase dialog that covered it has ended, and a
+    /// modal that is not set shows nothing.
+    pub fn redraw(&mut self) {
+        self.ui.redraw();
+    }
+
     /// The session lock changed. Locking settles every held request `error(locked)`.
     /// `pump` feeds it from the lock state each tick.
     pub fn set_locked(&mut self, locked: bool) -> Vec<Reply> {
@@ -775,7 +781,7 @@ pub(super) fn resolve_portal_scope<W>(
 
 /// The key a `portal.key` name stands for: `escape`, `enter`, `tab`, `up`, `down`,
 /// `space`, `backspace`, or `text:` and one character.
-fn parse_key(name: &str) -> Option<ScreenKey> {
+pub(super) fn parse_key(name: &str) -> Option<ScreenKey> {
     Some(match name {
         "escape" => ScreenKey::Escape,
         "enter" => ScreenKey::Enter,
@@ -911,6 +917,8 @@ impl PortalService {
                     self.ui.key(key, false);
                 }
             }
+            // Only a modal that takes text is sent it, and the consent dialog has no entry.
+            ModalEvent::Text { .. } => {}
             ModalEvent::PointerButton { x, y, button, state } => {
                 if button != BTN_LEFT {
                     return;

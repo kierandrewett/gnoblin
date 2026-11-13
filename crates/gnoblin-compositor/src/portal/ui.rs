@@ -297,6 +297,15 @@ impl PortalUi {
         Some(frame)
     }
 
+    /// Hands the open dialog out again by the next [`PortalUi::take_frame`], even when its pixels did not change.
+    /// For a dialog that was covered by another modal and has to be put back on screen.
+    pub fn redraw(&mut self) {
+        if let Some(active) = self.active.as_mut() {
+            active.dirty = true;
+            active.shown = None;
+        }
+    }
+
     /// Every request that settled since the last call, in settle order.
     pub fn take_outcomes(&mut self) -> Vec<(RequestId, Verdict)> {
         std::mem::take(&mut self.outcomes)

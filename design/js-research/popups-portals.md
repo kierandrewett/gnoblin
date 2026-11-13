@@ -51,7 +51,9 @@ Tree: `/home/kieran/dev/gnoblin-rust-wt` (`WT/`). Spec: `/home/kieran/dev/lanes/
 
 Summary: A = rows 1, 3, 5, 6, 7, 18, 20. B = 2, 4, 9, 21. C = 10 to 17, 19. Row 8 is not ours.
 
-New Rust work implied: built-in `prompt.secret` dialog (5), polkit dialog and password path (6), lock fallback (9), wire the chooser UIs or keep routing to gtk (3, 4), `DialogStyle` plumbing (section 6), picker offer fields (2).
+New Rust work implied: polkit dialog and password path (6), lock fallback (9), wire the chooser UIs or keep routing to gtk (3, 4), `DialogStyle` plumbing (section 6), picker offer fields (2). The built-in `prompt.secret` dialog (5) is done, see below.
+
+**Row 5 status: the Rust built-in exists.** `gnoblin-portal-consent::SecretUi` is the egui card (lock, the request's title, question and subject, a masked entry, Cancel and Unlock), and `gnoblin-compositor/src/ipc/secret.rs` `SecretService` shows it as the compositor's `Modal` (secure overlay above everything, every key and click taken by the compositor, typed text sent only to a modal that asks for it). It serves a `prompt.secret` request when no shell claims the slot, and, per section 5, the compositor keeps the request and its deadline: a claimant that leaves before answering hands the same request (same id, same deadline) to the built-in, and a claimant that answers first wins. A claimant's decline is still its answer and ends the request: the stock shell's Escape is a plain decline, so reading it as "cannot draw" would open a second dialog over a prompt the user dismissed. The Lua `prompts.lua` is unchanged and still claims the slot on a stock session. Not done: the claimant's half-budget for a connected but wedged claimant (that request waits for its own deadline), the `SecureEntry` tier (4.3), polkit (row 6, which needs the owner decision on who verifies the password).
 
 ## 4. Proposed JS API shape
 

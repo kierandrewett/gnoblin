@@ -25,17 +25,24 @@
 //!   a session with no shell to draw one.
 //! - `none` — nobody, and the offer is refused with `no-provider` naming the slot. This
 //!   is the difference the plan draws between a prompt that cannot be drawn and a
-//!   prompt that hangs until its deadline.
+//!   prompt that hangs until its deadline. The one exception is `prompt.secret`: the
+//!   compositor draws that prompt itself (`secret.rs`), so an offer with no claimant is
+//!   held by the built-in dialog, which the broker still gives an identity and a deadline.
 //!
 //! # Failure modes first
 //!
 //! 1. **A request is offered to a slot nobody provides, and the host waits for its
 //!    deadline.** [`Requests::offer`] refuses with `no-provider` and names the slot, so
-//!    nothing is offered and the host fails at once:
-//!    `tests::an_offer_to_a_slot_with_no_provider_is_refused`.
+//!    nothing is offered and the host fails at once (`tests/privilege.rs`:
+//!    `an_offer_to_a_slot_with_no_provider_is_refused`). A passphrase prompt is not lost
+//!    this way, because the built-in dialog serves it:
+//!    `tests::an_unclaimed_prompt_is_opened_in_the_built_in_dialog_and_answered_to_the_host`.
 //! 2. **A provider goes away while it holds a request.** Its claimed requests finish as
 //!    ended, so the host that needed the decision stops waiting:
-//!    `tests::a_departed_provider_ends_its_requests`.
+//!    `tests::a_departed_provider_still_ends_the_requests_of_slots_with_no_built_in`. A
+//!    `prompt.secret` request is handed to the built-in dialog instead, with the same
+//!    identity and deadline:
+//!    `tests::a_claimant_that_leaves_before_answering_hands_the_prompt_to_the_built_in_dialog`.
 //! 3. **The host that offered a request goes away, and its request hangs.**
 //!    [`Requests::departed`] abandons every request that connection offered:
 //!    `tests::a_departed_offerer_abandons_its_requests`.
@@ -64,6 +71,29 @@ use gnoblin_model::{
 };
 use gnoblin_types::{ClientId, OwnerId};
 
+/// The connection a request the compositor's own dialog serves is held by. It is no real connection, so no
+/// client can claim, answer or decline such a request: only [`Requests::answer_builtin`] and
+/// [`Requests::decline_builtin`] finish it.
+fn builtin_client() -> ClientId {
+    ClientId::new(u64::MAX)
+}
+
+/// The identity the compositor claims its own dialog's requests under; see [`builtin_client`].
+fn builtin_owner() -> OwnerId {
+    OwnerId::new(u64::MAX)
+}
+
+/// What the compositor's passphrase dialog shows for one request, taken from the offer and never from
+/// anything the user or a script wrote.
+pub(crate) struct SecretPrompt {
+    /// The dialog's title.
+    pub title: String,
+    /// The question it asks.
+    pub message: String,
+    /// What the request is about, shown as who asks.
+    pub subject: String,
+}
+
 /// One request that is live in the broker.
 #[derive(Clone, Debug)]
 struct Offer {
@@ -87,6 +117,10 @@ struct Offer {
     /// `offered_by` as an answer frame: the relay asked a question of the compositor, not of the
     /// provider.
     portal: bool,
+    /// Whether the compositor's own dialog serves the request: no shell claimed `prompt.secret`, or the
+    /// claimant went away. The request is then held by [`builtin_client`], and the broker still owns
+    /// its identity and its deadline.
+    builtin: bool,
 }
 
 /// One frame the dispatcher has to write, and the connection to write it to.
@@ -133,6 +167,10 @@ pub(crate) struct Requests {
     configuration: Configuration,
     /// How the compositor's own `portal.ui` offers ended, for the portal service to settle.
     portal_outcomes: Vec<(RequestId, RequestOutcome)>,
+    /// Requests the built-in passphrase dialog has to open, since the last call.
+    secret_opened: Vec<RequestId>,
+    /// Built-in requests that ended, whoever ended them, so the dialog closes.
+    secret_ended: Vec<RequestId>,
 }
 
 impl Requests {
@@ -150,6 +188,8 @@ impl Requests {
             slots,
             configuration: Configuration::default(),
             portal_outcomes: Vec::new(),
+            secret_opened: Vec::new(),
+            secret_ended: Vec::new(),
         }
     }
 
@@ -167,7 +207,15 @@ impl Requests {
             code: wire::code::UNKNOWN_SLOT,
             message: error.to_string(),
         })?;
-        let provider = self.provider_of(slot, offered_by)?;
+        // A `prompt.secret` nobody draws is served by the compositor's own dialog, so the keyring can always
+        // be unlocked. Every other slot with no provider still fails at once.
+        let (provider, builtin) = match self.provider_of(slot, offered_by) {
+            Ok(provider) => (provider, false),
+            Err(refusal) if slot == CapabilitySlot::PromptSecret && refusal.code == wire::code::NO_PROVIDER => {
+                (builtin_client(), true)
+            }
+            Err(refusal) => return Err(refusal),
+        };
         let request = self.broker.offer(deadline);
         // The metadata is in place before the broker's events are drained, so the
         // offer that event describes can be routed and described.
@@ -181,8 +229,12 @@ impl Requests {
                 provider,
                 offered_by,
                 portal: false,
+                builtin,
             },
         );
+        if builtin {
+            self.take_over(request);
+        }
         Ok((request, self.drain()))
     }
 
@@ -212,6 +264,7 @@ impl Requests {
                 provider,
                 offered_by: requested_by,
                 portal: true,
+                builtin: false,
             },
         );
         (request, self.drain())
@@ -388,6 +441,9 @@ impl Requests {
         request: RequestId,
         reason: Option<DeclineReason>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        // A decline is the claimant's answer, and it stays one even for `prompt.secret`: the stock shell's
+        // Escape is a plain decline, so reading it as "cannot draw this" would open a second dialog over a
+        // prompt the user just dismissed. Only a claimant that is gone hands the request over.
         self.broker
             .decline_with(request, OwnerId::new(owner.get()), reason)
             .map_err(|error| RequestRefusal {
@@ -429,6 +485,24 @@ impl Requests {
             {
                 let _ = self.broker.abandon(request);
             }
+        }
+        // A passphrase prompt the departed claimant held is not lost: the compositor's own dialog takes it over
+        // on the same request, with the deadline it already had, before the claim below would end it.
+        let handed: Vec<RequestId> = self
+            .offers
+            .iter()
+            .filter(|(_, offer)| {
+                offer.slot == CapabilitySlot::PromptSecret
+                    && !offer.builtin
+                    && offer.provider == client
+                    && offer.offered_by != client
+            })
+            .map(|(request, _)| *request)
+            .collect();
+        for request in handed {
+            // A prompt the claimant was only offered is already waiting to be claimed.
+            let _ = self.broker.reoffer(request, OwnerId::new(client.get()));
+            self.take_over(request);
         }
         // A claim it held is released, so its requests end as gone rather than staying
         // with a connection that will never answer them.
@@ -497,6 +571,10 @@ impl Requests {
                     let Some(offer) = self.offers.get(&request).cloned() else {
                         continue;
                     };
+                    // The compositor's own dialog is not a connection to write to.
+                    if offer.builtin {
+                        continue;
+                    }
                     deliveries.push(FrameDelivery {
                         client: offer.provider,
                         envelope: wire::offer(
@@ -516,6 +594,9 @@ impl Requests {
                         wipe(&mut outcome);
                         continue;
                     };
+                    if offer.builtin {
+                        self.secret_ended.push(request);
+                    }
                     if offer.portal {
                         // The relay asked the compositor, not the provider: the provider learns how
                         // its request ended, and the portal service reads the outcome and replies.
@@ -553,6 +634,63 @@ impl Requests {
             }
         }
         deliveries
+    }
+
+    /// Hands a passphrase request that is waiting to be claimed to the compositor's own dialog: it is held by
+    /// the built-in identity from now on, and the dialog is told to open.
+    fn take_over(&mut self, request: RequestId) {
+        if let Some(offer) = self.offers.get_mut(&request) {
+            offer.provider = builtin_client();
+            offer.builtin = true;
+        }
+        if self.broker.claim(request, builtin_owner()).is_ok() {
+            self.secret_opened.push(request);
+        }
+    }
+
+    /// The passphrase requests the built-in dialog has to open since the last call, oldest first.
+    pub(crate) fn take_secret_opened(&mut self) -> Vec<RequestId> {
+        std::mem::take(&mut self.secret_opened)
+    }
+
+    /// The built-in requests that ended since the last call, however they ended, so the dialog can close.
+    pub(crate) fn take_secret_ended(&mut self) -> Vec<RequestId> {
+        std::mem::take(&mut self.secret_ended)
+    }
+
+    /// What the built-in dialog shows for `request`, or `None` once it is not a live built-in request.
+    pub(crate) fn secret_prompt(&self, request: RequestId) -> Option<SecretPrompt> {
+        let offer = self.offers.get(&request).filter(|offer| offer.builtin)?;
+        Some(SecretPrompt {
+            title: offer.title.clone(),
+            message: offer.message.clone(),
+            subject: String::from_utf8_lossy(&offer.subject).into_owned(),
+        })
+    }
+
+    /// The user typed `answer` into the built-in dialog. The host that offered the request reads it, as it
+    /// reads a claimant's. The bytes are wiped here whether or not the request was still live.
+    pub(crate) fn answer_builtin(&mut self, request: RequestId, mut answer: Vec<u8>) -> Vec<FrameDelivery> {
+        let live = self.offers.get(&request).is_some_and(|offer| offer.builtin);
+        if !live
+            || self
+                .broker
+                .answer(request, builtin_owner(), std::mem::take(&mut answer))
+                .is_err()
+        {
+            answer.zeroize();
+            return Vec::new();
+        }
+        self.drain()
+    }
+
+    /// The user declined the built-in dialog: the request ends with no answer, as a claimant's plain decline does.
+    pub(crate) fn decline_builtin(&mut self, request: RequestId) -> Vec<FrameDelivery> {
+        let live = self.offers.get(&request).is_some_and(|offer| offer.builtin);
+        if !live || self.broker.decline_with(request, builtin_owner(), None).is_err() {
+            return Vec::new();
+        }
+        self.drain()
     }
 }
 
@@ -849,43 +987,216 @@ mod tests {
         assert_eq!(refusal.code, wire::code::REQUEST_TAKEN);
     }
 
+    /// A `prompt.secret` offer with no claimant: the compositor's own dialog holds it.
+    fn builtin_request(requests: &mut Requests) -> RequestId {
+        let (request, deliveries) = requests
+            .offer(
+                HOST,
+                "prompt.secret",
+                "Unlock",
+                "Passphrase",
+                b"keyring",
+                Tick::new(1_000),
+            )
+            .expect("the built-in dialog serves an unclaimed prompt");
+        assert!(
+            deliveries.is_empty(),
+            "the dialog is not a connection, so no offer is written"
+        );
+        request
+    }
+
+    /// The delivery that carries `answer` to `client`, if any.
+    fn carries(deliveries: &[FrameDelivery], client: ClientId, answer: &[u8]) -> bool {
+        deliveries.iter().any(|delivery| {
+            delivery.client == client
+                && delivery
+                    .envelope
+                    .payload()
+                    .is_some_and(|payload| payload.windows(answer.len()).any(|window| window == answer))
+        })
+    }
+
     #[test]
-    fn a_departed_provider_ends_its_requests() {
+    fn an_unclaimed_prompt_is_opened_in_the_built_in_dialog_and_answered_to_the_host() {
+        let mut requests = Requests::new();
+        let request = builtin_request(&mut requests);
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+        let prompt = requests.secret_prompt(request).expect("the dialog reads the offer");
+        assert_eq!(
+            (prompt.title.as_str(), prompt.message.as_str(), prompt.subject.as_str()),
+            ("Unlock", "Passphrase", "keyring"),
+            "the dialog shows the request's own words"
+        );
+        let deliveries = requests.answer_builtin(request, b"hunter2".to_vec());
+        assert!(
+            carries(&deliveries, HOST, b"hunter2"),
+            "the host that asked reads the answer"
+        );
+        assert_eq!(
+            requests.take_secret_ended(),
+            vec![request],
+            "the dialog is told it is over"
+        );
+        assert!(requests.secret_prompt(request).is_none());
+    }
+
+    #[test]
+    fn a_declined_built_in_prompt_ends_the_request_without_an_answer() {
+        let mut requests = Requests::new();
+        let request = builtin_request(&mut requests);
+        let deliveries = requests.decline_builtin(request);
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == HOST),
+            "the host learns the request ended"
+        );
+        assert_eq!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::Ended
+            ))
+        );
+    }
+
+    #[test]
+    fn no_connection_can_claim_answer_or_decline_a_built_in_prompt() {
+        let mut requests = Requests::new();
+        let request = builtin_request(&mut requests);
+        // The host is the services role, and a prompt it asked about must not be one it can answer itself.
+        for connection in [HOST, SHELL, SERVICES] {
+            assert!(requests.claim_request(connection, request).is_err());
+            assert!(requests.answer(connection, request, b"mine".to_vec()).is_err());
+            assert!(requests.decline(connection, request, None).is_err());
+        }
+        assert!(matches!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Claimed { .. })
+        ));
+    }
+
+    #[test]
+    fn a_built_in_prompt_that_outlives_its_deadline_closes_the_dialog() {
+        let mut requests = Requests::new();
+        let request = builtin_request(&mut requests);
+        let _ = requests.take_secret_opened();
+        let deliveries = requests.tick(Tick::new(1_000));
+        assert!(deliveries.iter().any(|delivery| delivery.client == HOST));
+        assert_eq!(requests.take_secret_ended(), vec![request]);
+    }
+
+    #[test]
+    fn a_built_in_prompt_whose_host_left_closes_the_dialog() {
+        let mut requests = Requests::new();
+        let request = builtin_request(&mut requests);
+        let _ = requests.departed(HOST);
+        assert_eq!(requests.take_secret_ended(), vec![request]);
+    }
+
+    #[test]
+    fn a_claimant_that_leaves_before_answering_hands_the_prompt_to_the_built_in_dialog() {
         let mut requests = Requests::new();
         let request = shell_provided_request(&mut requests);
         requests
             .claim_request(SHELL, request)
             .expect("the provider claims the request");
+        assert!(
+            requests.take_secret_opened().is_empty(),
+            "a claimant holds it, not the dialog"
+        );
+
         let deliveries = requests.departed(SHELL);
+        assert!(
+            deliveries.iter().all(|delivery| delivery.client != HOST),
+            "the host is not told the request ended: it is still being asked"
+        );
+        assert_eq!(
+            requests.take_secret_opened(),
+            vec![request],
+            "the dialog opens on the same request"
+        );
         assert_eq!(
             requests.broker.state(request),
-            Some(gnoblin_model::RequestState::Finished(
-                gnoblin_model::RequestCompletion::Ended
-            )),
-            "a claimed request whose provider left ends as ended"
+            Some(gnoblin_model::RequestState::Claimed {
+                owner: builtin_owner(),
+                deadline: Tick::new(1_000),
+            }),
+            "with the deadline the request already had"
         );
+        let deliveries = requests.answer_builtin(request, b"hunter2".to_vec());
+        assert!(carries(&deliveries, HOST, b"hunter2"));
         assert!(
-            deliveries.iter().any(|delivery| delivery.client == HOST),
-            "the host learns its request ended"
+            requests.answer(SHELL, request, b"late".to_vec()).is_err(),
+            "a claimant that is gone cannot answer it"
         );
     }
 
     #[test]
-    fn a_departed_provider_ends_the_requests_it_was_offered_but_did_not_claim() {
+    fn a_claimant_that_leaves_before_claiming_hands_the_prompt_over_too() {
         let mut requests = Requests::new();
         let request = shell_provided_request(&mut requests);
         let deliveries = requests.departed(SHELL);
-        assert_eq!(
-            requests.broker.state(request),
-            Some(gnoblin_model::RequestState::Finished(
-                gnoblin_model::RequestCompletion::Ended
-            )),
-            "an offer nobody will now claim ends rather than waiting for its deadline"
+        assert!(deliveries.iter().all(|delivery| delivery.client != HOST));
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+    }
+
+    #[test]
+    fn a_claimant_that_answers_first_wins() {
+        let mut requests = Requests::new();
+        let request = shell_provided_request(&mut requests);
+        requests
+            .claim_request(SHELL, request)
+            .expect("the provider claims the request");
+        let deliveries = requests
+            .answer(SHELL, request, b"from the shell".to_vec())
+            .expect("the provider answers");
+        assert!(carries(&deliveries, HOST, b"from the shell"));
+        // Its departure after the fact finds nothing to hand over, and the dialog never opens.
+        let _ = requests.departed(SHELL);
+        assert!(requests.take_secret_opened().is_empty());
+        assert!(
+            requests.answer_builtin(request, b"too late".to_vec()).is_empty(),
+            "the dialog has nothing left to answer"
         );
+    }
+
+    #[test]
+    fn a_claimants_decline_is_its_answer_and_ends_the_request() {
+        for reason in [None, Some(DeclineReason::Denied)] {
+            let mut requests = Requests::new();
+            let request = shell_provided_request(&mut requests);
+            requests
+                .claim_request(SHELL, request)
+                .expect("the provider claims the request");
+            let deliveries = requests.decline(SHELL, request, reason).expect("the provider declines");
+            assert!(
+                deliveries.iter().any(|delivery| delivery.client == HOST),
+                "the host learns the user dismissed the prompt"
+            );
+            assert!(
+                requests.take_secret_opened().is_empty(),
+                "a dismissed prompt is not asked again"
+            );
+        }
+    }
+
+    #[test]
+    fn a_departed_provider_still_ends_the_requests_of_slots_with_no_built_in() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Services, true)
+            .expect("services claim secret.derive");
+        let (request, _) = requests
+            .offer(HOST, "secret.derive", "Secret", "", b"org.example", Tick::new(1_000))
+            .expect("offered to the services claimant");
+        requests
+            .claim_request(SERVICES, request)
+            .expect("the provider claims the request");
+        let deliveries = requests.departed(SERVICES);
         assert!(
             deliveries.iter().any(|delivery| delivery.client == HOST),
-            "the host learns its request ended instead of waiting out the deadline"
+            "the host learns its request ended"
         );
+        assert!(requests.take_secret_opened().is_empty());
     }
 
     #[test]

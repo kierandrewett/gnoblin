@@ -32,9 +32,12 @@
 //! 6. **Anyone can take the slot.** A second claimant, the services role and a `none` claim are
 //!    all refused: `a_second_shell_cannot_take_portal_ui`,
 //!    `the_services_role_cannot_claim_portal_ui`, `a_none_claim_cannot_clear_another_connections_slot`.
-//! 7. **`prompt.secret` still reaches its claimant.** The offer arrives, the answer reaches the
-//!    host and a claimant that leaves ends the request: `a_prompt_secret_claimant_answers_the_host`,
-//!    `a_prompt_secret_claimant_that_leaves_ends_the_request`.
+//! 7. **`prompt.secret` reaches its claimant, or the compositor's own dialog.** The offer arrives, the answer
+//!    reaches the host, and a claimant that leaves hands the same request to the built-in dialog instead of
+//!    ending it: `a_prompt_secret_claimant_answers_the_host`,
+//!    `a_prompt_secret_claimant_that_leaves_hands_the_request_to_the_built_in_dialog`. With no claimant at all
+//!    the built-in dialog answers or declines: `an_unclaimed_prompt_secret_is_answered_by_the_built_in_dialog`,
+//!    `escape_declines_the_built_in_passphrase_dialog`.
 //! 8. **A locked session is served a dialog by the claimant.** A request while the session is
 //!    locked is refused `locked`: `a_locked_session_refuses_a_request_even_with_a_claimant`.
 //! 9. **A connection that is not the owner's takes part.** It is refused `denied` when it claims or
@@ -502,10 +505,97 @@ fn a_prompt_secret_claimant_answers_the_host() {
     drop(session);
 }
 
+/// Types `text` into the open passphrase dialog through the input role, key by key as a keyboard would, then
+/// confirms with Enter. The dialog is open before the offer's reply is read, so no key is lost.
+fn type_and_confirm(input: &mut Wire, text: &str) {
+    for (index, character) in text.chars().enumerate() {
+        input.send(&portal_key(3_000 + index as u64, &format!("text:{character}"), false));
+        let _ack = input.receive();
+    }
+    input.send(&portal_key(4_000, "enter", false));
+    let _ack = input.receive();
+}
+
+/// The answer the host reads for `request`, skipping the completion notice that follows it.
+fn answer_read_by(services: &mut Client<UnixTransport>, request: RequestId) -> Vec<u8> {
+    for _ in 0..4 {
+        match services.next_event().expect("the host is told how it ended") {
+            Event::RequestAnswered { request: ended, answer } => {
+                assert_eq!(ended, request);
+                return answer.to_vec();
+            }
+            Event::RequestFinished { .. } => {}
+            other => panic!("unexpected event {other:?}"),
+        }
+    }
+    panic!("the host was never given an answer");
+}
+
 #[test]
-fn a_prompt_secret_claimant_that_leaves_ends_the_request() {
-    let (session, mut ends) = Session::start_privileged(&["services"]);
+fn an_unclaimed_prompt_secret_is_answered_by_the_built_in_dialog() {
+    // The failure this prevents: no shell claims `prompt.secret` (no runtime, or it never started), the request
+    // is refused, and the keyring cannot be unlocked at all.
+    let (session, mut ends) = Session::start_privileged(&["services", "input"]);
     let mut services = role_client(&mut ends, "services");
+    let mut input = take(&mut ends, "input");
+
+    let request = services
+        .offer(
+            "prompt.secret",
+            "Unlock the keyring",
+            "Enter your passphrase",
+            b"keyring",
+            Duration::from_secs(30),
+        )
+        .expect("the compositor's own dialog serves the unclaimed slot");
+    type_and_confirm(&mut input, "correct horse");
+
+    assert_eq!(
+        answer_read_by(&mut services, request),
+        b"correct horse",
+        "the host reads what was typed into the compositor's dialog"
+    );
+    drop(session);
+}
+
+#[test]
+fn escape_declines_the_built_in_passphrase_dialog() {
+    let (session, mut ends) = Session::start_privileged(&["services", "input"]);
+    let mut services = role_client(&mut ends, "services");
+    let mut input = take(&mut ends, "input");
+
+    let request = services
+        .offer(
+            "prompt.secret",
+            "Unlock the keyring",
+            "Enter your passphrase",
+            b"keyring",
+            Duration::from_secs(30),
+        )
+        .expect("the compositor's own dialog serves the unclaimed slot");
+    for (id, key) in [(3_000, "text:x"), (3_001, "escape")] {
+        input.send(&portal_key(id, key, false));
+        let _ack = input.receive();
+    }
+
+    match services.next_event().expect("the host is told the prompt was declined") {
+        Event::RequestFinished {
+            request: ended,
+            completion,
+        } => {
+            assert_eq!(ended, request);
+            assert_eq!(completion, RequestCompletion::Ended);
+        }
+        other => panic!("expected the request to end, got {other:?}"),
+    }
+    drop(session);
+}
+
+#[test]
+fn a_prompt_secret_claimant_that_leaves_hands_the_request_to_the_built_in_dialog() {
+    let (session, mut ends) = Session::start_privileged(&["services", "input"]);
+    let mut services = role_client(&mut ends, "services");
+    let mut input = take(&mut ends, "input");
     let mut shell = socket_client(&session);
     shell
         .claim_slot("prompt.secret", Provider::Shell)
@@ -524,18 +614,25 @@ fn a_prompt_secret_claimant_that_leaves_ends_the_request() {
     shell.claim(offer.request).expect("the claimant claims it");
     drop(shell);
 
-    // The host stops waiting at once: the prompt had no one left to draw it, and no answer
-    // exists for it, so the request fails closed instead of waiting out its deadline.
-    match services.next_event().expect("the host is told the request ended") {
-        Event::RequestFinished {
-            request: ended,
-            completion,
-        } => {
-            assert_eq!(ended, request);
-            assert_eq!(completion, RequestCompletion::Ended);
+    // The compositor has seen the claimant go once the slot can be claimed again, and the hand-over happens in
+    // the same step, so the keys below find the dialog open.
+    let mut successor = socket_client(&session);
+    let mut freed = false;
+    for _ in 0..250 {
+        if successor.claim_slot("prompt.secret", Provider::Shell).is_ok() {
+            freed = true;
+            break;
         }
-        other => panic!("expected the request to end, got {other:?}"),
+        thread::sleep(Duration::from_millis(20));
     }
+    assert!(freed, "the compositor never released the departed claimant's slot");
+
+    type_and_confirm(&mut input, "after the crash");
+    assert_eq!(
+        answer_read_by(&mut services, request),
+        b"after the crash",
+        "the same request was answered: the host never saw it end"
+    );
     drop(session);
 }
 

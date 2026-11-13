@@ -56,7 +56,8 @@
 //!    reload, which the runtime still performs:
 //!    `slots_and_the_request_exchange_are_gated_on_the_owner_connection`.
 //! 8. **An offer is routed to a connection that never answers.** The slot decides, a
-//!    slot with no provider is refused with `no-provider`, and both sides of a request
+//!    slot with no provider is refused with `no-provider` (`prompt.secret` is served by the
+//!    compositor's own dialog instead, `ipc/secret.rs`), and both sides of a request
 //!    always learn its one completion:
 //!    `src/ipc/requests.rs`'s own tests.
 //! 9. **A shell replaces the built-in portal dialog and its answer is trusted.** The claimant's
@@ -90,9 +91,10 @@ use gnoblin_wayland::{
 
 use super::applied::StartedDocuments;
 use super::consent::Consent;
-use super::portal::{MALFORMED, PortalScope, PortalService, resolve_portal_scope};
+use super::portal::{MALFORMED, PortalScope, PortalService, UNKNOWN_KEY, parse_key, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{FrameDelivery, Requests};
+use super::secret::{SecretAction, SecretService};
 use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
     self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, gesture_payload,
@@ -277,6 +279,7 @@ impl IpcServer {
             reload: Reload::default(),
             applied: StartedDocuments::new(started_with),
             portal: PortalService::new(),
+            secret: SecretService::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
             start: Instant::now(),
@@ -731,6 +734,8 @@ struct Dispatcher {
     applied: StartedDocuments,
     /// The portal UI: admitted requests, their owners, and the open dialog.
     portal: PortalService,
+    /// The built-in passphrase dialog: it serves a `prompt.secret` request no shell claimed.
+    secret: SecretService,
     /// Every connection that reached the socket, keyed by client.
     connections: BTreeMap<ClientId, Connection>,
     /// Reader threads, one per client, kept so shutdown can join them.
@@ -815,6 +820,8 @@ impl Dispatcher {
     fn sweep_deadlines(&mut self) {
         let now = self.now();
         let expired = self.requests.tick(now);
+        self.secret.tick(now);
+        self.settle_secret_prompts();
         let reloads = self.reload.expire(now);
         self.deliver_replies(reloads);
         let replies = self.portal.tick(now);
@@ -1008,6 +1015,22 @@ impl Dispatcher {
                 return;
             }
         };
+        // The passphrase dialog is the topmost modal, so it takes the key.
+        if self.secret.is_open() {
+            let Some(key) = parse_key(&key) else {
+                self.refuse(
+                    client,
+                    envelope,
+                    UNKNOWN_KEY,
+                    "the key is not one the passphrase dialog takes",
+                );
+                return;
+            };
+            self.reply(client, envelope);
+            let actions = self.secret.key(key);
+            self.apply_secret_actions(actions);
+            return;
+        }
         match self.portal.key(&key, repeat, self.now()) {
             Ok(replies) => {
                 self.reply(client, envelope);
@@ -1075,6 +1098,7 @@ impl Dispatcher {
                 connection.send(&delivery.envelope);
             }
         }
+        self.settle_secret_prompts();
         self.settle_portal_offers();
     }
 
@@ -1318,6 +1342,7 @@ impl Dispatcher {
                 Self::persist_last_good(&config);
                 self.store.publish_settings(&config);
                 self.portal.configure(&config);
+                self.secret.configure(&config);
                 // Reduced motion turns animations off in the compositor loop. A document that
                 // does not name the key is not reduced, so it animates as before.
                 let reduced_motion = config
@@ -2502,7 +2527,9 @@ impl Dispatcher {
         let locked = self.session_locked();
         let replies = self.portal.follow_lock(locked);
         self.deliver_replies(replies);
-        if !self.portal.wants_pump() {
+        let actions = self.secret.set_locked(locked);
+        self.apply_secret_actions(actions);
+        if !self.portal.wants_pump() && !self.secret.wants_pump() {
             return;
         }
         let snapshot = match self.observation.lock() {
@@ -2513,12 +2540,60 @@ impl Dispatcher {
             .outputs()
             .first()
             .and_then(|id| snapshot.output_rect(*id).map(|rect| (*id, rect)));
-        let events = self.control.modal_events().unwrap_or_default();
+        let mut events = self.control.modal_events().unwrap_or_default();
+        // A passphrase prompt is the topmost modal: while one is open it takes every event and the consent
+        // dialog stands aside, drawn again once the prompt is gone.
+        if self.secret.wants_pump() {
+            let scene = self.secret.pump(output, &mut events);
+            let finished = matches!(scene.modal, Some(None));
+            if let Some(modal) = scene.modal {
+                self.control.set_modal(modal);
+            }
+            self.apply_secret_actions(scene.actions);
+            if self.secret.is_open() {
+                let replies = self.portal.tick(self.now());
+                self.deliver_replies(replies);
+                return;
+            }
+            if finished {
+                self.portal.redraw();
+            }
+        }
         let scene = self.portal.pump(output, snapshot.lock_active(), &events);
         if let Some(modal) = scene.modal {
             self.control.set_modal(modal);
         }
         self.deliver_replies(scene.replies);
+    }
+
+    /// Opens the passphrase dialog for the requests the request layer handed to it and closes it for those that
+    /// ended, however they ended.
+    fn settle_secret_prompts(&mut self) {
+        for request in self.requests.take_secret_ended() {
+            self.secret.close(request);
+        }
+        for request in self.requests.take_secret_opened() {
+            // A request that ended since it was handed over has nothing left to ask.
+            let Some(prompt) = self.requests.secret_prompt(request) else {
+                continue;
+            };
+            let actions = self.secret.open(request, prompt);
+            self.apply_secret_actions(actions);
+        }
+    }
+
+    /// Finishes the requests the passphrase dialog ended: an answer goes to the host that asked, a decline ends
+    /// the request with no answer.
+    fn apply_secret_actions(&mut self, actions: Vec<SecretAction>) {
+        for action in actions {
+            let deliveries = match action {
+                SecretAction::Answer { request, secret } => self
+                    .requests
+                    .answer_builtin(request, secret.expose().as_bytes().to_vec()),
+                SecretAction::Decline(request) => self.requests.decline_builtin(request),
+            };
+            self.deliver(deliveries);
+        }
     }
 
     /// Applies the session's current snapshot to the graph.

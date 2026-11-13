@@ -187,8 +187,8 @@ A replacement dialog cannot waive these rules:
 ## Other prompts
 
 The `prompt.secret` slot works the same way for the keyring's passphrase
-prompt, with one difference: it has no built-in dialog. Without a claimant the
-request is refused at once. See [passphrase prompts](/shell-api/passphrase-prompts).
+prompt. Without a claimant, or when the claimant leaves, the compositor's own
+passphrase dialog serves the request. See [passphrase prompts](/shell-api/passphrase-prompts).
 The `auth.polkit` slot is the polkit authentication prompt, described in
 [authentication prompts](/shell-api/authentication).
 
